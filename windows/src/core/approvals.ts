@@ -183,3 +183,21 @@ export function approvalKey(
   const key = e.key.toLowerCase();
   return key === "y" ? "allow" : key === "n" ? "deny" : null;
 }
+
+/**
+ * The request whose card Y and N may answer: one the user turned to by
+ * themselves, with a click on the card or the shortcut to the waiting card
+ * (island/shortcuts.ts). A card that comes up while the chat is being typed
+ * in leaves Y and N to the chat.
+ */
+let keysFor: string | null = null;
+
+/** Y and N now answer the card of `requestId`: the user turned to it. */
+export function armApprovalKeys(requestId: string | null | undefined): void {
+  keysFor = requestId || null;
+}
+
+/** Whether Y and N answer the card of `requestId`. */
+export function approvalKeysArmed(requestId: string | null | undefined): boolean {
+  return keysFor != null && keysFor === requestId;
+}

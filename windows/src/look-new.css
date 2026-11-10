@@ -876,6 +876,28 @@ html.look-new .code-tool {
   margin-right: 8px;
 }
 
+/* The permission card's command, whole: Allow allows every character of it.
+   It wraps, and past six lines it scrolls instead of growing the card. */
+html.look-new .stack > .approval-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.45;
+  max-height: calc(6 * 1.45em + 16px);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* A request too long to reach the island whole: no Allow, and why. */
+html.look-new .approval-cut {
+  font: 500 12px var(--font);
+  color: var(--amber);
+}
+
+html.look-new .approval-cut[hidden] {
+  display: none;
+}
+
 /* ── A question: its options one under the other, each with its description ─ */
 
 .q-desc {

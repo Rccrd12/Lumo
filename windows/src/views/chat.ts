@@ -87,7 +87,7 @@ import {
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
-  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps,
+  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps, storedPermissionMode, withPermissionMode,
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -2233,7 +2233,7 @@ export function buildPrompt(
       return;
     }
     drawPermHead(p);
-    const current = parsePermissionMode(State.settings.chatPermissionMode, p.id);
+    const current = parsePermissionMode(storedPermissionMode(State.settings, p.id), p.id);
     for (const mode of permissionModesFor(p.id)) {
       const on = mode === current;
       const text = modeText(p, mode);
@@ -2249,10 +2249,11 @@ export function buildPrompt(
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
       row.addEventListener("click", () => {
-        // The stored mode, not the one shown: one setting serves every provider,
-        // and a CLI shows a local model's "off" as "default".
-        if (State.settings.chatPermissionMode !== mode) {
-          State.settings = { ...State.settings, chatPermissionMode: mode };
+        // The stored mode, not the one shown: one setting serves every provider
+        // but Antigravity CLI, which keeps its own, and a CLI shows a local
+        // model's "off" as "default".
+        if (storedPermissionMode(State.settings, p.id) !== mode) {
+          State.settings = withPermissionMode(State.settings, p.id, mode);
           saveSettings();
           Sound.play("blip");
         }
@@ -2337,7 +2338,7 @@ export function buildPrompt(
     const cli = hasPermissions(State.settings.chatProvider);
     permBtn.hidden = !cli;
     if (!cli) closePermissions();
-    const mode = parsePermissionMode(State.settings.chatPermissionMode, State.settings.chatProvider);
+    const mode = parsePermissionMode(storedPermissionMode(State.settings, State.settings.chatProvider), State.settings.chatProvider);
     permBtn.classList.toggle("lit", mode !== "default");
     permBtn.title = `${t(STRINGS.permissions)} · ${t(modeText(providerDef(State.settings.chatProvider), mode).name)}`;
     permBtn.setAttribute("aria-label", permBtn.title);

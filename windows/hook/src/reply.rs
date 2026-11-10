@@ -26,18 +26,6 @@ fn wants_json(agent: &str) -> bool {
 /// (`None`: nobody clicked) and, for Claude Code's AskUserQuestion, the
 /// question as it was asked.
 pub fn stdout(agent: &str, event: &str, decision: Option<&str>, question: Option<&Value>) -> Option<String> {
-    stdout_with(agent, event, decision, question, None)
-}
-
-/// `stdout`, with the `permission_suggestions` Claude Code sent along with its
-/// request: what an `always` click hands back to it as this session's rules.
-pub fn stdout_with(
-    agent: &str,
-    event: &str,
-    decision: Option<&str>,
-    question: Option<&Value>,
-    suggestions: Option<&Value>,
-) -> Option<String> {
     if event != "PermissionRequest" {
         // Antigravity reads "{}" on PreToolUse as a denial. "ask" keeps its own prompt
         // (and the user's Always Allow): Lumo never allows a tool by itself.
@@ -67,7 +55,7 @@ pub fn stdout_with(
         }
         // Claude Code and Codex share the documented hookSpecificOutput. Only
         // Claude Code asks questions, in a terminal or in the Claude app.
-        "" | "claude-desktop" => decision.and_then(|d| decision_json_with(d, question, suggestions)),
+        "" | "claude-desktop" => decision.and_then(|d| decision_json(d, question)),
         _ => decision.and_then(|d| decision_json(d, None)),
     }
 }
@@ -256,16 +244,13 @@ pub fn antigravity_gate(decision: Option<&str>) -> String {
 /// the island may then answer it, which Claude Code takes as the same input
 /// with an `answers` map added. Nothing else of the input can be changed from
 /// the island, and no other tool's input can be changed at all.
+///
+/// `always` (allowed for this session on the island) is a plain allow here:
+/// the rules Claude Code suggests with its request (`npm run:*`, a whole MCP
+/// tool, a folder) reach further than the card showed, so none is handed back.
+/// Lumo remembers the request itself (session_rules.rs in the app) and
+/// answers the same one again at once.
 pub fn decision_json(decision: &str, question: Option<&Value>) -> Option<String> {
-    decision_json_with(decision, question, None)
-}
-
-/// `decision_json`, where `always` (allowed for this session on the island)
-/// also hands Claude Code the allow rules it suggested itself
-/// (`permission_suggestions`), kept for this session only: it then stops
-/// asking for the same thing. Nothing is ever written to a settings file, and
-/// no other kind of suggestion (a mode, a directory) is passed on.
-pub fn decision_json_with(decision: &str, question: Option<&Value>, suggestions: Option<&Value>) -> Option<String> {
     // A plan approved with "let it edit files without asking": allowed, and
     // Claude Code goes on in acceptEdits for this session only, exactly as its
     // own prompt's option does. Never written to a settings file.
@@ -282,20 +267,6 @@ pub fn decision_json_with(decision: &str, question: Option<&Value>, suggestions:
             })
             .to_string(),
         );
-    }
-    if decision.trim() == "always" {
-        let rules = session_rules(suggestions);
-        if !rules.is_empty() {
-            return Some(
-                json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": "PermissionRequest",
-                        "decision": { "behavior": "allow", "updatedPermissions": rules },
-                    }
-                })
-                .to_string(),
-            );
-        }
     }
     if decision.trim_start().starts_with('{') {
         let reply = serde_json::from_str::<Value>(decision).ok()?;
@@ -326,30 +297,6 @@ pub fn decision_json_with(decision: &str, question: Option<&Value>, suggestions:
     Some(format!(
         r#"{{"hookSpecificOutput":{{"hookEventName":"PermissionRequest","decision":{behavior}}}}}"#
     ))
-}
-
-/// The allow rules among Claude Code's suggestions, each kept for this
-/// session only.
-fn session_rules(suggestions: Option<&Value>) -> Vec<Value> {
-    let Some(list) = suggestions.and_then(Value::as_array) else { return Vec::new() };
-    list.iter()
-        .filter(|s| s["type"] == "addRules" && s["behavior"] == "allow")
-        .filter_map(|s| {
-            let rules: Vec<Value> = s["rules"]
-                .as_array()?
-                .iter()
-                .filter(|r| r["toolName"].as_str().is_some_and(|t| !t.is_empty()))
-                .map(|r| {
-                    let mut rule = json!({ "toolName": r["toolName"] });
-                    if let Some(content) = r["ruleContent"].as_str() {
-                        rule["ruleContent"] = json!(content);
-                    }
-                    rule
-                })
-                .collect();
-            (!rules.is_empty()).then(|| json!({ "type": "addRules", "rules": rules, "behavior": "allow", "destination": "session" }))
-        })
-        .collect()
 }
 
 /// True when `answers` answers exactly the questions Claude Code asked: one entry
@@ -549,26 +496,12 @@ mod tests {
     }
 
     #[test]
-    fn allowed_for_the_session_hands_back_the_suggested_rules_for_the_session_only() {
-        let suggestions = json!([
-            { "type": "addRules", "rules": [{ "toolName": "Bash", "ruleContent": "npm test:*" }], "behavior": "allow", "destination": "localSettings" },
-            { "type": "addRules", "rules": [{ "toolName": "Bash", "ruleContent": "rm:*" }], "behavior": "deny", "destination": "session" },
-            { "type": "setMode", "mode": "bypassPermissions", "destination": "userSettings" },
-            { "type": "addDirectories", "directories": ["C:/"], "destination": "session" },
-        ]);
-        let out = stdout_with("", "PermissionRequest", Some("always"), None, Some(&suggestions)).unwrap();
-        let v: Value = serde_json::from_str(&out).unwrap();
-        let decision = &v["hookSpecificOutput"]["decision"];
-        assert_eq!(decision["behavior"], "allow");
-        assert_eq!(
-            decision["updatedPermissions"],
-            json!([{ "type": "addRules", "rules": [{ "toolName": "Bash", "ruleContent": "npm test:*" }], "behavior": "allow", "destination": "session" }])
-        );
-        // No suggestion, or another agent: a plain allow, as before.
-        assert_eq!(stdout_with("", "PermissionRequest", Some("always"), None, None), decision_json("allow", None));
-        assert_eq!(stdout_with("codex", "PermissionRequest", Some("always"), None, Some(&suggestions)), decision_json("allow", None));
-        // A plain allow never carries rules.
-        assert!(!stdout_with("", "PermissionRequest", Some("allow"), None, Some(&suggestions)).unwrap().contains("updatedPermissions"));
+    fn allowed_for_the_session_never_hands_back_broader_rules() {
+        // What Claude Code suggests (a prefix, a folder, a mode) reaches further
+        // than the card on screen: "Allow for this session" is a plain allow.
+        assert_eq!(stdout("", "PermissionRequest", Some("always"), None), decision_json("allow", None));
+        assert_eq!(stdout("codex", "PermissionRequest", Some("always"), None), decision_json("allow", None));
+        assert!(!decision_json("always", None).unwrap().contains("updatedPermissions"));
     }
 
     #[test]

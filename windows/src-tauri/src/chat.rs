@@ -996,7 +996,7 @@ async fn send_to(
             }
         }
         if provider == antigravity_cli::PROVIDER {
-            return antigravity_cli::send(app, chat, &model, &settings.chat_permission_mode, query, context, folder).await;
+            return antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), query, context, folder).await;
         }
         if provider == codex_chat::PROVIDER {
             return codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder).await;

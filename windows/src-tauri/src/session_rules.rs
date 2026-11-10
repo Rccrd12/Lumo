@@ -5,13 +5,16 @@
 // card until that session ends (SessionEnd) or Lumo quits. Nothing is written
 // anywhere — the rules live in memory only.
 //
-// The same request means the same tool with the same command, the same file,
-// or — for an MCP tool — the same tool. Anything else needs a card again.
+// The same request means the same tool with the same command, the same file
+// or page, or the same whole input. Anything else needs a card again. A
+// request the relay had to cut (`lumo_input_cut`) is never remembered: two
+// commands that only start alike are not the same request.
 //
-// Claude Code also gets the click as `always` (pipe.rs): lumo-hook then hands
-// it the session rules Claude Code itself suggested, so it stops asking too.
-// Codex, Copilot, Muse and the island chat's Antigravity CLI have no such
-// thing, so for them these rules are the whole of it.
+// These rules are the whole of it, for every agent. Claude Code gets the click
+// as a plain allow: the rules it suggests itself (`npm run:*`, a whole MCP
+// tool) reach further than what the card showed, so they are never handed
+// back to it (lumo-hook's reply.rs). It asks Lumo again for the next request,
+// and Lumo answers it from here at once.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -35,11 +38,11 @@ pub fn scope(payload: &Value) -> Option<String> {
 }
 
 /// What "the same request" is for this one: the tool and its command, file or
-/// URL; the tool alone for an MCP tool; the tool and its whole input otherwise.
-/// None for a question, which is answered, not allowed.
+/// URL; the tool and its whole input otherwise. None for a question, which is
+/// answered, not allowed, and for a request the relay had to cut.
 pub fn rule(payload: &Value) -> Option<String> {
     let tool = payload.get("tool_name").and_then(Value::as_str).filter(|t| !t.is_empty())?;
-    if tool == "AskUserQuestion" {
+    if tool == "AskUserQuestion" || payload.get("lumo_input_cut").and_then(Value::as_bool) == Some(true) {
         return None;
     }
     let input = payload.get("tool_input").unwrap_or(&Value::Null);
@@ -50,8 +53,6 @@ pub fn rule(payload: &Value) -> Option<String> {
         format!("file\n{path}")
     } else if let Some(url) = field(&["url"]) {
         format!("url\n{url}")
-    } else if tool.starts_with("mcp__") {
-        "tool".to_string()
     } else {
         format!("input\n{input}")
     };
@@ -144,11 +145,19 @@ mod tests {
     #[test]
     fn what_counts_as_the_same_request() {
         let r = |tool: &str, input: Value| rule(&request("s", tool, input));
-        assert_eq!(r("mcp__github__create_issue", json!({ "title": "a" })), r("mcp__github__create_issue", json!({ "title": "b" })));
+        // An MCP tool: the same call, not every call of the tool.
+        assert_ne!(r("mcp__github__create_issue", json!({ "title": "a" })), r("mcp__github__create_issue", json!({ "title": "b" })));
+        assert_eq!(r("mcp__github__create_issue", json!({ "title": "a" })), r("mcp__github__create_issue", json!({ "title": "a" })));
         assert_ne!(r("WebFetch", json!({ "url": "https://a.dev" })), r("WebFetch", json!({ "url": "https://b.dev" })));
         assert_ne!(r("Bash", json!({ "command": "ls" })), r("PowerShell", json!({ "command": "ls" })));
         assert_eq!(r("AskUserQuestion", json!({ "questions": [] })), None);
         assert_eq!(rule(&json!({ "session_id": "s" })), None);
+        // A command the relay had to cut: never "the same" as another.
+        let mut cut = request("s", "Bash", json!({ "command": "npm run build && …" }));
+        cut["lumo_input_cut"] = json!(true);
+        assert_eq!(rule(&cut), None);
+        assert!(!arrive("c1", &cut));
+        assert!(!can_remember("c1"));
         // No session id: nothing can be remembered.
         assert!(!arrive("n1", &json!({ "tool_name": "Bash", "tool_input": { "command": "ls" } })));
         assert!(!can_remember("n1"));

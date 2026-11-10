@@ -17446,6 +17446,30 @@
    "ru": "Установщик не подписан ключом Lumo, поэтому Lumo его не установил.",
    "id": "Penginstal tidak ditandatangani dengan kunci Lumo, jadi Lumo tidak memasangnya.",
    "it": "Il programma di installazione non è firmato con la chiave di Lumo, quindi Lumo non l'ha installato."
+  },
+  "Too long to show here whole: Lumo can't allow it.": {
+   "zh-Hans": "太长，无法在此完整显示：Lumo 不能允许它。",
+   "hi": "पूरा दिखाने के लिए बहुत लंबा है: Lumo इसकी अनुमति नहीं दे सकता।",
+   "es": "Demasiado largo para mostrarlo entero aquí: Lumo no puede permitirlo.",
+   "ar": "أطول من أن يُعرض هنا كاملًا: لا يستطيع Lumo السماح به.",
+   "fr": "Trop long pour être affiché ici en entier : Lumo ne peut pas l'autoriser.",
+   "bn": "এখানে পুরোটা দেখানোর জন্য খুব লম্বা: Lumo এটি অনুমতি দিতে পারে না।",
+   "pt-BR": "Longo demais para mostrar inteiro aqui: o Lumo não pode permitir.",
+   "ru": "Слишком длинно, чтобы показать здесь целиком: Lumo не может это разрешить.",
+   "id": "Terlalu panjang untuk ditampilkan utuh di sini: Lumo tidak bisa mengizinkannya.",
+   "it": "Troppo lungo per mostrarlo qui per intero: Lumo non può consentirlo."
+  },
+  "Reply in its own window": {
+   "zh-Hans": "在它自己的窗口中回复",
+   "hi": "उसकी अपनी विंडो में जवाब दें",
+   "es": "Responder en su propia ventana",
+   "ar": "الرد في نافذته الخاصة",
+   "fr": "Répondre dans sa propre fenêtre",
+   "bn": "এর নিজের উইন্ডোতে উত্তর দিন",
+   "pt-BR": "Responder na janela dele",
+   "ru": "Ответить в его собственном окне",
+   "id": "Balas di jendelanya sendiri",
+   "it": "Rispondi nella sua finestra"
   }
  }
 }
