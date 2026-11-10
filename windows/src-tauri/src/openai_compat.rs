@@ -309,7 +309,11 @@ pub async fn send(
                     body.as_object_mut().map(|b| b.remove("tools"));
                     continue;
                 }
-                other => other.map_err(|(_, e)| e)?,
+                Err((status, e)) => {
+                    crate::log::line(format!("chat: {} {model} refused (round {rounds}, {}): {status} {e}; {}", p.id, if streaming { "streamed" } else { "whole" }, request_shape(&body)));
+                    return Err(e);
+                }
+                Ok(json) => json,
             };
             // Reasoning written in the text (Gemma's `<thought>`) is never shown, nor sent back.
             if let Some(content) = json.pointer_mut("/choices/0/message/content").filter(|c| c.is_string()) {
@@ -409,6 +413,36 @@ async fn post(p: &Provider, endpoint: &Url, key: &str, body: &Value, usage: &mut
     }
     let bytes = net::read_capped(response, net::MAX_BODY).await.map_err(|e| (0, e))?;
     serde_json::from_slice(&bytes).map_err(|e| (0, tf("Bad API response: {error}", &[("error", &e.to_string())])))
+}
+
+/// What a request holds, for the log when it is refused: the roles of its
+/// last messages and the shape of the assistant's tool calls, never their text.
+fn request_shape(body: &Value) -> String {
+    let messages = body["messages"].as_array().map(Vec::as_slice).unwrap_or_default();
+    let tools = body["tools"].as_array().map_or(0, Vec::len);
+    let last: Vec<String> = messages
+        .iter()
+        .rev()
+        .take(4)
+        .rev()
+        .map(|m| {
+            let role = m["role"].as_str().unwrap_or("?");
+            let content = match &m["content"] {
+                Value::Null => "null".to_string(),
+                Value::String(t) => format!("{} chars", t.chars().count()),
+                Value::Array(parts) => format!("{} parts", parts.len()),
+                _ => "other".to_string(),
+            };
+            let calls = m["tool_calls"].as_array().map(|calls| {
+                let ids = calls.iter().filter(|c| c["id"].as_str().is_some_and(|id| !id.is_empty())).count();
+                let signed = calls.iter().filter(|c| c.get("extra_content").is_some()).count();
+                format!(", {} calls ({ids} with an id, {signed} with extra_content)", calls.len())
+            });
+            let keys: Vec<&str> = m.as_object().map(|o| o.keys().map(String::as_str).filter(|k| !matches!(*k, "role" | "content" | "tool_calls")).collect()).unwrap_or_default();
+            format!("{role} [{content}{}{}]", calls.unwrap_or_default(), if keys.is_empty() { String::new() } else { format!(", also {}", keys.join(" ")) })
+        })
+        .collect();
+    format!("{} messages, {tools} tools; last: {}", messages.len(), last.join(" · "))
 }
 
 /// One request, its answer read as it streams in (`stream: true`), put back
@@ -639,7 +673,13 @@ impl Assembly {
         if !self.heard {
             return None;
         }
-        let calls: Vec<Value> = self.calls.into_iter().filter(|c| c.pointer("/function/name").and_then(Value::as_str).is_some_and(|n| !n.is_empty())).collect();
+        let mut calls: Vec<Value> = self.calls.into_iter().filter(|c| c.pointer("/function/name").and_then(Value::as_str).is_some_and(|n| !n.is_empty())).collect();
+        // A call the stream gave no id: one of its own, which its answer names.
+        for (i, call) in calls.iter_mut().enumerate() {
+            if call["id"].as_str().is_none_or(str::is_empty) {
+                call["id"] = json!(format!("call_{i}"));
+            }
+        }
         let mut message = json!({ "role": "assistant" });
         for (k, v) in self.extra {
             message[k.as_str()] = v;
@@ -935,6 +975,20 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0]["function"]["arguments"], "{\"x\":1}");
         assert_eq!(calls[1]["id"], "b");
+        let (whole, _) = assemble(&[r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"one","arguments":"{}"}}]}}]}"#]);
+        assert_eq!(whole.unwrap()["choices"][0]["message"]["tool_calls"][0]["id"], "call_0", "a call with no id gets one");
+    }
+
+    #[test]
+    fn a_refused_request_is_logged_by_its_shape_only() {
+        let body = json!({"tools":[{}],"messages":[
+            {"role":"system","content":"secret instructions"},
+            {"role":"user","content":"my question"},
+            {"role":"assistant","content":null,"tool_calls":[{"id":"","function":{}},{"id":"x","extra_content":{},"function":{}}]},
+            {"role":"tool","tool_call_id":"x","content":"result"}]});
+        let shape = request_shape(&body);
+        assert_eq!(shape, "4 messages, 1 tools; last: system [19 chars] · user [11 chars] · assistant [null, 2 calls (1 with an id, 1 with extra_content)] · tool [6 chars, also tool_call_id]");
+        assert!(!shape.contains("secret") && !shape.contains("question"));
     }
 
     #[test]
