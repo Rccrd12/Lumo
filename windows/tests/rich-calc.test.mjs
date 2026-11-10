@@ -10,7 +10,8 @@ import { installFakeDom } from "./fakedom.mjs";
 installFakeDom();
 const calcModule = await import("../src/views/rich/calc.ts");
 const { parseCalc, parsePlot, renderCalc, renderPlot, parseInput, parseRange, niceStep, formatNumber, formatValue, texName, tracePlot, autoRange, evaluateCalc } = calcModule;
-const { renderMarkdown } = await import("../src/views/markdown.ts");
+const markdownModule = await import("../src/views/markdown.ts");
+const { renderMarkdown } = markdownModule;
 const { keyOf } = await import("../src/views/rich/index.ts");
 
 const OHM = [
@@ -518,4 +519,44 @@ test("the chart's buttons zoom it, and bring back its frame once it has moved", 
   assert.ok(!again.find(".rc-plot-btn")[0].hidden);
   again.find(".rc-plot-btn")[0].fire("click");
   assert.ok(again.find(".rc-plot-btn")[0].hidden);
+});
+
+test("TeX a model slips into the formulas is read as plain arithmetic", async () => {
+  const { fromTeX, compile } = await import("../src/core/expr.ts");
+  const at = (tex, scope = {}) => compile(fromTeX(tex)).evaluate(scope);
+  assert.equal(fromTeX("x^2 + 1"), "x^2 + 1", "plain formulas come back as they were");
+  assert.equal(at("\\sin(x)", { x: Math.PI / 2 }), 1);
+  assert.equal(at("2\\pi"), 2 * Math.PI);
+  assert.equal(at("\\frac{1}{2}"), 0.5);
+  assert.equal(at("\\frac{\\frac{1}{2}}{4}"), 0.125);
+  assert.equal(at("\\sqrt{9} \\cdot 2"), 6);
+  assert.ok(Math.abs(at("\\sqrt[3]{8}") - 2) < 1e-12);
+  assert.equal(at("2\\sin x", { x: Math.PI / 2 }), 2);
+  assert.equal(at("e^{2x}", { x: 0 }), 1);
+  assert.equal(at("\\left(x + 1\\right) \\times 3", { x: 1 }), 6);
+  assert.equal(at("V_{out}", { V_out: 4 }), 4);
+  assert.equal(at("$\\arctan(1)$"), Math.PI / 4);
+
+  // The local model's sine: a chart, from 0 to 2π.
+  const plot = parsePlot("", "formula: \\sin(x)\ny: \\sin(x)\nx: 0..2\\pi");
+  assert.ok(plot);
+  assert.deepEqual(plot.x, [0, 2 * Math.PI]);
+  assert.equal(plot.formula, "\\sin(x)", "the top line stays TeX, drawn as math");
+  // A region in TeX's comparisons.
+  const d = parsePlot("", "y: x\nx: -1..1\nregion: x \\le y \\leq 3x \\land x^2 + y^2 \\le 1");
+  assert.ok(d);
+  assert.equal(d.regions[0].conditions.length, 2);
+});
+
+test("a chart's lines in a fence left unnamed are the chart; other code stays code", () => {
+  const { parseMarkdown } = markdownModule;
+  const [plot] = parseMarkdown("```\nformula: \\sin(x)\ny: \\sin(x)\nx: 0..2\\pi\n```");
+  assert.equal(plot.kind, "rich");
+  assert.equal(plot.type, "plot");
+  assert.equal(plot.open, false);
+  assert.equal(parseMarkdown("```plot\ny: x^2\nx: -2..2\n```")[0].type, "plot");
+  // No x range, other keys, or a language: code as written.
+  assert.equal(parseMarkdown("```\ny: 1\n```")[0].kind, "code");
+  assert.equal(parseMarkdown("```\ny: 1\nx: 2\nname: z\n```")[0].kind, "code");
+  assert.equal(parseMarkdown("```yaml\ny: 1\nx: 2\n```")[0].kind, "code");
 });

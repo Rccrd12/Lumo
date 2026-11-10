@@ -33,7 +33,12 @@
 
 import { h, svg } from "../dom";
 import { ICONS } from "../icons";
-import { compile, normalizeName, GREEK, type Expr } from "../../core/expr";
+import { compile as compilePlain, fromTeX, normalizeName, GREEK, type Expr } from "../../core/expr";
+
+/** Reads a formula as core/expr does, the TeX a model slips into turned to plain first. */
+function compile(source: string): Expr {
+  return compilePlain(fromTeX(source));
+}
 import { language, N_, t } from "../../i18n/i18n";
 import { head, remember, type RichContext } from "./index";
 import "./calc.css";
@@ -189,7 +194,7 @@ const COMPARE = /(<=|>=|=<|=>|≤|≥|⩽|⩾|<|>)/;
  * unknown.
  */
 export function parseRegion(text: string, known: Set<string>): Region | null {
-  const pieces = text
+  const pieces = fromTeX(text)
     .split(/\s+and\s+|&&|∧|;/i)
     .flatMap((p) => fieldsOf(p))
     .map((p) => p.trim())

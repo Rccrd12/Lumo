@@ -70,6 +70,16 @@ const FENCE_LINE = /^[ \t]*(`{3,})(.*)$/;
  * models write it, the cards as a list under it (views/rich/cards.ts).
  */
 const LOOSE_CARDS = /^[ \t]*(?:\*\*|`)?lumo-cards(?:\*\*|`)?(?:[ \t]+(.*?))?[ \t]*$/;
+/**
+ * A line of a chart left without its fence name (```, ```plot), as small
+ * local models write it: only these keys, with a curve and an x range.
+ */
+const LOOSE_PLOT_LINE = /^[ \t]*(formula|y|x|yrange|region)[ \t]*:/i;
+function loosePlot(lang: string, code: string[]): boolean {
+  if (lang !== "" && lang.toLowerCase() !== "plot") return false;
+  const keys = code.filter((l) => l.trim()).map((l) => LOOSE_PLOT_LINE.exec(l)?.[1].toLowerCase());
+  return keys.length > 0 && keys.every(Boolean) && keys.includes("y") && keys.includes("x");
+}
 /** A line that goes on a list: blank, indented, or an item. */
 const LIST_LINE = /^(?:[ \t]*$|[ \t]|[-*+•][ \t])/;
 /**
@@ -210,7 +220,8 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       const lang = line.slice(3).trim();
       const code: string[] = [];
       for (i++; i < lines.length && !lines[i].startsWith("```"); i++) code.push(lines[i]);
-      blocks.push({ kind: "code", lang, code: code.join("\n") });
+      if (loosePlot(lang, code)) blocks.push({ kind: "rich", type: "plot", title: "", body: code.join("\n"), open: i >= lines.length });
+      else blocks.push({ kind: "code", lang, code: code.join("\n") });
       i++;
       continue;
     }

@@ -178,6 +178,59 @@ function tokenize(source: string): Token[] {
   return tokens;
 }
 
+// ── TeX, as models slip into it ───────────────────────────────────────────────
+
+/** The `{…}` group opening at `at` in `s`: its inside and where it ends, or null. */
+function group(s: string, at: number): { inside: string; end: number } | null {
+  if (s[at] !== "{") return null;
+  let depth = 0;
+  for (let i = at; i < s.length; i++) {
+    if (s[i] === "{") depth++;
+    else if (s[i] === "}" && --depth === 0) return { inside: s.slice(at + 1, i), end: i + 1 };
+  }
+  return null;
+}
+
+/**
+ * A formula a model wrote in TeX where plain arithmetic was asked for, as
+ * the formulas read it: `\sin(x)` is sin(x), `2\pi` 2pi, `\frac{a}{b}`
+ * ((a)/(b)), `\sqrt{x}` sqrt(x), `\sqrt[3]{x}` (x)^(1/(3)), `x^{2}` x^(2),
+ * `V_{out}` V_out, `\cdot` and `\times` *, `\sin x` sin(x); `$` and
+ * `\left`, `\right` go. A formula with no backslash or brace in it comes
+ * back as it was.
+ */
+export function fromTeX(source: string): string {
+  if (!/[\\{}$]/.test(source)) return source;
+  let s = source.replace(/\$/g, "").replace(/\\(?:left|right|q?quad)\b|\\[,;!: ]/g, " ");
+  s = s.replace(/\\(?:cdot|times|ast)\b/g, "*").replace(/\\div\b/g, "/");
+  // The comparisons and the "and" of a region: x \le y \land y \leq 3x.
+  s = s.replace(/\\(?:leq?|leqslant)\b/g, "<=").replace(/\\(?:geq?|geqslant)\b/g, ">=");
+  s = s.replace(/\\lt\b/g, "<").replace(/\\gt\b/g, ">").replace(/\\(?:land|wedge)\b/g, " and ");
+  s = s.replace(/\\(?:operatorname|mathrm|text|mathit)\s*\{([A-Za-z]+)\}/g, "$1");
+  // \frac{a}{b} and \sqrt[n]{a}, their groups possibly nested.
+  for (let guard = 0; guard < 100; guard++) {
+    const m = /\\(d?frac|sqrt)\s*(\[[^\]]*\])?\s*(?=\{)/.exec(s);
+    if (!m) break;
+    const first = group(s, m.index + m[0].length);
+    if (!first) break;
+    if (m[1] === "sqrt") {
+      const n = m[2]?.slice(1, -1).trim();
+      s = s.slice(0, m.index) + (n ? `((${first.inside})^(1/(${n})))` : `sqrt(${first.inside})`) + s.slice(first.end);
+      continue;
+    }
+    const second = group(s, first.end);
+    if (!second) break;
+    s = s.slice(0, m.index) + `((${first.inside})/(${second.inside}))` + s.slice(second.end);
+  }
+  // A subscript is part of the name; any other group is a parenthesis.
+  s = s.replace(/_\{([A-Za-z0-9]+)\}/g, "_$1");
+  s = s.replace(/\\([A-Za-z]+)/g, "$1");
+  // A function before a bare argument, as TeX writes it: sin x, ln 2.
+  s = s.replace(/(?<![A-Za-z])(sinh|cosh|tanh|sin|cos|tan|ln|log|exp|arcsin|arccos|arctan)\s+([A-Za-z0-9_.]+)/g, "$1($2)");
+  s = s.replace(/(?<![A-Za-z])arc(sin|cos|tan)\b/g, "a$1");
+  return s.replace(/\{/g, "(").replace(/\}/g, ")");
+}
+
 // ── Parsing, straight into closures ───────────────────────────────────────────
 
 type Node = (scope: Record<string, number>) => number;
