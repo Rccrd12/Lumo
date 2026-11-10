@@ -1230,3 +1230,20 @@ test("an Antigravity command no rule covers gets a card that can go back to Anti
   seconds(2);
   assert.equal(State.pendingApproval, null);
 });
+
+test("a hook event's fields of the wrong type are dropped, not trusted", async () => {
+  const { cleanPayload } = await import("../src/island/hooks.ts");
+  assert.equal(cleanPayload(null), null);
+  assert.equal(cleanPayload("Stop"), null);
+  assert.equal(cleanPayload([1, 2]), null);
+  const p = cleanPayload({
+    hook_event_name: "Notification", message: 3, session_id: { a: 1 }, cwd: "/x",
+    lumo_island: "true", lumo_card_secs: "9", tool_input: "rm -rf /", extra: 1,
+  });
+  assert.deepEqual(p, { hook_event_name: "Notification", cwd: "/x", extra: 1 });
+});
+
+test("a Notification whose message is not text leaves the island working", () => {
+  emit("hook", { hook_event_name: "Notification", session_id: "s1", cwd: "/w", message: 42 });
+  emit("hook", { hook_event_name: "Stop", session_id: "s1", cwd: "/w", lumo_agent: "constructor" });
+});

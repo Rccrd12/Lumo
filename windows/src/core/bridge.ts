@@ -969,6 +969,9 @@ export async function onDragDrop(
     });
   }
   const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
+  const carriesLink = (e: DragEvent) => e.dataTransfer?.types.includes("text/uri-list") ?? false;
+  const editable = (target: EventTarget | null) =>
+    target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea") != null);
   // dragenter/dragleave fire for every element crossed; only the outermost pair counts.
   let depth = 0;
   // The cursor is near the island (`near`), not just in the window.
@@ -1010,6 +1013,14 @@ export async function onDragDrop(
     return on;
   };
   const onOver = (e: DragEvent) => {
+    // A link (from a browser, or one of the island's own) let go on the
+    // island: WebView2 would open it in place of the island. Refused, but
+    // over a text field, which takes it as text.
+    if (!hasFiles(e) && carriesLink(e) && !editable(e.target)) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
+      return;
+    }
     if (inside || !hasFiles(e)) return;
     // Without this WebView2 refuses the drop — or navigates to the file.
     // Off the island it is refused: "none" shows the no-drop cursor.
