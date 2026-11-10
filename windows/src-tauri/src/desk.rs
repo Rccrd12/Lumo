@@ -252,14 +252,20 @@ pub fn asks_about(query: &str, doc: &OpenDocument) -> bool {
     if stem.chars().count() >= 4 && q.contains(&stem) {
         return true;
     }
+    // Whole words, or with an "s" after them: "openai" is not about what is
+    // open, nor "password" about a Word document, nor "tablet" about a table.
     const WORDS: &[&str] = &[
-        "pdf", "document", "file", "pagin", "page", "foglio", "sheet", "slide", "presentazion", "presentation",
-        "tabella", "table", "capitolo", "chapter", "aperto", "aperta", "open", "questo", "questa", "this",
-        "word", "excel", "powerpoint", "libro", "book", "articolo", "article", "contratto", "contract",
+        "pdf", "file", "page", "sheet", "slide", "presentation", "table", "chapter", "aperto", "aperta",
+        "aperti", "aperte", "open", "opened", "questo", "questa", "this", "word", "excel", "powerpoint",
+        "libro", "libri", "book", "article", "contract", "foglio", "fogli",
     ];
-    // Each keyword starts a word of the question: "password" is not about a
-    // Word document, nor "openai" about what is open.
-    q.split(|c: char| !c.is_alphanumeric()).any(|word| WORDS.iter().any(|w| word.starts_with(w)))
+    // The start of a word, for the words that change their ending: documento,
+    // documenti, documents; pagina, pagine; tabella, tabelle…
+    const STEMS: &[&str] = &["document", "pagin", "presentazion", "tabell", "capitol", "articol", "contratt"];
+    q.split(|c: char| !c.is_alphanumeric()).any(|word| {
+        let single = word.strip_suffix('s').unwrap_or(word);
+        WORDS.iter().any(|w| word == *w || single == *w) || STEMS.iter().any(|w| word.starts_with(w))
+    })
 }
 
 #[cfg(test)]
@@ -286,6 +292,12 @@ mod tests {
         assert!(!asks_about("che tempo fa domani a Roma?", &d));
         assert!(asks_about("Translate these pages", &d));
         assert!(!asks_about("How do I reset my password?", &d));
+        assert!(!asks_about("Which openai model is cheapest?", &d));
+        assert!(!asks_about("Is the tablet charged?", &d));
+        assert!(asks_about("What does the open file say?", &d));
+        assert!(asks_about("Riassumi il documento", &d));
+        assert!(asks_about("Leggi le tabelle", &d));
+        assert!(asks_about("Summarize these pdfs", &d));
     }
 
     #[test]

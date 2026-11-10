@@ -9,3 +9,11 @@
 # Local only (never published)
 .claude/
 _prive/
+
+# Kept beside the checkout, never part of the project: a whole-source dump, an
+# npm install run at the root by mistake (the app's is windows/), and local
+# agent folders.
+/package-lock.json
+/windows/codice_completo.txt
+tool-workshop/
+.agents/

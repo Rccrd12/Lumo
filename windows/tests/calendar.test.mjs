@@ -10,7 +10,16 @@ const ics = (...events) => ["BEGIN:VCALENDAR", ...events.flatMap((e) => ["BEGIN:
 
 test("dates: UTC, local and whole days", () => {
   assert.deepEqual(parseIcsDate("20261009T140000Z"), { time: Date.UTC(2026, 9, 9, 14), allDay: false });
-  assert.deepEqual(parseIcsDate("20261009T140000", { TZID: "Europe/Rome" }), { time: local(2026, 10, 9, 14), allDay: false });
+  // A zone of its own: that zone's 14:00, whatever this computer's zone is.
+  assert.deepEqual(parseIcsDate("20261009T140000", { TZID: "Europe/Rome" }), { time: Date.UTC(2026, 9, 9, 12), allDay: false });
+  assert.deepEqual(parseIcsDate("20260115T090000", { TZID: "America/New_York" }), { time: Date.UTC(2026, 0, 15, 14), allDay: false });
+  // As Outlook writes it, Windows's name.
+  assert.deepEqual(parseIcsDate("20260115T090000", { TZID: "W. Europe Standard Time" }), { time: Date.UTC(2026, 0, 15, 8), allDay: false });
+  // A zone nobody knows: local time.
+  assert.deepEqual(parseIcsDate("20261009T140000", { TZID: "Mars/Olympus" }), { time: local(2026, 10, 9, 14), allDay: false });
+  // Around a change of time: 2026-03-29 in Rome, 01:30 before it, 03:30 after.
+  assert.equal(parseIcsDate("20260329T013000", { TZID: "Europe/Rome" }).time, Date.UTC(2026, 2, 29, 0, 30));
+  assert.equal(parseIcsDate("20260329T033000", { TZID: "Europe/Rome" }).time, Date.UTC(2026, 2, 29, 1, 30));
   assert.deepEqual(parseIcsDate("20261009", { VALUE: "DATE" }), { time: local(2026, 10, 9), allDay: true });
   assert.equal(parseIcsDate("tomorrow"), null);
 });
@@ -66,6 +75,20 @@ test("daily with a count, monthly on the nth weekday, yearly", () => {
   assert.deepEqual(by("Run"), [9]);
   // Into the next year: the second Thursday of January 2027 is the 14th.
   assert.deepEqual(parseIcs(text, local(2027, 1, 1), local(2027, 1, 31)).filter((e) => e.title === "Board").map((e) => new Date(e.start).getDate()), [14]);
+});
+
+test("a repeating event set up years ago still shows", () => {
+  const text = ics(
+    ["UID:d", "DTSTART:20150105T080000", "RRULE:FREQ=DAILY", "SUMMARY:Standup"],
+    ["UID:w", "DTSTART:19900102T090000", "RRULE:FREQ=WEEKLY;BYDAY=MO,FR", "SUMMARY:Gym"],
+    ["UID:m", "DTSTART:19800115T090000", "RRULE:FREQ=MONTHLY", "SUMMARY:Rent"],
+  );
+  const events = parseIcs(text, local(2026, 10, 9), local(2026, 10, 16));
+  const by = (t) => events.filter((e) => e.title === t).map((e) => new Date(e.start).getDate());
+  assert.deepEqual(by("Standup"), [9, 10, 11, 12, 13, 14, 15]);
+  assert.deepEqual(by("Gym"), [9, 12]);
+  assert.equal(new Date(events.find((e) => e.title === "Standup").start).getHours(), 8);
+  assert.deepEqual(parseIcs(text, local(2026, 11, 1), local(2026, 11, 30)).filter((e) => e.title === "Rent").map((e) => new Date(e.start).getDate()), [15]);
 });
 
 test("monthly on a weekday with no number is every one of them", () => {

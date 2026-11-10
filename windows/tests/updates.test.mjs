@@ -211,7 +211,7 @@ test("a pull request left out of the beta says what it conflicts with", () => {
 
 // ── scripts/beta.mjs, the workflow's steps ────────────────────────────────────
 
-const { BETA_MARK, betaVersion, ciState, cleanTitle, renderNotes, sameHead } = await import("../scripts/beta.mjs");
+const { BETA_MARK, betaCandidates, betaVersion, ciState, cleanTitle, renderNotes, sameHead } = await import("../scripts/beta.mjs");
 
 test("only a pull request whose Windows CI passed goes in", () => {
   const run = (status, conclusion, workflowName = "Windows CI") => ({ __typename: "CheckRun", name: "test", workflowName, status, conclusion });
@@ -269,4 +269,10 @@ test("the beta merges only the commit whose checks were read", () => {
   assert.equal(sameHead("62248ea19dbe2fe5071e2d00923bb23ebffd5051", sha), false, "pushed again since");
   assert.equal(sameHead(sha, undefined), false, "GitHub said nothing: left out");
   assert.equal(sameHead("", ""), false);
+});
+
+test("only the owner's own pull requests from this repository go in the beta", () => {
+  const pr = (number, login, isCrossRepository = false) => ({ number, isCrossRepository, author: { login } });
+  const prs = [pr(12, "Rccrd12"), pr(9, "dependabot[bot]"), pr(5, "rccrd12"), pr(7, "someone-else"), pr(3, "Rccrd12", true), { number: 2 }];
+  assert.deepEqual(betaCandidates(prs, "Rccrd12").map((p) => p.number), [5, 12]);
 });

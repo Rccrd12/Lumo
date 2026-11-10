@@ -130,6 +130,11 @@ pub struct Settings {
     /// change nothing). Picked from the chat's field; anything else reads as
     /// "default".
     pub chat_permission_mode: String,
+    /// Antigravity CLI's own mode, kept apart: its Auto is Antigravity's Turbo,
+    /// where every command runs, not the AI deciding what is safe as with the
+    /// others. "" until it is picked: then it asks, unless "turbo" was picked
+    /// before (when one mode served every provider). See `permission_mode_for`.
+    pub chat_permission_mode_agy: String,
     /// How the local chat's Run automatically and the user's tools are held
     /// (the shield's Sandbox): "high" also runs a tool in the Windows sandbox
     /// when it can (sandbox.rs), "low" under Lumo's guard only. Anything else
@@ -266,6 +271,21 @@ fn default_model() -> String {
     crate::claude::DEFAULT_MODEL.to_string()
 }
 
+impl Settings {
+    /// The permission mode the chat's `provider` runs with: Antigravity CLI's
+    /// own (its Auto lets every command run), the shared one for the others.
+    pub fn permission_mode_for(&self, provider: &str) -> String {
+        if provider != crate::antigravity_cli::PROVIDER {
+            return self.chat_permission_mode.clone();
+        }
+        match self.chat_permission_mode_agy.trim() {
+            "" if self.chat_permission_mode.trim() == "turbo" => "auto".into(),
+            "" => "default".into(),
+            mode => mode.to_string(),
+        }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -317,6 +337,7 @@ impl Default for Settings {
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
             chat_permission_mode: "default".into(),
+            chat_permission_mode_agy: String::new(),
             local_sandbox: "high".into(),
             chat_show_usage: false,
             chat_share_explorer: false,
@@ -601,6 +622,20 @@ mod tests {
     use super::*;
     use serde_json::{json, Value};
 
+    #[test]
+    fn antigravity_keeps_a_mode_of_its_own() {
+        let mut s = Settings { chat_permission_mode: "auto".into(), ..Settings::default() };
+        // Claude Code's Auto (the AI decides) is never Antigravity's Turbo.
+        assert_eq!(s.permission_mode_for("claude-code"), "auto");
+        assert_eq!(s.permission_mode_for(crate::antigravity_cli::PROVIDER), "default");
+        // Turbo picked before the two were apart stays Turbo.
+        s.chat_permission_mode = "turbo".into();
+        assert_eq!(s.permission_mode_for(crate::antigravity_cli::PROVIDER), "auto");
+        s.chat_permission_mode_agy = "plan".into();
+        assert_eq!(s.permission_mode_for(crate::antigravity_cli::PROVIDER), "plan");
+        assert_eq!(s.permission_mode_for("codex"), "turbo");
+    }
+
     /// A settings.json in which no value is the default one.
     // Two #: the colours in it are written "#RRGGBB".
     const CUSTOM: &str = r##"{
@@ -647,6 +682,7 @@ mod tests {
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
   "chatPermissionMode": "plan",
+  "chatPermissionModeAgy": "auto",
   "localSandbox": "low",
   "chatShowUsage": true,
   "chatShareExplorer": true,
@@ -1172,6 +1208,7 @@ mod tests {
                 "chatModels",
                 "chatEffort",
                 "chatPermissionMode",
+                "chatPermissionModeAgy",
                 "localSandbox",
                 "chatShowUsage",
                 "chatShareExplorer",

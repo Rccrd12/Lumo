@@ -141,11 +141,16 @@ fn with_user_tools(mut body: Value, tools: &[(String, String, Value)]) -> Value 
 
 /// The tool calls of an answer that stopped for them, as the next user turn's
 /// tool_result blocks: each call of the user's tools asks on the island (tools.rs).
-async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value]) -> Vec<Value> {
+async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value], offered: &[(String, String, Value)]) -> Vec<Value> {
     let mut results = Vec::new();
     for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
         let id = b["id"].as_str().unwrap_or_default();
         let name = b["name"].as_str().unwrap_or_default();
+        // Only a tool offered in this turn runs (its web search is the API's own).
+        if name == "web_search" || !crate::tools::offered_in(offered, name) {
+            results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": crate::tools::not_offered(name), "is_error": true }));
+            continue;
+        }
         // The island says which tool runs, in place of Thinking….
         let act = if crate::github_tools::NAMES.contains(&name) {
             crate::github_tools::activity(name, &b["input"])
@@ -282,7 +287,7 @@ pub async fn send(
             if let Some(text) = response_text(&blocks) {
                 said.push(text);
             }
-            let results = if stopped_for_tools { run_user_tools(app, chat, &blocks).await } else { Vec::new() };
+            let results = if stopped_for_tools { run_user_tools(app, chat, &blocks, &tools).await } else { Vec::new() };
             if let Some(messages) = body["messages"].as_array_mut() {
                 messages.push(json!({ "role": "assistant", "content": blocks }));
                 if !results.is_empty() {
