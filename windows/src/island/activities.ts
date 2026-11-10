@@ -185,13 +185,9 @@ export class IslandActivities {
     this.host = host;
     this.view = new ActivitiesView({
       act: (a) => this.act(a),
-      drag: () => {
-        // In the new look they are part of the island: they stay in it.
-        if (State.settings.islandNewLook === true) return;
-        const r = this.view.el.getBoundingClientRect();
-        void Bridge.activitiesDrag([parseFloat(this.view.el.style.left) || r.left, parseFloat(this.view.el.style.top) || r.top, r.width, r.height]);
-      },
-      resize: (fx, fy) => State.settings.islandNewLook !== true && void Bridge.activitiesResize(fx, fy, this.view.el.getBoundingClientRect().height),
+      // Part of the island: they stay in it, at its size.
+      drag: () => {},
+      resize: () => {},
       focus: () => void Bridge.focusWindow(true),
       iconPoint: () => host.iconPoint(),
       movable: host.movable,

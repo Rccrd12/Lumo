@@ -129,7 +129,7 @@ test("the chosen outfit and the chosen look are highlighted, one in each part", 
 test("the new look's edge lights: one tried on under the pointer, kept with a click, named in the header", () => {
   const { host } = build();
   const saved = { ...State.settings };
-  State.settings = { ...State.settings, islandNewLook: true, islandEdgeLight: "full" };
+  State.settings = { ...State.settings, islandEdgeLight: "full" };
   host.sync();
   const edges = host.el.find(".edge-item");
   assert.equal(edges.length, 4);

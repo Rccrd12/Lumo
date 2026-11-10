@@ -143,8 +143,8 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
   const items = new Map<OutfitSelection, { button: HTMLButtonElement; canvas: HTMLCanvasElement }>();
 
   const updateNote = () => {
-    // The new look: the edge light rested on, else the one picked.
-    note.textContent = State.settings.islandNewLook === true && !hovered
+    // The edge light rested on, else the one picked.
+    note.textContent = !hovered
       ? String(EDGE_NAMES[edgeHovered ?? parseEdgeLight(State.settings.islandEdgeLight)])
       : wardrobeHeader(hovered, parseOutfit(State.settings.lumoOutfit), new Date());
   };

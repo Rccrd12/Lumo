@@ -281,15 +281,11 @@ pub struct Settings {
     /// channel's build (updater.rs), main with every open pull request. Off
     /// unless turned on.
     pub update_beta: bool,
-    /// The new look (src/look-new.css): Lumo in the open island's top bar, his
-    /// light along its edge. On by default since 0.18.0, a file from before
-    /// included; Settings → Island → Previous look turns it off.
-    pub island_new_look: bool,
-    /// The new look's light along the island's edge, picked in the wardrobe:
+    /// Lumo's light along the island's edge, picked in the wardrobe:
     /// "full", "soft", "line" or "glow" (src/look-new.css). Anything else is "full".
     pub island_edge_light: String,
-    /// The new look's home shows the live activities as tiles; its "⋯" menu
-    /// puts them away. Apart from the usual look's panel (`activities_folded`).
+    /// The home shows the live activities as tiles; its "⋯" menu puts them
+    /// away. Apart from their own window (`activities_folded`).
     pub home_activities: bool,
 }
 
@@ -401,7 +397,6 @@ impl Default for Settings {
             language: String::new(),
             update_check_on_open: true,
             update_beta: false,
-            island_new_look: true,
             island_edge_light: "full".into(),
             home_activities: true,
         }
@@ -749,7 +744,6 @@ mod tests {
   "language": "pt-BR",
   "updateCheckOnOpen": false,
   "updateBeta": true,
-  "islandNewLook": true,
   "islandEdgeLight": "soft",
   "homeActivities": false
 }"##;
@@ -934,11 +928,12 @@ mod tests {
     }
 
     #[test]
-    fn the_new_look_is_on_until_the_previous_one_is_picked() {
-        assert!(parse(&custom_with("islandNewLook", None)).unwrap().island_new_look);
-        assert!(Settings::default().island_new_look);
-        assert!(parse(CUSTOM.as_bytes()).unwrap().island_new_look);
-        assert!(!parse(&custom_with("islandNewLook", Some(json!(false)))).unwrap().island_new_look);
+    fn a_file_that_picked_the_previous_look_still_loads() {
+        // Settings → Island → Previous look is gone (0.20.2): its key is left
+        // over in a file from before, and the rest of that file is kept.
+        let s = parse(&custom_with("islandNewLook", Some(json!(false)))).unwrap();
+        assert_eq!(s.island_edge_light, "soft");
+        assert!(!s.home_activities);
     }
 
     #[test]
@@ -1269,7 +1264,6 @@ mod tests {
                 "language",
                 "updateCheckOnOpen",
                 "updateBeta",
-                "islandNewLook",
                 "islandEdgeLight",
                 "homeActivities",
             ]

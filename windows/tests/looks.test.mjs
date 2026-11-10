@@ -11,8 +11,6 @@ import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 import { BOT_STATES, BotEngine } from "../src/character/engine.ts";
 import { isRoundLook } from "../src/character/looks.ts";
 import { drawLookIcon, drawWardrobeIcon } from "../src/character/outfits.ts";
-import { Greeting, GREETING_END, greetingPose, lumoBounds } from "../src/character/greeting.ts";
-import { drawLookDropping } from "../src/character/looks.ts";
 
 // ── A canvas that only records ────────────────────────────────────────────────
 
@@ -212,29 +210,6 @@ for (const look of LUMO_LOOKS) {
     drawLookIcon(fakeContext(), 28, look);
     for (const sel of OUTFIT_SELECTIONS) drawWardrobeIcon(fakeContext(), 28, sel, "leaf", "AUTO", look);
   });
-
-  test(`${look}: the greeting blooms into him, inside the island`, () => {
-    const g = new Greeting();
-    g.look = look;
-    for (let t = 0; t < GREETING_END + 1; t += 0.05) {
-      const b = lumoBounds(greetingPose(t), look);
-      if (b) {
-        assert.ok(b.bottom <= 150 && b.top >= 0, `t=${t}: ${JSON.stringify(b)}`);
-        assert.ok(b.left >= 0 && b.right <= 640, `t=${t}: ${JSON.stringify(b)}`);
-      }
-    }
-    g.draw(fakeContext());
-  });
-
-  if (isRoundLook(look)) {
-    test(`${look}: the drop sequence draws him turning into the box`, () => {
-      for (const [morph, eye] of [[0, "pill"], [0.5, "cup"], [1, "cup"], [1, "content"]]) {
-        drawLookDropping(fakeContext(), look, {
-          x: 100, y: 90, d: 60, sx: 1, sy: 1, tilt: 0, hop: 0, t: 1.2, morph, mouth: 0.3, eye, lookX: 0.4, lookY: -0.3,
-        });
-      }
-    });
-  }
 }
 
 // ── Frames: nothing more than the firefly asks for ───────────────────────────

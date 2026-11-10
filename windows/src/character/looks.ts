@@ -411,7 +411,7 @@ export function drawLookEye(
   }
 }
 
-// ── A still Lumo (wardrobe buttons, the drop's first frame) ───────────────────
+// ── A still Lumo (wardrobe buttons) ───────────────────────────────────────────
 
 /** The look at rest, centred on the origin: light, body and open eyes. */
 export function drawLookStill(x: CanvasRenderingContext2D, look: RoundLook, R: number, c: RGB = LOOK_IDLE) {
@@ -419,106 +419,6 @@ export function drawLookStill(x: CanvasRenderingContext2D, look: RoundLook, R: n
   drawLookBehind(x, look, P);
   drawLookBody(x, look, P, lookBodyPath(look, R));
   drawLookEyes(x, look, P, { shape: "pill", lx: 0, ly: 0, open: 1, es: 1, roll: 0, morph: 0 });
-}
-
-// ── The drop sequence ─────────────────────────────────────────────────────────
-
-/** What src/upload/sequence.ts says about him in one frame of a file drop. */
-export interface DropPose {
-  x: number;
-  y: number;
-  hop: number;
-  tilt: number;
-  sx: number;
-  sy: number;
-  /** His size: the body is d / 2 / 1.04 in radius, as the firefly's. */
-  d: number;
-  /** 0 = himself, 1 = the box. */
-  morph: number;
-  t: number;
-  /** How open the box's mouth is. */
-  mouth: number;
-  eye: LookEyeShape;
-  lookX: number;
-  lookY: number;
-}
-
-/**
- * A round look through the file drop (src/upload/canvas.ts draws the rest): its
- * outline turns into the firefly's box, the mouth opens on top, the eyes follow
- * the file and close contentedly once it is in.
- */
-export function drawLookDropping(x: CanvasRenderingContext2D, look: RoundLook, f: DropPose) {
-  const R = f.d / 2 / 1.04;
-  const mc = Math.max(0, Math.min(f.morph, 1));
-
-  x.save();
-  x.translate(f.x, f.y + f.hop);
-  x.rotate(f.tilt);
-  x.scale(f.sx, f.sy);
-
-  const P: LookPose = {
-    R, t: f.t, c: LOOK_IDLE, shine: 0.6, pulse: 0, ripple: 0, rp: 0,
-    small: R < 20, presence: 1 - Math.min(1, mc * 1.6),
-  };
-  drawLookBehind(x, look, P);
-  // The box: the firefly's at the end of the sequence (usBodyPath at m = 1).
-  const boxE = 2 / 5.5;
-  const body = lookBodyPath(look, R, mc, (ca, sa) => ({
-    x: R * Math.sign(ca) * Math.pow(Math.abs(ca), boxE),
-    y: R * 0.94 * Math.sign(sa) * Math.pow(Math.abs(sa), boxE),
-  }));
-  drawLookBody(x, look, P, body);
-
-  x.save();
-  x.clip(body);
-  const rx = R;
-  const ry = R * (1 - 0.06 * mc);
-  // The top rim, once it is box-shaped enough to have one.
-  if (mc > 0.3) {
-    const a = Math.max(0, Math.min(1, (mc - 0.3) / 0.7));
-    x.beginPath();
-    x.moveTo(-rx * 0.72, -ry + 0.9);
-    x.lineTo(rx * 0.72, -ry + 0.9);
-    x.strokeStyle = `rgba(255,255,255,${0.6 * a})`;
-    x.lineWidth = 1.2;
-    x.lineCap = "round";
-    x.stroke();
-  }
-  // The mouth.
-  const mh = f.mouth * R * mc;
-  if (mh > 0.3) {
-    const mw = 2 * rx - 0.24 * R;
-    const my = -ry + 0.1 * R;
-    const g = x.createLinearGradient(0, my, 0, my + mh);
-    g.addColorStop(0, "#030304");
-    g.addColorStop(1, "#101114");
-    x.fillStyle = g;
-    rrect(x, -mw / 2, my, mw, mh, Math.min(mw / 2, mh / 2));
-    x.fill();
-  }
-  x.restore();
-
-  // The eyes, lit in Filo's ring, lower once it is a box.
-  const ink = lookInk(look, P.c);
-  const w = R * LOOK_EYES[look].w;
-  const h = R * (LOOK_EYES[look].h + 0.08 * mc);
-  const ey = R * (LOOK_EYES[look].y + 0.3 * mc);
-  const lx = f.lookX * R * (0.2 - 0.06 * mc);
-  const ly = f.lookY * R * (0.12 - 0.07 * mc);
-  for (const sd of [-1, 1]) {
-    x.save();
-    x.translate(sd * LOOK_EYES[look].x * R + lx, ey + ly);
-    x.fillStyle = ink;
-    x.strokeStyle = ink;
-    if (look === "filo") {
-      x.shadowColor = ink;
-      x.shadowBlur = Math.max(3, w * 1.1) * pxScale(x);
-    }
-    drawLookEye(x, f.eye, w, h, sd, 1, P, ink);
-    x.restore();
-  }
-  x.restore();
 }
 
 // ── Paths ─────────────────────────────────────────────────────────────────────

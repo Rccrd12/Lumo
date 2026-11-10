@@ -22,9 +22,9 @@ import { clear, dot, h, svg } from "./dom";
 import { ICONS } from "./icons";
 import { language, t, tl } from "../i18n/i18n";
 
-/** Where the pills are: the overview; in the new look the home too, beside the services (views/home.ts). */
+/** Where the pills are: the overview, and the home beside the services (views/home.ts). */
 function pillView(): boolean {
-  return State.view === "overview" || (State.settings.islandNewLook === true && State.view === "home");
+  return State.view === "overview" || State.view === "home";
 }
 
 /** The Claude pill is in the header: overview, turned on, relay in. */

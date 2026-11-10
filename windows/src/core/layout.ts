@@ -5,9 +5,8 @@ export type IslandMode = "hidden" | "compact" | "expanded";
 
 export type IslandViewName =
   | "overview"
-  /** The new look's list (views/home.ts): what waits for you, the sessions, the live activities, the field. */
+  /** The home (views/home.ts): what waits for you, the sessions, the live activities, the field. */
   | "home"
-  | "empty"
   | "approval"
   | "question"
   | "error"
@@ -128,9 +127,8 @@ export function edgeGap(name: string | undefined): number {
 
 export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   overview: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "pills" },
-  // Only in the new look, whose geometry is its own (island.ts targetSize, homeHeight).
+  // Its geometry is its own (island.ts targetSize, homeHeight).
   home: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
-  empty: { height: 160, botX: 70, botY: null, botDiameter: 62, agentMode: "none" },
   approval: { height: 160, botX: 62, botY: null, botDiameter: 56, agentMode: "column" },
   question: { height: 160, botX: 62, botY: null, botDiameter: 56, agentMode: "column" },
   error: { height: 160, botX: 62, botY: null, botDiameter: 58, agentMode: "column" },
@@ -337,14 +335,13 @@ export function botPosition(
 }
 
 /**
- * The new look (off with Settings → Island → Previous look): Lumo leaves the open island's
- * left column for the middle of its top bar (8 pt inset + 34 pt header), as his
+ * Lumo sits in the middle of the open island's top bar (8 pt inset + 34 pt header), as his
  * eyes alone (engine.ts eyesOnly: the diameter sizes them), and the views take
- * the whole width. Null where he stays where he is: the drop
- * sequence draws its own Lumo, the greeting and the Settings frame have none.
+ * the whole width. Null where he stays where he is: the greeting and the
+ * Settings frame have none.
  */
 export const NEW_LOOK_BOT = { cy: 25, diameter: 64 } as const;
-/** In the new look the closed island shows his eyes alone, bigger than the whole ring was. */
+/** The closed island shows his eyes alone, bigger than the whole ring was. */
 export const NEW_LOOK_COMPACT_DIAMETER = 40;
 
 /** In the new look a few views take more height, for what the board gives them (look-new.css). */

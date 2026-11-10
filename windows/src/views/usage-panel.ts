@@ -1,7 +1,6 @@
-// The chat's usage menu in the new look (concepts/redesign, Usage A): the
-// context as one bar split by what fills it, with its legend, then each limit
-// of the plan as a bar with when it resets. The usual look keeps its rows
-// (views/chat.ts drawUsageMenu).
+// The chat's usage menu (concepts/redesign, Usage A): the context as one bar
+// split by what fills it, with its legend, then each limit of the plan as a
+// bar with when it resets (views/chat.ts drawUsageMenu).
 
 import { h } from "./dom";
 import { contextBar, contextLegend } from "./context-card";

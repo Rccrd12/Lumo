@@ -3,7 +3,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
+  CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra,
   GRIPS, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -119,7 +119,6 @@ export class Island {
   private viewsEl!: HTMLElement;
   private botCanvas!: HTMLCanvasElement;
   private botGlow!: HTMLElement;
-  private greetingCanvas!: HTMLCanvasElement;
   private countdown!: HTMLElement;
   /** What the closed island says next to Lumo (island/compact.ts). */
   private compact!: CompactStrip;
@@ -178,7 +177,6 @@ export class Island {
   private sideRoom = "";
   /** The new look's open size as last set (sync), and the look as last applied. */
   private newLookSize = "";
-  private lookApplied: boolean | null = null;
   private views!: Map<IslandViewName, ViewHost>;
   private uploadCanvas!: UploadCanvas;
   /** A picture of the chat's previews, opened big over the whole island (views/picture.ts). */
@@ -209,9 +207,8 @@ export class Island {
   private lastFrame = 0;
   private dirty = true;
   private canvasPx = 0;
-  /** The display scale the bot and greeting canvases were sized for. */
+  /** The display scale the bot canvases were sized for. */
   private canvasDpr = 0;
-  private greetingDpr = 0;
 
   // Rust starts the window at full size so the launch greeting has room.
   private collapsed = false;
@@ -349,7 +346,6 @@ export class Island {
     const actions: ViewActions = {
       setView: (v) => this.setView(v),
       collapse: () => this.collapse(),
-      hide: () => this.hideInEdge(),
       moreMenu: (x, y) => this.openMoreMenu(x, y),
       activityData: () => this.activities.data(),
       activity: (a) => this.activities.act(a),
@@ -415,12 +411,6 @@ export class Island {
         void Bridge.approvalDecline(req.requestId);
         this.closeApproval();
       },
-      toggleSound: () => {
-        State.settings.soundEnabled = !State.settings.soundEnabled;
-        Sound.setEnabled(State.settings.soundEnabled);
-        void Bridge.saveSettings(State.settings);
-        State.notify();
-      },
       setVolume: (v) => {
         State.settings.soundVolume = v;
         Sound.setVolume(v);
@@ -462,7 +452,6 @@ export class Island {
         Sound.play("pop");
         State.notify();
       },
-      showActivities: () => this.activities.unfold(),
       showPlan: () => this.plan.toggle(),
       forgetChatPlan: (chatId) => this.plan.forgetChat(chatId),
       restartChatPlan: (chatId) => this.plan.restartChat(chatId),
@@ -475,7 +464,6 @@ export class Island {
     this.wakeStrip = h("div", { id: "wake-strip" });
     this.botGlow = h("div", { id: "bot-glow" });
     this.botCanvas = h("canvas", { id: "bot-canvas" });
-    this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.countdown = h("div", { id: "countdown" });
     this.compact = new CompactStrip({
       reveal: () => this.reveal(),
@@ -501,7 +489,6 @@ export class Island {
     this.clipEl = h(
       "div",
       { id: "island-clip" },
-      this.greetingCanvas,
       this.uploadCanvas.el,
       this.contentEl,
       this.compact.el,
@@ -519,10 +506,6 @@ export class Island {
       ...this.grips.map((g) => g.el),
     );
 
-    // Its pixels are sized as it is drawn (frame), for the display it is on.
-    this.greetingCanvas.style.width = `${EXPANDED_W}px`;
-    this.greetingCanvas.style.height = "150px";
-
     this.activities = new IslandActivities({
       openChat: () => {
         State.useSlot("chat");
@@ -532,19 +515,10 @@ export class Island {
       openSettings: () => this.openSettingsAt(null),
       refreshAll: () => void this.refreshAll(),
       iconPoint: () => {
-        // Left of the "+": where the folded icon sits (or will).
-        const icon = this.header.el.querySelector(".tab-activities") as HTMLElement | null;
-        if (icon && icon.style.display !== "none") {
-          const r = icon.getBoundingClientRect();
-          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-        }
-        // In the new look the "+" is not in the bar: they go into the "⋯", where they come back from.
-        const plus = this.header.el.querySelector(".tab-drop") as HTMLElement | null;
+        // They go into the "⋯", where they come back from.
         const more = this.header.el.querySelector(".more-btn") as HTMLElement | null;
-        for (const target of [plus, more]) {
-          const r = target?.getBoundingClientRect();
-          if (r && r.width > 0) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-        }
+        const r = more?.getBoundingClientRect();
+        if (r && r.width > 0) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
         const at = this.islandRect();
         return { x: at.x + at.w / 2, y: at.y + 20 };
       },
@@ -606,7 +580,6 @@ export class Island {
           break;
         case "greeting":
           this.greetSmiled = false;
-          this.greeting.light = State.settings.islandNewLook === true;
           this.expand("greeting");
           this.greeting.start();
           break;
@@ -796,8 +769,7 @@ export class Island {
       case "pin": return State.isPinned;
       case "sound": return State.settings.soundEnabled !== false;
       case "activities":
-        if (State.settings.islandNewLook === true) return State.settings.homeActivities !== false;
-        return State.settings.activitiesPanel !== false && State.settings.activitiesFolded !== true;
+        return State.settings.homeActivities !== false;
       default: return false;
     }
   }
@@ -827,20 +799,9 @@ export class Island {
         void Bridge.saveSettings(State.settings);
         break;
       case "activities":
-        // The new look: the home's tiles, on their own.
-        if (State.settings.islandNewLook === true) {
-          State.settings = { ...State.settings, homeActivities: State.settings.homeActivities === false };
-          void Bridge.saveSettings(State.settings);
-          break;
-        }
-        if (State.settings.activitiesPanel === false) {
-          State.settings = { ...State.settings, activitiesPanel: true, activitiesFolded: false };
-          void Bridge.saveSettings(State.settings);
-        } else if (State.settings.activitiesFolded === true) {
-          this.activities.unfold();
-        } else {
-          this.activities.act({ kind: "fold" });
-        }
+        // The home's tiles, on their own.
+        State.settings = { ...State.settings, homeActivities: State.settings.homeActivities === false };
+        void Bridge.saveSettings(State.settings);
         break;
       case "center":
         void Bridge.islandRecenter();
@@ -1317,7 +1278,7 @@ export class Island {
       // Closed meanwhile: the closed island says it, and the chat has the file when opened.
       if (UPLOAD_VIEWS.has(State.view)) State.view = "prompt";
       // The chat holds the file now: that is where the island reopens.
-      if (State.settings.islandNewLook === true) State.noteTab("prompt");
+      State.noteTab("prompt");
       compactNotice(t(UPLOADED_TEXT), UPLOAD_COLOR);
     }
     State.notify();
@@ -1347,10 +1308,10 @@ export class Island {
     if (State.mode === "expanded" && State.view === "approval" && State.pendingApproval?.email) {
       h = Math.max(h, EMAIL_CARD_H);
     }
-    // The new look's home: wider than the other views by as much as it needs
+    // The home: wider than the other views by as much as it needs
     // to stay low, so its grips move it as theirs do (Rust grows the shared
     // width, islandWidth); as tall as what it lists, or as the height picked.
-    if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "home") {
+    if (State.mode === "expanded" && State.view === "home") {
       const data = this.activities.data();
       const { sessions, others } = homeLists(hasSessionTicker, data);
       w = Math.min(homeWidth(this.shape, homeTilesInARow(data)), window.innerWidth - 40);
@@ -1358,9 +1319,9 @@ export class Island {
         pickedHeight(this.shape));
     }
     const asked = State.pendingApproval?.questions?.[0];
-    if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "question" && asked) {
+    if (State.mode === "expanded" && State.view === "question" && asked) {
       h = Math.min(440, newLookQuestionHeight(asked.options.length, asked.multiSelect === true));
-    } else if (State.mode === "expanded" && State.settings.islandNewLook === true && !State.pendingApproval?.email) {
+    } else if (State.mode === "expanded" && !State.pendingApproval?.email) {
       const planSteps = State.view === "approval" ? State.pendingApproval?.plan?.length ?? 0 : 0;
       // A plan asking to start: its steps take the place of the command and of what it is for.
       const extra = planSteps ? planAskExtra(planSteps) + (State.pendingApproval?.fromChat ? 0 : NEW_LOOK_SESSION_ALLOW_H)
@@ -1432,14 +1393,13 @@ export class Island {
     const lift = this.lift.value;
     this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `scale(${lift})` : "";
     // These follow the island as it resizes, so they belong here rather than in
-    // the state-driven DOM sync.
-    // In the new look they are drawn inside the island, so they go with it at once.
-    const inside = State.settings.islandNewLook === true;
+    // the state-driven DOM sync. They are drawn inside the island, so they go
+    // with it at once.
     const beside = this.activitiesPlace();
-    this.activities.place(beside.show, beside.x, beside.y, beside.h, inside);
+    this.activities.place(beside.show, beside.x, beside.y, beside.h, true);
     if (this.plan) {
       const plan = this.planPlace();
-      this.plan.place(plan.show, plan.x, plan.y, plan.h, inside);
+      this.plan.place(plan.show, plan.x, plan.y, plan.h, true);
     }
     const side = this.sideInside();
     const room = side ? `${this.plan.width + NEW_LOOK_SIDE_GAP}px` : "0px";
@@ -1447,7 +1407,6 @@ export class Island {
       this.sideRoom = room;
       this.islandEl.style.setProperty("--side-room", room);
     }
-    this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     // The drop sequence covers the island, whatever size it was given.
     const stage = this.uploadCanvas.place(w, hh);
     UploadSeq.reachX = stage.reachX;
@@ -1471,7 +1430,7 @@ export class Island {
    * Whether it is in.
    */
   private sideInside(): "plan" | null {
-    if (State.settings.islandNewLook !== true || State.mode !== "expanded" || this.onlyLumo || isUpright(this.dock)) return null;
+    if (State.mode !== "expanded" || this.onlyLumo || isUpright(this.dock)) return null;
     // The plan is a strip in the chat now (views/plan-strip.ts): no column.
     return null;
   }
@@ -1486,7 +1445,7 @@ export class Island {
   }
 
   private activitiesPlace(): { show: boolean; x: number; y: number; h: number } {
-    if (State.settings.islandNewLook === true && !this.activities.detached) {
+    if (!this.activities.detached) {
       return { show: false, x: 0, y: 0, h: 0 };
     }
     const at = this.islandRect();
@@ -1521,7 +1480,7 @@ export class Island {
 
   /** Whether the Plan island shows beside the open island, and where: as the live activities, on the other side. */
   private planPlace(): { show: boolean; x: number; y: number; h: number } {
-    if (State.settings.islandNewLook === true && !this.plan.detached) {
+    if (!this.plan.detached) {
       return this.sideInside() === "plan" ? this.sidePlace(this.plan.width) : { show: false, x: 0, y: 0, h: 0 };
     }
     const at = this.islandRect();
@@ -1655,8 +1614,8 @@ export class Island {
         if (e.button !== 0 || e.altKey || !f) return;
         e.preventDefault();
         this.resizing = true;
-        // The new look's home goes narrower than the other views, but not with three tiles in a row.
-        const home = State.settings.islandNewLook === true && State.view === "home" && !homeTilesInARow(this.activities.data());
+        // The home goes narrower than the other views, but not with three tiles in a row.
+        const home = State.view === "home" && !homeTilesInARow(this.activities.data());
         void Bridge.islandResize(f.fx, f.fy, this.height.value, home ? NEW_LOOK_HOME_MIN_SHARED : null);
       });
       el.addEventListener("dblclick", (e) => {
@@ -1959,30 +1918,10 @@ export class Island {
     this.botCy.step(dt);
     this.botSize.step(dt);
 
-    const greetingActive = State.mode === "expanded" && State.view === "greeting";
-    if (greetingActive && !this.lightGreeting) {
-      // Sized for the scale it is drawn at, which changes with the island's
-      // zoom and the display it is on: a canvas sized once, before the zoom
-      // was applied, drew the greeting too big and cut off on the right.
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      if (this.greetingDpr !== dpr) {
-        this.greetingDpr = dpr;
-        this.greetingCanvas.width = Math.round(EXPANDED_W * dpr);
-        this.greetingCanvas.height = Math.round(150 * dpr);
-      }
-      const gctx = this.greetingCanvas.getContext("2d");
-      if (gctx) {
-        gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        this.greeting.look = this.look();
-        this.greeting.compactWidth = compactWidth(State.settings.islandCompactWidth);
-        this.greeting.draw(gctx);
-      }
-    } else {
-      // Kept running even while the drop canvas is up, so the island's own Lumo
-      // is already in the right place the moment the canvas fades out.
-      this.applyEnergy(nowMs);
-      this.drawBot(dt);
-    }
+    // Kept running even while the drop canvas is up, so the island's own Lumo
+    // is already in the right place the moment the canvas fades out.
+    this.applyEnergy(nowMs);
+    this.drawBot(dt);
 
     const uploadActive = this.uploadActive;
     if (uploadActive) this.uploadCanvas.draw(UploadSeq.frame(), nowMs / 1000);
@@ -2013,7 +1952,7 @@ export class Island {
       ? settling
       : settling ||
         !this.botCx.settled || !this.botCy.settled || !this.botSize.settled ||
-        greetingActive || this.engine.busy || UploadSeq.isActive || this.uploadAt != null || viewAnimating;
+        this.lightGreeting || this.engine.busy || UploadSeq.isActive || this.uploadAt != null || viewAnimating;
 
     // Saving energy (Settings → General → Energy), the closed island draws
     // 15 frames a second; it still opens and closes at the display's rate.
@@ -2034,15 +1973,15 @@ export class Island {
   private updateBotTargets() {
     const notch = this.lightGreeting
       ? this.lightGreetBot()
-      : State.settings.islandNewLook === true && State.mode === "expanded" && !this.onlyLumo
+      : State.mode === "expanded" && !this.onlyLumo
         ? newLookBot(State.view, this.width.value)
         : null;
     const p = notch ?? (this.onlyLumo
       ? computerCompact("top").bot
       : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value,
         State.uploadNames.length > 1));
-    // The new look: only his eyes, open or closed island alike (the island is his body).
-    this.engine.eyesOnly = State.settings.islandNewLook === true && State.mode !== "hidden" && !this.onlyLumo
+    // Only his eyes, open or closed island alike (the island is his body).
+    this.engine.eyesOnly = State.mode !== "hidden" && !this.onlyLumo
       && (notch != null || State.mode === "compact");
     if (this.engine.eyesOnly && State.mode === "compact") {
       p.diameter = NEW_LOOK_COMPACT_DIAMETER;
@@ -2199,9 +2138,8 @@ export class Island {
     // underneath, so only the header may keep taking clicks up here.
     this.contentEl.style.pointerEvents = live && !this.uploadActive ? "auto" : "none";
     this.header.el.style.pointerEvents = live ? "auto" : "none";
-    // The new look's opening has no canvas of its own: the island is the light.
-    this.greetingCanvas.style.display = greetingActive && State.settings.islandNewLook !== true ? "block" : "none";
-    this.islandEl.classList.toggle("greet-light", greetingActive && State.settings.islandNewLook === true);
+    // The opening has no canvas of its own: the island is the light.
+    this.islandEl.classList.toggle("greet-light", greetingActive);
 
     // Leaving the greeting, however it ends, lets its sound fade out.
     if (this.greetingShown && !greetingActive) this.greeting.leave();
@@ -2229,9 +2167,9 @@ export class Island {
     // Only a tab seen on the open island counts: the view the app starts on
     // (State.view's "overview") or one set while folded is not where you left it.
     if (expanded) State.noteTab(State.view);
-    // The new look's sizes hang on more than the view (a request waiting, the
-    // column inside, a question's options): when they change, so does the island.
-    if (expanded && State.settings.islandNewLook === true) {
+    // The sizes hang on more than the view (a request waiting, the column
+    // inside, a question's options): when they change, so does the island.
+    if (expanded) {
       const size = this.targetSize();
       const key = `${size.w}x${size.h}`;
       if (key !== this.newLookSize) {
@@ -2307,12 +2245,8 @@ export class Island {
     Sound.setVolume(State.settings.soundVolume);
     this.applyBehaviour();
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
-    // The new look (off with Settings → Island → Previous look): one class, so turning it off is the usual look again.
-    const look = State.settings.islandNewLook === true;
-    document.documentElement.classList.toggle("look-new", look);
-    // Turned on or off with the island open: to the look's size at once.
-    if (this.lookApplied != null && look !== this.lookApplied) this.animateGeometry(false);
-    this.lookApplied = look;
+    // The island's look (look-new.css) hangs on this class.
+    document.documentElement.classList.add("look-new");
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
     // the top (Settings, tray), or a new closed island width: grow, shrink or
@@ -2382,7 +2316,7 @@ export class Island {
    * for in Settings, not left floating off it, and not being carried.
    */
   private flatTarget(): number {
-    if (State.settings.islandNewLook !== true || this.moving) return 0;
+    if (this.moving) return 0;
     if (edgeGap(State.settings.islandEdgeGap) !== 0) return 0;
     if (!isUpright(this.dock) && (State.settings.islandFloat ?? 0) > 0) return 0;
     return 1;
@@ -2390,7 +2324,7 @@ export class Island {
 
   /** The new look's opening is playing (greeting.ts lightGreetFrame). */
   private get lightGreeting(): boolean {
-    return State.settings.islandNewLook === true && State.mode === "expanded" && State.view === "greeting";
+    return State.mode === "expanded" && State.view === "greeting";
   }
 
   /** Lumo's eyes in the new look's opening: the middle of the island, opening wide. */
@@ -2451,7 +2385,7 @@ export class Island {
     if (State.chatSlot === "forge") return CHAT_FORGE;
     if (State.chatPanelOpen) return State.listeningOpen || State.chatPanelTall ? CHAT_LISTENING : CHAT_PANEL_OPEN;
     // A plan asking to start over the field (concept C1): room for it and the chat above.
-    if (planAskInChat(State.pendingApproval, State.settings.islandNewLook === true)) return CHAT_LISTENING;
+    if (planAskInChat(State.pendingApproval)) return CHAT_LISTENING;
     return State.chatHistory.length;
   }
 }

@@ -99,13 +99,9 @@ export class IslandPlan {
     this.host = host;
     this.view = host.makeView({
       act: (a) => this.act(a),
-      drag: () => {
-        // In the new look it is part of the island: it stays in it.
-        if (State.settings.islandNewLook === true) return;
-        const r = this.view.el.getBoundingClientRect();
-        void Bridge.planDrag([parseFloat(this.view.el.style.left) || r.left, parseFloat(this.view.el.style.top) || r.top, r.width, r.height]);
-      },
-      resize: (fx, fy) => State.settings.islandNewLook !== true && void Bridge.planResize(fx, fy, this.view.el.getBoundingClientRect().height),
+      // Part of the island: it stays in it, at its size.
+      drag: () => {},
+      resize: () => {},
       iconPoint: () => host.iconPoint(),
       movable: host.movable,
     }, () => host.side(), () => this.followsIsland);

@@ -122,29 +122,8 @@ body {
   cursor: grab;
 }
 
-/* The Agents tab's dot: blue while a session works, orange while one waits on you. */
 .tab {
   position: relative;
-}
-
-.tab-badge {
-  position: absolute;
-  top: 2px;
-  right: 4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: none;
-}
-
-.tab-badge.working {
-  display: block;
-  background: #60a5fa;
-}
-
-.tab-badge.waiting {
-  display: block;
-  background: #f5a524;
 }
 
 /* A new chat: a question and three ways to start. */
@@ -288,8 +267,7 @@ body {
   opacity: 0.9;
 }
 
-#bot-canvas,
-#greeting-canvas {
+#bot-canvas {
   position: absolute;
   pointer-events: none;
 }
@@ -679,8 +657,7 @@ body {
   pointer-events: auto;
 }
 
-/* The folded live activities' icon, landing in the top bar. */
-.tab-activities.pop,
+/* The folded Plan island's icon, landing in the chat. */
 .plan-btn.pop {
   animation: tab-pop 0.36s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
@@ -778,10 +755,6 @@ body {
 
 .header-actions button.on {
   color: var(--ink);
-}
-
-.header-actions .quit-btn:hover {
-  color: #f4505e;
 }
 
 #views {
@@ -4381,29 +4354,6 @@ html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
   display: none;
 }
 
-.screen-entry:disabled {
-  opacity: 0.4;
-}
-
-.screen-entry:disabled:hover {
-  background: transparent;
-}
-
-/* "Open windows" and "Browser tabs" open a second list: a chevron says so,
-   and that list starts with the way back. */
-.screen-entry > svg {
-  flex: 0 0 auto;
-  color: #5c6370;
-}
-
-.screen-back {
-  color: #8b929e;
-}
-
-.screen-pick-all .picker-model-name {
-  font-weight: 600;
-}
-
 .screen-shots {
   flex: 1 1 auto;
   min-height: 0;
@@ -6238,10 +6188,6 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 }
 
 /* ── Tools tab (views/tools.ts) ─────────────────────────────────────────── */
-
-.tab-tools.on {
-  color: #ffd27a;
-}
 
 .tools-body {
   position: relative;
