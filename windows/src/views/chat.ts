@@ -21,10 +21,12 @@
 // as far as it got. A question sent while the answer is written (the Stop
 // button turns back into the arrow as soon as something is typed) leaves the
 // field and waits just above it, where it can be edited or cancelled; it goes
-// once the answer ends, or comes back to the field after Stop. Each message
-// has Copy under the mouse, each question Edit: sending the edited text
-// replaces it and drops what followed, here and in Rust (chat.rs rewind); sent
-// mid-answer, it stops that answer first.
+// once the answer ends, or comes back to the field after Stop. Under each
+// message, a line of actions as in Claude's app (under the mouse, always under
+// the last answer): Copy, and when it was sent; each question has Edit:
+// sending the edited text replaces it and drops what followed, here and in
+// Rust (chat.rs rewind); sent mid-answer, it stops that answer first. The last
+// question and its answer have Retry: the question goes again, unchanged.
 //
 // The screen button next to the paperclip adds what is on the user's screen,
 // only when they ask: "Open windows" or "Browser tabs" (Edge, Chrome), which
@@ -99,7 +101,7 @@ import {
 import {
   addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
-import { planColor } from "../core/plan";
+import { ageLabel, planColor } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
@@ -112,7 +114,7 @@ import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } 
 import { COMPUTER_TEXT } from "../core/computer";
 import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
-import { N_, t, tl, tn } from "../i18n/i18n";
+import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
@@ -180,6 +182,7 @@ const STRINGS = {
   stop: N_("Stop"),
   stopped: N_("Stopped"),
   edit: N_("Edit"),
+  retry: N_("Retry"),
   editing: N_("Editing a message"),
   editingHint: N_("Sending replaces this message and everything after it."),
   queued: N_("Queued"),
@@ -293,6 +296,10 @@ const TABS_WAIT_MS = 1200;
 /** How a message is drawn: `onEdit` puts a question back in the text field. */
 interface BubbleOptions {
   onEdit?: (message: ChatMessage) => void;
+  /** Retry, on the last question and its answer while nothing is answered: the question goes again. */
+  onRetry?: () => void;
+  /** Its actions stay in sight without the mouse: the last answer, or a question left without one. */
+  shown?: boolean;
   /** The question being edited, and what sending it would drop. */
   editing?: boolean;
   dropped?: boolean;
@@ -302,47 +309,80 @@ interface BubbleOptions {
   scope?: string;
 }
 
-/**
- * One message, rendered as Markdown on both sides. Its Copy (and, on a
- * question, Edit) buttons show under the mouse; Copy takes the text as it was
- * written, Markdown included.
- */
 /** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
 let sendFromCard: ((text: string) => void) | undefined;
 
-function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
-  const actions = h("div", { class: "msg-actions" }, copyButton(message.content, "msg-action"));
-  const state = opts.editing ? " editing" : opts.dropped ? " dropped" : "";
-  if (message.role === "user") {
-    if (opts.onEdit) {
-      const onEdit = opts.onEdit;
-      const edit = h("button", { class: "msg-action", title: tl(STRINGS.edit), "aria-label": tl(STRINGS.edit) }, svg(ICONS.pencil, 11, { stroke: 1.8 }));
-      edit.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onEdit(message);
-      });
-      actions.append(edit);
-    }
-    return h(
-      "div",
-      { class: `chat-row user with-actions${state}` },
-      actions,
-      sentBubble(message.content),
-    );
+/** The "2 min ago" under the messages on screen, kept fresh as the chat is drawn and hovered. */
+let sentTimes: { el: HTMLElement; at: number }[] = [];
+
+/** "just now", "12 min ago", "3 h ago", then the day: when a message was sent or answered. */
+export function sentAgo(at: number, now = Date.now()): string {
+  if (now - at < 86_400_000) return ageLabel(at, now);
+  const d = new Date(at);
+  return dayMonth(d.getMonth(), d.getDate());
+}
+
+function refreshTimes(times = sentTimes, now = Date.now()) {
+  for (const { el, at } of times) {
+    const text = sentAgo(at, now);
+    if (el.textContent !== text) el.textContent = text;
   }
+}
+
+/** A message's action button: an icon, its name under the mouse. */
+function msgAction(cls: string, name: string, icon: SVGElement, run: () => void): HTMLElement {
+  const btn = h("button", { class: `msg-action ${cls}`, title: tl(name), "aria-label": tl(name) }, icon);
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    run();
+  });
+  return btn;
+}
+
+/**
+ * One message, rendered as Markdown on both sides, its actions on a line
+ * under it as in Claude's app: under an answer Copy, Retry and when it came;
+ * under a question when it was sent, Retry, Edit and Copy. They show under
+ * the mouse, and always under the last answer (or a question whose answer
+ * failed). Retry is only on the last question and its answer: anywhere else
+ * it would drop what follows unseen, which Edit shows first. Copy takes the
+ * text as it was written, Markdown included.
+ */
+function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
+  const state = opts.editing ? " editing" : opts.dropped ? " dropped" : "";
   // The answer failed: what went wrong stays under the question.
-  if (message.failed) {
+  if (message.role === "assistant" && message.failed) {
     return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
   }
-  const reply = h("div", { class: "reply" });
-  drawReply(reply, message.content, !!opts.workshop, opts.scope);
-  // A stopped answer says so on a line of its own, Copy beside it; otherwise
-  // Copy floats over the answer's bottom right corner and takes no room.
-  const foot = message.stopped
-    ? h("div", { class: "reply-foot" }, h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }), actions)
-    : h("div", { class: "reply-foot floating" }, actions);
-  const copies = message.copies?.length ? copiesBox(message.copies) : null;
-  return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, foot));
+  const copy = copyButton(message.content, "msg-action msg-copy", 12);
+  const retry = opts.onRetry ? msgAction("msg-retry", STRINGS.retry, svg(ICONS.arrowClockwise, 12, { stroke: 1.9 }), opts.onRetry) : null;
+  const times: typeof sentTimes = [];
+  let when: HTMLElement | null = null;
+  if (message.at != null) {
+    const at = message.at;
+    when = h("span", { class: "msg-time", text: sentAgo(at), title: new Date(at).toLocaleString(language()) });
+    times.push({ el: when, at });
+    sentTimes.push(...times);
+  }
+  const bar = h("div", { class: opts.shown ? "msg-actions shown" : "msg-actions" });
+  let row: HTMLElement;
+  if (message.role === "user") {
+    const onEdit = opts.onEdit;
+    const edit = onEdit ? msgAction("msg-edit", STRINGS.edit, svg(ICONS.pencil, 12, { stroke: 1.8 }), () => onEdit(message)) : null;
+    bar.append(...[when, retry, edit, copy].filter((x): x is HTMLElement => x != null));
+    row = h("div", { class: `chat-row user${state}` }, sentBubble(message.content), bar);
+  } else {
+    const reply = h("div", { class: "reply" });
+    drawReply(reply, message.content, !!opts.workshop, opts.scope);
+    // A stopped answer says so on the same line.
+    const stopped = message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null;
+    bar.append(...[copy, retry, stopped, when].filter((x): x is HTMLElement => x != null));
+    const copies = message.copies?.length ? copiesBox(message.copies) : null;
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, bar));
+  }
+  // Hovered after a while: its time says how long ago it is now.
+  if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
+  return row;
 }
 
 /**
@@ -2159,6 +2199,17 @@ export function buildPrompt(
   }
 
   /**
+   * Retry on the last question or its answer: the question goes again as it
+   * was written, as if edited and sent unchanged; its answer leaves the chat.
+   * What is typed in the field stays there.
+   */
+  function retry(message: ChatMessage) {
+    if (preparing || answering() || editing != null) return;
+    editing = message.id;
+    void submit(undefined, message.content);
+  }
+
+  /**
    * Sending an edited question: it and everything after it leave the chat,
    * here and in Rust (chat.rs rewind), before the new text is sent. The Claude
    * Code session is left behind too: the next turn starts a fresh one with the
@@ -3163,9 +3214,9 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
+      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined }));
       State.chatSession = c.session;
-      void Bridge.chatRestore(c.id, c.turns, c.session, compactOf(c.id));
+      void Bridge.chatRestore(c.id, c.turns.map(({ role, content }) => ({ role, content })), c.session, compactOf(c.id));
     }
     State.chatId = c.id;
     State.droppedFile = null;
@@ -3345,7 +3396,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
+    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at }));
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -3813,7 +3864,7 @@ export function buildPrompt(
       noteSentCopies(chatId, sent.map((f) => f.path));
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
-      question = { id: nextId++, role: "user", content: query };
+      question = { id: nextId++, role: "user", content: query, at: Date.now() };
       history.push(question);
 
       // What went with it leaves the field, which is ready for the next question.
@@ -3907,6 +3958,7 @@ export function buildPrompt(
           id: nextId++,
           role: "assistant",
           content,
+          at: Date.now(),
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
@@ -3934,7 +3986,7 @@ export function buildPrompt(
       const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: chatSpeaker().who });
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
-      run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true });
+      run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true, at: Date.now() });
       if (!(State.mode === "expanded" && State.view === "prompt")) {
         State.noteMessage = problem;
         State.view = "note";
@@ -4528,10 +4580,23 @@ export function buildPrompt(
         // Which checklists are lists written again further down, before any is drawn.
         noteChecklists(State.chatId, State.chatHistory, run?.text);
         let place = 0;
-        State.chatHistory.forEach((m, i) => {
+        sentTimes = [];
+        // Retry is on the last question and its answer, once nothing is answered or edited.
+        const history = State.chatHistory;
+        const lastAsked = history.map((m) => m.role).lastIndexOf("user");
+        const asked = lastAsked >= 0 && !run && editing == null ? history[lastAsked] : null;
+        // No answer under the last question (it failed, or was stopped before a word): its actions stay in sight.
+        const unanswered = asked != null && (lastAsked === history.length - 1 || !!history[lastAsked + 1]?.failed);
+        history.forEach((m, i) => {
           // A message's scope is its place among those kept with the chat, as the checklists count them.
           const scope = messageScope(State.chatId, m.failed ? -1 : place++);
-          log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at, workshop, scope }));
+          const retries = asked != null && (i === lastAsked || (i === lastAsked + 1 && !m.failed));
+          const last = i === history.length - 1 && m.role === "assistant" && !run;
+          const shown = editing == null && (unanswered ? i === lastAsked : last);
+          log.append(bubble(m, {
+            onEdit: startEdit, onRetry: retries && asked ? () => retry(asked) : undefined, shown,
+            editing: i === at, dropped: at >= 0 && i > at, workshop, scope,
+          }));
         });
         // An answer just finished: the ink goes on in its bubble until all is uncovered.
         const last = State.chatHistory[State.chatHistory.length - 1];
@@ -4555,7 +4620,7 @@ export function buildPrompt(
         log.scrollTop = stuck ? log.scrollHeight : kept;
         openedChat = false;
         drawToEnd();
-      }
+      } else refreshTimes();
 
       micBtn.classList.toggle("lit", State.liveActive);
       drawModelButton();

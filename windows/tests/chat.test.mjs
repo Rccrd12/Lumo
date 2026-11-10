@@ -354,7 +354,7 @@ test("Shift+Enter starts a new line instead of sending; Enter sends it all", asy
 });
 
 const rows = () => view.el.find(".chat-row");
-const editOf = (i) => rows()[i].find(".msg-action")[1];
+const editOf = (i) => rows()[i].find(".msg-edit")[0];
 
 test("a message sent while the answer is written waits above the field, then goes as soon as it ends", async () => {
   const pending = heldAnswers();
@@ -472,11 +472,14 @@ test("Copy takes a question or an answer as written, Markdown included", async (
   try {
     answers.chat_send = { text: "Use **bold** and `code`.", turns: 2 };
     await ask("how?");
+    // Under the question, as in Claude's app: when, Retry, Edit, Copy.
     const questionActions = rows()[0].find(".msg-action");
-    assert.equal(questionActions.length, 2, "Copy and Edit on a question");
-    questionActions[0].fire("click");
+    assert.deepEqual(questionActions.map((b) => b.classList.contains("msg-retry") ? "retry" : b.classList.contains("msg-edit") ? "edit" : "copy"),
+      ["retry", "edit", "copy"]);
+    rows()[0].find(".msg-copy")[0].fire("click");
+    // Under the answer: Copy, Retry, when.
     const answerActions = rows()[1].find(".msg-action");
-    assert.equal(answerActions.length, 1, "Copy only on an answer");
+    assert.deepEqual(answerActions.map((b) => b.classList.contains("msg-retry") ? "retry" : "copy"), ["copy", "retry"]);
     answerActions[0].fire("click");
     await flush();
     assert.deepEqual(copied, ["how?", "Use **bold** and `code`."]);
@@ -502,7 +505,7 @@ test("a question, once sent, is Markdown and TeX like the answers; Copy and Edit
     assert.ok(bubble.querySelector(".md-math"));
     assert.doesNotMatch(bubble.textContent, /\$|\\int|\*\*/, "no TeX or Markdown left as text");
 
-    rows()[0].find(".msg-action")[0].fire("click");
+    rows()[0].find(".msg-copy")[0].fire("click");
     await flush();
     assert.deepEqual(copied, [question]);
     editOf(0).fire("click");
@@ -561,6 +564,65 @@ test("Edit puts a question back; sending it replaces it and drops what followed"
   assert.equal(sent("chat_send").at(-1).query, "one");
   assert.equal(sent("chat_send").at(-1).context?.name, "a.pdf");
   assert.deepEqual(State.chatHistory.map((m) => m.content), ["one", "answer 1"]);
+});
+
+test("Retry is on the last question and its answer only, and sends the question again in place of its answer", async () => {
+  let n = 0;
+  answers.chat_send = () => {
+    n += 1;
+    return { text: `answer ${n}`, turns: 2 * n };
+  };
+  await ask("one");
+  await ask("two");
+  assert.deepEqual(rows().map((r) => r.find(".msg-retry").length), [0, 0, 1, 1], "only the last question and its answer");
+  // The last answer's actions stay in sight; the others show under the mouse.
+  assert.deepEqual(rows().map((r) => r.find(".msg-actions")[0].classList.contains("shown")), [false, false, false, true]);
+
+  // What is typed meanwhile stays in the field.
+  $(".chat-input").value = "a draft";
+  n = 1;
+  rows()[3].find(".msg-retry")[0].fire("click");
+  await flush();
+  await flush();
+  view.sync();
+  assert.deepEqual(sent("chat_rewind").at(-1), { chatId: State.chatId, keep: 2 });
+  assert.equal(sent("chat_send").at(-1).query, "two");
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["one", "answer 1", "two", "answer 2"]);
+  assert.equal($(".chat-input").value, "a draft");
+
+  // From the question too.
+  n = 1;
+  rows()[2].find(".msg-retry")[0].fire("click");
+  await flush();
+  await flush();
+  assert.equal(sent("chat_send").length, 4);
+  assert.equal(sent("chat_send").at(-1).query, "two");
+});
+
+test("a question whose answer failed keeps its Retry in sight", async () => {
+  answers.chat_send = () => Promise.reject(new Error("offline"));
+  await ask("hello");
+  assert.equal(State.chatHistory.at(-1).failed, true);
+  assert.equal(rows()[1].find(".msg-actions").length, 0, "the failure has no actions");
+  assert.ok(rows()[0].find(".msg-actions")[0].classList.contains("shown"));
+  answers.chat_send = { text: "hi", turns: 2 };
+  rows()[0].find(".msg-retry")[0].fire("click");
+  await flush();
+  await flush();
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["hello", "hi"]);
+});
+
+test("each message says when it was sent or answered", async () => {
+  const { sentAgo } = await import("../src/views/chat.ts");
+  answers.chat_send = { text: "ok", turns: 2 };
+  const before = Date.now();
+  await ask("hello");
+  assert.ok(State.chatHistory.every((m) => m.at >= before && m.at <= Date.now()));
+  assert.deepEqual(view.el.find(".msg-time").map((e) => e.textContent), ["just now", "just now"]);
+  const now = Date.UTC(2026, 10, 10, 16, 0);
+  assert.equal(sentAgo(now - 5 * 60_000, now), "5 min ago");
+  assert.equal(sentAgo(now - 3 * 3_600_000, now), "3 h ago");
+  assert.equal(sentAgo(Date.UTC(2026, 10, 2, 12, 0), now), "Nov 2");
 });
 
 test("editing a message takes the files of the questions after it out of the chat's files, and a × takes one out of the context", async (t) => {
@@ -636,7 +698,8 @@ test("Escape or the chip's × leaves an edit", async () => {
 test("an edit sent mid-answer stops that answer, then replaces the question", async () => {
   const pending = heldAnswers();
   await ask("hello");
-  assert.equal(rows()[0].find(".msg-action").length, 2, "Edit stays while the answer is written");
+  assert.equal(rows()[0].find(".msg-edit").length, 1, "Edit stays while the answer is written");
+  assert.equal(rows()[0].find(".msg-retry").length, 0, "Retry waits for the answer to end");
   editOf(0).fire("click");
   view.sync();
   assert.ok(!$(".send-btn").classList.contains("stop"), "the button sends the edit");

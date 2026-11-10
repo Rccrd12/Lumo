@@ -443,16 +443,16 @@ export async function writeClipboard(text: string) {
  * Puts the code on the clipboard; the check mark shows for a moment. The chat
  * uses it too, with its own class, to copy a whole message (views/chat.ts).
  */
-export function copyButton(text: string, cls = "md-copy"): HTMLElement {
-  const btn = h("button", { class: cls, title: t(STRINGS.copy), "aria-label": t(STRINGS.copy) }, svg(ICONS.copy, 11));
+export function copyButton(text: string, cls = "md-copy", size = 11): HTMLElement {
+  const btn = h("button", { class: cls, title: t(STRINGS.copy), "aria-label": t(STRINGS.copy) }, svg(ICONS.copy, size));
   btn.addEventListener("click", async (e) => {
     e.stopPropagation();
     await writeClipboard(text);
-    btn.replaceChildren(svg(ICONS.check, 11, { stroke: 2.2 }));
+    btn.replaceChildren(svg(ICONS.check, size, { stroke: 2.2 }));
     btn.classList.add("done");
     btn.title = t(STRINGS.copied);
     window.setTimeout(() => {
-      btn.replaceChildren(svg(ICONS.copy, 11));
+      btn.replaceChildren(svg(ICONS.copy, size));
       btn.classList.remove("done");
       btn.title = t(STRINGS.copy);
     }, 1500);
