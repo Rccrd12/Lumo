@@ -316,7 +316,7 @@ async fn one_start(tick: &mut impl FnMut(u64)) -> tokio::sync::MutexGuard<'stati
 async fn waiting<T>(asked: impl std::future::Future<Output = T>, began: Instant, tick: &mut impl FnMut(u64)) -> T {
     let mut said = began.elapsed().as_secs();
     tick(said);
-    ticking(asked, began, &mut said, |seconds| tick(seconds)).await
+    ticking(asked, began, &mut said, tick).await
 }
 
 /// `asked`, and every whole second since `began` while it is going: `second`
