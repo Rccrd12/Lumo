@@ -1,43 +1,60 @@
-/* An image in an answer (views/rich/image.ts): one frame height whatever it
-   shows (the download, the image or the failure), then its source, its
-   caption and the way to the browser. With images off, that last row alone. */
+/* An image in an answer (views/rich/image.ts): the picture itself, its
+   corners rounded, with no box around it, fading in once it is there; under
+   it what it shows and its site, which opens it in the browser. While it
+   downloads, or when it can't, a rounded placeholder of one height. With
+   images off, one row: the site, the caption and the way to the browser. */
 
-.rc-image {
-  overflow: hidden;
+.rc-card.rc-image:not(.off) {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
 }
 
 .rc-image-frame {
-  height: 150px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  justify-content: center;
   min-width: 0;
-  overflow: hidden;
+  max-width: 100%;
 }
 
-/* Not there yet, or not at all: stripes, so it reads as "no image" at once. */
+/* Not there yet, or not at all: a quiet rounded placeholder. */
 .rc-image-frame.loading,
 .rc-image-frame.error {
-  background: repeating-linear-gradient(135deg, #111214 0 10px, #0e0f11 10px 20px);
-}
-
-/* A photo on dark, so its edges don't sit on a white box; a diagram drawn on
-   a see-through ground (image.ts seeThrough) on white, as it was meant. */
-.rc-image-frame.shown {
-  background: #000;
-}
-
-.rc-image-frame.shown.clear {
-  background: #fff;
+  width: 100%;
+  height: 150px;
+  align-items: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .rc-image-frame img {
   display: block;
-  /* The same 6px of ground on every side, whether the picture is wide or tall. */
-  max-width: calc(100% - 12px);
-  max-height: 138px;
+  max-width: 100%;
+  max-height: 220px;
   object-fit: contain;
+  border-radius: 14px;
   cursor: pointer;
   -webkit-user-drag: none;
+  opacity: 0;
+  transform: scale(0.985);
+  transition: opacity 0.28s ease-out, transform 0.28s ease-out;
+}
+
+.rc-image-frame img.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* A diagram drawn on a see-through ground (image.ts seeThrough) on white, as
+   it was meant; a photo needs no ground at all. */
+.rc-image-frame.clear img {
+  background: #fff;
 }
 
 .rc-image-msg {
@@ -97,21 +114,71 @@
   outline-offset: 1px;
 }
 
-/* The download: the cards' "writing" dots, inside the frame. */
+/* The download: the cards' "writing" dots, inside the placeholder. */
 .rc-image-frame .rc-pending-line {
   padding: 0;
 }
 
+/* Under the picture: what it shows, then its site. */
+.rc-image-under {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.rc-image-under .rc-image-cap {
+  min-width: 0;
+  font: italic 400 11.5px var(--font);
+  color: #9a9fa8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-image-under .rc-image-src {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 180px;
+  font: 500 10.5px var(--font);
+  color: #6b7079;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.rc-image-under .rc-image-src span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-image-under .rc-image-src:hover {
+  color: #c9ccd2;
+}
+
+.rc-image-under .rc-image-src:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Images off: one row, the whole card. */
 .rc-image-foot {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 7px 8px 7px 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
   min-width: 0;
 }
 
-.rc-image-src {
+.rc-image-foot .rc-image-src {
   flex: none;
   display: flex;
   align-items: center;
@@ -124,22 +191,17 @@
   padding: 2px 7px;
 }
 
-.rc-image-src span {
+.rc-image-foot .rc-image-src span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.rc-image-cap {
+.rc-image-foot .rc-image-cap {
   min-width: 0;
   font: 400 11.5px var(--font);
   color: #8e939c;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Images off: the row is the whole card, so it has no line above it. */
-.rc-image.off .rc-image-foot {
-  border-top: 0;
 }
