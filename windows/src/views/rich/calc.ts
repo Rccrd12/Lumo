@@ -49,11 +49,45 @@ export const PLOT_MAX_HEIGHT = 460;
 
 /**
  * The chart's height for a chat log `log` CSS pixels high, with `chrome` of
- * the card around the chart (its top line, the sliders): the whole card fits
- * the log, so a taller island shows a taller chart; never under PLOT_HEIGHT.
+ * the card around the chart (its top line, the sliders), when the curves
+ * would look their best `want` high (idealHeight): as tall as they want, as
+ * far as the whole card fits the log; never under PLOT_HEIGHT.
  */
-export function plotHeight(log: number, chrome: number): number {
-  return Math.round(Math.min(PLOT_MAX_HEIGHT, Math.max(PLOT_HEIGHT, log - chrome - 12)));
+export function plotHeight(log: number, chrome: number, want = PLOT_MAX_HEIGHT): number {
+  const room = Math.min(PLOT_MAX_HEIGHT, log - chrome - 12);
+  return Math.round(Math.max(PLOT_HEIGHT, Math.min(want, room)));
+}
+
+/**
+ * How high the chart wants to be for its curves to read well. A wave or a
+ * line spreads evenly over the chart's height and reads at PLOT_HEIGHT; an
+ * exponential or a parabola spends most of its length in a band of it (along
+ * the bottom, near its vertex) and asks for more, the narrower that band the
+ * more. The band is the middle half of where the curve's points fall, as a
+ * share of the y range; the narrowest curve decides. A flat line asks for
+ * nothing. Read at the inputs' first values, so the card keeps its height
+ * while the sliders move.
+ */
+export function idealHeight(plot: Plot): number {
+  const [x0, x1] = plot.x;
+  const [y0, y1] = plot.y;
+  const scope: Record<string, number> = Object.create(null);
+  for (const i of plot.inputs) scope[i.name] = i.value;
+  const n = 240;
+  let narrowest = 0.5;
+  for (const curve of plot.curves) {
+    const at: number[] = [];
+    for (let i = 0; i <= n; i++) {
+      scope.x = x0 + ((x1 - x0) * i) / n;
+      const v = safe(curve.expr, scope);
+      if (Number.isFinite(v) && v >= y0 && v <= y1) at.push((v - y0) / (y1 - y0));
+    }
+    if (at.length < 12) continue;
+    at.sort((a, b) => a - b);
+    const band = at[Math.floor(at.length * 0.75)] - at[Math.floor(at.length * 0.25)];
+    if (band >= 0.02) narrowest = Math.min(narrowest, band);
+  }
+  return PLOT_HEIGHT * (0.5 / narrowest) ** 2;
 }
 /** The curves' colours, in order: the cards' accent, then green and amber. */
 export const CURVE_COLORS = ["#8fc7ff", "#34d399", "#f5a524"];
@@ -929,7 +963,7 @@ export function renderPlot(plot: Plot, ctx: RichContext, key: string): HTMLEleme
     if (!log && (log = el.closest(".chat-log"))) watch?.observe(log);
     const w = Math.floor(canvas.getBoundingClientRect().width);
     const chrome = el.getBoundingClientRect().height - canvas.getBoundingClientRect().height;
-    const ht = log ? plotHeight(log.clientHeight, chrome) : PLOT_HEIGHT;
+    const ht = log ? plotHeight(log.clientHeight, chrome, idealHeight(plot)) : PLOT_HEIGHT;
     if (w === width && ht === height) return;
     width = w;
     if (ht !== height) {
