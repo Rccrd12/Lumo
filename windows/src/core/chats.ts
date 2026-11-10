@@ -8,6 +8,8 @@ import { cleanChecklists, type ChatChecklists } from "./checklists";
 export interface SavedTurn {
   role: "user" | "assistant";
   content: string;
+  /** When it was sent or answered (epoch ms); none in chats saved before it was kept. */
+  at?: number;
 }
 
 export interface SavedChat {
