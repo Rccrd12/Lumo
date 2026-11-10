@@ -340,7 +340,7 @@ Lumo may give you the windows and documents open on the user's computer: use the
         out.push_str(" To be told when something happens (a pull request's checks, a file or download, a program, a web page, an email), call listen with what to do then, and never wait, sleep or poll yourself; Lumo writes to you in this chat when it happens.");
     }
     if p.groups.contains(&Group::Plan) {
-        out.push_str(" For a job of more than one step, call update_plan with every step (first in_progress, others pending), and call update_plan again as each step finishes.");
+        out.push_str(" Whenever a job takes more than one step (creating or changing files, several tools in a row), call update_plan before any other tool, with every step (first in_progress, others pending), even if the user didn't ask for a plan; then call update_plan again as each step finishes. A question you just answer needs no plan.");
     }
     if p.tools {
         out.push_str(p.catalog);

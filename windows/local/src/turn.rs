@@ -1,7 +1,8 @@
 // One turn of the chat: the request, the answer, and as many rounds of tool
 // calls as the model makes (up to `Rules::max_rounds`), with the checks that
-// send a model back once when it got something wrong. The app does what only
-// it can through `Hooks`: shows the answer, runs the tools, loads more of them.
+// send a model back once when it got something wrong, and the reminders that
+// keep its plan up to date (plan.rs). The app does what only it can through
+// `Hooks`: shows the answer, runs the tools, loads more of them.
 
 use std::future::Future;
 use std::time::Duration;
@@ -10,6 +11,7 @@ use serde_json::{json, Value};
 
 use crate::guard::{announces, asks_change, call_input, claims_change, claims_done, written_call, without_images};
 use crate::native::calls_in_text;
+use crate::plan::{self, Plan};
 use crate::sse::progressive_filter;
 use crate::transport::{ask_whole, stream, Endpoint, Failure, Seen};
 
@@ -73,6 +75,12 @@ pub trait Hooks {
     fn known(&self) -> Vec<String>;
     /// Runs a tool: what it answered, and whether it failed.
     fn call(&mut self, name: &str, input: Value) -> impl Future<Output = (String, bool)> + Send;
+    /// Shows a plan Lumo made of a list in the answer (`update_plan`'s input),
+    /// as if the model had called the tool with it.
+    fn show_plan(&mut self, _input: &Value) {}
+    /// While on, the tools called say nothing on the island: the model is
+    /// putting its plan right after its answer, which stays as it was.
+    fn hush(&mut self, _on: bool) {}
 }
 
 /// What a turn goes by.
@@ -92,6 +100,8 @@ pub struct Rules<'a> {
     /// when the server refuses its pictures (a PDF's text where its pages
     /// went). None: the pictures are only taken out.
     pub text_only: Option<Value>,
+    /// The chat's plan as an earlier turn left it, when it isn't done.
+    pub plan: Option<Plan>,
 }
 
 /// How the turn ended.
@@ -189,14 +199,22 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let mut made: Vec<(String, String, String)> = Vec::new();
     // What the island says next, when the loop goes round for a reason of its own.
     let mut next: Option<Doing> = None;
+    // The plan as the island shows it, and how up to date it is.
+    let mut plan = PlanState { shown: rules.plan.clone(), ..PlanState::default() };
     loop {
-        hooks.doing(next.take().unwrap_or(if whole { Doing::Thinking } else { Doing::Prompt }));
+        // The plan's check after the answer is unseen: the answer stays on
+        // the island as it was, with nothing said about it.
+        let hushed = plan.checking.is_some();
+        let doing = next.take().unwrap_or(if whole { Doing::Thinking } else { Doing::Prompt });
+        if !hushed {
+            hooks.doing(doing);
+        }
         let before = said.join("\n\n");
         let after_before = |visible: &str| if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") };
         let answer = if whole {
             let answer = ask_whole(to, body).await;
             if let Ok(a) = &answer {
-                if !a.text.is_empty() {
+                if !a.text.is_empty() && !hushed {
                     hooks.shown(&after_before(&progressive_filter(&a.text)));
                 }
             }
@@ -206,6 +224,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 // Nothing new yet in this round: the text so far isn't sent
                 // again, or the island would drop the dots that say what the
                 // answer is doing.
+                _ if hushed => {}
                 Seen::Text(visible) if visible.is_empty() => {}
                 Seen::Text(visible) => hooks.shown(&after_before(&visible)),
                 Seen::Reasoning => hooks.doing(Doing::Reasoning),
@@ -215,6 +234,13 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         };
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
+        }
+        // The plan's check failing costs nothing: the answer was given.
+        if answer.is_err() {
+            if let Some(kept) = plan.checking.take() {
+                hooks.hush(false);
+                return Ok(Outcome { said, text: kept, end: End::Answer, used, rounds, whole, fixes, notes });
+            }
         }
         let answer = match answer {
             // A model that doesn't see refuses the pictures: once more with the text alone.
@@ -285,6 +311,19 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             hooks.used(tokens);
         }
         let tools = body.get("tools").is_some();
+        if hushed {
+            // Done with the plan: the answer is the one already shown.
+            if answer.calls.is_empty() || !tools {
+                hooks.hush(false);
+                let text = plan.checking.take().unwrap_or_default();
+                return Ok(Outcome { said, text, end: End::Answer, used, rounds, whole, fixes, notes });
+            }
+            // Back at work with other tools: no longer a check, said as any round.
+            if answer.calls.iter().any(|c| c["name"].as_str() != Some(plan::TOOL)) {
+                plan.checking = None;
+                hooks.hush(false);
+            }
+        }
         // A tool call written in the answer as text (`[[workspace_edit …]]`)
         // does nothing: the model is told so once, and what it wrote goes.
         if answer.calls.is_empty() && !written && tools {
@@ -342,7 +381,24 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             next = Some(Doing::Correcting(Correction::Stopped));
             continue;
         }
+        // An answer with the plan behind the work: the model puts each step
+        // where it stands, once and unseen; its answer stays as it was.
+        if answer.calls.is_empty() && tools && !answer.cut && !plan.checked && plan.stale && names.iter().any(|n| n == plan::TOOL) {
+            if let Some(note) = plan.shown.as_ref().filter(|p| p.under_way()).map(plan::end_note) {
+                plan.checked = true;
+                fixes.push("plan behind the work");
+                push(body, [json!({ "role": "assistant", "content": answer.text }), json!({ "role": "user", "content": note })]);
+                plan.checking = Some(answer.text);
+                hooks.hush(true);
+                continue;
+            }
+        }
         if answer.calls.is_empty() || !tools || rounds == rules.max_rounds {
+            // Still checking the plan at the last round: the answer given.
+            if let Some(kept) = plan.checking.take() {
+                hooks.hush(false);
+                return Ok(Outcome { said, text: kept, end: End::Answer, used, rounds, whole, fixes, notes });
+            }
             let end = if !answer.calls.is_empty() && tools {
                 End::Rounds
             } else if answer.cut {
@@ -353,9 +409,14 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             return Ok(Outcome { said, text: answer.text, end, used, rounds, whole, fixes, notes });
         }
         rounds += 1;
-        if !answer.text.is_empty() {
+        if !answer.text.is_empty() && plan.checking.is_none() {
             said.push(answer.text.clone());
         }
+        // The plan tool called in this round, the other tools, and whether
+        // any of those ran after it.
+        let mut plan_called = false;
+        let mut others = false;
+        let mut after_plan = false;
         let calls: Vec<Value> = answer
             .calls
             .iter()
@@ -408,7 +469,17 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 replies.push(reply(format!("This exact {name} call already ran in this answer ({before}): nothing was done again. Don't repeat it; answer the user.")));
                 continue;
             }
+            let given = (name == plan::TOOL).then(|| Plan::from_input(&input)).flatten();
             let (text, failed) = hooks.call(name, input).await;
+            if name == plan::TOOL {
+                if let Some(p) = given.filter(|_| !failed) {
+                    plan.shown = Some(p);
+                    plan_called = true;
+                }
+            } else {
+                others = true;
+                after_plan = plan_called;
+            }
             if !failed && name.starts_with("workspace_") {
                 on_copy = true;
             }
@@ -418,6 +489,114 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             }
             replies.push(reply(text));
         }
+        let round = Round { text: &answer.text, number: rounds, plan_called, after_plan, others, changed };
+        if let Some(note) = plan.after(&round, body, &mut names, hooks, &mut fixes) {
+            if let Some(content) = replies.last_mut().filter(|r| r["role"] == "tool").and_then(|r| r.get_mut("content")) {
+                *content = json!(format!("{}\n\n{note}", content.as_str().unwrap_or_default()));
+            }
+        }
         push(body, replies);
     }
+}
+
+/// The plan as the island shows it in this turn (plan.rs), and how up to date it is.
+#[derive(Default)]
+struct PlanState {
+    shown: Option<Plan>,
+    /// Rounds of other tools since it was last updated.
+    quiet: usize,
+    /// The work has gone past it: other tools ran after its last update.
+    stale: bool,
+    /// Made or updated in this turn.
+    planned: bool,
+    /// The answer was checked against it (once a turn).
+    checked: bool,
+    /// The model was asked for one (once a turn).
+    asked: bool,
+    /// Its answer, kept while the model puts the plan right after it, unseen.
+    checking: Option<String>,
+}
+
+/// A round of tools, as far as the plan goes.
+struct Round<'a> {
+    /// What the model said before its calls.
+    text: &'a str,
+    /// From 1.
+    number: usize,
+    /// The plan tool was called, other tools ran after it, other tools ran.
+    plan_called: bool,
+    after_plan: bool,
+    others: bool,
+    /// A tool changed something in this turn so far.
+    changed: bool,
+}
+
+impl PlanState {
+    /// After a round of tools: what goes under its last result about the
+    /// plan, if anything. A list of steps said before the first round's
+    /// tools, with no plan made in this turn, is shown as the plan (its tool
+    /// loaded, if it wasn't); a job that changes things for `ASK_ROUNDS`
+    /// rounds with no plan is asked for one, once; a plan under way, left as
+    /// it was for `QUIET_ROUNDS` rounds of other tools, gets a reminder.
+    fn after<H: Hooks>(&mut self, round: &Round, body: &mut Value, names: &mut Vec<String>, hooks: &mut H, fixes: &mut Vec<&'static str>) -> Option<String> {
+        if round.plan_called {
+            // Updated: up to date, unless other tools ran after it.
+            self.planned = true;
+            self.quiet = usize::from(round.after_plan);
+            self.stale = round.after_plan;
+            return None;
+        }
+        if !round.others {
+            return None;
+        }
+        if round.number == 1 && !self.planned {
+            if let Some(list) = Plan::from_list(round.text) {
+                if !offer(body, names, hooks) {
+                    return None;
+                }
+                hooks.show_plan(&list.to_input());
+                let note = plan::list_note(&list);
+                self.shown = Some(list);
+                self.planned = true;
+                // The round's tools worked on its first step already.
+                self.quiet = 0;
+                self.stale = true;
+                fixes.push("list shown as the plan");
+                return Some(note);
+            }
+        }
+        // Several rounds of changes and no plan to show for them.
+        if round.number >= plan::ASK_ROUNDS && round.changed && !self.planned && !self.asked && !self.shown.as_ref().is_some_and(Plan::open) {
+            self.asked = true;
+            if offer(body, names, hooks) {
+                fixes.push("plan asked for");
+                return Some(plan::ask_note());
+            }
+            return None;
+        }
+        let shown = self.shown.as_ref().filter(|p| p.under_way() && names.iter().any(|n| n == plan::TOOL))?;
+        self.stale = true;
+        self.quiet += 1;
+        if self.quiet < plan::QUIET_ROUNDS {
+            return None;
+        }
+        let note = plan::reminder(shown, self.quiet);
+        self.quiet = 0;
+        fixes.push("plan reminded");
+        Some(note)
+    }
+}
+
+/// Whether the request offers the plan tool, loaded now if it wasn't.
+fn offer<H: Hooks>(body: &mut Value, names: &mut Vec<String>, hooks: &mut H) -> bool {
+    if names.iter().any(|n| n == plan::TOOL) {
+        return true;
+    }
+    let Some(loaded) = hooks.load(plan::TOOL, &json!({}), names) else {
+        return false;
+    };
+    body["tools"] = loaded.tools;
+    body["messages"][0]["content"] = json!(loaded.system);
+    *names = loaded.names;
+    names.iter().any(|n| n == plan::TOOL)
 }

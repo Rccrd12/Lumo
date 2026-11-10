@@ -13,6 +13,14 @@
 // reasons. A server that says nothing is sent the tools all the same, and a
 // model that refuses them is asked again without.
 //
+// A plan the model shows on the Plan island (update_plan) is kept up to date:
+// lumo-local reminds the model when its tools go past it, sends it back once,
+// unseen, when it answers with the plan behind, and shows a list of steps it wrote
+// as the plan, and asks for one when a job takes several rounds of changes
+// with none (lumo_local::plan). The plan tool is always offered, so a plan
+// doesn't wait for the question to ask for one; each new question in a chat
+// whose plan isn't done says where it stands.
+//
 // The chat's permission modes hold here too: Ask every time is a card for
 // each call of the user's tools, even one they trust; Auto lets the tools
 // they trust run without asking (the others ask); Plan only gives the model
@@ -483,6 +491,8 @@ struct Island<'a, P> {
     server: &'static str,
     /// The context the model is loaded with, in tokens (0: not said), for the ring.
     context: u64,
+    /// The model puts its plan right after its answer: its tools say nothing.
+    hushed: bool,
 }
 
 impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P> {
@@ -546,16 +556,26 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         self.all.iter().map(|(id, _, _)| id.clone()).collect()
     }
 
+    fn show_plan(&mut self, input: &Value) {
+        crate::tools::show_plan(self.app, self.chat.id(), self.server, input);
+    }
+
+    fn hush(&mut self, on: bool) {
+        self.hushed = on;
+    }
+
     fn call(&mut self, name: &str, input: Value) -> impl std::future::Future<Output = (String, bool)> + Send {
-        self.events.activity(self.app, if crate::web_search::NAMES.contains(&name) {
-            crate::web_search::activity(name)
-        } else if crate::workspace::NAMES.contains(&name) {
-            crate::workspace::activity(name, &input)
-        } else if crate::github_tools::NAMES.contains(&name) {
-            crate::github_tools::activity(name, &input)
-        } else {
-            Activity::new("tool", crate::claude_code::pretty_tool(name))
-        });
+        if !self.hushed {
+            self.events.activity(self.app, if crate::web_search::NAMES.contains(&name) {
+                crate::web_search::activity(name)
+            } else if crate::workspace::NAMES.contains(&name) {
+                crate::workspace::activity(name, &input)
+            } else if crate::github_tools::NAMES.contains(&name) {
+                crate::github_tools::activity(name, &input)
+            } else {
+                Activity::new("tool", crate::claude_code::pretty_tool(name))
+            });
+        }
         self.ran.push(if name == crate::web_search::SEARCH {
             let query = input.get("query").and_then(Value::as_str).unwrap_or("").trim().chars().take(120).collect::<String>();
             format!("{name} \"{query}\"")
@@ -627,6 +647,8 @@ pub async fn send(
         return Err(t("Pick a model above the chat box first."));
     }
     let turn = chat.begin(server.id);
+    // The chat's plan, when it isn't done: said with the question.
+    let open_plan = if caps.tools == Some(false) { None } else { crate::island_tools::open_plan(chat.id()) };
     // The tools, unless the server says the model takes none.
     let mode = crate::claude_code::permission_mode(mode);
     // Lumo's email tools, usable only while this turn runs.
@@ -644,7 +666,10 @@ pub async fn send(
     };
     let user_tools: Vec<_> = all.iter().filter(|(id, _, _)| profile::group_of(id) == Some(profile::Group::User)).cloned().collect();
     let mut named = profile::named_groups(&query, &user_tools);
-    if mode == "plan" && !named.contains(&profile::Group::Plan) {
+    // The plan tool always, for a model that takes tools: it makes a plan
+    // for a job of more than one step without being asked to (as Claude
+    // Code does), not only when the question says "plan".
+    if (mode == "plan" || caps.tools != Some(false)) && !named.contains(&profile::Group::Plan) {
         named.push(profile::Group::Plan);
     }
     if chat.is_workshop() {
@@ -734,6 +759,11 @@ pub async fn send(
                 append_text(&mut text_only, &note);
             }
         }
+        if let Some(plan) = open_plan.as_ref().filter(|_| tools.iter().any(|(id, _, _)| id == crate::island_tools::UPDATE_PLAN)) {
+            let note = lumo_local::plan::turn_note(plan);
+            append_text(&mut user, &note);
+            append_text(&mut text_only, &note);
+        }
         body = request_body(model, &system, &turn.history, &user);
         // As long an answer as the context leaves room for, not 4 096 tokens.
         // The question counts as sent: the file's text, and a picture as the page it is.
@@ -762,8 +792,9 @@ pub async fn send(
             max_rounds: MAX_TOOL_ROUNDS,
             pause: Duration::from_secs(1),
             text_only: (text_only != user).then_some(text_only),
+            plan: open_plan.clone(),
         };
-        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
+        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size, hushed: false };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
         log_turn(server, model, prompt_chars / 3, tools.len(), &outcome);
         outcome.map_err(|f| failure(server, model, &base, f))
