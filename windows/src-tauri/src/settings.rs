@@ -837,7 +837,7 @@ mod tests {
 
     #[test]
     fn a_file_that_picked_the_previous_look_still_loads() {
-        // Settings → Island → Previous look is gone (0.20.2): its key is left
+        // Settings → Island → Previous look is gone (0.21.0): its key is left
         // over in a file from before, and the rest of that file is kept.
         let s = parse(&custom_with("islandNewLook", Some(json!(false)))).unwrap();
         assert_eq!(s.island_edge_light, "soft");
@@ -885,7 +885,7 @@ mod tests {
 
     #[test]
     fn a_file_that_dressed_lumo_or_picked_his_look_still_loads() {
-        // The wardrobe's outfits and Lumo's looks are gone (0.20.2): their keys
+        // The wardrobe's outfits and Lumo's looks are gone (0.21.0): their keys
         // are left over in a file from before, and the rest of that file is kept.
         for (key, value) in [("lumoOutfit", "scarf"), ("lumoCharacter", "goccia")] {
             let s = parse(&custom_with(key, Some(json!(value)))).unwrap();
