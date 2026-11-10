@@ -17410,6 +17410,90 @@
    "ru": "Загрузка изображения…",
    "id": "Memuat gambar…",
    "it": "Carico l'immagine…"
+  },
+  "Zoom in": {
+   "zh-Hans": "放大",
+   "hi": "ज़ूम इन करें",
+   "es": "Acercar",
+   "ar": "تكبير",
+   "fr": "Zoom avant",
+   "bn": "জুম ইন",
+   "pt-BR": "Aproximar",
+   "ru": "Приблизить",
+   "id": "Perbesar",
+   "it": "Ingrandisci"
+  },
+  "Zoom out": {
+   "zh-Hans": "缩小",
+   "hi": "ज़ूम आउट करें",
+   "es": "Alejar",
+   "ar": "تصغير",
+   "fr": "Zoom arrière",
+   "bn": "জুম আউট",
+   "pt-BR": "Afastar",
+   "ru": "Отдалить",
+   "id": "Perkecil",
+   "it": "Rimpicciolisci"
+  },
+  "Reset view": {
+   "zh-Hans": "重置视图",
+   "hi": "दृश्य रीसेट करें",
+   "es": "Restablecer vista",
+   "ar": "إعادة ضبط العرض",
+   "fr": "Réinitialiser la vue",
+   "bn": "দৃশ্য রিসেট করুন",
+   "pt-BR": "Redefinir visualização",
+   "ru": "Сбросить вид",
+   "id": "Atur ulang tampilan",
+   "it": "Ripristina la vista"
+  },
+  "Zero": {
+   "zh-Hans": "零点",
+   "hi": "शून्य",
+   "es": "Cero",
+   "ar": "صفر",
+   "fr": "Zéro",
+   "bn": "শূন্য",
+   "pt-BR": "Zero",
+   "ru": "Ноль",
+   "id": "Nol",
+   "it": "Zero"
+  },
+  "Maximum": {
+   "zh-Hans": "最大值",
+   "hi": "अधिकतम",
+   "es": "Máximo",
+   "ar": "قيمة عظمى",
+   "fr": "Maximum",
+   "bn": "সর্বোচ্চ",
+   "pt-BR": "Máximo",
+   "ru": "Максимум",
+   "id": "Maksimum",
+   "it": "Massimo"
+  },
+  "Minimum": {
+   "zh-Hans": "最小值",
+   "hi": "न्यूनतम",
+   "es": "Mínimo",
+   "ar": "قيمة صغرى",
+   "fr": "Minimum",
+   "bn": "সর্বনিম্ন",
+   "pt-BR": "Mínimo",
+   "ru": "Минимум",
+   "id": "Minimum",
+   "it": "Minimo"
+  },
+  "Intersection": {
+   "zh-Hans": "交点",
+   "hi": "प्रतिच्छेदन",
+   "es": "Intersección",
+   "ar": "تقاطع",
+   "fr": "Intersection",
+   "bn": "ছেদবিন্দু",
+   "pt-BR": "Interseção",
+   "ru": "Пересечение",
+   "id": "Perpotongan",
+   "it": "Intersezione"
   }
  }
 }
