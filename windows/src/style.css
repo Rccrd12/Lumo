@@ -625,39 +625,7 @@ body {
   color: var(--ink);
 }
 
-/* ── The live activities beside the open island (island/activities.ts; the
-   panel's own look is in views/activities.css) ── */
-
-#activities {
-  position: absolute;
-  top: 10px;
-  left: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#activities.shown {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* The Plan island beside the open island (island/plan.ts; its own look is
-   in views/plan.css), as the live activities. */
-
-#plan {
-  position: absolute;
-  top: 10px;
-  left: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#plan.shown {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* The folded Plan island's icon, landing in the chat. */
+/* The plan's icon, landing in the chat. */
 .plan-btn.pop {
   animation: tab-pop 0.36s cubic-bezier(0.3, 1.6, 0.5, 1);
 }

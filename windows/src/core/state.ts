@@ -266,25 +266,8 @@ export interface Settings {
   compactActivity: boolean;
   /** The closed island shows the music playing (media.rs). */
   compactMedia: boolean;
-  /** The live activities (island/activities.ts) are on. */
+  /** Settings → Island → Live Activities: nothing reads it since they are the home's tiles (settings.rs). */
   activitiesPanel: boolean;
-  /** Folded into their icon in the open island's top bar. */
-  activitiesFolded: boolean;
-  /** Beside the island: "left" or "right". */
-  activitiesSide: string;
-  /** Their size; a height of 0 follows the island. */
-  activitiesWidth: number;
-  activitiesHeight: number;
-  /** In a window of their own (Windows), at this physical position. */
-  activitiesDetached: boolean;
-  activitiesX: number;
-  activitiesY: number;
-  /** The Plan island's window (plan_island.rs): moved by hand to this physical position, and its size (0 = default). Rust's. */
-  agentPlanMoved: boolean;
-  agentPlanX: number;
-  agentPlanY: number;
-  agentPlanWidth: number;
-  agentPlanHeight: number;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -306,7 +289,7 @@ export interface Settings {
   planUsageOnline: boolean;
   /** Simple permission requests are answered on the closed island (core/approvals.ts). */
   quickApprovals: boolean;
-  /** The live activities beside the island are as tall as it, and follow its resizes. */
+  /** Settings → Island → Follow the island's height, for the panel that was beside it: nothing reads it since. */
   activitiesFollowIsland: boolean;
   /** The Email pill leaves out the promotional emails (mail.rs). */
   mailHidePromotions: boolean;
@@ -416,8 +399,7 @@ export interface Settings {
   /** The new look's light along the island's edge, picked in the wardrobe:
    * "full", "soft", "line" or "glow" (look-new.css, parseEdgeLight). */
   islandEdgeLight: string;
-  /** The home shows the live activities (its "⋯" menu puts them away),
-   * whether or not their own window is folded. */
+  /** The home shows the live activities (its "⋯" menu puts them away). */
   homeActivities: boolean;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
@@ -459,18 +441,6 @@ export const DEFAULT_SETTINGS: Settings = {
   compactActivity: true,
   compactMedia: true,
   activitiesPanel: true,
-  activitiesFolded: false,
-  activitiesSide: "left",
-  activitiesWidth: 264,
-  activitiesHeight: 0,
-  activitiesDetached: false,
-  activitiesX: 0,
-  activitiesY: 0,
-  agentPlanMoved: false,
-  agentPlanX: 0,
-  agentPlanY: 0,
-  agentPlanWidth: 0,
-  agentPlanHeight: 0,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5-5",
@@ -577,14 +547,12 @@ class AppState {
   chatAsk: string | null = null;
   /** The pull requests Lumo listens to for the chat (core/listen.ts, listen.rs). */
   listening: ListenWatch[] = [];
-  /** The live activities can show beside the open island (an edge with room for them). */
-  activitiesRoom = false;
-  /** The Plan island's icon shows in the chat: there are plans to look at (island/plan.ts). */
+  /** The plan icon shows in the chat: there are plans to look at (island/plan.ts). */
   planIcon = false;
-  /** The Plan island is open (its icon in the chat looks pressed). */
+  /** The plan is open, not folded into its icon (the icon looks pressed). */
   planOpen = false;
   /**
-   * Every plan the Plan island holds, the newest first, those under way then
+   * Every plan island/plan.ts holds, the newest first, those under way then
    * those done (island/plan.ts): the new look draws a chat's own in that chat
    * (views/plan-strip.ts) and the ones under way on the home.
    */

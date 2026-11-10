@@ -58,28 +58,13 @@ pub struct Settings {
     pub compact_activity: bool,
     /// The closed island shows the music playing, with its buttons (media.rs).
     pub compact_media: bool,
-    /// The live activities (src/island/activities.ts): on or off.
+    /// Settings → Island → Live Activities (src/settings/main.ts). Since the
+    /// live activities became the home's tiles (`home_activities`), nothing
+    /// else reads it. Where they were beside the island, folded, moved into a
+    /// window of their own and how big, and the Plan island's own window, are
+    /// gone: a file from before still loads, those keys are left out
+    /// (`a_file_from_before_the_windows_went_still_loads`).
     pub activities_panel: bool,
-    /// Folded into their icon in the open island's top bar.
-    pub activities_folded: bool,
-    /// Beside the island: "left" or "right".
-    pub activities_side: String,
-    /// Their size in page pixels; a height of 0 follows the island.
-    pub activities_width: f64,
-    pub activities_height: f64,
-    /// Moved off the island into a window of their own (activities.rs), at
-    /// this physical desktop position. Windows only.
-    pub activities_detached: bool,
-    pub activities_x: f64,
-    pub activities_y: f64,
-    /// The Plan island's window (plan_island.rs): moved by hand to this
-    /// physical desktop position (else right of the island), and its size in
-    /// page pixels (0 = the default one). Owned by Rust, like the above.
-    pub agent_plan_moved: bool,
-    pub agent_plan_x: f64,
-    pub agent_plan_y: f64,
-    pub agent_plan_width: f64,
-    pub agent_plan_height: f64,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -105,8 +90,8 @@ pub struct Settings {
     /// Simple permission requests (reads, commands that only look) are
     /// answered on the closed island, without opening it (src/core/approvals.ts).
     pub quick_approvals: bool,
-    /// The live activities beside the island are as tall as it, and follow it
-    /// when it is resized (Settings → Island).
+    /// Settings → Island → Follow the island's height, for the live activities
+    /// that were beside the island. Nothing reads it since (`activities_panel`).
     pub activities_follow_island: bool,
     /// The Email pill leaves out the promotional emails (mail.rs): Gmail's
     /// Promotions category, elsewhere the emails with an unsubscribe link.
@@ -284,8 +269,8 @@ pub struct Settings {
     /// Lumo's light along the island's edge, picked in the wardrobe:
     /// "full", "soft", "line" or "glow" (src/look-new.css). Anything else is "full".
     pub island_edge_light: String,
-    /// The home shows the live activities as tiles; its "⋯" menu puts them
-    /// away. Apart from their own window (`activities_folded`).
+    /// The home shows the live activities as tiles; its "⋯" menu and the
+    /// right-click menu's Live Activities put them away.
     pub home_activities: bool,
 }
 
@@ -325,18 +310,6 @@ impl Default for Settings {
             compact_activity: true,
             compact_media: true,
             activities_panel: true,
-            activities_folded: false,
-            activities_side: "left".into(),
-            activities_width: crate::activities::DEFAULT_WIDTH,
-            activities_height: 0.0,
-            activities_detached: false,
-            activities_x: 0.0,
-            activities_y: 0.0,
-            agent_plan_moved: false,
-            agent_plan_x: 0.0,
-            agent_plan_y: 0.0,
-            agent_plan_width: 0.0,
-            agent_plan_height: 0.0,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -672,18 +645,6 @@ mod tests {
   "compactActivity": false,
   "compactMedia": false,
   "activitiesPanel": false,
-  "activitiesFolded": true,
-  "activitiesSide": "right",
-  "activitiesWidth": 300.0,
-  "activitiesHeight": 360.0,
-  "activitiesDetached": true,
-  "activitiesX": 120.0,
-  "activitiesY": 80.0,
-  "agentPlanMoved": true,
-  "agentPlanX": 300.0,
-  "agentPlanY": 60.0,
-  "agentPlanWidth": 320.0,
-  "agentPlanHeight": 380.0,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -934,6 +895,42 @@ mod tests {
         let s = parse(&custom_with("islandNewLook", Some(json!(false)))).unwrap();
         assert_eq!(s.island_edge_light, "soft");
         assert!(!s.home_activities);
+    }
+
+    #[test]
+    fn a_file_from_before_the_windows_went_still_loads() {
+        // A settings.json from 0.17: the live activities and the Plan island
+        // moved into windows of their own, folded, put on the right and
+        // resized. Those windows are gone: the file loads without an
+        // error, everything else in it is kept, and its next save leaves the
+        // old keys out, so nothing can bring a window back.
+        let mut object = custom().as_object().unwrap().clone();
+        for (key, value) in [
+            ("activitiesDetached", json!(true)),
+            ("activitiesX", json!(120.0)),
+            ("activitiesY", json!(80.0)),
+            ("activitiesFolded", json!(true)),
+            ("activitiesSide", json!("right")),
+            ("activitiesWidth", json!(300.0)),
+            ("activitiesHeight", json!(360.0)),
+            ("agentPlanMoved", json!(true)),
+            ("agentPlanX", json!(300.0)),
+            ("agentPlanY", json!(60.0)),
+            ("agentPlanWidth", json!(320.0)),
+            ("agentPlanHeight", json!(380.0)),
+        ] {
+            object.insert(key.to_string(), value);
+        }
+        let s = parse(&serde_json::to_vec(&object).unwrap()).unwrap();
+        assert_eq!(shown(&s), custom());
+        assert!(!s.home_activities);
+        assert_eq!(s.island_width, 900.0);
+        let saved = shown(&s);
+        for key in ["activitiesDetached", "activitiesX", "agentPlanMoved", "agentPlanY", "activitiesFolded", "agentPlanWidth"] {
+            assert!(saved.get(key).is_none(), "{key} is not written again");
+        }
+        // The window keeps the same room beside the island it had by default.
+        assert_eq!(crate::island::Placement::of(&s).beside, crate::island::Placement::of(&Settings::default()).beside);
     }
 
     #[test]

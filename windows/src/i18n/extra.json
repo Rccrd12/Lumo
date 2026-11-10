@@ -6389,18 +6389,6 @@
    "id": "Perkecil",
    "it": "Riduci"
   },
-  "Start": {
-   "zh-Hans": "开始",
-   "hi": "शुरू करें",
-   "es": "Iniciar",
-   "ar": "ابدأ",
-   "fr": "Lancer",
-   "bn": "শুরু",
-   "pt-BR": "Iniciar",
-   "ru": "Старт",
-   "id": "Mulai",
-   "it": "Avvia"
-  },
   "15m pasta": {
    "zh-Hans": "15m 面条",
    "hi": "15m पास्ता",
@@ -6460,30 +6448,6 @@
    "ru": "Ничего в ближайшие дни",
    "id": "Tidak ada dalam beberapa hari ke depan",
    "it": "Niente nei prossimi giorni"
-  },
-  "Paste your calendar's iCal address in Settings → Island to see what's next.": {
-   "zh-Hans": "在“设置 → 岛”中粘贴日历的 iCal 地址，即可查看接下来的安排。",
-   "hi": "आगे क्या है देखने के लिए सेटिंग्स → आइलैंड में अपने कैलेंडर का iCal पता चिपकाएँ।",
-   "es": "Pega la dirección iCal de tu calendario en Ajustes → Isla para ver lo que viene.",
-   "ar": "الصق عنوان iCal لتقويمك في الإعدادات ← الجزيرة لترى ما هو قادم.",
-   "fr": "Colle l'adresse iCal de ton calendrier dans Réglages → Île pour voir ce qui arrive.",
-   "bn": "সামনে কী আছে দেখতে সেটিংস → আইল্যান্ডে আপনার ক্যালেন্ডারের iCal ঠিকানা পেস্ট করুন।",
-   "pt-BR": "Cole o endereço iCal da sua agenda em Configurações → Ilha para ver o que vem por aí.",
-   "ru": "Вставьте iCal-адрес календаря в Настройки → Остров, чтобы видеть, что впереди.",
-   "id": "Tempel alamat iCal kalendermu di Pengaturan → Pulau untuk melihat yang akan datang.",
-   "it": "Incolla l'indirizzo iCal del tuo calendario in Impostazioni → Isola per vedere cosa ti aspetta."
-  },
-  "Turn on the Email pill in Settings to see new emails here.": {
-   "zh-Hans": "在设置中打开“电子邮件”胶囊，即可在此看到新邮件。",
-   "hi": "यहाँ नए ईमेल देखने के लिए सेटिंग्स में ईमेल पिल चालू करें।",
-   "es": "Activa la píldora Correo en Ajustes para ver aquí los correos nuevos.",
-   "ar": "فعّل حبة البريد الإلكتروني في الإعدادات لترى الرسائل الجديدة هنا.",
-   "fr": "Active la pastille E-mail dans les Réglages pour voir les nouveaux e-mails ici.",
-   "bn": "এখানে নতুন ইমেল দেখতে সেটিংসে ইমেল পিল চালু করুন।",
-   "pt-BR": "Ative a pílula E-mail nas Configurações para ver os e-mails novos aqui.",
-   "ru": "Включите плашку «Почта» в настройках, чтобы видеть здесь новые письма.",
-   "id": "Aktifkan pil Email di Pengaturan untuk melihat email baru di sini.",
-   "it": "Attiva la pillola Email nelle Impostazioni per vedere qui le nuove email."
   },
   "Today": {
    "zh-Hans": "今天",
@@ -6592,30 +6556,6 @@
    "ru": "Неверный адрес или пароль приложения.",
    "id": "Alamat atau sandi aplikasi salah.",
    "it": "L'indirizzo o la password per le app non sono corretti."
-  },
-  "Ignore": {
-   "zh-Hans": "忽略",
-   "hi": "अनदेखा करें",
-   "es": "Ignorar",
-   "ar": "تجاهل",
-   "fr": "Ignorer",
-   "bn": "উপেক্ষা করুন",
-   "pt-BR": "Ignorar",
-   "ru": "Скрыть",
-   "id": "Abaikan",
-   "it": "Ignora"
-  },
-  "Open this email": {
-   "zh-Hans": "打开这封邮件",
-   "hi": "यह ईमेल खोलें",
-   "es": "Abrir este correo",
-   "ar": "فتح هذه الرسالة",
-   "fr": "Ouvrir cet e-mail",
-   "bn": "এই ইমেলটি খুলুন",
-   "pt-BR": "Abrir este e-mail",
-   "ru": "Открыть это письмо",
-   "id": "Buka email ini",
-   "it": "Apri questa email"
   },
   "{pct}% used": {
    "zh-Hans": "已用 {pct}%",

@@ -127,11 +127,11 @@ pub struct Placement {
     /// view's own), in page pixels.
     pub width: f64,
     pub height: f64,
-    /// The live activities and the Plan island beside the open island (on the
-    /// top and bottom edges), as (width, height) page pixels, or (0, 0) when
-    /// there are none: the window is wider by that room on each side, and
-    /// tall enough (activities.rs side_room).
-    pub activities: (f64, f64),
+    /// Room the window keeps on each side of the open island (on the top and
+    /// bottom edges), in page pixels: the window is wider by it on both sides,
+    /// so the island stays centred and the home has room to be wider than the
+    /// island's width (src/core/layout.ts homeWidth).
+    pub beside: f64,
     /// Between the island and its edge of the screen, in page pixels (edge_gap_of).
     pub gap: f64,
     /// The closed island's width, so the wake strip's length, in page pixels (compact_width_of).
@@ -147,7 +147,7 @@ impl Placement {
             float: s.island_float.max(0.0),
             width: s.island_width,
             height: s.island_height,
-            activities: crate::activities::side_room(s),
+            beside: BESIDE_ROOM,
             gap: edge_gap_of(&s.island_edge_gap),
             strip: compact_width_of(&s.island_compact_width),
         }
@@ -164,6 +164,12 @@ const MAX_HEIGHT: f64 = 640.0;
 /// Room the window keeps around the island, for the hit margin and Lumo's glow.
 const SIDE_ROOM: f64 = PANEL_W - DEFAULT_WIDTH;
 const BOTTOM_ROOM: f64 = 20.0;
+
+/// Room the window keeps on each side of the open island: what the live
+/// activities and the Plan island took beside it before they became the
+/// home's tiles and the chat's strip (280 wide, 12 away), kept so the window
+/// and every view in it stay as they were.
+const BESIDE_ROOM: f64 = 280.0 + 12.0;
 
 /// The window grows in steps of this much, so a resize does not resize it at every pixel.
 const PANEL_STEP: f64 = 40.0;
@@ -203,13 +209,11 @@ fn finite(v: f64) -> f64 {
 fn panel_size(p: Placement) -> (f64, f64) {
     let up = |v: f64| (v / PANEL_STEP).ceil() * PANEL_STEP;
     let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + p.gap };
-    // The live activities on one side, the Plan island on the other: the same
-    // room on both keeps the island centred (activities.rs GAP).
-    let (aw, ah) = if p.dock.upright() { (0.0, 0.0) } else { p.activities };
-    let beside = if aw > 0.0 { 2.0 * (aw + crate::activities::GAP) } else { 0.0 };
+    // The same room on both sides keeps the island centred.
+    let beside = if p.dock.upright() { 0.0 } else { 2.0 * finite(p.beside).max(0.0) };
     (
         PANEL_W.max(up(clamp_width(p.width) + SIDE_ROOM + beside)),
-        PANEL_H.max(up(clamp_height(p.height).max(ah) + ends)),
+        PANEL_H.max(up(clamp_height(p.height) + ends)),
     )
 }
 
@@ -366,28 +370,6 @@ fn centre_in_panel(dock: Dock, panel: (f64, f64), w: f64, h: f64, shift: (f64, f
     (cx + shift.0, cy + shift.1)
 }
 
-/// Where the open island is on the screen, in physical pixels (left, top,
-/// right, bottom), from where it was put and how wide it is: for a window
-/// placed beside it (plan_island.rs). Its height is the one picked, or
-/// `fallback_h` page pixels when each view has its own.
-pub fn open_rect(app: &AppHandle, fallback_h: f64) -> Option<(f64, f64, f64, f64)> {
-    let (pref, p) = {
-        let s = app.state::<crate::Shared>().settings.lock().unwrap().clone();
-        (s.screen.clone(), Placement::of(&s))
-    };
-    let m = target_monitor(app, &pref)?;
-    let scale = m.scale_factor();
-    let area = area_of(&m);
-    let (x, y, _, _) = frame(area, scale, p, false);
-    let w = clamp_width(p.width);
-    let h = if p.height > 0.0 { clamp_height(p.height) } else { fallback_h };
-    let (cx, cy) = centre_in_panel(p.dock, panel_size(p), w, h, shift(area, scale, p));
-    let k = scale * clamp_zoom(p.zoom);
-    let (cx, cy) = (x as f64 + cx * k, y as f64 + cy * k);
-    let (hw, hh) = (w * k / 2.0, h * k / 2.0);
-    Some((cx - hw, cy - hh, cx + hw, cy + hh))
-}
-
 /// Margin around the island that still counts as "on the island", in logical px.
 /// Generous, because a click must never be swallowed.
 const HIT_MARGIN: f64 = 14.0;
@@ -396,11 +378,6 @@ const HIT_MARGIN: f64 = 14.0;
 pub struct CursorPayload {
     pub x: f64,
     pub y: f64,
-    /// Over the live activities' own window with the button held (moved or
-    /// resized): only then does it count as the island.
-    pub panel: bool,
-    /// Over the Plan island's own window with the button held, as `panel`.
-    pub plan: bool,
 }
 
 /// The island shape in window-logical coordinates, pushed by the front end.
@@ -969,24 +946,15 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     let _ = win.set_position(PhysicalPosition::new(x, y));
     // The page keeps its 720 × 320 layout; the webview draws it bigger.
     let _ = win.set_zoom(zoom);
-    // The live activities in their own window are drawn at the same zoom,
-    // and so is the Plan island.
-    if let Some(panel) = crate::activities::window(app) {
-        let _ = panel.set_zoom(zoom);
-    }
-    if let Some(plan) = crate::plan_island::window(app) {
-        let _ = plan.set_zoom(zoom);
-    }
     let _ = win.set_always_on_top(true);
     platform::raise_topmost(&win);
 }
 
 /// Another app came to the front (platform::watch_foreground): the island, its
-/// wake strip included, and the live activities in their own window go back
-/// above it, even when it is always on top too. Claude's hand (computer.rs)
-/// goes last, so it stays above the island.
+/// wake strip included, goes back above it, even when it is always on top
+/// too. Claude's hand (computer.rs) goes last, so it stays above the island.
 pub fn keep_on_top(app: &AppHandle) {
-    for label in [WINDOW_LABEL, crate::activities::LABEL, crate::plan_island::LABEL, crate::computer::OVERLAY] {
+    for label in [WINDOW_LABEL, crate::computer::OVERLAY] {
         let Some(win) = app.get_webview_window(label) else { continue };
         platform::raise_topmost(&win);
     }
@@ -997,7 +965,7 @@ mod placement_tests {
     use super::*;
 
     const FHD: (i32, i32, u32, u32) = (0, 0, 1920, 1080);
-    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, activities: (0.0, 0.0), gap: EDGE_GAP, strip: STRIP_W };
+    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, beside: 0.0, gap: EDGE_GAP, strip: STRIP_W };
 
     #[test]
     fn the_distance_from_the_edge_is_none_medium_or_wide() {
@@ -1143,10 +1111,11 @@ mod placement_tests {
         assert_eq!(frame(FHD, 1.0, Placement { height: 500.0, dock: Dock::Left, ..HOME }, false), (0, 240, 720, 600));
         // Nothing narrower than the panel, and never more than the display.
         assert_eq!(frame(FHD, 1.0, Placement { width: 100.0, ..HOME }, false).2, 720);
-        // The live activities beside it: room on both sides, the island still centred.
-        assert_eq!(frame(FHD, 1.0, Placement { activities: (264.0, 0.0), ..HOME }, false), (320, 0, 1280, 480));
-        assert_eq!(frame(FHD, 1.0, Placement { activities: (264.0, 0.0), dock: Dock::Left, ..HOME }, false).2, 720);
-        assert_eq!(frame(FHD, 1.0, Placement { activities: (264.0, 600.0), ..HOME }, false).3, 640);
+        // The room kept beside it (BESIDE_ROOM): on both sides, the island still
+        // centred; 640 + 80 + 2 × 292, rounded up to the next 40. None on a side.
+        assert_eq!(frame(FHD, 1.0, Placement { beside: BESIDE_ROOM, ..HOME }, false), (300, 0, 1320, 480));
+        assert_eq!(frame(FHD, 1.0, Placement { beside: BESIDE_ROOM, dock: Dock::Left, ..HOME }, false).2, 720);
+        assert_eq!(Placement::of(&crate::settings::Settings::default()).beside, BESIDE_ROOM);
         assert_eq!(frame(FHD, 1.6, Placement { width: 1200.0, height: 640.0, ..HOME }, false), (0, 0, 1920, 1080));
         assert_eq!(frame(FHD, 1.0, Placement { width: f64::NAN, height: f64::NAN, offset: f64::NAN, ..HOME }, false), (600, 0, 720, 480));
     }
@@ -1330,11 +1299,9 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // often comes without a move. A press may also be the start of a
                 // file drag: make sure the drop target is ours before it arrives.
                 let down = left_button_down();
-                let on_panel = crate::activities::cursor_over((cx, cy));
-                let on_plan = crate::plan_island::cursor_over((cx, cy));
                 let acting = crate::computer::acting();
                 if down && !was_down && !acting {
-                    if !on_island && !on_panel && !on_plan {
+                    if !on_island {
                         let _ = win.emit("outside-press", ());
                     }
                     let handle = app.clone();
@@ -1374,7 +1341,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     });
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel && down, plan: on_plan && down });
+                let _ = win.emit("cursor", CursorPayload { x, y });
             }
         }
     });
@@ -1387,10 +1354,10 @@ pub fn refresh_click_through(app: &AppHandle, gate: &PollGate) {
     gate.forget_ignore_state();
 }
 
-/// Computer use (computer.rs): while Claude clicks or drags, the island and
-/// its live activities let the mouse through to what is under them. Let go,
-/// the cursor poll decides again (or, while the island is shut, the wake strip
-/// takes the mouse as before).
+/// Computer use (computer.rs): while Claude clicks or drags, the island lets
+/// the mouse through to what is under it. Let go, the cursor poll decides
+/// again (or, while the island is shut, the wake strip takes the mouse as
+/// before).
 pub fn let_mouse_through(app: &AppHandle, through: bool) {
     let gate = app.try_state::<crate::Shared>().map(|s| s.gate.clone());
     if through {
@@ -1400,12 +1367,6 @@ pub fn let_mouse_through(app: &AppHandle, through: bool) {
         set_ignore_cursor(app, true);
     } else if let Some(gate) = gate.filter(|g| g.collapsed.load(Ordering::Relaxed)) {
         refresh_click_through(app, &gate);
-    }
-    if let Some(panel) = crate::activities::window(app) {
-        let _ = panel.set_ignore_cursor_events(through);
-    }
-    if let Some(plan) = crate::plan_island::window(app) {
-        let _ = plan.set_ignore_cursor_events(through);
     }
 }
 

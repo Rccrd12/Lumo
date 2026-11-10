@@ -937,36 +937,6 @@ html.look-new .question-text {
   margin-top: 2px;
 }
 
-/* ── One island: the Plan inside it, beside the chat ────────────────────────
-   island.ts sideInside puts it in the island's right-hand side, under the
-   top bar, and says how much room it takes in --side-room. (The live
-   activities are the home's tiles, views/home.ts.) */
-
-html.look-new .chat-body {
-  margin-right: var(--side-room, 0px);
-}
-
-html.look-new #plan.agent-plan {
-  background: #111214;
-  border-radius: 14px;
-  box-shadow: none;
-}
-
-/* Drawn before the island in the page (island.ts), so lifted above it. */
-html.look-new #plan {
-  z-index: 3;
-}
-
-/* No grips: inside the island it is not moved or resized. */
-html.look-new #plan .act-grip,
-html.look-new #plan [class*="grip"] {
-  display: none;
-}
-
-html.look-new #plan .plan-head {
-  cursor: default;
-}
-
 /* No timer running: three to start. */
 html.look-new .tile-chips {
   display: flex;

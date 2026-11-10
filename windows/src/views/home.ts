@@ -113,8 +113,8 @@ const BOTTOM = 12;
 
 function tilesOf(data: ActivitiesData): ("timer" | "music" | "calendar" | "mail")[] {
   const tiles: ("timer" | "music" | "calendar" | "mail")[] = [];
-  // Put away with the "⋯" menu's Live Activities (their own window, folded
-  // or off, has no say here: on the home they are shown by default).
+  // Put away with the "⋯" menu's Live Activities (on the home they are
+  // shown by default).
   if (State.settings.homeActivities === false) return tiles;
   // The timer and the music always (a timer to start, what plays); the
   // calendar and the email once they are set up, empty or not.
