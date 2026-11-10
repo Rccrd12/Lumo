@@ -800,6 +800,9 @@ fn chat_stop(chats: State<Chats>, chat_id: String) {
 #[tauri::command]
 fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
     chats.get(&chat_id).rewind(keep);
+    // Its Claude Code is in the session the edit leaves: what it would still
+    // write by itself belongs to the answers dropped.
+    claude_code::close(&chat_id);
 }
 
 /// The × of one of the chat's files: out of the chat's context from the next
