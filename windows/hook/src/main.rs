@@ -79,6 +79,13 @@ const MAX_DIFF_FIELD_LEN: usize = 256 * 1024;
 /// For all edit strings of one event together, so the line stays well under the
 /// 1 MiB the app reads from the pipe even once JSON-escaped.
 const MAX_DIFF_TOTAL: usize = 512 * 1024;
+/// The `tool_input` keys a permission card shows as what Allow allows: the
+/// command, the file, the page.
+const TARGET_FIELDS: &[&str] = &["command", "cmd", "CommandLine", "script", "file_path", "notebook_path", "path", "url"];
+/// Per target string of a permission request: the card shows the whole of it,
+/// so a long script reaches the island whole. Past this the request carries
+/// `lumo_input_cut`, and the island neither allows it nor remembers it.
+const MAX_TARGET_LEN: usize = 64 * 1024;
 
 mod win;
 use win::{ancestry, connect, parent};
@@ -129,9 +136,6 @@ struct Event {
     name: String,
     /// For Claude Code's AskUserQuestion, the question as it was asked.
     question: Option<Value>,
-    /// Claude Code's `permission_suggestions`, whole: what "Allow for this
-    /// session" hands back to it (reply::decision_json_with).
-    suggestions: Option<Value>,
     /// A shell command of the island's own Antigravity CLI chat, forwarded as
     /// a permission request (see `prepare`).
     island_card: bool,
@@ -139,7 +143,7 @@ struct Event {
     /// forwarded as a permission request (see `prepare`): no click is "ask".
     agy_gate: bool,
     /// Claude Code asking to leave plan mode (ExitPlanMode): the only request
-    /// "Approve and let it edit files" may answer (reply::decision_json_with).
+    /// "Approve and let it edit files" may answer (reply::decision_json).
     plan: bool,
 }
 
@@ -218,7 +222,7 @@ fn main() {
     } else if event.agy_gate {
         print(Some(reply::antigravity_gate(decision.as_deref())));
     } else {
-        print(reply::stdout_with(&args.agent, &event.name, decision.as_deref(), event.question.as_ref(), event.suggestions.as_ref()));
+        print(reply::stdout(&args.agent, &event.name, decision.as_deref(), event.question.as_ref()));
     }
     std::process::exit(0);
 }
@@ -376,7 +380,6 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let question = (map.get("tool_name").and_then(Value::as_str) == Some("AskUserQuestion"))
         .then(|| map.get("tool_input").cloned())
         .flatten();
-    let suggestions = (name == "PermissionRequest").then(|| map.get("permission_suggestions").cloned()).flatten();
     let plan = name == "PermissionRequest" && map.get("tool_name").and_then(Value::as_str) == Some("ExitPlanMode");
 
     // Every string is capped, except the edit text of a finished Edit /
@@ -385,7 +388,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
 
     let mut line = payload.to_string();
     line.push('\n');
-    Some(Event { line, name, question, suggestions, island_card, agy_gate, plan })
+    Some(Event { line, name, question, island_card, agy_gate, plan })
 }
 
 /// The shell command of an Antigravity `run_command` call, when it reached
@@ -456,6 +459,20 @@ fn term_editor(env: &dyn Fn(&str) -> Option<String>) -> Option<&'static str> {
 /// whole. If even those had to be cut, `lumo_diff_truncated` tells the island
 /// not to show counts it cannot trust.
 fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
+    if event == "PermissionRequest" {
+        let input = payload.as_object_mut().and_then(|map| map.remove("tool_input"));
+        truncate_strings(payload);
+        if let Some(mut input) = input {
+            let cut_any = cap_request_strings(&mut input);
+            if let Some(map) = payload.as_object_mut() {
+                map.insert("tool_input".into(), input);
+                if cut_any {
+                    map.insert("lumo_input_cut".into(), serde_json::Value::Bool(true));
+                }
+            }
+        }
+        return;
+    }
     let keeps_diff = event == "PostToolUse"
         && payload
             .get("tool_name")
@@ -509,6 +526,34 @@ fn cap_diff_strings(value: &mut serde_json::Value, budget: &mut usize, cut_any: 
             cut(s, MAX_FIELD_LEN);
         }
         _ => {}
+    }
+}
+
+/// `tool_input` of a permission request: its target (TARGET_FIELDS, at the
+/// top) up to MAX_TARGET_LEN, any other string the ordinary cap. True when
+/// anything was cut: the island then knows the input it got is not the whole.
+fn cap_request_strings(input: &mut Value) -> bool {
+    let mut cut_any = false;
+    if let Value::Object(map) = input {
+        for (key, v) in map.iter_mut() {
+            match v {
+                Value::String(s) if TARGET_FIELDS.contains(&key.as_str()) => cut_any |= cut(s, MAX_TARGET_LEN),
+                _ => cut_any |= cap_all(v),
+            }
+        }
+    } else {
+        cut_any |= cap_all(input);
+    }
+    cut_any
+}
+
+/// `truncate_strings`, saying whether anything was cut.
+fn cap_all(value: &mut Value) -> bool {
+    match value {
+        Value::String(s) => cut(s, MAX_FIELD_LEN),
+        Value::Array(items) => items.iter_mut().fold(false, |any, v| cap_all(v) | any),
+        Value::Object(map) => map.values_mut().fold(false, |any, v| cap_all(v) | any),
+        _ => false,
     }
 }
 
@@ -650,7 +695,7 @@ mod tests {
         let ask = Args { agent: String::new(), event: "PermissionRequest".into(), wait: None, chat_guard: false };
         let request = br#"{"hook_event_name":"PermissionRequest","session_id":"s","tool_name":"PowerShell","tool_input":{"command":"Start-Process whatsapp:"}}"#;
         let ev = prepare(request, &ask, &island, "/p").unwrap();
-        // Claude Code's own request: answered as one (reply::stdout_with), not as a converted card.
+        // Claude Code's own request: answered as one (reply::stdout), not as a converted card.
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PermissionRequest");
         let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
@@ -842,6 +887,29 @@ mod tests {
             truncate_payload(&mut v, event);
             assert!(v["tool_input"]["content"].as_str().unwrap().len() <= MAX_FIELD_LEN + 4, "{event} {tool}");
         }
+    }
+
+    #[test]
+    fn a_permission_request_carries_its_whole_command_or_says_it_was_cut() {
+        // A long script: the card gets all of it, nothing says "cut".
+        let long = format!("cd x && npm run build && powershell -c \"{}\"", "Get-Item a; ".repeat(1_000));
+        let mut v = serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": long, "description": "Build" } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["tool_input"]["command"].as_str().unwrap(), long);
+        assert!(v.get("lumo_input_cut").is_none());
+        // Past what a card can carry: cut, and flagged.
+        let huge = "x".repeat(MAX_TARGET_LEN + 10);
+        let mut v = serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": huge } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v["tool_input"]["command"].as_str().unwrap().len() <= MAX_TARGET_LEN + 4);
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        // Any other field cut counts too: the input is not the whole one.
+        let mut v = serde_json::json!({ "tool_name": "mcp__x__y", "tool_input": { "body": "y".repeat(MAX_FIELD_LEN + 1) } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        let mut v = serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": "ls" }, "cwd": "c".repeat(MAX_FIELD_LEN + 1) });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v.get("lumo_input_cut").is_none(), "only the input counts");
     }
 
     #[test]

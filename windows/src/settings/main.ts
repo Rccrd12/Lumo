@@ -809,8 +809,8 @@ const COMPUTER_SETTINGS = {
  * always does without a switch.
  */
 function securitySection(): HTMLElement {
-  // The one mode every CLI starts from.
-  const mode = parsePermissionMode(settings.chatPermissionMode, "antigravity-cli");
+  // The one mode every CLI starts from (Antigravity CLI keeps its own, picked in the chat).
+  const mode = parsePermissionMode(settings.chatPermissionMode, "claude-code");
   const permissions = select(
     permissionModesFor("claude-code").map((m): [string, string] => [m, t(PERMISSION_NAMES[m])]),
     mode,

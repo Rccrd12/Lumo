@@ -18,7 +18,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
 use std::time::Duration;
 
 /// What a watch on a file or a folder waits for.
@@ -212,9 +211,10 @@ pub fn target(source: &str, until: &str, target: &str, text: &str, home: &Path) 
             Ok(program_name(target))
         }
         "web" => {
-            let lower = target.to_ascii_lowercase();
-            if !(lower.starts_with("https://") || lower.starts_with("http://")) || target.contains(char::is_whitespace) {
-                return Err("Give the page as a link starting with https://.".into());
+            // Only a public https page, as the chat's images (web_image.rs):
+            // never this PC or the local network, every minute, on an answer's word.
+            if !target.to_ascii_lowercase().starts_with("https://") || target.contains(char::is_whitespace) || crate::web_image::public_url(target).is_err() {
+                return Err("Give the page as a public link starting with https://.".into());
             }
             if until == "contains" {
                 wants_text(text)?;
@@ -416,20 +416,11 @@ impl Page {
     }
 }
 
-fn client() -> reqwest::Client {
-    static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
-        reqwest::Client::builder()
-            .timeout(Duration::from_secs(20))
-            .redirect(reqwest::redirect::Policy::limited(5))
-            .build()
-            .unwrap_or_default()
-    });
-    CLIENT.clone()
-}
-
 /// The page, read at most MAX_PAGE far; an HTML page as the words it shows.
+/// Only on the public internet (web_image::get_public): an address that
+/// isn't, or turns out not to be once resolved or redirected, is no answer.
 pub async fn page(url: &str) -> Page {
-    let Ok(mut response) = client().get(url).header("User-Agent", "Lumo").send().await else {
+    let Ok(mut response) = crate::web_image::get_public(url, "text/html,*/*;q=0.8").await else {
         return Page { status: None, text: String::new() };
     };
     let status = response.status().as_u16();
@@ -653,6 +644,10 @@ mod tests {
         assert!(target("web", "contains", "https://example.com", " ", home).is_err());
         assert!(target("web", "contains", "https://example.com", "In stock", home).is_ok());
         assert!(target("web", "up", "https://example.com/\"]]", "", home).is_err());
+        // Never this PC or the local network, nor plain http.
+        for page in ["http://example.com", "https://localhost:3000", "https://127.0.0.1/", "https://192.168.1.1/admin", "https://router.local/", "https://[::1]/", "https://10.0.0.5:8443/"] {
+            assert!(target("web", "changed", page, "", home).is_err(), "{page}");
+        }
     }
 
     #[test]

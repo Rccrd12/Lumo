@@ -269,6 +269,12 @@ pub async fn send(
                 } else {
                     crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
                 };
+                // Only a tool offered in this turn runs: a name the model made
+                // up, or one Lumo did not offer (web search off), is refused.
+                if !crate::tools::offered_in(&tools, name) {
+                    turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": crate::tools::not_offered(name) }));
+                    continue;
+                }
                 chat.events().activity(app, act);
                 let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, crate::tools::Asking::Untrusted, false).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));

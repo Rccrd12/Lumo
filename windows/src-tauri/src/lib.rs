@@ -21,6 +21,7 @@ mod codex_chat;
 mod codex_plan;
 mod computer;
 mod config_file;
+mod confirmed;
 mod desk;
 mod energy;
 mod explorer;
@@ -471,19 +472,28 @@ fn agent_hooks_status() -> std::collections::HashMap<String, bool> {
 }
 
 /// Returns the diff the user has to look at before anything is written.
+/// Shown in Settings, it is the one its write may take (confirmed.rs).
 #[tauri::command(async)]
-fn hooks_preview(install: bool) -> Result<HookPreview, String> {
-    hooks::preview(install)
+fn hooks_preview(window: tauri::WebviewWindow, install: bool) -> Result<HookPreview, String> {
+    let preview = hooks::preview(install)?;
+    if window.label() == confirmed::SETTINGS_WINDOW {
+        confirmed::shown(&format!("hooks:{install}"), &preview.fingerprint);
+    }
+    Ok(preview)
 }
 
-/// Only ever called from an explicit click in the settings window.
+/// Only ever called from an explicit click in the settings window: refused
+/// from any other, and without the preview Settings showed just before.
 #[tauri::command(async)]
 fn hooks_apply(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     shared: State<Shared>,
     install: bool,
     fingerprint: String,
 ) -> Result<String, String> {
+    confirmed::from_settings(window.label())?;
+    confirmed::take(&format!("hooks:{install}"), &fingerprint)?;
     // The fingerprint comes from the preview the user actually looked at, so a
     // settings.json that changed in between is refused rather than overwritten.
     let backup = hooks::write(install, &fingerprint)?;
@@ -508,14 +518,20 @@ fn agent_hooks_list() -> Vec<agents::AgentStatus> {
 
 /// The diff the user has to look at before anything is written.
 #[tauri::command(async)]
-fn agent_hooks_preview(agent: String, install: bool) -> Result<config_file::Plan, String> {
-    agents::preview(&agent, install)
+fn agent_hooks_preview(window: tauri::WebviewWindow, agent: String, install: bool) -> Result<config_file::Plan, String> {
+    let plan = agents::preview(&agent, install)?;
+    if window.label() == confirmed::SETTINGS_WINDOW {
+        confirmed::shown(&format!("agent:{agent}:{install}"), &plan.fingerprint);
+    }
+    Ok(plan)
 }
 
 /// Only ever called from an explicit click in the settings window, with the
-/// fingerprint of the preview the user looked at.
+/// fingerprint of the preview the user looked at (confirmed.rs).
 #[tauri::command(async)]
-fn agent_hooks_apply(agent: String, install: bool, fingerprint: String) -> Result<String, String> {
+fn agent_hooks_apply(window: tauri::WebviewWindow, agent: String, install: bool, fingerprint: String) -> Result<String, String> {
+    confirmed::from_settings(window.label())?;
+    confirmed::take(&format!("agent:{agent}:{install}"), &fingerprint)?;
     let backups = agents::apply(&agent, install, &fingerprint)?;
     let done = if install { "installed" } else { "removed" };
     log::line(format!("agent hooks {done} for {agent}"));
@@ -527,18 +543,25 @@ fn agent_hooks_apply(agent: String, install: bool, fingerprint: String) -> Resul
 /// The diff of putting the plan usage relay into (or taking it out of) the
 /// status line, before anything is written.
 #[tauri::command(async)]
-fn status_line_preview(install: bool) -> Result<HookPreview, String> {
-    hooks::status_line_preview(install)
+fn status_line_preview(window: tauri::WebviewWindow, install: bool) -> Result<HookPreview, String> {
+    let preview = hooks::status_line_preview(install)?;
+    if window.label() == confirmed::SETTINGS_WINDOW {
+        confirmed::shown(&format!("statusline:{install}"), &preview.fingerprint);
+    }
+    Ok(preview)
 }
 
-/// Only ever called from an explicit click in the settings window.
+/// Only ever called from an explicit click in the settings window (confirmed.rs).
 #[tauri::command(async)]
 fn status_line_apply(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     shared: State<Shared>,
     install: bool,
     fingerprint: String,
 ) -> Result<String, String> {
+    confirmed::from_settings(window.label())?;
+    confirmed::take(&format!("statusline:{install}"), &fingerprint)?;
     let backup = hooks::status_line_write(install, &fingerprint)?;
     let updated = {
         let mut current = shared.settings.lock().unwrap();
@@ -1174,7 +1197,7 @@ fn settings_page_url(app: &AppHandle) -> WebviewUrl {
 /// one that exists before the island's webview does.
 fn create_settings_window(app: &AppHandle) {
     let url = settings_page_url(app);
-    match WebviewWindowBuilder::new(app, "settings", url)
+    match WebviewWindowBuilder::new(app, confirmed::SETTINGS_WINDOW, url)
         .additional_browser_args(BROWSER_ARGS)
         .title(i18n::t("Settings — Lumo"))
         // Room for the section list on the left and the section beside it.

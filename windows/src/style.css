@@ -6880,6 +6880,13 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   color: var(--dim-3);
 }
 
+/* What Try runs, whole: wrapped, never cut at the card's edge. */
+.forge-cmdline {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 96px;
+}
+
 .forge-try {
   display: flex;
   flex-direction: column;
