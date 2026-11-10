@@ -709,6 +709,11 @@ export interface MarkdownOptions {
    * card's text): an answer downloads its first MAX_PER_ANSWER images only.
    */
   imagesBefore?: number;
+  /**
+   * Shown after the text, left in place when it is already there (the tool
+   * workshop's "Writing the tool…" line, its dot pulsing on across draws).
+   */
+  after?: HTMLElement | null;
 }
 
 /**
@@ -805,6 +810,7 @@ export function renderMarkdown(into: HTMLElement, markdown: string, opts: Markdo
     i--;
     if (lines.length) out.push(quoteRun(lines));
   }
+  if (opts.after) out.push(opts.after);
   place(into, out);
   if (kept.size) shown.set(into, kept);
   else shown.delete(into);

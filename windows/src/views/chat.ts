@@ -835,11 +835,17 @@ function drawAnswer(into: HTMLElement, text: string, workshop: boolean, scope: s
     return;
   }
   const words = stripDraft(shown);
-  renderMarkdown(into, words.text, { streaming: true, scope });
+  let line: HTMLElement | null = null;
   if (words.writing || words.draft) {
-    into.append(h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) })));
+    // The same line from one draw to the next, so its dot pulses on.
+    line = forgeLines.get(into) ?? h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) }));
+    forgeLines.set(into, line);
   }
+  renderMarkdown(into, words.text, { streaming: true, scope, after: line });
 }
+
+/** The workshop's "Writing the tool…" line of each answer being written. */
+const forgeLines = new WeakMap<HTMLElement, HTMLElement>();
 
 /** The checklists read from each answer's text, so a redraw doesn't read them again. */
 const answerLists = new Map<string, Checklist[]>();
