@@ -754,6 +754,14 @@ body {
   animation-play-state: paused;
 }
 
+/* The same for the whole page while the island is hidden (island.ts
+   markHidden): nothing can be seen, so nothing may keep it repainting. */
+.island-hidden *,
+.island-hidden *::before,
+.island-hidden *::after {
+  animation-play-state: paused !important;
+}
+
 /* ── Cards ──────────────────────────────────────────────────────────────── */
 
 .card {
@@ -6875,6 +6883,13 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 .forge-note {
   font: 400 10.5px var(--font);
   color: var(--dim-3);
+}
+
+/* What Try runs, whole: wrapped, never cut at the card's edge. */
+.forge-cmdline {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 96px;
 }
 
 .forge-try {

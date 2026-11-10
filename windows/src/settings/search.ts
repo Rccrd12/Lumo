@@ -41,8 +41,14 @@ export function matches(text: string, query: string): boolean {
   return words.every((w) => hay.includes(stem(w)));
 }
 
-/** What a search shows or hides one by one: a setting, a shortcut, a pill. */
-const ROW_CLASSES = ["setting", "shortcut", "pill-row"];
+/**
+ * What a search shows or hides one by one: a setting, a shortcut, a pill, an
+ * integration. An integration is its switch and its key fields together:
+ * hidden one by one, its fields stayed on screen without the name above them.
+ */
+const ROW_CLASSES = ["setting", "shortcut", "pill-row", "integration"];
+/** Rows read whole: the words of each of their parts count, the fields' labels too. */
+const BLOCK_CLASSES = ["integration"];
 const isRow = (el: Element) => ROW_CLASSES.some((c) => el.classList.contains(c));
 
 /** Every element under `el`, depth first (plain child walks, nothing more). */
@@ -52,11 +58,20 @@ function descendants(el: Element): Element[] {
   return out;
 }
 
-const rowsIn = (el: Element) => descendants(el).filter(isRow);
+/** The rows under `el`, without the rows inside a row: those go with it. */
+function rowsIn(el: Element): Element[] {
+  const out: Element[] = [];
+  for (const child of Array.from(el.children)) {
+    if (isRow(child)) out.push(child);
+    else out.push(...rowsIn(child));
+  }
+  return out;
+}
 
 /** The words an element shows to read, without the choices of its drop-down lists. */
 function readable(el: Element): string {
-  const own = el.classList.contains("setting-text") ? el : descendants(el).find((d) => d.classList.contains("setting-text"));
+  const block = BLOCK_CLASSES.some((c) => el.classList.contains(c));
+  const own = block ? null : el.classList.contains("setting-text") ? el : descendants(el).find((d) => d.classList.contains("setting-text"));
   if (own) return own.textContent ?? "";
   let text = "";
   const walk = (node: Node) => {

@@ -97,26 +97,12 @@ fn wikimedia_thumb(raw: &str) -> Option<String> {
 }
 
 async fn download(raw: &str) -> Result<Vec<u8>, String> {
-    let mut url = parse(raw)?;
-    for _ in 0..=MAX_REDIRECTS {
-        let host = check_url(&url)?;
-        url = as_pinned(&url, &host)?;
-        let addrs = resolve(&host).await?;
-        let client = pinned_client(&host, &addrs)?;
-        let response = client
-            .get(url.clone())
-            .header("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif")
-            .send()
-            .await
-            .map_err(|e| format!("{} didn't answer: {}", host.name(), if e.is_timeout() { "too slow" } else { "no connection" }))?;
+    let response = get_public(raw, "image/avif,image/webp,image/png,image/jpeg,image/gif").await?;
+    let host = response.url().host_str().unwrap_or("The site").to_string();
+    {
         let status = response.status();
-        if status.is_redirection() {
-            let location = response.headers().get("location").and_then(|l| l.to_str().ok()).unwrap_or("");
-            url = next_hop(&url, location)?;
-            continue;
-        }
         if !status.is_success() {
-            return Err(format!("{} answered {}.", host.name(), status.as_u16()));
+            return Err(format!("{host} answered {}.", status.as_u16()));
         }
         let named = response.headers().get("content-type").and_then(|c| c.to_str().ok()).and_then(content_type);
         let Some(named) = named else {
@@ -126,12 +112,44 @@ async fn download(raw: &str) -> Result<Vec<u8>, String> {
             return Err("The image is bigger than 8 MB.".into());
         }
         let bytes = read_capped(response).await?;
-        return match sniff(&bytes) {
+        match sniff(&bytes) {
             Some(kind) if kind == named => Ok(bytes),
             _ => Err("The file is not the image it says it is.".into()),
-        };
+        }
     }
-    Err("The image redirects too many times.".into())
+}
+
+/// Whether `raw` is an address Lumo may open on its own: https, the usual
+/// port, a host that can only be on the internet (its name is checked again
+/// once resolved, by `get_public`).
+pub fn public_url(raw: &str) -> Result<(), String> {
+    check_url(&parse(raw)?).map(|_| ())
+}
+
+/// GET `raw` on the public internet only, as the images are (and a web watch's
+/// page, listen_local.rs): every hop checked and pinned to the addresses
+/// checked, no proxy, no cookies. The answer after the redirects, whatever its status.
+pub async fn get_public(raw: &str, accept: &str) -> Result<reqwest::Response, String> {
+    let mut url = parse(raw)?;
+    for _ in 0..=MAX_REDIRECTS {
+        let host = check_url(&url)?;
+        url = as_pinned(&url, &host)?;
+        let addrs = resolve(&host).await?;
+        let client = pinned_client(&host, &addrs)?;
+        let response = client
+            .get(url.clone())
+            .header("Accept", accept)
+            .send()
+            .await
+            .map_err(|e| format!("{} didn't answer: {}", host.name(), if e.is_timeout() { "too slow" } else { "no connection" }))?;
+        if response.status().is_redirection() {
+            let location = response.headers().get("location").and_then(|l| l.to_str().ok()).unwrap_or("");
+            url = next_hop(&url, location)?;
+            continue;
+        }
+        return Ok(response);
+    }
+    Err("The address redirects too many times.".into())
 }
 
 /// The body, refused as soon as it passes `MAX_BYTES`.

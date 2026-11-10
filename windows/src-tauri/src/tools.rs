@@ -421,6 +421,26 @@ pub fn any_enabled() -> bool {
 
 // ── Saving ────────────────────────────────────────────────────────────────────
 
+/// A program that runs whatever its arguments say, or one of Windows' own:
+/// not a tool's entry. Shells, script hosts and interpreters by their
+/// program's name, and anything under the Windows folder.
+fn runs_anything(path: &Path) -> bool {
+    const HOSTS: &[&str] = &[
+        "cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "rundll32", "regsvr32", "msiexec", "bash", "sh", "wsl",
+        "python", "pythonw", "py", "pyw", "node", "deno", "bun", "ruby", "perl", "php", "java", "javaw", "conhost", "explorer",
+        "schtasks", "reg", "certutil", "bitsadmin", "curl", "wget", "msbuild", "installutil", "forfiles", "ftp", "sc",
+    ];
+    let real = crate::file_moves::real_path(path);
+    let stem = |p: &Path| p.file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let windows = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()).to_ascii_lowercase().replace('/', "\\");
+    let in_windows = |p: &Path| {
+        let p = p.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
+        p.starts_with(&format!("{}\\", windows.trim_end_matches('\\')))
+    };
+    let host = |p: &Path| matches!(extension(p).as_str(), "exe" | "com") && HOSTS.contains(&stem(p).as_str());
+    host(path) || host(&real) || in_windows(path) || in_windows(&real)
+}
+
 /// The draft, checked and tidied: what a save or a try works from.
 fn checked(draft: &Draft) -> Result<Draft, String> {
     let name = draft.name.trim().chars().take(MAX_NAME).collect::<String>();
@@ -452,6 +472,11 @@ fn checked(draft: &Draft) -> Result<Draft, String> {
         && draft.replaces.as_deref().and_then(find).is_some_and(|(dir, _)| dir.join(&entry).is_file());
     if !(own || kept || (absolute && Path::new(&entry).is_file())) {
         return Err(tf("The file that runs the tool, {name}, isn't there.", &[("name", &entry)]));
+    }
+    // The user's own script, where it is: never Windows' programs or a shell
+    // or interpreter, which would run whatever the arguments say, unread.
+    if absolute && runs_anything(Path::new(&entry)) {
+        return Err(tf("{name} is a program of Windows or a shell: a tool runs a script of its own instead.", &[("name", &entry)]));
     }
     let params: Vec<Param> = draft
         .params
@@ -949,7 +974,7 @@ fn interpreter(exe: &Path, path: &Path) -> Option<(PathBuf, Vec<PathBuf>)> {
 }
 
 /// A run's stdin, stdout and stderr, wherever it was started.
-type Pipes = (Option<Box<dyn Write>>, Option<Box<dyn Read + Send>>, Option<Box<dyn Read + Send>>);
+type Pipes = (Option<Box<dyn Write + Send>>, Option<Box<dyn Read + Send>>, Option<Box<dyn Read + Send>>);
 
 /// A run under way, wherever it was started.
 enum Running {
@@ -968,10 +993,9 @@ impl Running {
 
     fn kill(&mut self) {
         match self {
-            Running::Plain(c) => {
-                let _ = c.kill();
-                let _ = c.wait();
-            }
+            // What it started goes with it: a child left running would
+            // keep the output's pipes open and the call waiting on them.
+            Running::Plain(c) => crate::claude_code::kill_tree(c),
             Running::Contained(c) => c.kill(),
         }
     }
@@ -1046,6 +1070,11 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
         None => {
             let mut cmd = Command::new(&exe);
             cmd.args(&words).current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+            // Only what says where things are, as in the sandbox: not Lumo's keys.
+            cmd.env_clear();
+            for (k, v) in std::env::vars_os().filter(|(k, _)| crate::sandbox::passed_on(k)) {
+                cmd.env(k, v);
+            }
             for (k, v) in &env {
                 cmd.env(k, v);
             }
@@ -1058,18 +1087,23 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
     };
     let (stdin, stdout, stderr): Pipes = match &mut child {
         Running::Plain(c) => (
-            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write>),
+            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write + Send>),
             c.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
             c.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
         ),
         Running::Contained(c) => (
-            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write>),
+            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write + Send>),
             c.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
             c.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
         ),
     };
+    // Written from its own thread, then closed: a tool that never reads its
+    // input, or prints a lot before it does, would otherwise hold the call
+    // here, before its time even started to count.
     if let Some(mut stdin) = stdin {
-        let _ = stdin.write_all(input_text.as_bytes());
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(input_text.as_bytes());
+        });
     }
     let pipe = |r: Option<Box<dyn Read + Send>>| {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1102,18 +1136,15 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
     };
     // In the sandbox, what the tool started and left running ends with it
     // (its job). A program Lumo started elsewhere in the moment the sandbox's
-    // pipes could be inherited may still hold them: the output is waited
-    // for a little, never for good.
-    let deadline = match &mut child {
-        Running::Contained(c) => {
-            c.kill();
-            Some(Instant::now() + Duration::from_secs(2))
-        }
-        Running::Plain(_) => None,
-    };
-    let collect = |rx: std::sync::mpsc::Receiver<String>| match deadline {
-        Some(at) => rx.recv_timeout(at.saturating_duration_since(Instant::now())).unwrap_or_default(),
-        None => rx.recv().unwrap_or_default(),
+    // pipes could be inherited may still hold them, and outside it a program
+    // the tool started and left behind may too: the output is waited for a
+    // little, never for good.
+    if let Running::Contained(c) = &mut child {
+        c.kill();
+    }
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let collect = |rx: std::sync::mpsc::Receiver<String>| {
+        rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).unwrap_or_default()
     };
     let stdout = collect(out);
     let stderr = collect(err);
@@ -1330,6 +1361,18 @@ fn plan_speaker(provider: &str) -> (String, &'static str) {
     }
 }
 
+/// Whether `name` is one of the tools offered to the model in this turn
+/// (`chat_tools`): a call of any other is refused, never run, whatever the
+/// model says (a made-up name, Lumo's web search while it is off).
+pub fn offered_in(offered: &[(String, String, Value)], name: &str) -> bool {
+    !name.is_empty() && offered.iter().any(|(id, _, _)| id == name)
+}
+
+/// What the model is told of a call of a tool it wasn't offered.
+pub fn not_offered(name: &str) -> String {
+    format!("There is no tool named {name} in this chat: nothing was done.")
+}
+
 /// A call from the chat `chat_id`'s API providers (claude.rs,
 /// openai_compat.rs, local_chat.rs): what goes back to the model, and whether
 /// it failed. `asking`: when one of the user's tools needs a card (a local
@@ -1366,6 +1409,10 @@ pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Valu
     // Lumo's web search, read-only: no card, as for a search engine's own,
     // but with Ask for approval, which asks before the internet too.
     if crate::web_search::NAMES.contains(&id) {
+        // Off in Settings since the turn began, or never on: nothing goes out.
+        if !tauri::async_runtime::spawn_blocking(crate::web_search::enabled).await.unwrap_or(false) {
+            return (not_offered(id), true);
+        }
         if asking == Asking::Always {
             if let Err(e) = approve_web(app, id, &input).await {
                 return (e, true);
@@ -1715,6 +1762,19 @@ pub fn tools_reveal(id: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tool_never_runs_a_shell_or_windows_own_programs() {
+        assert!(runs_anything(Path::new(r"C:\Windows\System32\cmd.exe")));
+        assert!(runs_anything(Path::new(r"C:\Windows\notepad.exe")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\PowerShell\7\pwsh.exe")));
+        assert!(runs_anything(Path::new(r"C:\Users\me\AppData\Local\Programs\Python\Python313\python.exe")));
+        assert!(runs_anything(Path::new(r"D:\tools\node.exe")));
+        // The user's own scripts and programs, where they are.
+        assert!(!runs_anything(Path::new(r"C:\Users\me\scripts\sh.py")));
+        assert!(!runs_anything(Path::new(r"C:\Users\me\bin\convert.exe")));
+        assert!(!runs_anything(Path::new(r"C:\Users\me\scripts\backup.bat")));
+    }
 
     #[test]
     fn the_api_providers_get_the_email_tools_security_lets_the_ai_have() {

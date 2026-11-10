@@ -94,6 +94,9 @@ test("any other answer is not a report", () => {
   assert.equal(parseContextReport("## Context Usage\n\nNo numbers here."), null);
   assert.equal(parseContextReport("The **Tokens:** 3k / 10k of my answer"), null);
   assert.equal(parseContextReport(""), null);
+  // An answer that quotes a report after words of its own stays an answer.
+  assert.equal(parseContextReport(`Here is what /context said earlier:\n\n${REPORT}\nMost of it is MCP tools.`), null);
+  assert.ok(parseContextReport(`\n\n${REPORT}`), "blank lines before the heading are fine");
   assert.equal(usedPercent({ used: 4000, total: 1e6 }), "<1");
 });
 

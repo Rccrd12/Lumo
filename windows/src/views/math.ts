@@ -286,6 +286,8 @@ function splitTop(body: string, at: "row" | "cell"): string[] {
 
 class Parser {
   private i = 0;
+  /** How many one-argument \braket{a} drew their argument twice. */
+  private doubled = 0;
   private s: string;
   /** How many \left are open: only then does \right end what is being read. */
   private fences = 0;
@@ -528,8 +530,18 @@ class Parser {
       case "bra": return this.fenced("⟨", arg(), "|");
       case "ket": return this.fenced("|", arg(), "⟩");
       case "braket": {
+        // \braket{a} is ⟨a|a⟩: the same node drawn twice. Nested, that
+        // doubles at each level (thirty levels, a billion elements), so only
+        // the innermost is drawn twice and the ones around it end in "…".
+        const before = this.doubled;
         const a = arg();
-        const b = this.s[this.i] === "{" ? arg() : a;
+        let b: Node;
+        if (this.s[this.i] === "{") b = arg();
+        else if (this.doubled > before) b = { t: "sym", v: "…", upright: true };
+        else {
+          b = a;
+          this.doubled++;
+        }
         return this.fenced("⟨", { t: "group", c: [a, { t: "sym", v: "|", upright: true }, b] }, "⟩");
       }
       case "vu": case "vectorunit": return { t: "style", style: "bold", body: { t: "accent", mark: ACCENTS.hat, body: arg() } };

@@ -14,6 +14,10 @@ const MAX_STREAM: usize = 16 * 1024 * 1024;
 /// The most all of a document's streams give, together: a page that names the
 /// same stream again and again (`/Contents [4 0 R 4 0 R …]`) adds it each time.
 const MAX_DOC: usize = 64 * 1024 * 1024;
+/// The most bytes read as objects from the object streams, together. Their
+/// headers may point every object at the start of one big stream, and then
+/// each would be read again in full and kept: memory with no end.
+const MAX_PACKED: usize = 16 * 1024 * 1024;
 
 /// The text of the PDF at `path`, at most `limit` characters; None when
 /// there is none to read.
@@ -363,6 +367,12 @@ impl Doc {
     fn read(file: &[u8]) -> Doc {
         let mut objects = HashMap::new();
         let mut at = 0;
+        // Objects do not overlap in a sound file, so reading them all reads
+        // about the file once. A file of "obj" nested in "obj" reads its bytes
+        // again for each one, and keeps each copy: past twice the file, the
+        // rest is left unread.
+        let mut parsed = 0usize;
+        let budget = file.len().saturating_mul(2).saturating_add(1 << 20);
         while let Some(i) = find(file, b"obj", at) {
             at = i + 3;
             if file.get(i + 3).is_some_and(|c| !is_space(*c) && !is_delim(*c)) {
@@ -371,6 +381,10 @@ impl Doc {
             let Some(number) = object_number(file, i) else { continue };
             let mut lx = Lexer::new(file, i + 3);
             let Some(obj) = lx.next() else { continue };
+            parsed = parsed.saturating_add(lx.i - (i + 3));
+            if parsed > budget {
+                break;
+            }
             lx.skip_space();
             let mut raw = None;
             if file[lx.i..].starts_with(b"stream") {
@@ -422,6 +436,7 @@ impl Doc {
     }
 
     fn unpack_object_streams(&mut self) {
+        let mut parsed = 0usize;
         let packed: Vec<u32> = self.objects.iter().filter(|(_, (o, raw))| raw.is_some() && o.dict().and_then(|d| d.get(b"Type".as_slice())).is_some_and(|t| t.is_name(b"ObjStm"))).map(|(n, _)| *n).collect();
         for number in packed {
             let Some(bytes) = self.stream(number) else { continue };
@@ -436,9 +451,13 @@ impl Doc {
             }
             for (n, off) in pairs {
                 let Some(at) = first.checked_add(off).filter(|at| *at < bytes.len()) else { continue };
-                if let Some(obj) = Lexer::new(&bytes, at).next() {
-                    self.objects.entry(n).or_insert((obj, None));
+                let mut lx = Lexer::new(&bytes, at);
+                let Some(obj) = lx.next() else { continue };
+                parsed = parsed.saturating_add(lx.i - at);
+                if parsed > MAX_PACKED {
+                    return;
                 }
+                self.objects.entry(n).or_insert((obj, None));
             }
         }
     }
@@ -1050,6 +1069,22 @@ mod tests {
         // An object stream whose /First and offsets run past usize.
         let file = pdf(&[(1, stream("/Type /ObjStm /N 1 /First 100000000000000000000", b"7 18446744073709551615 << >>"))]);
         assert_eq!(text_of(&file, 10_000), None);
+    }
+
+    #[test]
+    fn packed_objects_all_pointing_at_one_big_one_are_read_within_a_budget() {
+        // 100 000 objects, every one at the start of the same 1 MB array: each
+        // was read in full and kept, 100 GB in all.
+        let header: String = (1..=100_000).map(|n| format!("{} 0 ", n + 10)).collect();
+        let mut packed = header.clone().into_bytes();
+        packed.push(b'[');
+        packed.extend(b"1 ".repeat(500_000));
+        packed.push(b']');
+        let file = pdf(&[(1, stream(&format!("/Type /ObjStm /N 100000 /First {}", header.len()), &packed))]);
+        let started = std::time::Instant::now();
+        let doc = Doc::read(&file);
+        assert!(doc.objects.len() < 40, "{} objects kept", doc.objects.len());
+        assert!(started.elapsed() < std::time::Duration::from_secs(20));
     }
 
     #[test]

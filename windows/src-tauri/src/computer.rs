@@ -776,13 +776,6 @@ pub enum Action {
     Cursor,
 }
 
-impl Action {
-    /// Only looks: no card, no Esc taken.
-    pub fn looks(&self) -> bool {
-        matches!(self, Action::Screenshot { .. } | Action::Zoom { .. } | Action::Wait { .. } | Action::Cursor)
-    }
-}
-
 /// A point of the screenshot, `[x, y]`. Models don't always write it that way:
 /// `{"x": …, "y": …}`, `"[x, y]"` as a string, or (for `coordinate`) `x` and
 /// `y` side by side are read too, rather than clicking where the mouse already
@@ -911,11 +904,11 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         Ok(a) => a,
         Err(e) => return refuse(e),
     };
-    // The glow, Claude's mouse and the hand held still, from Claude's first call on.
+    // The glow, Claude's mouse and the hand held still, from Claude's first
+    // call on, a screenshot included: Esc gives them back from that moment,
+    // not only from the first click.
     engage(app);
-    if !action.looks() {
-        hold_stop_key(app);
-    }
+    hold_stop_key(app);
     let app2 = app.clone();
     let answer = tauri::async_runtime::spawn_blocking(move || {
         let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -1699,8 +1692,6 @@ mod tests {
         assert_eq!(parse("wait", &json!({ "duration": 999 })).unwrap(), Action::Wait { secs: MAX_WAIT_SECS });
         assert!(parse("format_disk", &json!({})).is_err());
         assert!(parse("zoom", &json!({ "region": [0, 0, 10] })).is_err());
-        assert!(Action::Screenshot { display: None }.looks() && Action::Cursor.looks());
-        assert!(!Action::Type { text: "x".into() }.looks());
     }
 
     #[test]

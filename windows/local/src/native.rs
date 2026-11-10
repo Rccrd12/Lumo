@@ -83,14 +83,20 @@ fn gemma_call(body: &str) -> Option<Named> {
     if name.is_empty() || name.contains(char::is_whitespace) {
         return None;
     }
-    let mut p = Parser { s: &body[brace..], at: 0 };
+    let mut p = Parser { s: &body[brace..], at: 0, depth: 0 };
     let input = p.value()?;
     input.is_object().then_some((name, input))
 }
 
+/// How deep objects and lists may nest in a call: a model's arguments never
+/// go far, and a text that opens thousands would overflow the stack.
+const MAX_DEPTH: usize = 64;
+
 struct Parser<'a> {
     s: &'a str,
     at: usize,
+    /// Objects and lists open around the value being read.
+    depth: usize,
 }
 
 impl Parser<'_> {
@@ -114,6 +120,16 @@ impl Parser<'_> {
     }
 
     fn value(&mut self) -> Option<Value> {
+        if self.depth >= MAX_DEPTH {
+            return None;
+        }
+        self.depth += 1;
+        let value = self.value_here();
+        self.depth -= 1;
+        value
+    }
+
+    fn value_here(&mut self) -> Option<Value> {
         self.skip_space();
         if self.eat(GEMMA_QUOTE) {
             let end = self.rest().find(GEMMA_QUOTE)?;
@@ -184,6 +200,14 @@ mod tests {
         let text = "Ok.\n<tool_call>\n{\"name\": \"set_timer\", \"arguments\": {\"seconds\": 60}}\n</tool_call>";
         let (calls, rest) = calls_in_text(text, &names()).unwrap();
         assert_eq!((rest.as_str(), calls[0]["arguments"].as_str()), ("Ok.", Some("{\"seconds\":60}")));
+    }
+
+    #[test]
+    fn a_call_nested_beyond_reason_is_refused_not_a_crash() {
+        let deep = format!("<|tool_call>call:set_timer{{a:{}1{}}}<tool_call|>", "[".repeat(100_000), "]".repeat(100_000));
+        assert!(calls_in_text(&deep, &names()).is_none());
+        let fine = format!("<|tool_call>call:set_timer{{a:{}1{}}}<tool_call|>", "[".repeat(10), "]".repeat(10));
+        assert!(calls_in_text(&fine, &names()).is_some());
     }
 
     #[test]

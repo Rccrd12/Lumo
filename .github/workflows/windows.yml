@@ -180,6 +180,20 @@ jobs:
           name: Lumo-Windows-release
           path: windows/release
 
+      # Lumo installs an update only with its own signature beside it
+      # (src-tauri/src/updater.rs, UPDATE_PUBLIC_KEY): each installer is signed
+      # here, in the job that builds nothing, with the LUMO_UPDATE_KEY secret
+      # (scripts/update-key.mjs). Without the secret, or with one that does not
+      # match the key Lumo carries, nothing is published.
+      - name: Sign the installers
+        if: env.PUBLISH == 'true'
+        env:
+          LUMO_UPDATE_KEY: ${{ secrets.LUMO_UPDATE_KEY }}
+        run: |
+          $v = "${{ needs.build.outputs.version }}"
+          node scripts/sign-update.mjs "release/Lumo-Windows-$v-setup.exe" "release/Lumo-Windows-$v.msi"
+          if ($LASTEXITCODE -ne 0) { throw "the installers could not be signed" }
+
       - name: Publish the release
         if: env.PUBLISH == 'true'
         shell: pwsh
@@ -201,7 +215,9 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload "${{ github.ref_name }}" `
               "release/Lumo-Windows-$v-setup.exe" `
+              "release/Lumo-Windows-$v-setup.exe.sig" `
               "release/Lumo-Windows-$v.msi" `
+              "release/Lumo-Windows-$v.msi.sig" `
               --clobber
             if ($LASTEXITCODE -ne 0) { throw "upload to ${{ github.ref_name }} failed" }
             gh release edit "${{ github.ref_name }}" `
@@ -215,7 +231,9 @@ jobs:
             # windows-latest release below, not at GitHub's Latest slot.
             gh release create "${{ github.ref_name }}" `
               "release/Lumo-Windows-$v-setup.exe" `
+              "release/Lumo-Windows-$v-setup.exe.sig" `
               "release/Lumo-Windows-$v.msi" `
+              "release/Lumo-Windows-$v.msi.sig" `
               --title "Lumo for Windows $v" `
               --notes $notes `
               --latest=false

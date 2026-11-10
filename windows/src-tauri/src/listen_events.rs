@@ -32,7 +32,7 @@ const MAX_BODY: usize = 64 * 1024;
 /// How much of what a call sent is told.
 const BODY_CHARS: usize = 300;
 /// The webhooks' secrets, by watch, in the credential store.
-const SECRETS_KEY: &str = "listen-webhooks";
+pub(crate) const SECRETS_KEY: &str = "listen-webhooks";
 
 /// The watches on a source that are on.
 fn heard(source: &str) -> Vec<Watch> {

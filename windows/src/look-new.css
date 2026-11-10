@@ -876,6 +876,28 @@ html.look-new .code-tool {
   margin-right: 8px;
 }
 
+/* The permission card's command, whole: Allow allows every character of it.
+   It wraps, and past six lines it scrolls instead of growing the card. */
+html.look-new .stack > .approval-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.45;
+  max-height: calc(6 * 1.45em + 16px);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* A request too long to reach the island whole: no Allow, and why. */
+html.look-new .approval-cut {
+  font: 500 12px var(--font);
+  color: var(--amber);
+}
+
+html.look-new .approval-cut[hidden] {
+  display: none;
+}
+
 /* ── A question: its options one under the other, each with its description ─ */
 
 .q-desc {
@@ -1501,6 +1523,55 @@ html.look-new .plan-ask .plan-ask-steps {
 
 html.look-new .plan-ask .plan-ask-step {
   min-height: 26px;
+}
+
+/* What an answer asked Lumo to listen for, waiting for Listen (chat.ts drawListenAsk). */
+html.look-new .listen-ask-why {
+  color: var(--dim);
+  font: 400 12px/1.4 var(--font);
+}
+
+html.look-new .listen-ask-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: calc(4 * 40px);
+  overflow-y: auto;
+}
+
+html.look-new .listen-ask-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+html.look-new .listen-ask-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--watch);
+  box-shadow: 0 0 6px var(--watch);
+}
+
+html.look-new .listen-ask-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+html.look-new .listen-ask-what {
+  color: var(--ink);
+  font: 500 12px/1.4 var(--font);
+  overflow-wrap: anywhere;
+}
+
+html.look-new .listen-ask-then {
+  color: #b0b5be;
+  font: 400 12px/1.4 var(--font);
+  overflow-wrap: anywhere;
 }
 
 html.look-new .plan-ask-actions {

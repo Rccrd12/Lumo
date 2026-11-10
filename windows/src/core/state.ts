@@ -106,6 +106,8 @@ export interface ApprovalInfo {
   email?: OutgoingEmail;
   /** The plan Claude Code asks to start (ExitPlanMode), as steps: the card draws them as a list. */
   plan?: import("./agent-plan").PlanStep[];
+  /** Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`): never allowed from the island, only denied or left to the agent's own prompt. */
+  cut?: boolean;
 }
 
 /**
@@ -314,6 +316,8 @@ export interface Settings {
   chatEffort: string;
   /** What the chat's CLIs may do without asking (core/providers.ts PERMISSION_MODES). */
   chatPermissionMode: string;
+  /** Antigravity CLI's own mode, apart from the others' (its Auto lets every command run); "" until picked (core/providers.ts storedPermissionMode). */
+  chatPermissionModeAgy: string;
   /** How far a model server's tools are kept from the computer: "high" or "low" (core/providers.ts parseSandboxLevel). */
   localSandbox: "high" | "low";
   /** A quiet line next to the chat's model picker with what the provider has left (core/chat-usage.ts). */
@@ -450,6 +454,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatModels: {},
   chatEffort: "",
   chatPermissionMode: "default",
+  chatPermissionModeAgy: "",
   localSandbox: "high",
   chatShowUsage: false,
   chatShareExplorer: false,
