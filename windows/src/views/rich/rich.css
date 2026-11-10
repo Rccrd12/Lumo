@@ -1,0 +1,204 @@
+/* The rich cards in the chat's answers (views/rich): what they share, and
+   GitHub's alerts. Each card's own rules are in its stylesheet beside it. */
+
+/* An answer with a card or an alert takes the chat's whole width, and so do
+   they, whatever the length of its text: a card that changed width as it
+   changed would move its buttons from under the pointer. The answer being
+   written sits in its row without a .reply-wrap. */
+.chat-row > .reply-wrap:has(.rc-card, .rc-callout),
+.chat-row > .reply:has(.rc-card, .rc-callout) {
+  flex: 1 1 auto;
+}
+
+.rc-card {
+  --rc-accent: #8fc7ff;
+  background: var(--card-flat);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  white-space: normal;
+  min-width: 0;
+  user-select: none;
+}
+
+.rc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 0 12px;
+  min-height: 24px;
+  min-width: 0;
+}
+
+.rc-kind {
+  flex: none;
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rc-accent);
+  background: rgba(143, 199, 255, 0.1);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.rc-title {
+  min-width: 0;
+  font: 600 12.5px var(--font);
+  color: #e8e9ec;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-sp {
+  flex: 1 1 auto;
+}
+
+.rc-count {
+  flex: none;
+  font: 500 11px var(--font);
+  color: var(--dim-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A small square button in a card's top line (previous, next, all…). */
+.rc-nav {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #c9ccd2;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.rc-nav:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.rc-nav:disabled {
+  color: #3f444c;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: default;
+}
+
+.rc-nav.on {
+  color: #000;
+  background: #e8e9ec;
+}
+
+.rc-nav:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 1px;
+}
+
+/* A step's number, in a small disc. */
+.rc-num {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font: 600 9.5px var(--font);
+  color: #0e0f11;
+  background: var(--rc-accent);
+}
+
+/* While a block is still being written. */
+.rc-pending-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px 12px;
+  font: 400 11.5px var(--font);
+  color: var(--dim-3);
+}
+
+.rc-pending-line i {
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--dim-3);
+  animation: rc-blink 1.2s infinite ease-in-out;
+}
+
+.rc-pending-line i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.rc-pending-line i:nth-child(3) {
+  animation-delay: 0.3s;
+  margin-right: 4px;
+}
+
+@keyframes rc-blink {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+/* ── GitHub's alerts ─────────────────────────────────────────────────────── */
+
+.rc-callout {
+  --c: #8fc7ff;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--c) 22%, transparent);
+  background: color-mix(in srgb, var(--c) 6%, #0b0c0e);
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  white-space: normal;
+  min-width: 0;
+}
+
+.rc-callout-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c);
+  font: 600 11.5px var(--font);
+  letter-spacing: 0.01em;
+}
+
+.rc-callout-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chat-log .rc-callout-body .md-p {
+  line-height: 1.5;
+}
+
+.rc-callout-body strong {
+  color: #f1f2f4;
+}
+
+.chat-log .rc-callout .md-math {
+  padding: 2px 0;
+}
+
+.rc-callout .md-math .md-copy {
+  display: none;
+}
+
+.rc-tip {
+  --c: var(--green-2);
+}
+
+.rc-important {
+  --c: #a5b4fc;
+}
+
+.rc-warning {
+  --c: var(--amber);
+}
+
+.rc-caution {
+  --c: var(--red-text);
+}

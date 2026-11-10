@@ -3,6 +3,8 @@
 // anywhere. Pure helpers around one list, newest first, so they can be tested
 // without a webview.
 
+import { cleanChecklists, type ChatChecklists } from "./checklists";
+
 export interface SavedTurn {
   role: "user" | "assistant";
   content: string;
@@ -19,6 +21,8 @@ export interface SavedChat {
   /** The CLI session that answered (Claude Code, Antigravity CLI), so reopening continues it. */
   session: string | null;
   turns: SavedTurn[];
+  /** What the user ticked in the chat's checklists (core/checklists.ts), by list. */
+  checklists?: ChatChecklists;
 }
 
 const KEY = "lumo.chats.v1";
@@ -64,14 +68,43 @@ export function chatTitle(turns: SavedTurn[]): string {
   return line.length > TITLE_CHARS ? `${line.slice(0, TITLE_CHARS - 1)}…` : line;
 }
 
-/** Saves `chat` (new, or replacing the one with its id) at the top of the list. */
+/** Ticks given in a chat not saved yet (its first answer still being written), until it is. */
+const unsaved = new Map<string, ChatChecklists>();
+
+/**
+ * Saves `chat` (new, or replacing the one with its id) at the top of the
+ * list. Its checklists' ticks stay as they were when `chat` brings none.
+ */
 export function saveChat(chat: SavedChat): SavedChat[] {
-  const list = [chat, ...loadChats().filter((c) => c.id !== chat.id)].slice(0, MAX_CHATS);
+  const chats = loadChats();
+  const ticks = chat.checklists ?? chats.find((c) => c.id === chat.id)?.checklists ?? unsaved.get(chat.id);
+  unsaved.delete(chat.id);
+  const saved = ticks && Object.keys(ticks).length ? { ...chat, checklists: ticks } : chat;
+  const list = [saved, ...chats.filter((c) => c.id !== chat.id)].slice(0, MAX_CHATS);
   store(list);
   return list;
 }
 
+/** What the user ticked in a chat's checklists. */
+export function chatChecklists(id: string): ChatChecklists {
+  const chat = loadChats().find((c) => c.id === id);
+  return cleanChecklists(chat ? chat.checklists : unsaved.get(id));
+}
+
+/** Keeps a chat's ticks with it, where it is saved; its place in the history does not change. */
+export function setChatChecklists(id: string, checklists: ChatChecklists) {
+  const list = loadChats();
+  const chat = list.find((c) => c.id === id);
+  if (!chat) {
+    unsaved.set(id, checklists);
+    return;
+  }
+  chat.checklists = checklists;
+  store(list);
+}
+
 export function deleteChat(id: string): SavedChat[] {
+  unsaved.delete(id);
   const list = loadChats().filter((c) => c.id !== id);
   store(list);
   setCompact(id, null);

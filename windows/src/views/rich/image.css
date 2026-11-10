@@ -1,0 +1,140 @@
+/* An image in an answer (views/rich/image.ts): one frame height whatever it
+   shows (the download, the image or the failure), then its source, its
+   caption and the way to the browser. With images off, that last row alone. */
+
+.rc-image {
+  overflow: hidden;
+}
+
+.rc-image-frame {
+  height: 150px;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Not there yet, or not at all: stripes, so it reads as "no image" at once. */
+.rc-image-frame.loading,
+.rc-image-frame.error {
+  background: repeating-linear-gradient(135deg, #111214 0 10px, #0e0f11 10px 20px);
+}
+
+/* Diagrams are often drawn on a transparent ground: a white one shows them as meant. */
+.rc-image-frame.shown {
+  background: #fff;
+}
+
+.rc-image-frame img {
+  display: block;
+  /* The same 6px of white on every side, whether the picture is wide or tall. */
+  max-width: calc(100% - 12px);
+  max-height: 138px;
+  object-fit: contain;
+  cursor: pointer;
+  -webkit-user-drag: none;
+}
+
+.rc-image-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: #8e939c;
+  text-align: center;
+  padding: 0 30px;
+  min-width: 0;
+}
+
+.rc-image-title {
+  font: 600 12.5px var(--font);
+  color: #e8e9ec;
+  margin-top: 2px;
+}
+
+.rc-image-frame.error .rc-image-title {
+  color: var(--red-text);
+}
+
+.rc-image-hint {
+  font: 400 11px var(--font);
+  color: #6b7079;
+}
+
+.rc-image-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.rc-image-btn {
+  font: 500 11.5px var(--font);
+  color: #e8e9ec;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 8px;
+  padding: 5px 11px;
+  cursor: pointer;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-image-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.rc-image-btn:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 1px;
+}
+
+/* The download: the cards' "writing" dots, inside the frame. */
+.rc-image-frame .rc-pending-line {
+  padding: 0;
+}
+
+.rc-image-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  min-width: 0;
+}
+
+.rc-image-src {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 45%;
+  font: 500 10.5px var(--font);
+  color: #c9ccd2;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.rc-image-src span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-image-cap {
+  min-width: 0;
+  font: 400 11.5px var(--font);
+  color: #8e939c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Images off: the row is the whole card, so it has no line above it. */
+.rc-image.off .rc-image-foot {
+  border-top: 0;
+}

@@ -1,0 +1,362 @@
+/* The data chart card (views/rich/chart.ts): horizontal bars or lines, the
+   same numbers as a table, a switch between them in the top line. */
+
+/* The top line: the unit or the legend, the switch, the copy button. */
+/* The unit is short and says what the numbers are: the title gives way first. */
+.rc-chart-unit {
+  flex: none;
+  max-width: 120px;
+  font: 400 11px var(--font);
+  color: #6b7079;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-chart-legend {
+  flex: 0 1 auto;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+  margin-right: 4px;
+  font: 400 11px var(--font);
+  color: #9aa0aa;
+  white-space: nowrap;
+}
+
+.rc-chart-legend > span,
+.rc-chart-th {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Short of room, the names end in an ellipsis, each its share, so no series
+   goes missing. */
+.rc-chart-legend > span {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.rc-chart-legend > span > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The title gives way first, down to a few letters; then the legend does. */
+.rc-chart .rc-title {
+  flex-shrink: 1000;
+  min-width: 5em;
+}
+
+.rc-chart-sw {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.rc-chart-view {
+  flex: none;
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 1px;
+}
+
+.rc-chart-view button {
+  font: 500 10.5px var(--font);
+  color: #7d838e;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+
+.rc-chart-view button:hover:not(.on) {
+  color: #c9ccd2;
+}
+
+.rc-chart-view button.on {
+  background: rgba(255, 255, 255, 0.11);
+  color: #e8e9ec;
+  cursor: default;
+}
+
+.rc-chart-view button:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 0;
+}
+
+/* The copy button sits with the card's buttons, their shape. */
+.rc-chart .rc-head .md-copy {
+  flex: none;
+  border-radius: 7px;
+  color: #c9ccd2;
+}
+
+.rc-chart .rc-head .md-copy:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.rc-chart .rc-head .md-copy.done {
+  color: var(--green);
+}
+
+/* svg() sizes its icons inline (11px for the copy icon): the card's are 12px. */
+.rc-chart .rc-head .md-copy svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.rc-chart-body {
+  position: relative;
+  min-width: 0;
+}
+
+/* The lines and their table take the same height, so switching moves
+   nothing below; the table's few rows in the middle. */
+.rc-chart-line .rc-chart-body {
+  min-height: 144px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* ── Bars ─────────────────────────────────────────────────────────────────── */
+
+/* A row per label: its name, its bar, its value, the columns shared by every
+   row (a subgrid), the names at least as wide as a short word. */
+.rc-bars {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(74px, max-content) minmax(0, 1fr) minmax(36px, max-content);
+  gap: 5px 10px;
+  padding: 10px 12px 12px;
+  max-height: 236px;
+  overflow-y: auto;
+}
+
+.rc-bars.many {
+  grid-template-columns: minmax(74px, max-content) minmax(0, 1fr);
+}
+
+.rc-brow {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  font: 400 11.5px var(--font);
+}
+
+.rc-brow-k {
+  max-width: 150px;
+  color: #9398a1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-brow-track {
+  height: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rc-bars.s3 .rc-brow-track,
+.rc-bars.s4 .rc-brow-track {
+  height: 15px;
+  gap: 1px;
+}
+
+.rc-brow-lane {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+}
+
+.rc-brow-lane i {
+  display: block;
+  height: 100%;
+  border-radius: 2px 4px 4px 2px;
+  opacity: 0.9;
+}
+
+.rc-bars.many .rc-brow-lane i {
+  border-radius: 1px 2px 2px 1px;
+}
+
+.rc-brow-v {
+  text-align: end;
+  color: #d6d9de;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The row under the pointer lit, the others dimmed. */
+.rc-bars:has(.rc-brow:hover) .rc-brow:not(:hover) .rc-brow-lane i {
+  opacity: 0.35;
+}
+
+.rc-brow:hover .rc-brow-k,
+.rc-brow:hover .rc-brow-v {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── Lines ────────────────────────────────────────────────────────────────── */
+
+.rc-lines {
+  position: relative;
+  box-sizing: border-box;
+  height: 144px;
+  padding: 8px 6px 8px;
+  outline: none;
+}
+
+.rc-lines svg {
+  display: block;
+  overflow: visible;
+}
+
+.rc-lines text {
+  font: 400 9.5px var(--font);
+  fill: #6b7079;
+}
+
+.rc-lines text.on {
+  fill: #e8e9ec;
+}
+
+.rc-lines line.grid {
+  stroke: rgba(255, 255, 255, 0.06);
+}
+
+.rc-lines line.zero {
+  stroke: rgba(255, 255, 255, 0.16);
+}
+
+.rc-lines line.cursor {
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-dasharray: 2 3;
+}
+
+.rc-lines circle.dot {
+  stroke: #0e0f11;
+  stroke-width: 2;
+}
+
+.rc-lines:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+/* The values under the pointer. */
+.rc-chart-tip {
+  position: absolute;
+  z-index: 1;
+  background: #1b1d21;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 6px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  font: 400 11px var(--font);
+  color: #9aa0aa;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.rc-chart-tip b {
+  color: #f1f2f4;
+  font-weight: 600;
+  font-size: 11.5px;
+}
+
+.rc-chart-tip > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rc-chart-tip em {
+  font-style: normal;
+  color: #f1f2f4;
+  margin-left: auto;
+  padding-left: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Table ────────────────────────────────────────────────────────────────── */
+
+.rc-chart-table {
+  padding: 6px 12px 10px;
+  max-height: 236px;
+  overflow: auto;
+}
+
+.rc-chart-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 11.5px var(--font);
+}
+
+.rc-chart-table th,
+.rc-chart-table td {
+  padding: 2px 0 2px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+}
+
+.rc-chart-table tr > :first-child {
+  padding-left: 0;
+}
+
+.rc-chart-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.rc-chart-table th {
+  font: 500 10.5px var(--font);
+  color: #7d838e;
+  text-align: start;
+}
+
+.rc-chart-table .k {
+  color: #9398a1;
+  text-align: start;
+}
+
+.rc-chart-table .v {
+  text-align: end;
+  color: #d6d9de;
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-chart-table th.v {
+  color: #7d838e;
+}
+
+.rc-chart-table th .rc-chart-th {
+  justify-content: flex-end;
+}
+
+/* Bars read down: the names as wide as the bars', the values at the right
+   edge where the bars have them, the rows as tall as the bars' in all. */
+.rc-chart-table:not(.across) {
+  padding: 7px 12px 11px;
+}
+
+.rc-chart-table:not(.across) td.k {
+  min-width: 74px;
+}

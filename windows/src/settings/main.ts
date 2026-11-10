@@ -792,6 +792,12 @@ const WEB_SETTINGS = {
   get label() { return t("Search the web for the AI"); },
 };
 
+/** The images in the chat's answers (views/rich/image.ts, web_image.rs). */
+const WEB_IMAGES = {
+  get label() { return t("Images from the web"); },
+  get hint() { return t("An image in an answer is downloaded and shown at once, from public https sites only. Off: just its site and a button to open it in the browser."); },
+};
+
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
   get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
@@ -846,6 +852,9 @@ function securitySection(): HTMLElement {
     note,
     setting(WEB_SETTINGS.label, SECURITY.webHint,
       toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
+    ),
+    setting(WEB_IMAGES.label, WEB_IMAGES.hint,
+      toggle(settings.webImages !== false, (on) => { settings.webImages = on; void save(); }),
     ),
     group(SECURITY.sees),
     h("p", { class: "hint group-hint", text: SECURITY.seesHint }),

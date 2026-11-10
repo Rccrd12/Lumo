@@ -608,6 +608,24 @@ macro_rules! math_note {
 }
 pub(crate) use math_note;
 
+/// The chat's rich blocks, for every provider that answers in the chat
+/// (src/views/markdown.ts and src/views/rich read them): GitHub alerts and
+/// task lists, diff blocks, the lumo-checklist, lumo-steps, lumo-cards,
+/// lumo-calc, lumo-plot, lumo-quiz, lumo-chart and lumo-timeline blocks, and
+/// a line that is only an image. It goes with every message, so it says each
+/// syntax once and as briefly as the parsers allow (about 1 800 characters,
+/// some 480 tokens): what models know already (alerts, task lists, diffs,
+/// images) in a few words, and the rest by its keys. Plain words only, the
+/// syntax said in words where it needs `|`, `>` or `^` (`**` stands for
+/// powers, which core/expr.ts reads too): it also goes on Claude Code's
+/// command line when its instructions can't go in a file.
+macro_rules! rich_note {
+    () => {
+        " Lumo draws rich blocks: use one only where it clearly helps, at most two per answer, never one inside another. Callouts: GitHub alerts, [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION], a title optional after it. Checklists: GitHub task lists, titled in a lumo-checklist block; to update one, write it again with the same title; what the user ticked comes with their next message. Code changes: diff blocks, the file path after diff. Then fenced blocks whose language is one of these, a title after it. lumo-steps, a derivation or procedure step by step: per step ## step name, then its Markdown, often one $$…$$ line. lumo-cards, 2 to 8 things side by side: per card ## name, optional sub: subtitle and icon: an emoji or 1-2 letters and a colour (blue green amber red pink indigo cyan gray #hex) or icon: planet colour, lines - key: value, a short line of text. lumo-calc, a formula to play with: formula: TeX, lines input: symbol, name, min..max, value, unit and output: symbol, name, expression, unit, fields separated by vertical bars; step s may follow a range; expressions like V/R or A*sin(w*x)+x**2. lumo-plot: formula: TeX, one to three y: expressions in x, x: min..max, optional yrange: min..max, inputs as in lumo-calc. lumo-quiz, at most 10 questions: per question a line ? question, lines - wrong answer and + right answer (one right), a quote line explaining it, = a few words naming it. lumo-chart, bar or line before the title: optional unit: and series: A, B, then lines label: value, a value per series. lumo-timeline: lines date name: detail, dates as 1947, 1971-11 or 2026-11-08; a from..to range makes it a plan, its single dates deadlines. A picture: a line ![what it shows](https://…), the real address of an image file, preferably on Wikimedia Commons, only when sure it exists: never make one up."
+    };
+}
+pub(crate) use rich_note;
+
 /// The tool workshop's chats: their ids start so (src/core/tools.ts WORKSHOP_PREFIX).
 pub fn is_workshop(chat_id: &str) -> bool {
     chat_id.starts_with("forge-")
@@ -657,7 +675,7 @@ Respond in the user's language. Be thorough and complete — use as much detail 
 Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. \
 Lumo may tell you which windows and documents are open on the user's computer, and attach the one in front when the question is about it: use them, and never say you can't see what they have open when it is there. {}{}",
         if timer_tool { timer_tool_note!() } else { timer_note!() },
-        math_note!()
+        concat!(math_note!(), rich_note!())
     )
 }
 
@@ -1364,6 +1382,67 @@ mod tests {
         // The timer: Lumo's tool where the provider has it, the line otherwise.
         assert!(system_prompt_for(None, false, true).contains("set_timer tool"));
         assert!(!p.contains("set_timer") && p.contains("[[timer 10m"));
+    }
+
+    #[test]
+    fn every_chat_is_told_the_rich_blocks_in_plain_words() {
+        // Every provider's instructions: the API chats' (claude.rs,
+        // openai_compat.rs, through system_prompt_in), whatever the timer and
+        // web search; the CLIs' and local models' are checked in their files.
+        for (web, timer) in [(true, true), (false, false), (true, false), (false, true)] {
+            let p = system_prompt_for(None, web, timer);
+            assert!(p.contains(rich_note!()), "{web} {timer}");
+            assert!(p.contains(math_note!()));
+            assert!(p.contains("Avoid tables and big headings: the chat window is small."));
+        }
+        let note = rich_note!();
+        // The syntaxes src/views/markdown.ts and src/views/rich read, every
+        // card's, by the keys a model copies.
+        for kind in ["[!NOTE]", "[!TIP]", "[!IMPORTANT]", "[!WARNING]", "[!CAUTION]"] {
+            assert!(note.contains(kind), "{kind}");
+        }
+        for fence in ["lumo-checklist", "lumo-steps", "lumo-cards", "lumo-calc", "lumo-plot", "lumo-quiz", "lumo-chart", "lumo-timeline"] {
+            assert!(note.contains(fence), "{fence}");
+        }
+        for key in [
+            "task lists",
+            "same title",
+            "diff blocks, the file path after diff",
+            "## step name",
+            "sub:",
+            "icon:",
+            "- key: value",
+            "formula:",
+            "input: symbol, name, min..max, value, unit",
+            "output: symbol, name, expression, unit",
+            "vertical bars",
+            "step s",
+            "x**2",
+            "y:",
+            "x: min..max",
+            "yrange:",
+            "? question",
+            "- wrong answer and + right answer",
+            "a quote line",
+            "= a few words",
+            "bar or line",
+            "unit:",
+            "series:",
+            "label: value",
+            "date name: detail",
+            "from..to",
+            "![what it shows](https://",
+        ] {
+            assert!(note.contains(key), "{key}");
+        }
+        assert!(note.contains("clearly helps") && note.contains("never make one up"));
+        // It goes on Claude Code's command line too (claude_code.rs): nothing
+        // cmd.exe reads as syntax, and on one line.
+        assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']));
+        assert!(note.starts_with(' '), "it follows the note before it");
+        // Light: it goes with every message, about 480 tokens at four
+        // characters a token, all the cards included.
+        assert!(note.len() < 2000, "{} bytes", note.len());
     }
 
     #[test]
