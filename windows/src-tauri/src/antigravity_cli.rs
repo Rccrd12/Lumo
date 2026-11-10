@@ -689,6 +689,7 @@ fn run(
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
+    platform::chat_ends_with_lumo(&child);
 
     // Open until the turn's result: closing it ends agy's stream-json input.
     let mut stdin = child.stdin.take();
@@ -1084,6 +1085,7 @@ fn run_on_its_own(exe: PathBuf, name: &str, dir: PathBuf) -> Result<String, Stri
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
+    platform::chat_ends_with_lumo(&child);
     let stdout = child.stdout.take();
     let reader = std::thread::spawn(move || {
         let mut s = String::new();

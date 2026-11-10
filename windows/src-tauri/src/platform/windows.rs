@@ -110,6 +110,46 @@ pub fn no_console(cmd: &mut Command) -> &mut Command {
     cmd.creation_flags(CREATE_NO_WINDOW)
 }
 
+/// Ties a chat's program (Claude Code, Codex, an ACP server, agy) to Lumo:
+/// it and whatever it starts end when Lumo does, quit, crashed or killed,
+/// rather than stay behind with nobody to answer them. A Windows job that
+/// ends its processes when its last handle closes, which Lumo's exit does.
+/// A job of its own, not Unsloth Studio's (`end_with_lumo`), which "Stop
+/// after: Never" lets outlive Lumo. A program that asks to leave the job
+/// (CREATE_BREAKAWAY_FROM_JOB) may.
+pub fn chat_ends_with_lumo(child: &std::process::Child) {
+    use std::os::windows::io::AsRawHandle;
+    use std::sync::OnceLock;
+    use ::windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    // The job's handle, kept open for Lumo's whole life (as a number: a
+    // HANDLE can't be shared between threads as it is).
+    static JOB: OnceLock<Option<isize>> = OnceLock::new();
+    let job = JOB.get_or_init(|| unsafe {
+        let job = CreateJobObjectW(None, PCWSTR::null()).ok()?;
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+        let set = SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+        if set.is_err() {
+            let _ = CloseHandle(job);
+            return None;
+        }
+        Some(job.0 as isize)
+    });
+    let Some(job) = *job else { return };
+    let process = HANDLE(child.as_raw_handle());
+    if let Err(e) = unsafe { AssignProcessToJobObject(HANDLE(job as *mut std::ffi::c_void), process) } {
+        crate::log::line(format!("a chat's program is not tied to Lumo: {e}"));
+    }
+}
+
 pub fn open_url(url: &str) {
     let _ = no_console(Command::new("rundll32.exe").args(["url.dll,FileProtocolHandler", url]))
         .spawn();
