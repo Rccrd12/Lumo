@@ -1760,8 +1760,10 @@ Do the task with every tool you have, including the apps and accounts the user c
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran."
 );
 
-/// Runs one task Gemini Live handed over, in `folder` when it is a folder
-/// (the Lumo folder otherwise), with the `model` and `effort` of Settings →
+/// Runs one task Gemini Live handed over, always in the Lumo folder, with
+/// `folder` (one the model named) only added to what it may reach
+/// (`--add-dir`, `helper_folder`): a folder's own Claude Code settings and
+/// hooks are not loaded from a folder the user never chose. With the `model` and `effort` of Settings →
 /// Voice and the chat's permission `mode`: what it may not do by itself is an
 /// Allow / Deny card in the island, as in the chat. No session is kept: each
 /// task starts afresh. Blocking.
@@ -1780,10 +1782,10 @@ pub(crate) fn help(
         .into_iter()
         .next()
         .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
-    let folder = folder.filter(|d| safe_dir(d).is_some() && std::path::Path::new(d).is_dir());
-    let dir = folder.map(PathBuf::from).unwrap_or_else(work_dir);
+    let folder = helper_folder(folder);
+    let dir = work_dir();
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
+    let folders: Vec<String> = folder.into_iter().collect();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
     let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders));
     // The user's own tools too, while one is on.
@@ -1801,6 +1803,19 @@ pub(crate) fn help(
         Some(Err(e)) => Err(tf("Claude Code: {error}", &[("error", &e)])),
         None => unreachable!("run() returns an error without a result"),
     }
+}
+
+/// The folder Gemini Live named for its helper, when it can be added: an
+/// existing folder Lumo can pass on, that holds no keys or sign-ins
+/// (live::is_sensitive), as Windows resolves it.
+pub(crate) fn helper_folder(folder: Option<&str>) -> Option<String> {
+    let folder = folder?.trim();
+    let path = std::path::Path::new(folder);
+    if safe_dir(folder).is_none() || !path.is_dir() {
+        return None;
+    }
+    let real = crate::file_moves::real_path(path);
+    (!crate::live::is_sensitive(path) && !crate::live::is_sensitive(&real)).then(|| folder.to_string())
 }
 
 /// One question for Claude Code, answered without acting (plan mode, in a

@@ -1331,6 +1331,18 @@ fn plan_speaker(provider: &str) -> (String, &'static str) {
     }
 }
 
+/// Whether `name` is one of the tools offered to the model in this turn
+/// (`chat_tools`): a call of any other is refused, never run, whatever the
+/// model says (a made-up name, Lumo's web search while it is off).
+pub fn offered_in(offered: &[(String, String, Value)], name: &str) -> bool {
+    !name.is_empty() && offered.iter().any(|(id, _, _)| id == name)
+}
+
+/// What the model is told of a call of a tool it wasn't offered.
+pub fn not_offered(name: &str) -> String {
+    format!("There is no tool named {name} in this chat: nothing was done.")
+}
+
 /// A call from the chat `chat_id`'s API providers (claude.rs,
 /// openai_compat.rs, local_chat.rs): what goes back to the model, and whether
 /// it failed. `asking`: when one of the user's tools needs a card (a local
@@ -1367,6 +1379,10 @@ pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Valu
     // Lumo's web search, read-only: no card, as for a search engine's own,
     // but with Ask for approval, which asks before the internet too.
     if crate::web_search::NAMES.contains(&id) {
+        // Off in Settings since the turn began, or never on: nothing goes out.
+        if !tauri::async_runtime::spawn_blocking(crate::web_search::enabled).await.unwrap_or(false) {
+            return (not_offered(id), true);
+        }
         if asking == Asking::Always {
             if let Err(e) = approve_web(app, id, &input).await {
                 return (e, true);

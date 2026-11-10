@@ -384,7 +384,9 @@ impl Workspace {
             return Err(format!("{source}: give the full path of the file or folder on the computer."));
         }
         // Keys, passwords, recovery codes, browser profiles: never copied (live.rs).
-        if crate::live::is_sensitive(from) {
+        // As written, and where Windows takes it (a link, a junction, `.ssh.`).
+        let real = crate::file_moves::real_path(from);
+        if crate::live::is_sensitive(from) || crate::live::is_sensitive(&real) {
             return Err(format!("{source} holds keys or passwords: Lumo never copies it."));
         }
         let meta = std::fs::metadata(from).map_err(|_| not_found(from))?;

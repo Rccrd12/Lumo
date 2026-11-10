@@ -17470,6 +17470,66 @@
    "ru": "Ответить в его собственном окне",
    "id": "Balas di jendelanya sendiri",
    "it": "Rispondi nella sua finestra"
+  },
+  "Start listening?": {
+   "zh-Hans": "开始监听？",
+   "hi": "सुनना शुरू करें?",
+   "es": "¿Empezar a escuchar?",
+   "ar": "هل تبدأ الاستماع؟",
+   "fr": "Commencer l'écoute ?",
+   "bn": "শোনা শুরু করবেন?",
+   "pt-BR": "Começar a ouvir?",
+   "ru": "Начать слушать?",
+   "id": "Mulai mendengarkan?",
+   "it": "Iniziare ad ascoltare?"
+  },
+  "The answer asks Lumo to listen. What Lumo hears goes back to the chat as a message.": {
+   "zh-Hans": "回答请 Lumo 监听。Lumo 听到的内容会作为消息发回聊天。",
+   "hi": "जवाब Lumo से सुनने को कहता है। Lumo जो सुनता है, वह संदेश के रूप में चैट में वापस जाता है।",
+   "es": "La respuesta pide a Lumo que escuche. Lo que Lumo oiga vuelve al chat como un mensaje.",
+   "ar": "تطلب الإجابة من Lumo أن يستمع. ما يسمعه Lumo يعود إلى المحادثة كرسالة.",
+   "fr": "La réponse demande à Lumo d'écouter. Ce que Lumo entend revient dans le chat sous forme de message.",
+   "bn": "উত্তরটি Lumo-কে শুনতে বলছে। Lumo যা শোনে তা বার্তা হিসেবে চ্যাটে ফিরে যায়।",
+   "pt-BR": "A resposta pede ao Lumo para ouvir. O que o Lumo ouvir volta ao chat como uma mensagem.",
+   "ru": "Ответ просит Lumo слушать. То, что услышит Lumo, вернётся в чат сообщением.",
+   "id": "Jawaban meminta Lumo mendengarkan. Apa yang didengar Lumo kembali ke obrolan sebagai pesan.",
+   "it": "La risposta chiede a Lumo di ascoltare. Quello che Lumo sente torna nella chat come messaggio."
+  },
+  "then: {task}": {
+   "zh-Hans": "然后：{task}",
+   "hi": "फिर: {task}",
+   "es": "después: {task}",
+   "ar": "ثم: {task}",
+   "fr": "ensuite : {task}",
+   "bn": "তারপর: {task}",
+   "pt-BR": "depois: {task}",
+   "ru": "затем: {task}",
+   "id": "lalu: {task}",
+   "it": "poi: {task}"
+  },
+  "Not now": {
+   "zh-Hans": "暂不",
+   "hi": "अभी नहीं",
+   "es": "Ahora no",
+   "ar": "ليس الآن",
+   "fr": "Pas maintenant",
+   "bn": "এখন না",
+   "pt-BR": "Agora não",
+   "ru": "Не сейчас",
+   "id": "Jangan sekarang",
+   "it": "Non ora"
+  },
+  "Listen": {
+   "zh-Hans": "监听",
+   "hi": "सुनें",
+   "es": "Escuchar",
+   "ar": "استمع",
+   "fr": "Écouter",
+   "bn": "শুনুন",
+   "pt-BR": "Ouvir",
+   "ru": "Слушать",
+   "id": "Dengarkan",
+   "it": "Ascolta"
   }
  }
 }

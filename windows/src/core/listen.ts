@@ -480,7 +480,7 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
   const listens: ListenAsk[] = [];
   const stops: ListenStop[] = [];
   const unread: string[] = [];
-  let out = text.replace(MARKER_RE, (all: string, _ticks: string, un: string | undefined, body: string) => {
+  const take = (part: string) => part.replace(MARKER_RE, (all: string, _ticks: string, un: string | undefined, body: string) => {
     const local = readLocalTarget(body);
     const ref = local ? null : readRef(body);
     if (un) {
@@ -496,12 +496,42 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
     else unread.push(all.replace(/`/g, "").trim());
     return GONE;
   });
+  let out = forLumo(text, take);
   // The line's own row, and a code block that only held it.
   out = out.replace(/^[ \t]*(?:\u0000[ \t]*)+(?:\n|$)/gm, "").replaceAll(GONE, "");
   // (Not a block closing right before another opens: "```" then "```lumo-file x".)
   out = out.replace(/```[A-Za-z]*[ \t]*\n?\s*```(?![\w-])[ \t]*\n?/g, "");
   out = out.replace(/`{0,3}\[\[(?:(?!\]\]).)*$/, "");
   return { text: out.replace(/\n{3,}/g, "\n\n").trim(), listens, stops, unread };
+}
+
+/** A code block that holds nothing but lines for Lumo (what a model wraps them in). */
+const ONLY_MARKERS = /^(?:[ \t]*`{0,3}[ \t]*\[\[\s*(?:un)?listen\b(?:(?!\]\]).)*\]\][ \t]*`{0,3}[ \t]*(?:\n|$))+$/i;
+
+/**
+ * `text` with `take` applied where a line for Lumo counts: not in a code
+ * block that shows other code, nor in a quote. A line quoted or shown as
+ * code (a page that explains Lumo, a file that holds one) asks for nothing.
+ */
+function forLumo(text: string, take: (part: string) => string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fence = /^[ \t]*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      // The whole block, to its closing fence (or the end of the text).
+      let end = i + 1;
+      while (end < lines.length && !lines[end].trimStart().startsWith(fence[1])) end++;
+      const block = lines.slice(i, Math.min(end + 1, lines.length));
+      const inner = lines.slice(i + 1, end).join("\n").trim();
+      out.push(inner && ONLY_MARKERS.test(inner) ? take(block.join("\n")) : block.join("\n"));
+      i = end;
+      continue;
+    }
+    out.push(/^[ \t]*>/.test(line) ? line : take(line));
+  }
+  return out.join("\n");
 }
 
 /** What the chat sends Claude once a watch with something to do ends. */

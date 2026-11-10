@@ -118,7 +118,7 @@ import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
-import { LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
+import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, takeListens, untilText, watchColor, watchLabel, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { CONTEXT_STRINGS } from "../core/context-usage";
@@ -130,11 +130,19 @@ import {
   SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
 } from "../core/slash";
 
+/** At most this many watches wait for the user's word in one chat: the latest are kept. */
+const MAX_LISTEN_ASKS = 6;
+
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
   placeholderNext: N_("Continue…"),
   planKeep: N_("Keep planning"),
   planApprove: N_("Approve the plan"),
+  listenAsk: N_("Start listening?"),
+  listenWhy: N_("The answer asks Lumo to listen. What Lumo hears goes back to the chat as a message."),
+  listenThen: N_("then: {task}"),
+  listenNo: N_("Not now"),
+  listenYes: N_("Listen"),
   planChange: N_("Or write what to change…"),
   send: N_("Send"),
   toEnd: N_("Go to the bottom"),
@@ -1717,6 +1725,8 @@ export function buildPrompt(
     onclick: () => showPlan(),
   }, svg(ICONS.plan, 13, { stroke: 1.8 }));
   planBtn.style.display = "none";
+  /** Watches each chat's answers asked for, waiting for the user's Listen (drawListenAsk). */
+  const listenAsks = new Map<string, ListenAsk[]>();
   // The plan: a chip beside the model in place of the icon, its steps rising
   // over the chat from this row (plan-strip.ts).
   const planStrip = buildPlanStrip(() => showPlan());
@@ -1759,6 +1769,48 @@ export function buildPrompt(
         { agent: t(providerDef(State.settings.chatProvider).name) });
       planAskWho.textContent = activeModel(State.settings) || "";
       planAskList.append(planAskSteps(req.plan));
+    }
+    onHeightChange();
+  }
+  // What an answer asked Lumo to listen for, over the field, waiting for the
+  // user's word: nothing listens, and nothing is sent to the chat later, until
+  // Listen is clicked (concept: ascolto-con-conferma).
+  const listenAskList = h("div", { class: "listen-ask-list" });
+  let listenAskShownFor = "";
+  let listenAskAt = 0;
+  const listenAskDecide = (yes: boolean) => () => {
+    // A click meant for something else, as the box came up, answers nothing.
+    if (performance.now() - listenAskAt < PLAN_ASK_GUARD_MS) return;
+    const chatId = State.chatId;
+    const asks = listenAsks.get(chatId) ?? [];
+    listenAsks.delete(chatId);
+    drawListenAsk();
+    if (yes && asks.length) void startListens(chatId, asks);
+  };
+  const listenAsk = h("div", { class: "plan-ask listen-ask" },
+    h("div", { class: "plan-ask-head" }, h("span", { class: "plan-ask-title", text: tl(STRINGS.listenAsk) })),
+    h("div", { class: "listen-ask-why", text: tl(STRINGS.listenWhy) }),
+    listenAskList,
+    h("div", { class: "plan-ask-actions" },
+      h("button", { class: "plan-ask-btn keep", type: "button", onclick: listenAskDecide(false) }, h("span", { text: tl(STRINGS.listenNo) })),
+      h("button", { class: "plan-ask-btn approve", type: "button", onclick: listenAskDecide(true) }, h("span", { text: tl(STRINGS.listenYes) }))));
+  listenAsk.hidden = true;
+  /** The box for the chat on screen: each watch its answer asked for, by name, event and what then. */
+  function drawListenAsk() {
+    const asks = State.chatSlot !== "forge" ? listenAsks.get(State.chatId) ?? [] : [];
+    const key = asks.length ? `${State.chatId}:${JSON.stringify(asks)}` : "";
+    if (key === listenAskShownFor) return;
+    listenAskShownFor = key;
+    listenAskAt = performance.now();
+    listenAsk.hidden = asks.length === 0;
+    clear(listenAskList);
+    for (const ask of asks) {
+      const w = { ...ask, id: 0, chatId: State.chatId, startedAt: 0 } as ListenWatch;
+      listenAskList.append(h("div", { class: "listen-ask-row", style: `--watch:${watchColor(w)}` },
+        h("span", { class: "listen-ask-dot" }),
+        h("span", { class: "listen-ask-text" },
+          h("span", { class: "listen-ask-what", text: `${watchLabel(w)} · ${untilText(w)}${w.text ? ` "${w.text}"` : ""}` }),
+          ask.task ? h("span", { class: "listen-ask-then", text: t(STRINGS.listenThen, { task: ask.task }) }) : null)));
     }
     onHeightChange();
   }
@@ -1863,7 +1915,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, listenAsk, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -3919,16 +3971,28 @@ export function buildPrompt(
       if (stop.source === "github.pr") void Bridge.listenCancel(stop.repo, stop.number);
       else void Bridge.listenCancelLocal(stop.source, stop.target);
     }
-    const addOne = (ask: ListenAsk) => ask.source === "github.pr"
-      ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, chatId, ask.mode)
-      : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, chatId, ask.mode, ask.amount);
-    const added = await Promise.all(answered.listens.map(addOne));
-    // A line Lumo could not read or start is said, never just dropped.
-    const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
-    const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map(named)];
+    // What it asked to listen for waits for the user's Listen, over the field.
+    if (answered.listens.length) {
+      listenAsks.set(chatId, [...(listenAsks.get(chatId) ?? []), ...answered.listens].slice(-MAX_LISTEN_ASKS));
+      drawListenAsk();
+    }
+    // A line Lumo could not read is said, never just dropped.
+    const unheard = answered.unread;
     return unheard.length
       ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
       : answered.text;
+  }
+
+  /** The watches the user said Listen to, for chat `chatId`: what can't start is said on the island. */
+  async function startListens(chatId: string, asks: ListenAsk[]) {
+    const addOne = (ask: ListenAsk) => ask.source === "github.pr"
+      ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, chatId, ask.mode)
+      : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, chatId, ask.mode, ask.amount);
+    const added = await Promise.all(asks.map(addOne));
+    const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
+    const unheard = asks.filter((_, i) => !added[i]).map(named);
+    Sound.play(unheard.length ? "error" : "blip");
+    if (unheard.length) compactNotice(t(LISTEN_STRINGS.unread, { what: unheard.join(", ") }), LISTEN_COLOR, 10_000);
   }
 
   // ── What Claude Code writes by itself ─────────────────────────────────────
@@ -4361,6 +4425,7 @@ export function buildPrompt(
       // (they show on the home).
       const ownPlan = !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
       drawPlanAsk();
+      drawListenAsk();
       planStrip.sync(State.planOpen ? ownPlan : null);
       const planIconShown = ownPlan != null && planStrip.chip.hidden;
       // The home asked for a chat (its plan's row): that one comes on screen.
