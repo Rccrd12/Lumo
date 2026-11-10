@@ -51,6 +51,15 @@ test("English is the key itself, other languages come from either table", () => 
   inLanguage("zh-Hans", () => assert.equal(t("Cancel"), "取消"));
 });
 
+test("the sandbox's Low and High carry their context, apart from the effort's", () => {
+  inLanguage("it", () => {
+    assert.equal(t("sandbox|Low"), "Bassa");
+    assert.equal(t("sandbox|High"), "Alta");
+    assert.equal(t("Low"), "Basso");
+    assert.equal(t("High"), "Alto");
+  });
+});
+
 test("a string nobody translated falls back to its English text", () => {
   inLanguage("ru", () => {
     assert.equal(t("Some brand new sentence."), "Some brand new sentence.");

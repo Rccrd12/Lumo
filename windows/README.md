@@ -583,6 +583,14 @@ started: an Unsloth Studio you opened stays on. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
+With a local model the shield offers **Ask for approval** (a card for every
+call of your tools and every web search or page read), **Approve for me** (a
+trusted tool asks only for risky calls), **Run automatically** (a trusted tool
+never asks when it can run in the Windows sandbox, and otherwise asks as
+Approve for me does) and **Plan only**. A tool left on **Ask every time** in
+the Tools tab always asks, whatever the mode. The **Sandbox** chip beside the title picks how far your tools are kept
+from the computer: **High**, the default, also runs them in a Windows
+AppContainer; **Low** keeps only Lumo's own guard rails.
 Next to the dots the chat says what the model is doing, in the same words as
 every provider (Thinking… with its seconds, Using a tool), plus reading the
 prompt, trying again after its server dropped the request, or sent back once
@@ -1129,8 +1137,10 @@ and says so. These are guard rails for honest tools that overreach, read
 together with the review, not a sandbox for code written to escape it.
 
 **Each call asks you.** Every call of a tool is an Allow / Deny card on the
-island, whoever makes it, with the supervisor's words for what the tool does.
-In a tool's detail, **Trust it** lets agents use it without asking: only
+island, whoever makes it, with the supervisor's words for what the tool does,
+unless you **Trust it**; a local model's **Approve for me** and **Run
+automatically**, on the chat's shield, then decide which of those calls still
+ask (see the local models above). In a tool's detail, **Trust it** lets agents use it without asking: only
 offered for a reviewed tool that isn't dangerous, does nothing it didn't
 declare, and that Lumo can hold to what it declared. A change that asks for
 more takes the trust back.

@@ -85,8 +85,8 @@ import {
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
-  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, permissionModesFor, pickModel, providerDef, setLocalCaps,
-  anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
+  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps,
+  anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
@@ -170,6 +170,8 @@ const STRINGS = {
   recommended: N_("Recommended"),
   autoHint: N_("Auto: Claude Code picks the effort its model is made for."),
   permissions: N_("Permissions"),
+  sandbox: N_("Sandbox"),
+  isolate: N_("How to isolate code?"),
   welcome: N_("What can I do for you?"),
   askFile: N_("Ask about a file"),
   lookScreen: N_("Look at my screen"),
@@ -225,8 +227,8 @@ const EFFORT_NAMES: Record<string, string> = {
   max: N_("Max"),
 };
 
-/** Each permission mode: its name and what it lets through. */
-const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = {
+/** Each permission mode of the CLIs: its name and what it lets through. */
+const PERMISSION_TEXT: Record<Exclude<PermissionMode, "off">, { name: string; note: string }> = {
   default: { name: N_("Ask every time"), note: N_("Asks before each action that needs a permission.") },
   auto: { name: N_("Auto"), note: N_("The AI decides what is safe to do without asking, and asks for the rest.") },
   plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
@@ -236,12 +238,39 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
 const AGY_AUTO_NOTE = N_("Runs every command and changes any file without asking.");
 /** Auto with Copilot CLI or Cursor CLI: an action allowed once is allowed for the rest of the chat (acp_chat.rs). */
 const ACP_AUTO_NOTE = N_("Asks when the CLI asks. What you allow is allowed for the rest of the chat.");
-/** The modes with a local model, whose only actions are the user's tools (local_chat.rs). */
-const LOCAL_NOTES: Record<PermissionMode, string> = {
-  default: N_("Asks before each of your tools runs, even one you trust."),
-  auto: N_("Runs the tools you trust without asking, and asks for the rest."),
-  plan: N_("Gets none of your tools: it only answers and plans."),
+/** The modes with a local model, whose actions are the user's tools and the web (local_chat.rs). */
+const LOCAL_TEXT: Record<PermissionMode, { name: string; note: string }> = {
+  default: { name: N_("Ask for approval"), note: N_("Asks before using tools or the internet.") },
+  auto: { name: N_("Approve for me"), note: N_("Only asks for risky actions.") },
+  off: { name: N_("Run automatically"), note: N_("Never asks. Code stays in the sandbox.") },
+  plan: { name: PERMISSION_TEXT.plan.name, note: N_("Gets none of your tools: it only answers and plans.") },
 };
+
+/** A mode's name and note with `provider`. */
+function modeText(provider: ProviderDef, mode: PermissionMode): { name: string; note: string } {
+  if (provider.urlField || mode === "off") return LOCAL_TEXT[mode];
+  const text = PERMISSION_TEXT[mode];
+  if (mode === "auto" && provider.id === "antigravity-cli") return { ...text, note: AGY_AUTO_NOTE };
+  if (mode === "auto" && (provider.id === "copilot-cli" || provider.id === "cursor-cli")) return { ...text, note: ACP_AUTO_NOTE };
+  return text;
+}
+
+/**
+ * How far a local model's tools are kept from the computer (Settings.localSandbox).
+ * Its "Low" and "High" are not the effort's: other languages may say them
+ * another way (Italian: Bassa, not Basso), so their keys carry the context
+ * before a "|" (`tc`).
+ */
+const SANDBOX_TEXT: Record<SandboxLevel, { name: string; note: string; color: string }> = {
+  low: { name: N_("sandbox|Low"), note: N_("Only Lumo's protections. Risky code asks first."), color: "#f5a524" },
+  high: { name: N_("sandbox|High"), note: N_("Tools also run in the Windows sandbox."), color: "#4ade80" },
+};
+
+/** A key with its context ("sandbox|Low"): its translation, else its English after the "|". */
+function tc(key: string): string {
+  const text = t(key);
+  return text === key ? key.slice(key.indexOf("|") + 1) : text;
+}
 
 /** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {
@@ -1720,8 +1749,10 @@ export function buildPrompt(
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
     // The new look's usage menu holds the context and the limits: as much room as Listening.
-    const tall = State.settings.islandNewLook === true && ((body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
-      || body.classList.contains("screening"));
+    // A local model's four modes want more room than the CLIs' three, in either look.
+    const tall = (State.settings.islandNewLook === true && ((body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
+      || body.classList.contains("screening")))
+      || (body.classList.contains("authorizing") && providerDef(State.settings.chatProvider).urlField !== null);
     if (open === State.chatPanelOpen && hearing === State.listeningOpen && tall === State.chatPanelTall) return;
     State.chatPanelOpen = open;
     State.listeningOpen = hearing;
@@ -1758,7 +1789,8 @@ export function buildPrompt(
   const screenList = h("div", { class: "picker-list" });
   const screenEl = h("div", { class: "picker screen-panel" }, screenTitle, screenList);
   const permList = h("div", { class: "picker-list" });
-  const permEl = h("div", { class: "picker permissions" }, h("div", { class: "picker-title", text: t(STRINGS.permissions) }), permList);
+  const permHead = h("div", { class: "picker-title", text: t(STRINGS.permissions) });
+  const permEl = h("div", { class: "picker permissions" }, permHead, permList);
   const usageTitle = h("div", { class: "picker-title" });
   const usageList = h("div", { class: "picker-list usage-list" });
   const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
@@ -2157,38 +2189,106 @@ export function buildPrompt(
   // ── Permissions ───────────────────────────────────────────────────────────
   //
   // What Claude Code or Antigravity CLI may do without a card, from the next
-  // message on: each turn starts the CLI again with that mode.
+  // message on: each turn starts the CLI again with that mode. A local model
+  // has a fourth mode, and its sandbox's level behind the chip in the title.
+
+  /** What the panel shows with a local model: the modes, or the sandbox's levels. */
+  let permView: "modes" | "sandbox" = "modes";
 
   function drawPermissions() {
     clear(permList);
     const p = providerDef(State.settings.chatProvider);
+    if (p.urlField && permView === "sandbox") {
+      drawSandbox(p);
+      return;
+    }
+    drawPermHead(p);
     const current = parsePermissionMode(State.settings.chatPermissionMode, p.id);
     for (const mode of permissionModesFor(p.id)) {
       const on = mode === current;
+      const text = modeText(p, mode);
       const row = h(
         "button",
         { class: on ? "picker-model perm-row on" : "picker-model perm-row", style: `--accent:${p.accent}` },
         h(
           "span",
           { class: "perm-text" },
-          h("span", { class: "picker-model-name", text: t(PERMISSION_TEXT[mode].name) }),
-          h("span", {
-            class: "perm-note",
-            text: t(p.urlField ? LOCAL_NOTES[mode]
-              : mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE
-              : mode === "auto" && (p.id === "copilot-cli" || p.id === "cursor-cli") ? ACP_AUTO_NOTE
-              : PERMISSION_TEXT[mode].note),
-          }),
+          h("span", { class: "picker-model-name", text: t(text.name) }),
+          h("span", { class: "perm-note", text: t(text.note) }),
         ),
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
       row.addEventListener("click", () => {
-        if (mode !== current) {
+        // The stored mode, not the one shown: one setting serves every provider,
+        // and a CLI shows a local model's "off" as "default".
+        if (State.settings.chatPermissionMode !== mode) {
           State.settings = { ...State.settings, chatPermissionMode: mode };
           saveSettings();
           Sound.play("blip");
         }
         closePermissions();
+        State.notify();
+      });
+      permList.append(row);
+    }
+  }
+
+  /** The panel's title: with a local model, the sandbox's chip beside it. */
+  function drawPermHead(p: ProviderDef) {
+    clear(permHead);
+    if (!p.urlField) {
+      permHead.className = "picker-title";
+      permHead.textContent = t(STRINGS.permissions);
+      return;
+    }
+    const level = SANDBOX_TEXT[parseSandboxLevel(State.settings.localSandbox)];
+    const chip = h(
+      "button",
+      { class: "sandbox-chip" },
+      h("span", { text: t(STRINGS.sandbox) }),
+      h("span", { class: "sandbox-level", style: `color:${level.color}`, text: tc(level.name) }),
+      svg(ICONS.chevronRight, 9, { stroke: 2.2 }),
+    );
+    chip.addEventListener("click", () => {
+      permView = "sandbox";
+      drawPermissions();
+    });
+    permHead.className = "picker-title perm-head";
+    permHead.append(h("span", { text: t(STRINGS.permissions) }), chip);
+  }
+
+  /** The sandbox's levels, under a way back to the modes. */
+  function drawSandbox(p: ProviderDef) {
+    clear(permHead);
+    const back = h("button", { class: "perm-back" }, svg(ICONS.chevronLeft, 10, { stroke: 2.2 }), h("span", { text: t(STRINGS.isolate) }));
+    back.addEventListener("click", () => {
+      permView = "modes";
+      drawPermissions();
+    });
+    permHead.className = "picker-title perm-head";
+    permHead.append(back);
+    const current = parseSandboxLevel(State.settings.localSandbox);
+    for (const level of ["low", "high"] as const) {
+      const on = level === current;
+      const row = h(
+        "button",
+        { class: on ? "picker-model perm-row on" : "picker-model perm-row", style: `--accent:${p.accent}` },
+        h(
+          "span",
+          { class: "perm-text" },
+          h("span", { class: "picker-model-name", text: tc(SANDBOX_TEXT[level].name) }),
+          h("span", { class: "perm-note", text: t(SANDBOX_TEXT[level].note) }),
+        ),
+        on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
+      );
+      row.addEventListener("click", () => {
+        if (State.settings.localSandbox !== level) {
+          State.settings = { ...State.settings, localSandbox: level };
+          saveSettings();
+          Sound.play("blip");
+        }
+        permView = "modes";
+        drawPermissions();
         State.notify();
       });
       permList.append(row);
@@ -2209,7 +2309,7 @@ export function buildPrompt(
     if (!cli) closePermissions();
     const mode = parsePermissionMode(State.settings.chatPermissionMode, State.settings.chatProvider);
     permBtn.classList.toggle("lit", mode !== "default");
-    permBtn.title = `${t(STRINGS.permissions)} · ${t(PERMISSION_TEXT[mode].name)}`;
+    permBtn.title = `${t(STRINGS.permissions)} · ${t(modeText(providerDef(State.settings.chatProvider), mode).name)}`;
     permBtn.setAttribute("aria-label", permBtn.title);
   }
 
@@ -2227,6 +2327,7 @@ export function buildPrompt(
     closeScreen();
     closeUsage();
     closeListening();
+    permView = "modes";
     drawPermissions();
     body.classList.add("authorizing");
     permBtn.classList.add("open");

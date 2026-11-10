@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  PERMISSION_MODES, PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, permissionModesFor, isLoopbackHost, pickModel, providerDef, urlExposure,
+  PERMISSION_MODES, PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, parseSandboxLevel, permissionModesFor, isLoopbackHost, pickModel, providerDef, urlExposure,
   visibleProviders, withModel, anyProviderReady, capsContext, capsWords, contextSize, localCapsOf, setLocalCaps,
 } from "../src/core/providers.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
@@ -124,8 +124,8 @@ test("Codex is a keyless CLI with its own efforts, and never Turbo", () => {
 test("every CLI has the same three modes; Turbo, picked before, is Auto with Antigravity CLI only", () => {
   assert.deepEqual(permissionModesFor("claude-code"), ["default", "auto", "plan"]);
   assert.deepEqual(permissionModesFor("antigravity-cli"), ["default", "auto", "plan"]);
-  for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m, "claude-code"), m);
-  for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m, "antigravity-cli"), m);
+  for (const m of ["default", "auto", "plan"]) assert.equal(parsePermissionMode(m, "claude-code"), m);
+  for (const m of ["default", "auto", "plan"]) assert.equal(parsePermissionMode(m, "antigravity-cli"), m);
   assert.equal(parsePermissionMode("turbo", "antigravity-cli"), "auto", "Turbo became Auto");
   assert.equal(parsePermissionMode("turbo", "claude-code"), "default", "Turbo asks with Claude Code");
   assert.equal(parsePermissionMode("turbo", "openai"), "default");
@@ -133,6 +133,29 @@ test("every CLI has the same three modes; Turbo, picked before, is Auto with Ant
   for (const m of ["bypassPermissions", "dontAsk", "", undefined, 3]) {
     assert.equal(parsePermissionMode(m, "antigravity-cli"), "default", String(m));
   }
+});
+
+test("the model servers add Run automatically; with a CLI it asks every time", () => {
+  assert.deepEqual(PERMISSION_MODES, ["default", "auto", "off", "plan"]);
+  for (const p of PROVIDERS) {
+    const want = p.urlField !== null ? ["default", "auto", "off", "plan"] : ["default", "auto", "plan"];
+    assert.deepEqual(permissionModesFor(p.id), want, p.id);
+  }
+  for (const id of ["ollama", "lmstudio", "unsloth", "custom"]) {
+    for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m, id), m, `${m} with ${id}`);
+  }
+  for (const id of ["claude-code", "antigravity-cli", "codex", "copilot-cli", "cursor-cli", "anthropic", "openai"]) {
+    assert.equal(parsePermissionMode("off", id), "default", id);
+  }
+  assert.equal(parsePermissionMode("turbo", "ollama"), "default");
+  assert.equal(parsePermissionMode("acceptEdits", "ollama"), "auto");
+});
+
+test("the local sandbox is High unless Low was picked", () => {
+  assert.equal(DEFAULT_SETTINGS.localSandbox, "high");
+  assert.equal(parseSandboxLevel("low"), "low");
+  assert.equal(parseSandboxLevel("high"), "high");
+  for (const v of ["", "Low", "off", undefined, null, 0]) assert.equal(parseSandboxLevel(v), "high", String(v));
 });
 
 test("loopback hosts match net.rs", () => {

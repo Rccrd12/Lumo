@@ -333,6 +333,8 @@ export interface Settings {
   chatEffort: string;
   /** What the chat's CLIs may do without asking (core/providers.ts PERMISSION_MODES). */
   chatPermissionMode: string;
+  /** How far a model server's tools are kept from the computer: "high" or "low" (core/providers.ts parseSandboxLevel). */
+  localSandbox: "high" | "low";
   /** A quiet line next to the chat's model picker with what the provider has left (core/chat-usage.ts). */
   chatShowUsage: boolean;
   /**
@@ -499,6 +501,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatModels: {},
   chatEffort: "",
   chatPermissionMode: "default",
+  localSandbox: "high",
   chatShowUsage: false,
   chatShareExplorer: false,
   chatShareOpen: true,
