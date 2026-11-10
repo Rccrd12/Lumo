@@ -24,6 +24,7 @@ use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
 use crate::chat_usage::{self, ChatUsage};
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
+use lumo_local::sse::{filter_thinking_blocks, progressive_filter};
 
 pub struct Provider {
     pub id: &'static str,
@@ -287,7 +288,7 @@ pub async fn send(
                 *shown.lock().unwrap_or_else(|p| p.into_inner()) = all;
             };
             let sent = if streaming { stream_post(p, &endpoint, &key, &body, usage, show).await } else { post(p, &endpoint, &key, &body, usage).await };
-            let json = match sent {
+            let mut json = match sent {
                 // A model this account may not stream (OpenAI asks some
                 // organisations to be verified first): the whole answer, at once.
                 Err((400, e)) if streaming && e.to_lowercase().contains("stream") => {
@@ -310,6 +311,10 @@ pub async fn send(
                 }
                 other => other.map_err(|(_, e)| e)?,
             };
+            // Reasoning written in the text (Gemma's `<thought>`) is never shown, nor sent back.
+            if let Some(content) = json.pointer_mut("/choices/0/message/content").filter(|c| c.is_string()) {
+                *content = json!(filter_thinking_blocks(content.as_str().unwrap_or_default()));
+            }
             let message = json.pointer("/choices/0/message").cloned().unwrap_or(Value::Null);
             let calls = message["tool_calls"].as_array().cloned().unwrap_or_default();
             if calls.is_empty() || body.get("tools").is_none() || rounds == MAX_TOOL_ROUNDS {
@@ -469,7 +474,7 @@ async fn stream_post(
         if unsent && last.elapsed() >= DELTA_INTERVAL {
             unsent = false;
             last = Instant::now();
-            on_text(&answer.content);
+            on_text(&progressive_filter(&answer.content));
         }
         if answer.done {
             break;
@@ -477,7 +482,7 @@ async fn stream_post(
     }
     // A last line without its newline.
     answer.line(String::from_utf8_lossy(&pending).trim_end()).map_err(|e| (0, format!("{}: {e}", p.name)))?;
-    on_text(&answer.content);
+    on_text(&progressive_filter(&answer.content));
     answer.finish().ok_or_else(|| (0, tf("Network error: {error}", &[("error", "the answer stopped halfway")])))
 }
 
@@ -639,8 +644,10 @@ impl Assembly {
         for (k, v) in self.extra {
             message[k.as_str()] = v;
         }
+        // Reasoning written in the text is never shown, nor sent back.
+        let content = filter_thinking_blocks(&self.content);
         // A message of tool calls only has no content (an empty one is refused).
-        message["content"] = if self.content.is_empty() && !calls.is_empty() { Value::Null } else { json!(self.content) };
+        message["content"] = if content.is_empty() && !calls.is_empty() { Value::Null } else { json!(content) };
         if !calls.is_empty() {
             message["tool_calls"] = Value::Array(calls);
         }
@@ -949,6 +956,15 @@ mod tests {
         assert_eq!(details.len(), 2);
         assert_eq!(details[0], json!({"type":"reasoning.text","text":"Let me think.","format":"anthropic-claude-v1","index":0,"signature":"S"}));
         assert_eq!(details[1]["data"], "E1");
+    }
+
+    #[test]
+    fn gemmas_thoughts_stay_out_of_the_answer() {
+        let (whole, _) = assemble(&[
+            r#"data: {"choices":[{"delta":{"content":"<thought>The user said Ciao."}}]}"#,
+            r#"data: {"choices":[{"delta":{"content":"</thought>Ciao! Come posso aiutarti?"},"finish_reason":"stop"}]}"#,
+        ]);
+        assert_eq!(whole.unwrap()["choices"][0]["message"]["content"], "Ciao! Come posso aiutarti?");
     }
 
     #[test]
