@@ -727,12 +727,14 @@ const shown = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
 /**
  * What identifies a card, image or callout across redraws of the same
  * container: its place and its text. Null for anything drawn again each time,
- * and for a block still being written.
+ * and for a block still being written but its placeholder.
  */
 function identity(block: Block, n: number, streaming: boolean, tail: boolean, images: number): string | null {
   switch (block.kind) {
     case "rich": {
-      if (block.open && streaming) return null;
+      // Still being written: its placeholder, the same node while the body
+      // grows, so its dots keep pulsing instead of starting over each chunk.
+      if (block.open && streaming) return `pending\u0000${n}\u0000${block.type}\u0000${block.title}`;
       // A checklist is drawn again when a list is written again further down.
       const lists = block.type === "checklist" ? checklistsEpoch() : "";
       return `rich\u0000${n}\u0000${lists}\u0000${block.type}\u0000${block.title}\u0000${block.body}\u0000${block.open}`;
@@ -748,6 +750,20 @@ function identity(block: Block, n: number, streaming: boolean, tail: boolean, im
     default:
       return null;
   }
+}
+
+/**
+ * Makes `into` show `nodes`, in order, leaving where they are the ones it
+ * already shows: a node taken out and put back starts its CSS animations
+ * over (the placeholder's dots, at every chunk of an answer).
+ */
+function place(into: HTMLElement, nodes: HTMLElement[]): void {
+  const wanted = new Set<Node>(nodes);
+  for (const child of Array.from(into.childNodes)) if (!wanted.has(child)) child.remove();
+  nodes.forEach((node, i) => {
+    const at = into.childNodes[i] ?? null;
+    if (at !== node) into.insertBefore(node, at);
+  });
 }
 
 /**
@@ -789,7 +805,7 @@ export function renderMarkdown(into: HTMLElement, markdown: string, opts: Markdo
     i--;
     if (lines.length) out.push(quoteRun(lines));
   }
-  into.replaceChildren(...out);
+  place(into, out);
   if (kept.size) shown.set(into, kept);
   else shown.delete(into);
 }
