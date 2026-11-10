@@ -229,10 +229,12 @@ pub async fn start_now(app: &AppHandle, settings: &Settings) -> Result<(), Strin
 }
 
 async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<(), String> {
-    if answers(port).await {
+    // A start already going isn't asked first: on Windows a port not open yet
+    // takes about 2 s to refuse, and the chat would say Thinking… meanwhile.
+    if !starting_now() && answers(port).await {
         return Ok(());
     }
-    let _one = STARTING.lock().await;
+    let _one = one_start(&mut tick).await;
     // Another caller's start may have finished meanwhile.
     if answers(port).await {
         return Ok(());
@@ -290,6 +292,31 @@ async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<
             return Err(t("Unsloth Studio didn't start within 3 minutes. Open it once from its own shortcut to see why."));
         }
     }
+}
+
+/// Lumo's server was started and doesn't answer yet.
+fn starting_now() -> bool {
+    owned(|o| o.as_ref().is_some_and(|own| !own.ready))
+}
+
+/// One start at a time. Another one going (the chat's picker, Settings'
+/// "Start now"): it is waited for, and `tick` hears its seconds meanwhile,
+/// counted from when it began, so the chat says Starting Unsloth Studio… with
+/// the same seconds as the picker, not Thinking….
+async fn one_start(tick: &mut impl FnMut(u64)) -> tokio::sync::MutexGuard<'static, ()> {
+    if let Ok(one) = STARTING.try_lock() {
+        return one;
+    }
+    let began = owned(|o| o.as_ref().map(|own| own.started)).unwrap_or_else(Instant::now);
+    waiting(STARTING.lock(), began, tick).await
+}
+
+/// `asked`, a start going on that began at `began`: `tick` hears the seconds it
+/// has taken at once, then each one after.
+async fn waiting<T>(asked: impl std::future::Future<Output = T>, began: Instant, tick: &mut impl FnMut(u64)) -> T {
+    let mut said = began.elapsed().as_secs();
+    tick(said);
+    ticking(asked, began, &mut said, |seconds| tick(seconds)).await
 }
 
 /// `asked`, and every whole second since `began` while it is going: `second`
@@ -431,6 +458,16 @@ mod tests {
         rt.block_on(ticking(async { tokio::time::sleep(Duration::from_millis(900)).await }, began, &mut said, |s| heard.push(s)));
         assert_eq!(heard[..3], [1, 2, 3]);
         assert!(heard.windows(2).all(|w| w[1] == w[0] + 1));
+    }
+
+    #[test]
+    fn waiting_for_a_start_already_going_says_its_seconds_from_when_it_began() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+        // The picker started it 15 s ago; the chat's question comes now.
+        let began = Instant::now().checked_sub(Duration::from_millis(15_200)).unwrap();
+        let mut heard = Vec::new();
+        rt.block_on(async { waiting(tokio::time::sleep(Duration::from_millis(1900)), began, &mut |s| heard.push(s)).await });
+        assert_eq!(heard, vec![15, 16, 17], "15 s at once, as the picker says, then on from there");
     }
 
     #[test]
