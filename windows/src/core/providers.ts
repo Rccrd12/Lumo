@@ -135,6 +135,24 @@ export function parsePermissionMode(v: unknown, provider: string): PermissionMod
 }
 
 /**
+ * The mode stored for `provider` (settings.rs permission_mode_for):
+ * Antigravity CLI keeps its own, since its Auto is Antigravity's Turbo, where
+ * every command runs, and not the AI deciding what is safe as with the others.
+ * Until it is picked it asks, unless "turbo" was picked before the two were apart.
+ */
+export function storedPermissionMode(s: { chatPermissionMode: string; chatPermissionModeAgy?: string }, provider: string): string {
+  if (provider !== "antigravity-cli") return s.chatPermissionMode;
+  const own = (s.chatPermissionModeAgy ?? "").trim();
+  if (own) return own;
+  return s.chatPermissionMode.trim() === "turbo" ? "auto" : "default";
+}
+
+/** The settings with `mode` picked for `provider`: Antigravity CLI's own, or the others'. */
+export function withPermissionMode<T extends { chatPermissionMode: string; chatPermissionModeAgy?: string }>(s: T, provider: string, mode: string): T {
+  return provider === "antigravity-cli" ? { ...s, chatPermissionModeAgy: mode } : { ...s, chatPermissionMode: mode };
+}
+
+/**
  * How far a model server's tools are kept from the computer
  * (Settings.localSandbox, local_chat.rs): "low" is only Lumo's own guards
  * (tools.rs: Python's audit hook, Node's permission flags, no network

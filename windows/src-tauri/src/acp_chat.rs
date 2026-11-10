@@ -977,6 +977,7 @@ impl Live {
         }
         platform::no_console(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| tf("Cannot start {agent}: {error}", &[("agent", agent.name()), ("error", &e.to_string())]))?;
+        platform::chat_ends_with_lumo(&child);
         let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("no stdin")?));
         let stderr = claude_code::read_stderr(&mut child);
         let rx = claude_code::read_lines(&mut child, usize::MAX)?;

@@ -35,8 +35,14 @@ test("commands that change something, or that cannot be read for sure, are not",
     "git branch feature", "git reflog expire --all", "git reflog delete HEAD@{1}", "git grep -Ovim x",
     "git grep --open-files-in-pager=vim x", "find . -fprint0 out", "tree -o out.txt", "rg --pre ./run x",
     "gci | where { Remove-Item $_.FullName }", "echo (Remove-Item x)", "hostname newname", "date -s 2020-01-01",
+    // Options before the subcommand that can run a program or point git elsewhere.
+    "git -c core.pager=evil log", "git -ccore.pager=evil log", "git --config-env=core.pager=X log",
+    "git --exec-path=/tmp status", "git --git-dir=/x log", "git -C dir remote add x y", "git -C",
   ]) assert.equal(isLookingCommand(c), false, c);
-  for (const c of ["git branch -a", "git branch --show-current", "git reflog", "git grep -n TODO", "hostname", "date +%F"]) {
+  for (const c of [
+    "git branch -a", "git branch --show-current", "git reflog", "git grep -n TODO", "hostname", "date +%F",
+    "git --no-pager log -3", "git -C ../other status", "git -P diff", "git -C x remote -v",
+  ]) {
     assert.ok(isLookingCommand(c), c);
   }
   assert.equal(isSimpleRequest("Bash", {}), false);

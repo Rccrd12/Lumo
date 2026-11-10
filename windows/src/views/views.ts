@@ -18,7 +18,7 @@ import {
 } from "./usage";
 import { buildDiffCard } from "./diff";
 import { lastTextStep } from "../core/diff";
-import { approvalKey } from "../core/approvals";
+import { approvalKey, approvalKeysArmed, armApprovalKeys } from "../core/approvals";
 import { formatSize } from "../core/screen";
 import { Bridge, type Decision } from "../core/bridge";
 import { buildRecap } from "./recap";
@@ -621,11 +621,20 @@ function planWords(button: HTMLElement, words: string): HTMLElement {
 /** Under the buttons of a card whose Allow is kept for the rest of the chat. */
 const REMEMBERED_TEXT = N_("In Auto, Allow counts for the rest of the chat");
 
+/** A request too long to reach the island whole (`cut`): what the card says instead of Allow. */
+const CUT_TEXT = {
+  note: N_("Too long to show here whole: Lumo can't allow it."),
+  elsewhere: N_("Reply in its own window"),
+};
+
 function buildApproval(actions: ViewActions): ViewHost {
   const who = h("div");
   const about = h("div", { class: "approval-about" });
   const planSlot = h("div", { class: "plan-ask-slot" });
-  const code = h("div", { class: "code" });
+  // The whole command, wrapped, scrolling past a few lines: Allow allows all of it.
+  const code = h("div", { class: "code approval-code" });
+  code.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
+  const cutNote = h("div", { class: "approval-cut", text: tl(CUT_TEXT.note) });
   const mail = h("div", { class: "mail-slot" });
   const row = h("div", { class: "actions approval-actions" });
   // An email's card has its own buttons, Send and Discard, and no keys: only a click sends.
@@ -639,7 +648,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   });
   // Copilot CLI and Cursor CLI in Auto: Allow stands for the rest of the chat, and the card says so (new look only).
   const rememberedNote = h("div", { class: "session-allow session-note", text: tl(REMEMBERED_TEXT) });
-  const body = stack(116, 16, who, about, planSlot, code, mail, row, mailRow);
+  const allowBtn = withClass(planWords(btn(tl("Allow"), "primary", () => guarded("allow")(), "Y"), PLAN_ASK_TEXT.approve), "allow-btn");
+  const body = stack(116, 16, who, about, planSlot, code, cutNote, mail, row, mailRow);
   let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
   let mailFor: string | null = null;
@@ -651,6 +661,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   let shownAt = 0;
   const guarded = (d: Decision) => () => {
     if (performance.now() - shownAt < CLICK_GUARD_MS) return;
+    // Never allowed from here: it was not on the card whole (pipe.rs refuses it too).
+    if (State.pendingApproval?.cut && d !== "deny") return;
     // The request on screen: one that just took its place from the line is not drawn yet.
     if (shownFor != null) actions.decide(d, shownFor);
   };
@@ -658,11 +670,15 @@ function buildApproval(actions: ViewActions): ViewHost {
   // never cut off): a click on the card gives it, as the shortcut to the
   // waiting card does.
   el.addEventListener("mousedown", () => {
-    if (State.pendingApproval && !State.pendingApproval.questions) actions.takeKeyboard();
+    if (State.pendingApproval && !State.pendingApproval.questions) {
+      armApprovalKeys(State.pendingApproval.requestId);
+      actions.takeKeyboard();
+    }
   });
   // Then Y and N answer, as the buttons say, even with the chat field holding
   // the keyboard. Only while the island has it: in another app they are just
-  // letters, never an answer.
+  // letters, never an answer. And only once the user turned to this card (a
+  // click on it, its shortcut): before that they are the chat's letters.
   let lastKeyAt = -Infinity;
   const cardOnScreen = () => {
     const req = State.pendingApproval;
@@ -682,7 +698,7 @@ function buildApproval(actions: ViewActions): ViewHost {
         return;
       }
       const d = approvalKey(e);
-      if (!d) {
+      if (!d || !approvalKeysArmed(State.pendingApproval?.requestId)) {
         lastKeyAt = performance.now();
         return;
       }
@@ -738,6 +754,9 @@ function buildApproval(actions: ViewActions): ViewHost {
         code.textContent = target;
       }
       code.title = target;
+      const cut = pending?.cut === true && !email && !plan;
+      cutNote.hidden = !cut;
+      allowBtn.style.display = cut ? "none" : "";
       // What it is for: the agent's own words, else what the request does.
       const text = email ? "" : pending?.reason ?? (pending?.kind ? t(pending.kind.text, pending.kind.vars) : "");
       about.textContent = text;
@@ -745,12 +764,14 @@ function buildApproval(actions: ViewActions): ViewHost {
       about.hidden = !text || !!plan;
       // "Allow for this session" only where the request has a session to be
       // kept for (session_rules.rs): shown or hidden, never rebuilt.
-      sessionAllow.style.display = pending?.sessionAllow === true && !plan ? "" : "none";
+      sessionAllow.style.display = pending?.sessionAllow === true && !plan && !cut ? "" : "none";
       // In its place on a plan asking to start, from a session (the island's chat has its own way).
       planEdits.style.display = plan && !pending?.fromChat ? "" : "none";
-      answerThere.style.display = pending?.answerIn && !plan ? "" : "none";
+      // A request cut short goes back to the agent's own prompt, where it is whole (not the chat's: it has none).
+      const elsewhere = cut && !pending?.fromChat;
+      answerThere.style.display = (pending?.answerIn || elsewhere) && !plan ? "" : "none";
       rememberedNote.style.display = pending?.remembered === true && !plan ? "" : "none";
-      const answerWords = pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn }) : "";
+      const answerWords = pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn }) : elsewhere ? t(CUT_TEXT.elsewhere) : "";
       if (answerThere.firstElementChild && answerThere.firstElementChild.textContent !== answerWords) answerThere.firstElementChild.textContent = answerWords;
 
       sessionAllow.title = t("Allowed again without asking until this session ends");
@@ -765,7 +786,7 @@ function buildApproval(actions: ViewActions): ViewHost {
         withClass(planEdits, "session-allow"),
         withClass(answerThere, "session-allow"),
         rememberedNote,
-        withClass(planWords(btn(tl("Allow"), "primary", guarded("allow"), "Y"), PLAN_ASK_TEXT.approve), "allow-btn"),
+        allowBtn,
       );
       clear(mailRow);
       mailRow.append(
@@ -794,6 +815,12 @@ function buildQuestion(actions: ViewActions): ViewHost {
   // The buttons are only rebuilt when what they show changes: rebuilding them
   // between a mouse-down and a mouse-up would swallow the click.
   let rowKey = "";
+  // Like the permission card: a question (or the next one of a request) pops up
+  // under a cursor that was busy with something else, so a click in its first
+  // moments is not taken as an answer.
+  let shownKey = "";
+  let shownAt = 0;
+  const settled = () => performance.now() - shownAt >= CLICK_GUARD_MS;
 
   const next = (question: string, answer: string | string[], total: number) => {
     answers[question] = answer;
@@ -831,6 +858,10 @@ function buildQuestion(actions: ViewActions): ViewHost {
         picked = new Set();
       }
       const q = questions[Math.min(index, questions.length - 1)];
+      if (`${requestId}:${index}` !== shownKey) {
+        shownKey = `${requestId}:${index}`;
+        shownAt = performance.now();
+      }
       const asking = questions.length > 1
         ? t("is asking ({index} of {total})", { index: index + 1, total: questions.length })
         : t("is asking");
@@ -845,6 +876,7 @@ function buildQuestion(actions: ViewActions): ViewHost {
       for (const option of q.options) {
         const on = picked.has(option.label);
         const button = btn(option.label, on ? "primary" : "secondary", () => {
+          if (!settled()) return;
           if (!q.multiSelect) {
             next(q.question, option.label, questions.length);
             return;
@@ -863,7 +895,7 @@ function buildQuestion(actions: ViewActions): ViewHost {
       }
       if (q.multiSelect) {
         const done = btn(tl("Done"), "primary", () => {
-          if (picked.size > 0) next(q.question, [...picked], questions.length);
+          if (settled() && picked.size > 0) next(q.question, [...picked], questions.length);
         });
         if (picked.size === 0) done.classList.add("off");
         row.append(done);
@@ -873,7 +905,9 @@ function buildQuestion(actions: ViewActions): ViewHost {
           class: "link-btn",
           style: "color:#8e939c",
           text: tl("Answer in terminal"),
-          onclick: () => actions.answerInTerminal(),
+          onclick: () => {
+            if (settled()) actions.answerInTerminal();
+          },
         }),
       );
     },

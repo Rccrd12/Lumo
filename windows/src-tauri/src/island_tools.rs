@@ -209,7 +209,7 @@ only wants to be told.",
             LISTEN,
             "Lumo listens for an event and tells the user once it happens; with something to do then, it sends you a \
 message in this chat that says what happened, and you do it then. Use it instead of waiting, sleeping or polling \
-yourself, then say in a few words that Lumo is listening and end your answer.",
+yourself, then say in a few words that Lumo will listen once the user confirms (they click Listen) and end your answer.",
             watch,
             &["source", "target", "event"],
         ));
@@ -276,7 +276,7 @@ what you meant to then."
     };
     let after = if every.is_empty() { after.to_string() } else { format!("{after} It does so again each time.") };
     let what = crate::listen_local::label(source, &event, &target);
-    Ok((line, format!("Lumo listens to {what} as soon as your answer ends. {after} Say in a few words that Lumo is listening, and end your answer.")))
+    Ok((line, format!("Once your answer ends, Lumo asks the user to start listening to {what}: it listens only if they say Listen. {after} Say in a few words that Lumo will listen once they confirm, and end your answer.")))
 }
 
 /// `[[unlisten fs "C:\…"]]`: the target as listen.rs keeps it, whatever the event.
@@ -397,7 +397,7 @@ pub fn line(tool: &str, input: &Value) -> Result<(String, String), String> {
 happened; do what you meant to only if it is what you waited for."
             };
             let after = if every.is_empty() { after.to_string() } else { format!("{after} It does so again for each new commit.") };
-            Ok((line, format!("Lumo listens to {repo}#{number} as soon as your answer ends. {after} Say in a few words that Lumo is listening, and end your answer.")))
+            Ok((line, format!("Once your answer ends, Lumo asks the user to start listening to {repo}#{number}: it listens only if they say Listen. {after} Say in a few words that Lumo will listen once they confirm, and end your answer.")))
         }
         UNLISTEN => {
             let source = source_of(input)?;

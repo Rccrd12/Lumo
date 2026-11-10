@@ -1528,7 +1528,9 @@ fn html_above(html: &str, text: &str) -> String {
 
 /// Whether an email's headers have a List-Unsubscribe line.
 fn has_unsubscribe(headers: &str) -> bool {
-    headers.lines().any(|l| l.len() >= 17 && l[..17].eq_ignore_ascii_case("list-unsubscribe:"))
+    // Compared as bytes: a header line can have any character at byte 17, and
+    // slicing a str there panics when it falls inside one.
+    headers.lines().any(|l| l.as_bytes().get(..17).is_some_and(|b| b.eq_ignore_ascii_case(b"list-unsubscribe:")))
 }
 
 /// Which of `paths` the agent meant: the whole path, the path without the

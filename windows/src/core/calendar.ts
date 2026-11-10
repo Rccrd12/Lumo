@@ -3,8 +3,10 @@
 // public link…) read into the events of the next days. Pure: calendar.rs
 // fetches the file, island/activities.ts shows it.
 //
-// Times with a Z are UTC; the others are read as the computer's local time,
-// which is what a calendar in the user's own time zone means. Repeating events
+// Times with a Z are UTC; those with a TZID are that zone's (an IANA name,
+// or one of Windows's that Outlook writes); the others, and a zone not
+// known, are read as the computer's local time, which is what a calendar in
+// the user's own time zone means. Repeating events
 // (RRULE: daily, weekly on given days, monthly on a date or the nth weekday,
 // yearly, with INTERVAL, COUNT, UNTIL and EXDATE) are expanded; a moved
 // occurrence (RECURRENCE-ID) replaces the one it moves.
@@ -55,6 +57,65 @@ function unescape(v: string): string {
   return v.replace(/\\n/gi, " ").replace(/\\([,;\\])/g, "$1").trim();
 }
 
+/** Windows's names for the zones met most, as Outlook writes them in TZID. */
+const WINDOWS_ZONES: Record<string, string> = {
+  "W. Europe Standard Time": "Europe/Berlin",
+  "Central Europe Standard Time": "Europe/Budapest",
+  "Romance Standard Time": "Europe/Paris",
+  "Central European Standard Time": "Europe/Warsaw",
+  "GMT Standard Time": "Europe/London",
+  "Greenwich Standard Time": "Atlantic/Reykjavik",
+  "E. Europe Standard Time": "Europe/Chisinau",
+  "FLE Standard Time": "Europe/Kiev",
+  "GTB Standard Time": "Europe/Bucharest",
+  "Russian Standard Time": "Europe/Moscow",
+  "Eastern Standard Time": "America/New_York",
+  "Central Standard Time": "America/Chicago",
+  "Mountain Standard Time": "America/Denver",
+  "Pacific Standard Time": "America/Los_Angeles",
+  "India Standard Time": "Asia/Kolkata",
+  "China Standard Time": "Asia/Shanghai",
+  "Tokyo Standard Time": "Asia/Tokyo",
+  "AUS Eastern Standard Time": "Australia/Sydney",
+  "UTC": "UTC",
+};
+
+/** Formatters by zone: making one is slow, and a calendar asks again and again. */
+const zoneFormats = new Map<string, Intl.DateTimeFormat | null>();
+
+function zoneFormat(tzid: string): Intl.DateTimeFormat | null {
+  const zone = WINDOWS_ZONES[tzid] ?? tzid.replace(/^\/+/, "");
+  if (!zoneFormats.has(zone)) {
+    let format: Intl.DateTimeFormat | null = null;
+    try {
+      format = new Intl.DateTimeFormat("en-US", {
+        timeZone: zone, hourCycle: "h23",
+        year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+      });
+    } catch {
+      // Not a zone this computer knows: local time, as before.
+    }
+    zoneFormats.set(zone, format);
+  }
+  return zoneFormats.get(zone) ?? null;
+}
+
+/** The wall time `y-mo-da h:mi:s` in zone `tzid`, as a time; null for a zone not known. */
+export function zonedTime(y: number, mo: number, da: number, h: number, mi: number, s: number, tzid: string): number | null {
+  const format = zoneFormat(tzid);
+  if (!format) return null;
+  const wall = Date.UTC(y, mo, da, h, mi, s);
+  // How far the zone is from UTC at `at`: its wall time there, less `at`.
+  const offset = (at: number) => {
+    const parts: Record<string, number> = {};
+    for (const p of format.formatToParts(new Date(at))) if (p.type !== "literal") parts[p.type] = +p.value;
+    return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - at;
+  };
+  // Twice: the first guess may fall on the other side of a change of time.
+  const first = wall - offset(wall);
+  return wall - offset(first);
+}
+
 /** An iCal date or date-time: its time, and whether it is a whole day. */
 export function parseIcsDate(value: string, params: Record<string, string> = {}): { time: number; allDay: boolean } | null {
   const v = value.trim();
@@ -63,7 +124,8 @@ export function parseIcsDate(value: string, params: Record<string, string> = {})
   const [y, mo, da] = [+d[1], +d[2] - 1, +d[3]];
   if (d[4] == null || params.VALUE === "DATE") return { time: new Date(y, mo, da).getTime(), allDay: true };
   const [h, mi, s] = [+d[4], +d[5], +(d[6] ?? 0)];
-  const time = d[7] ? Date.UTC(y, mo, da, h, mi, s) : new Date(y, mo, da, h, mi, s).getTime();
+  const zoned = d[7] || !params.TZID ? null : zonedTime(y, mo, da, h, mi, s, params.TZID);
+  const time = d[7] ? Date.UTC(y, mo, da, h, mi, s) : zoned ?? new Date(y, mo, da, h, mi, s).getTime();
   return { time, allDay: false };
 }
 
@@ -120,8 +182,23 @@ function nthWeekday(year: number, month: number, weekday: number, n: number, h: 
   return d.getMonth() === month ? d : null;
 }
 
-/** The starts of a repeating event, in order, up to `to` (at most 2000 looked at). */
-function occurrences(start: number, rule: Rule, to: number): number[] {
+/** The longest one step of each frequency can be (a day with a clock change, a 31-day month, a leap year). */
+const LONGEST_STEP: Record<string, number> = {
+  DAILY: 25 * 3_600_000,
+  WEEKLY: 7 * 24 * 3_600_000 + 3_600_000,
+  MONTHLY: 31 * 24 * 3_600_000 + 3_600_000,
+  YEARLY: 366 * 24 * 3_600_000 + 3_600_000,
+};
+
+/** How many steps looked at past the first one that may reach `from`. */
+const STEPS = 2000;
+
+/**
+ * The starts of a repeating event, in order, up to `to` (STEPS looked at). A
+ * rule with no COUNT starts near `from`, so a daily event set up years ago
+ * still shows; one with a COUNT is counted from its start.
+ */
+function occurrences(start: number, rule: Rule, from: number, to: number): number[] {
   const out: number[] = [];
   const first = new Date(start);
   const [h, mi, s] = [first.getHours(), first.getMinutes(), first.getSeconds()];
@@ -134,7 +211,13 @@ function occurrences(start: number, rule: Rule, to: number): number[] {
     out.push(t);
     return true;
   };
-  for (let step = 0; step < 2000; step++) {
+  // Steps that surely end before `from`: never more than really passed, since
+  // each is counted at its longest.
+  const skip = rule.count == null && from > start
+    ? Math.max(0, Math.floor((from - start) / (LONGEST_STEP[rule.freq] * rule.interval)) - 1)
+    : 0;
+  const steps = rule.count == null ? STEPS : Math.max(STEPS, Math.min(rule.count, 100_000));
+  for (let step = skip; step < skip + steps; step++) {
     const batch: number[] = [];
     if (rule.freq === "DAILY") {
       batch.push(new Date(first.getFullYear(), first.getMonth(), first.getDate() + step * rule.interval, h, mi, s).getTime());
@@ -211,7 +294,7 @@ export function parseIcs(text: string, from: number, to: number): CalEvent[] {
     const location = unescape(get("LOCATION")?.value ?? "");
     const rruleProp = get("RRULE");
     const rule = rruleProp && !get("RECURRENCE-ID") ? parseRule(rruleProp.value) : null;
-    let starts = rule ? occurrences(start.time, rule, to) : [start.time];
+    let starts = rule ? occurrences(start.time, rule, from, to) : [start.time];
     if (rule) {
       const skip = new Set<number>();
       for (const ex of e.props.filter((p) => p.name === "EXDATE")) {
