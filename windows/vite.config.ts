@@ -89,8 +89,6 @@ export default defineConfig({
       input: {
         island: resolve(__dirname, "index.html"),
         settings: resolve(__dirname, "settings.html"),
-        activities: resolve(__dirname, "activities.html"),
-        plan: resolve(__dirname, "plan.html"),
         computer: resolve(__dirname, "computer.html"),
       },
     },

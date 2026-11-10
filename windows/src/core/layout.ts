@@ -377,13 +377,6 @@ export function newLookQuestionHeight(options: number, multiSelect: boolean): nu
   return 156 + (options + (multiSelect ? 1 : 0)) * NEW_LOOK_OPTION_H;
 }
 
-/**
- * The new look's column inside the island (island.ts sideInside): the Plan
- * beside the chat. The island grows by
- * its width less what the view gives up, and is at least this tall for it.
- */
-export const NEW_LOOK_SIDE_GIVE = 96;
-export const NEW_LOOK_SIDE_MIN_H = 250;
 /** The new look's home is this much wider than the other views (880 at the usual width): wider rather than taller (views/home.ts). */
 export const NEW_LOOK_HOME_W = 880;
 /**
@@ -402,10 +395,6 @@ export function homeWidth(shape: IslandShape, threeTiles: boolean): number {
   const shared = Number.isFinite(shape.width) ? Math.min(MAX_ISLAND_W, Math.max(NEW_LOOK_HOME_MIN_SHARED, shape.width)) : EXPANDED_W;
   return Math.max(shared + NEW_LOOK_HOME_W - EXPANDED_W, threeTiles ? NEW_LOOK_HOME_THREE_MIN_W : 0);
 }
-/** Below the top bar, in from the right edge, and between it and the view. */
-export const NEW_LOOK_SIDE_TOP = 44;
-export const NEW_LOOK_SIDE_PAD = 10;
-export const NEW_LOOK_SIDE_GAP = 10;
 
 export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
   // (A drop keeps him there: the file flies up to him, upload/canvas.ts.)

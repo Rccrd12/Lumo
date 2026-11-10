@@ -1,45 +1,28 @@
-// The live activities: a second island with what goes on and what can be
-// started — timers, the music playing, the calendar's next events, the newest
-// emails. Beside the open island (left or right) it is drawn in the island's
-// page; dragged by its top bar it comes off into a window of its own
-// (activities.html, activities.rs), put wherever it is left, and joins the
-// island again when dropped against its side. There it stays on screen when
-// the island closes, until its "–" puts it away. Its grips resize it. Its "–"
-// folds it into an icon left of the "+" in the island's top bar, which brings
-// it back. Coming off and joining again, one is drawn before the other goes
-// (activities.rs), so they never blink.
+// The live activities: what goes on and what can be started — timers, the
+// music playing, the calendar's next events, the newest emails. The home
+// draws them as tiles (views/home.ts); `IslandActivities` holds the data, in
+// the island's page, and does what the tiles ask (`ActivitiesAction`).
+// (They used to be a panel beside the open island that could be
+// taken off into a window of its own. Both are gone.)
 //
-// `ActivitiesView` only draws, from an `ActivitiesData`, and says what was
-// clicked (`ActivitiesAction`); `IslandActivities` holds the data, in the
-// island's page, and does what is asked — for the view beside the island and
-// for the one in its own window alike.
-//
-// It costs nothing while it is off screen: only drawn, and only asking for
-// the music, while on screen. The calendar is fetched every 15 minutes from
-// the address in Settings → Island, and when it shows if older than 5. A
-// failed fetch (the network not back yet after sleep, a dropped connection)
-// is tried again within the minute, and the events already read stay on
-// screen: the error shows only when nothing was ever read, or after
-// a few failures in a row (src/core/calendar.ts).
+// The calendar is fetched every 15 minutes from the address in Settings →
+// Island, and when the home shows if older than 5. A failed fetch (the
+// network not back yet after sleep, a dropped connection) is tried again
+// within the minute, and the events already read stay on screen: the error
+// shows only when nothing was ever read, or after a few failures in a row
+// (src/core/calendar.ts).
 
-import { Bridge, IS_TAURI, emitToWindow, onEvent } from "../core/bridge";
+import { Bridge, onEvent } from "../core/bridge";
 import { calendarRetryIn, calendarWebLink, parseIcs, showsCalendarError, type CalEvent } from "../core/calendar";
 import { Feed, compactTimer } from "../core/compact";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
-import { askAboutMail } from "./compact";
-import {
-  ACTIVITIES_W, ActivitiesView, type ActivitiesAction, type ActivitiesData, type MailRow,
-} from "../views/activities-view";
+import type { ActivitiesAction, ActivitiesData, MailRow } from "../views/activities-view";
 import { language } from "../i18n/i18n";
 import { byEffort } from "../core/energy";
 
-export { ACTIVITIES_GAP, ACTIVITIES_W } from "../views/activities-view";
-
 /** How often the calendar is asked: Settings → General → Energy sets it. */
 const calendarEvery = () => byEffort(State.effort, 60_000, 15 * 60_000, 30 * 60_000);
-/** The longest their own window may take to say it has drawn them. */
-const HAND_OFF_MS = 400;
 const CALENDAR_STALE_MS = 5 * 60_000;
 const DAY = 86_400_000;
 
@@ -116,11 +99,6 @@ export const Calendar = {
   },
 };
 
-/** After the next frame has been put on screen. */
-function afterPaint(fn: () => void) {
-  requestAnimationFrame(() => requestAnimationFrame(() => fn()));
-}
-
 // ── Ignored emails ───────────────────────────────────────────────────────────
 
 const IGNORED_KEY = "lumo.mailIgnored";
@@ -134,18 +112,11 @@ function loadIgnored(): string[] {
   }
 }
 
-/** The emails the eye put away: they no longer show in the live activities. */
+/**
+ * The emails the eye of the live activities' old panel put away:
+ * they still do not show in the home's tile.
+ */
 const ignored = new Set(loadIgnored());
-
-function ignoreMail(id: string) {
-  ignored.add(id);
-  const list = [...ignored].slice(-300);
-  try {
-    window.localStorage?.setItem(IGNORED_KEY, JSON.stringify(list));
-  } catch {
-    // Storage off: ignored for this run only.
-  }
-}
 
 /** The unread emails worth showing, newest first, without the ignored ones. */
 export function visibleMail(messages: MailRow[], skip: ReadonlySet<string> = ignored): MailRow[] {
@@ -155,91 +126,20 @@ export function visibleMail(messages: MailRow[], skip: ReadonlySet<string> = ign
 // ── In the island's page ─────────────────────────────────────────────────────
 
 export interface IslandActivitiesHost {
-  /** The chat, where an email's question was just put. */
-  openChat(): void;
   openSettings(): void;
-  /** Everything asked again (the right-click menu's Refresh in their own window). */
-  refreshAll(): void;
-  /** Where the folded icon sits (or will), in page pixels. */
-  iconPoint(): { x: number; y: number } | null;
-  /** The panel can be moved and resized (the cursor poll). */
-  movable: boolean;
   changed(): void;
 }
 
-/** Holds the live activities' data and draws them, beside the island or in their own window. */
+/** Holds the live activities' data, for the home's tiles, and does what they ask. */
 export class IslandActivities {
-  readonly view: ActivitiesView;
-  private visible = false;
-  private windowShown = false;
-  private sentKey = "";
-  private unfolding = false;
-  /** Off to their own window: drawn here until that window says it has drawn them. */
-  private handingOff: number | null = null;
-  /** Their own window was asked for ahead (activities_prepare). */
-  private prepared = false;
-
   private host: IslandActivitiesHost;
 
   constructor(host: IslandActivitiesHost) {
     this.host = host;
-    this.view = new ActivitiesView({
-      act: (a) => this.act(a),
-      // Part of the island: they stay in it, at its size.
-      drag: () => {},
-      resize: () => {},
-      focus: () => void Bridge.focusWindow(true),
-      iconPoint: () => host.iconPoint(),
-      movable: host.movable,
-    }, () => (State.settings.activitiesSide === "right" ? "right" : "left"), () => this.followsIsland);
-    this.view.el.id = "activities";
-    void onEvent<ActivitiesAction>("activities-action", (a) => this.act(a));
-    void onEvent<null>("activities-hello", () => {
-      this.sentKey = "";
-      this.sendToWindow();
-    });
-    // Live sizes while a grip is dragged beside the island.
-    void onEvent<{ width: number; height: number }>("activities-resize", (size) => {
-      State.settings = { ...State.settings, activitiesWidth: size.width, activitiesHeight: size.height };
-      host.changed();
-    });
-    // Joined the island again: drawn here at once, where their window slid to.
-    void onEvent<string>("activities-joined", () => Sound.play("pop"));
-    // Their own window has drawn them: this page lets go of them.
-    void onEvent<null>("activities-painted", () => this.handedOff());
     Calendar.start();
   }
 
-  get isVisible(): boolean {
-    return this.visible;
-  }
-
-  /** On screen, beside the island or in their own window. */
-  get onScreen(): boolean {
-    return this.visible || this.windowShown;
-  }
-
-  /** The panel in its own window instead of beside the island. */
-  get detached(): boolean {
-    return this.host.movable && State.settings.activitiesDetached === true;
-  }
-
-  get width(): number {
-    const w = State.settings.activitiesWidth;
-    return Number.isFinite(w) && w > 0 ? Math.min(480, Math.max(220, w)) : ACTIVITIES_W;
-  }
-
-  /** As tall as the island beside it, following its resizes (not in their own window). */
-  get followsIsland(): boolean {
-    return State.settings.activitiesFollowIsland !== false && !this.detached;
-  }
-
-  get pickedHeight(): number {
-    const v = State.settings.activitiesHeight;
-    return Number.isFinite(v) && v > 0 ? Math.min(640, Math.max(200, v)) : 0;
-  }
-
-  /** What the views draw. */
+  /** What the home's tiles draw. */
   data(): ActivitiesData {
     const info = State.integrations.integration_mail;
     const on = State.settings.activeIntegrations.includes("integration_mail") && (info?.configured ?? false);
@@ -277,19 +177,6 @@ export class IslandActivities {
         void Bridge.mediaControl(a.action);
         if (a.action === "toggle" && Feed.media) Feed.media = { ...Feed.media, playing: !Feed.media.playing };
         break;
-      case "mail": {
-        const m = this.data().mail.messages.find((x) => x.id === a.id);
-        if (a.what === "ignore") {
-          ignoreMail(a.id);
-          Sound.play("pop");
-        } else if (a.what === "open") {
-          if (m?.link) void Bridge.openUrl(m.link);
-        } else if (m) {
-          askAboutMail(m, a.what);
-          this.host.openChat();
-        }
-        break;
-      }
       case "inbox": {
         const inbox = this.data().mail.inbox;
         if (inbox) void Bridge.openUrl(inbox);
@@ -301,123 +188,7 @@ export class IslandActivities {
       case "settings":
         this.host.openSettings();
         break;
-      case "refresh":
-        this.host.refreshAll();
-        break;
-      case "fold":
-        State.settings = { ...State.settings, activitiesFolded: true };
-        void Bridge.saveSettings(State.settings);
-        break;
     }
     this.host.changed();
-  }
-
-  /** The folded icon was clicked: back they come. */
-  unfold() {
-    Sound.play("open");
-    this.unfolding = true;
-    State.settings = { ...State.settings, activitiesFolded: false };
-    void Bridge.saveSettings(State.settings);
-    this.host.changed();
-  }
-
-  /**
-   * Beside the island at (x, y), `height` tall, or hidden; in their own
-   * window, shown or hidden. Called every frame the island moves.
-   */
-  place(show: boolean, x: number, y: number, height: number, instantHide = false) {
-    const el = this.view.el;
-    const besideIsland = show && !this.detached;
-    if (besideIsland) {
-      el.style.left = `${x}px`;
-      el.style.top = `${y}px`;
-      el.style.width = `${this.width}px`;
-      el.style.height = `${height}px`;
-    }
-    const inWindow = show && this.detached;
-    // From beside the island to their own window, or back, while the island
-    // stays open: one is shown before the other goes, with no fade, so there
-    // is never a frame without them.
-    const swap = show && this.windowShown !== inWindow && besideIsland !== this.visible;
-    if (besideIsland !== this.visible) {
-      this.visible = besideIsland;
-      if (besideIsland) {
-        this.cancelHandOff();
-        this.setShown(true, swap);
-        Calendar.refreshIfStale();
-        if (this.host.movable && !this.prepared) {
-          this.prepared = true;
-          void Bridge.activitiesPrepare();
-        }
-        if (swap) this.view.reveal();
-        else if (this.unfolding) void this.view.flyIn();
-        else this.view.reveal();
-        this.host.changed();
-      } else if (swap) {
-        // Still drawn here until their window has drawn them.
-        this.view.stop();
-        this.handingOff = window.setTimeout(() => this.handedOff(), HAND_OFF_MS);
-      } else {
-        this.cancelHandOff();
-        this.setShown(false, instantHide);
-        this.view.stop();
-      }
-    }
-    if (inWindow !== this.windowShown) {
-      this.windowShown = inWindow;
-      if (inWindow) {
-        void Bridge.activitiesShow(true);
-        Calendar.refreshIfStale();
-        this.sentKey = "";
-        this.sendToWindow();
-        void emitToWindow("activities", "activities-appear", { fly: this.unfolding, painted: swap });
-      } else if (swap) {
-        // Back beside the island: their window goes once this page has drawn them.
-        afterPaint(() => {
-          if (!this.windowShown) void Bridge.activitiesShow(false);
-        });
-      } else {
-        void Bridge.activitiesShow(false);
-      }
-    }
-    if (show) this.unfolding = false;
-  }
-
-  /** Shown or hidden beside the island; `instant` without the fade. */
-  private setShown(on: boolean, instant: boolean) {
-    const el = this.view.el;
-    if (instant) el.classList.add("instant");
-    el.classList.toggle("shown", on);
-    if (instant) {
-      void el.offsetWidth;
-      el.classList.remove("instant");
-    }
-  }
-
-  /** Their own window has drawn them (or took too long to say): gone from here, at once. */
-  private handedOff() {
-    if (this.handingOff == null) return;
-    this.cancelHandOff();
-    if (!this.visible) this.setShown(false, true);
-  }
-
-  private cancelHandOff() {
-    if (this.handingOff != null) window.clearTimeout(this.handingOff);
-    this.handingOff = null;
-  }
-
-  /** Redraws beside the island, or sends their window what changed. */
-  sync() {
-    if (this.visible) this.view.render(this.data());
-    if (this.windowShown) this.sendToWindow();
-  }
-
-  private sendToWindow() {
-    if (!IS_TAURI) return;
-    const data = this.data();
-    const key = JSON.stringify(data);
-    if (key === this.sentKey) return;
-    this.sentKey = key;
-    void emitToWindow("activities", "activities-state", data);
   }
 }

@@ -1,11 +1,9 @@
 // Lumo for Windows — app wiring and the commands the island calls.
 
-mod activities;
 /// Lumo's email tools as lumo-hook lists them: the same file, for the chat's API providers (tools.rs).
 #[path = "../../hook/src/mail_tools.rs"]
 #[allow(dead_code)]
 mod mail_tool_defs;
-mod plan_island;
 mod agent_hooks;
 mod agents;
 mod antigravity_cli;
@@ -138,8 +136,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
             || current.island_edge_gap != settings.island_edge_gap
-            || current.island_compact_width != settings.island_compact_width
-            || activities::side_room(&current) != activities::side_room(&settings);
+            || current.island_compact_width != settings.island_compact_width;
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
         let mail_changed = mail::concerned(&current, &settings);
@@ -150,19 +147,6 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         settings.island_float = current.island_float;
         settings.island_width = current.island_width;
         settings.island_height = current.island_height;
-        // So are where the live activities were left and how big.
-        settings.activities_detached = current.activities_detached;
-        settings.activities_side = current.activities_side.clone();
-        settings.activities_x = current.activities_x;
-        settings.activities_y = current.activities_y;
-        settings.activities_width = current.activities_width;
-        settings.activities_height = current.activities_height;
-        // And where the Plan island was left and how big (plan_island.rs).
-        settings.agent_plan_moved = current.agent_plan_moved;
-        settings.agent_plan_x = current.agent_plan_x;
-        settings.agent_plan_y = current.agent_plan_y;
-        settings.agent_plan_width = current.agent_plan_width;
-        settings.agent_plan_height = current.agent_plan_height;
         *current = settings;
         (screen_changed, autostart_changed, shortcuts_changed, mail_changed)
     };
@@ -287,8 +271,8 @@ fn island_drag(app: AppHandle, island: Option<(f64, f64, f64, f64)>) {
         let shared = app.state::<Shared>();
         let (pref, start) = placement(&shared);
         // The island itself, as the page drew it: the rect that takes the
-        // mouse also holds the live activities beside the open island, and
-        // its centre is not the island's.
+        // mouse also holds the right-click menu, and its centre is not the
+        // island's.
         let rect = match island {
             Some((x, y, w, h)) if w > 0.0 && h > 0.0 && [x, y, w, h].iter().all(|v| v.is_finite()) => {
                 island::IslandRect { x, y, w, h }
@@ -1108,8 +1092,8 @@ fn secret_clear(app: AppHandle, key: String) -> Result<(), String> {
     Ok(())
 }
 
-/// What follows a key at once: the inbox reconnects, the live activities
-/// fetch the calendar again.
+/// What follows a key at once: the inbox reconnects, the home's live
+/// activities fetch the calendar again.
 fn secret_changed(app: &AppHandle, key: &str) {
     if key.starts_with("mail-") {
         mail::keys_changed();
@@ -1380,18 +1364,6 @@ pub fn run() {
             reminders::reminders_list,
             reminders::reminders_cancel,
             media::media_now,
-            activities::activities_resize,
-            activities::activities_show,
-            activities::activities_prepare,
-            activities::activities_drag,
-            activities::activities_window_resize,
-            activities::activities_focus,
-            plan_island::plan_resize,
-            plan_island::plan_show,
-            plan_island::plan_prepare,
-            plan_island::plan_drag,
-            plan_island::plan_window_resize,
-            activities::toward_island,
             calendar::calendar_fetch,
             media::media_control,
             ingest_file,

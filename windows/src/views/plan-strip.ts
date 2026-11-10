@@ -13,8 +13,8 @@ import { ICONS } from "./icons";
 /** More steps than this and the segments become one bar that fills. */
 const MAX_SEGMENTS = 10;
 
-// The Plan island's own words (plan-view.ts PLAN_TEXT), which this cannot
-// import: that view brings its stylesheet, and the chat is tested without one.
+// The words the Plan island had (its panel is gone); its
+// stylesheet, views/plan.css, still draws the steps (island.ts imports it).
 const STRIP_TEXT = {
   title: N_("Plan"),
   done: N_("Done"),
@@ -25,7 +25,7 @@ const STRIP_TEXT = {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-/** A step's marker, as the Plan island draws it (plan-view.ts): a ring, a lit ring, a check or a dash. */
+/** A step's marker, as the Plan island drew it: a ring, a lit ring, a check or a dash. */
 function planMarker(step: PlanStep): HTMLElement {
   const el = h("span", { class: `plan-mark ${step.status}` });
   if (step.status === "done") el.append(svg(ICONS.check, 10, { stroke: 2.6 }));

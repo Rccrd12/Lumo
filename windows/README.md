@@ -200,26 +200,18 @@ always the mains-power choice.
 
 ### Live activities
 
-They are tiles on the home. What follows is how they worked beside the
-island before 0.18; their window, if you had moved it out of the island
-then, still opens on its own.
+They are tiles on the home: **Timer** (the running ones, with their ring
+round the tile's edge, or 1, 5, 10 or 25 minutes in one click, or type
+`15m pasta`), **Music** (what plays, with previous, play/pause and next),
+**Calendar** (the next events) and **Email** (the newest unread; a click opens
+the inbox in Gmail or Outlook). **Live Activities** in the **…** menu and in
+the right-click menu puts them away, and brings them back.
 
-Beside the open island (on the top and bottom edges) a second island holds
-what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
-or 25 minutes in one click, or type `15m pasta`), **Music** (what plays, with
-previous, play/pause and next), **Calendar** (the next events) and **Email**
-(the newest unread: a click on one opens it, with Summarize, Draft a reply and
-the eye, which puts it away so the next one moves up; a click elsewhere on the
-box opens the inbox in Gmail or Outlook). Its **–** (top right)
-folds it, with a flight, into an icon left of the **+** in the island's top
-bar; that icon brings it back. Settings → Island → **Live Activities** turns
-it off.
-
-On Windows it can be moved and resized like the island: drag its top bar and
-it comes off the island into a window of its own, which stays wherever you
-leave it (it shows while the island is open); drop it against the island's
-left or right side and it joins it there. Its edges and bottom corners resize
-it.
+Up to 0.20.1 they were also a panel beside the open island that could be
+dragged off into a window of its own. Both are gone since 0.20.2: if you had
+moved them out of the island, that window no longer opens, and they are on
+the home like everyone's. Settings → Island → Live Activities and Follow the
+island's height, which only that panel read, are gone with it.
 
 The calendar is read from its **secret iCal address**, pasted in Settings →
 Island → Calendar (Google Calendar: Settings → your calendar → Integrate
@@ -228,17 +220,18 @@ too). It stays in the system keychain, and is fetched every 15 minutes, only
 read.
 
 Settings → Island → **Say what's going on** and **Show the music playing**
-turn them off. While the island is hidden nothing is asked or counted: the
-music is only asked about while the closed island is on screen.
+turn them off on the closed island. While the island is hidden nothing is
+asked or counted: the music is only asked about while the closed island is on
+screen.
 
 ### Plan
 
-A third island beside the main one, with the plan an agent follows. It is
-shut and out of reach until an agent makes one: give an agent a job and, as
-soon as it writes its to-do list (Claude Code's TodoWrite or the plan it leaves
+The plan an agent follows, step by step. It is shut and out of reach until
+an agent makes one: give an agent a job and, as soon as it writes its to-do
+list (Claude Code's TodoWrite or the plan it leaves
 Plan Mode with; Codex's `update_plan`, Gemini CLI's `write_todos` and
-OpenCode's `todowrite` when their hooks pass those calls on), the island
-opens with it. Each step shows where it
+OpenCode's `todowrite` when their hooks pass those calls on), it shows.
+Each step shows where it
 stands (to do, under way, done, dropped), with who follows the plan, in which
 folder, and how far along it is; it moves on live as the agent works. Nothing is
 asked of the agents: the plan is read off the hooks Lumo already has. In the
@@ -256,19 +249,18 @@ unseen, to put each step where it stands (the answer stays as it was); a list of
 first tools becomes the plan, and it is told so; and each new question in a
 chat whose plan isn't done says where the plan stands.
 
-It behaves exactly as the live activities do, on the side of the main island
-they leave free (the right, or the left when they are on the right). Beside
-the island it fades in and out with it and follows it as it opens, closes and
-resizes, as tall as it while the live activities follow the island's height
-(Settings → Island); a plan made while the island is closed shows when it
-opens. Dragged by its top bar it comes off into a window of its own that stays
-on screen, wherever you leave it, until its **–**; let go against the island's
-side it joins it again. It is resized from its edges and bottom corners. Its
-**–** folds it into its icon in the chat, left of the usage ring, which shows
-while there are plans and opens or folds it; a new plan opens it again. A finished plan stays a few seconds, then the island folds into its
-icon, as it does when the session ends. The plans done are kept (the newest
-twenty, until Lumo quits): the icon opens the island on the newest, and its
-arrows go back through the older ones.
+Each chat shows its own plan: a chip beside the model says how far along it
+is and opens its steps over the chat, and the home lists the plans under way.
+A plan made while the island is closed is there when it opens. Its **–**
+folds it into an icon left of the usage ring, which brings it back; a new
+plan opens it again. A finished plan stays a few seconds, then folds into its
+icon, as it does when the session ends. The plans done are kept (the newest twenty, until Lumo
+quits).
+
+Up to 0.20.1 the plan was also a third island beside the main one, the Plan
+island, which could be dragged off into a window of its own. Both are gone
+since 0.20.2: if you had moved it out of the island, that window no longer
+opens, and the plan is in the chat and on the home like everyone's.
 
 ### Keyboard shortcuts
 
@@ -987,8 +979,8 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
   the one Claude asks for). Screenshots are sent at 1456 px on the long edge
   at most, about 1.15 megapixels; Lumo turns Claude's coordinates back into
   your screen's, whatever its scaling.
-- Lumo's island and live activities are left out of the screenshots and let
-  clicks through while Claude clicks; nothing is typed while the keyboard is
+- Lumo's island is left out of the screenshots and lets clicks through while
+  Claude clicks; nothing is typed while the keyboard is
   in the island (Claude has to click the window first).
 - Claude is told never to type passwords or payment details, never to buy,
   send, delete or accept terms unless you asked for exactly that, and to treat
