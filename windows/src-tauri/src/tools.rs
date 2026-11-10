@@ -421,6 +421,26 @@ pub fn any_enabled() -> bool {
 
 // ── Saving ────────────────────────────────────────────────────────────────────
 
+/// A program that runs whatever its arguments say, or one of Windows' own:
+/// not a tool's entry. Shells, script hosts and interpreters by their
+/// program's name, and anything under the Windows folder.
+fn runs_anything(path: &Path) -> bool {
+    const HOSTS: &[&str] = &[
+        "cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "rundll32", "regsvr32", "msiexec", "bash", "sh", "wsl",
+        "python", "pythonw", "py", "pyw", "node", "deno", "bun", "ruby", "perl", "php", "java", "javaw", "conhost", "explorer",
+        "schtasks", "reg", "certutil", "bitsadmin", "curl", "wget", "msbuild", "installutil", "forfiles", "ftp", "sc",
+    ];
+    let real = crate::file_moves::real_path(path);
+    let stem = |p: &Path| p.file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let windows = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()).to_ascii_lowercase().replace('/', "\\");
+    let in_windows = |p: &Path| {
+        let p = p.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
+        p.starts_with(&format!("{}\\", windows.trim_end_matches('\\')))
+    };
+    let host = |p: &Path| matches!(extension(p).as_str(), "exe" | "com") && HOSTS.contains(&stem(p).as_str());
+    host(path) || host(&real) || in_windows(path) || in_windows(&real)
+}
+
 /// The draft, checked and tidied: what a save or a try works from.
 fn checked(draft: &Draft) -> Result<Draft, String> {
     let name = draft.name.trim().chars().take(MAX_NAME).collect::<String>();
@@ -452,6 +472,11 @@ fn checked(draft: &Draft) -> Result<Draft, String> {
         && draft.replaces.as_deref().and_then(find).is_some_and(|(dir, _)| dir.join(&entry).is_file());
     if !(own || kept || (absolute && Path::new(&entry).is_file())) {
         return Err(tf("The file that runs the tool, {name}, isn't there.", &[("name", &entry)]));
+    }
+    // The user's own script, where it is: never Windows' programs or a shell
+    // or interpreter, which would run whatever the arguments say, unread.
+    if absolute && runs_anything(Path::new(&entry)) {
+        return Err(tf("{name} is a program of Windows or a shell: a tool runs a script of its own instead.", &[("name", &entry)]));
     }
     let params: Vec<Param> = draft
         .params
@@ -1045,6 +1070,11 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
         None => {
             let mut cmd = Command::new(&exe);
             cmd.args(&words).current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+            // Only what says where things are, as in the sandbox: not Lumo's keys.
+            cmd.env_clear();
+            for (k, v) in std::env::vars_os().filter(|(k, _)| crate::sandbox::passed_on(k)) {
+                cmd.env(k, v);
+            }
             for (k, v) in &env {
                 cmd.env(k, v);
             }
@@ -1732,6 +1762,19 @@ pub fn tools_reveal(id: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tool_never_runs_a_shell_or_windows_own_programs() {
+        assert!(runs_anything(Path::new(r"C:\Windows\System32\cmd.exe")));
+        assert!(runs_anything(Path::new(r"C:\Windows\notepad.exe")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\PowerShell\7\pwsh.exe")));
+        assert!(runs_anything(Path::new(r"C:\Users\me\AppData\Local\Programs\Python\Python313\python.exe")));
+        assert!(runs_anything(Path::new(r"D:\tools\node.exe")));
+        // The user's own scripts and programs, where they are.
+        assert!(!runs_anything(Path::new(r"C:\Users\me\scripts\sh.py")));
+        assert!(!runs_anything(Path::new(r"C:\Users\me\bin\convert.exe")));
+        assert!(!runs_anything(Path::new(r"C:\Users\me\scripts\backup.bat")));
+    }
 
     #[test]
     fn the_api_providers_get_the_email_tools_security_lets_the_ai_have() {

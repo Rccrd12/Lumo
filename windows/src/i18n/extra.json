@@ -17530,6 +17530,54 @@
    "ru": "Слушать",
    "id": "Dengarkan",
    "it": "Ascolta"
+  },
+  "Only Lumo's Settings can change this, after you look at the changes.": {
+   "zh-Hans": "只有 Lumo 的设置可以更改此项，需在你查看更改之后。",
+   "hi": "इसे केवल Lumo की सेटिंग्स बदल सकती हैं, आपके बदलाव देखने के बाद।",
+   "es": "Solo los Ajustes de Lumo pueden cambiar esto, después de que veas los cambios.",
+   "ar": "لا يمكن تغيير هذا إلا من إعدادات Lumo، بعد أن تطّلع على التغييرات.",
+   "fr": "Seuls les Réglages de Lumo peuvent modifier ceci, après que vous avez vu les changements.",
+   "bn": "শুধু Lumo-র সেটিংস এটি বদলাতে পারে, আপনি পরিবর্তনগুলো দেখার পরে।",
+   "pt-BR": "Só as Configurações do Lumo podem mudar isto, depois que você vê as mudanças.",
+   "ru": "Изменить это могут только Настройки Lumo, после того как вы посмотрите изменения.",
+   "id": "Hanya Pengaturan Lumo yang bisa mengubah ini, setelah kamu melihat perubahannya.",
+   "it": "Solo le Impostazioni di Lumo possono cambiarlo, dopo che hai visto le modifiche."
+  },
+  "Show the changes again in Settings before applying them.": {
+   "zh-Hans": "请先在设置中再次查看更改，然后再应用。",
+   "hi": "लागू करने से पहले सेटिंग्स में बदलाव फिर से दिखाएँ।",
+   "es": "Vuelve a mostrar los cambios en Ajustes antes de aplicarlos.",
+   "ar": "اعرض التغييرات مرة أخرى في الإعدادات قبل تطبيقها.",
+   "fr": "Affichez à nouveau les changements dans les Réglages avant de les appliquer.",
+   "bn": "প্রয়োগ করার আগে সেটিংসে পরিবর্তনগুলো আবার দেখান।",
+   "pt-BR": "Mostre as mudanças de novo nas Configurações antes de aplicá-las.",
+   "ru": "Перед применением снова покажите изменения в Настройках.",
+   "id": "Tampilkan lagi perubahannya di Pengaturan sebelum menerapkannya.",
+   "it": "Mostra di nuovo le modifiche nelle Impostazioni prima di applicarle."
+  },
+  "What Try runs": {
+   "zh-Hans": "“试用”运行的内容",
+   "hi": "“आज़माएँ” क्या चलाता है",
+   "es": "Lo que ejecuta Probar",
+   "ar": "ما يشغّله «تجربة»",
+   "fr": "Ce que lance Essayer",
+   "bn": "“চালিয়ে দেখুন” যা চালায়",
+   "pt-BR": "O que Testar executa",
+   "ru": "Что запускает «Попробовать»",
+   "id": "Yang dijalankan Coba",
+   "it": "Cosa avvia Prova"
+  },
+  "{name} is a program of Windows or a shell: a tool runs a script of its own instead.": {
+   "zh-Hans": "{name} 是 Windows 自带的程序或命令行外壳：工具应运行它自己的脚本。",
+   "hi": "{name} Windows का प्रोग्राम या शेल है: टूल इसके बजाय अपनी स्क्रिप्ट चलाता है।",
+   "es": "{name} es un programa de Windows o un shell: una herramienta ejecuta en su lugar un script propio.",
+   "ar": "{name} برنامج من Windows أو صدفة أوامر: الأداة تشغّل بدلًا منه سكربتًا خاصًا بها.",
+   "fr": "{name} est un programme de Windows ou un shell : un outil lance plutôt un script à lui.",
+   "bn": "{name} Windows-এর একটি প্রোগ্রাম বা শেল: টুল এর বদলে নিজের একটি স্ক্রিপ্ট চালায়।",
+   "pt-BR": "{name} é um programa do Windows ou um shell: uma ferramenta executa um script próprio no lugar.",
+   "ru": "{name} — программа Windows или оболочка: инструмент запускает вместо этого собственный скрипт.",
+   "id": "{name} adalah program Windows atau shell: alat menjalankan skripnya sendiri sebagai gantinya.",
+   "it": "{name} è un programma di Windows o una shell: uno strumento esegue invece uno script suo."
   }
  }
 }
