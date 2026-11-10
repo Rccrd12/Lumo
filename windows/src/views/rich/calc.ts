@@ -60,13 +60,16 @@ export function plotHeight(log: number, chrome: number, want = PLOT_MAX_HEIGHT):
 
 /**
  * How high the chart wants to be for its curves to read well. A wave or a
- * line spreads evenly over the chart's height and reads at PLOT_HEIGHT; an
+ * line spreads evenly over its own height and reads at PLOT_HEIGHT; an
  * exponential or a parabola spends most of its length in a band of it (along
  * the bottom, near its vertex) and asks for more, the narrower that band the
  * more. The band is the middle half of where the curve's points fall, as a
- * share of the y range; the narrowest curve decides. A flat line asks for
- * nothing. Read at the inputs' first values, so the card keeps its height
- * while the sliders move.
+ * share of the curve's own span, so a wave stays a wave however wide the
+ * frame. A curve that fills only part of the frame (its sliders can take it
+ * further: A·sin x with A at 1 of 3) asks for a little more, at most
+ * MAX_ROOM_GROWTH times, so it isn't drawn tiny. The curve that wants the
+ * most decides; a flat line asks for nothing. Read at the inputs' first
+ * values, so the card keeps its height while the sliders move.
  */
 export function idealHeight(plot: Plot): number {
   const [x0, x1] = plot.x;
@@ -74,21 +77,29 @@ export function idealHeight(plot: Plot): number {
   const scope: Record<string, number> = Object.create(null);
   for (const i of plot.inputs) scope[i.name] = i.value;
   const n = 240;
-  let narrowest = 0.5;
+  let want = PLOT_HEIGHT;
   for (const curve of plot.curves) {
     const at: number[] = [];
     for (let i = 0; i <= n; i++) {
       scope.x = x0 + ((x1 - x0) * i) / n;
       const v = safe(curve.expr, scope);
-      if (Number.isFinite(v) && v >= y0 && v <= y1) at.push((v - y0) / (y1 - y0));
+      if (Number.isFinite(v) && v >= y0 && v <= y1) at.push(v);
     }
     if (at.length < 12) continue;
     at.sort((a, b) => a - b);
-    const band = at[Math.floor(at.length * 0.75)] - at[Math.floor(at.length * 0.25)];
-    if (band >= 0.02) narrowest = Math.min(narrowest, band);
+    const span = at[at.length - 1] - at[0];
+    if (!(span > 1e-9 * Math.max(1, Math.abs(at[0])))) continue;
+    const band = Math.max(0.02, (at[Math.floor(at.length * 0.75)] - at[Math.floor(at.length * 0.25)]) / span);
+    const share = span / (y1 - y0);
+    const room = Math.min(MAX_ROOM_GROWTH, Math.max(1, FULL_SHARE / share));
+    want = Math.max(want, PLOT_HEIGHT * Math.max(1, (0.5 / band) ** 2) * room);
   }
-  return PLOT_HEIGHT * (0.5 / narrowest) ** 2;
+  return want;
 }
+/** A curve filling at least this share of the frame is drawn at its own need. */
+const FULL_SHARE = 0.75;
+/** How much more a curve filling little of the frame may ask for. */
+const MAX_ROOM_GROWTH = 1.75;
 /** The curves' colours, in order: the cards' accent, then green and amber. */
 export const CURVE_COLORS = ["#8fc7ff", "#34d399", "#f5a524"];
 

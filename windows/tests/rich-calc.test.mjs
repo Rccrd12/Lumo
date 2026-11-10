@@ -407,4 +407,10 @@ test("a curve that spends its length in a band of the chart asks for more height
   assert.equal(plotHeight(600, 96, wave), PLOT_HEIGHT);
   assert.equal(plotHeight(600, 96, exp), Math.round(exp));
   assert.equal(plotHeight(300, 96, exp), 300 - 96 - 12);
+
+  // A wave whose amplitude slider goes to 3, at 1: the frame is three times
+  // its height, but it is still a wave, never the whole island.
+  const slid = want("formula: y = A \\sin(\\omega x)\ny: A*sin(w*x)\nx: -6.28..6.28\ninput: A | Ampiezza | 0..3 | 1\ninput: w | Frequenza | 0.5..3 | 1");
+  assert.ok(slid > PLOT_HEIGHT && slid <= 1.75 * PLOT_HEIGHT, `${slid}`);
+  assert.ok(want("y: sin(x)\nx: 0..12\nyrange: -10..10") <= 1.75 * PLOT_HEIGHT);
 });
