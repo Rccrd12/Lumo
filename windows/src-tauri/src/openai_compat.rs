@@ -6,8 +6,14 @@
 // file bytes never cross the IPC boundary. The only tools sent are the user's
 // own (the Tools tab, tools.rs), each call asked for on the island; a model
 // that can't take tools is asked again without them.
+//
+// The answer streams in and is put back together as the whole one would be,
+// with what each provider adds for the next request (Gemini's thought
+// signatures, OpenRouter's reasoning details); a model the account may not
+// stream is asked again for the whole answer.
 
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use reqwest::Url;
 use serde_json::{json, Value};
@@ -81,9 +87,18 @@ pub fn provider(id: &str) -> Option<&'static Provider> {
 const REVIEW_MAX_TOKENS: u32 = 4096;
 /// Rounds of the user's tools one answer may take before it must answer.
 const MAX_TOOL_ROUNDS: usize = 25;
-/// The whole answer comes at once: a reasoning model may think for minutes
-/// first, and a request ended before it answers is paid for all the same.
+/// A whole answer (a supervisor's review, or a model that may not stream):
+/// a reasoning model may think for minutes first, and a request ended before
+/// it answers is paid for all the same.
 const WHOLE_ANSWER: Duration = Duration::from_secs(10 * 60);
+/// A chat answer streams in: no limit on the whole of it, only on this long
+/// with nothing from the server.
+const SILENCE: Duration = Duration::from_secs(180);
+/// The text shown while streaming goes out at most this often.
+const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
+/// Ceilings on one event line and on a whole streamed answer.
+const MAX_EVENT: usize = 8 * 1024 * 1024;
+const MAX_STREAM: usize = 64 * 1024 * 1024;
 /// Text and code files are inlined; anything larger is skipped.
 const MAX_INLINE_TEXT: u64 = 200_000;
 /// Images are sent inline as data URLs; past this size they are skipped.
@@ -253,13 +268,32 @@ pub async fn send(
     }
     let endpoint = url(p, "chat/completions")?;
 
-    // Not streamed: Stop drops the request (or the tool's card), and nothing was written yet.
+    // Streamed: the text shows as it is written, and Stop keeps what showed.
+    let shown = Mutex::new(String::new());
+    let events = chat.events();
     let mut said: Vec<String> = Vec::new();
     let answer = async {
         let mut rounds = 0;
         let mut capped = false;
+        let mut streaming = true;
         loop {
-            let json = match post(p, &endpoint, &key, &body, usage).await {
+            let before = said.join("\n\n");
+            let show = |text: &str| {
+                let text = text.trim_start();
+                let all = if before.is_empty() { text.to_string() } else if text.is_empty() { before.clone() } else { format!("{before}\n\n{text}") };
+                if !all.is_empty() {
+                    events.delta(app, &all);
+                }
+                *shown.lock().unwrap_or_else(|p| p.into_inner()) = all;
+            };
+            let sent = if streaming { stream_post(p, &endpoint, &key, &body, usage, show).await } else { post(p, &endpoint, &key, &body, usage).await };
+            let json = match sent {
+                // A model this account may not stream (OpenAI asks some
+                // organisations to be verified first): the whole answer, at once.
+                Err((400, e)) if streaming && e.to_lowercase().contains("stream") => {
+                    streaming = false;
+                    continue;
+                }
                 // The credits don't cover the model's whole ceiling: the answer
                 // gets the room they pay for (OpenRouter says how much).
                 Err((402, e)) if !capped && affordable(&e).is_some() => {
@@ -306,8 +340,14 @@ pub async fn send(
             }
         }
     };
+    let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     let Some(json) = chat.unless_stopped(answer).await else {
-        return Ok(ChatReply::stopped(String::new(), None));
+        // Stopped: what showed stays, in the chat and in the conversation.
+        let shown = shown.into_inner().unwrap_or_else(|p| p.into_inner()).trim().to_string();
+        if !shown.is_empty() {
+            chat.commit(&turn, user, json!({ "role": "assistant", "content": shown }), &plain, &shown);
+        }
+        return Ok(ChatReply::stopped(shown, None));
     };
     let json = json?;
     let mut text = reply_text(p, &json)?;
@@ -317,7 +357,6 @@ pub async fn send(
     // After the user's tools, what was said before each call comes first.
     let text = if said.is_empty() { text } else { said.into_iter().chain([text]).collect::<Vec<_>>().join("\n\n") };
 
-    let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
     Ok(ChatReply::answer(text, None))
 }
@@ -365,6 +404,255 @@ async fn post(p: &Provider, endpoint: &Url, key: &str, body: &Value, usage: &mut
     }
     let bytes = net::read_capped(response, net::MAX_BODY).await.map_err(|e| (0, e))?;
     serde_json::from_slice(&bytes).map_err(|e| (0, tf("Bad API response: {error}", &[("error", &e.to_string())])))
+}
+
+/// One request, its answer read as it streams in (`stream: true`), put back
+/// together as the whole answer would be (`choices[0].message`, its
+/// `finish_reason`, `usage`), with what the provider adds kept as it came:
+/// Gemini's thought signatures on the tool calls, OpenRouter's reasoning
+/// details, which the next request must send back unchanged. `on_text` gets
+/// the answer's text so far, at most 15 times a second and once more at the end.
+async fn stream_post(
+    p: &Provider,
+    endpoint: &Url,
+    key: &str,
+    body: &Value,
+    usage: &mut Option<ChatUsage>,
+    mut on_text: impl FnMut(&str),
+) -> Result<Value, (u16, String)> {
+    let mut body = body.clone();
+    body["stream"] = json!(true);
+    let silent = || tf("The server sent nothing for {minutes} minutes: the answer was stopped.", &[("minutes", &(SILENCE.as_secs() / 60).to_string())]);
+    let mut response = net::streaming_client(endpoint, SILENCE)
+        .map_err(|e| (0, e))?
+        .post(endpoint.clone())
+        .bearer_auth(key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| (0, if e.is_timeout() { silent() } else { tf("Network error: {error}", &[("error", &e.to_string())]) }))?;
+    if p.id == "openai" {
+        *usage = chat_usage::from_openai(response.headers(), chat_usage::now_ms());
+    }
+    let status = response.status();
+    if !status.is_success() {
+        let body = net::read_capped(response, net::MAX_ERROR_BODY).await.unwrap_or_default();
+        return Err((status.as_u16(), status_error(p, status.as_u16(), &net::error_detail(&body))));
+    }
+    let mut answer = Assembly::default();
+    let mut pending: Vec<u8> = Vec::new();
+    let mut total = 0usize;
+    let mut last = Instant::now().checked_sub(DELTA_INTERVAL).unwrap_or_else(Instant::now);
+    let mut unsent = false;
+    loop {
+        let chunk = match response.chunk().await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            // The answer was over: a connection dropped after it loses nothing.
+            Err(_) if answer.finish_reason.is_some() => break,
+            Err(e) if e.is_timeout() => return Err((0, silent())),
+            Err(e) => return Err((0, tf("Network error: {error}", &[("error", &e.to_string())]))),
+        };
+        total += chunk.len();
+        if total > MAX_STREAM {
+            return Err((0, t("The server's answer is too large.")));
+        }
+        pending.extend_from_slice(&chunk);
+        // Whole lines only: a chunk may end in the middle of one, or of a character.
+        while let Some(end) = pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = pending.drain(..=end).collect();
+            unsent |= answer.line(String::from_utf8_lossy(&line).trim_end()).map_err(|e| (0, format!("{}: {e}", p.name)))?;
+        }
+        if pending.len() > MAX_EVENT {
+            return Err((0, t("The server's answer is too large.")));
+        }
+        if unsent && last.elapsed() >= DELTA_INTERVAL {
+            unsent = false;
+            last = Instant::now();
+            on_text(&answer.content);
+        }
+        if answer.done {
+            break;
+        }
+    }
+    // A last line without its newline.
+    answer.line(String::from_utf8_lossy(&pending).trim_end()).map_err(|e| (0, format!("{}: {e}", p.name)))?;
+    on_text(&answer.content);
+    answer.finish().ok_or_else(|| (0, tf("Network error: {error}", &[("error", "the answer stopped halfway")])))
+}
+
+/// A streamed answer put back together from its `choices[0].delta`s.
+#[derive(Default)]
+struct Assembly {
+    content: String,
+    /// The tool calls by their `index`: id, type, function, and anything
+    /// else the provider puts on them (Gemini's `extra_content`).
+    calls: Vec<Value>,
+    /// OpenRouter's reasoning blocks, each one's pieces joined.
+    reasoning_details: Vec<Value>,
+    /// Other fields of the message the provider sends (kept, sent back).
+    extra: serde_json::Map<String, Value>,
+    finish_reason: Option<String>,
+    usage: Option<Value>,
+    /// Something came: an answer that ends with nothing at all is cut short.
+    heard: bool,
+    /// `[DONE]` came.
+    done: bool,
+}
+
+/// `into` with `from`'s fields: objects merged, anything else replaced.
+fn merge(into: &mut Value, from: &Value) {
+    match (into, from) {
+        (Value::Object(a), Value::Object(b)) => {
+            for (k, v) in b {
+                merge(a.entry(k.clone()).or_insert(Value::Null), v);
+            }
+        }
+        (into, from) if !from.is_null() => *into = from.clone(),
+        _ => {}
+    }
+}
+
+/// `field` of `into` with `more` added at its end.
+fn append(into: &mut Value, field: &str, more: &str) {
+    let joined = format!("{}{more}", into[field].as_str().unwrap_or_default());
+    into[field] = json!(joined);
+}
+
+impl Assembly {
+    /// One line of the event stream; true when the text grew.
+    fn line(&mut self, line: &str) -> Result<bool, String> {
+        let Some(data) = line.strip_prefix("data:").map(str::trim) else { return Ok(false) };
+        if data == "[DONE]" {
+            self.done = true;
+            return Ok(false);
+        }
+        let Ok(event) = serde_json::from_str::<Value>(data) else { return Ok(false) };
+        self.event(&event)
+    }
+
+    /// One chunk of the answer; true when the text grew.
+    fn event(&mut self, event: &Value) -> Result<bool, String> {
+        if let Some(e) = event.get("error").filter(|e| !e.is_null()) {
+            let message = e.get("message").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| e.to_string());
+            return Err(message);
+        }
+        if let Some(used) = event.get("usage").filter(|u| u.is_object()) {
+            self.usage = Some(used.clone());
+        }
+        let Some(choice) = event.pointer("/choices/0") else { return Ok(false) };
+        self.heard = true;
+        if let Some(reason) = choice["finish_reason"].as_str() {
+            self.finish_reason = Some(reason.to_string());
+        }
+        let Some(delta) = choice.get("delta").and_then(Value::as_object) else { return Ok(false) };
+        let mut grew = false;
+        for (k, v) in delta {
+            match k.as_str() {
+                "role" => {}
+                "content" => {
+                    if let Some(more) = v.as_str() {
+                        self.content.push_str(more);
+                        grew |= !more.is_empty();
+                    }
+                }
+                // Only for the island's "Thinking…": never sent back.
+                "reasoning" | "reasoning_content" => {}
+                "refusal" => {
+                    if let Some(more) = v.as_str() {
+                        let joined = format!("{}{more}", self.extra.get("refusal").and_then(Value::as_str).unwrap_or_default());
+                        self.extra.insert("refusal".into(), json!(joined));
+                    }
+                }
+                "tool_calls" => {
+                    for piece in v.as_array().into_iter().flatten() {
+                        let index = match piece["index"].as_u64() {
+                            Some(i) => i as usize,
+                            // No index (some servers): a new id is a new call, the rest goes on the last one.
+                            None => {
+                                let id = piece["id"].as_str().filter(|id| !id.is_empty());
+                                match self.calls.last() {
+                                    Some(last) if id.is_none_or(|id| last["id"] == id || last["id"] == "") => self.calls.len() - 1,
+                                    _ => self.calls.len(),
+                                }
+                            }
+                        };
+                        if index > 64 {
+                            continue;
+                        }
+                        while self.calls.len() <= index {
+                            self.calls.push(json!({ "id": "", "type": "function", "function": { "name": "", "arguments": "" } }));
+                        }
+                        let call = &mut self.calls[index];
+                        if let Some(name) = piece.pointer("/function/name").and_then(Value::as_str) {
+                            append(&mut call["function"], "name", name);
+                        }
+                        match piece.pointer("/function/arguments") {
+                            Some(Value::String(more)) => append(&mut call["function"], "arguments", more),
+                            // Some servers send the arguments as an object.
+                            Some(v @ Value::Object(_)) => call["function"]["arguments"] = json!(v.to_string()),
+                            _ => {}
+                        }
+                        for (k, v) in piece.as_object().into_iter().flatten().filter(|(k, _)| !matches!(k.as_str(), "index" | "function")) {
+                            merge(&mut call[k.as_str()], v);
+                        }
+                    }
+                }
+                "reasoning_details" => {
+                    for piece in v.as_array().into_iter().flatten() {
+                        self.reasoning_detail(piece);
+                    }
+                }
+                _ => merge(self.extra.entry(k.clone()).or_insert(Value::Null), v),
+            }
+        }
+        Ok(grew)
+    }
+
+    /// One piece of a reasoning block: the text of the block it continues
+    /// (same type and index) grows, or a new block starts.
+    fn reasoning_detail(&mut self, piece: &Value) {
+        // An encrypted block comes whole: two in a row with no index are two blocks.
+        let same = self.reasoning_details.last_mut().filter(|last| {
+            last["type"] == piece["type"] && last.get("index") == piece.get("index") && (piece.get("index").is_some() || piece["type"] != "reasoning.encrypted")
+        });
+        let Some(last) = same else {
+            self.reasoning_details.push(piece.clone());
+            return;
+        };
+        for (k, v) in piece.as_object().into_iter().flatten() {
+            match (k.as_str(), v.as_str()) {
+                ("text" | "summary", Some(more)) => append(last, k, more),
+                _ if !v.is_null() => last[k.as_str()] = v.clone(),
+                _ => {}
+            }
+        }
+    }
+
+    /// The answer as a whole one: None when nothing came.
+    fn finish(self) -> Option<Value> {
+        if !self.heard {
+            return None;
+        }
+        let calls: Vec<Value> = self.calls.into_iter().filter(|c| c.pointer("/function/name").and_then(Value::as_str).is_some_and(|n| !n.is_empty())).collect();
+        let mut message = json!({ "role": "assistant" });
+        for (k, v) in self.extra {
+            message[k.as_str()] = v;
+        }
+        // A message of tool calls only has no content (an empty one is refused).
+        message["content"] = if self.content.is_empty() && !calls.is_empty() { Value::Null } else { json!(self.content) };
+        if !calls.is_empty() {
+            message["tool_calls"] = Value::Array(calls);
+        }
+        if !self.reasoning_details.is_empty() {
+            message["reasoning_details"] = Value::Array(self.reasoning_details);
+        }
+        let mut whole = json!({ "choices": [{ "index": 0, "message": message, "finish_reason": self.finish_reason }] });
+        if let Some(used) = self.usage {
+            whole["usage"] = used;
+        }
+        Some(whole)
+    }
 }
 
 /// The provider's chat models. Only ever asked with the user's key, once they
@@ -577,6 +865,98 @@ mod tests {
         assert!(body.get("max_completion_tokens").is_none() && body.get("max_tokens").is_none());
         // OpenAI's reasoning models refuse the old field name.
         assert_eq!(p("openai").max_tokens_field, "max_completion_tokens");
+    }
+
+    /// The lines of a stream, fed one by one: the whole answer, and the text seen as it grew.
+    fn assemble(lines: &[&str]) -> (Option<Value>, Vec<String>) {
+        let mut a = Assembly::default();
+        let mut texts = Vec::new();
+        for line in lines {
+            if a.line(line).unwrap() {
+                texts.push(a.content.clone());
+            }
+        }
+        (a.finish(), texts)
+    }
+
+    #[test]
+    fn a_streamed_answer_is_the_whole_one() {
+        let (whole, texts) = assemble(&[
+            r#"data: {"choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}"#,
+            "",
+            r#"data: {"choices":[{"index":0,"delta":{"content":"Ciao, "}}]}"#,
+            r#"data: {"choices":[{"index":0,"delta":{"content":"tutto bene."},"finish_reason":"length"}]}"#,
+            r#"data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}"#,
+            "data: [DONE]",
+        ]);
+        let whole = whole.unwrap();
+        assert_eq!(texts, ["Ciao, ", "Ciao, tutto bene."]);
+        assert_eq!(reply_text(p("openai"), &whole).unwrap(), "Ciao, tutto bene.");
+        assert!(cut(&whole));
+        assert_eq!(whole["usage"]["total_tokens"], 8);
+        assert!(whole.pointer("/choices/0/message/tool_calls").is_none());
+    }
+
+    #[test]
+    fn geminis_thought_signatures_ride_back_on_their_tool_calls() {
+        let (whole, _) = assemble(&[
+            r#"data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{\"path\":"},"extra_content":{"google":{"thought_signature":"SIG1"}}}]}}]}"#,
+            r#"data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"a.txt\"}"}}]}}]}"#,
+            r#"data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"list","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#,
+            "data: [DONE]",
+        ]);
+        let message = whole.unwrap()["choices"][0]["message"].clone();
+        assert_eq!(message["content"], Value::Null, "tool calls only: no content");
+        let calls = message["tool_calls"].as_array().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0]["id"], "call_1");
+        assert_eq!(calls[0]["function"]["arguments"], "{\"path\":\"a.txt\"}");
+        assert_eq!(calls[0]["extra_content"]["google"]["thought_signature"], "SIG1");
+        assert_eq!(calls[1]["function"]["name"], "list");
+        assert!(calls[1].get("extra_content").is_none());
+    }
+
+    #[test]
+    fn calls_with_no_index_are_told_apart_by_their_id() {
+        let (whole, _) = assemble(&[
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"id":"a","function":{"name":"one","arguments":"{\"x\":"}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"1}"}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"id":"b","function":{"name":"two","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#,
+        ]);
+        let message = whole.unwrap()["choices"][0]["message"].clone();
+        let calls = message["tool_calls"].as_array().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0]["function"]["arguments"], "{\"x\":1}");
+        assert_eq!(calls[1]["id"], "b");
+    }
+
+    #[test]
+    fn openrouters_reasoning_details_are_joined_and_kept() {
+        let (whole, texts) = assemble(&[
+            ": OPENROUTER PROCESSING",
+            r#"data: {"choices":[{"delta":{"reasoning":"Let me","reasoning_details":[{"type":"reasoning.text","text":"Let me","format":"anthropic-claude-v1","index":0}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"reasoning":" think.","reasoning_details":[{"type":"reasoning.text","text":" think.","index":0}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","signature":"S","index":0}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.encrypted","data":"E1","index":1}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"content":"Done."},"finish_reason":"stop"}]}"#,
+            "data: [DONE]",
+        ]);
+        assert_eq!(texts, ["Done."], "the reasoning never shows as the answer");
+        let message = whole.unwrap()["choices"][0]["message"].clone();
+        assert_eq!(message["content"], "Done.");
+        assert!(message.get("reasoning").is_none(), "only the details go back");
+        let details = message["reasoning_details"].as_array().unwrap();
+        assert_eq!(details.len(), 2);
+        assert_eq!(details[0], json!({"type":"reasoning.text","text":"Let me think.","format":"anthropic-claude-v1","index":0,"signature":"S"}));
+        assert_eq!(details[1]["data"], "E1");
+    }
+
+    #[test]
+    fn an_error_in_the_stream_or_an_empty_one_fails() {
+        let mut a = Assembly::default();
+        let e = a.line(r#"data: {"error":{"message":"Upstream model failed","code":502},"choices":[{"delta":{},"finish_reason":"error"}]}"#).unwrap_err();
+        assert_eq!(e, "Upstream model failed");
+        assert!(assemble(&[": keep-alive", ""]).0.is_none(), "nothing came: cut short");
     }
 
     #[test]
