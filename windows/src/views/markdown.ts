@@ -19,6 +19,7 @@ import {
   CALLOUT_TYPES, RICH_KINDS, renderCallout, renderChecklist, renderDiffCard, renderImage, renderRich, type CalloutType, type RichContext,
 } from "./rich/index";
 import { MAX_PER_ANSWER } from "./rich/image";
+import { parseCards } from "./rich/cards";
 import { checklistsEpoch, parseChecklist, taskItem, type Checklist, type ChecklistItem } from "../core/checklists";
 import { N_, t } from "../i18n/i18n";
 
@@ -64,6 +65,13 @@ const CALLOUT = new RegExp(`^>\\s*\\[!(${CALLOUT_TYPES.join("|")})\\][ \\t]*(.*)
 const RICH_FENCE = new RegExp(`^(\`{3,})[ \\t]*lumo-(${RICH_KINDS.join("|")})\\b[ \\t]*(.*)$`);
 /** A fence line: its backticks and what follows them. */
 const FENCE_LINE = /^[ \t]*(`{3,})(.*)$/;
+/**
+ * "lumo-cards A title" on a line of its own with no fence, as small local
+ * models write it, the cards as a list under it (views/rich/cards.ts).
+ */
+const LOOSE_CARDS = /^[ \t]*(?:\*\*|`)?lumo-cards(?:\*\*|`)?(?:[ \t]+(.*?))?[ \t]*$/;
+/** A line that goes on a list: blank, indented, or an item. */
+const LIST_LINE = /^(?:[ \t]*$|[ \t]|[-*+•][ \t])/;
 /**
  * A line that is only an image: `![alt](https://…)`, `![alt](<https://…>)`,
  * a "title" after it or not. Parentheses in the address are fine when they
@@ -179,6 +187,23 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       blocks.push({ kind: "rich", type: rich[2], title: rich[3].trim(), body: body.join("\n"), open: !closed });
       i++;
       continue;
+    }
+
+    // The fence left out: the list under the line is the block, when it reads
+    // as cards; otherwise the line and the list stay what they are.
+    const loose = LOOSE_CARDS.exec(line);
+    if (loose) {
+      let end = i + 1;
+      while (end < lines.length && LIST_LINE.test(lines[end])) end++;
+      let last = end;
+      while (last > i + 1 && lines[last - 1].trim() === "") last--;
+      const title = (loose[1] ?? "").trim();
+      const body = lines.slice(i + 1, last).join("\n");
+      if (parseCards(title, body)) {
+        blocks.push({ kind: "rich", type: "cards", title, body, open: partial && end >= lines.length });
+        i = end;
+        continue;
+      }
     }
 
     if (line.startsWith("```")) {
@@ -550,7 +575,7 @@ function render(block: Block, pass: Pass): HTMLElement {
     case "callout": {
       const body = h("div", { class: "rc-callout-body" });
       renderMarkdown(body, block.body, { streaming: pass.streaming, scope: `${pass.scope}>${pass.n}`, partial: pass.tail, imagesBefore: pass.images });
-      return renderCallout(block.type, block.title, body);
+      return renderCallout(block.type, block.title, body, (into, text) => inline(text, into));
     }
     case "rich": {
       // A block whose fence never closed in a finished (or stopped) answer is

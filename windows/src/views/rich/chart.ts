@@ -36,6 +36,7 @@ import { h } from "../dom";
 import { N_, t, language } from "../../i18n/i18n";
 import { head, remember, type RichContext } from "./index";
 import "./chart.css";
+import { onResize } from "./resize";
 
 export const CHART_STRINGS = {
   bars: N_("Bars"),
@@ -380,7 +381,7 @@ export function renderChart(chart: Chart, ctx: RichContext, key: string): HTMLEl
   const toggle = h("span", { class: "rc-chart-view", role: "group" }, chartBtn, tableBtn);
   const copy = ctx.copyButton(chartCsv(chart));
   const body = h("div", { class: "rc-chart-body" });
-  const card = h("div", { class: `rc-card rc-chart rc-chart-${chart.kind}` }, head("chart", chart.title, legend, toggle, copy), body);
+  const card = h("div", { class: `rc-card rc-chart rc-chart-${chart.kind}` }, head("chart", chart.title, ctx, legend, toggle, copy), body);
 
   let built: { chart: HTMLElement | null; table: HTMLElement | null } = { chart: null, table: null };
   const show = () => {
@@ -610,12 +611,12 @@ function renderLines(chart: Chart): HTMLElement {
 
   // Drawn when its width is known or changes; nothing runs in between.
   if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver((entries) => {
-      const w = Math.floor(entries[entries.length - 1].contentRect.width);
+    onResize(frame, (box) => {
+      const w = Math.floor(box.width);
       if (w === width) return;
       width = w;
       draw();
-    }).observe(frame);
+    });
   } else {
     width = 560;
     draw();

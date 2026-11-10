@@ -165,9 +165,9 @@ export const Bridge = {
    * An image of a chat answer, downloaded by Rust unless Settings → Security
    * → Images from the web is off (web_image.rs: https and public addresses
    * only, PNG, JPEG, GIF, WebP or AVIF, 8 MB at most): its bytes as they
-   * came, null when it could not be.
+   * came; it throws what went wrong when it could not be.
    */
-  webImage: (url: string) => call<ArrayBuffer>("web_image", { url }),
+  webImage: (url: string) => callOrThrow<ArrayBuffer>("web_image", { url }),
 
   /** "Open terminal" → opens the folder in VS Code when `code` is on PATH. */
   openInVSCode: (path: string | null) => call<boolean>("open_in_vscode", { path }),

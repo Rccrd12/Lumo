@@ -24,6 +24,7 @@ import { ICONS } from "../icons";
 import { N_, t } from "../../i18n/i18n";
 import { head, remember, RICH_STRINGS, type RichContext } from "./index";
 import "./steps.css";
+import { onResize } from "./resize";
 
 export const STEPS_STRINGS = {
   previous: N_("Previous step"),
@@ -210,7 +211,7 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
   });
   const copy = ctx.copyButton(stepsMarkdown(steps));
   copy.classList.add("rc-steps-copy");
-  const top = head("steps", steps.title, count, prev, next, toggle);
+  const top = head("steps", steps.title, ctx, count, prev, next, toggle);
   // After the title: hidden at rest, it takes the title's room, not the buttons'.
   const parts = [...top.childNodes];
   parts.splice(parts.findIndex((n) => (n as Element).classList?.contains("rc-sp")), 0, copy);
@@ -384,7 +385,7 @@ function fadeWhenWide(el: HTMLElement): HTMLElement {
     el.classList.toggle("fade-end", max > 1 && el.scrollLeft < max - 1);
   };
   el.addEventListener("scroll", sync, { passive: true });
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(sync).observe(el);
+  onResize(el, sync);
   return el;
 }
 
