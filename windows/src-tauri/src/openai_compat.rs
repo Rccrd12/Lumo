@@ -31,7 +31,9 @@ pub struct Provider {
     /// Model ids containing any of these are not chat models.
     pub not_chat: &'static [&'static str],
     /// OpenAI's reasoning models refuse `max_tokens` and want
-    /// `max_completion_tokens`; the compatible APIs take the older name.
+    /// `max_completion_tokens`; the compatible APIs take the older name. A
+    /// chat answer sends neither (the model's own ceiling holds): only a
+    /// supervisor's review, and an answer the credits can't pay for whole.
     pub max_tokens_field: &'static str,
 }
 
@@ -75,9 +77,13 @@ pub fn provider(id: &str) -> Option<&'static Provider> {
     PROVIDERS.iter().find(|p| p.id == id)
 }
 
-const MAX_TOKENS: u32 = 4096;
+/// The room of a supervisor's review (`complete`): a short verdict.
+const REVIEW_MAX_TOKENS: u32 = 4096;
 /// Rounds of the user's tools one answer may take before it must answer.
-const MAX_TOOL_ROUNDS: usize = 8;
+const MAX_TOOL_ROUNDS: usize = 25;
+/// The whole answer comes at once: a reasoning model may think for minutes
+/// first, and a request ended before it answers is paid for all the same.
+const WHOLE_ANSWER: Duration = Duration::from_secs(10 * 60);
 /// Text and code files are inlined; anything larger is skipped.
 const MAX_INLINE_TEXT: u64 = 200_000;
 /// Images are sent inline as data URLs; past this size they are skipped.
@@ -157,13 +163,24 @@ pub(crate) fn with_images(mut user: Value, images: &[String], pdf: PdfAs) -> Val
     user
 }
 
-fn request_body(p: &Provider, model: &str, system: &str, history: &[Value], user: &Value) -> Value {
+fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> Value {
     let mut messages = vec![json!({ "role": "system", "content": system })];
     messages.extend(history.iter().cloned());
     messages.push(user.clone());
-    let mut body = json!({ "model": model, "messages": messages });
-    body[p.max_tokens_field] = json!(MAX_TOKENS);
-    body
+    json!({ "model": model, "messages": messages })
+}
+
+/// The answer's tokens OpenRouter says the credits pay for, when it refused
+/// the request for the model's whole ceiling ("…but can only afford 7461").
+fn affordable(error: &str) -> Option<u64> {
+    let at = error.find("can only afford")? + "can only afford".len();
+    let n: String = error[at..].trim_start().chars().take_while(char::is_ascii_digit).collect();
+    n.parse().ok().filter(|n| *n >= 256)
+}
+
+/// Whether the answer stopped at the length limit (`finish_reason: length`).
+fn cut(response: &Value) -> bool {
+    response.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some("length")
 }
 
 /// The answer's text, or the error the provider put in a 200 reply
@@ -180,6 +197,9 @@ fn reply_text(p: &Provider, response: &Value) -> Result<String, String> {
     }
     if let Some(msg) = response.pointer("/error/message").and_then(Value::as_str) {
         return Err(format!("{}: {msg}", p.name));
+    }
+    if cut(response) {
+        return Err(t("The model used all its room reasoning and wrote no answer: ask again, or turn reasoning down."));
     }
     Err(t("No response text."))
 }
@@ -226,7 +246,7 @@ pub async fn send(
     // Lumo's own web search, when the user turned it on (web_search.rs).
     let web = tauri::async_runtime::spawn_blocking(crate::web_search::enabled).await.unwrap_or(false);
     let system = format!("{}{}{}", chat::system_prompt_in(chat, web, true), chat::api_tools_note(mail), if web { crate::web_search::NOTE } else { "" });
-    let mut body = request_body(p, model, &system, &turn.history, &user);
+    let mut body = request_body(model, &system, &turn.history, &user);
     let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false)).await.unwrap_or_default();
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
@@ -237,8 +257,16 @@ pub async fn send(
     let mut said: Vec<String> = Vec::new();
     let answer = async {
         let mut rounds = 0;
+        let mut capped = false;
         loop {
             let json = match post(p, &endpoint, &key, &body, usage).await {
+                // The credits don't cover the model's whole ceiling: the answer
+                // gets the room they pay for (OpenRouter says how much).
+                Err((402, e)) if !capped && affordable(&e).is_some() => {
+                    capped = true;
+                    body[p.max_tokens_field] = json!(affordable(&e));
+                    continue;
+                }
                 // A model that takes no tools refuses the request: once more without them.
                 // Only on the first request: later ones carry the tools' answers,
                 // which no server takes without the tools they answer.
@@ -281,7 +309,11 @@ pub async fn send(
     let Some(json) = chat.unless_stopped(answer).await else {
         return Ok(ChatReply::stopped(String::new(), None));
     };
-    let text = reply_text(p, &json?)?;
+    let json = json?;
+    let mut text = reply_text(p, &json)?;
+    if cut(&json) {
+        text = format!("{text}\n\n_{}_", t("The answer was cut off at the length limit: ask to continue."));
+    }
     // After the user's tools, what was said before each call comes first.
     let text = if said.is_empty() { text } else { said.into_iter().chain([text]).collect::<Vec<_>>().join("\n\n") };
 
@@ -305,7 +337,8 @@ pub(crate) fn function_tools(tools: &[(String, String, Value)]) -> Value {
 pub async fn complete(p: &'static Provider, model: &str, system: &str, prompt: &str) -> Result<String, String> {
     let key = secrets::get(p.key).ok_or_else(|| tf("{name} API key missing. Add it in Settings.", &[("name", p.name)]))?;
     let user = json!({ "role": "user", "content": prompt });
-    let body = request_body(p, model, system, &[], &user);
+    let mut body = request_body(model, system, &[], &user);
+    body[p.max_tokens_field] = json!(REVIEW_MAX_TOKENS);
     let endpoint = url(p, "chat/completions")?;
     let json = post(p, &endpoint, &key, &body, &mut None).await.map_err(|(_, e)| e)?;
     reply_text(p, &json)
@@ -314,7 +347,7 @@ pub async fn complete(p: &'static Provider, model: &str, system: &str, prompt: &
 /// One request to the chat completions endpoint, its answer as JSON; an
 /// error with the HTTP status (0 when there was none).
 async fn post(p: &Provider, endpoint: &Url, key: &str, body: &Value, usage: &mut Option<ChatUsage>) -> Result<Value, (u16, String)> {
-    let response = net::client(endpoint, Duration::from_secs(90))
+    let response = net::client(endpoint, WHOLE_ANSWER)
         .map_err(|e| (0, e))?
         .post(endpoint.clone())
         .bearer_auth(key)
@@ -532,18 +565,34 @@ mod tests {
         let history = vec![json!({"role":"user","content":"a"}), json!({"role":"assistant","content":"b"})];
         let user = user_message(false, None, "c", PdfAs::Text);
         assert_eq!(user, json!({"role":"user","content":"c"}));
-        let body = request_body(p("google"), "gemini-x", "sys", &history, &user);
+        let body = request_body("gemini-x", "sys", &history, &user);
         assert_eq!(body["model"], "gemini-x");
-        assert_eq!(body["max_tokens"], MAX_TOKENS);
+        assert!(body.get("max_tokens").is_none(), "the model's own ceiling holds");
         let msgs = body["messages"].as_array().unwrap();
         assert_eq!(msgs.len(), 4);
         assert_eq!(msgs[0], json!({"role":"system","content":"sys"}));
         assert_eq!(msgs[3], user);
         assert!(body.get("tools").is_none(), "chat only: no tools");
+        let body = request_body("gpt-5", "sys", &[], &user);
+        assert!(body.get("max_completion_tokens").is_none() && body.get("max_tokens").is_none());
         // OpenAI's reasoning models refuse the old field name.
-        let body = request_body(p("openai"), "gpt-5", "sys", &[], &user);
-        assert_eq!(body["max_completion_tokens"], MAX_TOKENS);
-        assert!(body.get("max_tokens").is_none());
+        assert_eq!(p("openai").max_tokens_field, "max_completion_tokens");
+    }
+
+    #[test]
+    fn what_the_credits_afford_is_read_from_openrouters_refusal() {
+        let e = "OpenRouter: not enough credits (402). This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 7461. To increase, visit https://openrouter.ai/settings/credits";
+        assert_eq!(affordable(e), Some(7461));
+        assert_eq!(affordable("OpenRouter: not enough credits (402). Add credits."), None);
+        assert_eq!(affordable("…but can only afford 12."), None, "too little to answer: said as it is");
+    }
+
+    #[test]
+    fn an_answer_stopped_at_the_length_limit_is_seen() {
+        assert!(cut(&json!({"choices":[{"finish_reason":"length","message":{"content":"Half"}}]})));
+        assert!(!cut(&json!({"choices":[{"finish_reason":"stop","message":{"content":"All"}}]})));
+        let empty = json!({"choices":[{"finish_reason":"length","message":{"content":""}}]});
+        assert_eq!(reply_text(p("openai"), &empty).unwrap_err(), "The model used all its room reasoning and wrote no answer: ask again, or turn reasoning down.");
     }
 
     #[test]

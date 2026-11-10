@@ -47,11 +47,11 @@ use crate::platform;
 
 pub const PROVIDER: &str = "antigravity-cli";
 
-/// A turn can wait on the user's Allow / Deny clicks, so it gets a long while:
-/// the same as Claude Code's.
-const TURN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-/// agy's own limit on a print run (5 minutes by default), set to the same.
-const PRINT_TIMEOUT: &str = "15m";
+/// agy's own limit on a print run (5 minutes by default), far past any task:
+/// a turn runs as long as agy works, as Claude Code's do, and Stop ends it.
+/// A long task (a build, many steps) may take an hour; one that hangs costs
+/// no tokens, and Stop is there.
+const PRINT_TIMEOUT: &str = "1440m";
 /// `agy models` answers at once, or not at all.
 const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 /// The island is told about new text at most this often.
@@ -738,11 +738,9 @@ fn run(
         let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
 
-    let started = Instant::now();
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     let mut unsent = false;
     let mut state = Run::default();
-    let mut timed_out = false;
     loop {
         if stop.is_stopped() && state.result.is_none() {
             drop(stdin.take());
@@ -750,12 +748,7 @@ fn run(
             state.stopped = true;
             return Ok(state);
         }
-        let left = TURN_TIMEOUT.saturating_sub(started.elapsed());
-        if left.is_zero() {
-            timed_out = true;
-            break;
-        }
-        match rx.recv_timeout(left.min(STOP_POLL)) {
+        match rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
                 if state.result.is_some() {
@@ -783,10 +776,6 @@ fn run(
         }
     }
     drop(stdin);
-    if timed_out {
-        kill_tree(&mut child);
-        return Err(t("Antigravity CLI took too long and was stopped."));
-    }
     let status = child.wait().ok();
     let stderr = err_text.join().unwrap_or_default();
     state.denied += stderr_denials(&stderr);
@@ -1330,7 +1319,7 @@ mod tests {
         let a = args("gemini-3-pro", "default", Some(CID), "C:\\Users\\me\\Lumo", inbox, &[]);
         assert_eq!(
             &a[..7],
-            ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "15m"]
+            ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "1440m"]
         );
         assert!(!a.iter().any(|s| s == "-p" || s == "--print"), "-p would swallow the next flag as the prompt: {a:?}");
         assert!(!a.contains(&"--effort".to_string()), "the model's name carries its effort: {a:?}");

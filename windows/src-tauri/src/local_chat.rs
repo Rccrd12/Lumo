@@ -68,7 +68,7 @@ pub fn key_entry(id: &str) -> Option<&'static str> {
 
 const MAX_TOKENS: u32 = 4096;
 /// Rounds of tools one answer may take before it must answer.
-const MAX_TOOL_ROUNDS: usize = 8;
+const MAX_TOOL_ROUNDS: usize = 25;
 /// A dropped file's text, sent inline up to this many characters when the
 /// model's context isn't known; the rest is cut.
 const MAX_INLINE_CHARS: usize = 24_000;
