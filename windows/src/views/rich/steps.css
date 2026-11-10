@@ -6,9 +6,10 @@
    step sits at the top, where it would be alone, the room left over above
    the bar. */
 
+/* Drawn over the card's own border: the chat log clips what goes past it. */
 .rc-steps:focus-visible {
   outline: 1px solid rgba(143, 199, 255, 0.45);
-  outline-offset: 1px;
+  outline-offset: -1px;
 }
 
 /* The copy button: after the title, shown while the pointer is over the card,

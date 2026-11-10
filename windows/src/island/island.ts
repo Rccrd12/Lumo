@@ -25,6 +25,7 @@ import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen, visiblePlanKinds } from "../views/usage";
 import { buildHeader, buildViews, hasSessionTicker, overviewDetailFor, type ViewActions, type ViewHost } from "../views/views";
+import { cardsFollowDrag } from "../views/rich/resize";
 import { gitHubListSection } from "../views/github";
 import { backgroundRows } from "../views/background";
 import { homeHeight, homeInProgressCount, homeLists, homeTilesInARow } from "../views/home";
@@ -1589,6 +1590,7 @@ export class Island {
         if (e.button !== 0 || e.altKey || !f) return;
         e.preventDefault();
         this.resizing = true;
+        cardsFollowDrag(true);
         // The home goes narrower than the other views, but not with three tiles in a row.
         const home = State.view === "home" && !homeTilesInARow(this.activities.data());
         void Bridge.islandResize(f.fx, f.fy, this.height.value, home ? NEW_LOOK_HOME_MIN_SHARED : null);
@@ -1601,6 +1603,7 @@ export class Island {
     }
     window.addEventListener("mouseup", () => {
       this.resizing = false;
+      cardsFollowDrag(false);
       // Rust says where a moved island went; should it never say, put it down anyway.
       if (this.moving) {
         this.clearSettleTimer();
@@ -1614,6 +1617,7 @@ export class Island {
     window.addEventListener("mousemove", (e) => {
       if (!(e.buttons & 1)) {
         this.resizing = false;
+        cardsFollowDrag(false);
         this.pendingMove = null;
         return;
       }

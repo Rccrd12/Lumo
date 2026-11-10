@@ -17,6 +17,17 @@
 // "sub:" may be left out: a plain line right under the name, with rows after
 // it, is the subtitle too.
 //
+// Small local models often write the cards as a list instead, which is read
+// the same way when the block has no ## names at all:
+//
+//   - **Espresso**
+//     - Subtitle: The base | ☕
+//     - Icon: amber
+//     - Volume: 25-30 ml
+//
+// A top-level "- **name**" starts a card, a subtitle ending in "| emoji" gives
+// the emoji to the icon, and an "icon:" that is only a colour colours it.
+//
 // The icon is drawn in code: a letter or an emoji in a small tinted square,
 // or a planet (a lit sphere, with a ring if asked). Its colour is one of a
 // few names or a #hex, checked strictly since it ends up in a style. The
@@ -28,6 +39,7 @@ import { ICONS } from "../icons";
 import { N_, t } from "../../i18n/i18n";
 import { head, remember, type RichContext } from "./index";
 import "./cards.css";
+import { onResize } from "./resize";
 
 export const CARDS_STRINGS = {
   count: N_("{count} cards"),
@@ -148,6 +160,14 @@ const HEADING = /^#{1,4}(?:\s+(.*?)(?:\s+#+)?)?\s*$/;
 /** "sub:", "Subtitle:", "icon:" at the start of a line, bulleted or not. */
 const META = /^(?:[-*+•]\s+)?\**(sub|subtitle|icon)\**\s*:\**\s*(.*)$/i;
 const BULLET = /^[-*+•]\s+(.*)$/;
+/**
+ * A card's name as a list item at the start of the line, in a block with no
+ * headings: "- **Name**", alone or with "— words" after it (the subtitle).
+ * "- **Key**: value" is a row, not a name.
+ */
+const LISTED_NAME = /^[-*+•]\s+\*\*([^*]*[^*:\s])\*\*\s*(?:[—–-]\s*(.*))?$/;
+/** A subtitle ending in an emoji after a bar, "The base | ☕": the emoji is the icon. */
+const SUB_EMOJI = /^(.*?)\s*\|\s*(\S+)$/u;
 
 /** The cards of a lumo-cards block, or null when there are fewer than two or more than eight. */
 export function parseCards(title: string, body: string): Cards | null {
@@ -155,12 +175,17 @@ export function parseCards(title: string, body: string): Cards | null {
   let card: Card | null = null;
   // The cards whose first line, right under the name, was plain text.
   const led = new Set<Card>();
-  for (const raw of body.split(/\r?\n/)) {
+  // The colour of an "icon:" that is only a colour, for the emoji of the subtitle.
+  const tint = new Map<Card, string>();
+  const lines = body.split(/\r?\n/);
+  const headed = lines.some((l) => HEADING.test(l.trim()));
+  for (const raw of lines) {
     const line = raw.trim();
     if (!line) continue;
     const heading = HEADING.exec(line);
-    if (heading) {
-      card = { title: bare(heading[1] ?? ""), sub: "", icon: null, fields: [], text: [] };
+    const listed = headed ? null : LISTED_NAME.exec(raw);
+    if (heading || listed) {
+      card = { title: bare((heading ? heading[1] : listed?.[1]) ?? ""), sub: bare(listed?.[2] ?? ""), icon: null, fields: [], text: [] };
       cards.push(card);
       continue;
     }
@@ -169,7 +194,11 @@ export function parseCards(title: string, body: string): Cards | null {
     const meta = META.exec(line);
     if (meta) {
       const value = meta[2].trim();
-      if (meta[1].toLowerCase() === "icon") card.icon = parseIcon(value) ?? card.icon;
+      if (meta[1].toLowerCase() === "icon") {
+        card.icon = parseIcon(value) ?? card.icon;
+        const color = cardColor(value);
+        if (color) tint.set(card, color);
+      }
       else if (!card.sub) card.sub = bare(value);
       else card.text.push(value);
       continue;
@@ -193,6 +222,12 @@ export function parseCards(title: string, body: string): Cards | null {
   for (const c of led) {
     if (c.fields.length && !c.sub) c.sub = bare(c.text.shift() ?? "");
   }
+  for (const c of cards) {
+    const m = SUB_EMOJI.exec(c.sub);
+    if (!m || !/\p{Extended_Pictographic}/u.test(m[2]) || graphemes(m[2]) > 2) continue;
+    c.sub = m[1];
+    c.icon ??= { kind: "glyph", text: m[2], color: tint.get(c) ?? DEFAULT_GLYPH_COLOR };
+  }
   const kept = cards.filter((c) => c.title || c.sub || c.fields.length || c.text.length);
   if (kept.length < MIN_CARDS || kept.length > MAX_CARDS) return null;
   return { title: title.trim(), cards: kept };
@@ -205,8 +240,6 @@ interface CardsState {
   left: number;
 }
 
-/** A mouse wheel notch is about 100 px; a touchpad sends smaller, finer deltas. */
-const FINE_DELTA_PX = 40;
 /** The gap between two cards, in cards.css. */
 const GAP_PX = 8;
 const CARD_PX = 176;
@@ -261,16 +294,6 @@ function clipped(card: HTMLElement) {
   card.classList.toggle("clipped", inside.scrollTop + inside.clientHeight < inside.scrollHeight - 1);
 }
 
-/** Whether `target`, inside a card of the row, scrolls that card itself that way. */
-function cardScrolls(target: EventTarget | null, row: HTMLElement, down: boolean): boolean {
-  for (let n = (target as Node | null)?.nodeType === 1 ? (target as Element) : null; n && n !== row; n = n.parentElement) {
-    if (!n.classList.contains("rc-mini-in")) continue;
-    if (n.scrollHeight <= n.clientHeight + 1) return false;
-    return down ? n.scrollTop + n.clientHeight < n.scrollHeight - 1 : n.scrollTop > 0;
-  }
-  return false;
-}
-
 /**
  * The cards side by side. The row learns whether it overflows from a
  * ResizeObserver (when it is laid out, and when the island is resized) and
@@ -293,7 +316,7 @@ export function renderCards(cards: Cards, ctx: RichContext, key: string): HTMLEl
   );
   const clip = h("div", { class: "rc-cards-clip" }, row, prev, next);
   const count = h("span", { class: "rc-count rc-cards-count", text: t(CARDS_STRINGS.count, { count: cards.cards.length }) });
-  const el = h("div", { class: "rc-card rc-cards" }, head("cards", cards.title, count), clip);
+  const el = h("div", { class: "rc-card rc-cards" }, head("cards", cards.title, ctx, count), clip);
 
   // Puts the row back where it was the first time it has a width (a redraw
   // builds it anew), then shows the fades and buttons its scroll calls for.
@@ -317,26 +340,9 @@ export function renderCards(cards: Cards, ctx: RichContext, key: string): HTMLEl
     sync();
     state.left = row.scrollLeft;
   });
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(sync).observe(row);
+  onResize(row, sync);
 
-  // A mouse wheel turned over the row moves it sideways while it can go that
-  // way; at its ends, and when every card fits, the chat scrolls as usual.
-  row.addEventListener(
-    "wheel",
-    (e) => {
-      if (e.ctrlKey || e.shiftKey || !e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-      const max = row.scrollWidth - row.clientWidth;
-      if (max <= 1) return;
-      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * row.clientWidth : e.deltaY;
-      if (dy > 0 ? row.scrollLeft >= max - 1 : row.scrollLeft <= 1) return;
-      if (cardScrolls(e.target, row, dy > 0)) return;
-      e.preventDefault();
-      // The chat's own wheel handler (gentleWheel) would scroll it down as well.
-      e.stopPropagation();
-      if (Math.abs(dy) < FINE_DELTA_PX) row.scrollLeft += dy;
-      else row.scrollBy({ left: dy, behavior: "smooth" });
-    },
-    { passive: false },
-  );
+  // The mouse wheel is the chat's, over the row too: the row moves sideways
+  // with its arrows, a drag of the touchpad, or Shift and the wheel.
   return el;
 }

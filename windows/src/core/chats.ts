@@ -8,6 +8,8 @@ import { cleanChecklists, type ChatChecklists } from "./checklists";
 export interface SavedTurn {
   role: "user" | "assistant";
   content: string;
+  /** When it was sent or answered (epoch ms); none in chats saved before it was kept. */
+  at?: number;
 }
 
 export interface SavedChat {
@@ -66,6 +68,23 @@ export function chatTitle(turns: SavedTurn[]): string {
   const first = turns.find((t) => t.role === "user")?.content ?? "";
   const line = first.replace(/\s+/g, " ").trim();
   return line.length > TITLE_CHARS ? `${line.slice(0, TITLE_CHARS - 1)}…` : line;
+}
+
+/**
+ * Claude Code answered by itself between two questions (a command it left
+ * running in the background ended): `text` joins the chat's last answer, so
+ * the chat still goes question, answer, as Rust's conversation does (chat.rs
+ * `add_own`). A question still waiting for its answer stays after it. False
+ * with no answer to join.
+ */
+export function joinOwnAnswer(turns: { role: string; content: string; failed?: boolean }[], text: string): boolean {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i];
+    if (turn.role !== "assistant" || turn.failed) continue;
+    turn.content = turn.content.trim() ? `${turn.content}\n\n${text}` : text;
+    return true;
+  }
+  return false;
 }
 
 /** Ticks given in a chat not saved yet (its first answer still being written), until it is. */

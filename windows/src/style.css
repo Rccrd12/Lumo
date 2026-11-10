@@ -1737,8 +1737,10 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
 }
 
+/* A question, its actions under it, on the right. */
 .chat-row.user {
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   padding-left: 32px;
 }
 
@@ -4004,51 +4006,64 @@ textarea.chat-input {
   background: rgba(255, 255, 255, 0.16);
 }
 
-/* ── Copy and Edit on a message, under the mouse (views/chat.ts) ─────────── */
-
-.chat-row.user.with-actions {
-  padding-left: 0;
-}
+/* ── Copy, Retry, Edit and when, on a line under a message (views/chat.ts) ── */
 
 .msg-actions {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  height: 20px;
+  margin-top: 1px;
   opacity: 0;
   transition: opacity 0.12s ease-out;
 }
 
 .chat-row.user .msg-actions {
-  align-self: flex-end;
-  margin-right: 4px;
+  margin-right: -3px;
+}
+
+.reply-wrap .msg-actions {
+  margin-left: -4px;
 }
 
 .chat-row:hover .msg-actions,
-.chat-row:focus-within .msg-actions {
+.chat-row:focus-within .msg-actions,
+.msg-actions.shown {
   opacity: 1;
 }
 
 .msg-action {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   color: var(--dim-3);
   cursor: default;
 }
 
 .msg-action:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
   color: var(--dim);
 }
 
 .msg-action.done {
   color: var(--green);
+}
+
+.msg-time {
+  padding: 0 5px;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+}
+
+.msg-actions .msg-stopped {
+  padding-left: 4px;
 }
 
 .reply-wrap {
@@ -4059,31 +4074,12 @@ textarea.chat-input {
   min-width: 0;
 }
 
-.reply-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 18px;
-}
-
-.reply-foot.floating {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  min-height: 0;
-  border-radius: 5px;
-}
-
-.chat-row:hover .reply-foot.floating {
-  background: rgba(24, 25, 28, 0.92);
-}
-
 /* The copies a local model changed in its folder (workspace.rs), under its answer. */
 .reply-copies {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 8px 0 22px;
+  margin: 8px 0 2px;
   padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;

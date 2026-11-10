@@ -140,6 +140,8 @@ test("an image that can't be loaded says so, with its site, and can be tried aga
   assert.equal(state(card), "error");
   assert.match(card.textContent, /Couldn't load the image/);
   assert.match(card.textContent, /upload\.wikimedia\.org/);
+  // Why, as Rust said it, under the pointer.
+  assert.equal(card.querySelector(".rc-image-msg").getAttribute("title"), "The image is bigger than 8 MB.");
   // A redraw doesn't download it again by itself.
   const again = renderImage("", URL_A);
   assert.equal(state(again), "error");

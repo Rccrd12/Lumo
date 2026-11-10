@@ -299,27 +299,16 @@ test("a card taller than the row allows fades at its bottom while there is more 
   assert.ok(tall.classList.contains("clipped"));
 });
 
-test("the wheel moves the row sideways only while it can go that way", () => {
+test("the wheel over the row scrolls the chat, never the row", () => {
   const el = renderCards(parseCards("", PLANETS), ctx, "k-wheel");
   const row = el.querySelector(".rc-cards-row");
   const moves = [];
   row.scrollBy = (o) => moves.push(o);
-  const wheel = (deltaY, extra = {}) => row.fire("wheel", { deltaY, deltaX: 0, deltaMode: 0, target: row, ...extra });
-
-  layout(row, 400, 400, 0);
-  assert.ok(!wheel(100).defaultPrevented, "nothing to scroll: the chat scrolls");
-
   layout(row, 400, 800, 0);
-  assert.ok(!wheel(-100).defaultPrevented, "at the start, up scrolls the chat");
-  assert.ok(wheel(100).defaultPrevented);
-  assert.deepEqual(moves, [{ left: 100, behavior: "smooth" }]);
-  assert.ok(wheel(10).defaultPrevented);
-  assert.equal(row.scrollLeft, 10, "a touchpad's fine steps go straight");
-
-  row.scrollLeft = 400;
-  assert.ok(!wheel(100).defaultPrevented, "at the end, down scrolls the chat");
-  assert.ok(!wheel(-100, { ctrlKey: true }).defaultPrevented, "Ctrl zooms");
-  assert.ok(!wheel(-5, { deltaX: 40 }).defaultPrevented, "a sideways swipe is the webview's");
+  const e = row.fire("wheel", { deltaY: 100, deltaX: 0, deltaMode: 0, target: row });
+  assert.ok(!e.defaultPrevented, "the chat scrolls");
+  assert.deepEqual(moves, []);
+  assert.equal(row.scrollLeft, 0);
 });
 
 test("in an answer, a lumo-cards block becomes the card, a broken one stays code", () => {
@@ -332,4 +321,66 @@ test("in an answer, a lumo-cards block becomes the card, a broken one stays code
   renderMarkdown(broken, "```lumo-cards Alone\n## Only one\n- a: b\n```\n");
   assert.equal(broken.querySelector(".rc-cards"), null);
   assert.match(broken.textContent, /Only one/);
+});
+
+// What a small local model wrote, asked for an example: no fence, and the
+// cards as a list of bold names with their rows nested under them.
+const LOCAL = [
+  "Ecco due esempi pratici.",
+  "",
+  "### ☕ Tipi di Caffè",
+  "",
+  "lumo-cards",
+  "- **Espresso**",
+  "  - Subtitle: La base | ☕",
+  "  - Icon: amber",
+  "  - Volume: 25-30 ml",
+  "  - Intensità: Alta",
+  "",
+  "- **Cappuccino**",
+  "  - Subtitle: Classico italiano | 🥛",
+  "  - Icon: pink",
+  "  - Composizione: 1/3 espresso, 1/3 latte, 1/3 schiuma",
+  "",
+  "- **Latte Macchiato**",
+  "  - Subtitle: Delicato | ☁️",
+  "  - Base: Latte caldo",
+  "",
+  "---",
+  "",
+  "Vuoi altro?",
+].join("\n");
+
+test("a list of bold names, with no ## names, is read as the cards", () => {
+  const body = LOCAL.split("lumo-cards\n")[1].split("\n\n---")[0];
+  const cards = parseCards("", body);
+  assert.ok(cards);
+  assert.deepEqual(cards.cards.map((c) => c.title), ["Espresso", "Cappuccino", "Latte Macchiato"]);
+  const [espresso, , latte] = cards.cards;
+  assert.equal(espresso.sub, "La base");
+  assert.deepEqual(espresso.icon, { kind: "glyph", text: "☕", color: cardColor("amber") });
+  assert.deepEqual(espresso.fields, [["Volume", "25-30 ml"], ["Intensità", "Alta"]]);
+  assert.deepEqual(latte.icon, { kind: "glyph", text: "☁️", color: cardColor("blue") }, "no colour: the usual one");
+
+  // With ## names, a bold list item is a row as before, never a card.
+  const headed = parseCards("", "## A\n- **Speed**\n- b: c\n## B\n- d: e");
+  assert.deepEqual(headed.cards.map((c) => c.title), ["A", "B"]);
+  // "- **Key**: value" at the start of a line is a row, not a name.
+  assert.equal(parseCards("", "- **Speed**: fast\n- **Size**: small"), null);
+});
+
+test("in an answer, an unfenced lumo-cards line with a list under it is the card", () => {
+  const into = document.createElement("div");
+  renderMarkdown(into, LOCAL);
+  assert.ok(into.querySelector(".rc-cards"));
+  assert.equal(into.find(".rc-mini").length, 3);
+  assert.doesNotMatch(into.textContent, /lumo-cards/);
+  assert.match(into.textContent, /Vuoi altro\?/, "what follows the list stays text");
+  assert.match(into.textContent, /Tipi di Caffè/);
+
+  // A list that doesn't read as cards stays a list, the line with it.
+  const plain = document.createElement("div");
+  renderMarkdown(plain, "lumo-cards\n- just one thing\n- and another");
+  assert.equal(plain.querySelector(".rc-cards"), null);
+  assert.match(plain.textContent, /just one thing/);
 });

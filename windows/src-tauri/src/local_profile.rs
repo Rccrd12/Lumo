@@ -294,6 +294,10 @@ fn date_words(year: i64, month: u32, day: u32) -> String {
     format!("{} {day} {name} {year}", DAYS[weekday as usize])
 }
 
+/// The rich blocks shown once, for a local model: here the prompt goes over
+/// HTTP, never on a command line, so it may hold line breaks and backticks.
+const LOCAL_RICH_EXAMPLE: &str = " Every rich block starts with three backticks and its name and ends with three backticks, each on a line of its own. For example:\n```lumo-cards Coffees\n## Espresso\nsub: The base\nicon: ☕ amber\n- Volume: 25-30 ml\n- Strength: high\nShort and dense.\n## Cappuccino\nsub: For the morning\nicon: 🥛 pink\n- Milk: steamed, with foam\nCocoa on top.\n```\nThe others are written the same way, with the lines their description gives. Use them without being asked; if the user asks what you can show, describe them in plain words, never by these names.";
+
 pub fn system_prompt(p: &Prompt) -> String {
     let who = match p.first_name {
         Some(name) => format!("You are Lumo, {name}'s assistant at the top of their screen."),
@@ -306,6 +310,9 @@ Lumo may give you the windows and documents open on the user's computer: use the
     // The chat's rich blocks, as every provider is told them: the calculator
     // and the plot too, which a local model can fill in as well as any.
     out.push_str(crate::chat::rich_note!());
+    // A small model follows an example better than a description: the fence
+    // and the ## names it tends to leave out, shown once.
+    out.push_str(LOCAL_RICH_EXAMPLE);
     // A local model knows only up to its training: "yesterday" means nothing to it otherwise.
     if !p.today.is_empty() {
         out.push_str(&format!(" Today is {}.", p.today));
@@ -387,6 +394,9 @@ mod tests {
         assert!(p.contains(crate::chat::rich_note!()));
         // The calculator and the plot included: the user wants them here too.
         assert!(p.contains("lumo-calc") && p.contains("lumo-plot"));
+        // And one written out, fence and all: a small model copies it.
+        assert!(p.contains("```lumo-cards Coffees\n## Espresso\nsub: The base\n"));
+        assert!(p.contains("never by these names"));
     }
 
     fn tool(id: &str) -> (String, String, Value) {

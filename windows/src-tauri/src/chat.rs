@@ -408,6 +408,22 @@ impl Chat {
         }
     }
 
+    /// Claude Code answered by itself between two turns of `session` (a command
+    /// it left running in the background ended): its answer joins the last
+    /// one, so the turns still go question, answer (the island joins it the
+    /// same way, src/core/chats.ts `joinOwnAnswer`). Nothing once the chat left
+    /// that session (a new chat, an edited message) or `provider`.
+    pub fn add_own(&self, provider: &str, session: Option<&str>, answer: &str) {
+        let mut c = self.inner.lock().unwrap();
+        if session.is_none() || c.cli_session.as_deref() != session || c.cli_owner.as_deref() != Some(provider) {
+            return;
+        }
+        join_own(&mut c.plain, answer);
+        if c.owner.as_deref() == Some(provider) {
+            join_own(&mut c.native, answer);
+        }
+    }
+
     /// Records a finished turn: the user message and the answer in the
     /// provider's format, and their plain text. Only a successful turn is
     /// recorded, so the history always matches what the model saw.
@@ -421,6 +437,14 @@ impl Chat {
         c.plain.push(json!({ "role": "user", "content": user_text }));
         c.plain.push(json!({ "role": "assistant", "content": answer }));
     }
+}
+
+/// `answer` added to the last turn when it is an answer in plain text.
+fn join_own(turns: &mut [Value], answer: &str) {
+    let Some(last) = turns.last_mut().filter(|t| t["role"] == "assistant") else { return };
+    let Some(before) = last["content"].as_str() else { return };
+    let joined = if before.trim().is_empty() { answer.to_string() } else { format!("{before}\n\n{answer}") };
+    last["content"] = Value::String(joined);
 }
 
 /// The line in front of a question about the files the user took out of the
@@ -450,6 +474,11 @@ pub struct ChatEvents {
 }
 
 impl ChatEvents {
+    /// The events of the chat `chat`, with no `Chat` at hand.
+    pub fn new(chat: &str) -> Self {
+        ChatEvents { chat: chat.to_string() }
+    }
+
     /// The text of the answer written so far.
     pub fn delta(&self, app: &AppHandle, text: &str) {
         let _ = app.emit_to(WINDOW_LABEL, "chat-delta", json!({ "chat": self.chat, "text": text }));
@@ -483,6 +512,11 @@ impl Chats {
     pub fn get(&self, id: &str) -> Arc<Chat> {
         let mut map = self.map.lock().unwrap();
         map.entry(id.to_string()).or_insert_with(|| Arc::new(Chat::new(id))).clone()
+    }
+
+    /// The chat with this id, if Rust still holds it.
+    pub fn find(&self, id: &str) -> Option<Arc<Chat>> {
+        self.map.lock().unwrap().get(id).cloned()
     }
 
     /// The chat on screen is now `id`: the others are forgotten once no
@@ -621,7 +655,7 @@ pub(crate) use math_note;
 /// command line when its instructions can't go in a file.
 macro_rules! rich_note {
     () => {
-        " Lumo draws rich blocks: use one only where it clearly helps, at most two per answer, never one inside another. Callouts: GitHub alerts, [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION], a title optional after it. Checklists: GitHub task lists, titled in a lumo-checklist block; to update one, write it again with the same title; what the user ticked comes with their next message. Code changes: diff blocks, the file path after diff. Then fenced blocks whose language is one of these, a title after it. lumo-steps, a derivation or procedure step by step: per step ## step name, then its Markdown, often one $$…$$ line. lumo-cards, 2 to 8 things side by side: per card ## name, optional sub: subtitle and icon: an emoji or 1-2 letters and a colour (blue green amber red pink indigo cyan gray #hex) or icon: planet colour, lines - key: value, a short line of text. lumo-calc, a formula to play with: formula: TeX, lines input: symbol, name, min..max, value, unit and output: symbol, name, expression, unit, fields separated by vertical bars; step s may follow a range; expressions like V/R or A*sin(w*x)+x**2. lumo-plot: formula: TeX, one to three y: expressions in x, x: min..max, optional yrange: min..max, inputs as in lumo-calc. lumo-quiz, at most 10 questions: per question a line ? question, lines - wrong answer and + right answer (one right), a quote line explaining it, = a few words naming it. lumo-chart, bar or line before the title: optional unit: and series: A, B, then lines label: value, a value per series. lumo-timeline: lines date name: detail, dates as 1947, 1971-11 or 2026-11-08; a from..to range makes it a plan, its single dates deadlines. A picture: a line ![what it shows](https://…), the real address of an image file, preferably on Wikimedia Commons, only when sure it exists: never make one up."
+        " Lumo draws rich blocks: use them on your own, unasked, wherever one makes the answer clearer, usually one or two per answer, never one inside another. Callouts: GitHub alerts, [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION], a title optional after it. Checklists: GitHub task lists, titled in a lumo-checklist block; to update one, write it again with the same title; what the user ticked comes with their next message. Code changes: diff blocks, the file path after diff. Then fenced blocks whose language is one of these, a title after it. lumo-steps, a derivation or procedure step by step: per step ## step name, then its Markdown, often one $$…$$ line. lumo-cards, 2 to 8 things side by side: per card ## name, optional sub: subtitle and icon: an emoji or 1-2 letters and a colour (blue green amber red pink indigo cyan gray #hex) or icon: planet colour, lines - key: value, a short line of text. lumo-calc, a formula to play with: formula: TeX, lines input: symbol, name, min..max, value, unit and output: symbol, name, expression, unit, fields separated by vertical bars; step s may follow a range; expressions like V/R or A*sin(w*x)+x**2. lumo-plot: formula: TeX, one to three y: expressions in x, x: min..max, optional yrange: min..max, inputs as in lumo-calc. lumo-quiz, at most 10 questions: per question a line ? question, lines - wrong answer and + right answer (one right), a quote line explaining it, = a few words naming it. lumo-chart, bar or line before the title: optional unit: and series: A, B, then lines label: value, a value per series. lumo-timeline: lines date name: detail, dates as 1947, 1971-11 or 2026-11-08; a from..to range makes it a plan, its single dates deadlines. A picture: a line ![what it shows](https://…), the real address of an image file on any site, one a search found or one you are sure of (Wikimedia Commons is the surest), never one made up."
     };
 }
 pub(crate) use rich_note;
@@ -1136,6 +1170,29 @@ mod tests {
         assert_eq!(chat.cli_session(), None);
     }
 
+    #[test]
+    fn what_claude_code_writes_by_itself_joins_the_last_answer_of_its_session() {
+        let chat = Chat::default();
+        let t = chat.begin("claude-code");
+        let (u, r) = qa("Measure it, and tell me when it is done", "Started: I'll write when it ends.");
+        chat.commit(&t, u, r, "Measure it, and tell me when it is done", "Started: I'll write when it ends.");
+        chat.set_cli_session(&t, "s1");
+        // Another session's (a chat started again since) is not this chat's.
+        chat.add_own("claude-code", Some("s0"), "stale");
+        chat.add_own("claude-code", None, "stale");
+        chat.add_own("codex", Some("s1"), "stale");
+        chat.add_own("claude-code", Some("s1"), "Done: 42 ms.");
+        let t = chat.begin("claude-code");
+        assert_eq!(chat.turns(), 2, "still a question and its answer");
+        assert_eq!(t.history[1]["content"], "Started: I'll write when it ends.\n\nDone: 42 ms.");
+        // Another provider then gets it in its plain turns too.
+        assert_eq!(chat.begin("openai").history[1]["content"], "Started: I'll write when it ends.\n\nDone: 42 ms.");
+        // After an edit, nothing joins.
+        chat.rewind(0);
+        chat.add_own("claude-code", Some("s1"), "late");
+        assert_eq!(chat.turns(), 0);
+    }
+
     fn qa(q: &str, a: &str) -> (Value, Value) {
         (json!({"role":"user","content":q}), json!({"role":"assistant","content":a}))
     }
@@ -1435,7 +1492,7 @@ mod tests {
         ] {
             assert!(note.contains(key), "{key}");
         }
-        assert!(note.contains("clearly helps") && note.contains("never make one up"));
+        assert!(note.contains("on your own, unasked") && note.contains("makes the answer clearer") && note.contains("never one made up") && note.contains("on any site"));
         // It goes on Claude Code's command line too (claude_code.rs): nothing
         // cmd.exe reads as syntax, and on one line.
         assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']));

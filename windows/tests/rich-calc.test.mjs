@@ -382,3 +382,29 @@ test("through the Markdown: a card, or the block as code when it can't be read",
   assert.equal(bad.find(".rc-calc").length, 0);
   assert.ok(bad.textContent.includes("output: I | V / Q"));
 });
+
+test("the chart takes the height the chat has room for: never under its usual, never past its most", () => {
+  const { plotHeight, PLOT_HEIGHT, PLOT_MAX_HEIGHT } = calcModule;
+  // The usual island: the chat has no more room than the usual chart.
+  assert.equal(plotHeight(150, 96), PLOT_HEIGHT);
+  // Pulled taller: the whole card fits the chat, the chart taking the rest.
+  assert.equal(plotHeight(420, 96), 420 - 96 - 12);
+  assert.equal(plotHeight(5000, 96), PLOT_MAX_HEIGHT);
+});
+
+test("a curve that spends its length in a band of the chart asks for more height; a wave or a line doesn't", () => {
+  const { parsePlot, idealHeight, plotHeight, PLOT_HEIGHT } = calcModule;
+  const want = (body) => idealHeight(parsePlot("", body));
+  const wave = want("y: sin(x)\ny: cos(x)\nx: 0..12");
+  const line = want("y: 0.5*x+1\nx: -5..5");
+  const flat = want("y: 3\nx: 0..5");
+  const exp = want("y: exp(x)\nx: 0..5");
+  assert.equal(wave, PLOT_HEIGHT);
+  assert.equal(flat, PLOT_HEIGHT);
+  assert.ok(line < 130, `${line}`);
+  assert.ok(exp > 3 * PLOT_HEIGHT, `${exp}`);
+  // As tall as it wants, as far as the chat has room.
+  assert.equal(plotHeight(600, 96, wave), PLOT_HEIGHT);
+  assert.equal(plotHeight(600, 96, exp), Math.round(exp));
+  assert.equal(plotHeight(300, 96, exp), 300 - 96 - 12);
+});

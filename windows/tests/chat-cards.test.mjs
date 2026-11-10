@@ -165,7 +165,7 @@ test("the quiz's more questions wait above the field while an answer is written,
 test("while a question is edited, the quiz's more questions go nowhere", async () => {
   answers.chat_send = { text: "```lumo-quiz Gain\n? Gain?\n- 1\n+ 2\n```", turns: 2 };
   await ask("quiz me");
-  rows()[0].find(".msg-action")[1].fire("click");
+  rows()[0].find(".msg-edit")[0].fire("click");
   view.sync();
   moreQuestions(rows()[1]);
   await flush();
