@@ -77,6 +77,16 @@ test("the physics package's notation reads as math, not as its name", () => {
   assert.equal(mathText("\\int f(x) \\dd{x}"), "∫f(x)dx");
 });
 
+test("a one-argument bra-ket is drawn twice, but nested ones never double", () => {
+  assert.equal(mathText("\\braket{a}"), "⟨a|a⟩");
+  // Thirty levels drew 2^30 elements: the page hung, then ran out of memory.
+  const nested = "\\braket{".repeat(30) + "x" + "}".repeat(30);
+  const started = performance.now();
+  const text = mathText(nested);
+  assert.ok(performance.now() - started < 1000);
+  assert.equal((text.match(/x/g) ?? []).length, 2, "only the innermost is drawn twice");
+});
+
 test("vectors written with the notes' own macros keep their arrow", () => {
   // \vect is not LaTeX's own: it showed as "vecti" before.
   const kcl = renderMath("\\mathbf{A}\\vect{i}=\\vect{0}");
