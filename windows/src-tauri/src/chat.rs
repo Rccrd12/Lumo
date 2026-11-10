@@ -1435,7 +1435,7 @@ mod tests {
         ] {
             assert!(note.contains(key), "{key}");
         }
-        assert!(note.contains("clearly helps") && note.contains("never make one up"));
+        assert!(note.contains("on your own, unasked") && note.contains("makes the answer clearer") && note.contains("never make one up"));
         // It goes on Claude Code's command line too (claude_code.rs): nothing
         // cmd.exe reads as syntax, and on one line.
         assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']));
