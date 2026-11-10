@@ -92,3 +92,19 @@ test("an empty query brings everything back, and a row the section hid stays hid
   assert.equal(content.find(".search-miss").length, 0);
   assert.deepEqual(shown(content), ["Suono", "Lingua", "Nuova chat", "Timer", "Modello"]);
 });
+
+test("an integration shows or hides whole, its key fields with its name", () => {
+  const integration = (name, label) => h("div", { class: "integration" },
+    setting(name, null),
+    h("div", { class: "field-rows" }, h("div", { class: "field-row" }, h("label", { text: label }), h("input", {}))));
+  const list = h("div", { class: "setting-list" }, integration("Stripe", "Secret key"), integration("Notion", "Integration token"));
+  const content = h("main", { class: "content" }, h("div", { class: "page" }, h("section", {}, ...sectionHead("Integrazioni"), list)));
+  const blocks = content.find(".integration");
+  const missed = () => blocks.map((b) => b.classList.contains("search-miss"));
+
+  applySearch(content, "stripe");
+  assert.deepEqual(missed(), [false, true], "Notion goes with its token field, not just its name");
+  assert.ok(!blocks[0].find(".setting")[0].classList.contains("search-miss"), "Stripe keeps its name above its key");
+  applySearch(content, "token");
+  assert.deepEqual(missed(), [true, false], "a field's label finds its integration");
+});
