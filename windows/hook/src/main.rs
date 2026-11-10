@@ -45,6 +45,13 @@ const FIRE_AND_FORGET_BUDGET: Duration = Duration::from_secs(2);
 const DECISION_BUDGET: Duration = Duration::from_secs(110);
 /// How often a waiting relay checks that the process that ran it is still there.
 const PARENT_POLL: Duration = Duration::from_millis(100);
+/// How long the event may take to arrive on stdin. The agent writes it and
+/// closes stdin at once; one that keeps it open would otherwise hold the relay,
+/// and the agent with it, before any budget below starts to count.
+const STDIN_TIMEOUT: Duration = Duration::from_secs(3);
+/// The most of stdin read: an event bigger than this is cut, so not read as
+/// JSON, and gets the usual "no opinion".
+const MAX_STDIN: u64 = 32 * 1024 * 1024;
 /// A card of the island's Antigravity CLI chat must be answered before
 /// Antigravity gives up on the hook: the hook's `timeout` in hooks.json, which
 /// Lumo's own hooks pass on as `--wait`. Without it (hooks installed before
@@ -145,8 +152,7 @@ fn main() {
         mcp::run();
     }
     let args = args();
-    let mut raw = Vec::new();
-    let _ = std::io::stdin().read_to_end(&mut raw);
+    let raw = read_stdin();
     let env = |key: &str| std::env::var(key).ok();
     let cwd = std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
 
@@ -233,6 +239,18 @@ fn wait(rx: &mpsc::Receiver<Option<String>>, budget: Duration, gone: impl Fn() -
             Err(mpsc::RecvTimeoutError::Disconnected) => return None,
         }
     }
+}
+
+/// The event on stdin: whatever came within STDIN_TIMEOUT, at most MAX_STDIN.
+/// The thread still reading when time is up goes with the process.
+fn read_stdin() -> Vec<u8> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut raw = Vec::new();
+        let _ = std::io::stdin().lock().take(MAX_STDIN).read_to_end(&mut raw);
+        let _ = tx.send(raw);
+    });
+    rx.recv_timeout(STDIN_TIMEOUT).unwrap_or_default()
 }
 
 /// A PreToolUse of a shell command that would wait (reply::blocking_wait).
