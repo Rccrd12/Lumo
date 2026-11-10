@@ -188,6 +188,13 @@
   color: #f1f2f4;
 }
 
+/* A title is already semibold in its own colour: its **bold** is a step bolder. */
+.rc-callout-head strong,
+.rc-title strong {
+  color: inherit;
+  font-weight: 800;
+}
+
 .chat-log .rc-callout .md-math {
   padding: 2px 0;
 }

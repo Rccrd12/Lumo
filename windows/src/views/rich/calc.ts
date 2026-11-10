@@ -701,7 +701,7 @@ export function renderCalc(calc: Calc, ctx: RichContext, key: string): HTMLEleme
   return h(
     "div",
     { class: "rc-card rc-calc" },
-    head("calc", calc.title, headFormula(calc.formula, ctx)),
+    head("calc", calc.title, ctx, headFormula(calc.formula, ctx)),
     h(
       "div",
       { class: "rc-calc-body" },
@@ -947,7 +947,7 @@ export function renderPlot(plot: Plot, ctx: RichContext, key: string): HTMLEleme
     hover = null;
     draw();
   });
-  const el = h("div", { class: "rc-card rc-plot" }, head("plot", plot.title, headFormula(plot.formula, ctx)), frame);
+  const el = h("div", { class: "rc-card rc-plot" }, head("plot", plot.title, ctx, headFormula(plot.formula, ctx)), frame);
   if (sliders.length) el.append(h("div", { class: "rc-plot-in" + (sliders.length > 2 ? " many" : "") }, ...sliders));
   // Drawn again when its width changes, or the chat's height (the island
   // pulled taller or lower): the chart takes the height the card has room

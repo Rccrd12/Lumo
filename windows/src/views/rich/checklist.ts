@@ -63,7 +63,7 @@ export function renderChecklist(list: Checklist, ctx: RichContext): HTMLElement 
     return h(
       "div",
       { class: "rc-card rc-check folded moved", role: "group", "aria-label": name },
-      head("checklist", list.title, h("span", { class: "rc-check-moved" }, svg(ARROW_DOWN, 11, { stroke: 2 }), h("span", { text: t(CHECKLIST_STRINGS.moved) }))),
+      head("checklist", list.title, ctx, h("span", { class: "rc-check-moved" }, svg(ARROW_DOWN, 11, { stroke: 2 }), h("span", { text: t(CHECKLIST_STRINGS.moved) }))),
     );
   }
 
@@ -88,7 +88,7 @@ export function renderChecklist(list: Checklist, ctx: RichContext): HTMLElement 
   const count = h("span", { class: "rc-count", "aria-live": "polite" });
   // The top line's right end, redrawn as the ticks change; the line itself stays.
   const tools = h("span", { class: "rc-check-tools" });
-  const top = head("checklist", list.title, tools);
+  const top = head("checklist", list.title, ctx, tools);
   const bar = h("i");
   const boxes: HTMLButtonElement[] = [];
   const rows = list.items.map((item, i) => {

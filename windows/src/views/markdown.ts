@@ -550,7 +550,7 @@ function render(block: Block, pass: Pass): HTMLElement {
     case "callout": {
       const body = h("div", { class: "rc-callout-body" });
       renderMarkdown(body, block.body, { streaming: pass.streaming, scope: `${pass.scope}>${pass.n}`, partial: pass.tail, imagesBefore: pass.images });
-      return renderCallout(block.type, block.title, body);
+      return renderCallout(block.type, block.title, body, (into, text) => inline(text, into));
     }
     case "rich": {
       // A block whose fence never closed in a finished (or stopped) answer is

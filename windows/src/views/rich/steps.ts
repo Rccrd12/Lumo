@@ -211,7 +211,7 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
   });
   const copy = ctx.copyButton(stepsMarkdown(steps));
   copy.classList.add("rc-steps-copy");
-  const top = head("steps", steps.title, count, prev, next, toggle);
+  const top = head("steps", steps.title, ctx, count, prev, next, toggle);
   // After the title: hidden at rest, it takes the title's room, not the buttons'.
   const parts = [...top.childNodes];
   parts.splice(parts.findIndex((n) => (n as Element).classList?.contains("rc-sp")), 0, copy);

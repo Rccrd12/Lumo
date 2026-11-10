@@ -346,7 +346,7 @@ interface Place {
 
 /** The card for `tl`; `key` keeps the open event. `now` stands for today (tests). */
 export function renderTimeline(tl: Timeline, ctx: RichContext, key: string, now: Date = new Date()): HTMLElement {
-  return tl.kind === "plan" ? renderPlan(tl, now) : renderEvents(tl, ctx, key);
+  return tl.kind === "plan" ? renderPlan(tl, now, ctx) : renderEvents(tl, ctx, key);
 }
 
 /** Where a position from 0 to 1 lies in a box `left` pixels in from its left side and `right` from its right. */
@@ -449,7 +449,7 @@ function renderEvents(tl: Timeline, ctx: RichContext, key: string): HTMLElement 
   const card = h(
     "div",
     { class: "rc-card rc-tl", tabindex: 0, role: "group", "aria-label": tl.title || t(RICH_STRINGS.timeline) },
-    head("timeline", tl.title, h("span", { class: "rc-count", text: range })),
+    head("timeline", tl.title, ctx, h("span", { class: "rc-count", text: range })),
     track,
     detail,
   );
@@ -582,7 +582,7 @@ function navButton(path: string, label: string, onClick: () => void): HTMLButton
 const ROW = 22;
 const TOP = 22;
 
-function renderPlan(tl: Timeline, now: Date): HTMLElement {
+function renderPlan(tl: Timeline, now: Date, ctx: RichContext): HTMLElement {
   const items = tl.items;
   const unit = finest(items);
   const phases = items.filter((i) => i.to);
@@ -695,7 +695,7 @@ function renderPlan(tl: Timeline, now: Date): HTMLElement {
   return h(
     "div",
     { class: "rc-card rc-tl", role: "group", "aria-label": tl.title || t(RICH_STRINGS.timeline) },
-    head("timeline", tl.title, h("span", { class: "rc-count", text: parts.join(" · ") })),
+    head("timeline", tl.title, ctx, h("span", { class: "rc-count", text: parts.join(" · ") })),
     area,
   );
 }

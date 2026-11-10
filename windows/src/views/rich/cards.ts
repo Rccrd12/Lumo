@@ -294,7 +294,7 @@ export function renderCards(cards: Cards, ctx: RichContext, key: string): HTMLEl
   );
   const clip = h("div", { class: "rc-cards-clip" }, row, prev, next);
   const count = h("span", { class: "rc-count rc-cards-count", text: t(CARDS_STRINGS.count, { count: cards.cards.length }) });
-  const el = h("div", { class: "rc-card rc-cards" }, head("cards", cards.title, count), clip);
+  const el = h("div", { class: "rc-card rc-cards" }, head("cards", cards.title, ctx, count), clip);
 
   // Puts the row back where it was the first time it has a width (a redraw
   // builds it anew), then shows the fades and buttons its scroll calls for.

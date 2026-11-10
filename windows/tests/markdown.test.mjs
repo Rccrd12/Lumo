@@ -184,6 +184,20 @@ test("GitHub's alerts: the kind, an optional title, the quote lines under it as 
   assert.match(root.querySelector(".rc-callout-head").textContent, /Note/);
 });
 
+test("a title's Markdown is read, on an alert as on a card: **bold** shows bold, not its stars", () => {
+  const root = dom.root();
+  renderMarkdown(root, "> [!TIP] Come scegliere f: la regola **LIATE**\n> Logaritmi prima.");
+  const head = root.querySelector(".rc-callout-head");
+  assert.equal(head.textContent, "Come scegliere f: la regola LIATE");
+  assert.equal(head.find("STRONG")[0].textContent, "LIATE");
+
+  renderMarkdown(root, "```lumo-steps La regola **LIATE**\n## Uno\n$$a$$\n## Due\n$$b$$\n```");
+  const title = root.querySelector(".rc-title");
+  assert.equal(title.textContent, "La regola LIATE");
+  assert.equal(title.getAttribute("title"), "La regola LIATE");
+  assert.equal(title.find("STRONG")[0].textContent, "LIATE");
+});
+
 test("a lumo- block is a rich card, open while its fence is still to come", () => {
   assert.deepEqual(parseMarkdown("Here:\n```lumo-steps Integration by parts\n## One\n$$a$$\n```\nafter"), [
     { kind: "paragraph", text: "Here:" },

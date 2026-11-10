@@ -381,7 +381,7 @@ export function renderChart(chart: Chart, ctx: RichContext, key: string): HTMLEl
   const toggle = h("span", { class: "rc-chart-view", role: "group" }, chartBtn, tableBtn);
   const copy = ctx.copyButton(chartCsv(chart));
   const body = h("div", { class: "rc-chart-body" });
-  const card = h("div", { class: `rc-card rc-chart rc-chart-${chart.kind}` }, head("chart", chart.title, legend, toggle, copy), body);
+  const card = h("div", { class: `rc-card rc-chart rc-chart-${chart.kind}` }, head("chart", chart.title, ctx, legend, toggle, copy), body);
 
   let built: { chart: HTMLElement | null; table: HTMLElement | null } = { chart: null, table: null };
   const show = () => {

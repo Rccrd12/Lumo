@@ -35,12 +35,21 @@ function icon(type: CalloutType): SVGSVGElement {
 }
 
 /** The alert around `body`, already rendered as Markdown by markdown.ts. */
-export function renderCallout(type: CalloutType, title: string, body: HTMLElement): HTMLElement {
+export function renderCallout(
+  type: CalloutType,
+  title: string,
+  body: HTMLElement,
+  inline?: (into: HTMLElement, text: string) => void,
+): HTMLElement {
   body.classList.add("rc-callout-body");
+  // A title written after the kind is a line of Markdown: its **bold** shows bold.
+  const name = h("span", {});
+  if (title && inline) inline(name, title);
+  else name.textContent = title || t(CALLOUT_STRINGS[type]);
   return h(
     "div",
     { class: `rc-callout rc-${type}` },
-    h("div", { class: "rc-callout-head" }, icon(type), h("span", { text: title || t(CALLOUT_STRINGS[type]) })),
+    h("div", { class: "rc-callout-head" }, icon(type), name),
     body.childNodes.length ? body : null,
   );
 }
