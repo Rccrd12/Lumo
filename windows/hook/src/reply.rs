@@ -155,7 +155,7 @@ pub fn blocking_wait(command: &str) -> bool {
     // runs. `git commit -m "sleep for a bit"` or `npm test -- --timeout 30`
     // only mention one.
     let commands: Vec<Vec<&str>> = lower
-        .split(|c: char| matches!(c, ';' | '&' | '|' | '(' | ')' | '{' | '}' | '\n'))
+        .split([';', '&', '|', '(', ')', '{', '}', '\n'])
         .map(|part| {
             let mut words: Vec<&str> = part.split_whitespace().collect();
             while words.first().is_some_and(|w| matches!(*w, "do" | "then" | "else" | "!")) {
