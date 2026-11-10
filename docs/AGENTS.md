@@ -40,24 +40,31 @@ Send newline-terminated JSON to the named pipe `\\.\pipe\lumo-<user-SID>`. The p
 ## Supported events
 
 All standard Claude Code hook events are supported. `PermissionRequest` gets an Allow / Deny
-card for Claude Code, Codex (`codex`), GitHub Copilot CLI (`copilot`) and Muse Code (`muse`),
-and for the shell commands of the island's own Antigravity CLI chat. A `PermissionRequest`
-from any other agent is answered immediately with no decision, so the relay writes nothing
-and the agent asks in its own terminal.
+card for Claude Code (in a terminal, or in the Claude app as `claude-desktop`), Codex (`codex`),
+GitHub Copilot CLI (`copilot`), Muse Code (`muse`) and OpenCode (`opencode`): the agents the
+relay can give a decision to (`takes_decisions` in `windows/hook/src/reply.rs`). Antigravity gets
+one in two cases, both described under [Antigravity](#antigravity--agy): a command of your own
+session that none of its rules covers, and what the island's own Antigravity CLI chat is about
+to run. The island's own Cursor CLI chat is answered over ACP, not through hooks. A
+`PermissionRequest` from any other agent is answered immediately with no decision, so the relay
+writes nothing and the agent asks in its own terminal.
 
 The pill lifecycle:
 
 | Event | Effect |
 |---|---|
-| `SessionStart` | Creates the pill (if absent), sets state to idle |
+| `SessionStart` | Creates the pill if absent (idle); an existing pill keeps its state |
 | `UserPromptSubmit` | State → thinking; prompt shown in ticker |
 | `PreToolUse` | State → working; tool label shown in ticker |
-| `PostToolUse` / `PostToolUseFailure` | State → working |
+| `PostToolUse` / `PostToolUseFailure` | State → working (a failure adds a step) |
 | `Notification` | Rate-limit or question state if applicable |
-| `Stop` | State → finished for 5 s; active declared pills (catalog + checked in Settings) reset to idle — all others are removed |
+| `Stop` | State → finished for 5 s; then Claude Code's pills and active declared pills (catalog + checked in Settings) reset to idle — all others are removed. While another session of the same pill is still at work, only its last words are added |
+| `Interrupt` | State → idle (Codex: the user stopped the turn) |
 | `StopFailure` | State → error |
-| `SessionEnd` | Active declared pills (catalog + checked in Settings) reset to idle — all others are removed |
+| `SessionEnd` | Active declared pills (catalog + checked in Settings) reset to idle — all others are removed; kept while another session of the pill is live |
 | `SubagentStart` / `SubagentStop` | Step added to ticker |
+| `PreCompact` / `PostCompact` | Step added to ticker |
+| `PermissionDenied` | Step added to ticker (Claude Code's auto mode said no) |
 
 ## Sessions in the background
 
@@ -129,21 +136,28 @@ island's `tool_name` / `session_id`.
 | `Stop` | `Stop` |
 
 The relay answers `PreToolUse` with `{"decision":"ask"}`, so Antigravity's own permission
-rules decide, with one exception for your own sessions (the Antigravity app or `agy` in a
-terminal): a `run_command` that none of Antigravity's `command(...)` rules covers (its CLI
-settings, its global grants, and the grants of the project holding the working directory)
-is forwarded as a `PermissionRequest` tagged `lumo_agy_gate`. The island shows Allow, Deny
-and **Reply in Antigravity**: Allow prints `{"decision":"allow"}`, Deny
-`{"decision":"deny"}`, and Reply in Antigravity, no click, Lumo closed or a command too long
-to forward whole print `{"decision":"ask"}`. This needs the `PreToolUse` hook with `--wait`
-(below); hooks installed without it never wait. The other exception: the island's own chat with **Antigravity
-CLI** runs `agy` headless (stream-json on stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that
-run only, a shell command's `PreToolUse` (a tool name containing `command`, `shell` or
-`terminal`) is forwarded as a `PermissionRequest`, shown as an Allow / Deny card over the
-chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a click, or `ask`
-(headless agy then skips the command) with no click. The `PreToolUse` hook is installed as
-`--agent antigravity PreToolUse --wait 100` with a 110 s `timeout`, so the relay knows how long
-it may wait; hooks installed without `--wait` (10 s timeout) give the card 8 s.
+rules decide, with two exceptions.
+
+- **Your own sessions** (the Antigravity app or `agy` in a terminal): a shell command that none
+  of Antigravity's `command(...)` rules covers (its CLI settings, its global grants, and the
+  grants of the project holding the working directory) is forwarded as a `PermissionRequest`
+  tagged `lumo_agy_gate`. The island shows Allow, Deny and **Reply in Antigravity**: Allow
+  prints `{"decision":"allow"}`, Deny `{"decision":"deny"}`, and Reply in Antigravity, no
+  click, Lumo closed or a command too long to forward whole print `{"decision":"ask"}`. This
+  needs the `PreToolUse` hook with `--wait` (below); hooks installed without it never wait.
+- **The island's own chat with Antigravity CLI**, which runs `agy` headless (stream-json on
+  stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that run only, the
+  `PreToolUse` of a tool whose name contains `command`, `shell`, `terminal`, `mcp` or
+  `browser`, or of a file tool that writes, replaces, edits, deletes, moves, renames or creates
+  outside the run's workspace, is forwarded as a `PermissionRequest`, shown as an Allow / Deny
+  card over the chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a
+  click, or `ask` (headless agy then skips the call) with no click. Lumo's own email, plan and
+  island tools, and the user's own tools (which Lumo asks about itself), get no card.
+
+The `PreToolUse` hook is installed as `--agent antigravity PreToolUse --wait 100` with a 110 s
+`timeout`, so the relay knows how long it may wait; hooks installed without `--wait` (10 s
+timeout) give the card 8 s. The other hooks (`PostToolUse`, `PreInvocation`,
+`PostInvocation`, `Stop`) have a 10 s timeout and never wait.
 
 ### GitHub Copilot CLI
 

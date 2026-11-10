@@ -794,6 +794,12 @@ function buildQuestion(actions: ViewActions): ViewHost {
   // The buttons are only rebuilt when what they show changes: rebuilding them
   // between a mouse-down and a mouse-up would swallow the click.
   let rowKey = "";
+  // Like the permission card: a question (or the next one of a request) pops up
+  // under a cursor that was busy with something else, so a click in its first
+  // moments is not taken as an answer.
+  let shownKey = "";
+  let shownAt = 0;
+  const settled = () => performance.now() - shownAt >= CLICK_GUARD_MS;
 
   const next = (question: string, answer: string | string[], total: number) => {
     answers[question] = answer;
@@ -831,6 +837,10 @@ function buildQuestion(actions: ViewActions): ViewHost {
         picked = new Set();
       }
       const q = questions[Math.min(index, questions.length - 1)];
+      if (`${requestId}:${index}` !== shownKey) {
+        shownKey = `${requestId}:${index}`;
+        shownAt = performance.now();
+      }
       const asking = questions.length > 1
         ? t("is asking ({index} of {total})", { index: index + 1, total: questions.length })
         : t("is asking");
@@ -845,6 +855,7 @@ function buildQuestion(actions: ViewActions): ViewHost {
       for (const option of q.options) {
         const on = picked.has(option.label);
         const button = btn(option.label, on ? "primary" : "secondary", () => {
+          if (!settled()) return;
           if (!q.multiSelect) {
             next(q.question, option.label, questions.length);
             return;
@@ -863,7 +874,7 @@ function buildQuestion(actions: ViewActions): ViewHost {
       }
       if (q.multiSelect) {
         const done = btn(tl("Done"), "primary", () => {
-          if (picked.size > 0) next(q.question, [...picked], questions.length);
+          if (settled() && picked.size > 0) next(q.question, [...picked], questions.length);
         });
         if (picked.size === 0) done.classList.add("off");
         row.append(done);
@@ -873,7 +884,9 @@ function buildQuestion(actions: ViewActions): ViewHost {
           class: "link-btn",
           style: "color:#8e939c",
           text: tl("Answer in terminal"),
-          onclick: () => actions.answerInTerminal(),
+          onclick: () => {
+            if (settled()) actions.answerInTerminal();
+          },
         }),
       );
     },

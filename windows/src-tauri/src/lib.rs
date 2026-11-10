@@ -921,13 +921,6 @@ fn screen_discard(paths: Vec<String>) {
     screen::discard(&paths);
 }
 
-/// The folder open in File Explorer, its name only, for the menu's label.
-/// Lists nothing; remembers nothing.
-#[tauri::command]
-async fn screen_explorer_peek() -> Result<Option<explorer::ExplorerFolder>, String> {
-    tauri::async_runtime::spawn_blocking(explorer::peek).await.map_err(|e| e.to_string())?
-}
-
 /// "Folder open in File Explorer": that folder and what is in it (names,
 /// sizes, dates), now shared with the chat.
 #[tauri::command]
@@ -1234,6 +1227,7 @@ pub fn run() {
     // Before anything opens a folder or a WebView starts.
     migrate::folders();
     migrate::keys();
+    migrate::registry();
     let loaded = settings::load();
     i18n::set_picked(&loaded.language);
     let gate = Arc::new(PollGate::new());
@@ -1329,7 +1323,6 @@ pub fn run() {
             screen_tab_share,
             screen_capture,
             screen_discard,
-            screen_explorer_peek,
             screen_explorer,
             screen_explorer_peek_all,
             screen_explorer_share,
@@ -1375,10 +1368,8 @@ pub fn run() {
             inbox_tidy,
             file_preview,
             chat_files::chat_file_open,
-            workspace::workspace_changes,
             workspace::workspace_diff,
             workspace::workspace_put_back,
-            workspace::workspace_reveal,
             workspace::workspace_delete,
             chat_files::chat_file_reveal,
             chat_files::chat_file_preview,

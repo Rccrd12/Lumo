@@ -182,8 +182,23 @@ function nthWeekday(year: number, month: number, weekday: number, n: number, h: 
   return d.getMonth() === month ? d : null;
 }
 
-/** The starts of a repeating event, in order, up to `to` (at most 2000 looked at). */
-function occurrences(start: number, rule: Rule, to: number): number[] {
+/** The longest one step of each frequency can be (a day with a clock change, a 31-day month, a leap year). */
+const LONGEST_STEP: Record<string, number> = {
+  DAILY: 25 * 3_600_000,
+  WEEKLY: 7 * 24 * 3_600_000 + 3_600_000,
+  MONTHLY: 31 * 24 * 3_600_000 + 3_600_000,
+  YEARLY: 366 * 24 * 3_600_000 + 3_600_000,
+};
+
+/** How many steps looked at past the first one that may reach `from`. */
+const STEPS = 2000;
+
+/**
+ * The starts of a repeating event, in order, up to `to` (STEPS looked at). A
+ * rule with no COUNT starts near `from`, so a daily event set up years ago
+ * still shows; one with a COUNT is counted from its start.
+ */
+function occurrences(start: number, rule: Rule, from: number, to: number): number[] {
   const out: number[] = [];
   const first = new Date(start);
   const [h, mi, s] = [first.getHours(), first.getMinutes(), first.getSeconds()];
@@ -196,7 +211,13 @@ function occurrences(start: number, rule: Rule, to: number): number[] {
     out.push(t);
     return true;
   };
-  for (let step = 0; step < 2000; step++) {
+  // Steps that surely end before `from`: never more than really passed, since
+  // each is counted at its longest.
+  const skip = rule.count == null && from > start
+    ? Math.max(0, Math.floor((from - start) / (LONGEST_STEP[rule.freq] * rule.interval)) - 1)
+    : 0;
+  const steps = rule.count == null ? STEPS : Math.max(STEPS, Math.min(rule.count, 100_000));
+  for (let step = skip; step < skip + steps; step++) {
     const batch: number[] = [];
     if (rule.freq === "DAILY") {
       batch.push(new Date(first.getFullYear(), first.getMonth(), first.getDate() + step * rule.interval, h, mi, s).getTime());
@@ -273,7 +294,7 @@ export function parseIcs(text: string, from: number, to: number): CalEvent[] {
     const location = unescape(get("LOCATION")?.value ?? "");
     const rruleProp = get("RRULE");
     const rule = rruleProp && !get("RECURRENCE-ID") ? parseRule(rruleProp.value) : null;
-    let starts = rule ? occurrences(start.time, rule, to) : [start.time];
+    let starts = rule ? occurrences(start.time, rule, from, to) : [start.time];
     if (rule) {
       const skip = new Set<number>();
       for (const ex of e.props.filter((p) => p.name === "EXDATE")) {

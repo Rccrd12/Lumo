@@ -77,6 +77,20 @@ test("daily with a count, monthly on the nth weekday, yearly", () => {
   assert.deepEqual(parseIcs(text, local(2027, 1, 1), local(2027, 1, 31)).filter((e) => e.title === "Board").map((e) => new Date(e.start).getDate()), [14]);
 });
 
+test("a repeating event set up years ago still shows", () => {
+  const text = ics(
+    ["UID:d", "DTSTART:20150105T080000", "RRULE:FREQ=DAILY", "SUMMARY:Standup"],
+    ["UID:w", "DTSTART:19900102T090000", "RRULE:FREQ=WEEKLY;BYDAY=MO,FR", "SUMMARY:Gym"],
+    ["UID:m", "DTSTART:19800115T090000", "RRULE:FREQ=MONTHLY", "SUMMARY:Rent"],
+  );
+  const events = parseIcs(text, local(2026, 10, 9), local(2026, 10, 16));
+  const by = (t) => events.filter((e) => e.title === t).map((e) => new Date(e.start).getDate());
+  assert.deepEqual(by("Standup"), [9, 10, 11, 12, 13, 14, 15]);
+  assert.deepEqual(by("Gym"), [9, 12]);
+  assert.equal(new Date(events.find((e) => e.title === "Standup").start).getHours(), 8);
+  assert.deepEqual(parseIcs(text, local(2026, 11, 1), local(2026, 11, 30)).filter((e) => e.title === "Rent").map((e) => new Date(e.start).getDate()), [15]);
+});
+
 test("monthly on a weekday with no number is every one of them", () => {
   const text = ics(["UID:w", "DTSTART:20261005T090000", "RRULE:FREQ=MONTHLY;BYDAY=MO", "SUMMARY:Standup"]);
   assert.deepEqual(parseIcs(text, local(2026, 10, 1), local(2026, 10, 31)).map((e) => new Date(e.start).getDate()), [5, 12, 19, 26]);
