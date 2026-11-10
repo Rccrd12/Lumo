@@ -7,9 +7,11 @@
 
 pub mod guard;
 pub mod native;
+pub mod plan;
 pub mod sse;
 pub mod transport;
 pub mod turn;
 
 pub use transport::{Answer, Endpoint, Failure};
+pub use plan::Plan;
 pub use turn::{run, Correction, Doing, End, Hooks, Loaded, Outcome, Rules, MORE};
