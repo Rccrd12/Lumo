@@ -9,7 +9,7 @@ const W = "../src";
 const { parseMarkdown, checklistsIn } = await import(`${W}/views/markdown.ts`);
 const { parseSteps } = await import(`${W}/views/rich/steps.ts`);
 const { parseCards } = await import(`${W}/views/rich/cards.ts`);
-const { parseCalc, parsePlot } = await import(`${W}/views/rich/calc.ts`);
+const { parseCalc, parsePlot, inRegion } = await import(`${W}/views/rich/calc.ts`);
 const { parseQuiz } = await import(`${W}/views/rich/quiz.ts`);
 const { parseChart } = await import(`${W}/views/rich/chart.ts`);
 const { parseTimeline } = await import(`${W}/views/rich/timeline.ts`);
@@ -56,6 +56,19 @@ test("calc", () => {
 test("plot", () => {
   const r = rich(`${F}lumo-plot Sine wave\nformula: y = A\\sin(\\omega x)\ny: A*sin(w*x)\ny: x**2/10\nx: 0..12\nyrange: -2..2\ninput: A | amplitude | 0..2 | 1.4\ninput: w | angular frequency | 0.5..4 | 1.6 | rad/s\n${F}`);
   const p = parsePlot(r.title, r.body); assert.ok(p); assert.equal(p.curves.length, 2); assert.deepEqual(p.y, [-2, 2]);
+});
+test("plot region, the points where its conditions hold, a curve and an input among them", () => {
+  // The note's two examples: the area under a curve and a disc.
+  const r = rich(`${F}lumo-plot Area under the sine\ny: sin(x)\nx: 0..3.14\nregion: 0 ≤ y ≤ sin(x)\n${F}`);
+  const p = parsePlot(r.title, r.body); assert.ok(p); assert.equal(p.regions.length, 1);
+  const under = (x, y) => inRegion(p.regions[0], { x, y });
+  assert.ok(under(1.5, 0.5)); assert.ok(!under(1.5, 1.2), "above the curve"); assert.ok(!under(1.5, -0.1), "below the axis");
+  const disc = parsePlot("", "y: x\nx: -1..1\nregion: x*x+y*y ≤ 1");
+  assert.ok(inRegion(disc.regions[0], { x: 0.5, y: 0.5 })); assert.ok(!inRegion(disc.regions[0], { x: 0.9, y: 0.9 }));
+  // Spelled with and, and with a slider in it: the shading follows the slider.
+  const a = parsePlot("", "y: A*sin(x)\nx: 0..3.14\ninput: A, amplitude, 0..3, 1\nregion: y ≥ 0 and y ≤ A*sin(x)");
+  assert.ok(a);
+  assert.ok(!inRegion(a.regions[0], { x: 1.5, y: 2, A: 1 })); assert.ok(inRegion(a.regions[0], { x: 1.5, y: 2, A: 3 }));
 });
 test("calc and plot, fields separated by commas as the note's template spells them", () => {
   const c = parseCalc("Ohm", "formula: I = V/R\ninput: V, voltage, 0..24, 12, V\ninput: R, resistance, 1..100, 10, Ω\noutput: I, current, V/R, A");

@@ -394,6 +394,9 @@ mod tests {
         assert!(p.contains(crate::chat::rich_note!()));
         // The calculator and the plot included: the user wants them here too.
         assert!(p.contains("lumo-calc") && p.contains("lumo-plot"));
+        // The region told as a set of points, a curve in its conditions: a
+        // small model wrote y ≥ 0 and x ≤ 3.14 for the area under sin(x).
+        assert!(p.contains("region: only for an area asked for, where all its conditions hold, as 0 ≤ y ≤ sin(x) under a curve"));
         // And one written out, fence and all: a small model copies it.
         assert!(p.contains("```lumo-cards Coffees\n## Espresso\nsub: The base\n"));
         assert!(p.contains("never by these names"));
