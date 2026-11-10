@@ -299,27 +299,16 @@ test("a card taller than the row allows fades at its bottom while there is more 
   assert.ok(tall.classList.contains("clipped"));
 });
 
-test("the wheel moves the row sideways only while it can go that way", () => {
+test("the wheel over the row scrolls the chat, never the row", () => {
   const el = renderCards(parseCards("", PLANETS), ctx, "k-wheel");
   const row = el.querySelector(".rc-cards-row");
   const moves = [];
   row.scrollBy = (o) => moves.push(o);
-  const wheel = (deltaY, extra = {}) => row.fire("wheel", { deltaY, deltaX: 0, deltaMode: 0, target: row, ...extra });
-
-  layout(row, 400, 400, 0);
-  assert.ok(!wheel(100).defaultPrevented, "nothing to scroll: the chat scrolls");
-
   layout(row, 400, 800, 0);
-  assert.ok(!wheel(-100).defaultPrevented, "at the start, up scrolls the chat");
-  assert.ok(wheel(100).defaultPrevented);
-  assert.deepEqual(moves, [{ left: 100, behavior: "smooth" }]);
-  assert.ok(wheel(10).defaultPrevented);
-  assert.equal(row.scrollLeft, 10, "a touchpad's fine steps go straight");
-
-  row.scrollLeft = 400;
-  assert.ok(!wheel(100).defaultPrevented, "at the end, down scrolls the chat");
-  assert.ok(!wheel(-100, { ctrlKey: true }).defaultPrevented, "Ctrl zooms");
-  assert.ok(!wheel(-5, { deltaX: 40 }).defaultPrevented, "a sideways swipe is the webview's");
+  const e = row.fire("wheel", { deltaY: 100, deltaX: 0, deltaMode: 0, target: row });
+  assert.ok(!e.defaultPrevented, "the chat scrolls");
+  assert.deepEqual(moves, []);
+  assert.equal(row.scrollLeft, 0);
 });
 
 test("in an answer, a lumo-cards block becomes the card, a broken one stays code", () => {

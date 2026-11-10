@@ -206,8 +206,6 @@ interface CardsState {
   left: number;
 }
 
-/** A mouse wheel notch is about 100 px; a touchpad sends smaller, finer deltas. */
-const FINE_DELTA_PX = 40;
 /** The gap between two cards, in cards.css. */
 const GAP_PX = 8;
 const CARD_PX = 176;
@@ -262,16 +260,6 @@ function clipped(card: HTMLElement) {
   card.classList.toggle("clipped", inside.scrollTop + inside.clientHeight < inside.scrollHeight - 1);
 }
 
-/** Whether `target`, inside a card of the row, scrolls that card itself that way. */
-function cardScrolls(target: EventTarget | null, row: HTMLElement, down: boolean): boolean {
-  for (let n = (target as Node | null)?.nodeType === 1 ? (target as Element) : null; n && n !== row; n = n.parentElement) {
-    if (!n.classList.contains("rc-mini-in")) continue;
-    if (n.scrollHeight <= n.clientHeight + 1) return false;
-    return down ? n.scrollTop + n.clientHeight < n.scrollHeight - 1 : n.scrollTop > 0;
-  }
-  return false;
-}
-
 /**
  * The cards side by side. The row learns whether it overflows from a
  * ResizeObserver (when it is laid out, and when the island is resized) and
@@ -320,24 +308,7 @@ export function renderCards(cards: Cards, ctx: RichContext, key: string): HTMLEl
   });
   onResize(row, sync);
 
-  // A mouse wheel turned over the row moves it sideways while it can go that
-  // way; at its ends, and when every card fits, the chat scrolls as usual.
-  row.addEventListener(
-    "wheel",
-    (e) => {
-      if (e.ctrlKey || e.shiftKey || !e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-      const max = row.scrollWidth - row.clientWidth;
-      if (max <= 1) return;
-      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * row.clientWidth : e.deltaY;
-      if (dy > 0 ? row.scrollLeft >= max - 1 : row.scrollLeft <= 1) return;
-      if (cardScrolls(e.target, row, dy > 0)) return;
-      e.preventDefault();
-      // The chat's own wheel handler (gentleWheel) would scroll it down as well.
-      e.stopPropagation();
-      if (Math.abs(dy) < FINE_DELTA_PX) row.scrollLeft += dy;
-      else row.scrollBy({ left: dy, behavior: "smooth" });
-    },
-    { passive: false },
-  );
+  // The mouse wheel is the chat's, over the row too: the row moves sideways
+  // with its arrows, a drag of the touchpad, or Shift and the wheel.
   return el;
 }
