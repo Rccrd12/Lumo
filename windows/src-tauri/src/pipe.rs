@@ -283,6 +283,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         with_auto_allowable(|set| set.insert(id.clone()));
     }
     payload["request_id"] = json!(id);
+    let payload_cut = payload.get("lumo_input_cut") == Some(&json!(true));
     log::line(format!("hook PermissionRequest id={id}"));
     let tool_name = payload.get("tool_name").and_then(Value::as_str).map(str::to_string);
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
@@ -306,6 +307,17 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         }
     };
     crate::computer::card_down(&app);
+    // A request the relay had to cut (lumo_input_cut) was never on the card
+    // whole: nothing allows it from here, whatever came back. The agent asks
+    // in its own terminal instead, as if Lumo were closed.
+    let cut = payload_cut;
+    let decision = match decision {
+        Some(d) if cut && matches!(d.trim(), "allow" | "always" | "edits") => {
+            log::line(format!("hook id={id} allow refused: the request was cut"));
+            None
+        }
+        other => other,
+    };
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     with_auto_allowable(|set| set.remove(&id));
     crate::session_rules::answered(&id, decision.as_deref().unwrap_or(""));
@@ -368,7 +380,11 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
     payload["request_id"] = json!(id);
     log::line(format!("tool card id={id}"));
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
+    // While Claude uses the computer, the hand gets its mouse back to answer,
+    // as for an agent's card.
+    crate::computer::card_up(app);
     let decision = wait_for_decision(&id, &mut rx).await;
+    crate::computer::card_down(app);
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     // A card of Lumo's own is never kept for a session.
     decision.map(|d| if d == "always" { "allow".to_string() } else { d })

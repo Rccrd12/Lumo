@@ -27,8 +27,8 @@ export const KNOWN_AGENTS: Record<string, KnownAgent> = {
 export const APPROVAL_AGENTS = new Set(["codex", "copilot", "muse", "claude-desktop", "opencode"]);
 
 /** The agent tag a hook event carries, if it is a valid one. "claude" is reserved. */
-export function validateAgent(raw: string | undefined): string | null {
-  if (!raw || raw.length > 24 || raw === "claude") return null;
+export function validateAgent(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw || raw.length > 24 || raw === "claude") return null;
   if (!/^[a-z0-9-]+$/.test(raw)) return null;
   return raw;
 }
@@ -36,8 +36,8 @@ export function validateAgent(raw: string | undefined): string | null {
 const FALLBACK_COLORS = ["#22C55E", "#EAB308", "#60A5FA", "#E879F9"];
 
 export function agentColor(id: string): string {
-  const known = KNOWN_AGENTS[id];
-  if (known) return known.color;
+  const entry = known(id);
+  if (entry) return entry.color;
   let h = 0;
   for (let i = 0; i < id.length; i++) {
     h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
@@ -45,7 +45,12 @@ export function agentColor(id: string): string {
   return FALLBACK_COLORS[Math.abs(h) % FALLBACK_COLORS.length];
 }
 
+/** The catalog's entry for `id`; never one of Object's own names (`constructor`). */
+function known(id: string): KnownAgent | undefined {
+  return Object.hasOwn(KNOWN_AGENTS, id) ? KNOWN_AGENTS[id] : undefined;
+}
+
 /** The pill label: the agent's own name when Lumo knows it, else its id. */
 export function agentName(id: string): string {
-  return KNOWN_AGENTS[id]?.name ?? id;
+  return known(id)?.name ?? id;
 }

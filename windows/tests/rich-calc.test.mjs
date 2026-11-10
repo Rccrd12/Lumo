@@ -77,6 +77,16 @@ test("ranges as models write them", () => {
   assert.equal(parseRange("1..1"), null);
   assert.equal(parseRange("a..b"), null);
   assert.equal(parseRange("12"), null);
+  assert.deepEqual(parseRange("  0   ..    10  "), { min: 0, max: 10, step: null });
+});
+
+test("a range full of spaces is read at once", () => {
+  // 600 spaces took the pattern about 5 s, with the island frozen.
+  const started = performance.now();
+  assert.equal(parseRange(" ".repeat(600)), null);
+  assert.equal(parseRange("1..2" + " ".repeat(600) + "x"), null);
+  assert.equal(parseRange("1..2" + " ".repeat(150) + "x"), null);
+  assert.ok(performance.now() - started < 200);
 });
 
 test("a nice step, about a hundredth of the range, tenths for a few units to a few tens", () => {

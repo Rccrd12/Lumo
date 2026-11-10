@@ -6,6 +6,7 @@
 // island has the keyboard: it takes it for the chat, and when a global
 // shortcut opens it.
 
+import { armApprovalKeys } from "../core/approvals";
 import { Bridge, onEvent, type SharedContext } from "../core/bridge";
 import type { BotEmoteName, IslandViewName } from "../core/layout";
 import { providerDef } from "../core/providers";
@@ -52,8 +53,10 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
         host.collapse();
       } else {
         resume();
-        // A waiting card is what the island opens on (State.defaultView).
+        // A waiting card is what the island opens on (State.defaultView), and
+        // Y and N answer it: the user turned to it.
         host.alert(State.defaultView());
+        armApprovalKeys(State.pendingApproval?.requestId);
         host.takeKeyboard();
         // Opened from the keyboard, the mouse is elsewhere: it stays open a
         // while, even set to close as soon as the mouse leaves.
@@ -78,6 +81,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
         resume();
         State.setFocus(pending.pillId);
         host.alert(pending.questions ? "question" : "approval");
+        armApprovalKeys(State.pendingApproval?.requestId);
         host.takeKeyboard();
         host.holdOpen();
       } else if (asking) {

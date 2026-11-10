@@ -5,15 +5,23 @@ import assert from "node:assert/strict";
 import { MAX_CHATS, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, saveChat, setCompact } from "../src/core/chats.ts";
 
 const mem = new Map();
+/** How many characters the fake storage holds, like WebView2's quota. */
+let quota = Infinity;
 globalThis.localStorage = {
   getItem: (k) => (mem.has(k) ? mem.get(k) : null),
-  setItem: (k, v) => mem.set(k, String(v)),
+  setItem: (k, v) => {
+    if (String(v).length > quota) throw new Error("QuotaExceededError");
+    mem.set(k, String(v));
+  },
   removeItem: (k) => mem.delete(k),
 };
 
 const chat = (id, title = id) => ({ id, title, updatedAt: 1, provider: "claude-code", session: null, turns: [{ role: "user", content: title }] });
 
-beforeEach(() => mem.clear());
+beforeEach(() => {
+  mem.clear();
+  quota = Infinity;
+});
 
 test("a saved chat comes first, and saving it again moves it up without a copy", () => {
   saveChat(chat("a"));
@@ -92,4 +100,15 @@ test("what Claude Code writes by itself joins the last answer, before a question
   assert.equal(failed[1].content, "A\n\nB");
   assert.equal(failed[3].content, "Error");
   assert.equal(joinOwnAnswer([{ role: "user", content: "a" }], "B"), false);
+});
+
+test("with storage full, the oldest chats go and the newest is still saved", () => {
+  const long = (id) => ({ ...chat(id), turns: [{ role: "user", content: "x".repeat(1000) }] });
+  for (const id of ["a", "b", "c"]) saveChat(long(id));
+  quota = 2500;
+  const kept = saveChat(long("d"));
+  assert.deepEqual(kept.map((c) => c.id), ["d", "c"]);
+  assert.deepEqual(loadChats().map((c) => c.id), ["d", "c"]);
+  saveChat(long("e"));
+  assert.deepEqual(loadChats().map((c) => c.id), ["e", "d"], "and it goes on saving");
 });

@@ -689,6 +689,7 @@ fn run(
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
+    platform::chat_ends_with_lumo(&child);
 
     // Open until the turn's result: closing it ends agy's stream-json input.
     let mut stdin = child.stdin.take();
@@ -1084,6 +1085,7 @@ fn run_on_its_own(exe: PathBuf, name: &str, dir: PathBuf) -> Result<String, Stri
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
+    platform::chat_ends_with_lumo(&child);
     let stdout = child.stdout.take();
     let reader = std::thread::spawn(move || {
         let mut s = String::new();
@@ -1192,14 +1194,13 @@ pub(crate) fn help(
     on_activity: impl FnMut(&Activity),
 ) -> Result<String, String> {
     let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
-    let folder = folder.filter(|d| safe_dir(d).is_some() && std::path::Path::new(d).is_dir());
-    let work = folder.map(PathBuf::from).unwrap_or_else(claude_code::work_dir);
+    // Always in Lumo's folder: the one Gemini Live named is only added to the
+    // workspace (claude_code::helper_folder), its own settings never loaded.
+    let folders: Vec<String> = claude_code::helper_folder(folder).into_iter().collect();
+    let work = claude_code::work_dir();
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &[]);
-    // Lumo's MCP configuration is only Lumo's folder's to write.
-    if folder.is_none() {
-        crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
-    }
+    let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
+    crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
     let _mail = crate::mail::agent_turn();
     let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {})?;
     if state.stopped {
