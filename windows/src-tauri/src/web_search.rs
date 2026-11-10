@@ -599,7 +599,10 @@ fn pinned_client(url: &Url, addrs: &[SocketAddr]) -> Result<reqwest::Client, Str
         .user_agent(AGENT)
         .connect_timeout(Duration::from_secs(5))
         .timeout(TIMEOUT)
-        .redirect(reqwest::redirect::Policy::none());
+        .redirect(reqwest::redirect::Policy::none())
+        // A proxy from the environment would connect to the host itself,
+        // past the addresses checked and pinned here.
+        .no_proxy();
     if let (Some(host), false) = (url.host_str(), addrs.is_empty()) {
         builder = builder.resolve_to_addrs(host, addrs);
     }
