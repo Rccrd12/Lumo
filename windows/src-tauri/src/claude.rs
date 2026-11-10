@@ -320,7 +320,7 @@ pub async fn send(
             if let Some(text) = response_text(&blocks) {
                 said.push(text);
             }
-            let results = run_user_tools(app, chat, &blocks, &tools, asking, sandbox_high).await;
+            let results = if stopped_for_tools { run_user_tools(app, chat, &blocks, &tools, asking, sandbox_high).await } else { Vec::new() };
             if let Some(messages) = body["messages"].as_array_mut() {
                 messages.push(json!({ "role": "assistant", "content": blocks }));
                 if !results.is_empty() {
