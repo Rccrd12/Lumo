@@ -142,31 +142,63 @@ fn norm_path(path: &str) -> String {
 /// loop that sleeps. Such a command holds the island's chat with nothing to
 /// show; Lumo listens instead (claude_wait_denied).
 pub fn blocking_wait(command: &str) -> bool {
-    let lower = command.to_ascii_lowercase();
+    let lower = unquoted(&command.to_ascii_lowercase());
     let words: Vec<&str> = lower
-        .split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')' | '{' | '}' | '"' | '\''))
+        .split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')' | '{' | '}'))
         .filter(|w| !w.is_empty())
         .collect();
     let has = |seq: &[&str]| words.windows(seq.len()).any(|w| w == seq);
     if (has(&["gh", "pr", "checks"]) && words.contains(&"--watch")) || has(&["gh", "run", "watch"]) {
         return true;
     }
-    let sleeps: Vec<usize> = words
-        .iter()
-        .enumerate()
-        .filter(|(_, w)| matches!(**w, "sleep" | "start-sleep" | "timeout"))
-        .map(|(i, _)| i)
+    // Each command of the line, as its words: only a word in a command's place
+    // runs. `git commit -m "sleep for a bit"` or `npm test -- --timeout 30`
+    // only mention one.
+    let commands: Vec<Vec<&str>> = lower
+        .split([';', '&', '|', '(', ')', '{', '}', '\n'])
+        .map(|part| {
+            let mut words: Vec<&str> = part.split_whitespace().collect();
+            while words.first().is_some_and(|w| matches!(*w, "do" | "then" | "else" | "!")) {
+                words.remove(0);
+            }
+            words
+        })
+        .filter(|words| !words.is_empty())
         .collect();
+    // A wait: sleep, PowerShell's Start-Sleep, or cmd's `timeout /t 30`.
+    // Git Bash's `timeout 30 npm test` only limits the command after it.
+    let waits = |c: &Vec<&str>| match c[0] {
+        "sleep" | "start-sleep" => true,
+        "timeout" => c.get(1).is_some_and(|w| matches!(*w, "/t" | "-t")) || (c.len() == 2 && seconds(c[1]).is_some()),
+        _ => false,
+    };
+    let sleeps: Vec<&Vec<&str>> = commands.iter().filter(|c| waits(c)).collect();
     if sleeps.is_empty() {
         return false;
     }
-    if words.iter().any(|w| matches!(*w, "while" | "until" | "for" | "do")) {
+    if commands.iter().any(|c| matches!(c[0], "while" | "until" | "for")) {
         return true;
     }
     // A single long sleep: the first number after it, in seconds (30, 30s, 2m, 1h).
-    sleeps.iter().any(|&i| {
-        words[i + 1..].iter().take(3).find_map(|w| seconds(w.trim_start_matches(['-', '/']))).is_some_and(|s| s >= 30.0)
-    })
+    sleeps.iter().any(|c| c[1..].iter().take(3).find_map(|w| seconds(w.trim_start_matches(['-', '/']))).is_some_and(|s| s >= 30.0))
+}
+
+/// `command` with what is in quotes left out: text, not commands.
+fn unquoted(command: &str) -> String {
+    let mut out = String::with_capacity(command.len());
+    let mut quote: Option<char> = None;
+    for c in command.chars() {
+        match quote {
+            Some(q) if c == q => {
+                quote = None;
+                out.push(' ');
+            }
+            Some(_) => {}
+            None if c == '"' || c == '\'' => quote = Some(c),
+            None => out.push(c),
+        }
+    }
+    out
 }
 
 fn seconds(word: &str) -> Option<f64> {
@@ -367,7 +399,19 @@ mod tests {
         ] {
             assert!(blocking_wait(cmd), "{cmd}");
         }
-        for cmd in ["gh pr merge 22 --squash", "gh pr checks 22", "sleep 2 && ls", "npm test -- --timeout 30000", "git status"] {
+        for cmd in [
+            "gh pr merge 22 --squash",
+            "gh pr checks 22",
+            "sleep 2 && ls",
+            "npm test -- --timeout 30000",
+            "git status",
+            // Ordinary commands that only mention a wait.
+            "timeout 60 npm test",
+            "git commit -m \"Wait for the sleep timer to end\"",
+            "for f in *.log; do echo \"sleep 90\"; done",
+            "echo 'while sleep 100'",
+            "grep -r sleep src/ | head -30",
+        ] {
             assert!(!blocking_wait(cmd), "{cmd}");
         }
         let v: serde_json::Value = serde_json::from_str(&claude_wait_denied()).unwrap();

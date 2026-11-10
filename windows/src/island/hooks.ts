@@ -103,6 +103,20 @@ function withdrawQueued(drop: (q: ApprovalInfo) => boolean): void {
   }
 }
 
+/**
+ * Lumo is paused: every request waiting, on the card or in line, goes back
+ * to its terminal at once. Kept, it would hold the agent until the relay's
+ * time ran out, nearly two minutes, behind an island nobody can see.
+ */
+export function releaseAllApprovals(island: Island): void {
+  withdrawQueued(() => true);
+  const pending = State.pendingApproval;
+  if (!pending) return;
+  clearCardTimer(pending.requestId);
+  if (pending.requestId) void Bridge.approvalDecline(pending.requestId);
+  dropPendingCard(island);
+}
+
 /** A request in line whose time ran out: the terminal took it over. */
 function expireQueued(requestId: string): void {
   const req = State.approvalQueue.find((q) => q.requestId === requestId);
@@ -284,6 +298,37 @@ interface HookPayload {
   lumo_launcher?: string;
   /** How many questions the program asks in all (LUMO_BATCH_TOTAL), when it says. */
   lumo_batch_total?: number;
+}
+
+/** HookPayload's fields that are text, yes-or-no, a number or an object. */
+const TEXT_FIELDS = [
+  "hook_event_name", "request_id", "session_id", "cwd", "message", "notification_type", "reason", "trigger",
+  "prompt", "last_assistant_message", "tool_name", "error", "lumo_agent", "platform", "term_editor",
+  "lumo_task_id", "lumo_title", "lumo_launcher",
+] as const;
+const FLAG_FIELDS = [
+  "lumo_diff_truncated", "lumo_island", "lumo_session_allow", "lumo_remembered", "lumo_agy_gate", "lumo_background",
+] as const;
+const NUMBER_FIELDS = ["lumo_card_secs", "lumo_batch_total"] as const;
+const OBJECT_FIELDS = ["tool_input", "lumo_user_tool", "lumo_mail_send", "lumo_mail_action", "lumo_live_file"] as const;
+
+/**
+ * A hook event as the island reads it: an object, and each field it knows of
+ * the type it expects, or gone. The relay forwards what an agent wrote, and a
+ * number where text belongs (`"message": 3`) threw in the middle of an
+ * event, leaving a card or a pill half made.
+ */
+export function cleanPayload(raw: unknown): HookPayload | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const p = { ...(raw as Record<string, unknown>) };
+  const drop = (fields: readonly string[], ok: (v: unknown) => boolean) => {
+    for (const f of fields) if (f in p && p[f] != null && !ok(p[f])) delete p[f];
+  };
+  drop(TEXT_FIELDS, (v) => typeof v === "string");
+  drop(FLAG_FIELDS, (v) => typeof v === "boolean");
+  drop(NUMBER_FIELDS, (v) => typeof v === "number" && Number.isFinite(v));
+  drop(OBJECT_FIELDS, (v) => typeof v === "object" && !Array.isArray(v));
+  return p as HookPayload;
 }
 
 const LIVE_FILE = {
@@ -501,7 +546,10 @@ function recordDiff(agentId: string, payload: HookPayload) {
 export function registerHookHandlers(island: Island) {
   // The last plan numbers seen survive a restart.
   State.planUsage ??= restorePlanUsage(storedClaudePlanUsage());
-  void onEvent<HookPayload>("hook", (payload) => handleHook(island, payload));
+  void onEvent<unknown>("hook", (raw) => {
+    const payload = cleanPayload(raw);
+    if (payload) handleHook(island, payload);
+  });
   // A request answered in the terminal instead: the relay hung up (pipe.rs).
   void onEvent<string>("hook-settled", (requestId) => settleRequest(island, requestId));
   // The same numbers from a chat answer of Claude Code (claude_code.rs), which

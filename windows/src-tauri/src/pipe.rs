@@ -368,7 +368,11 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
     payload["request_id"] = json!(id);
     log::line(format!("tool card id={id}"));
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
+    // While Claude uses the computer, the hand gets its mouse back to answer,
+    // as for an agent's card.
+    crate::computer::card_up(app);
     let decision = wait_for_decision(&id, &mut rx).await;
+    crate::computer::card_down(app);
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     // A card of Lumo's own is never kept for a session.
     decision.map(|d| if d == "always" { "allow".to_string() } else { d })

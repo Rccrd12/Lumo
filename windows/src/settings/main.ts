@@ -29,7 +29,7 @@ import { betaChanged, changelogSection, updatesSection } from "./updates";
 import { localModelsBlock, type UnslothMemory } from "./local-models";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
-import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
+import { FRAME_CLOSE, FRAME_READY, FRAME_SHOWN } from "../views/settings-frame";
 import { LIVE_EXTENDED, LIVE_MODEL, THINKING_LEVELS, VOICES, parseLiveModel, parseThinking, parseVoice } from "../live/protocol";
 import { VOICE_SETTINGS } from "../live/strings";
 import {
@@ -2046,6 +2046,8 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
   const feedback = h("div", {});
 
   let stopRecording: (() => void) | null = null;
+  /** The shortcut being recorded: draw() shows its key waiting for a press. */
+  let recordingId: string | null = null;
 
   function store(id: string, binding: Binding) {
     settings.shortcuts = { ...settings.shortcuts, [id]: binding };
@@ -2065,11 +2067,14 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
     }
   }
 
-  function record(id: string, binding: Binding, button: HTMLButtonElement) {
+  function record(id: string, binding: Binding) {
+    // A recording under way ends first, and its end redraws the list: the
+    // key clicked is drawn anew, so it is draw() that shows it recording,
+    // not the button clicked, which may be gone by then.
     stopRecording?.();
     clear(feedback);
-    button.classList.add("recording");
-    button.textContent = SHORTCUTS_UI.recording;
+    recordingId = id;
+    draw();
     void Bridge.shortcutsSuspend(true);
 
     const onKey = (e: KeyboardEvent) => {
@@ -2111,6 +2116,7 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", onBlur);
       stopRecording = null;
+      recordingId = null;
       // Takes the global shortcuts back, from what is saved by now.
       void Bridge.shortcutsSuspend(false);
       draw();
@@ -2125,12 +2131,13 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
     const dups = duplicates(activeKeys(settings.shortcuts));
     for (const d of SHORTCUTS) {
       const binding = effective(d, settings.shortcuts);
+      const recording = d.id === recordingId;
       const keycap = h("button", {
-        class: "keycap",
-        text: binding.keys ? displayKeys(binding.keys) : SHORTCUTS_UI.none,
+        class: recording ? "keycap recording" : "keycap",
+        text: recording ? SHORTCUTS_UI.recording : binding.keys ? displayKeys(binding.keys) : SHORTCUTS_UI.none,
       }) as HTMLButtonElement;
       keycap.disabled = !binding.enabled;
-      keycap.addEventListener("click", () => record(d.id, binding, keycap));
+      keycap.addEventListener("click", () => record(d.id, binding));
       const sw = toggle(binding.enabled, (on) => store(d.id, { keys: binding.keys, enabled: on }));
       const tag = binding.enabled ? tagFor(d.id, dups) : null;
       list.append(h("div", { class: binding.enabled ? "row shortcut" : "row shortcut off" },
@@ -2381,7 +2388,26 @@ async function main() {
   if (embedded) tellIsland(FRAME_READY);
 
   void onEvent<ShortcutsReport>("shortcuts-status", (fresh) => shortcutsListener?.report(fresh));
+  // Settings saved elsewhere since they were drawn (the island, the other
+  // window): the page, which stays loaded, is drawn again when it comes back
+  // on screen. Its own saves come back here too, with nothing new in them.
+  let stale = false;
+  const backOnScreen = () => {
+    if (!stale) return;
+    stale = false;
+    void rerender();
+  };
+  if (embedded) {
+    window.addEventListener("message", (e) => {
+      if (e.source === window.parent && e.origin === location.origin && e.data === FRAME_SHOWN) backOnScreen();
+    });
+  } else {
+    window.addEventListener("focus", backOnScreen);
+  }
   void onEvent<Settings>("settings-changed", (s) => {
+    if (Object.entries(s).some(([k, v]) => JSON.stringify(v) !== JSON.stringify((settings as unknown as Record<string, unknown>)[k]))) {
+      stale = true;
+    }
     const before = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
     settings = { ...settings, ...s };
     shortcutsListener?.settingsChanged();

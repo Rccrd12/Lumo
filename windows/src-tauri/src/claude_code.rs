@@ -1027,7 +1027,9 @@ fn spawn(exe: &std::path::Path, args: &[String], dir: &std::path::Path, chat_id:
     // only text, and the Plan island stays shut.
     cmd.env("CLAUDE_CODE_ENABLE_TODO_TOOLS", "1");
     platform::no_console(&mut cmd);
-    cmd.spawn().map_err(|e| tf("Cannot start Claude Code: {error}", &[("error", &e.to_string())]))
+    let child = cmd.spawn().map_err(|e| tf("Cannot start Claude Code: {error}", &[("error", &e.to_string())]))?;
+    platform::chat_ends_with_lumo(&child);
+    Ok(child)
 }
 
 /// Reads `child`'s stderr in the background, its first 64 KB kept.

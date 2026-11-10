@@ -47,6 +47,7 @@ import { isComputerTool } from "../core/computer";
 import { N_, t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { IslandPlan } from "./plan";
+import { Live } from "../live/session";
 // The plan's steps in the chat's strip (views/plan-strip.ts) wear the look
 // of the Plan island they came from: its stylesheet, here where it always was.
 import "../views/plan.css";
@@ -506,6 +507,10 @@ export class Island {
     this.fsm.onTransition = (from, to) => {
       switch (to) {
         case "hidden":
+          // A call goes on only where it can be seen: the compact island
+          // stays up for it (fsm.held), so only a pause or the – hides it.
+          // Hidden, the microphone would stay open with nothing on screen.
+          if (Live.active) Live.end();
           this.setMode("hidden");
           break;
         case "petit":

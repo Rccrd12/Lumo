@@ -189,11 +189,25 @@ pub fn keys() {
 
 /// Some config still runs the relay from the old folder, or by its old name.
 pub fn mentions_old_relay(text: &str) -> bool {
-    let text = text.to_lowercase().replace('\\', "/");
+    let text = slashes(text);
     if text.contains(OLD_RELAY) {
         return true;
     }
-    old_bin().is_some_and(|bin| text.contains(&bin.to_string_lossy().to_lowercase().replace('\\', "/")))
+    old_bin().is_some_and(|bin| text.contains(&slashes(&bin.to_string_lossy())))
+}
+
+/// `text` in lower case with one `/` for each run of slashes and backslashes:
+/// a JSON config writes `C:\\Users\\…`, a TOML one `C:\Users\…`, a shell
+/// command `C:/Users/…`, and all three name the same folder.
+fn slashes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.to_lowercase().chars() {
+        let c = if c == '\\' { '/' } else { c };
+        if !(c == '/' && out.ends_with('/')) {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Keeps the relay in the old folder, under both its names, while a config in
@@ -252,6 +266,16 @@ pub fn agent_files(agent: &str, home: &Path) -> Vec<PathBuf> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_folder_reads_the_same_however_a_config_escapes_it() {
+        let folder = slashes(r"C:\Users\me\AppData\Local\old\bin");
+        assert_eq!(folder, "c:/users/me/appdata/local/old/bin");
+        // settings.json: JSON doubles each backslash.
+        assert!(slashes(r#""command": "\"C:\\Users\\me\\AppData\\Local\\old\\bin\\x.exe\" Stop""#).contains(&folder));
+        assert!(slashes("'C:/Users/me/AppData/Local/old/bin/x.exe' Stop").contains(&folder));
+        assert!(slashes(r"C:\Users\me\AppData\Local\old\bin\x.exe").contains(&folder));
+    }
 
     #[test]
     fn old_field_names_become_lumo_s_and_never_win() {

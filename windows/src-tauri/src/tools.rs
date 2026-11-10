@@ -949,7 +949,7 @@ fn interpreter(exe: &Path, path: &Path) -> Option<(PathBuf, Vec<PathBuf>)> {
 }
 
 /// A run's stdin, stdout and stderr, wherever it was started.
-type Pipes = (Option<Box<dyn Write>>, Option<Box<dyn Read + Send>>, Option<Box<dyn Read + Send>>);
+type Pipes = (Option<Box<dyn Write + Send>>, Option<Box<dyn Read + Send>>, Option<Box<dyn Read + Send>>);
 
 /// A run under way, wherever it was started.
 enum Running {
@@ -968,10 +968,9 @@ impl Running {
 
     fn kill(&mut self) {
         match self {
-            Running::Plain(c) => {
-                let _ = c.kill();
-                let _ = c.wait();
-            }
+            // What it started goes with it: a child left running would
+            // keep the output's pipes open and the call waiting on them.
+            Running::Plain(c) => crate::claude_code::kill_tree(c),
             Running::Contained(c) => c.kill(),
         }
     }
@@ -1058,18 +1057,23 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
     };
     let (stdin, stdout, stderr): Pipes = match &mut child {
         Running::Plain(c) => (
-            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write>),
+            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write + Send>),
             c.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
             c.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
         ),
         Running::Contained(c) => (
-            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write>),
+            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write + Send>),
             c.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
             c.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
         ),
     };
+    // Written from its own thread, then closed: a tool that never reads its
+    // input, or prints a lot before it does, would otherwise hold the call
+    // here, before its time even started to count.
     if let Some(mut stdin) = stdin {
-        let _ = stdin.write_all(input_text.as_bytes());
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(input_text.as_bytes());
+        });
     }
     let pipe = |r: Option<Box<dyn Read + Send>>| {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1102,18 +1106,15 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
     };
     // In the sandbox, what the tool started and left running ends with it
     // (its job). A program Lumo started elsewhere in the moment the sandbox's
-    // pipes could be inherited may still hold them: the output is waited
-    // for a little, never for good.
-    let deadline = match &mut child {
-        Running::Contained(c) => {
-            c.kill();
-            Some(Instant::now() + Duration::from_secs(2))
-        }
-        Running::Plain(_) => None,
-    };
-    let collect = |rx: std::sync::mpsc::Receiver<String>| match deadline {
-        Some(at) => rx.recv_timeout(at.saturating_duration_since(Instant::now())).unwrap_or_default(),
-        None => rx.recv().unwrap_or_default(),
+    // pipes could be inherited may still hold them, and outside it a program
+    // the tool started and left behind may too: the output is waited for a
+    // little, never for good.
+    if let Running::Contained(c) = &mut child {
+        c.kill();
+    }
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let collect = |rx: std::sync::mpsc::Receiver<String>| {
+        rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).unwrap_or_default()
     };
     let stdout = collect(out);
     let stderr = collect(err);

@@ -1063,6 +1063,10 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
     if key == local_chat::CUSTOM_KEY || key == local_chat::UNSLOTH_KEY {
         return Err("use local_set_key".into());
     }
+    // The webhooks' secrets are Lumo's own (listen_events.rs), not a key the user types.
+    if key == listen_events::SECRETS_KEY {
+        return Err("unknown key".into());
+    }
     let before = (key == "github-token").then(|| secrets::get(&key));
     secrets::set(&key, &value)?;
     secret_changed(&app, &key);

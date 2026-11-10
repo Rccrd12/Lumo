@@ -13,10 +13,14 @@
 // An event with no session id cannot say whose it is: it is not counted, its
 // Stop finishes the pill and its SessionEnd ends them all, as before.
 
-/** Events that start or carry on a turn. */
+/**
+ * Events that start or carry on a turn. Not Notification: Claude Code sends
+ * one a minute after a turn ends too ("waiting for your input"), and counted
+ * here it put a finished session back at work, the pill on "working" with it.
+ */
 const MID_TURN = new Set([
   "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest",
-  "SubagentStart", "SubagentStop", "Notification",
+  "SubagentStart", "SubagentStop",
 ]);
 /** Events that end a turn: the session stays, waiting for the next prompt. */
 const TURN_ENDS = new Set(["Stop", "StopFailure", "Interrupt"]);
