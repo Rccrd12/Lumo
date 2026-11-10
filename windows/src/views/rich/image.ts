@@ -58,8 +58,8 @@ const loaded = new Map<string, Loaded>();
 let loadedBytes = 0;
 /** Downloads under way, by image URL: every card of that image waits for the same one. */
 const pending = new Map<string, Promise<void>>();
-/** Images that could not be loaded this session (Try again clears it). */
-const failed = new Set<string>();
+/** Images that could not be loaded this session, and why (Try again clears it). */
+const failed = new Map<string, string>();
 
 /** The cards on screen and how to draw each again (Try again reaches every card of that image). */
 interface Live {
@@ -171,12 +171,13 @@ function load(url: string): Promise<void> {
       const bytes = data ? new Uint8Array(data) : null;
       const type = bytes && imageType(bytes);
       if (!bytes || !type) {
-        failed.add(url);
+        failed.set(url, "");
         return;
       }
       keep(url, URL.createObjectURL(new Blob([bytes], { type })), bytes.byteLength);
-    } catch {
-      failed.add(url);
+    } catch (err) {
+      // What went wrong, as web_image.rs says it (the site's answer, a timeout…).
+      failed.set(url, String(err).replace(/^Error:\s*/, ""));
     } finally {
       pending.delete(url);
       done();
@@ -248,7 +249,7 @@ export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
       img.addEventListener("error", () => {
         if (loaded.get(url)?.blob === blob) {
           drop(url);
-          failed.add(url);
+          failed.set(url, "");
         }
         draw();
       });
@@ -264,7 +265,7 @@ export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
         "error",
         h(
           "div",
-          { class: "rc-image-msg" },
+          { class: "rc-image-msg", title: failed.get(url) || undefined },
           h("span", { class: "rc-image-title", text: t(IMAGE_STRINGS.failed) }),
           h("span", { class: "rc-image-hint", text: site }),
           h("div", { class: "rc-image-btns" }, retry),

@@ -33,8 +33,10 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(6);
 /// Redirects followed before giving up.
 const MAX_REDIRECTS: usize = 3;
-/// What the site is told is asking: the app's name, nothing about the user.
-const AGENT: &str = "Lumo";
+/// What the site is told is asking: the app, its version and where to find it,
+/// nothing about the user. Wikimedia refuses images to a client that doesn't
+/// say who it is this way (meta.wikimedia.org/wiki/User-Agent_policy).
+const AGENT: &str = concat!("Lumo/", env!("CARGO_PKG_VERSION"), " (https://github.com/Rccrd12/Lumo)");
 /// The only port: https's own.
 const PORT: u16 = 443;
 
