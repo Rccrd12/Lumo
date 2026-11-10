@@ -39,9 +39,9 @@ test("Claude Code: what is left of the plan, with the resets, in the plan's colo
   assert.equal(line.setup, undefined);
   assert.equal(line.title, "Claude plan · just now");
   // Over the orange line: the dot says so. A window past its reset is full again.
-  const busy = { ...plan, fiveHour: { usedPct: 85, resetsAt: NOW + 60_000 }, sevenDay: { usedPct: 50, resetsAt: NOW - 1 } };
+  const busy = { ...plan, fiveHour: { usedPct: 92, resetsAt: NOW + 60_000 }, sevenDay: { usedPct: 50, resetsAt: NOW - 1 } };
   const l2 = usageLine(on({ chatProvider: "claude-code", planRelayInstalled: true }), busy, undefined, NOW);
-  assert.match(l2.text, /^5 hours: 15% left \(in 1 min\) · Week: 100% left \(Resetting…\)$/);
+  assert.match(l2.text, /^5 hours: 8% left \(in 1 min\) · Week: 100% left \(Resetting…\)$/);
   assert.equal(l2.color, "#F4505E");
 });
 
@@ -54,14 +54,14 @@ test("Claude Code: a 5-hour window reported without a figure reads as plenty lef
 test("Antigravity CLI: what is left of each of agy's quotas, Gemini first", async () => {
   const { parseAntigravityPlan } = await import("../src/core/plan.ts");
   const agy = parseAntigravityPlan({ groups: [
-    { name: "Gemini Models", buckets: [{ id: "gemini-weekly", window: "weekly", remainingFraction: 0.31, resetsAt: NOW / 1000 + 3 * 86_400 }] },
+    { name: "Gemini Models", buckets: [{ id: "gemini-weekly", window: "weekly", remainingFraction: 0.19, resetsAt: NOW / 1000 + 3 * 86_400 }] },
     { name: "Claude and GPT models", buckets: [{ id: "3p-weekly", window: "weekly", remainingFraction: 1, resetsAt: NOW / 1000 + 3 * 86_400 }] },
   ] }, NOW - 30_000);
   const line = usageLine(on({ chatProvider: "antigravity-cli" }), plan, undefined, NOW, agy);
-  assert.ok(line.text.startsWith("Gemini · Week: 31% left ("), line.text);
+  assert.ok(line.text.startsWith("Gemini · Week: 19% left ("), line.text);
   assert.ok(line.text.includes(" · Claude and GPT · Week: 100% left ("), line.text);
-  assert.deepEqual(line.rows.map((r) => [r.label, r.value]), [["Gemini · Week", "69% used"], ["Claude and GPT · Week", "0% used"]]);
-  assert.equal(line.pct, 69);
+  assert.deepEqual(line.rows.map((r) => [r.label, r.value]), [["Gemini · Week", "81% used"], ["Claude and GPT · Week", "0% used"]]);
+  assert.equal(line.pct, 81);
   assert.equal(line.color, "#F59E0B");
   assert.equal(line.title, "Antigravity CLI · just now");
   // Before agy has answered: it says it is asking. Off: nothing.
@@ -243,23 +243,23 @@ test("OpenRouter is asked when the chat opens on it and after an answer, not on 
 
 test("the ring fills with the most used limit, and its menu shows each one", () => {
   State.settings = { ...State.settings, chatShowUsage: true, chatProvider: "claude-code", planRelayInstalled: true };
-  // 50 % of the 5 hours, 20 % of the week: the ring shows the 5 hours.
-  State.planUsage = { ...plan, fiveHour: { usedPct: 50, resetsAt: Date.now() + 80 * 60_000 }, sevenDay: { usedPct: 20, resetsAt: Date.now() + 86_400_000 } };
+  // 80 % of the 5 hours, 20 % of the week: the ring shows the 5 hours.
+  State.planUsage = { ...plan, fiveHour: { usedPct: 80, resetsAt: Date.now() + 80 * 60_000 }, sevenDay: { usedPct: 20, resetsAt: Date.now() + 86_400_000 } };
   view.sync();
   const arc = view.el.querySelector(".usage-ring-arc");
   const len = 2 * Math.PI * 5.25;
-  assert.ok(Math.abs(Number(arc.getAttribute("stroke-dashoffset")) - len * 0.5) < 0.01);
+  assert.ok(Math.abs(Number(arc.getAttribute("stroke-dashoffset")) - len * 0.2) < 0.01);
   assert.equal(arc.style.stroke, "#F59E0B");
   line().fire("click");
   assert.ok(view.el.querySelector(".chat-body").classList.contains("metering"));
   const rows = view.el.find(".usage-row").map((r) => r.textContent);
   assert.equal(rows.length, 2);
-  assert.match(rows[0], /^5 hours50% usedResets in 1 h (19|20)$/);
+  assert.match(rows[0], /^5 hours80% usedResets in 1 h (19|20)$/);
   assert.match(rows[1], /^Week20% usedResets /);
   // And the other way round: the week shows when it is the more used.
-  State.planUsage = { ...plan, fiveHour: { usedPct: 10, resetsAt: Date.now() + 80 * 60_000 }, sevenDay: { usedPct: 85, resetsAt: Date.now() + 86_400_000 } };
+  State.planUsage = { ...plan, fiveHour: { usedPct: 10, resetsAt: Date.now() + 80 * 60_000 }, sevenDay: { usedPct: 95, resetsAt: Date.now() + 86_400_000 } };
   view.sync();
-  assert.ok(Math.abs(Number(arc.getAttribute("stroke-dashoffset")) - len * 0.15) < 0.01);
+  assert.ok(Math.abs(Number(arc.getAttribute("stroke-dashoffset")) - len * 0.05) < 0.01);
   assert.equal(arc.style.stroke, "#F4505E");
   line().fire("click");
   assert.ok(!view.el.querySelector(".chat-body").classList.contains("metering"));

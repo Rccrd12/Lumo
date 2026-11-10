@@ -484,7 +484,7 @@ not at all. A program that sets `LUMO_BATCH_TOTAL` (how many questions in all) g
 ### Plan usage
 
 The island's header can show your plan limits: a small pill
-("Claude 73%", green below 50 %, orange up to 80 %, red above) for the 5-hour and
+("Claude 73%", green below 75 %, orange up to 90 %, red above) for the 5-hour and
 weekly Claude limits, another for Codex and one for Antigravity CLI. Click one for
 the details and the reset times. All are off by default; turn them on in
 **Settings… → Agents → Plan usage**.
