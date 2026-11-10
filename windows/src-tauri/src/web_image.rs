@@ -39,6 +39,8 @@ const MAX_REDIRECTS: usize = 3;
 const AGENT: &str = concat!("Lumo/", env!("CARGO_PKG_VERSION"), " (https://github.com/Rccrd12/Lumo)");
 /// The only port: https's own.
 const PORT: u16 = 443;
+/// How wide a picture from Wikimedia is asked for (wikimedia_thumb).
+const THUMB_PX: u32 = 960;
 
 /// The image at `url`, its bytes as the site sent them (the island reads
 /// their type from their first bytes, as `sniff` does here).
@@ -47,10 +49,51 @@ pub async fn web_image(url: String) -> Result<tauri::ipc::Response, String> {
     if !crate::settings::load().web_images {
         return Err("Images from the web are turned off in Settings.".into());
     }
-    let bytes = tokio::time::timeout(TIMEOUT, download(&url))
+    let fetch = async {
+        // From Wikimedia, its own smaller copy first; the original when there
+        // is none (a picture narrower than THUMB_PX has no bigger copy).
+        if let Some(thumb) = wikimedia_thumb(&url) {
+            if let Ok(bytes) = download(&thumb).await {
+                return Ok(bytes);
+            }
+        }
+        download(&url).await
+    };
+    let bytes = tokio::time::timeout(TIMEOUT, fetch)
         .await
         .map_err(|_| "The image took too long.".to_string())??;
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// The address of Wikimedia's own copy of a picture, THUMB_PX wide, for an
+/// address of its original on upload.wikimedia.org. The originals are often
+/// tens of megabytes (a painting scanned for print, past MAX_BYTES, or too
+/// slow to come before TIMEOUT); the copy is a few hundred kilobytes, and an
+/// SVG or a TIFF comes as a PNG or a JPEG, which the island shows. None for
+/// any other address, a copy already included.
+fn wikimedia_thumb(raw: &str) -> Option<String> {
+    let url = Url::parse(raw).ok()?;
+    if url.scheme() != "https" || url.host_str()? != "upload.wikimedia.org" || url.query().is_some() {
+        return None;
+    }
+    // /wikipedia/commons/e/ec/File.jpg: the site, the project, the two
+    // folders of the file name's hash, the file (as it was written, encoded).
+    let segments: Vec<&str> = url.path_segments()?.collect();
+    let [site, project, a, ab, file] = segments.as_slice() else {
+        return None;
+    };
+    let hex = |s: &str| s.chars().all(|c| c.is_ascii_hexdigit());
+    if a.len() != 1 || ab.len() != 2 || !ab.starts_with(a) || !hex(ab) || file.is_empty() || *project == "thumb" {
+        return None;
+    }
+    let ext = file.rsplit('.').next()?.to_ascii_lowercase();
+    let as_type = match ext.as_str() {
+        "jpg" | "jpeg" | "png" | "gif" | "webp" => "",
+        "svg" => ".png",
+        "tif" | "tiff" => ".jpg",
+        _ => return None,
+    };
+    Some(format!("https://upload.wikimedia.org/{site}/{project}/thumb/{a}/{ab}/{file}/{THUMB_PX}px-{file}{as_type}"))
 }
 
 async fn download(raw: &str) -> Result<Vec<u8>, String> {
@@ -530,5 +573,31 @@ mod tests {
         assert_eq!(sniff(b"<!doctype html><img src=x>"), None);
         assert_eq!(sniff(b""), None);
         assert_eq!(sniff(b"\x89PN"), None);
+    }
+
+    #[test]
+    fn a_wikimedia_original_is_asked_for_as_its_smaller_copy() {
+        let mona = "https://upload.wikimedia.org/wikipedia/commons/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg";
+        assert_eq!(
+            wikimedia_thumb(mona).as_deref(),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/960px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg")
+        );
+        // A drawing comes as a PNG, a scan as a JPEG.
+        assert_eq!(
+            wikimedia_thumb("https://upload.wikimedia.org/wikipedia/commons/1/1a/Ohm%27s_law.svg").as_deref(),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Ohm%27s_law.svg/960px-Ohm%27s_law.svg.png")
+        );
+        assert!(wikimedia_thumb("https://upload.wikimedia.org/wikipedia/en/3/3f/Scan.tif").unwrap().ends_with("/960px-Scan.tif.jpg"));
+        // A copy already, another site, a query, or no file: as written.
+        for kept in [
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona.jpg/500px-Mona.jpg",
+            "https://example.org/wikipedia/commons/e/ec/Mona.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/e/ec/Mona.jpg?download",
+            "https://upload.wikimedia.org/wikipedia/commons/e/ec/",
+            "https://upload.wikimedia.org/wikipedia/commons/e/zz/Mona.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/e/ec/Clip.ogv",
+        ] {
+            assert_eq!(wikimedia_thumb(kept), None, "{kept}");
+        }
     }
 }
