@@ -266,8 +266,6 @@ export interface Settings {
   compactActivity: boolean;
   /** The closed island shows the music playing (media.rs). */
   compactMedia: boolean;
-  /** Settings → Island → Live Activities: nothing reads it since they are the home's tiles (settings.rs). */
-  activitiesPanel: boolean;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -289,8 +287,6 @@ export interface Settings {
   planUsageOnline: boolean;
   /** Simple permission requests are answered on the closed island (core/approvals.ts). */
   quickApprovals: boolean;
-  /** Settings → Island → Follow the island's height, for the panel that was beside it: nothing reads it since. */
-  activitiesFollowIsland: boolean;
   /** The Email pill leaves out the promotional emails (mail.rs). */
   mailHidePromotions: boolean;
   /** The Email pill's sources: the server over IMAP (mail.rs), the classic Outlook on this PC (outlook.rs). */
@@ -440,7 +436,6 @@ export const DEFAULT_SETTINGS: Settings = {
   islandAutoHide: false,
   compactActivity: true,
   compactMedia: true,
-  activitiesPanel: true,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5-5",
@@ -451,7 +446,6 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenPlanPills: [],
   planUsageOnline: false,
   quickApprovals: true,
-  activitiesFollowIsland: true,
   mailHidePromotions: false,
   mailImap: true,
   mailOutlook: false,

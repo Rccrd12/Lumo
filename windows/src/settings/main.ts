@@ -1963,10 +1963,6 @@ function behaviourRows(): HTMLElement[] {
       t("reads and commands that only look (ls, git status…) are answered from the closed island; anything else opens the full card"),
       toggle(settings.quickApprovals !== false, (v) => { settings.quickApprovals = v; void save(); })),
     group(t("Live Activities")),
-    setting(t("Live Activities"), t("beside the open island: timers, the music, the calendar and the newest emails"),
-      toggle(settings.activitiesPanel !== false, (v) => { settings.activitiesPanel = v; void save(); })),
-    setting(t("Follow the island's height"), t("as tall as the open island, growing and shrinking with it when you resize it; off, they keep the height you give them"),
-      toggle(settings.activitiesFollowIsland !== false, (v) => { settings.activitiesFollowIsland = v; void save(); })),
     calendarRow(),
   ];
 }

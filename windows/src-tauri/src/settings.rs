@@ -58,13 +58,10 @@ pub struct Settings {
     pub compact_activity: bool,
     /// The closed island shows the music playing, with its buttons (media.rs).
     pub compact_media: bool,
-    /// Settings → Island → Live Activities (src/settings/main.ts). Since the
-    /// live activities became the home's tiles (`home_activities`), nothing
-    /// else reads it. Where they were beside the island, folded, moved into a
-    /// window of their own and how big, and the Plan island's own window, are
-    /// gone: a file from before still loads, those keys are left out
-    /// (`a_file_from_before_the_windows_went_still_loads`).
-    pub activities_panel: bool,
+    // The live activities' panel beside the island and the Plan island, with
+    // their windows of their own and their switches in Settings → Island,
+    // are gone: their keys in a file from before are left out
+    // (`a_file_from_before_the_windows_went_still_loads`).
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -90,9 +87,6 @@ pub struct Settings {
     /// Simple permission requests (reads, commands that only look) are
     /// answered on the closed island, without opening it (src/core/approvals.ts).
     pub quick_approvals: bool,
-    /// Settings → Island → Follow the island's height, for the live activities
-    /// that were beside the island. Nothing reads it since (`activities_panel`).
-    pub activities_follow_island: bool,
     /// The Email pill leaves out the promotional emails (mail.rs): Gmail's
     /// Promotions category, elsewhere the emails with an unsubscribe link.
     /// Off until the user turns it on.
@@ -309,7 +303,6 @@ impl Default for Settings {
             island_auto_hide: false,
             compact_activity: true,
             compact_media: true,
-            activities_panel: true,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -320,7 +313,6 @@ impl Default for Settings {
             hidden_plan_pills: Vec::new(),
             plan_usage_online: false,
             quick_approvals: true,
-            activities_follow_island: true,
             mail_hide_promotions: false,
             mail_imap: true,
             mail_outlook: false,
@@ -644,7 +636,6 @@ mod tests {
   "islandAutoHide": true,
   "compactActivity": false,
   "compactMedia": false,
-  "activitiesPanel": false,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -655,7 +646,6 @@ mod tests {
   "hiddenPlanPills": ["codex"],
   "planUsageOnline": true,
   "quickApprovals": false,
-  "activitiesFollowIsland": false,
   "mailHidePromotions": true,
   "mailImap": false,
   "mailOutlook": true,
@@ -901,11 +891,14 @@ mod tests {
     fn a_file_from_before_the_windows_went_still_loads() {
         // A settings.json from 0.17: the live activities and the Plan island
         // moved into windows of their own, folded, put on the right and
-        // resized. Those windows are gone: the file loads without an
-        // error, everything else in it is kept, and its next save leaves the
-        // old keys out, so nothing can bring a window back.
+        // resized, and their switches in Settings → Island off. Those windows
+        // and switches are gone: the file loads without an error, everything
+        // else in it is kept, and its next save leaves the old keys out, so
+        // nothing can bring a window back.
         let mut object = custom().as_object().unwrap().clone();
         for (key, value) in [
+            ("activitiesPanel", json!(false)),
+            ("activitiesFollowIsland", json!(false)),
             ("activitiesDetached", json!(true)),
             ("activitiesX", json!(120.0)),
             ("activitiesY", json!(80.0)),
@@ -926,7 +919,7 @@ mod tests {
         assert!(!s.home_activities);
         assert_eq!(s.island_width, 900.0);
         let saved = shown(&s);
-        for key in ["activitiesDetached", "activitiesX", "agentPlanMoved", "agentPlanY", "activitiesFolded", "agentPlanWidth"] {
+        for key in ["activitiesDetached", "activitiesX", "agentPlanMoved", "agentPlanY", "activitiesFolded", "agentPlanWidth", "activitiesPanel", "activitiesFollowIsland"] {
             assert!(saved.get(key).is_none(), "{key} is not written again");
         }
         // The window keeps the same room beside the island it had by default.
@@ -1188,19 +1181,6 @@ mod tests {
                 "islandAutoHide",
                 "compactActivity",
                 "compactMedia",
-                "activitiesPanel",
-                "activitiesFolded",
-                "activitiesSide",
-                "activitiesWidth",
-                "activitiesHeight",
-                "activitiesDetached",
-                "activitiesX",
-                "activitiesY",
-                "agentPlanMoved",
-                "agentPlanX",
-                "agentPlanY",
-                "agentPlanWidth",
-                "agentPlanHeight",
                 "autostart",
                 "hooksInstalled",
                 "model",
@@ -1211,7 +1191,6 @@ mod tests {
                 "hiddenPlanPills",
                 "planUsageOnline",
                 "quickApprovals",
-                "activitiesFollowIsland",
                 "mailHidePromotions",
                 "mailImap",
                 "mailOutlook",

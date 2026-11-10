@@ -209,8 +209,8 @@ the right-click menu puts them away, and brings them back.
 Up to 0.20.1 they were also a panel beside the open island that could be
 dragged off into a window of its own. Both are gone since 0.20.2: if you had
 moved them out of the island, that window no longer opens, and they are on
-the home like everyone's. (Settings → Island → Live Activities and Follow the
-island's height still show, but only that panel read them.)
+the home like everyone's. Settings → Island → Live Activities and Follow the
+island's height, which only that panel read, are gone with it.
 
 The calendar is read from its **secret iCal address**, pasted in Settings →
 Island → Calendar (Google Calendar: Settings → your calendar → Integrate
