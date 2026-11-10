@@ -251,9 +251,8 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   const historyTab = h("button", { class: "listen-seg-btn", text: tl(LISTENING_STRINGS.history) });
   const pauseAllBtn = h("button", { class: "listen-head-btn" });
   const clearBtn = h("button", { class: "listen-head-btn", text: tl(LISTENING_STRINGS.clear) });
-  const addBtn = h("button", { class: "listen-head-btn listen-add" },
-    svg(ICONS.plus, 10), h("span", { text: tl(LISTENING_STRINGS.add) }));
-  const activeList = h("div", { class: "picker-list listen-list" });
+  // What listens shows as cards, the last one adding another.
+  const activeList = h("div", { class: "picker-list listen-list listen-cards" });
   const historyList = h("div", { class: "picker-list listen-list" });
 
   // ── Listen for something: the form ──────────────────────────────────────
@@ -533,7 +532,6 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     showList();
   }
 
-  addBtn.addEventListener("click", () => showCatalog());
   catalogCancel.addEventListener("click", () => showList());
   cancelBtn.addEventListener("click", () => showList());
   startBtn.addEventListener("click", () => void start());
@@ -725,11 +723,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     const adding = view !== "list";
     pauseAllBtn.hidden = tab !== "active" || adding || watches.length === 0;
     clearBtn.hidden = tab !== "history" || past.length === 0;
-    // The new look shows what listens as cards, the last one adding another.
-    const cards = State.settings.islandNewLook === true;
-    activeList.classList.toggle("listen-cards", cards);
-    addBtn.hidden = tab !== "active" || adding || cards;
-    foot.hidden = adding || (tab === "history" && past.length === 0) || (cards && tab === "active" && watches.length === 0);
+    foot.hidden = adding || (tab === "history" && past.length === 0) || (tab === "active" && watches.length === 0);
     form.hidden = view !== "form";
     catalog.hidden = view !== "catalog";
     activeList.hidden = tab !== "active" || adding;
@@ -738,14 +732,9 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     if (tab === "active" && !adding) {
       clear(activeList);
       if (openRow != null && !watches.some((w) => w.id === openRow)) openRow = null;
-      if (cards) {
-        for (const w of watches) activeList.append(watchCard(w));
-        if (watches.length === 0) activeList.append(h("div", { class: "listen-cards-empty" }, empty(t(LISTENING_STRINGS.emptyTitle), t(LISTENING_STRINGS.emptyHint))));
-        activeList.append(addCard());
-      } else {
-        for (const w of watches) activeList.append(watchRow(w));
-        if (watches.length === 0) activeList.append(empty(t(LISTENING_STRINGS.emptyTitle), t(LISTENING_STRINGS.emptyHint)));
-      }
+      for (const w of watches) activeList.append(watchCard(w));
+      if (watches.length === 0) activeList.append(h("div", { class: "listen-cards-empty" }, empty(t(LISTENING_STRINGS.emptyTitle), t(LISTENING_STRINGS.emptyHint))));
+      activeList.append(addCard());
     }
     if (tab === "history") {
       clear(historyList);
@@ -755,7 +744,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     }
   }
 
-  const foot = h("div", { class: "listen-foot" }, addBtn, pauseAllBtn, clearBtn);
+  const foot = h("div", { class: "listen-foot" }, pauseAllBtn, clearBtn);
   // The panel covers the whole chat, its waves too: × closes it.
   const closeBtn = h("button", { class: "listen-close", title: tl(LISTENING_STRINGS.close), "aria-label": tl(LISTENING_STRINGS.close) },
     svg(ICONS.xmark, 10));

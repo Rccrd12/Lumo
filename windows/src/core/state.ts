@@ -15,7 +15,7 @@ import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
 import type { EdgeLight } from "./layout";
 import type { BackgroundInfo } from "./background";
-import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
+import { DEFAULT_COMPUTER_CURSOR } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
 import { WORKSHOP_PREFIX, type ToolInfo } from "./tools";
@@ -104,16 +104,16 @@ export interface ApprovalInfo {
   project?: string;
   /** An email the AI wants to send (mail.rs, `mail_send`): shown whole, sent only with a click on Send. */
   email?: OutgoingEmail;
-  /** The plan Claude Code asks to start (ExitPlanMode), as steps: the new look draws them as a list. */
+  /** The plan Claude Code asks to start (ExitPlanMode), as steps: the card draws them as a list. */
   plan?: import("./agent-plan").PlanStep[];
 }
 
 /**
- * A plan the island's own chat asks to start, in the new look: it is asked in
- * the chat, over the field, rather than on the permission card.
+ * A plan the island's own chat asks to start: it is asked in the chat, over
+ * the field, rather than on the permission card.
  */
-export function planAskInChat(req: ApprovalInfo | null | undefined, newLook: boolean): boolean {
-  return newLook && req?.fromChat === true && (req.plan?.length ?? 0) > 0;
+export function planAskInChat(req: ApprovalInfo | null | undefined): boolean {
+  return req?.fromChat === true && (req.plan?.length ?? 0) > 0;
 }
 
 /** An email on its card: from the Email pill's account, to whom, what. */
@@ -380,19 +380,8 @@ export interface Settings {
   backgroundSessions: string;
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
   shortcuts: Bindings;
-  /**
-   * Lumo's outfit: "auto" (dresses for the season), "none" or an outfit id.
-   * Read it through parseOutfit.
-   */
-  lumoOutfit: string;
   /** How much Lumo moves on his own; read it through parseMotion. */
   lumoMotion: string;
-  /**
-   * Lumo's look, picked in the wardrobe or Settings → Island: "filo" (a ring
-   * of light), "punto", "goccia" or "lucciola" (the firefly). Read it through
-   * parseLook (character/wardrobe.ts).
-   */
-  lumoCharacter: string;
   /**
    * The mouse Claude wears while it uses the computer, picked in the wardrobe:
    * "direct" (a dark arrow) or "lucciola" (a butter one). Read it through
@@ -415,17 +404,11 @@ export interface Settings {
   updateCheckOnOpen: boolean;
   /** Settings → Updates → Beta versions: the check looks at the beta build too. Off unless turned on. */
   updateBeta: boolean;
-  /** The new look: Lumo in the open island's top bar, one surface, his light
-   * along the island's edge (src/look-new.css). On by default (Rust's
-   * settings.rs decides it, before the island first draws); Settings → Island
-   * → Previous look brings the usual look back as it was. Off here only for
-   * the tests, which are of the usual look unless they say. */
-  islandNewLook: boolean;
   /** The new look's light along the island's edge, picked in the wardrobe:
    * "full", "soft", "line" or "glow" (look-new.css, parseEdgeLight). */
   islandEdgeLight: string;
-  /** The new look's home shows the live activities (its "⋯" menu puts them
-   * away), whether or not the usual look's panel is folded. */
+  /** The home shows the live activities (its "⋯" menu puts them away),
+   * whether or not their own window is folded. */
   homeActivities: boolean;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
@@ -523,16 +506,13 @@ export const DEFAULT_SETTINGS: Settings = {
   unslothStopAfter: "15",
   backgroundSessions: "grouped",
   shortcuts: {},
-  lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",
-  lumoCharacter: DEFAULT_LOOK,
   computerCursor: DEFAULT_COMPUTER_CURSOR,
   computerAim: true,
   pillColors: {},
   language: "",
   updateCheckOnOpen: true,
   updateBeta: false,
-  islandNewLook: false,
   islandEdgeLight: "full",
   homeActivities: true,
   liveModel: "gemini-3.8-live",
@@ -694,10 +674,6 @@ class AppState {
   /** Never reset, so an id can never point at a newer diff than the one tapped. */
   private nextDiffId = 0;
 
-  /** Outfit shown on Lumo while the pointer rests on a wardrobe button. */
-  wardrobePreview: Outfit | null = null;
-  /** A look tried on in the wardrobe (the pointer rests on it); null = the chosen one. */
-  lookPreview: LumoLook | null = null;
   /** The new look's edge light tried on in the wardrobe; null = the chosen one. */
   edgePreview: EdgeLight | null = null;
 
@@ -1013,13 +989,13 @@ class AppState {
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
-    if (view === "tools" || view === "prompt" || view === "live" || view === "overview" || view === "empty" || view === "home") this.tabNoted = true;
+    if (view === "tools" || view === "prompt" || view === "live" || view === "overview" || view === "home") this.tabNoted = true;
     if (view === "tools" || (view === "prompt" && this.chatSlot === "forge")) {
       this.lastTab = "tools";
       this.toolsInWorkshop = view === "prompt";
     }
     else if (view === "prompt" || view === "live") this.lastTab = "chat";
-    else if (view === "overview" || view === "empty" || view === "home") this.lastTab = "agents";
+    else if (view === "overview" || view === "home") this.lastTab = "agents";
   }
 
   /**
@@ -1029,25 +1005,23 @@ class AppState {
    */
   defaultView(): IslandViewName {
     if (this.pendingApproval) {
-      if (planAskInChat(this.pendingApproval, this.settings.islandNewLook === true)) return "prompt";
+      if (planAskInChat(this.pendingApproval)) return "prompt";
       return this.pendingApproval.questions ? "question" : "approval";
     }
-    // The new look: a file dropped and not yet asked about waits in the chat,
-    // so the island opens there rather than on the home.
-    if (this.settings.islandNewLook === true && this.droppedFile && !this.droppedFile.sent) return "prompt";
-    // The new look has no tabs: until a view of its own was open, it opens on
-    // the list (what waits for you, the sessions); then where it was left.
-    if (this.settings.islandNewLook === true && !this.tabNoted) return this.liveActive ? "live" : this.agentsView();
+    // A file dropped and not yet asked about waits in the chat, so the island
+    // opens there rather than on the home.
+    if (this.droppedFile && !this.droppedFile.sent) return "prompt";
+    // There are no tabs: until a view of its own was open, the island opens on
+    // the home (what waits for you, the sessions); then where it was left.
+    if (!this.tabNoted) return this.liveActive ? "live" : this.agentsView();
     if (this.lastTab === "agents") return this.agentsView();
     if (this.lastTab === "tools") return this.toolsInWorkshop && this.chatSlot === "forge" ? "prompt" : "tools";
     return this.liveActive ? "live" : "prompt";
   }
 
-  /** The Agents tab: the coding sessions and pills, or the empty card. */
+  /** The home: it holds the sessions, the empty case and the rest. */
   agentsView(): IslandViewName {
-    // The new look's list holds the sessions, the empty case and the rest.
-    if (this.settings.islandNewLook === true) return "home";
-    return this.tasks.length === 0 ? "empty" : "overview";
+    return "home";
   }
 
   /** What the Agents tab shows on its badge: a session waiting on you, or one at work. */

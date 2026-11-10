@@ -1,10 +1,9 @@
-// The new look's plan, in the chat (concepts/redesign, "piano-da-chiuso" 1).
+// The plan, in the chat (concepts/redesign, "piano-da-chiuso" 1).
 // Folded it takes no room of its own: the plan's icon beside the model turns
 // into a chip with a segment for each step, the done ones green, and how many
 // are done. A click on it opens the steps upwards over the chat; typing or a
 // click elsewhere folds them again, and their "–" puts the plan away into its
-// icon. The usual look keeps the Plan island beside the island
-// (island/plan.ts), so none of this shows there.
+// icon.
 
 import { planFinished, planProgress, type AgentPlan, type PlanStep } from "../core/agent-plan";
 import { N_, t, tl } from "../i18n/i18n";

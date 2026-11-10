@@ -13,7 +13,6 @@ import {
   recordPress, type Binding,
 } from "../core/shortcuts";
 import { DEFAULT_SETTINGS, aiReads, parseCloseMode, parseMotion, type Settings } from "../core/state";
-import { LOOK_KEYS, LUMO_LOOKS, parseLook } from "../character/wardrobe";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -1883,15 +1882,6 @@ function islandSection(): HTMLElement {
     void save();
   });
 
-  // His look, as in the wardrobe.
-  const look = h("select", {}) as HTMLSelectElement;
-  for (const value of LUMO_LOOKS) look.append(h("option", { value, text: t(LOOK_KEYS[value]) }));
-  look.value = parseLook(settings.lumoCharacter);
-  look.addEventListener("change", () => {
-    settings.lumoCharacter = look.value;
-    void save();
-  });
-
   return h(
     "section",
     {},
@@ -1899,10 +1889,6 @@ function islandSection(): HTMLElement {
     ...behaviourRows(),
     group("Lumo"),
     setting(t("Lumo moves"), null, motion),
-    setting(t("Lumo's look"), null, look),
-    setting(t("Previous look"),
-      t("Lumo in the open island's left column, with the tabs, as before 0.18.0."),
-      toggle(settings.islandNewLook !== true, (v) => { settings.islandNewLook = !v; applyLook(); void save(); })),
     group(t("Position and size")),
     setting(t("Island lives on"), null, screen),
     setting(t("Island size"), null, size),
@@ -2407,13 +2393,12 @@ async function main() {
     const after = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
     if (before !== after) localRedraw?.();
     applyLanguage();
-    applyLook();
   });
 }
 
-/** Inside the island, the new look's Settings (settings.css, html.look-new): as the island it is in. */
+/** Inside the island, Settings take the island's look (settings.css, html.look-new). */
 function applyLook() {
-  document.documentElement.classList.toggle("look-new", embedded && settings.islandNewLook === true);
+  if (embedded) document.documentElement.classList.add("look-new");
 }
 
 /** Reads what the sections show and draws them all. */

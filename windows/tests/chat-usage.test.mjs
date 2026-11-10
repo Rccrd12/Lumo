@@ -252,10 +252,10 @@ test("the ring fills with the most used limit, and its menu shows each one", () 
   assert.equal(arc.style.stroke, "#F59E0B");
   line().fire("click");
   assert.ok(view.el.querySelector(".chat-body").classList.contains("metering"));
-  const rows = view.el.find(".usage-row").map((r) => r.textContent);
+  const rows = view.el.find(".usage-limit").map((r) => r.textContent);
   assert.equal(rows.length, 2);
-  assert.match(rows[0], /^5 hours80% usedResets in 1 h (19|20)$/);
-  assert.match(rows[1], /^Week20% usedResets /);
+  assert.match(rows[0], /^5 hours80% used · Resets in 1 h (19|20)$/);
+  assert.match(rows[1], /^Week20% used · Resets /);
   // And the other way round: the week shows when it is the more used.
   State.planUsage = { ...plan, fiveHour: { usedPct: 10, resetsAt: Date.now() + 80 * 60_000 }, sevenDay: { usedPct: 95, resetsAt: Date.now() + 86_400_000 } };
   view.sync();

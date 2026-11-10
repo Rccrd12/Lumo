@@ -107,9 +107,8 @@ tile's edge, the music, the calendar, the email), the services and the plans'
 usage, and the field to the chat. The chat is one field, with **+** for the
 rest and past chats in the top bar; **…** at the top right holds Settings,
 Sounds, Keep the island open, Wardrobe, Hide in the edge of the screen and
-Quit. **Settings → Island → Previous look** brings back the look of 0.17,
-with the ring of light and the tabs, exactly as it was. Most of what follows
-works the same in both looks.
+Quit. The look of 0.17, with the ring of light and the tabs, is gone since
+0.20.2.
 
 | What you do | What happens |
 |---|---|
@@ -117,12 +116,12 @@ works the same in both looks.
 | Click the small island | It opens |
 | Click Lumo | It gets annoyed for a moment |
 | Rest the pointer on Lumo for two seconds | Hearts |
-| Right-click Lumo | The wardrobe. In the new look it picks the light along the island's edge (**Full light**, **Soft light**, **Line only**, **Glow only**) and Claude's mouse for computer use. In the previous look: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (the scarf in winter, the leaf in spring). Next to the outfits, **Lumo's style** picks his look the same way: **Filo**, a ring of light whose colour tells what is going on (the default), **Punto**, a dot of light, **Goccia**, a soft drop, or **Lucciola**, the firefly; also in Settings → Island → Lumo's look |
+| Right-click Lumo | The wardrobe: it picks the light along the island's edge (**Full light**, **Soft light**, **Line only**, **Glow only**) and Claude's mouse for computer use |
 | Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
-| – at the top right of the open island, next to the power button | Hides the island into the edge of the screen it hangs from, as **Hide when unused** does; bring the mouse to that piece of the edge and it comes back. A request waiting for your answer is folded instead, never hidden |
-| Power button at the top right of the open island | Quits Lumo altogether, tray icon included (open it again from the Start menu) |
+| **…** → Hide in the edge of the screen | Hides the island into the edge of the screen it hangs from, as **Hide when unused** does; bring the mouse to that piece of the edge and it comes back. A request waiting for your answer is folded instead, never hidden |
+| **…** → Quit | Quits Lumo altogether, tray icon included (open it again from the Start menu) |
 | Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
 | In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
@@ -201,9 +200,9 @@ always the mains-power choice.
 
 ### Live activities
 
-<img src="screenshots/activities.png" width="640" alt="The previous look: the open island with the live activities beside it">
-
-In the new look they are tiles on the home instead; what follows is the previous look.
+They are tiles on the home. What follows is how they worked beside the
+island before 0.18; their window, if you had moved it out of the island
+then, still opens on its own.
 
 Beside the open island (on the top and bottom edges) a second island holds
 what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
@@ -1270,7 +1269,7 @@ names it through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`). There
 window in the taskbar and no console: the island at the top of the screen and the
 Lumo in the notification area are the whole app, and Quit lives in its menu.
 
-The 23 sounds live in `assets/sounds/`. They are synthesised from code by
+The 22 sounds live in `assets/sounds/`. They are synthesised from code by
 `scripts/gen-sounds.mjs` (`npm run sounds` rewrites them, byte for byte the
 same). The path is declared once, in `SOUNDS_DIR` at the top of
 `vite.config.ts`, which serves them in development and copies them into
@@ -1415,8 +1414,7 @@ own window.
   - Tray → Pause doesn't stop the history (it stays on the machine anyway);
     switch it off in Settings → General.
 - The wardrobe opens with a right-click on Lumo, from the tray menu, or with
-  its global shortcut (`Ctrl+Alt+G` by default). In the compact island a tall hat
-  is cut by the top edge of the screen.
+  its global shortcut (`Ctrl+Alt+G` by default).
 - Languages: chosen in Settings, independently of the system, and applied
   without a restart. Arabic turns
   the island's text right to left but not its layout: Lumo and the pills keep

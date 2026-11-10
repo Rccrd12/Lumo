@@ -29,10 +29,10 @@
 // question and its answer have Retry: the question goes again, unchanged.
 //
 // The screen button next to the paperclip adds what is on the user's screen,
-// only when they ask: "Open windows" or "Browser tabs" (Edge, Chrome), which
-// list them to pick one or all, each going with what it shows (share.rs); a
+// only when they ask (views/share-panel.ts): the open windows or the browser
+// tabs (Edge, Chrome), one or all, each going with what it shows (share.rs); a
 // screenshot of one display or all of them, shown first with Send / Cancel
-// (core/screen.ts); or the folder open in File Explorer: its listing goes with
+// (core/screen.ts); or a folder open in File Explorer: its listing goes with
 // the question, and a file of it the question names is attached as if picked
 // with the paperclip.
 //
@@ -101,13 +101,13 @@ import {
 import {
   addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
-import { ageLabel, planColor } from "../core/plan";
+import { ageLabel } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
-  ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
-  afterSent, autoShare, folderPicks, foldersByThemselves, menuEntries, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short,
-  shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
+  ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, itemPreview, keepShots,
+  afterSent, autoShare, folderPicks, foldersByThemselves, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short,
+  shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type PickEntry,
   type PendingScreen, type PreviewBlock, type ScreenItem,
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
@@ -1717,8 +1717,8 @@ export function buildPrompt(
     onclick: () => showPlan(),
   }, svg(ICONS.plan, 13, { stroke: 1.8 }));
   planBtn.style.display = "none";
-  // The new look's plan: a chip beside the model in place of the icon, its
-  // steps rising over the chat from this row (plan-strip.ts). Hidden in the usual look.
+  // The plan: a chip beside the model in place of the icon, its steps rising
+  // over the chat from this row (plan-strip.ts).
   const planStrip = buildPlanStrip(() => showPlan());
   // The new look's plan asking to start, from this chat (concept C1): its steps
   // over the field, Approve and Keep planning; what is typed in the field
@@ -1743,7 +1743,7 @@ export function buildPrompt(
   /** The plan this chat asks to start, if one is waiting for an answer. */
   const planAsking = () => {
     const req = State.pendingApproval;
-    return State.chatSlot !== "forge" && planAskInChat(req, State.settings.islandNewLook === true) ? req : null;
+    return State.chatSlot !== "forge" && planAskInChat(req) ? req : null;
   };
   function drawPlanAsk() {
     const req = planAsking();
@@ -1788,10 +1788,10 @@ export function buildPrompt(
   function panelChanged() {
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
-    // The new look's usage menu holds the context and the limits: as much room as Listening.
-    // A local model's four modes want more room than the CLIs' three, in either look.
-    const tall = (State.settings.islandNewLook === true && ((body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
-      || body.classList.contains("screening")))
+    // The usage menu holds the context and the limits: as much room as Listening.
+    // A local model's four modes want more room than the CLIs' three.
+    const tall = (body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
+      || body.classList.contains("screening")
       || (body.classList.contains("authorizing") && providerDef(State.settings.chatProvider).urlField !== null);
     if (open === State.chatPanelOpen && hearing === State.listeningOpen && tall === State.chatPanelTall) return;
     State.chatPanelOpen = open;
@@ -1833,7 +1833,7 @@ export function buildPrompt(
   const permEl = h("div", { class: "picker permissions" }, permHead, permList);
   const usageTitle = h("div", { class: "picker-title" });
   const usageList = h("div", { class: "picker-list usage-list" });
-  const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
+  const usagePanel = h("div", { class: "picker usage-panel usage-new" }, usageTitle, usageList);
   // What Lumo is listening to, and what it heard; a row of another chat opens it.
   const listening = buildListeningPanel({
     goToChat: (chatId) => {
@@ -2010,48 +2010,27 @@ export function buildPrompt(
     const line = usageLineShown;
     // A local model's ring is its context: the menu says only that.
     const local = providerDef(State.settings.chatProvider).urlField !== null;
-    usageTitle.textContent = line && local ? line.title : line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
+    usageTitle.textContent = USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
-    // The new look: the context as one split bar, then the limits as bars (views/usage-panel.ts).
-    const newLook = State.settings.islandNewLook === true;
-    usagePanel.classList.toggle("usage-new", newLook);
-    if (newLook) {
-      usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
-      const report = lastContextReport(State.chatHistory);
-      // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
-      const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
-      // Antigravity CLI says only the tokens: its model's window comes from its name, and the figure is about.
-      const agy = State.settings.chatProvider === "antigravity-cli";
-      const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(State.settings)) ?? 0 : 0) : 0;
-      const fill = filled && total > 0 ? { used: filled.used, total, estimate: agy } : null;
-      drawNewUsage(usageList, {
-        line, local, report, fill,
-        askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {
-          closeUsage();
-          void submit("/context");
-        } : null,
-      });
-      // Taller while it holds the context (the menu may be open as /context lands).
-      if (body.classList.contains("metering")) panelChanged();
-    } else if (line.rows.length === 0) {
-      usageList.append(h("div", { class: "picker-status", text: line.text }));
-      return;
-    }
-    if (!newLook) for (const [i, row] of line.rows.entries()) {
-      const fill = h("i", { class: "usage-fill" });
-      fill.style.width = `${Math.max(0, Math.min(100, row.pct ?? 0))}%`;
-      fill.style.background = row.pct == null ? "" : planColor(row.pct);
-      usageList.append(h("div", { class: "usage-row" },
-        h("div", { class: "usage-row-head" },
-          h("span", { class: "usage-label", text: row.label }),
-          h("span", { class: "usage-value", text: row.value })),
-        h("span", { class: "usage-bar" }, fill),
-        row.reset ? h("span", { class: "usage-reset", text: row.reset }) : null,
-        // How to get the 5 hours up to date: under them, where it is seen.
-        i === 0 && line.note ? h("span", { class: "usage-note", text: line.note }) : null,
-      ));
-    }
+    // The context as one split bar, then the limits as bars (views/usage-panel.ts).
+    usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
+    const report = lastContextReport(State.chatHistory);
+    // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
+    const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
+    // Antigravity CLI says only the tokens: its model's window comes from its name, and the figure is about.
+    const agy = State.settings.chatProvider === "antigravity-cli";
+    const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(State.settings)) ?? 0 : 0) : 0;
+    const fill = filled && total > 0 ? { used: filled.used, total, estimate: agy } : null;
+    drawNewUsage(usageList, {
+      line, local, report, fill,
+      askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {
+        closeUsage();
+        void submit("/context");
+      } : null,
+    });
+    // Taller while it holds the context (the menu may be open as /context lands).
+    if (body.classList.contains("metering")) panelChanged();
     // A local model's context: /compact from here, under its bar.
     if (local && State.chatHistory.length > 0) {
       const compact = h("button", { class: "usage-compact", title: t(SLASH_STRINGS.compact), onclick: () => void compactChat() },
@@ -2755,64 +2734,24 @@ export function buildPrompt(
     const tabList = await Promise.race([tabs, late]);
     window.clearTimeout(timer);
     if (ticket !== screenTicket) return;
-    // The new look: pills and tiles (views/share-panel.ts), with the windows listed too.
-    if (State.settings.islandNewLook === true) {
-      let windows: OpenWindow[] = [];
-      try {
-        windows = (await Bridge.screenWindows()) ?? [];
-      } catch {
-        // The Windows pill then says none is open.
-      }
-      if (ticket !== screenTicket) return;
-      drawShareTiles(displays, explorer, tabList ?? [], windows, problem);
-      // Drawn without the tabs: they join once they come, if the menu is still there.
-      if (tabList === null) {
-        void tabs.then((list) => {
-          if (ticket === screenTicket && list.length > 0) drawShareTiles(displays, explorer, list, windows, problem);
-        });
-      }
-      return;
+    // Pills and tiles (views/share-panel.ts), with the windows listed too.
+    let windows: OpenWindow[] = [];
+    try {
+      windows = (await Bridge.screenWindows()) ?? [];
+    } catch {
+      // The Windows pill then says none is open.
     }
-    drawScreenEntries(displays, explorer, tabList ?? [], problem);
-    // Drawn without them: they join the menu once they come, if it is still there.
+    if (ticket !== screenTicket) return;
+    drawShareTiles(displays, explorer, tabList ?? [], windows, problem);
+    // Drawn without the tabs: they join once they come, if the menu is still there.
     if (tabList === null) {
       void tabs.then((list) => {
-        if (ticket === screenTicket && list.length > 0) drawScreenEntries(displays, explorer, list, problem);
+        if (ticket === screenTicket && list.length > 0) drawShareTiles(displays, explorer, list, windows, problem);
       });
     }
   }
 
-  function drawScreenEntries(displays: ScreenDisplay[], explorer: ExplorerPeek, tabList: BrowserTab[], problem: string) {
-    clear(screenList);
-    const images = seesImages(providerDef(State.settings.chatProvider));
-    for (const entry of menuEntries(displays, explorer, tabList)) {
-      const shot = entry.kind === "display" || entry.kind === "all";
-      const off = shot && !images;
-      const detail =
-        entry.kind === "display" ? `${entry.width} × ${entry.height}`
-        : entry.kind === "explorer" ? entry.folder.name
-        : entry.kind === "explorers" ? String(entry.folders.length)
-        : entry.kind === "tabs" ? String(entry.count)
-        : "";
-      const opens = entry.kind === "windows" || entry.kind === "tabs" || entry.kind === "explorers";
-      const row = h(
-        "button",
-        { class: "picker-model screen-entry", disabled: off },
-        h("span", { class: "picker-model-name", text: entryLabel(entry) }),
-        detail ? h("span", { class: "history-date", text: detail }) : null,
-        // A second list opens from it.
-        opens ? svg(ICONS.chevronRight, 9, { stroke: 2 }) : null,
-      );
-      if (entry.kind === "explorer") row.title = entry.folder.path;
-      if (!off) row.addEventListener("click", () => void pickEntry(entry));
-      screenList.append(row);
-    }
-    if (problem) screenStatus(problem);
-    else if (displays.length > 0 && !images) screenStatus(noImagesReason(providerDef(State.settings.chatProvider)));
-    screenStatus(t(SCREEN_STRINGS.nothingYet));
-  }
-
-  /** The kind of things the new look's Share menu shows: the last one picked. */
+  /** The kind of things the Share menu shows: the last one picked. */
   let shareKind: ShareKindId = "windows";
 
   function drawShareTiles(displays: ScreenDisplay[], explorer: ExplorerPeek, tabList: BrowserTab[], windows: OpenWindow[], problem: string) {
@@ -2821,9 +2760,9 @@ export function buildPrompt(
       picks.map((pick) => ({ key: String(pick.id), label: pick.label, detail: pick.detail, title: [pick.title || pick.label, pick.detail].filter(Boolean).join("\n"), all: pick.id == null, go: () => go(pick) }));
     const screens: ShareItem[] = displays.map((d) => ({
       key: `d${d.index}`, label: screenLabel(d.index), detail: `${d.width} × ${d.height}`, title: `${screenLabel(d.index)} · ${d.width} × ${d.height}`, disabled: !images,
-      go: () => void pickEntry({ kind: "display", index: d.index, width: d.width, height: d.height }),
+      go: () => void shareScreen(d.index),
     }));
-    if (displays.length > 1) screens.unshift({ key: "all", label: t(SCREEN_STRINGS.allScreens), title: t(SCREEN_STRINGS.allScreens), all: true, disabled: !images, go: () => void pickEntry({ kind: "all" }) });
+    if (displays.length > 1) screens.unshift({ key: "all", label: t(SCREEN_STRINGS.allScreens), title: t(SCREEN_STRINGS.allScreens), all: true, disabled: !images, go: () => void shareScreen(null) });
     const folders = explorer.problem ? [] : explorer.folders;
     const kinds: ShareKind[] = [
       { id: "windows", count: windows.length, items: fromPicks(windowPicks(windows), (pick) => void shareWindows(pick, windows)), empty: t(SCREEN_STRINGS.noWindows) },
@@ -2835,50 +2774,12 @@ export function buildPrompt(
     drawShareGrid(screenList, kinds, shareKind, (id) => { shareKind = id; }, notes, t(SCREEN_STRINGS.nothingYet));
   }
 
-  /** The second list: "All …", then each window or tab, under a way back. */
-  function drawPicks(title: string, picks: PickEntry[], onPick: (pick: PickEntry) => void) {
-    screenTitle.textContent = title;
-    clear(screenList);
-    const back = h("button", { class: "picker-model screen-entry screen-back" },
-      svg(ICONS.chevronLeft, 9, { stroke: 2 }),
-      h("span", { class: "picker-model-name", text: t(SCREEN_STRINGS.back) }));
-    back.addEventListener("click", () => void drawScreenMenu());
-    screenList.append(back);
-    for (const pick of picks) {
-      const row = h(
-        "button",
-        { class: `picker-model screen-entry screen-pick${pick.id == null ? " screen-pick-all" : ""}` },
-        h("span", { class: "picker-model-name", text: pick.label }),
-        pick.detail ? h("span", { class: "history-date", text: pick.detail }) : null,
-      );
-      if (pick.title) row.title = pick.title;
-      row.addEventListener("click", () => onPick(pick));
-      screenList.append(row);
-    }
-  }
-
   /** Something was added from the menu: the panel goes, the chip shows. */
   function added() {
     closeScreen();
     Sound.play("attach");
     State.notify();
     input.focus();
-  }
-
-  async function openWindows() {
-    const ticket = ++screenTicket;
-    clear(screenList);
-    let list: OpenWindow[];
-    try {
-      list = await Bridge.screenWindows();
-    } catch (err) {
-      if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
-      return;
-    }
-    if (ticket !== screenTicket) return;
-    const picks = windowPicks(list);
-    drawPicks(t(SCREEN_STRINGS.windows), picks, (pick) => void shareWindows(pick, list));
-    if (picks.length === 0) screenStatus(t(SCREEN_STRINGS.noWindows));
   }
 
   /** One window (with a picture of it, for who sees images) or all of them, with what they show. */
@@ -2911,20 +2812,6 @@ export function buildPrompt(
         screenStatus(String(err).replace(/^Error:\s*/, ""));
       }
     }
-  }
-
-  async function openTabs() {
-    const ticket = ++screenTicket;
-    clear(screenList);
-    let list: BrowserTab[];
-    try {
-      list = await Bridge.screenTabs();
-    } catch (err) {
-      if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
-      return;
-    }
-    if (ticket !== screenTicket) return;
-    drawPicks(t(SCREEN_STRINGS.tabs), tabPicks(list), (pick) => void shareTabs(pick));
   }
 
   /** One tab or all of them, each with its page's text. */
@@ -2963,21 +2850,14 @@ export function buildPrompt(
     }
   }
 
-  async function pickEntry(entry: MenuEntry) {
-    if (entry.kind === "windows") return openWindows();
-    if (entry.kind === "tabs") return openTabs();
-    if (entry.kind === "explorer") return shareFolders([entry.folder.path]);
-    if (entry.kind === "explorers") {
-      ++screenTicket;
-      drawPicks(t(SCREEN_STRINGS.explorers), folderPicks(entry.folders), (pick) => void shareFolders(typeof pick.id === "string" ? [pick.id] : []));
-      return;
-    }
+  /** A picture of one screen, or of all of them (`null`), to confirm before it is added. */
+  async function shareScreen(index: number | null) {
     const ticket = ++screenTicket;
     clear(screenList);
     screenStatus(t(SCREEN_STRINGS.capturing));
     let shots: ScreenShot[];
     try {
-      shots = await Bridge.screenCapture(entry.kind === "display" ? entry.index : null);
+      shots = await Bridge.screenCapture(index);
     } catch (err) {
       if (ticket !== screenTicket) return;
       clear(screenList);
@@ -4453,14 +4333,13 @@ export function buildPrompt(
       }
       micBtn.hidden = workshop;
       takeShare();
-      // The new look: only this chat's own plan, as a chip while it is open,
-      // as the icon once put away; another chat's or a terminal's plan is not
-      // this chat's (they show on the home).
-      const newLook = State.settings.islandNewLook === true;
-      const ownPlan = newLook && !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
+      // Only this chat's own plan, as a chip while it is open, as the icon
+      // once put away; another chat's or a terminal's plan is not this chat's
+      // (they show on the home).
+      const ownPlan = !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
       drawPlanAsk();
       planStrip.sync(State.planOpen ? ownPlan : null);
-      const planIconShown = (newLook ? ownPlan != null : State.planIcon) && planStrip.chip.hidden;
+      const planIconShown = ownPlan != null && planStrip.chip.hidden;
       // The home asked for a chat (its plan's row): that one comes on screen.
       if (State.chatToOpen != null) {
         const id = State.chatToOpen;

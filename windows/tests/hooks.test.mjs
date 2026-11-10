@@ -575,9 +575,9 @@ test("the card shows when the island is already open, and is what it reopens on"
   assert.deepEqual(asked, ["alert:approval"]);
   assert.equal(State.defaultView(), "approval");
   State.endApproval();
-  // Then the chat, which is home; the sessions are on the Agents tab.
-  assert.equal(State.defaultView(), "prompt");
-  assert.equal(State.agentsView(), "overview");
+  // Then the home, with the sessions.
+  assert.equal(State.defaultView(), "home");
+  assert.equal(State.agentsView(), "home");
 });
 
 test("a question is what the island reopens on while it waits", () => {
@@ -641,7 +641,7 @@ test("an unanswered card is withdrawn after 107 s, before Lumo stops waiting at 
   assert.equal(State.isPinned, false);
   assert.equal(task().state, "working");
   assert.equal(task().pillBadge, null);
-  assert.deepEqual(asked, ["dropPin", "setView:overview"]);
+  assert.deepEqual(asked, ["dropPin", "setView:home"]);
 });
 
 test("a pin set before the card stays once the card is gone", () => {

@@ -105,6 +105,11 @@ class FakeElement {
     const wanted = selector.split(".").filter(Boolean);
     return [...this.walk()].find((e) => wanted.every((c) => e.classList.contains(c))) ?? null;
   }
+  /** `.a.b` class selectors only: every descendant carrying every class. */
+  querySelectorAll(selector) {
+    const wanted = selector.split(".").filter(Boolean);
+    return [...this.walk()].filter((e) => wanted.every((c) => e.classList.contains(c)));
+  }
   scrollIntoView() {}
   focus() {}
   select() {}
