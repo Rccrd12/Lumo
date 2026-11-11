@@ -25,8 +25,8 @@ async function dragRight(dx) {
   const before = await widthOf();
   step(`drags the right edge by ${dx} px from ${before} px (grip at ${Math.round(grip.x)}, ${Math.round(grip.y)})`);
   // The cursor onto the island first, so it takes the mouse, then the grip.
-  const box = await app.islandBox();
-  await app.mouse.move(box.x + box.w / 2, box.y + 20);
+  const start = await app.islandBox();
+  await app.mouse.move(start.x + start.w / 2, start.y + 20);
   await sleep(300);
   await app.mouse.drag(grip, { x: grip.x + dx * r, y: grip.y });
   await sleep(800);
