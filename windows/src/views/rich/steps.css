@@ -74,12 +74,14 @@
   opacity: 0.36;
 }
 
+/* Room at the sides for the ink of an italic letter at either end, the V of
+   "= qV", which leans past its own box and the cut would clip. */
 .rc-steps-prev-tex {
   display: flex;
   align-items: center;
   min-width: 0;
   max-width: 100%;
-  padding: 2px 0;
+  padding: 2px 4px;
   overflow: hidden;
 }
 
@@ -98,9 +100,12 @@
   justify-content: center;
 }
 
-/* The formula, large; sideways scrolling when it is wider than the card. */
+/* The formula, large; sideways scrolling when it is wider than the card.
+   6px each side, as the chat's (style.css): the last V of "= -eV" leans past
+   its own box, and the scroll would cut it. */
 .rc-steps-formula {
   max-width: 100%;
+  padding: 0 6px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
