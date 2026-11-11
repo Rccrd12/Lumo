@@ -101,7 +101,8 @@ export class Lumo {
       this.mouse = new Mouse();
       await this.mouse.start();
     }
-    await this.away();
+    // The launch greeting first: the flows start from the closed island.
+    await this.closed();
   }
 
   /** Quits Lumo the hard way, as a crash or a shutdown would. */
@@ -153,13 +154,35 @@ export class Lumo {
     await this.mouse.move(s.w / 2, s.h - 40);
   }
 
-  /** The cursor on the island (or on its wake strip while it is hidden): it opens. */
-  async hover() {
+  /** The island's height on the page: closed (or hidden) under 60, open above 100. */
+  async islandHeight() {
+    return this.d.js("return document.getElementById('island').getBoundingClientRect().height");
+  }
+
+  /** Waits for the island to be closed (or hidden): no greeting, no card, no home. */
+  async closed(ms = 20_000) {
+    await this.away();
+    await this.d.until("return document.getElementById('island').getBoundingClientRect().height < 60", ms, "the island closing");
+  }
+
+  /** Opens the island as a user does: the cursor onto it, then a click on the closed island. */
+  async open() {
     const s = await this.screen();
+    // The wake strip at the edge, then the closed island it brings out.
+    await this.mouse.move(s.w / 2, 2);
+    await sleep(500);
     const box = await this.islandBox();
-    const y = box.h > 30 ? box.y + Math.min(24, box.h / 2) : 2;
-    await this.mouse.move(s.w / 2, y);
-    await this.d.until("return document.getElementById('island').getBoundingClientRect().height > 100", 8_000, "the island opening under the cursor");
+    await this.mouse.move(box.x + box.w / 2, box.y + box.h / 2);
+    await sleep(300);
+    if ((await this.islandHeight()) < 100) {
+      await this.mouse.down();
+      await sleep(60);
+      await this.mouse.up();
+    }
+    await this.d.until("return document.getElementById('island').getBoundingClientRect().height > 100", 8_000, "the island opening on a click");
+    // The cursor stays over it, so it stays open.
+    const open = await this.islandBox();
+    await this.mouse.move(open.x + open.w / 2, open.y + 20);
   }
 
   /** What the island shows: the views on screen, its size. */

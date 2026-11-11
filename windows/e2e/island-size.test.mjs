@@ -32,7 +32,7 @@ async function dragRight(dx) {
 
 /** Opens the home under the cursor. */
 async function openHome() {
-  await app.hover();
+  await app.open();
   await d.visible(".home-field", 8_000, "the home's Ask me anything field");
 }
 
@@ -62,14 +62,12 @@ flow(G, "Resizing the chat leaves the home's size alone", app, async () => {
 }, { todo: "the island has one shared size, so the chat's width carries over to the home (reported 11/11/2026)" });
 
 flow(G, "The size picked is kept after Lumo restarts", app, async () => {
-  await app.away();
-  await sleep(800);
+  await app.closed();
   await openHome();
   await dragRight(-200);
   const before = await widthOf();
   step(`home at ${before} px; Lumo restarts`);
-  await app.away();
-  await sleep(1_500);
+  await app.closed();
   await app.quit();
   await app.launch({ fresh: false });
   await openHome();

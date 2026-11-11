@@ -18,8 +18,8 @@ const open = [];
 before(() => app.launch());
 afterEach(async () => {
   while (open.length) open.pop().kill();
-  await app.away();
-  await sleep(500);
+  // The next flow starts from the closed island.
+  await app.closed();
 });
 after(() => app.close());
 
