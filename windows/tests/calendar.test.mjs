@@ -63,7 +63,7 @@ test("daily with a count, monthly on the nth weekday, yearly", () => {
     ["UID:d", "DTSTART:20261008T080000", "RRULE:FREQ=DAILY;COUNT=3", "SUMMARY:Pills"],
     ["UID:m", "DTSTART:20260908T090000", "RRULE:FREQ=MONTHLY;BYDAY=2TH", "SUMMARY:Board"],
     ["UID:y", "DTSTART;VALUE=DATE:20001012", "RRULE:FREQ=YEARLY", "SUMMARY:Birthday"],
-    ["UID:i", "DTSTART:20261001T070000", "RRULE:FREQ=DAILY;INTERVAL=2;UNTIL=20261011T000000Z", "SUMMARY:Run"],
+    ["UID:i", "DTSTART:20261001T070000", "RRULE:FREQ=DAILY;INTERVAL=2;UNTIL=20261011T000000", "SUMMARY:Run"],
   );
   const events = parseIcs(text, local(2026, 10, 9), local(2026, 10, 16));
   const by = (t) => events.filter((e) => e.title === t).map((e) => new Date(e.start).getDate());
@@ -75,6 +75,30 @@ test("daily with a count, monthly on the nth weekday, yearly", () => {
   assert.deepEqual(by("Run"), [9]);
   // Into the next year: the second Thursday of January 2027 is the 14th.
   assert.deepEqual(parseIcs(text, local(2027, 1, 1), local(2027, 1, 31)).filter((e) => e.title === "Board").map((e) => new Date(e.start).getDate()), [14]);
+});
+
+test("the rules Google and Outlook write: a month's nth weekday each year, the last weekday, weekdays only", () => {
+  const text = ics(
+    // The second Sunday of March (as a calendar writes daylight saving or a holiday).
+    ["UID:a", "DTSTART;VALUE=DATE:20260308", "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU", "SUMMARY:Second Sunday"],
+    // Outlook's "the last weekday of the month".
+    ["UID:b", "DTSTART:20260130T090000", "RRULE:FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1", "SUMMARY:Report"],
+    // "Every weekday".
+    ["UID:c", "DTSTART:20260105T080000", "RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR", "SUMMARY:Commute"],
+    // The 15th and the last day of each month.
+    ["UID:d", "DTSTART:20260115T090000", "RRULE:FREQ=MONTHLY;BYMONTHDAY=15,-1", "SUMMARY:Pay"],
+    // A part not read here: its first time only, never wrong days.
+    ["UID:e", "DTSTART:20260105T090000", "RRULE:FREQ=YEARLY;BYWEEKNO=20", "SUMMARY:Odd"],
+  );
+  const days = (from, to, title) => parseIcs(text, from, to).filter((e) => e.title === title).map((e) => new Date(e.start).getDate());
+  assert.deepEqual(days(local(2027, 3, 1), local(2027, 3, 31), "Second Sunday"), [14]);
+  assert.deepEqual(days(local(2027, 1, 1), local(2027, 12, 31), "Second Sunday"), [14]);
+  // October 2026 ends on a Saturday: its last weekday is Friday the 30th; November's is Monday the 30th.
+  assert.deepEqual(days(local(2026, 10, 1), local(2026, 11, 30, 23), "Report"), [30, 30]);
+  // 9–15 October 2026: Friday the 9th to Thursday the 15th, no weekend.
+  assert.deepEqual(days(local(2026, 10, 9), local(2026, 10, 16), "Commute"), [9, 12, 13, 14, 15]);
+  assert.deepEqual(days(local(2027, 2, 1), local(2027, 2, 28, 23), "Pay"), [15, 28]);
+  assert.deepEqual(days(local(2026, 1, 1), local(2027, 12, 31), "Odd"), [5]);
 });
 
 test("a repeating event set up years ago still shows", () => {

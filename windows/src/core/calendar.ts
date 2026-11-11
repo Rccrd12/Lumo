@@ -177,7 +177,19 @@ interface Rule {
   count: number | null;
   until: number | null;
   byDay: { n: number; day: number }[];
+  /** BYMONTH, 0 for January. */
+  byMonth: number[];
+  /** BYMONTHDAY, -1 for the last day. */
+  byMonthDay: number[];
+  /** BYSETPOS: which of each month's (or year's) days, -1 the last ("the last weekday of the month"). */
+  bySetPos: number[];
 }
+
+/** The parts of a rule read here. One with any other (BYWEEKNO, BYYEARDAY, BYHOUR…) shows its first time only, never wrong days. */
+const RULE_PARTS = new Set(["FREQ", "INTERVAL", "COUNT", "UNTIL", "BYDAY", "BYMONTH", "BYMONTHDAY", "BYSETPOS", "WKST"]);
+
+const numbers = (v: string | undefined, ok: (n: number) => boolean): number[] =>
+  (v ?? "").split(",").map((x) => parseInt(x, 10)).filter((n) => Number.isInteger(n) && ok(n));
 
 function parseRule(v: string): Rule | null {
   const parts: Record<string, string> = {};
@@ -186,6 +198,7 @@ function parseRule(v: string): Rule | null {
     if (k && val) parts[k.toUpperCase()] = val.toUpperCase();
   }
   if (!["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(parts.FREQ)) return null;
+  if (Object.keys(parts).some((k) => !RULE_PARTS.has(k))) return null;
   const byDay = (parts.BYDAY ?? "")
     .split(",")
     .map((x) => /^([+-]?\d+)?(SU|MO|TU|WE|TH|FR|SA)$/.exec(x))
@@ -197,7 +210,45 @@ function parseRule(v: string): Rule | null {
     count: parts.COUNT ? parseInt(parts.COUNT, 10) : null,
     until: parts.UNTIL ? parseIcsDate(parts.UNTIL)?.time ?? null : null,
     byDay,
+    byMonth: numbers(parts.BYMONTH, (n) => n >= 1 && n <= 12).map((n) => n - 1),
+    byMonthDay: numbers(parts.BYMONTHDAY, (n) => n !== 0 && n >= -31 && n <= 31),
+    bySetPos: numbers(parts.BYSETPOS, (n) => n !== 0 && n >= -366 && n <= 366),
   };
+}
+
+/** The days of month `m` a monthly or yearly rule falls on: its BYMONTHDAY, its BYDAY (nth or every), else `fallback`'s day. */
+function daysOf(rule: Rule, y: number, m: number, fallback: number): number[] {
+  const length = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const days: number[] = [];
+  if (rule.byMonthDay.length) {
+    for (const d of rule.byMonthDay) {
+      const day = d > 0 ? d : length + 1 + d;
+      if (day >= 1 && day <= length) days.push(day);
+    }
+  }
+  if (rule.byDay.length) {
+    const weekdays: number[] = [];
+    for (const b of rule.byDay) {
+      // "BYDAY=MO" with no number: every Monday of the month.
+      for (const n of b.n ? [b.n] : [1, 2, 3, 4, 5]) {
+        const d = nthWeekday(y, m, b.day, n);
+        if (d != null) weekdays.push(d);
+      }
+    }
+    // Both: the days that are both (BYMONTHDAY=13;BYDAY=FR, Friday the 13th).
+    if (rule.byMonthDay.length) return days.filter((d) => weekdays.includes(d)).sort((a, b) => a - b);
+    days.push(...weekdays);
+  }
+  // The 31st in a month without one is skipped, as calendars do.
+  if (!rule.byMonthDay.length && !rule.byDay.length && fallback <= length) days.push(fallback);
+  return [...new Set(days)].sort((a, b) => a - b);
+}
+
+/** BYSETPOS: of a month's or a year's days in order, only the ones at those places (1 the first, -1 the last). */
+function setPositions(rule: Rule, days: number[]): number[] {
+  if (!rule.bySetPos.length) return days;
+  const picked = rule.bySetPos.map((p) => days[p > 0 ? p - 1 : days.length + p]).filter((t): t is number => t != null);
+  return [...new Set(picked)].sort((a, b) => a - b);
 }
 
 /** The day of the month of the nth (1…5, or -1 for the last) `weekday`, or null. */
@@ -255,34 +306,40 @@ function occurrences(first: IcsWall, rule: Rule, from: number, to: number): numb
   const firstDay = new Date(Date.UTC(fy, fm, fd)).getUTCDay();
   for (let step = skip; step < skip + steps; step++) {
     const batch: number[] = [];
+    // A day kept by BYMONTH, when the rule has one (a day of the calendar with no clock changes).
+    const inMonths = (y: number, mo: number, da: number) => !rule.byMonth.length || rule.byMonth.includes(new Date(Date.UTC(y, mo, da)).getUTCMonth());
     if (rule.freq === "DAILY") {
-      batch.push(at(fy, fm, fd + step * rule.interval));
+      const da = fd + step * rule.interval;
+      // "Every weekday": BYDAY keeps only those days of the week.
+      const weekday = new Date(Date.UTC(fy, fm, da)).getUTCDay();
+      if ((!rule.byDay.length || rule.byDay.some((b) => b.day === weekday)) && inMonths(fy, fm, da)) batch.push(at(fy, fm, da));
     } else if (rule.freq === "WEEKLY") {
       const weekStart = fd - firstDay + step * 7 * rule.interval;
       const days = rule.byDay.length ? rule.byDay.map((b) => b.day) : [firstDay];
-      for (const day of [...days].sort((a, b) => a - b)) batch.push(at(fy, fm, weekStart + day));
+      for (const day of [...days].sort((a, b) => a - b)) if (inMonths(fy, fm, weekStart + day)) batch.push(at(fy, fm, weekStart + day));
     } else if (rule.freq === "MONTHLY") {
       // Year and month counted on.
       const month = new Date(Date.UTC(fy, fm + step * rule.interval, 1));
       const y = month.getUTCFullYear();
       const m = month.getUTCMonth();
-      if (rule.byDay.length) {
-        for (const b of rule.byDay) {
-          // "BYDAY=MO" with no number: every Monday of the month.
-          for (const n of b.n ? [b.n] : [1, 2, 3, 4, 5]) {
-            const d = nthWeekday(y, m, b.day, n);
-            if (d != null) batch.push(at(y, m, d));
-          }
-        }
-        batch.sort((a, b) => a - b);
-      } else if (fd <= new Date(Date.UTC(y, m + 1, 0)).getUTCDate()) {
-        // The 31st in a month without one is skipped, as calendars do.
-        batch.push(at(y, m, fd));
+      if (!rule.byMonth.length || rule.byMonth.includes(m)) {
+        for (const d of setPositions(rule, daysOf(rule, y, m, fd))) batch.push(at(y, m, d));
       }
     } else {
       const y = fy + step * rule.interval;
-      // The 29th of February only in a leap year.
-      if (new Date(Date.UTC(y, fm, fd)).getUTCMonth() === fm) batch.push(at(y, fm, fd));
+      // "The second Sunday of March": the days in each month of BYMONTH (the
+      // event's own month without one), then BYSETPOS over the whole year.
+      const days: [number, number][] = [];
+      for (const m of rule.byMonth.length ? [...rule.byMonth].sort((a, b) => a - b) : [fm]) {
+        if (!rule.byDay.length && !rule.byMonthDay.length) {
+          // The 29th of February only in a leap year.
+          if (new Date(Date.UTC(y, m, fd)).getUTCMonth() === m) days.push([m, fd]);
+        } else {
+          for (const d of daysOf(rule, y, m, fd)) days.push([m, d]);
+        }
+      }
+      const order = days.map((_, i) => i);
+      for (const i of setPositions(rule, order)) batch.push(at(y, days[i][0], days[i][1]));
     }
     for (const t of batch) if (!take(t)) return out;
     if (batch.length && Math.min(...batch) > limit) return out;

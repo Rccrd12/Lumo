@@ -179,6 +179,18 @@ pub struct Past {
     pub at: u64,
 }
 
+impl Store {
+    /// What was kept per watch for the watches that are gone (replaced, the
+    /// oldest let go, cancelled): ids are never used again.
+    fn forget_gone(&mut self) {
+        let ids: std::collections::HashSet<u64> = self.watches.iter().map(|w| w.id).collect();
+        self.misses.retain(|id, _| ids.contains(id));
+        self.seen.retain(|id, _| ids.contains(id));
+        self.fires.retain(|id, _| ids.contains(id));
+        self.heads.retain(|id, _| ids.contains(id));
+    }
+}
+
 #[derive(Default)]
 struct Store {
     watches: Vec<Watch>,
@@ -375,6 +387,7 @@ fn push(mut watch: Watch) -> Watch {
         watch.id = s.next_id;
         s.next_id += 1;
         s.watches.push(watch.clone());
+        s.forget_gone();
         save(&s.watches);
         watch
     });
@@ -388,6 +401,7 @@ pub fn cancel(repo: &str, number: u64, until: Option<&str>) -> usize {
         let before = s.watches.len();
         s.watches
             .retain(|w| !(w.github() && w.repo.eq_ignore_ascii_case(repo.trim()) && w.number == number && until.is_none_or(|u| w.until == u)));
+        s.forget_gone();
         save(&s.watches);
         before - s.watches.len()
     })
@@ -404,6 +418,7 @@ pub fn cancel_local(source: &str, target: &str) -> usize {
             !(w.source == source
                 && (named == target || listen_local::program_name(&target) == named || listen_local::canonical(&source, &target) == named))
         });
+        s.forget_gone();
         save(&s.watches);
         before - s.watches.len()
     })
@@ -1000,8 +1015,11 @@ async fn local_round(app: &AppHandle) {
                     continue;
                 }
                 // A page saved before only public https pages were watched
-                // (this PC, the local network): never opened, never "down".
+                // (http, another port, this PC, the local network): never
+                // opened, and ended with a word in the history, not left
+                // "listening" for good.
                 if crate::web_image::public_url(&w.target).is_err() {
+                    fire(app, w.id, false, tf("Stopped listening to {what}: Lumo now watches only public https pages.", &[("what", &w.label())]), None);
                     continue;
                 }
                 let page = listen_local::page(&w.target).await;

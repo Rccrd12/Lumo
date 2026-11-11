@@ -17950,6 +17950,18 @@
    "ru": "Записать изменения, показанные в настройках Lumo, в {target}? Сначала создаётся резервная копия.",
    "id": "Tulis perubahan yang ditampilkan di Pengaturan Lumo ke {target}? Cadangan dibuat terlebih dahulu.",
    "it": "Scrivere in {target} le modifiche mostrate nelle Impostazioni di Lumo? Prima viene fatto un backup."
+  },
+  "Stopped listening to {what}: Lumo now watches only public https pages.": {
+   "zh-Hans": "已停止监听 {what}：Lumo 现在只监听公开的 https 页面。",
+   "hi": "{what} को सुनना बंद किया: Lumo अब केवल सार्वजनिक https पेज देखता है.",
+   "es": "Se dejó de escuchar {what}: Lumo ahora solo vigila páginas https públicas.",
+   "ar": "تم إيقاف الاستماع إلى {what}: يراقب Lumo الآن صفحات https العامة فقط.",
+   "fr": "Écoute de {what} arrêtée : Lumo ne surveille plus que les pages https publiques.",
+   "bn": "{what} শোনা বন্ধ হয়েছে: Lumo এখন শুধু সর্বজনীন https পেজ দেখে.",
+   "pt-BR": "Parou de ouvir {what}: o Lumo agora vigia só páginas https públicas.",
+   "ru": "Прослушивание {what} остановлено: теперь Lumo следит только за публичными страницами https.",
+   "id": "Berhenti mendengarkan {what}: Lumo kini hanya memantau halaman https publik.",
+   "it": "Smesso di ascoltare {what}: ora Lumo controlla solo pagine https pubbliche."
   }
  }
 }

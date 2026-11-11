@@ -147,9 +147,8 @@ pub fn server_of(imap_typed: &str, address: &str) -> (String, u16) {
     match imap.as_str() {
         "imap.gmail.com" => return ("smtp.gmail.com".into(), 465),
         "outlook.office365.com" => {
-            let domain = address.rsplit('@').next().unwrap_or("").to_ascii_lowercase();
             // Outlook.com's own addresses, else a work or school account.
-            return (if crate::mail::OUTLOOK_PERSONAL.contains(&domain.as_str()) { "smtp-mail.outlook.com" } else { "smtp.office365.com" }.into(), 587);
+            return (if crate::mail::outlook_personal(address, imap_typed) { "smtp-mail.outlook.com" } else { "smtp.office365.com" }.into(), 587);
         }
         "imap.mail.me.com" => return ("smtp.mail.me.com".into(), 587),
         "imap.mail.yahoo.com" => return ("smtp.mail.yahoo.com".into(), 465),

@@ -548,9 +548,24 @@ fn of_account(mut m: Message, acct: &Account) -> Message {
     m
 }
 
-/// Outlook.com's own addresses: the others on Microsoft's servers are work or
-/// school accounts (Microsoft 365).
-pub(crate) const OUTLOOK_PERSONAL: [&str; 7] = ["outlook.com", "hotmail.com", "live.com", "msn.com", "outlook.it", "hotmail.it", "live.it"];
+/// Outlook.com's own names, before a country's ending: hotmail.com,
+/// hotmail.co.uk, outlook.de, live.fr, msn.com…
+const OUTLOOK_PERSONAL_NAMES: [&str; 5] = ["outlook", "hotmail", "live", "msn", "windowslive"];
+
+/// An Outlook.com account, not a work or school one (Microsoft 365): its
+/// address is at one of Outlook.com's own names with only a country's ending
+/// after it ("outlook.mycompany.com" is a company's), or the user typed
+/// Outlook.com's own IMAP server.
+pub(crate) fn outlook_personal(address: &str, imap_typed: &str) -> bool {
+    if imap_typed.trim().eq_ignore_ascii_case("imap-mail.outlook.com") {
+        return true;
+    }
+    let domain = address.trim().rsplit('@').next().unwrap_or("").trim_end_matches('.').to_ascii_lowercase();
+    let mut labels = domain.split('.');
+    let name = labels.next().unwrap_or("");
+    let ending: Vec<&str> = labels.collect();
+    OUTLOOK_PERSONAL_NAMES.contains(&name) && !ending.is_empty() && ending.len() <= 2 && ending.iter().all(|l| (2..=3).contains(&l.len()))
+}
 
 /// A web mail link to the account it is of. A Gmail link (".../mail/u/0/..."),
 /// when that is not the first: Gmail takes the address in place of the number.
@@ -559,9 +574,8 @@ fn account_link(link: String, acct: &Account) -> String {
     if acct.slot > 1 && link.starts_with("https://mail.google.com/mail/u/0/") {
         return link.replacen("/mail/u/0/", &format!("/mail/u/{}/", acct.address.trim()), 1);
     }
-    let domain = acct.address.trim().rsplit('@').next().unwrap_or("").to_ascii_lowercase();
     match link.strip_prefix("https://outlook.live.com/mail/0/") {
-        Some(rest) if !OUTLOOK_PERSONAL.contains(&domain.as_str()) => format!("https://outlook.office.com/mail/{rest}"),
+        Some(rest) if !outlook_personal(&acct.address, &acct.server) => format!("https://outlook.office.com/mail/{rest}"),
         _ => link,
     }
 }
@@ -2855,9 +2869,8 @@ pub fn server_of(typed: &str, address: &str) -> (String, u16) {
     let domain = address.rsplit('@').next().unwrap_or("").trim().to_ascii_lowercase();
     let host = match domain.as_str() {
         "gmail.com" | "googlemail.com" => "imap.gmail.com".to_string(),
-        "outlook.com" | "hotmail.com" | "live.com" | "msn.com" | "outlook.it" | "hotmail.it" | "live.it" => {
-            "outlook.office365.com".to_string()
-        }
+        // Outlook.com, on any country's ending (hotmail.co.uk, outlook.de…).
+        _ if outlook_personal(&domain, "") => "outlook.office365.com".to_string(),
         "icloud.com" | "me.com" | "mac.com" => "imap.mail.me.com".to_string(),
         "yahoo.com" | "yahoo.it" | "ymail.com" => "imap.mail.yahoo.com".to_string(),
         "libero.it" => "imapmail.libero.it".to_string(),
@@ -3875,6 +3888,20 @@ mod tests {
         assert_eq!(account_link(outlook.clone(), &acct(1, "ada@school.edu")), "https://outlook.office.com/mail/inbox", "Microsoft 365");
         let work = Message { id: "outlook.office365.com:3".into(), link: Some(outlook.clone()), ..Default::default() };
         assert_eq!(of_account(work, &acct(1, "ada@company.it")).link.as_deref(), Some("https://outlook.office.com/mail/inbox"));
+    }
+
+    #[test]
+    fn outlook_com_on_any_countrys_ending_is_a_personal_account() {
+        for address in ["a@hotmail.co.uk", "a@outlook.de", "a@live.fr", "a@hotmail.com.br", "a@msn.com", "a@Outlook.it", "a@outlook.com"] {
+            assert!(outlook_personal(address, ""), "{address}");
+        }
+        for address in ["a@company.it", "a@school.edu", "a@outlook.mycompany.com", "a@live.example.org", "a@hotmail"] {
+            assert!(!outlook_personal(address, ""), "{address}");
+        }
+        // Outlook.com's own IMAP server, typed: personal whatever the address.
+        assert!(outlook_personal("me@mydomain.eu", "imap-mail.outlook.com"));
+        assert_eq!(crate::smtp::server_of("", "a@hotmail.co.uk").0, "smtp-mail.outlook.com");
+        assert_eq!(crate::smtp::server_of("outlook.office365.com", "a@company.it").0, "smtp.office365.com");
     }
 
     #[test]
