@@ -15,6 +15,7 @@ import { Bridge } from "../core/bridge";
 import { h, svg } from "./dom";
 import { ICONS } from "./icons";
 import { renderMath } from "./math";
+import { isMark, protect, scan, spanOf, unprotect, type Span } from "./scan";
 import {
   CALLOUT_TYPES, RICH_KINDS, renderCallout, renderChecklist, renderDiffCard, renderImage, renderRich, type CalloutType, type RichContext,
 } from "./rich/index";
@@ -100,25 +101,39 @@ const isTableRule = (s: string | undefined) => s != null && /^\|?\s*:?-+:?\s*(\|
 /** A table starts at `i`: a row, and the rule right under it. */
 const tableAt = (lines: string[], i: number) => isTableRow(lines[i].trim()) && isTableRule(lines[i + 1]);
 
-/** A row's cells, without the outer pipes; `\|` stays a pipe inside a cell. */
+/**
+ * A row's cells, without the outer pipes; `\|` stays a pipe inside a cell, and
+ * so does a pipe inside `code` or a formula ($|x|$).
+ */
 function tableCells(line: string): string[] {
+  const source = line.trim();
+  const { masked: s, spans } = protect(source, scan(source, false));
   const cells: string[] = [];
   let cell = "";
-  const s = line.trim();
   for (let i = 0; i < s.length; i++) {
+    // \| outside code and formulas is a pipe of the cell; inside a formula
+    // it stays TeX's \| (a norm, ‖v‖), and the scan already kept it there.
     if (s[i] === "\\" && s[i + 1] === "|") {
       cell += "|";
       i++;
     } else if (s[i] === "|") {
-      cells.push(cell.trim());
+      cells.push(cell);
       cell = "";
     } else cell += s[i];
   }
-  cells.push(cell.trim());
+  cells.push(cell);
   // The outer pipes leave an empty cell at each end.
   if (s.startsWith("|")) cells.shift();
   if (cells.length > 1 && s.endsWith("|") && !s.endsWith("\\|")) cells.pop();
-  return cells;
+  // In `code`, \| is a pipe as GitHub reads it; in a formula it stays TeX.
+  const restore = (c: string) =>
+    [...c].map((ch) => {
+      const span = isMark(ch) ? spanOf(ch, spans) : undefined;
+      if (!span) return ch;
+      const raw = source.slice(span.from, span.to);
+      return span.kind === "code" ? raw.replace(/\\\|/g, "|") : raw;
+    }).join("");
+  return cells.map((c) => restore(c).trim());
 }
 
 /** A list item line, bullet or numbered, at any depth. */
@@ -164,6 +179,31 @@ function imageAt(line: string): Extract<Block, { kind: "image" }> | null {
   const image = IMAGE_LINE.exec(line);
   const url = image ? safeWebUrl(image[2] ?? image[3]) : null;
   return image && url?.startsWith("https:") ? { kind: "image", alt: image[1].trim(), url } : null;
+}
+
+/** A line no formula runs across: blank, a heading or a code fence. */
+const endsDisplay = (line: string) => !line.trim() || /^#+(?:\s|$)/.test(line) || FENCE_LINE.test(line);
+
+/** The closer of a $$ or \\[ left open in `text` (outside code and closed formulas), null when none is. */
+function openDisplay(text: string): string | null {
+  const opener = /\$\$|\\\[/.exec(protect(text).masked)?.[0];
+  return opener ? (opener === "$$" ? "$$" : "\\]") : null;
+}
+
+/**
+ * The line at or after `from` that closes a $$ or \\[ left open in `text`,
+ * -1 when none is open or a blank line, a heading or a code fence comes
+ * first: a $$ written as text never swallows the rest of the answer.
+ */
+function displayCloser(text: string, lines: string[], from: number): number {
+  const closer = openDisplay(text);
+  if (!closer) return -1;
+  for (let k = from; k < lines.length; k++) {
+    const line = lines[k];
+    if (line.includes(closer)) return k;
+    if (endsDisplay(line)) return -1;
+  }
+  return -1;
 }
 
 /**
@@ -243,19 +283,27 @@ export function parseMarkdown(input: string, partial = false): Block[] {
     }
 
     // $$ … $$ or \[ … \] on lines of their own: a formula on a line of its own.
-    const opener = line.trim().startsWith("$$") ? "$$" : line.trim().startsWith("\\[") ? "\\[" : null;
-    if (opener) {
-      const closer = opener === "$$" ? "$$" : "\\]";
-      const first = line.trim().slice(2);
+    let opener = line.trim().startsWith("$$") ? "$$" : line.trim().startsWith("\\[") ? "\\[" : null;
+    const closer = opener === "$$" ? "$$" : "\\]";
+    const first = line.trim().slice(2);
+    if (opener && first.includes(closer)) {
+      // On one line; anything after it goes on as text.
       const done = first.indexOf(closer);
-      if (done >= 0) {
-        // On one line; anything after it goes on as text.
-        blocks.push({ kind: "math", tex: first.slice(0, done) });
-        const rest = first.slice(done + 2).trim();
-        if (rest) blocks.push({ kind: "paragraph", text: rest });
-        i++;
-        continue;
-      }
+      blocks.push({ kind: "math", tex: first.slice(0, done) });
+      const rest = first.slice(done + 2).trim();
+      if (rest) blocks.push({ kind: "paragraph", text: rest });
+      i++;
+      continue;
+    }
+    if (opener) {
+      // Its lines run to the closer. A blank line, a heading or a fence
+      // before it: the $$ was text, and swallows nothing (as in a paragraph).
+      // The end of the text before it: an answer still being written, or cut.
+      let end = i + 1;
+      while (end < lines.length && !lines[end].includes(closer) && !endsDisplay(lines[end])) end++;
+      if (end < lines.length && !lines[end].includes(closer)) opener = null;
+    }
+    if (opener) {
       const tex: string[] = [first];
       for (i++; i < lines.length && !lines[i].includes(closer); i++) tex.push(lines[i]);
       let after = "";
@@ -364,6 +412,11 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       if (s.startsWith("$$") || s.startsWith("\\[") || tableAt(lines, i) || imageAt(s)) break;
       para.push(next);
     }
+    // A formula opened inside the paragraph ("So $$" then its lines) runs to
+    // its closer, whatever its lines look like, when the closer comes.
+    for (let close = displayCloser(para.join("\n"), lines, i); close >= 0; close = displayCloser(para.join("\n"), lines, i)) {
+      for (; i <= close; i++) para.push(lines[i]);
+    }
     blocks.push({ kind: "paragraph", text: para.join("\n") });
   }
   return blocks;
@@ -399,15 +452,8 @@ export function safeWebUrl(raw: string): string | null {
   }
 }
 
-/**
- * Math is found with the rest, whichever comes first: $$…$$, \(…\), \[…\]
- * and $…$. A $…$ needs no space just inside its dollars and no digit just
- * after, so "$5 and $10" stays text. An escaped dollar, \$, is a dollar sign
- * and never opens or closes a formula (inside one it stays TeX's \$), and a
- * $…$ never runs across bold's **, so prices like "\$0,20 … **\$ 130**" stay text.
- */
-const MATH = /\$\$([^$]+?)\$\$|\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$((?:\\.|[^$\\\n])+?)\$/;
-const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLINE.source.indexOf("|") + 1)}|(\\\\\\$)|\\\\([*_\`~#])`, "g");
+/** Emphasis and links: what is left once code, formulas and escapes are set aside (scan.ts). */
+const EMPHASIS = new RegExp(INLINE.source.slice(INLINE.source.indexOf("|") + 1), "g");
 
 /**
  * Stars that sit between two operands are multiplication, never emphasis:
@@ -458,49 +504,56 @@ function maskProducts(text: string): string {
 const unmask = (t: string) => (t.includes(TIMES) ? t.split(TIMES).join("*") : t);
 
 export function parseInline(text: string): Inline[] {
-  return parseMasked(maskProducts(text));
+  // First what is code, a formula or escaped, then the Markdown of the rest:
+  // a star or an underscore inside a formula never opens an emphasis.
+  const { masked, spans } = protect(text, scan(text));
+  return parseMasked(maskProducts(masked), spans, text);
 }
 
-function parseMasked(text: string): Inline[] {
+function parseMasked(text: string, spans: Span[], source: string): Inline[] {
   const out: Inline[] = [];
   const pushText = (raw: string) => {
     const t = unmask(raw);
     if (!t) return;
-    const last = out[out.length - 1];
-    if (last?.kind === "text") last.text += t;
-    else out.push({ kind: "text", text: t });
+    let from = 0;
+    const plain = (s: string) => {
+      if (!s) return;
+      const last = out[out.length - 1];
+      if (last?.kind === "text") last.text += s;
+      else out.push({ kind: "text", text: s });
+    };
+    for (let k = 0; k < t.length; k++) {
+      if (!isMark(t[k]) || !spans.length) continue;
+      plain(t.slice(from, k));
+      from = k + 1;
+      const span = spanOf(t[k], spans);
+      if (span.kind === "code") out.push({ kind: "code", text: span.text });
+      else if (span.kind === "math") out.push({ kind: "math", tex: span.tex, display: span.display });
+      else plain(span.text);
+    }
+    plain(t.slice(from));
   };
-  const re = new RegExp(ALL.source, "g");
+  const re = new RegExp(EMPHASIS.source, "g");
   let at = 0;
   let m: RegExpExecArray | null;
-  // Groups: 1 code; 2 $$, 3 \(, 4 \[, 5 $; 6 **, 7 __, 8 *, 9 _; 10 link text, 11 its address; 12 \$.
+  // Groups: 1 **, 2 __, 3 *, 4 _; 5 link text, 6 its address.
   while ((m = re.exec(text))) {
-    // Money, not math: "$5 … $10" (a digit after the closing $) and "25$, … 12$" (one before the opening $).
-    if (m[5] != null && (/^\s|\s$/.test(m[5]) || m[5].includes("**") || /\d/.test(text[m.index + m[0].length] ?? "") || /\d/.test(text[m.index - 1] ?? ""))) {
-      re.lastIndex = m.index + 1;
-      continue;
-    }
     // snake_case_words are not italics: an opening _ must not follow a letter.
-    if ((m[9] != null || m[7] != null) && isWordChar(text[m.index - 1])) {
+    if ((m[4] != null || m[2] != null) && isWordChar(text[m.index - 1])) {
       re.lastIndex = m.index + 1;
       continue;
     }
     // A star run next to punctuation on its inner side and a letter on its outer side opens or closes nothing: "f(*args", "*.log".
-    const starred = m[8] ?? m[6];
+    const starred = m[3] ?? m[1];
     if (starred != null && ((/[^\w\s]/.test(starred[starred.length - 1]) && isWordChar(text[m.index + m[0].length])) || (/[^\w\s]/.test(starred[0]) && isWordChar(text[m.index - 1])))) {
       re.lastIndex = m.index + 1;
       continue;
     }
     pushText(text.slice(at, m.index));
     at = m.index + m[0].length;
-    if (m[13] != null) pushText(m[13]);
-    else if (m[12] != null) pushText("$");
-    else if (m[1] != null) out.push({ kind: "code", text: unmask(m[1].slice(1, -1)) });
-    else if (m[2] != null || m[3] != null || m[4] != null || m[5] != null) {
-      out.push({ kind: "math", tex: unmask(m[2] ?? m[3] ?? m[4] ?? m[5]), display: m[2] != null || m[4] != null });
-    } else if (m[10] != null) out.push({ kind: "link", url: safeWebUrl(unmask(m[11])), children: parseMasked(m[10]) });
-    else if (m[6] != null || m[7] != null) out.push({ kind: "strong", children: parseMasked(m[6] ?? m[7]) });
-    else out.push({ kind: "em", children: parseMasked(m[8] ?? m[9]) });
+    if (m[5] != null) out.push({ kind: "link", url: safeWebUrl(unprotect(unmask(m[6]), spans, source)), children: parseMasked(m[5], spans, source) });
+    else if (m[1] != null || m[2] != null) out.push({ kind: "strong", children: parseMasked(m[1] ?? m[2], spans, source) });
+    else out.push({ kind: "em", children: parseMasked(m[3] ?? m[4], spans, source) });
   }
   pushText(text.slice(at));
   return out;
@@ -875,12 +928,22 @@ export function renderMarkdown(into: HTMLElement, markdown: string, opts: Markdo
       out.push(el);
       continue;
     }
-    const lines: string[] = [];
-    for (; i < blocks.length && blocks[i].kind === "quote"; i++) {
-      const text = (blocks[i] as { text: string }).text;
-      if (text) lines.push(text);
-    }
+    const texts: string[] = [];
+    for (; i < blocks.length && blocks[i].kind === "quote"; i++) texts.push((blocks[i] as { text: string }).text);
     i--;
+    const lines: string[] = [];
+    for (let k = 0; k < texts.length; k++) {
+      if (!texts[k]) continue;
+      // A formula over several quote lines ("> $$", "> a = b", "> $$") stays
+      // one, when its closer comes before a blank quote line.
+      let line = texts[k];
+      const close = displayCloser(line, texts, k + 1);
+      if (close >= 0) {
+        line = texts.slice(k, close + 1).join("\n");
+        k = close;
+      }
+      lines.push(line);
+    }
     if (lines.length) out.push(quoteRun(lines));
   }
   if (opts.after) out.push(opts.after);
