@@ -28,8 +28,16 @@ const settingsJson = () => join(app.profile, "home", ".claude", "settings.json")
 const relayWritten = () => existsSync(settingsJson()) && /statusLine/.test(readFileSync(settingsJson(), "utf8"));
 
 async function openSettingsInIsland() {
-  step("opens Settings in the island (its global shortcut)");
-  await d.js(`window.__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "shortcut", payload: "settings" })`);
+  step("opens the island, then ⋯ → Settings");
+  await app.open();
+  await app.click(await d.visible(".more-btn", 8_000, "the island's ⋯ button"));
+  await d.visible(".ctx-menu .ctx-item", 5_000, "the ⋯ menu");
+  let settings = null;
+  for (const id of await d.all(".ctx-menu .ctx-item")) {
+    if ((await d.displayed(id)) && /^settings$/i.test((await d.text(id)).trim())) settings = id;
+  }
+  assert.ok(settings, "a Settings item in the ⋯ menu");
+  await app.click(settings);
   await d.until("return !!document.querySelector('.settings-frame iframe.ready')", 20_000, "Settings ready in the island");
   await d.js(`const doc = ${FRAME}; doc.querySelector('[data-page="agents"]')?.click();`);
   await sleep(500);
