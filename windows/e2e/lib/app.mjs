@@ -205,15 +205,20 @@ export class Lumo {
       return arguments[0] === e || arguments[0].contains(e) ? "on target" : "on " + (e ? e.className || e.tagName : "nothing");`, this.d.ref(id));
     let hit = "";
     for (let round = 0; round < 3; round++) {
+      // Onto the island first, then over to the element in small steps. The
+      // window lets the mouse through until Rust sees the cursor over the
+      // island, so a cursor that jumps straight onto it from outside is never
+      // heard by the page there, and a click lands on what is under it.
+      const box = await this.islandBox();
+      await this.mouse.move(box.x + box.w / 2, box.y + Math.min(box.h / 2, 30 * (await this.screen()).r));
+      await sleep(200);
       let t = await where();
-      // A pixel off on a new round, so the page hears a move even if the
-      // cursor is already there.
-      let at = { x: t.x + round, y: t.y };
+      let at = { x: t.x, y: t.y };
       for (let i = 0; i < 6; i++) {
         // Only a move the page heard after this one counts: an older reading
         // would send the cursor off by however far it was.
         await this.d.js("window.__e2eMove = null");
-        await this.mouse.move(at.x, at.y);
+        await this.mouse.glide(at.x, at.y);
         let seen = null;
         for (let k = 0; k < 8 && !seen; k++) {
           await sleep(80);
@@ -221,8 +226,9 @@ export class Lumo {
           seen = t.seen;
         }
         if (!seen) {
-          // The page did not hear it: aim by the element's place alone.
-          at = { x: t.x, y: t.y };
+          // The page did not hear it: by the element's place again, a pixel
+          // to one side, so the next try is a move too.
+          at = { x: t.x + (i % 2 ? -1 : 1), y: t.y };
           continue;
         }
         // Where the page saw the cursor, against where the element's centre is now.
