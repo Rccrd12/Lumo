@@ -1,8 +1,10 @@
 // Chat through Claude Code itself: the `claude` CLI the user installed and
 // signed in to with their own Claude plan (Pro, Max…). No API key: Lumo runs
 // the unmodified binary as `claude -p`, and Claude Code answers with its own
-// sign-in, exactly as in a terminal. Lumo never reads, stores or forwards any
-// Claude credential.
+// sign-in, exactly as in a terminal. The chat never reads, stores or forwards
+// any Claude credential (only the plan's usage, plan_usage.rs, once the user
+// turned it on, reads Claude Code's access token when it asks, sends it to
+// Anthropic alone and keeps it nowhere).
 //
 // Unlike the other providers, Claude Code can act: read a dropped PDF or image,
 // read and edit files, run commands, search the web. Every action that needs a
@@ -179,7 +181,7 @@ fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool, island: bool, ma
     let name = if mail.is_empty() { name.to_string() } else { name.replace(".json", &format!("-{}.json", mail.replace(',', "-"))) };
     let path = crate::platform::local_dir().join(name);
     let text = mcp_config(computer, tools, island, mail).to_string();
-    let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
+    let written = write_config(&path, &text);
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
         args.push("--mcp-config".into());
@@ -203,6 +205,31 @@ fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool, island: bool, ma
         }
     }
     args
+}
+
+/// Writes one of the files the chat's Claude Code is pointed at, whether it
+/// is there now. Only when it changed, and whole: written beside it and
+/// renamed over it, so a Claude Code another chat starts meanwhile never
+/// reads half a file.
+fn write_config(path: &std::path::Path, text: &str) -> bool {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    if std::fs::read(path).is_ok_and(|now| now == text.as_bytes()) {
+        return true;
+    }
+    let Some(dir) = path.parent() else { return false };
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let n = NEXT.fetch_add(1, Ordering::SeqCst);
+    let temp = path.with_file_name(format!("{name}.lumo-{}-{n}", std::process::id()));
+    let written = std::fs::write(&temp, text).and_then(|()| std::fs::rename(&temp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+        // Another chat's write may have won the rename: the same text is there.
+        return std::fs::read(path).is_ok_and(|now| now == text.as_bytes());
+    }
+    true
 }
 
 /// The models offered for Claude Code: the current ones by id, so the picker
@@ -279,8 +306,9 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
 
 /// The settings the chat's run adds for itself (`--settings`; the user's
 /// settings.json is not touched):
-///   * Lumo's PermissionRequest hook, the same entry installing writes
-///     (hooks::permission_request_entry), so a card comes up exactly when
+///   * Lumo's PermissionRequest hook, the very entry settings.json has once
+///     installed (hooks::chat_permission_entry: Claude Code runs it once,
+///     not twice), else the one installing writes, so a card comes up exactly when
 ///     Claude Code would ask: what the user's own rules, the mode or an "Allow
 ///     for this session" already allow goes through without one. `claude -p`
 ///     denies what nobody decided.
@@ -305,8 +333,8 @@ fn chat_settings(permission: Value, guard: &str) -> Value {
 fn with_cards(mut args: Vec<String>) -> Vec<String> {
     let guard = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PreToolUse");
     let path = crate::platform::local_dir().join("chat-hooks.json");
-    let text = chat_settings(crate::hooks::permission_request_entry(), &guard).to_string();
-    let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
+    let text = chat_settings(crate::hooks::chat_permission_entry(), &guard).to_string();
+    let written = write_config(&path, &text);
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
         args.push("--settings".into());
@@ -1586,8 +1614,11 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
 
 /// Ends the chat's Claude Code, if one waits between two turns (the chat starts afresh).
 pub fn close(chat_id: &str) {
-    let gone = lives(|all| all.remove(chat_id));
-    drop(gone);
+    // Ending it waits for taskkill: never on the caller's thread, which is
+    // the window's for a new chat or an edited message.
+    if let Some(gone) = lives(|all| all.remove(chat_id)) {
+        std::thread::spawn(move || drop(gone));
+    }
 }
 
 /// An npm install runs `claude.cmd`: killing cmd.exe alone would leave node running.

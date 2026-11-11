@@ -60,6 +60,24 @@ pub fn permission_request_entry() -> Value {
     our_entry("PermissionRequest", timeout)
 }
 
+/// The PermissionRequest entry the island's chat adds to its Claude Code
+/// (claude_code.rs `chat_settings`). With Lumo's hooks installed, the very
+/// one settings.json has: Claude Code runs a hook command it gets twice only
+/// once, and an entry that differs only in the relay's path or quoting would
+/// bring up two cards for one request.
+pub fn chat_permission_entry() -> Value {
+    installed_permission_entry(&read_settings_lossy()).unwrap_or_else(permission_request_entry)
+}
+
+/// Lumo's one PermissionRequest entry in `settings`, when it has exactly one.
+fn installed_permission_entry(settings: &Value) -> Option<Value> {
+    let ours: Vec<&Value> = settings["hooks"]["PermissionRequest"].as_array()?.iter().filter(|e| entry_is_ours(e)).collect();
+    match ours.as_slice() {
+        [entry] if entry["hooks"].as_array().is_some_and(|h| h.len() == 1) => Some((*entry).clone()),
+        _ => None,
+    }
+}
+
 /// Lumo's entry for `event` in settings.json, as installing writes it.
 fn our_entry(event: &str, timeout: u64) -> Value {
     our_entry_running(&hook_command(event), event, timeout)
@@ -479,14 +497,47 @@ pub fn ensure_hook_exe(app: &AppHandle) {
 }
 
 fn install_relay(src: &Path, dest: &Path) {
+    remove_set_aside(dest);
     if same_bytes(src, dest) {
         return;
     }
-    // A hook may be running right now and hold the file open; keeping the old
-    // copy is fine, it is the same relay.
-    if let Err(err) = std::fs::copy(src, dest) {
-        if !dest.exists() {
-            crate::log::line(format!("could not install {}: {err}", platform::HOOK_EXE));
+    let name = dest.file_name().unwrap_or_default().to_string_lossy().to_string();
+    // The new relay is copied beside the old one, then put in its place.
+    let fresh = dest.with_file_name(format!("{name}.new"));
+    if let Err(err) = std::fs::copy(src, &fresh) {
+        let _ = std::fs::remove_file(&fresh);
+        crate::log::line(format!("could not install {}: {err}", platform::HOOK_EXE));
+        return;
+    }
+    if std::fs::rename(&fresh, dest).is_ok() {
+        return;
+    }
+    // A hook is running the old relay right now: Windows won't replace a
+    // program that runs, but lets it be renamed. Set aside, it is removed
+    // the next time once it has ended; the agents' next hook runs the new one,
+    // whose protocol is the app's.
+    let aside = dest.with_file_name(format!("{name}{SET_ASIDE}{}", std::process::id()));
+    let moved = std::fs::rename(dest, &aside).and_then(|()| std::fs::rename(&fresh, dest));
+    if let Err(err) = moved {
+        let _ = std::fs::remove_file(&fresh);
+        crate::log::line(format!("could not replace {}, the old one stays: {err}", platform::HOOK_EXE));
+    }
+}
+
+/// What a relay set aside while it ran is called after its own name.
+const SET_ASIDE: &str = ".old-";
+
+/// The relays set aside beside `dest` before (`install_relay`), and a copy
+/// left half made: removed, those still running stay until next time.
+fn remove_set_aside(dest: &Path) {
+    let (Some(dir), Some(name)) = (dest.parent(), dest.file_name()) else { return };
+    let name = name.to_string_lossy();
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let file = entry.file_name().to_string_lossy().to_string();
+        let ours = file.strip_prefix(name.as_ref()).is_some_and(|rest| rest.starts_with(SET_ASIDE) || rest == ".new");
+        if ours {
+            let _ = std::fs::remove_file(entry.path());
         }
     }
 }
@@ -521,6 +572,37 @@ mod tests {
         install_relay(&src, &dest);
         assert_eq!(std::fs::read(&dest).unwrap(), b"MZ the relay");
         assert!(!same_bytes(&src, &dir.join("missing.exe")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_chat_runs_the_permission_hook_settings_json_has() {
+        let old = json!({ "hooks": [{ "type": "command", "command": "\"C:/old/bin/lumo-hook.exe\" PermissionRequest", "timeout": 120 }] });
+        let theirs = json!({ "hooks": [{ "type": "command", "command": "node ~/.claude/guard.js" }] });
+        let settings = json!({ "hooks": { "PermissionRequest": [theirs.clone(), old.clone()] } });
+        assert_eq!(installed_permission_entry(&settings), Some(old.clone()));
+        // Not installed, or installed twice: Lumo's own entry.
+        assert_eq!(installed_permission_entry(&json!({ "hooks": { "PermissionRequest": [theirs] } })), None);
+        assert_eq!(installed_permission_entry(&json!({})), None);
+        assert_eq!(installed_permission_entry(&json!({ "hooks": { "PermissionRequest": [old.clone(), old] } })), None);
+    }
+
+    #[test]
+    fn a_relay_set_aside_while_it_ran_is_removed_next_time() {
+        let dir = std::env::temp_dir().join(format!("lumo-relay-aside-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (src, dest) = (dir.join("src.exe"), dir.join("lumo-hook.exe"));
+        std::fs::write(&src, b"MZ new relay").unwrap();
+        std::fs::write(&dest, b"MZ old relay").unwrap();
+        std::fs::write(dir.join(format!("lumo-hook.exe{SET_ASIDE}123")), b"MZ older").unwrap();
+        std::fs::write(dir.join("lumo-hook.exe.new"), b"MZ half").unwrap();
+        std::fs::write(dir.join("other.exe"), b"theirs").unwrap();
+        install_relay(&src, &dest);
+        assert_eq!(std::fs::read(&dest).unwrap(), b"MZ new relay");
+        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        left.sort();
+        assert_eq!(left, ["lumo-hook.exe", "other.exe", "src.exe"]);
         let _ = std::fs::remove_dir_all(dir);
     }
 

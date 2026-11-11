@@ -25,11 +25,12 @@
 // confirmation is switched off (`--dangerously-skip-permissions`) and Lumo's
 // hook takes its place: every shell command, MCP or browser tool of this run
 // is an Allow / Deny card in the island (lumo-hook, `LUMO_ISLAND_RUN`), and
-// without a click it is denied. Without the hooks the flag is never passed,
-// and Plan only keeps agy's own confirmation too.
+// without a click it is denied. Without the hooks the flag is passed only in
+// Auto (below), and Plan only keeps agy's own confirmation too.
 //
-// Auto is agy's own Turbo preset: everything runs without asking, and the
-// island lets its cards through (src/island/hooks.ts).
+// Auto is agy's own Turbo preset (`--dangerously-skip-permissions`, hooks or
+// not): everything runs without asking, and the island lets its cards
+// through (src/island/hooks.ts).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
@@ -860,14 +861,7 @@ fn list_models(exe: PathBuf) -> Vec<String> {
     cmd.arg("models").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
     platform::no_console(&mut cmd);
     let Ok(mut child) = cmd.spawn() else { return Vec::new() };
-    let stdout = child.stdout.take();
-    let reader = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(out) = stdout {
-            let _ = out.take(256 * 1024).read_to_string(&mut s);
-        }
-        s
-    });
+    let reader = crate::antigravity_plan::Output::read(child.stdout.take(), 256 * 1024);
     let started = Instant::now();
     loop {
         match child.try_wait() {
@@ -879,7 +873,7 @@ fn list_models(exe: PathBuf) -> Vec<String> {
             }
         }
     }
-    parse_models(&reader.join().unwrap_or_default())
+    parse_models(&reader.text_after_exit())
 }
 
 /// The models for the picker: "Default" (agy's own choice), then what
@@ -1101,16 +1095,7 @@ fn run_on_its_own(exe: PathBuf, name: &str, dir: PathBuf) -> Result<String, Stri
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
     platform::chat_ends_with_lumo(&child);
-    let stdout = child.stdout.take();
-    let reader = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(out) = stdout {
-            let mut out = out;
-            let _ = (&mut out).take(MAX_COMMAND_OUTPUT).read_to_string(&mut s);
-            let _ = std::io::copy(&mut out, &mut std::io::sink());
-        }
-        s
-    });
+    let reader = crate::antigravity_plan::Output::read(child.stdout.take(), MAX_COMMAND_OUTPUT);
     let started = Instant::now();
     loop {
         match child.try_wait() {
@@ -1122,7 +1107,7 @@ fn run_on_its_own(exe: PathBuf, name: &str, dir: PathBuf) -> Result<String, Stri
             }
         }
     }
-    command_answer(&reader.join().unwrap_or_default())
+    command_answer(&reader.text_after_exit())
 }
 
 /// One of agy's commands typed in the chat: /compact in the conversation, the

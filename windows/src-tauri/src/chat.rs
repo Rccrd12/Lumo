@@ -61,6 +61,10 @@ impl ChatReply {
     }
 }
 
+/// What the conversation keeps as the answer of a turn the CLI answered with
+/// nothing: the next provider is told there was none (the island shows why).
+pub const NO_ANSWER: &str = "(No answer.)";
+
 /// The Stop button of the turn being answered. Claude Code checks it while it
 /// reads the CLI's output (claude_code.rs); a request to an API is dropped as
 /// soon as it is pressed (`Chat::unless_stopped`), which closes the connection.
@@ -202,6 +206,7 @@ impl Chat {
 
     pub fn reset(&self) {
         crate::island_tools::forget_plan(&self.id);
+        crate::local_profile::forget(&self.id);
         let mut c = self.inner.lock().unwrap();
         let epoch = c.epoch + 1;
         *c = Conversation { epoch, ..Default::default() };
@@ -227,6 +232,7 @@ impl Chat {
     /// session to continue, if a CLI answered it (as `cli_session` gave it).
     pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>, compact: Option<(usize, String)>) {
         crate::island_tools::forget_plan(&self.id);
+        crate::local_profile::forget(&self.id);
         let mut c = self.inner.lock().unwrap();
         let epoch = c.epoch + 1;
         let plain: Vec<Value> = turns
@@ -250,6 +256,7 @@ impl Chat {
     pub fn rewind(&self, keep: usize) {
         // The island drops the plan the dropped answers made (src/island/plan.ts).
         crate::island_tools::forget_plan(&self.id);
+        crate::local_profile::forget(&self.id);
         let mut c = self.inner.lock().unwrap();
         c.epoch += 1;
         c.files.retain(|(_, _, turn)| *turn < keep);
@@ -291,11 +298,28 @@ impl Chat {
     }
 
     /// The summary of the first `upto` turns goes to the model in their place.
+    #[cfg(test)]
     pub fn set_compact(&self, upto: usize, summary: String) {
+        let epoch = self.epoch();
+        self.set_compact_since(epoch, upto, summary);
+    }
+
+    /// Bumped by every reset, rewind and restore: turns counted before it
+    /// changed may not be the conversation's any more.
+    pub fn epoch(&self) -> u64 {
+        self.inner.lock().unwrap().epoch
+    }
+
+    /// `set_compact`, only if the conversation is still the one of `epoch`
+    /// (no new chat, no edited message, no chat from the history since the
+    /// turns were read): whether the summary was kept.
+    pub fn set_compact_since(&self, epoch: u64, upto: usize, summary: String) -> bool {
         let mut c = self.inner.lock().unwrap();
-        if upto <= c.plain.len() && upto.is_multiple_of(2) {
-            c.compact = Some((upto, summary));
+        if c.epoch != epoch || upto > c.plain.len() || !upto.is_multiple_of(2) {
+            return false;
         }
+        c.compact = Some((upto, summary));
+        true
     }
 
     /// How many plain turns the conversation holds.
@@ -636,7 +660,8 @@ fn lumo_markers(text: &str) -> Vec<&str> {
             found.push(marker);
             rest = &tail[end..];
         } else {
-            rest = &tail[2..];
+            // One `[` on only: `[[[timer …]]` holds a marker one further in.
+            rest = &tail[1..];
         }
     }
     found
@@ -657,8 +682,8 @@ pub(crate) use math_note;
 /// task lists, diff blocks, the lumo-checklist, lumo-steps, lumo-cards,
 /// lumo-calc, lumo-plot, lumo-quiz, lumo-chart and lumo-timeline blocks, and
 /// a line that is only an image. It goes with every message, so it says each
-/// syntax once and as briefly as the parsers allow (about 1 800 characters,
-/// some 480 tokens): what models know already (alerts, task lists, diffs,
+/// syntax once and as briefly as the parsers allow (about 2 300 characters,
+/// some 600 tokens): what models know already (alerts, task lists, diffs,
 /// images) in a few words, and the rest by its keys. Plain words only, the
 /// syntax said in words where it needs `|`, `>` or `^` (`**` stands for
 /// powers, which core/expr.ts reads too): it also goes on Claude Code's
@@ -878,6 +903,10 @@ async fn dispatch(
     usage: &mut Option<ChatUsage>,
 ) -> Result<ChatReply, String> {
     let mut context = context.map(checked_context).transpose()?;
+    // The turn's Stop, armed before anything is gathered for it: a Stop
+    // pressed while the open windows or the emails are read (seconds, at
+    // times) ends the turn before it is sent.
+    chat.arm();
     // One of Claude Code's commands ("/context") goes alone, exactly as typed:
     // nothing of the screen, the windows or the email in front of it, or
     // Claude Code takes it for a question (claude_code.rs). Antigravity CLI's
@@ -888,7 +917,10 @@ async fn dispatch(
     // Settings → Security → "Open windows": the windows and their
     // documents go with every question (desk.rs).
     if settings.chat_share_open && !command {
-        let (windows, documents) = tauri::async_runtime::spawn_blocking(crate::desk::now).await.unwrap_or_default();
+        let Some(read) = chat.unless_stopped(tauri::async_runtime::spawn_blocking(crate::desk::now)).await else {
+            return Ok(stopped_before_sent(chat));
+        };
+        let (windows, documents) = read.unwrap_or_default();
         let s = screen.get_or_insert_with(ScreenContext::default);
         if s.windows.is_empty() {
             s.windows = windows;
@@ -914,16 +946,21 @@ async fn dispatch(
     // not, so every provider can answer it, not only those with a mail tool of
     // their own. Not when Settings → Security keeps the email from the AI.
     if !command && crate::mail::asks_about(&query) && crate::mail::for_ai(app) {
-        if let Some(text) = crate::mail::for_chat(app).await {
+        let Some(mail) = chat.unless_stopped(crate::mail::for_chat(app)).await else {
+            return Ok(stopped_before_sent(chat));
+        };
+        if let Some(text) = mail {
             screen.get_or_insert_with(ScreenContext::default).mail = text;
         }
+    }
+    if chat.stopper().is_stopped() {
+        return Ok(stopped_before_sent(chat));
     }
     // The files the user took out of the context: the AI is told before the question.
     let forgotten = if command { String::new() } else { chat.forgotten_note() };
     let query = if forgotten.is_empty() { query } else { format!("{forgotten}{query}") };
     // The turn the files of this question go with (an edit before it takes them back).
     let at = chat.turns();
-    chat.arm();
     let more: Vec<(String, String)> =
         screen.as_ref().map(|s| s.files.iter().map(|f| (f.name.clone(), f.path.clone())).collect()).unwrap_or_default();
     let reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await;
@@ -949,6 +986,13 @@ async fn dispatch(
     Ok(reply)
 }
 
+/// A turn stopped before its question went: nothing was said, nothing is kept.
+fn stopped_before_sent(chat: &Chat) -> ChatReply {
+    let mut reply = ChatReply::stopped(String::new(), chat.cli_session());
+    reply.turns = chat.turns();
+    reply
+}
+
 async fn send_to(
     app: &AppHandle,
     chat: &Chat,
@@ -962,12 +1006,22 @@ async fn send_to(
     let model = model_for(settings, provider);
     // Unsloth Studio off: started first, when Lumo may (unsloth_studio.rs), and
     // not stopped while this answer is written.
+    // The start goes on by itself: Stop ends the turn at once, and the server
+    // still comes up for the next question (its idle time then stops it).
     let _unsloth = if provider == "unsloth" {
-        let events = chat.events();
-        crate::unsloth_studio::ensure(app, settings, |seconds| {
-            events.activity(app, crate::claude_code::Activity::new("starting", seconds.to_string()));
-        })
-        .await?;
+        let (app_for_start, settings, events, stop) = (app.clone(), settings.clone(), chat.events(), chat.stopper());
+        let start = tauri::async_runtime::spawn(async move {
+            crate::unsloth_studio::ensure(&app_for_start, &settings, |seconds| {
+                if !stop.is_stopped() {
+                    events.activity(&app_for_start, crate::claude_code::Activity::new("starting", seconds.to_string()));
+                }
+            })
+            .await
+        });
+        let Some(started) = chat.unless_stopped(start).await else {
+            return Ok(ChatReply::stopped(String::new(), None));
+        };
+        started.map_err(|e| e.to_string())??;
         Some(crate::unsloth_studio::busy())
     } else {
         None
@@ -1048,6 +1102,7 @@ pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<Compacte
     if is_cli(provider) {
         return Err(crate::i18n::t("This provider compacts the chat itself: send /compact."));
     }
+    let epoch = chat.epoch();
     let Some((upto, mut text)) = chat.to_compact() else { return Ok(None) };
     if text.len() > COMPACT_MAX {
         let mut cut = text.len() - COMPACT_MAX;
@@ -1058,10 +1113,12 @@ pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<Compacte
     }
     let prompt = format!("Here is the conversation:\n\n{text}\nWrite the summary now.");
     let model = model_for(settings, provider);
+    // Streamed, with the model's whole room: a reasoning model thinks first,
+    // and a long conversation's summary takes more than a review's verdict.
     let summary = if provider == ANTHROPIC || provider.is_empty() {
-        crate::claude::complete(&model, COMPACT_SYSTEM, &prompt).await?
+        crate::claude::summarize(&model, COMPACT_SYSTEM, &prompt).await?
     } else if let Some(p) = openai_compat::provider(provider) {
-        openai_compat::complete(p, &model, COMPACT_SYSTEM, &prompt).await?
+        openai_compat::summarize(p, &model, COMPACT_SYSTEM, &prompt).await?
     } else if let Some(server) = local_chat::server(settings, provider) {
         local_chat::complete(&server, &model, COMPACT_SYSTEM, &prompt).await?
     } else {
@@ -1072,7 +1129,9 @@ pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<Compacte
         return Err(crate::i18n::t("The model gave no summary. Try again."));
     }
     let before = chat.history_chars();
-    chat.set_compact(upto, summary.clone());
+    if !chat.set_compact_since(epoch, upto, summary.clone()) {
+        return Err(crate::i18n::t("The chat changed while it was being summed up. Send /compact again."));
+    }
     Ok(Some(Compacted { upto, summary, before, after: chat.history_chars() }))
 }
 
@@ -1124,6 +1183,9 @@ mod tests {
         assert_eq!(lumo_markers(said), ["[[listen Rccrd12/Lumo#30 ready: merge it]]", "[[ Timer 10m pasta]]", "[[listen o/r#3]]"]);
         assert_eq!(keep_lumo_lines("Waiting.".into(), said), "Waiting.\n[[listen Rccrd12/Lumo#30 ready: merge it]]\n[[ Timer 10m pasta]]\n[[listen o/r#3]]\n");
         assert_eq!(keep_lumo_lines("Ok `[[listen o/r#3]]`".into(), "[[listen o/r#3]]"), "Ok `[[listen o/r#3]]`");
+        // One bracket too many in front: the marker inside is still found.
+        assert_eq!(lumo_markers("Set: [[[timer 5m tea]]"), ["[[timer 5m tea]]"]);
+        assert_eq!(lumo_markers("[[[[listen o/r#3]]"), ["[[listen o/r#3]]"]);
     }
 
     fn turn_texts(history: &[Value]) -> Vec<(String, Value)> {
@@ -1283,6 +1345,23 @@ mod tests {
         assert!(chat.begin("ollama").history[0]["content"].as_str().unwrap().contains('S'));
         chat.restore(vec![("user".into(), "a".into())], None, Some((4, "S".into())));
         assert_eq!(chat.begin("ollama").history[0]["content"], "a");
+    }
+
+    #[test]
+    fn a_summary_of_a_conversation_that_changed_meanwhile_is_not_kept() {
+        let chat = Chat::default();
+        chat.restore(vec![("user".into(), "a".into()), ("assistant".into(), "b".into())], None, None);
+        let epoch = chat.epoch();
+        let (upto, _) = chat.to_compact().unwrap();
+        // An edit (or a new chat) while the model sums up.
+        chat.rewind(0);
+        chat.restore(vec![("user".into(), "x".into()), ("assistant".into(), "y".into())], None, None);
+        assert!(!chat.set_compact_since(epoch, upto, "about a and b".into()));
+        assert_eq!(chat.begin("ollama").history[0]["content"], "x");
+        // Unchanged: kept.
+        let epoch = chat.epoch();
+        assert!(chat.set_compact_since(epoch, upto, "about x and y".into()));
+        assert!(chat.begin("ollama").history[0]["content"].as_str().unwrap().contains("about x and y"));
     }
 
     #[test]

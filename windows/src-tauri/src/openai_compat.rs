@@ -391,7 +391,7 @@ pub async fn send(
             let mut json = match sent {
                 // A model this account may not stream (OpenAI asks some
                 // organisations to be verified first): the whole answer, at once.
-                Err((400, e)) if streaming && e.to_lowercase().contains("stream") => {
+                Err((400, e)) if streaming && mentions_streaming(&e) => {
                     // stream_options alone, when the server knows no such field: streamed all the same.
                     if body.get("stream_options").is_some() && e.contains("stream_options") {
                         body.as_object_mut().map(|b| b.remove("stream_options"));
@@ -443,8 +443,12 @@ pub async fn send(
             }
             let message = json.pointer("/choices/0/message").cloned().unwrap_or(Value::Null);
             let calls = message["tool_calls"].as_array().cloned().unwrap_or_default();
-            if calls.is_empty() || body.get("tools").is_none() || rounds == MAX_TOOL_ROUNDS {
-                return Ok::<_, String>(json);
+            if calls.is_empty() || body.get("tools").is_none() {
+                return Ok::<_, String>((json, false));
+            }
+            // Still at its tools after all its rounds: what it said is the answer.
+            if rounds == MAX_TOOL_ROUNDS {
+                return Ok((json, true));
             }
             rounds += 1;
             if let Some(text) = message["content"].as_str().map(str::trim).filter(|t| !t.is_empty()) {
@@ -453,7 +457,11 @@ pub async fn send(
             let mut turn_messages = vec![message.clone()];
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
-                let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
+                // Arguments that aren't whole JSON (a call cut short) never run as `{}`.
+                let Some(input) = call_input(call) else {
+                    turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": "The arguments of this call were not valid JSON, so it did not run. Call it again with complete arguments." }));
+                    continue;
+                };
                 // The island says which tool runs, in place of Thinking….
                 let act = if crate::web_search::NAMES.contains(&name) {
                     crate::web_search::activity(name)
@@ -486,10 +494,18 @@ pub async fn send(
         }
         return Ok(ChatReply::stopped(shown, None));
     };
-    let json = json?;
+    let (json, capped) = json?;
+    if capped {
+        let last = json.pointer("/choices/0/message/content").and_then(Value::as_str).map(str::to_string);
+        let text = crate::claude::capped_answer(said, last, MAX_TOOL_ROUNDS);
+        chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
+        return Ok(ChatReply::answer(text, None));
+    }
     let mut text = reply_text(p, &json)?;
     if cut(&json) {
         text = format!("{text}\n\n_{}_", t("The answer was cut off at the length limit: ask to continue."));
+    } else if json.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some(STOPPED_HALFWAY) {
+        text = format!("{text}\n\n_{}_", t("The connection closed before the answer was over: it may be cut. Ask to continue."));
     }
     // After the user's tools, what was said before each call comes first.
     let text = if said.is_empty() { text } else { said.into_iter().chain([text]).collect::<Vec<_>>().join("\n\n") };
@@ -510,6 +526,56 @@ pub(crate) fn function_tools(tools: &[(String, String, Value)]) -> Value {
 
 /// One question with no conversation and no tools: the supervisor's review
 /// of a tool (tool_review.rs).
+/// /compact: the conversation summed up, streamed (a reasoning model may
+/// think for minutes first) at the model's own room. A summary cut at the
+/// length limit is an error, not a summary.
+pub async fn summarize(p: &'static Provider, model: &str, system: &str, prompt: &str) -> Result<String, String> {
+    let key = secrets::get(p.key).ok_or_else(|| tf("{name} API key missing. Add it in Settings.", &[("name", p.name)]))?;
+    let user = json!({ "role": "user", "content": prompt });
+    let body = request_body(model, system, &[], &user);
+    let endpoint = url(p, "chat/completions")?;
+    let mut streaming = true;
+    let mut retried = false;
+    let json = loop {
+        let sent = if streaming { stream_post(p, &endpoint, &key, &body, &mut None, |_| {}).await } else { post(p, &endpoint, &key, &body, &mut None).await };
+        match sent {
+            Ok(json) => break json,
+            Err((400, e)) if streaming && mentions_streaming(&e) => streaming = false,
+            Err((500 | 502 | 503 | 504, _)) if !retried => {
+                retried = true;
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            Err((_, e)) => return Err(e),
+        }
+    };
+    let text = reply_text(p, &json)?;
+    if cut(&json) || json.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some(STOPPED_HALFWAY) {
+        return Err(t("The summary was cut off at the length limit. Try again."));
+    }
+    Ok(filter_thinking_blocks(&text))
+}
+
+/// Whether a refusal is about streaming itself ("stream", "streaming",
+/// "stream_options"), not a word that only holds it ("upstream").
+fn mentions_streaming(error: &str) -> bool {
+    error
+        .to_lowercase()
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .any(|w| w == "stream" || w == "streaming" || w.starts_with("stream_"))
+}
+
+/// A tool call's arguments as JSON: an object, or nothing when they don't
+/// parse (a call cut short). No arguments at all are `{}`.
+fn call_input(call: &Value) -> Option<Value> {
+    match call.pointer("/function/arguments") {
+        None | Some(Value::Null) => Some(json!({})),
+        Some(Value::String(a)) if a.trim().is_empty() => Some(json!({})),
+        Some(Value::String(a)) => serde_json::from_str::<Value>(a).ok().filter(Value::is_object),
+        Some(v @ Value::Object(_)) => Some(v.clone()),
+        Some(_) => None,
+    }
+}
+
 pub async fn complete(p: &'static Provider, model: &str, system: &str, prompt: &str) -> Result<String, String> {
     let key = secrets::get(p.key).ok_or_else(|| tf("{name} API key missing. Add it in Settings.", &[("name", p.name)]))?;
     let user = json!({ "role": "user", "content": prompt });
@@ -645,8 +711,21 @@ async fn stream_post(
     // A last line without its newline.
     answer.line(String::from_utf8_lossy(&pending).trim_end()).map_err(|e| (0, format!("{}: {e}", p.name)))?;
     on_text(&progressive_filter(&answer.content));
+    // Closed with neither `[DONE]` nor a finish_reason: the answer stopped
+    // halfway. A tool call may be cut short in it: nothing runs then.
+    let halfway = !answer.done && answer.finish_reason.is_none();
+    if halfway && !answer.calls.is_empty() {
+        return Err((0, tf("Network error: {error}", &[("error", "the answer stopped halfway")])));
+    }
+    if halfway {
+        answer.finish_reason = Some(STOPPED_HALFWAY.into());
+    }
     answer.finish().ok_or_else(|| (0, tf("Network error: {error}", &[("error", "the answer stopped halfway")])))
 }
+
+/// The finish_reason of an answer whose stream closed before it said it was
+/// over: its text is kept, with a line that says it may be cut.
+const STOPPED_HALFWAY: &str = "lumo_stopped_halfway";
 
 /// A streamed answer put back together from its `choices[0].delta`s.
 #[derive(Default)]
@@ -1007,6 +1086,48 @@ mod tests {
 
     fn p(id: &str) -> &'static Provider {
         provider(id).unwrap()
+    }
+
+    #[test]
+    fn only_a_refusal_about_streaming_turns_streaming_off() {
+        assert!(mentions_streaming("Your organization must be verified to stream this model."));
+        assert!(mentions_streaming("Unrecognized request argument supplied: stream_options"));
+        assert!(mentions_streaming("Streaming is not supported"));
+        assert!(!mentions_streaming("Upstream provider returned an error"));
+        assert!(!mentions_streaming("upstream_error: bad request"));
+    }
+
+    #[test]
+    fn a_call_whose_arguments_do_not_parse_is_not_run_with_none() {
+        let call = |args: Value| json!({ "id": "c", "function": { "name": "workspace_write", "arguments": args } });
+        assert_eq!(call_input(&call(json!(r#"{"path":"a.txt"}"#))), Some(json!({ "path": "a.txt" })));
+        assert_eq!(call_input(&call(json!(""))), Some(json!({})));
+        assert_eq!(call_input(&call(Value::Null)), Some(json!({})));
+        assert_eq!(call_input(&call(json!({ "path": "a.txt" }))), Some(json!({ "path": "a.txt" })));
+        // Cut short, or not an object.
+        assert_eq!(call_input(&call(json!(r#"{"path":"a.tx"#))), None);
+        assert_eq!(call_input(&call(json!("[1,2]"))), None);
+    }
+
+    #[test]
+    fn a_stream_that_closes_before_it_is_over_is_not_taken_for_a_whole_answer() {
+        use crate::net::tests::serve_once;
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let ask = |body: &str| {
+            let u = serve_once("200 OK", "Content-Type: text/event-stream\r\n", body.as_bytes().to_vec());
+            let endpoint = Url::parse(&u).unwrap();
+            rt.block_on(stream_post(p("openai"), &endpoint, "k", &json!({ "model": "m" }), &mut None, |_| {}))
+        };
+        // Whole: a finish_reason, or [DONE].
+        let whole = ask("data: {\"choices\":[{\"delta\":{\"content\":\"Hi.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n").unwrap();
+        assert_eq!(whole.pointer("/choices/0/finish_reason").and_then(Value::as_str), Some("stop"));
+        // Text cut short: kept, marked.
+        let text = ask("data: {\"choices\":[{\"delta\":{\"content\":\"Half an\"}}]}\n\n").unwrap();
+        assert_eq!(text.pointer("/choices/0/message/content").and_then(Value::as_str), Some("Half an"));
+        assert_eq!(text.pointer("/choices/0/finish_reason").and_then(Value::as_str), Some(STOPPED_HALFWAY));
+        // A tool call cut short: an error, nothing runs.
+        let call = ask("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"workspace_write\",\"arguments\":\"{\\\"pa\"}}]}}]}\n\n");
+        assert!(call.is_err());
     }
 
     #[test]
