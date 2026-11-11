@@ -833,6 +833,10 @@ export type SharedContext =
 export interface ModelInfo {
   id: string;
   label: string;
+  /** A provider called by its API: the reasoning levels the model takes, where its list says. */
+  reasoning?: string[];
+  /** The same: its context, in tokens. */
+  context?: number;
 }
 
 /** A model a local server holds in memory (local_models.rs). */

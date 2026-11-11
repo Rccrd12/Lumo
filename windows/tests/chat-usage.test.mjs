@@ -123,6 +123,24 @@ test("Google, the model servers and the custom one show nothing", () => {
   }
 });
 
+test("an API provider: how full the chat's context is, alone or next to its limits", () => {
+  const ctx = (provider, used, total, chat = "c1") => ({ provider, context: { chat, used, total }, at: NOW });
+  // Google says only its tokens: the line is the context, and its menu a local model's.
+  const google = usageLine(on({ chatProvider: "google" }), null, ctx("google", 262_144, 1_048_576), NOW, null, "c1", ctx("google", 262_144, 1_048_576));
+  assert.equal(google.text, "Context: 262.1K of 1M");
+  assert.equal(google.pct, 25);
+  assert.equal(google.context, true);
+  // Another chat's context is not this one's.
+  assert.equal(usageLine(on({ chatProvider: "google" }), null, undefined, NOW, null, "c2", ctx("google", 10, 100)), null);
+  // Anthropic: its rate limits and the context; the ring shows the fuller.
+  const both = { ...ctx("anthropic", 900_000, 1_000_000), tokens: { remaining: 27_500, limit: 30_000 } };
+  const line = usageLine(on(), null, both, NOW, null, "c1", both);
+  assert.equal(line.text, "Context: 900K of 1M · Tokens left: 27.5K / 30K");
+  assert.equal(line.pct, 90);
+  assert.equal(line.rows.length, 1, "the context has its own bar above the limits");
+  assert.ok(!line.context);
+});
+
 test("numbers read short in the interface language", () => {
   assert.equal(compact(27_500), "27.5K");
   assert.equal(compact(2_000_000), "2M");

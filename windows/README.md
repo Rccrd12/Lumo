@@ -569,6 +569,18 @@ tools, the email and listening tools and your own tools. With **Lumo's web searc
 search the web (Bing, with Bing News for the latest, and Wikipedia only when neither answers; with Unsloth Studio, its own web search when Lumo has its key) and read a page; it is off
 until you turn it on. `/compact` summarises a long chat into a short one.
 
+With these providers and Anthropic's API the picker has an **Effort** slider
+for the models that reason, with the levels the model list says (Anthropic's,
+low to max, sent as `output_config.effort`; OpenRouter's for the models that
+declare it) or, where the list says nothing, for the families that reason
+(Gemini 2.5 and later, the o-series and GPT-5: low, medium, high, sent as
+`reasoning_effort`). **Auto** sends none, and a model that refuses the level
+is asked again at its own. With **Show remaining usage in the chat** on, the
+usage ring shows how full the chat's context is, read off each answer's own
+token count (no call of its own), next to Anthropic's and OpenAI's rate limits
+and OpenRouter's credits; its menu has **Compact the chat**. Their tools run on
+this PC, so the shield offers the local models' four modes and sandbox (below).
+
 **Local models**: **Settings… → Chat → Local models** connects **Ollama** or **LM
 Studio** (leave the address empty for the usual one on this PC; Ollama's
 `OLLAMA_HOST` is honoured) or any server that speaks the OpenAI API (vLLM,
@@ -582,7 +594,7 @@ started: an Unsloth Studio you opened stays on. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
-With a local model the shield offers **Ask for approval** (a card for every
+With a local model, or a provider called by its API, the shield offers **Ask for approval** (a card for every
 call of your tools and every web search or page read), **Approve for me** (a
 trusted tool asks only for risky calls), **Run automatically** (a trusted tool
 never asks when it can run in the Windows sandbox, and otherwise asks as
@@ -693,7 +705,7 @@ for the level its model is made for; it goes to Claude Code as `--effort`.
 Claude Code's own run never shows up as a session in the island: only its
 permission requests do, as a card over the chat.
 
-**The shield** next to the screen button (Claude Code, Antigravity CLI, Codex, Copilot CLI and Cursor CLI only)
+**The shield** next to the screen button (with Claude Code, Antigravity CLI, Codex, Copilot CLI and Cursor CLI; the local models and the API providers have their own four modes, above)
 says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**

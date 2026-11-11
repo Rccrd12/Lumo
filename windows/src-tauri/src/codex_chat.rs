@@ -924,8 +924,8 @@ fn list_models(exe: PathBuf) -> Vec<(String, String)> {
 pub async fn models() -> Result<Vec<ModelInfo>, String> {
     let exe = platform::codex_candidates().into_iter().next().ok_or_else(not_installed)?;
     let listed = tauri::async_runtime::spawn_blocking(move || list_models(exe)).await.map_err(|e| e.to_string())?;
-    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default") }];
-    out.extend(listed.into_iter().map(|(id, label)| ModelInfo { id, label }));
+    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default"), ..Default::default() }];
+    out.extend(listed.into_iter().map(|(id, label)| ModelInfo { id, label, ..Default::default() }));
     Ok(out)
 }
 

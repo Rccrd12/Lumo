@@ -1289,6 +1289,38 @@ pub fn is_mail_tool(id: &str) -> bool {
     crate::mail_tool_defs::mail_tool(id)
 }
 
+/// The chat's permission mode as a model the chat calls itself (a local
+/// model, or a provider by its API) takes it: Run automatically ("off") is
+/// theirs alone, the rest read as the CLIs' (claude_code::permission_mode).
+pub fn chat_mode(raw: &str) -> &'static str {
+    if raw.trim() == "off" {
+        "off"
+    } else {
+        crate::claude_code::permission_mode(raw)
+    }
+}
+
+/// The tools a turn offers in permission `mode` (`chat_mode`): on Plan only,
+/// the island's own (a timer, listening) and the email's that only read, none
+/// of the user's and nothing that sends or changes an email.
+pub fn tools_for_mode(all: Vec<(String, String, Value)>, mode: &str) -> Vec<(String, String, Value)> {
+    if mode != "plan" {
+        return all;
+    }
+    let reads = |id: &str| {
+        crate::island_tools::NAMES.contains(&id)
+            || id == crate::island_tools::UPDATE_PLAN
+            || crate::mail_tool_defs::MAIL_NAMES.contains(&id)
+            || crate::github_tools::NAMES.contains(&id)
+            || crate::web_search::NAMES.contains(&id)
+            || crate::workspace::READS.contains(&id)
+    };
+    all.into_iter().filter(|(id, _, _)| reads(id)).collect()
+}
+
+/// What a model the chat calls itself is told on Plan only.
+pub const PLAN_ONLY_NOTE: &str = " The user picked Plan only: read and plan, and change nothing.";
+
 /// The tools agents may use, for the chat's API providers (claude.rs,
 /// openai_compat.rs, local_chat.rs): the island's own (island_tools.rs: the
 /// timer and listening), Lumo's email tools as Security lets the AI have
@@ -1465,9 +1497,10 @@ fn take_allowed(id: &str) -> bool {
 
 /// When a call of one of the user's tools needs a card. A tool the user
 /// didn't trust (Ask every time, in its detail) always asks, whoever calls it:
-/// a local model's permission mode (local_chat.rs) only decides for the tools
-/// they trust, and never asks less than the tool says. The API providers and
-/// Claude Code's relay ask as before: no card for a tool the user trusts.
+/// the chat's permission mode with a local model (local_chat.rs) or a provider
+/// called by its API (claude.rs, openai_compat.rs) only decides for the tools
+/// they trust, and never asks less than the tool says. Claude Code's relay
+/// asks as before: no card for a tool the user trusts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Asking {
     /// Ask for approval: a card for every call, even of a tool the user trusts.
@@ -1485,9 +1518,10 @@ pub enum Asking {
 }
 
 impl Asking {
-    /// How a local model's chat asks in permission `mode` ("default", "auto",
-    /// "off" or "plan", as the chat's shield sets it). Plan only has none of
-    /// the user's tools, so asks as Approve for me for the web.
+    /// How a local model's chat, or a provider's called by its API, asks in
+    /// permission `mode` ("default", "auto", "off" or "plan", as the chat's
+    /// shield sets it). Plan only has none of the user's tools, so asks as
+    /// Approve for me for the web.
     pub fn for_local(mode: &str) -> Asking {
         match mode {
             "default" => Asking::Always,

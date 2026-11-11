@@ -427,7 +427,7 @@ Lumo may give you the windows and documents open on the user's computer: use the
         out.push_str(p.catalog);
     }
     if p.plan {
-        out.push_str(" The user picked Plan only: read and plan, and change nothing.");
+        out.push_str(crate::tools::PLAN_ONLY_NOTE);
     }
     if p.workshop {
         out.push_str(crate::chat::workshop_note!());

@@ -46,6 +46,7 @@ use crate::claude_code::Activity;
 use crate::local_models::Caps;
 use crate::local_profile as profile;
 use crate::settings::Settings;
+use crate::tools::tools_for_mode;
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
 use lumo_local::guard::{answer_room, append_text};
@@ -259,7 +260,7 @@ async fn list(id: &str, base: &Url, key: Option<&str>) -> Result<Vec<ModelInfo>,
     let bytes = net::read_capped(response, net::MAX_BODY).await?;
     let body: Value = serde_json::from_slice(&bytes).map_err(|_| unreachable(base))?;
     let models = parse_models(&body).ok_or_else(|| unreachable(base))?;
-    Ok(if id == "unsloth" { unsloth_models(models) } else { models.into_iter().map(|(id, _)| ModelInfo { label: id.clone(), id }).collect() })
+    Ok(if id == "unsloth" { unsloth_models(models) } else { models.into_iter().map(|(id, _)| ModelInfo { label: id.clone(), id, ..Default::default() }).collect() })
 }
 
 /// The chat models of a `/v1/models` answer: each id, with its row.
@@ -304,7 +305,7 @@ fn unsloth_models(models: Vec<(String, Value)>) -> Vec<ModelInfo> {
             Some(q) => format!("{name} · {q}"),
             None => name.to_string(),
         };
-        out.push(ModelInfo { label, id });
+        out.push(ModelInfo { label, id, ..Default::default() });
     }
     out
 }
@@ -385,24 +386,6 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
     messages.extend(history.iter().cloned());
     messages.push(user.clone());
     json!({ "model": model, "messages": messages, "stream": true, "max_tokens": MAX_TOKENS })
-}
-
-/// The tools a turn offers in permission `mode` (claude_code::permission_mode):
-/// on Plan only, the island's own (a timer, listening) and the email's that
-/// only read, none of the user's and nothing that sends or changes an email.
-fn tools_for_mode(all: Vec<(String, String, Value)>, mode: &str) -> Vec<(String, String, Value)> {
-    if mode != "plan" {
-        return all;
-    }
-    let reads = |id: &str| {
-        crate::island_tools::NAMES.contains(&id)
-            || id == crate::island_tools::UPDATE_PLAN
-            || crate::mail_tool_defs::MAIL_NAMES.contains(&id)
-            || crate::github_tools::NAMES.contains(&id)
-            || crate::web_search::NAMES.contains(&id)
-            || crate::workspace::READS.contains(&id)
-    };
-    all.into_iter().filter(|(id, _, _)| reads(id)).collect()
 }
 
 /// Whether `path` is a picture a model that sees can be sent.
@@ -659,7 +642,7 @@ pub async fn send(
     let open_plan = if caps.tools == Some(false) { None } else { crate::island_tools::open_plan(chat.id()) };
     // The tools, unless the server says the model takes none.
     // Run automatically ("off") is the local chat's own mode; the rest read as the CLIs'.
-    let mode = if mode.trim() == "off" { "off" } else { crate::claude_code::permission_mode(mode) };
+    let mode = crate::tools::chat_mode(mode);
     // Lumo's email tools, usable only while this turn runs.
     let mail = if caps.tools == Some(false) { "" } else { crate::mail::ai_tools(app) };
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
@@ -1088,7 +1071,7 @@ mod tests {
     fn the_list_names_unsloth_models_and_leaves_the_others_as_they_are() {
         let body = br#"{"data":[{"id":"o/m","quant":"Q4_K_M","display_name":"M"},{"id":"o/m:Q4_K_M","quant":"Q4_K_M","display_name":"M"}]}"#;
         let u = serve_once("200 OK", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
-        assert_eq!(block_on(list("unsloth", &url(&u), None)).unwrap(), vec![ModelInfo { id: "o/m".into(), label: "M · Q4_K_M".into() }]);
+        assert_eq!(block_on(list("unsloth", &url(&u), None)).unwrap(), vec![ModelInfo { id: "o/m".into(), label: "M · Q4_K_M".into(), ..Default::default() }]);
         let u = serve_once("200 OK", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
         let ids: Vec<String> = block_on(list("custom", &url(&u), None)).unwrap().into_iter().map(|m| m.label).collect();
         assert_eq!(ids, ["o/m", "o/m:Q4_K_M"]);

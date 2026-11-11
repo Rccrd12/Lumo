@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   PERMISSION_MODES, PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, parseSandboxLevel, permissionModesFor, isLoopbackHost, pickModel, providerDef, urlExposure,
   visibleProviders, withModel, anyProviderReady, capsContext, capsWords, contextSize, localCapsOf, setLocalCaps,
+  apiCaps, hasPermissions, isApiProvider, usesLumoTools,
 } from "../src/core/providers.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 
@@ -135,17 +136,32 @@ test("every CLI has the same three modes; Turbo, picked before, is Auto with Ant
   }
 });
 
-test("the model servers add Run automatically; with a CLI it asks every time", () => {
+test("an API provider's model offers the reasoning levels its list says", () => {
+  assert.ok(isApiProvider("google") && isApiProvider("anthropic") && !isApiProvider("claude-code") && !isApiProvider("ollama"));
+  assert.equal(apiCaps(undefined), null);
+  setLocalCaps("google", apiCaps({ id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", reasoning: ["low", "medium", "high"], context: 1_048_576 }));
+  assert.deepEqual(effortsFor("google"), ["", "low", "medium", "high"]);
+  assert.equal(localCapsOf("google").maxContext, 1_048_576);
+  assert.equal(effortFor("google", "high"), "high");
+  assert.equal(effortFor("google", "max"), "", "Claude Code's max is not Gemini's: Auto");
+  setLocalCaps("google", apiCaps({ id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" }));
+  assert.deepEqual(effortsFor("google"), [], "a model that doesn't reason: no slider");
+  setLocalCaps("google", null);
+});
+
+test("the model servers and the API providers add Run automatically; with a CLI it asks every time", () => {
   assert.deepEqual(PERMISSION_MODES, ["default", "auto", "off", "plan"]);
   for (const p of PROVIDERS) {
-    const want = p.urlField !== null ? ["default", "auto", "off", "plan"] : ["default", "auto", "plan"];
+    const want = p.urlField !== null || p.key !== null ? ["default", "auto", "off", "plan"] : ["default", "auto", "plan"];
     assert.deepEqual(permissionModesFor(p.id), want, p.id);
   }
-  for (const id of ["ollama", "lmstudio", "unsloth", "custom"]) {
+  for (const id of ["ollama", "lmstudio", "unsloth", "custom", "anthropic", "google", "openai", "openrouter"]) {
     for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m, id), m, `${m} with ${id}`);
+    assert.ok(hasPermissions(id) && usesLumoTools(id), id);
   }
-  for (const id of ["claude-code", "antigravity-cli", "codex", "copilot-cli", "cursor-cli", "anthropic", "openai"]) {
+  for (const id of ["claude-code", "antigravity-cli", "codex", "copilot-cli", "cursor-cli"]) {
     assert.equal(parsePermissionMode("off", id), "default", id);
+    assert.ok(hasPermissions(id) && !usesLumoTools(id), id);
   }
   assert.equal(parsePermissionMode("turbo", "ollama"), "default");
   assert.equal(parsePermissionMode("acceptEdits", "ollama"), "auto");

@@ -68,8 +68,26 @@ export function isCliProvider(id: string): boolean {
 }
 
 /**
+ * The providers the chat calls by their API with the user's key (claude.rs,
+ * openai_compat.rs): Anthropic, Google AI, OpenAI and OpenRouter.
+ */
+export function isApiProvider(id: string): boolean {
+  return PROVIDERS.some((p) => p.id === id && p.key !== null);
+}
+
+/**
+ * The providers whose actions are Lumo's own tools, run on this computer as
+ * the chat's turn goes (tools.rs call_for_chat): the model servers, and the
+ * providers called by their API. Their shield has the same four modes and the
+ * sandbox behind them; the CLIs' have their own.
+ */
+export function usesLumoTools(id: string): boolean {
+  return isApiProvider(id) || PROVIDERS.some((p) => p.id === id && p.urlField !== null);
+}
+
+/**
  * Whether the chat's shield is offered with `id`: the CLIs, and the model
- * servers, whose tools the modes hold too (local_chat.rs: Ask for approval
+ * servers and the providers called by their API, whose tools the modes hold too (local_chat.rs: Ask for approval
  * asks for every call of the user's tools and every web search or page read,
  * Approve for me asks for a trusted tool only when it is risky, Run
  * automatically never asks for a trusted tool that can run in the Windows
@@ -77,7 +95,7 @@ export function isCliProvider(id: string): boolean {
  * tool on Ask every time always asks; see permissionModesFor).
  */
 export function hasPermissions(id: string): boolean {
-  return isCliProvider(id) || PROVIDERS.some((p) => p.id === id && p.urlField !== null);
+  return isCliProvider(id) || usesLumoTools(id);
 }
 
 /**
@@ -87,20 +105,20 @@ export function hasPermissions(id: string): boolean {
  * Code's auto mode), or only plan. With Antigravity CLI, Auto is Antigravity's
  * own Turbo preset: everything runs without asking (antigravity_cli.rs).
  * Claude Code never gets a mode that lets every action through. "off" is for
- * the model servers only (local_chat.rs): it never asks for what can run in
- * the Windows sandbox (Settings.localSandbox "high"), and otherwise asks as
- * Auto does.
+ * the model servers and the providers called by their API only (local_chat.rs,
+ * tools.rs Asking): it never asks for what can run in the Windows sandbox
+ * (Settings.localSandbox "high"), and otherwise asks as Auto does.
  */
 export const PERMISSION_MODES = ["default", "auto", "off", "plan"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
 /**
  * The modes the chat offers with `provider`: the same three with every CLI,
- * and with a model server Run automatically ("off") too.
+ * and with a model server or a provider called by its API Run automatically
+ * ("off") too.
  */
 export function permissionModesFor(provider: string): PermissionMode[] {
-  const local = PROVIDERS.some((p) => p.id === provider && p.urlField !== null);
-  return local ? [...PERMISSION_MODES] : ["default", "auto", "plan"];
+  return usesLumoTools(provider) ? [...PERMISSION_MODES] : ["default", "auto", "plan"];
 }
 
 /**
@@ -151,6 +169,8 @@ export function parseSandboxLevel(v: unknown): SandboxLevel {
 /**
  * What a local model can do, as its server says (local_models.rs Caps): null
  * or empty where it says nothing (an OpenAI-compatible server of another kind).
+ * A provider called by its API has the same, from its model list
+ * (`apiCaps`): the reasoning levels and the context only.
  */
 export interface LocalCaps {
   vision: boolean | null;
@@ -162,7 +182,7 @@ export interface LocalCaps {
   loadedContext: number;
 }
 
-/** The caps of the model picked on each model server, once asked (views/chat.ts). */
+/** The caps of the model picked on each model server or API provider, once known (views/chat.ts). */
 const localCaps = new Map<string, LocalCaps>();
 
 /** Keeps what `provider`'s server said about its model picked; null forgets it. */
@@ -174,6 +194,17 @@ export function setLocalCaps(provider: string, caps: LocalCaps | null): void {
 /** What the model picked on `provider` can do, when its server said. */
 export function localCapsOf(provider: string): LocalCaps | undefined {
   return localCaps.get(provider);
+}
+
+/**
+ * A model of an API provider's list as caps (chat.rs ModelInfo): the
+ * reasoning levels it takes and its context, nothing of the rest.
+ */
+export function apiCaps(model: { reasoning?: string[]; context?: number } | undefined): LocalCaps | null {
+  if (!model) return null;
+  const reasoning = Array.isArray(model.reasoning) ? model.reasoning.filter((r) => typeof r === "string") : [];
+  const context = typeof model.context === "number" && model.context > 0 ? model.context : 0;
+  return { vision: null, tools: null, reasoning, maxContext: context, loadedContext: 0 };
 }
 
 /** "64k", "256k", "1M": a context size, short. */
@@ -207,7 +238,8 @@ export function capsContext(caps: LocalCaps | undefined): string {
  * The effort levels the picker offers for `id`; none for a provider without
  * any. Antigravity CLI has none to pick: each of its models carries its effort
  * in its name (`gemini-3.8-flash-low`), so the model is the choice. A local
- * model offers the reasoning levels its server says it takes.
+ * model offers the reasoning levels its server says it takes; a provider
+ * called by its API, those its model list says (apiCaps).
  */
 export function effortsFor(id: string): readonly string[] {
   if (id === "claude-code") return EFFORTS;
