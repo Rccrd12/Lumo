@@ -183,13 +183,30 @@ export interface EditStat {
   bytes?: number;
 }
 
+/** What the relay says of a request it forwarded (lumo-hook truncate_payload). */
+export interface SentAs {
+  /** `lumo_input_cut`: the input is not the whole one. */
+  cut?: boolean;
+  /** `lumo_write_bytes` / `lumo_write_lines`: a Write's real size, when its text was cut. */
+  writeBytes?: unknown;
+  writeLines?: unknown;
+}
+
+const isCount = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n > 0;
+
 /**
  * The lines a Write, Edit, MultiEdit or NotebookEdit asks to change, for the
  * line under the file on its card: the card names the file Allow allows, and
  * this says how much is written there without showing the text. Null for any
- * other tool, or a call that changes nothing.
+ * other tool, or a call that changes nothing. A request the relay cut is not
+ * counted from what is left of it (that would be the cut's size): a Write
+ * shows the size the relay read before cutting, anything else no numbers.
  */
-export function editStat(tool: string, input: Record<string, unknown>): EditStat | null {
+export function editStat(tool: string, input: Record<string, unknown>, sent: SentAs = {}): EditStat | null {
+  if (sent.cut) {
+    if (tool !== "Write" || !isCount(sent.writeBytes) || !isCount(sent.writeLines)) return null;
+    return { added: sent.writeLines, removed: 0, bytes: sent.writeBytes };
+  }
   if (tool === "NotebookEdit") {
     const source = input.new_source;
     if (typeof source !== "string" || input.edit_mode === "delete" || !source) return null;

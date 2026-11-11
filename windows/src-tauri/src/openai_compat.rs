@@ -779,8 +779,13 @@ fn merge(into: &mut Value, from: &Value) {
     }
 }
 
-/// `field` of `into` with `more` added at its end.
+/// `field` of `into` with `more` added at its end. Only into an object: a
+/// server's piece of another shape is left out, never a panic (which would
+/// take the whole app down).
 fn append(into: &mut Value, field: &str, more: &str) {
+    if !into.is_object() {
+        return;
+    }
     let joined = format!("{}{more}", into[field].as_str().unwrap_or_default());
     into[field] = json!(joined);
 }
@@ -895,6 +900,10 @@ impl Assembly {
     /// One piece of a reasoning block: the text of the block it continues
     /// (same type and index) grows, or a new block starts.
     fn reasoning_detail(&mut self, piece: &Value) {
+        // A piece that is not an object is no block: left out.
+        if !piece.is_object() {
+            return;
+        }
         // An encrypted block comes whole: two in a row with no index are two blocks.
         let same = self.reasoning_details.last_mut().filter(|last| {
             last["type"] == piece["type"] && last.get("index") == piece.get("index") && (piece.get("index").is_some() || piece["type"] != "reasoning.encrypted")
@@ -1212,6 +1221,21 @@ mod tests {
             }
         }
         (a.finish(), texts)
+    }
+
+    #[test]
+    fn reasoning_pieces_of_the_wrong_shape_are_no_panic() {
+        let (whole, _) = assemble(&[
+            r#"data: {"choices":[{"index":0,"delta":{"reasoning_details":[5,{"text":"x"},"y",{"text":"z"}]}}]}"#,
+            r#"data: {"choices":[{"index":0,"delta":{"content":"Ok."},"finish_reason":"stop"}]}"#,
+            "data: [DONE]",
+        ]);
+        let whole = whole.unwrap();
+        assert_eq!(whole["choices"][0]["message"]["content"], "Ok.");
+        assert_eq!(whole["choices"][0]["message"]["reasoning_details"], json!([{"text":"xz"}]));
+        let mut text = json!(5);
+        append(&mut text, "text", "more");
+        assert_eq!(text, json!(5), "only into an object");
     }
 
     #[test]
