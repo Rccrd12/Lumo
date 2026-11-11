@@ -577,17 +577,23 @@ fn cap_diff_strings(value: &mut serde_json::Value, budget: &mut usize, cut_any: 
 }
 
 /// `tool_input` of a permission request: its target (TARGET_FIELDS, at the
-/// top) up to MAX_TARGET_LEN, the text a file tool writes (CONTENT_TOOLS) up to
-/// the live diff's budget, any other string the ordinary cap. True when
-/// anything was cut: the island then knows the input it got is not the whole.
+/// top, and the text Lumo's computer use types) up to MAX_TARGET_LEN, the text
+/// a file tool writes (CONTENT_TOOLS) up to the live diff's budget, any other
+/// string the ordinary cap. True when anything was cut: the island then knows
+/// the input it got is not the whole.
 fn cap_request_strings(input: &mut Value, tool: &str) -> bool {
     let mut cut_any = false;
     let writes = CONTENT_TOOLS.contains(&tool);
+    // The card of a Type shows every character it will type: the text is its
+    // target, never cut within what the tool accepts (5,000 characters).
+    let types = mcp::lumo_tool(tool) == Some("type");
     let mut budget = MAX_DIFF_TOTAL;
     if let Value::Object(map) = input {
         for (key, v) in map.iter_mut() {
             match v {
-                Value::String(s) if TARGET_FIELDS.contains(&key.as_str()) => cut_any |= cut(s, MAX_TARGET_LEN),
+                Value::String(s) if TARGET_FIELDS.contains(&key.as_str()) || (types && key == "text") => {
+                    cut_any |= cut(s, MAX_TARGET_LEN)
+                }
                 _ if writes => cut_any |= cap_content(v, key, &mut budget),
                 _ => cut_any |= cap_all(v),
             }
@@ -986,6 +992,29 @@ mod tests {
         let mut v = serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": "ls" }, "cwd": "c".repeat(MAX_FIELD_LEN + 1) });
         truncate_payload(&mut v, "PermissionRequest");
         assert!(v.get("lumo_input_cut").is_none(), "only the input counts");
+    }
+
+    #[test]
+    fn the_text_computer_use_types_reaches_its_card_whole() {
+        // 5,000 characters, accents included (more bytes than characters).
+        let text = "è".repeat(2_500) + &"a\n".repeat(1_250);
+        for tool in ["mcp__lumo__type", "mcp_lumo_type", "lumo/type"] {
+            let mut v = serde_json::json!({ "tool_name": tool, "tool_input": { "text": text } });
+            truncate_payload(&mut v, "PermissionRequest");
+            assert_eq!(v["tool_input"]["text"].as_str().unwrap(), text, "{tool}");
+            assert!(v.get("lumo_input_cut").is_none(), "{tool}");
+        }
+        // Past what a card carries: cut, and flagged.
+        let mut v = serde_json::json!({ "tool_name": "mcp__lumo__type", "tool_input": { "text": "x".repeat(MAX_TARGET_LEN + 10) } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v["tool_input"]["text"].as_str().unwrap().len() <= MAX_TARGET_LEN + 4);
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        // Another server's `type`, or another field: the ordinary cap.
+        for (tool, key) in [("mcp__work_lumo__type", "text"), ("mcp__x__type", "text"), ("mcp__lumo__type", "note")] {
+            let mut v = serde_json::json!({ "tool_name": tool, "tool_input": { key: "y".repeat(MAX_FIELD_LEN + 1) } });
+            truncate_payload(&mut v, "PermissionRequest");
+            assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true), "{tool} {key}");
+        }
     }
 
     #[test]
