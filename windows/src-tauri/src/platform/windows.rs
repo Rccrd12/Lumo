@@ -570,6 +570,27 @@ pub fn left_button_down() -> bool {
     unsafe { (GetAsyncKeyState(button.0 as i32) as u16 & 0x8000) != 0 }
 }
 
+/// Waits for the display's next frame (DwmFlush), so a window moved once per
+/// wait moves on every frame, by even steps. Moved on a clock of its own (8 ms
+/// sleeps), it drifted against the display's: two moves in one frame, none in
+/// the next, and the island went by jerks. Never shorter than MIN_FRAME, as
+/// DWM may answer at once when it has nothing to draw; a plain 8 ms sleep
+/// where DWM says no.
+pub fn wait_for_frame() {
+    let started = std::time::Instant::now();
+    if unsafe { ::windows::Win32::Graphics::Dwm::DwmFlush() }.is_err() {
+        std::thread::sleep(std::time::Duration::from_millis(8));
+        return;
+    }
+    let spent = started.elapsed();
+    if spent < MIN_FRAME {
+        std::thread::sleep(MIN_FRAME - spent);
+    }
+}
+
+/// The shortest wait between two frames: a 240 Hz display's.
+const MIN_FRAME: std::time::Duration = std::time::Duration::from_millis(4);
+
 // ── Island window ─────────────────────────────────────────────────────────────
 
 fn hwnd_of(win: &WebviewWindow) -> Option<HWND> {

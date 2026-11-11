@@ -401,18 +401,6 @@ fn effective_offset(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> f64
     (off / scale).round()
 }
 
-/// Where the island's centre is in a panel of logical size `panel` docked at
-/// `dock`, for an island `w` × `h` drawn in it, moved by `shift` (page pixels).
-fn centre_in_panel(dock: Dock, panel: (f64, f64), w: f64, h: f64, shift: (f64, f64)) -> (f64, f64) {
-    let (cx, cy) = match dock {
-        Dock::Top => (panel.0 / 2.0, edge_gap() + h / 2.0),
-        Dock::Bottom => (panel.0 / 2.0, panel.1 - edge_gap() - h / 2.0),
-        Dock::Left => (edge_gap() + w / 2.0, panel.1 / 2.0),
-        Dock::Right => (panel.0 - edge_gap() - w / 2.0, panel.1 / 2.0),
-    };
-    (cx + shift.0, cy + shift.1)
-}
-
 /// Margin around the island that still counts as "on the island", in logical px.
 /// Generous, because a click must never be swallowed.
 const HIT_MARGIN: f64 = 14.0;
@@ -815,7 +803,14 @@ struct DockPayload {
     float: f64,
     shift_x: f64,
     shift_y: f64,
+    /// When the window starts its spring (ms since 1970): the page starts
+    /// the island's at the same moment (dock-ease.ts).
+    start_at: f64,
 }
+
+/// Between the drop and the start of both springs: time for the page to hear
+/// of it first, so the window and the island start together.
+const DOCK_LEAD: Duration = Duration::from_millis(50);
 
 /// Where the island is drawn in its window (see `shift`), for the page.
 #[derive(Serialize, Clone, Copy)]
@@ -833,12 +828,18 @@ struct Axis {
 }
 
 impl Axis {
-    /// Semi-implicit Euler: stable at the 8 ms steps used here.
+    /// Semi-implicit Euler, in steps of at most 1/240 s as the page's springs
+    /// (src/core/anim.ts), so a frame of any length moves it the same way.
     fn step(&mut self, target: f64, dt: f64) {
         let omega = 2.0 * std::f64::consts::PI / BOUNCE_RESPONSE;
-        let a = -omega * omega * (self.x - target) - 2.0 * BOUNCE_DAMPING * omega * self.v;
-        self.v += a * dt;
-        self.x += self.v * dt;
+        let dt = finite(dt).clamp(0.0, 1.0);
+        let steps = (dt * 240.0).ceil().max(1.0);
+        let h = dt / steps;
+        for _ in 0..steps as u32 {
+            let a = -omega * omega * (self.x - target) - 2.0 * BOUNCE_DAMPING * omega * self.v;
+            self.v += a * h;
+            self.x += self.v * h;
+        }
     }
 
     fn settled(&self, target: f64) -> bool {
@@ -848,11 +849,14 @@ impl Axis {
 
 /// How the island settles into place: a spring of this period (s) and damping
 /// ratio — just under 1, so it eases in with the faintest overshoot instead of
-/// a bounce, and lands where it was let go when it floats.
+/// a bounce, and lands where it was let go when it floats. The page eases the
+/// island inside its window with the same spring (dock-ease.ts).
 const BOUNCE_RESPONSE: f64 = 0.36;
 const BOUNCE_DAMPING: f64 = 0.75;
-/// How quickly the dragged island catches up with the mouse (s).
-const FOLLOW: f64 = 0.045;
+/// How quickly the dragged island catches up with the mouse (s): a few
+/// milliseconds, so it stays under the cursor (it used to trail 45 ms behind,
+/// and stopped short of where it was let go).
+const FOLLOW: f64 = 0.01;
 
 /// Where a dragged island ended: its edge, the offset along it, and the
 /// display it was dropped on (its Settings key) when that changed.
@@ -862,11 +866,11 @@ pub struct Dropped {
 }
 
 /// Moves the island with the mouse while the left button is held — a drag
-/// from its top, or Alt + drag anywhere on it. It follows the mouse with a
-/// little smoothing; let go, it goes to the nearest edge of the display it is
-/// on (upright on a side), snaps to the middle of that edge when close to it,
-/// and bounces into place. `rect` is the island as last drawn, in page pixels.
-/// Needs the cursor poll (Windows): elsewhere it returns at once.
+/// from its top, or Alt + drag anywhere on it. It follows the mouse, one move
+/// per frame of the display; let go, it goes to the nearest edge of the
+/// display it is on (upright on a side), snaps to the middle of that edge when
+/// close to it, and bounces into place. `rect` is the island as last drawn, in
+/// page pixels. Needs the cursor poll (Windows): elsewhere it returns at once.
 pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> Option<Dropped> {
     let win = window(app)?;
     // A new drag takes over from a bounce still under way.
@@ -879,7 +883,7 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
     let mut last = std::time::Instant::now();
     let (mut cx, mut cy) = (sx, sy);
     while left_button_down() {
-        std::thread::sleep(Duration::from_millis(8));
+        platform::wait_for_frame();
         let now = std::time::Instant::now();
         let dt = now.duration_since(last).as_secs_f64();
         last = now;
@@ -912,10 +916,11 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
     let scale = m.scale_factor();
     let k = scale * clamp_zoom(start.zoom);
 
-    // The island on screen as it was let go: docked to an edge it is close
-    // to, or floating where it is.
+    // The island on screen where the mouse let it go (it may still be a
+    // pixel or two behind): docked to an edge it is close to, or floating
+    // there.
     let (rw, rh) = if rect.w > 0.0 { (rect.w, rect.h) } else { (NOTCH_PILL.0, NOTCH_PILL.1) };
-    let (left, top) = (x + rect.x * k, y + rect.y * k);
+    let (left, top) = (ox + cx - sx + rect.x * k, oy + cy - sy + rect.y * k);
     let (dock, float) = landing(area, scale, clamp_zoom(start.zoom), (left, top, left + rw * k, top + rh * k));
     let centre = (left + rw * k / 2.0, top + rh * k / 2.0);
     let mut p = Placement { dock, float, offset: offset_along(area, scale, dock, centre), ..start };
@@ -927,29 +932,47 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
         p.offset = effective_offset(area, scale, p);
     }
     let moved = shift(area, scale, p);
+    let begin = std::time::Instant::now() + DOCK_LEAD;
+    let start_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| (d + DOCK_LEAD).as_secs_f64() * 1000.0)
+        .unwrap_or(0.0);
     let _ = app.emit_to(
         WINDOW_LABEL,
         "island-dock",
-        DockPayload { dock, offset: p.offset, float: p.float, shift_x: moved.0, shift_y: moved.1 },
+        DockPayload { dock, offset: p.offset, float: p.float, shift_x: moved.0, shift_y: moved.1, start_at },
     );
 
-    // Re-anchored in its new panel, the island keeps its place on screen for a
-    // moment, then springs to the edge.
+    // The window springs from where it is to its place, never jumping: the
+    // page re-anchors the island in its new panel (another edge, another
+    // shift) and eases it there from where it was drawn, with the same spring
+    // started at the same moment (dock-ease.ts), so on screen the two make
+    // one move. The window used to jump at once by the island's move in the
+    // panel, while the page was still drawing it at the old place: for a
+    // frame or two the island stood in the wrong spot, then snapped back.
     let (tx, ty, tw, th) = frame(area, scale, p, false);
-    // A closed island turns upright on a side, and back on the top or bottom.
-    let turned = rw.min(rh) < 40.0 && dock.upright() != start.dock.upright();
-    let (iw, ih) = if turned { (rh, rw) } else { (rw, rh) };
-    let inside = centre_in_panel(dock, panel_size(p), iw, ih, moved);
-    let mut ax = Axis { x: centre.0 - inside.0 * k, v: 0.0 };
-    let mut ay = Axis { x: centre.1 - inside.1 * k, v: 0.0 };
-    let _ = win.set_size(PhysicalSize::new(tw, th));
-    let started = std::time::Instant::now();
-    let dt = 0.008;
-    while started.elapsed() < Duration::from_millis(1500) {
+    let mut ax = Axis { x, v: 0.0 };
+    let mut ay = Axis { x: y, v: 0.0 };
+    // Resized (another edge, another display) from its top-left corner, which
+    // keeps where the page draws the island on screen (island.ts follows the
+    // new size). The same size is not set again.
+    let resized = win.inner_size().ok().is_none_or(|s| (s.width, s.height) != (tw, th));
+    if resized {
+        let _ = win.set_size(PhysicalSize::new(tw, th));
+    }
+    let mut last = begin;
+    while std::time::Instant::now().saturating_duration_since(begin) < Duration::from_millis(1500) {
         if DRAGS.load(Ordering::SeqCst) != generation {
             // Picked up again mid-bounce: that drag places it now.
             return None;
         }
+        let now = std::time::Instant::now();
+        if now < begin {
+            platform::wait_for_frame();
+            continue;
+        }
+        let dt = now.saturating_duration_since(last).as_secs_f64();
+        last = now;
         ax.step(tx as f64, dt);
         ay.step(ty as f64, dt);
         let at = (ax.x.round() as i32, ay.x.round() as i32);
@@ -960,13 +983,17 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
         if ax.settled(tx as f64) && ay.settled(ty as f64) {
             break;
         }
-        std::thread::sleep(Duration::from_millis(8));
+        platform::wait_for_frame();
     }
-    let _ = win.set_position(PhysicalPosition::new(tx, ty));
+    if shown != (tx, ty) {
+        let _ = win.set_position(PhysicalPosition::new(tx, ty));
+    }
     // Dropped on a display of another scale, the window was resized on the
     // way: back to the size worked out for that display.
-    let _ = win.set_size(PhysicalSize::new(tw, th));
-    let _ = win.set_position(PhysicalPosition::new(tx, ty));
+    if resized || screen.is_some() {
+        let _ = win.set_size(PhysicalSize::new(tw, th));
+        let _ = win.set_position(PhysicalPosition::new(tx, ty));
+    }
     Some(Dropped { placement: p, screen })
 }
 
@@ -1149,17 +1176,6 @@ mod placement_tests {
         assert_eq!(frame(FHD, 1.0, float(-900.0, 200.0), true), (0, 0, 288, 6));
         // Docked on a side, there is nothing to float.
         assert_eq!(frame(FHD, 1.0, Placement { dock: Dock::Left, float: 300.0, ..HOME }, false), (0, 300, 720, 480));
-    }
-
-    #[test]
-    fn the_island_centre_follows_its_edge() {
-        // A 10 px gap from its edge.
-        assert_eq!(centre_in_panel(Dock::Top, (720.0, 320.0), 288.0, 32.0, (0.0, 0.0)), (360.0, 26.0));
-        assert_eq!(centre_in_panel(Dock::Bottom, (720.0, 320.0), 288.0, 32.0, (0.0, 0.0)), (360.0, 294.0));
-        assert_eq!(centre_in_panel(Dock::Left, (720.0, 320.0), 32.0, 288.0, (0.0, 0.0)), (26.0, 160.0));
-        assert_eq!(centre_in_panel(Dock::Right, (720.0, 320.0), 640.0, 160.0, (0.0, 0.0)), (390.0, 160.0));
-        // Moved in its window, it is drawn that much further.
-        assert_eq!(centre_in_panel(Dock::Top, (720.0, 320.0), 288.0, 32.0, (-200.0, 40.0)), (160.0, 66.0));
     }
 
     #[test]
