@@ -35,6 +35,7 @@
 - **Fixed**: in the steps card, a shorter step stayed at the top with all the room left empty above the bar (it now sits in the middle), and the formula of the step before, small and dim above, was cut at the top and kept its root sign bright
 - **Fixed**: in the steps card's list of every step, a taller row's number sat off its line and formulas lost the bottom of a subscript or a fraction; two `\underbrace`s side by side ran their notes together, in the whole chat
 - **Fixed**: a star between numbers or letters turned half a formula italic: `8*10^-9` and `(2.25*10^-9*0.4^3)/(2*8,99*10^9)` now keep their stars, in a question as in an answer, while `*n*th`, `the *API*s`, `**2**(two)` and `**Passo 1**(opzionale)` stay italic and bold; `*.tmp e *.log`, `f(*args, **kwargs)` and `x ** 2` keep their stars too, italics inside bold and `***both***` are drawn, and `\*` or `\_` written escaped show the star or the underscore
+- **Fixed**: in the steps card's list, six steps or more ran their formulas into each other (the list now scrolls and opens on the current step); an MCP tool's `description` showed as the agent's words, cut, instead of with what Allow allows; the closed island allowed a command of several lines it showed two of (a longer one now opens the full card); a question in several parts was cut from its second part on; "25$, … 12$" turned into a formula and `9{,}81` read "9, 81"; answering Windows' own box closed Settings in the island when the island closes on a click outside
 
 ## Windows 0.21.0 — November 10, 2026
 
