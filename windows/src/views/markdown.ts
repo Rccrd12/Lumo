@@ -223,10 +223,19 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       }
     }
 
-    if (line.startsWith("```")) {
-      const lang = line.slice(3).trim();
+    // A code block: only a bare fence of at least as many backticks closes it,
+    // so a ```js inside a ````markdown block is part of its code. Indented
+    // under a list item, it is still one, its lines without that indent.
+    const fence = FENCE_LINE.exec(line);
+    if (fence) {
+      const lang = fence[2].trim();
+      const indent = line.length - line.trimStart().length;
       const code: string[] = [];
-      for (i++; i < lines.length && !lines[i].startsWith("```"); i++) code.push(lines[i]);
+      for (i++; i < lines.length; i++) {
+        const close = FENCE_LINE.exec(lines[i]);
+        if (close && close[1].length >= fence[1].length && !close[2].trim()) break;
+        code.push(lines[i].replace(new RegExp(`^[ \\t]{0,${indent}}`), ""));
+      }
       if (loosePlot(lang, code)) blocks.push({ kind: "rich", type: "plot", title: "", body: code.join("\n"), open: i >= lines.length });
       else blocks.push({ kind: "code", lang, code: code.join("\n") });
       i++;
@@ -351,7 +360,7 @@ export function parseMarkdown(input: string, partial = false): Block[] {
     for (i++; i < lines.length; i++) {
       const next = lines[i];
       const s = next.trim();
-      if (!s || next.startsWith("#") || next.startsWith("```") || isQuote(s) || CALLOUT.test(s) || isBullet(s) || isRule(s) || ordered(s)) break;
+      if (!s || next.startsWith("#") || FENCE_LINE.test(next) || isQuote(s) || CALLOUT.test(s) || isBullet(s) || isRule(s) || ordered(s)) break;
       if (s.startsWith("$$") || s.startsWith("\\[") || tableAt(lines, i) || imageAt(s)) break;
       para.push(next);
     }
@@ -791,7 +800,10 @@ export function renderMarkdown(into: HTMLElement, markdown: string, opts: Markdo
     const block = blocks[i];
     if (block.kind !== "quote") {
       const tail = partial && i === blocks.length - 1;
-      const placed = identity(block, n, streaming, tail, images);
+      const found = identity(block, n, streaming, tail, images);
+      // A card drawn when nothing could be sent (the ink still uncovering the
+      // answer) is drawn again once it can: a quiz's "N more questions".
+      const placed = found != null && opts.send && block.kind === "rich" ? `${found}\u0000send` : found;
       const counted = placed != null || block.kind === "rich";
       const pass: Pass = { streaming, scope: opts.scope ?? "", n, list, send: opts.send, tail, images };
       images += imagesOf(block);
