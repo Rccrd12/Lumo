@@ -8,7 +8,7 @@ import { installFakeDom } from "./fakedom.mjs";
 import { calls, emit, internals, sent } from "./tauri.mjs";
 
 installFakeDom();
-const { buildPrompt } = await import("../src/views/chat.ts");
+const { buildPrompt, conversationTurn } = await import("../src/views/chat.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { setLocalCaps } = await import("../src/core/providers.ts");
 
@@ -1249,3 +1249,9 @@ test("State.activeChats tracks live chat turns from Thinking through Writes and 
 });
 
 
+
+test("an agent that answered nothing goes back to Rust as no answer, not as Lumo's words", () => {
+  const shown = { role: "assistant", content: "Codex gave no answer.", kept: "(No answer.)" };
+  assert.deepEqual(conversationTurn(shown), { role: "assistant", content: "(No answer.)" });
+  assert.deepEqual(conversationTurn({ role: "user", content: "Ciao", at: 1 }), { role: "user", content: "Ciao" });
+});

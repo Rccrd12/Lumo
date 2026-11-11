@@ -1044,7 +1044,7 @@ pub async fn send(
         // The island shows why; the conversation keeps that there was no
         // answer, not Lumo's words as if Codex had said them.
         chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
-        return Ok(ChatReply::answer(why, chat.cli_session()));
+        return Ok(ChatReply::no_answer(why, chat.cli_session()));
     }
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
     Ok(ChatReply::answer(answer, chat.cli_session()))

@@ -49,15 +49,26 @@ pub struct ChatReply {
     /// How many plain turns the conversation holds after this one, so the
     /// island knows where to cut it when a message is edited (`Chat::rewind`).
     pub turns: usize,
+    /// What the conversation kept for this answer, when not `text`: the
+    /// island saves it with the chat, and gives it back when the chat is
+    /// opened again from the history (NO_ANSWER, never Lumo's words as the agent's).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kept: Option<String>,
 }
 
 impl ChatReply {
     pub fn answer(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: false, turns: 0 }
+        ChatReply { text, session, stopped: false, turns: 0, kept: None }
     }
 
     pub fn stopped(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: true, turns: 0 }
+        ChatReply { text, session, stopped: true, turns: 0, kept: None }
+    }
+
+    /// The CLI answered with nothing: the island shows `why`, the
+    /// conversation keeps NO_ANSWER.
+    pub fn no_answer(why: String, session: Option<String>) -> Self {
+        ChatReply { kept: Some(NO_ANSWER.to_string()), ..ChatReply::answer(why, session) }
     }
 }
 

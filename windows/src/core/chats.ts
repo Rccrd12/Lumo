@@ -10,6 +10,8 @@ export interface SavedTurn {
   content: string;
   /** When it was sent or answered (epoch ms); none in chats saved before it was kept. */
   at?: number;
+  /** What the conversation holds for it, when not `content` (ChatMessage.kept). */
+  kept?: string;
 }
 
 export interface SavedChat {

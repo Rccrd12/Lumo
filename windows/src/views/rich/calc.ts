@@ -173,8 +173,9 @@ export interface Region {
 
 // ── Reading ───────────────────────────────────────────────────────────────────
 
-/** `input: …`, `- Output = …`: a line's key and the rest. */
-const LINE = /^[ \t]*(?:[-*+•][ \t]+)?([A-Za-z]+)[ \t]*[:=][ \t]*(.*?)[ \t]*$/;
+/** `input: …`, `- Output = …`: a line's key and the rest (up to its last
+ * non-blank, found once: a lazy `.*?` before the blanks is quadratic on a line of spaces). */
+const LINE = /^[ \t]*(?:[-*+•][ \t]+)?([A-Za-z]+)[ \t]*[:=][ \t]*(.*\S)?[ \t]*$/;
 const FORMULA_KEYS = new Set(["formula", "tex", "equation", "latex"]);
 const INPUT_KEYS = new Set(["input", "in", "slider", "param", "parameter", "var", "variable"]);
 const OUTPUT_KEYS = new Set(["output", "out", "result"]);
@@ -293,7 +294,7 @@ function lines(body: string): Line[] {
   const out: Line[] = [];
   for (const raw of body.replace(/\r\n?/g, "\n").split("\n")) {
     const m = LINE.exec(raw);
-    if (m) out.push({ key: m[1].toLowerCase(), value: m[2] });
+    if (m) out.push({ key: m[1].toLowerCase(), value: m[2] ?? "" });
   }
   return out;
 }

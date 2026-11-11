@@ -1050,7 +1050,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // long it waits. Either way the card goes just before.
       const cardMs = chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 107_000;
       if (inLine) {
-        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && isSimpleRequest(tool, input) ? { simple: true } : {}) });
+        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && !info.cut && isSimpleRequest(tool, input) ? { simple: true } : {}) });
         void Bridge.log(`permission ${tool} req=${requestId}${fromChat ? " (chat)" : ""} (waiting, ${State.approvalQueue.length + 1} in line)`);
         // A human will see it: the relay waits for the decision.
         void Bridge.approvalAck(requestId);
@@ -1061,8 +1061,9 @@ function handleHook(island: Island, payload: HookPayload) {
       }
       // A request that only reads or looks, while the island is closed, is
       // answered right there: Deny and Allow next to Lumo (Settings → Island).
-      // Still a click, never automatic; anything else opens the full card.
-      const quick = !questions && !email && !change && State.settings.quickApprovals !== false
+      // Still a click, never automatic; anything else opens the full card,
+      // a request the relay had to cut too (its card has no Allow).
+      const quick = !questions && !email && !change && !info.cut && State.settings.quickApprovals !== false
         && State.mode !== "expanded" && isSimpleRequest(tool, input);
       void Bridge.log(`permission ${tool} req=${requestId || "none"}${fromChat ? " (chat)" : ""}${quick ? " (closed island)" : ""}`);
       // The card always comes up, even over another pill or an island that is

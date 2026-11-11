@@ -201,11 +201,12 @@ function group(s: string, at: number): { inside: string; end: number } | null {
  */
 export function fromTeX(source: string): string {
   if (!/[\\{}$]/.test(source)) return source;
+  // A command ends where its letters do: `3\times10^{8}` is 3*10^(8), never "times10".
   let s = source.replace(/\$/g, "").replace(/\\(?:left|right|q?quad)\b|\\[,;!: ]/g, " ");
-  s = s.replace(/\\(?:cdot|times|ast)\b/g, "*").replace(/\\div\b/g, "/");
+  s = s.replace(/\\(?:cdot|times|ast)(?![A-Za-z])/g, "*").replace(/\\div(?![A-Za-z])/g, "/");
   // The comparisons and the "and" of a region: x \le y \land y \leq 3x.
-  s = s.replace(/\\(?:leq?|leqslant)\b/g, "<=").replace(/\\(?:geq?|geqslant)\b/g, ">=");
-  s = s.replace(/\\lt\b/g, "<").replace(/\\gt\b/g, ">").replace(/\\(?:land|wedge)\b/g, " and ");
+  s = s.replace(/\\(?:leq?|leqslant)(?![A-Za-z])/g, "<=").replace(/\\(?:geq?|geqslant)(?![A-Za-z])/g, ">=");
+  s = s.replace(/\\lt(?![A-Za-z])/g, "<").replace(/\\gt(?![A-Za-z])/g, ">").replace(/\\(?:land|wedge)(?![A-Za-z])/g, " and ");
   s = s.replace(/\\(?:operatorname|mathrm|text|mathit)\s*\{([A-Za-z]+)\}/g, "$1");
   // \frac{a}{b} and \sqrt[n]{a}, their groups possibly nested.
   for (let guard = 0; guard < 100; guard++) {
