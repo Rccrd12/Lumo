@@ -411,11 +411,11 @@ const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLI
 
 /**
  * Stars that sit between two operands are multiplication, never emphasis:
- * "8*10^-9", "(2.25*10^-9*0.4^3)/(2*8,99*10^9)", "k*q1*q2", "x**2". A single
+ * "8*10^-9", "(2.25*10^-9*0.4^3)/(2*8,99*10^9)", "k*q1*q2", "2**10". A single
  * star is one when a letter, a digit or a closing bracket comes before it and
  * a letter, a digit or an opening bracket after it (or a sign then a digit,
- * after a number: "2*-3"); a ** only when a number or an opening bracket
- * follows, so "**API**s" and "**1990**s" stay bold. Such stars are swapped
+ * after a number: "2*-3"); a ** only between numbers or brackets ("2**10",
+ * "(a+b)**(n-1)"), so "**API**s", "**1990**s" and "**Nota**(…)" stay bold. Such stars are swapped
  * for TIMES before the parse and given back in what it returns. ASCII only:
  * Chinese and Japanese put emphasis between letters, with no spaces.
  */
@@ -432,7 +432,7 @@ function maskProducts(text: string): string {
     const product =
       run.length === 1
         ? FACTOR.test(after) || (/[\d)]/.test(before) && /[-+]/.test(after) && /\d/.test(text[at + 2] ?? ""))
-        : run.length === 2 && /[\d(]/.test(after);
+        : run.length === 2 && /[\d)]/.test(before) && /[\d(]/.test(after);
     return product ? TIMES.repeat(run.length) : run;
   });
 }

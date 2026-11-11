@@ -91,7 +91,7 @@ test("a star between numbers or letters is a multiplication, not italics", () =>
   // As written in the chat: the two lines are one paragraph.
   plain("A me esce 8*10^-9.\nHo fatto (2.25*10^-9*0.4^3)/(2*8,99*10^9*10^-12)");
   plain("F = k*q1*q2/r^2, a*b*c, (a+b)*(c+d)*e, x[0]*y[1]*2");
-  plain("2*-3 and 4*+5, 2**10 and x**2 and (a+b)**(n-1)");
+  plain("2*-3 and 4*+5, 2**10 and (a+b)**(n-1) and 3**(2*x)");
   // Copy, the code span and the formula keep the stars as written.
   assert.deepEqual(parseInline("`2*3*4` and $2*3*4$"), [
     { kind: "code", text: "2*3*4" },
@@ -114,6 +114,12 @@ test("a star between numbers or letters is a multiplication, not italics", () =>
     { kind: "em", children: [{ kind: "text", text: "really" }] },
     { kind: "text", text: ", l'" },
     { kind: "strong", children: [{ kind: "text", text: "idea" }] },
+  ]);
+  assert.deepEqual(parseInline("**Nota**(vedi sotto) e **Passo**1"), [
+    { kind: "strong", children: [{ kind: "text", text: "Nota" }] },
+    { kind: "text", text: "(vedi sotto) e " },
+    { kind: "strong", children: [{ kind: "text", text: "Passo" }] },
+    { kind: "text", text: "1" },
   ]);
   assert.deepEqual(parseInline("这是**重要**的"), [
     { kind: "text", text: "这是" },
