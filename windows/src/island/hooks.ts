@@ -6,19 +6,20 @@
 
 import { describeComputerAction } from "../core/computer";
 import { userToolTarget } from "../core/tools";
+import { clipUnits } from "../core/clip";
 import { COMPACT_TEXT, compactNotice } from "../core/compact";
 import { Bridge, onEvent } from "../core/bridge";
 import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
 import { failureDetail, fullTextDetail, toolStepDetail } from "../core/step-detail";
 import { Sound } from "../core/sound";
 import { PillSessions } from "../core/pill-sessions";
-import { State, planAskInChat, type ApprovalInfo, type AskedQuestion, type OutgoingEmail } from "../core/state";
+import { State, type ApprovalInfo, type AskedQuestion, type OutgoingEmail } from "../core/state";
 import { stepsFromMarkdown } from "../core/agent-plan";
 import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
-import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
+import { editStat, isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode, storedPermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import {
@@ -30,6 +31,9 @@ import { N_, t } from "../i18n/i18n";
 
 const CLAUDE_ID = "integration_claude";
 const CURSOR_ID = "agent_cursor";
+
+/** What still reaches the pills while Lumo is paused: the end of a turn or of a session. */
+const SETTLES_WHILE_PAUSED = new Set(["Stop", "StopFailure", "Interrupt", "SessionEnd"]);
 
 /**
  * Per request, on screen or in line: takes it away if no decision was made
@@ -66,7 +70,10 @@ function dropPendingCard(island: Island): void {
   State.endApproval();
   island.dropPin();
   if (State.view === "approval" || State.view === "question") {
-    island.setView(State.agentsView());
+    // A card folded away goes without opening the island: setView on a closed
+    // island opens it, on the home and with its sound, for nothing to read.
+    if (State.mode === "expanded") island.setView(State.agentsView());
+    else State.view = State.agentsView();
   }
   presentApproval(island);
   State.notify();
@@ -86,7 +93,7 @@ export function presentApproval(island: Pick<Island, "alert" | "quickApproval">)
     return;
   }
   if (req.quick) req.quick = false;
-  island.alert(planAskInChat(req) ? "prompt" : req.questions ? "question" : "approval");
+  island.alert(State.requestView(req));
 }
 
 /**
@@ -150,6 +157,23 @@ function cancelStopTimer(id: string): boolean {
   window.clearTimeout(timer);
   stopTimers.delete(id);
   return true;
+}
+
+/**
+ * 5.2 s after a Stop, the pill comes to rest: back to idle, or, for an
+ * agent's pill (`removes`), off the island.
+ */
+function armStopTimer(id: string, removes: boolean): void {
+  cancelStopTimer(id);
+  stopTimers.set(id, window.setTimeout(() => {
+    stopTimers.delete(id);
+    if (removes) {
+      State.removeTask(id);
+    } else {
+      State.updateTask(id, "idle");
+      State.setPillBadge(id, null);
+    }
+  }, 5200));
 }
 
 /**
@@ -342,11 +366,19 @@ export function cleanPayload(raw: unknown): HookPayload | null {
 const LIVE_FILE = {
   read: N_("Read a file you didn't give it"),
   open: N_("Open a file you didn't give it"),
+  page: N_("Open this page in the browser"),
 };
 
-/** Gemini Live's card for a file: the file's full path and what it wants to do; null when it is no such card. */
+/**
+ * Gemini Live's card for a file or a web page: the file's full path or the
+ * page's whole address, and what it wants to do; null when it is no such card.
+ */
 export function liveFileChange(raw: HookPayload["lumo_live_file"], input: Record<string, unknown>): { command: string; reason: string } | null {
   if (!raw || typeof raw !== "object") return null;
+  if (raw.action === "page") {
+    const url = typeof input.url === "string" ? input.url : "";
+    return url ? { command: url, reason: t(LIVE_FILE.page) } : null;
+  }
   const path = typeof input.path === "string" ? input.path : "";
   if (!path) return null;
   return { command: path, reason: t(raw.action === "open" ? LIVE_FILE.open : LIVE_FILE.read) };
@@ -429,13 +461,13 @@ function stepLabel(tool: string, input: Record<string, unknown>): string {
   const label = TOOL_LABELS[tool] ? t(TOOL_LABELS[tool]) : tool;
   const str = (k: string) => (typeof input[k] === "string" ? (input[k] as string) : null);
   const cmd = str("command");
-  if (cmd) return `${label} · ${cmd.slice(0, 40)}`;
+  if (cmd) return `${label} · ${clipUnits(cmd, 40)}`;
   const path = str("path");
   if (path) return `${label} · ${lastPathComponent(path)}`;
   const file = str("file_path");
   if (file) return `${label} · ${lastPathComponent(file)}`;
   const query = str("query");
-  if (query) return `${label} · ${query.slice(0, 40)}`;
+  if (query) return `${label} · ${clipUnits(query, 40)}`;
   return label;
 }
 
@@ -585,12 +617,16 @@ function handleHook(island: Island, payload: HookPayload) {
     return;
   }
 
-  if (State.paused) {
+  // Paused, Lumo shows and says nothing. A turn that ends or a session that
+  // closes meanwhile still settles its pill, quietly: dropped, it left the
+  // pill at work or waiting for ever once Lumo was back.
+  const quiet = State.paused;
+  if (quiet) {
     // Silence here used to cost Claude Code nearly two minutes: the relay waited
     // for a decision from an island that had already decided not to look. Say so,
     // and the terminal takes the question immediately.
     if (payload.request_id) void Bridge.approvalDecline(payload.request_id);
-    return;
+    if (!SETTLES_WHILE_PAUSED.has(payload.hook_event_name ?? "")) return;
   }
 
   const name = payload.hook_event_name ?? "";
@@ -604,7 +640,8 @@ function handleHook(island: Island, payload: HookPayload) {
     const mode = parseBackgroundMode(State.settings.backgroundSessions);
     if (mode === "hidden") return;
     if (mode === "grouped") {
-      handleBackground(island, payload, name);
+      // Its runs settle on their own (STALE_MS): nothing of them while paused.
+      if (!quiet) handleBackground(island, payload, name);
       return;
     }
   }
@@ -624,7 +661,9 @@ function handleHook(island: Island, payload: HookPayload) {
 
   /** Alerts force the island open; work events only reveal the compact island. */
   const surface = (view: Parameters<Island["alert"]>[0], isAlert: boolean) => {
-    if (State.mode === "expanded") {
+    // The launch greeting is open too, but it folds by itself 0.6 s after it
+    // ends: an alert then opens the island for real, as from closed.
+    if (State.mode === "expanded" && State.view !== "greeting") {
       if (isAlert) {
         island.setView(view);
         // Already open with the mouse elsewhere: its countdown waits for this to be read.
@@ -715,6 +754,10 @@ function handleHook(island: Island, payload: HookPayload) {
   switch (name) {
     case "SessionStart":
       ensurePill();
+      // An agent's new session within 5.2 s of the last one's Stop: that
+      // Stop's timer still brings the pill to rest, but no longer takes it
+      // away from under the new session.
+      if (isExternalAgent && cancelStopTimer(agentId)) armStopTimer(agentId, false);
       clearFinalLine(agentId);
       // Hermes through its gateway says where the session comes from.
       if (validAgent === "hermes" && payload.platform && payload.platform !== "cli") {
@@ -731,7 +774,7 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(agentId, "thinking");
       // The field is `prompt`; reading `message` meant this step was always blank.
       const asked = payload.prompt ?? payload.message;
-      if (asked) State.appendStep(agentId, asked.slice(0, 60), fullTextDetail(asked, asked.slice(0, 60)));
+      if (asked) State.appendStep(agentId, clipUnits(asked, 60), fullTextDetail(asked, clipUnits(asked, 60)));
       surface("overview", false);
       break;
     }
@@ -789,7 +832,7 @@ function handleHook(island: Island, payload: HookPayload) {
         const said = payload.last_assistant_message ?? payload.message ?? "";
         const finalText = toOneLine(said);
         if (finalText) State.appendStep(agentId, finalText, fullTextDetail(said, finalText));
-        Sound.play("finish");
+        if (!quiet) Sound.play("finish");
         break;
       }
       State.updateTask(agentId, "finished");
@@ -805,28 +848,20 @@ function handleHook(island: Island, payload: HookPayload) {
         const t = State.tasks.find((x) => x.id === agentId);
         if (t) t.finalLine = finalText;
       }
-      Sound.play("finish");
-      // A card waiting for an answer is never covered by another alert.
-      if (focused && !State.pendingApproval) surface("finished", true);
-      else {
+      if (quiet) {
+        // Nothing to see while paused: the timer below brings the pill back to rest.
+      } else if (focused && !State.pendingApproval) {
+        Sound.play("finish");
+        // A card waiting for an answer is never covered by another alert.
+        surface("finished", true);
+      } else {
+        Sound.play("finish");
         State.setPillBadge(agentId, "finished");
         // Said on the closed island too, as it is not the one in front.
         const done = State.tasks.find((x) => x.id === agentId);
         if (done && State.mode !== "expanded") compactNotice(t(COMPACT_TEXT.finished, { helper: done.name }), done.color);
       }
-      cancelStopTimer(agentId);
-      stopTimers.set(
-        agentId,
-        window.setTimeout(() => {
-          stopTimers.delete(agentId);
-          if (isExternalAgent) {
-            State.removeTask(agentId);
-          } else {
-            State.updateTask(agentId, "idle");
-            State.setPillBadge(agentId, null);
-          }
-        }, 5200),
-      );
+      armStopTimer(agentId, isExternalAgent);
       break;
     }
 
@@ -847,6 +882,7 @@ function handleHook(island: Island, payload: HookPayload) {
       const details = typeof payload.error_details === "string" ? toOneLine(payload.error_details) : "";
       if (failed) failed.failure = code || details ? { code, details } : null;
       State.updateTask(agentId, "error");
+      if (quiet) break;
       Sound.play("error");
       if (focused && !State.pendingApproval) surface("error", true);
       else State.setPillBadge(agentId, "error");
@@ -973,6 +1009,8 @@ function handleHook(island: Island, payload: HookPayload) {
       const view = questions ? "question" : "approval";
       const planSteps = !questions && !email && !change && /^exit_?plan_?mode$/i.test(tool) && typeof input.plan === "string"
         ? stepsFromMarkdown(input.plan) : [];
+      // A file to write: how many lines, under its name (the text itself is not on the card).
+      const edit = !questions && !email && !change && !userTool ? editStat(tool, input) : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -992,6 +1030,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
         // The plan Claude Code asks to start, step by step, for the new look's card and chat.
         ...(planSteps.length ? { plan: planSteps } : {}),
+        ...(edit ? { edit } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how
@@ -1027,7 +1066,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // one stays on the closed island, if it can show it.
       if (!quick || !island.quickApproval()) {
         if (State.pendingApproval?.quick) State.pendingApproval.quick = false;
-        island.alert(planAskInChat(State.pendingApproval) ? "prompt" : view);
+        island.alert(State.pendingApproval ? State.requestView(State.pendingApproval) : view);
       }
       armCardTimer(island, requestId, cardMs);
       break;

@@ -220,9 +220,15 @@ function showBubble(p: { x: number; y: number }, fill: (el: HTMLElement) => void
 
 let typing: number | null = null;
 
+/** The text being typed stops coming into the bubble. */
+function stopTyping() {
+  if (typing != null) window.clearInterval(typing);
+  typing = null;
+}
+
 /** The text appears in the bubble a little at a time, as it is typed. */
 function typed(p: { x: number; y: number }, text: string) {
-  if (typing != null) window.clearInterval(typing);
+  stopTyping();
   const chars = [...text];
   const per = Math.max(1, Math.ceil(chars.length / 40));
   let shown = 0;
@@ -250,6 +256,8 @@ function typed(p: { x: number; y: number }, text: string) {
 }
 
 function keys(p: { x: number; y: number }, combo: string) {
+  // The text typed just before (Enter after it) would go on drawing over the keys.
+  stopTyping();
   bubbleText = "";
   showBubble(p, (el) => {
     keyCaps(combo).forEach((cap, i) => {

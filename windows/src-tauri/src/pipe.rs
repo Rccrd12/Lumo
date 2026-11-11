@@ -286,6 +286,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     let payload_cut = payload.get("lumo_input_cut") == Some(&json!(true));
     log::line(format!("hook PermissionRequest id={id}"));
     let tool_name = payload.get("tool_name").and_then(Value::as_str).map(str::to_string);
+    let tool_input = payload.get("tool_input").cloned().unwrap_or(Value::Null);
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
 
     // While Claude uses the computer, the hand gets its mouse back to answer.
@@ -326,7 +327,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // its call needs (tools.rs), not a second card.
     if matches!(decision.as_deref(), Some("allow" | "always" | "edits")) {
         if let Some(tool) = &tool_name {
-            crate::tools::note_allowed(tool);
+            crate::tools::note_allowed(tool, &tool_input);
         }
     }
     // No decision: say nothing at all. lumo-hook then writes nothing to stdout
@@ -380,14 +381,54 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
     payload["request_id"] = json!(id);
     log::line(format!("tool card id={id}"));
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
-    // While Claude uses the computer, the hand gets its mouse back to answer,
-    // as for an agent's card.
-    crate::computer::card_up(app);
-    let decision = wait_for_decision(&id, &mut rx).await;
-    crate::computer::card_down(app);
-    app.state::<Pending>().0.lock().unwrap().remove(&id);
+    let decision = with_card(
+        // While Claude uses the computer, the hand gets its mouse back to
+        // answer, as for an agent's card.
+        || crate::computer::card_up(app),
+        // Also when Stop drops the turn that asked, mid-wait: else the count
+        // stayed up and Claude never had the mouse again until Lumo restarted.
+        |answered| {
+            crate::computer::card_down(app);
+            app.state::<Pending>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+            // Nobody answers it any more: it leaves the island.
+            if !answered {
+                let _ = app.emit_to(WINDOW_LABEL, "hook-settled", id.clone());
+            }
+        },
+        wait_for_decision(&id, &mut rx),
+    )
+    .await;
     // A card of Lumo's own is never kept for a session.
     decision.map(|d| if d == "always" { "allow".to_string() } else { d })
+}
+
+/// Waits for `decision` with a card up: `up` first, then `end(answered)`
+/// however the wait ends, answered or not, or dropped half way (Stop drops
+/// the turn that asked, and its future with it).
+async fn with_card<T>(
+    up: impl FnOnce(),
+    end: impl FnOnce(bool),
+    decision: impl std::future::Future<Output = Option<T>>,
+) -> Option<T> {
+    up();
+    let mut card = CardUp { end: Some(end), answered: false };
+    let decision = decision.await;
+    card.answered = decision.is_some();
+    decision
+}
+
+/// A card's end, run when it is dropped (`with_card`).
+struct CardUp<F: FnOnce(bool)> {
+    end: Option<F>,
+    answered: bool,
+}
+
+impl<F: FnOnce(bool)> Drop for CardUp<F> {
+    fn drop(&mut self) {
+        if let Some(end) = self.end.take() {
+            end(self.answered);
+        }
+    }
 }
 
 /// Finds, once per session, the window it runs in — see session_window.rs.
@@ -538,6 +579,48 @@ mod tests {
             drop(theirs);
             let gone = tokio::time::timeout(Duration::from_millis(50), client_gone(&mut ours)).await;
             assert!(gone.is_ok(), "a closed relay must be seen at once");
+        });
+    }
+
+    /// A card of Lumo's own (`ask`) that Stop drops while it waits: the hand's
+    /// count goes down all the same, and the card is said to be gone.
+    #[test]
+    fn a_card_dropped_while_it_waits_still_ends() {
+        use std::sync::atomic::AtomicIsize;
+        block_on(async {
+            let up = AtomicIsize::new(0);
+            let ends = Mutex::new(Vec::new());
+            let (tx, mut rx) = mpsc::channel::<String>(1);
+            // Stop: the turn's future, and the wait in it, dropped half way.
+            let waiting = with_card(
+                || {
+                    up.fetch_add(1, Ordering::SeqCst);
+                },
+                |answered| {
+                    up.fetch_sub(1, Ordering::SeqCst);
+                    ends.lock().unwrap().push(answered);
+                },
+                rx.recv(),
+            );
+            assert!(tokio::time::timeout(Duration::from_millis(30), waiting).await.is_err());
+            assert_eq!(up.load(Ordering::SeqCst), 0, "the card count went back down");
+            assert_eq!(*ends.lock().unwrap(), vec![false]);
+            // Answered: the same end, once, told it was.
+            tx.send("allow".into()).await.unwrap();
+            let answer = with_card(
+                || {
+                    up.fetch_add(1, Ordering::SeqCst);
+                },
+                |answered| {
+                    up.fetch_sub(1, Ordering::SeqCst);
+                    ends.lock().unwrap().push(answered);
+                },
+                rx.recv(),
+            )
+            .await;
+            assert_eq!(answer.as_deref(), Some("allow"));
+            assert_eq!(up.load(Ordering::SeqCst), 0);
+            assert_eq!(*ends.lock().unwrap(), vec![false, true]);
         });
     }
 

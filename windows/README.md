@@ -59,8 +59,13 @@ repository's GitHub releases are accepted, and only one that matches, byte for
 byte, the SHA-256 GitHub published for it, and whose signature by Lumo's own
 key holds, is run. The release and beta workflows sign each installer with
 the `LUMO_UPDATE_KEY` secret and publish the signature beside it
-(`<installer>.sig`, `windows/scripts/sign-update.mjs`); the public half of the
-key is `UPDATE_PUBLIC_KEY` in `windows/src-tauri/src/updater.rs`.
+(`<installer>.sig`, `windows/scripts/sign-update.mjs`), with a second one of
+its name and SHA-256 (`<installer>.name.sig`): the name carries the version
+and the channel, so an older installer or a beta's, published again under
+another name, is refused. The public half of the
+key is `UPDATE_PUBLIC_KEY` in `windows/src-tauri/src/updater.rs`. The
+installer is saved in Lumo's own folder and held open, so no other program can
+change it between the check and the start.
 `node windows/scripts/update-key.mjs` makes a new pair; the Lumo builds already
 installed accept only the key they carry.
 

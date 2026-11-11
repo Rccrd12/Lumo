@@ -373,7 +373,9 @@ export class Ink {
       for (const child of [...node.childNodes]) {
         if (child.nodeType === 3) {
           const data = (child as Text).data;
-          const letters = data.replace(/\s+/g, "").length;
+          // Counted by character, as the loop below counts them: an emoji is
+          // two UTF-16 units but one letter, and the edge must not skip.
+          const letters = [...data.replace(/\s+/g, "")].length;
           if (count + letters <= from || letters === 0) {
             count += letters;
             continue;

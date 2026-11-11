@@ -193,3 +193,8 @@ test("the user's own question shows no cards: a task list, an image, an alert an
   // The same lines in an answer are cards; in a code block they stay as written.
   assert.equal(plainQuestion("```md\n- [ ] a\n![x](https://e.com/a.png)\n```"), "```⁠md\n- [ ] a\n![x](https://e.com/a.png)\n```");
 });
+
+test("a question's code block closes only on a bare fence as long as its own", () => {
+  // The ``` inside the ````md block is code: the task item after it stays as written.
+  assert.equal(plainQuestion("````md\n```\n- [ ] a\n````\n- [ ] b"), "````\u2060md\n```\n- [ ] a\n````\n- \u2060[ ] b");
+});

@@ -19,16 +19,24 @@ use crate::platform;
 /// The newest paths are kept past this many.
 const MAX_PATHS: usize = 2000;
 
-/// What runs, or makes something run, when opened by its type: shown in File Explorer instead.
+/// What runs, or makes something run, when opened by its type: shown in File
+/// Explorer instead. The one list for every place Lumo opens a file by its
+/// type (here, and Gemini Live's live.rs is_runnable).
 const RUNS: &[&str] = &[
-    "exe", "com", "bat", "cmd", "ps1", "psm1", "psd1", "ps1xml", "psc1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "ws",
-    "msi", "msp", "mst", "scr", "pif", "cpl", "hta", "lnk", "url", "reg", "inf", "jar", "application", "appref-ms",
-    "msc", "gadget", "scf", "py", "pyw", "sh", "settingcontent-ms", "library-ms", "search-ms", "appx", "msix",
-    "appxbundle", "msixbundle", "dll", "sys", "chm", "xbap", "website",
-    // Add-ins, connections, disk images that mount and run, troubleshooters,
-    // installers, documents with macros.
-    "xll", "rdp", "iso", "img", "vhd", "vhdx", "diagcab", "appinstaller", "wsc", "sct",
-    "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppam",
+    "exe", "com", "bat", "cmd", "ps1", "psm1", "psd1", "ps1xml", "psc1", "vbs", "vbe", "vb", "js", "jse", "wsf", "wsh", "ws",
+    "msi", "msp", "mst", "scr", "pif", "cpl", "hta", "lnk", "url", "reg", "inf", "jar", "jnlp", "application", "appref-ms",
+    "msc", "gadget", "scf", "py", "pyw", "pl", "rb", "sh", "bash", "zsh", "fish", "run", "bin", "command", "scpt", "app",
+    "settingcontent-ms", "library-ms", "search-ms", "searchconnector-ms", "appx", "msix", "appxbundle", "msixbundle",
+    "appinstaller", "dll", "ocx", "sys", "chm", "xbap", "website", "wsb", "ins", "isp", "its",
+    // Add-ins, connections, disk images and archives that mount or unpack and
+    // run, troubleshooters, sandboxes that run a command at start.
+    "xll", "rdp", "iso", "img", "vhd", "vhdx", "cab", "diagcab", "wsc", "sct",
+    // Documents with macros (and the old formats, which carry them without
+    // saying so), databases that run them, OneNote's, web archives.
+    "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppam", "ppsm", "sldm", "doc", "dot", "xls", "xlt", "xla",
+    "xlsb", "ppt", "pot", "pps", "mdb", "mde", "accdb", "accde", "accdr", "ade", "adp", "one", "onepkg", "mht", "mhtml",
+    // Themes, which fetch from a network share (and hand it the Windows login).
+    "theme", "themepack", "deskthemepack",
 ];
 
 #[derive(Default)]
@@ -94,11 +102,16 @@ fn allowed(path: &str) -> bool {
     with_store(|s| s.paths.contains(&k)) || crate::files::in_inbox(Path::new(path))
 }
 
-/// Opened by its type, it would run something.
-fn runs(path: &str) -> bool {
+/// Opened by its type, it would run something (or has no type to open it
+/// with): never opened that way, whoever asks.
+pub fn runs(path: &str) -> bool {
     let name = path.rsplit(['/', '\\']).next().unwrap_or("").to_lowercase();
     // Windows drops the dots and spaces a name ends with: "a.cmd. " is a.cmd.
     let name = name.trim_end_matches([' ', '.']);
+    // A stream of a file (`a.txt:x.exe`) is not a document to open.
+    if name.contains(':') {
+        return true;
+    }
     // A name with no dot has no type to open it with either.
     match name.rsplit_once('.') {
         Some((_, ext)) => RUNS.contains(&ext),
@@ -186,7 +199,9 @@ mod tests {
 
     #[test]
     fn programs_and_scripts_are_never_opened_by_their_type() {
-        for p in [r"C:\x\setup.exe", r"C:\x\run.BAT", r"C:\x\a.ps1", r"C:\x\game.py", r"C:\x\link.lnk", r"C:\x\noext", r"C:\x\evil.cmd. ", "/home/x/a.sh"] {
+        for p in [r"C:\x\setup.exe", r"C:\x\run.BAT", r"C:\x\a.ps1", r"C:\x\game.py", r"C:\x\link.lnk", r"C:\x\noext", r"C:\x\evil.cmd. ", "/home/x/a.sh",
+            r"C:\x\box.wsb", r"C:\x\old.xls", r"C:\x\old.doc", r"C:\x\db.accde", r"C:\x\notes.one", r"C:\x\a.theme", r"C:\x\a.cab",
+            r"C:\x\a.searchConnector-ms", r"C:\x\page.mht", r"C:\x\a.txt:x.exe"] {
             assert!(runs(p), "{p}");
         }
         for p in [r"C:\x\report.pdf", r"C:\x\notes.md", r"C:\x\photo.JPG", r"C:\x\data.json", r"C:\x\page.html"] {

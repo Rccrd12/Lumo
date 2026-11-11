@@ -188,3 +188,19 @@ test("an agent's step is said in fewer words: a file's name stays, a command or 
   assert.equal(activityLine(null, null, { name: "Claude Code", state: "working", step: "Runs · npm test", color: "#fff" }).text,
     "Claude Code · Runs a command");
 });
+
+test("a timer started again after a pause is woken for in its turn", () => {
+  const feed = new CompactFeed();
+  const now = Date.now();
+  const min = 60_000;
+  const a = feed.startTimer(10 * min, "a", now);
+  const b = feed.startTimer(30 * min, "b", now);
+  // Paused, the soonest running one is the next change.
+  feed.toggleTimerPause(a.id, now);
+  assert.equal(feed.nextChange(now), b.endsAt);
+  // Started again 25 minutes on, it rings after b: b is the next change, and shown first.
+  feed.toggleTimerPause(a.id, now + 25 * min);
+  assert.equal(feed.nextChange(now + 25 * min), now + 30 * min);
+  const shownTimers = feed.shown(null, now + 25 * min).items.filter((i) => i.kind === "timer").map((i) => i.timer.label);
+  assert.deepEqual(shownTimers, ["b", "a"]);
+});
