@@ -177,8 +177,15 @@ pub fn open_url(url: &str) {
         .spawn();
 }
 
+/// File Explorer on a folder. Quoted raw, as open_file: unquoted, a comma in
+/// its path is read as Explorer's separator and opens another place.
 pub fn reveal_folder(path: &str) {
-    let _ = Command::new("explorer").arg(path).spawn();
+    if path.contains('"') {
+        return;
+    }
+    // No separator before the closing quote, but a drive's own (`C:\`).
+    let path = if path.len() > 3 { path.trim_end_matches(['\\', '/']) } else { path };
+    let _ = Command::new("explorer").raw_arg(format!("\"{path}\"")).spawn();
 }
 
 /// A file opened by its type, in the app File Explorer would open it with.
