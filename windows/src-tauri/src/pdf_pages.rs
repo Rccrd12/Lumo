@@ -32,8 +32,8 @@ mod imp {
     use windows::Storage::Streams::{DataReader, InMemoryRandomAccessStream};
 
     pub fn render(path: &str, max: u32) -> windows::core::Result<Vec<Vec<u8>>> {
-        let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(path))?.get()?;
-        let doc = PdfDocument::LoadFromFileAsync(&file)?.get()?;
+        let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(path))?.join()?;
+        let doc = PdfDocument::LoadFromFileAsync(&file)?.join()?;
         let count = doc.PageCount()?;
         if count > max {
             return Ok(Vec::new());
@@ -49,13 +49,13 @@ mod imp {
                 options.SetDestinationHeight(((size.Height / size.Width) * super::WIDTH as f32).clamp(1.0, 4.0 * super::WIDTH as f32) as u32)?;
             }
             let stream = InMemoryRandomAccessStream::new()?;
-            page.RenderWithOptionsToStreamAsync(&stream, &options)?.get()?;
+            page.RenderWithOptionsToStreamAsync(&stream, &options)?.join()?;
             let len = u32::try_from(stream.Size()?).unwrap_or(0);
             if len == 0 {
                 continue;
             }
             let reader = DataReader::CreateDataReader(&stream.GetInputStreamAt(0)?)?;
-            reader.LoadAsync(len)?.get()?;
+            reader.LoadAsync(len)?.join()?;
             let mut bytes = vec![0u8; len as usize];
             reader.ReadBytes(&mut bytes)?;
             pages.push(bytes);

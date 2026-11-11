@@ -139,18 +139,61 @@ pub struct Placement {
 }
 
 impl Placement {
+    /// Where the island is and the room its window keeps: as wide and as tall
+    /// as the largest size any view was given, so going from one view to
+    /// another never has to resize the window (the cursor poll lets the mouse
+    /// through around the island, whatever the window's size).
     pub fn of(s: &crate::settings::Settings) -> Self {
+        let (width, height) = largest_size(s);
         Self {
             zoom: s.island_zoom,
             dock: Dock::parse(&s.island_dock),
             offset: s.island_offset,
             float: s.island_float.max(0.0),
-            width: s.island_width,
-            height: s.island_height,
+            width,
+            height,
             beside: BESIDE_ROOM,
             gap: edge_gap_of(&s.island_edge_gap),
             strip: compact_width_of(&s.island_compact_width),
         }
+    }
+}
+
+/// The views whose size is kept on its own (src/core/layout.ts sizeSlot): the
+/// chat and a Gemini Live call share "chat", every other view has its own.
+const SIZE_SLOTS: &[&str] = &[
+    "home", "chat", "tools", "settings", "overview", "approval", "question", "error", "finished", "upload",
+    "uploading", "note", "recap", "wardrobe",
+];
+
+/// The slot a view's size is kept under, or `None` for a name that is not one.
+pub fn size_slot(name: Option<&str>) -> Option<&'static str> {
+    let name = name?;
+    SIZE_SLOTS.iter().copied().find(|slot| *slot == name)
+}
+
+/// The size a slot was given, or the one every view shared before (and every
+/// view without its own still takes).
+pub fn size_of(s: &crate::settings::Settings, slot: Option<&str>) -> (f64, f64) {
+    match slot.and_then(|slot| s.island_sizes.get(slot)) {
+        Some(size) => (size.width, size.height),
+        None => (s.island_width, s.island_height),
+    }
+}
+
+/// The widest width and the tallest height kept, for the window.
+fn largest_size(s: &crate::settings::Settings) -> (f64, f64) {
+    let kept = SIZE_SLOTS.iter().filter_map(|slot| s.island_sizes.get(*slot)).map(|v| (v.width, v.height));
+    std::iter::once((s.island_width, s.island_height))
+        .chain(kept)
+        .fold((f64::NAN, 0.0), |(w, h), (vw, vh)| (max_finite(w, vw), clamp_height(h).max(clamp_height(vh))))
+}
+
+fn max_finite(a: f64, b: f64) -> f64 {
+    match (a.is_finite(), b.is_finite()) {
+        (true, true) => a.max(b),
+        (false, true) => b,
+        _ => a,
     }
 }
 
@@ -680,6 +723,8 @@ fn area_of(m: &Monitor) -> (i32, i32, u32, u32) {
 struct SizePayload {
     width: f64,
     height: f64,
+    /// The view's slot the size is kept under (`size_slot`), or none for the shared size.
+    slot: Option<String>,
 }
 
 /// The size a grip dragged by `d` page pixels gives. `fx` and `fy` say how
@@ -707,8 +752,20 @@ fn resized(p: Placement, min: f64, f: (f64, f64), height: f64, d: (f64, f64), ro
 /// and springs to it; the window only grows meanwhile, so the island is never
 /// cut, and fits it again once the button is let go. Returns the size it ended
 /// at. Needs the cursor poll (Windows): elsewhere it returns at once. `min` is
-/// the narrowest width (`min_width_of`).
-pub fn resize(app: &AppHandle, pref: &str, start: Placement, min: f64, f: (f64, f64), height: f64) -> Option<Placement> {
+/// the narrowest width (`min_width_of`). `start` holds the size of the view
+/// being resized, `window_now` the room the window keeps already (every
+/// view's largest size, `Placement::of`), `slot` that view's slot.
+#[allow(clippy::too_many_arguments)]
+pub fn resize(
+    app: &AppHandle,
+    pref: &str,
+    start: Placement,
+    window_now: Placement,
+    min: f64,
+    f: (f64, f64),
+    height: f64,
+    slot: Option<&str>,
+) -> Option<Placement> {
     let win = window(app)?;
     let m = target_monitor(app, pref)?;
     let area = area_of(&m);
@@ -720,7 +777,7 @@ pub fn resize(app: &AppHandle, pref: &str, start: Placement, min: f64, f: (f64, 
     let height = if height.is_finite() && height > 0.0 { height } else { MIN_HEIGHT };
     let mut p = start;
     // The largest size reached: the window keeps room for it until the end.
-    let mut room_for = start;
+    let mut room_for = window_now;
     while left_button_down() {
         std::thread::sleep(Duration::from_millis(8));
         let Some((cx, cy)) = cursor_physical() else { break };
@@ -740,7 +797,11 @@ pub fn resize(app: &AppHandle, pref: &str, start: Placement, min: f64, f: (f64, 
             let _ = win.set_size(PhysicalSize::new(w, h));
             let _ = win.set_position(PhysicalPosition::new(x, y));
         }
-        let _ = app.emit_to(WINDOW_LABEL, "island-resize", SizePayload { width: clamp_width_to(p.width, min), height: p.height });
+        let _ = app.emit_to(
+            WINDOW_LABEL,
+            "island-resize",
+            SizePayload { width: clamp_width_to(p.width, min), height: p.height, slot: slot.map(str::to_string) },
+        );
     }
     Some(p)
 }
@@ -1140,6 +1201,32 @@ mod placement_tests {
         assert_eq!((both.width, both.height), (680.0, 200.0));
         // Never shorter than the smallest view.
         assert_eq!(resized(HOME, MIN_WIDTH, (0.0, 1.0), 160.0, (0.0, -100.0), room).height, MIN_HEIGHT);
+    }
+
+    #[test]
+    fn each_view_keeps_its_own_size_and_the_window_has_room_for_the_largest() {
+        use crate::settings::{Settings, ViewSize};
+        let mut s = Settings { island_width: 700.0, island_height: 0.0, ..Settings::default() };
+        // Before any view has a size of its own, every view takes the shared one.
+        assert_eq!(size_of(&s, size_slot(Some("home"))), (700.0, 0.0));
+        assert_eq!(size_of(&s, size_slot(Some("chat"))), (700.0, 0.0));
+        // The chat made big leaves the home as it was.
+        s.island_sizes.insert("chat".into(), ViewSize { width: 1100.0, height: 600.0 });
+        s.island_sizes.insert("home".into(), ViewSize { width: 440.0, height: 0.0 });
+        assert_eq!(size_of(&s, size_slot(Some("chat"))), (1100.0, 600.0));
+        assert_eq!(size_of(&s, size_slot(Some("home"))), (440.0, 0.0));
+        assert_eq!(size_of(&s, size_slot(Some("tools"))), (700.0, 0.0));
+        // The window keeps room for the largest, so changing view never resizes it.
+        let p = Placement::of(&s);
+        assert_eq!((p.width, p.height), (1100.0, 600.0));
+        // A name that is not a view's slot, from the page or the file, counts for nothing.
+        assert_eq!(size_slot(Some("prompt")), None);
+        assert_eq!(size_slot(Some("../x")), None);
+        assert_eq!(size_slot(None), None);
+        s.island_sizes.insert("huge".into(), ViewSize { width: 5000.0, height: 5000.0 });
+        s.island_sizes.insert("note".into(), ViewSize { width: f64::NAN, height: f64::INFINITY });
+        let p = Placement::of(&s);
+        assert_eq!((p.width, p.height), (1100.0, 600.0));
     }
 
     #[test]

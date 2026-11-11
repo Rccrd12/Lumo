@@ -148,6 +148,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         settings.island_float = current.island_float;
         settings.island_width = current.island_width;
         settings.island_height = current.island_height;
+        settings.island_sizes = current.island_sizes.clone();
         *current = settings;
         // Saved before the lock goes: another save (a drag of the island)
         // can't reach the disk first with what was there before this one.
@@ -301,34 +302,52 @@ fn island_drag(app: AppHandle, island: Option<(f64, f64, f64, f64)>) {
 /// island::resized); `height` is the island's height as drawn. `min_width`:
 /// a view that may go narrower than the others (the new look's home), else none.
 #[tauri::command]
-fn island_resize(app: AppHandle, fx: f64, fy: f64, height: f64, min_width: Option<f64>) {
+fn island_resize(app: AppHandle, fx: f64, fy: f64, height: f64, min_width: Option<f64>, view: Option<String>) {
     std::thread::spawn(move || {
-        let (pref, start) = placement(&app.state::<Shared>());
+        let slot = island::size_slot(view.as_deref());
+        let (pref, window_now, (width, height_kept)) = {
+            let s = app.state::<Shared>().settings.lock().unwrap().clone();
+            (s.screen.clone(), island::Placement::of(&s), island::size_of(&s, slot))
+        };
+        // The drag starts from the size of the view being resized, not the
+        // largest one the window keeps room for.
+        let start = island::Placement { width, height: height_kept, ..window_now };
         let min = island::min_width_of(min_width);
-        let Some(p) = island::resize(&app, &pref, start, min, (fx, fy), height) else { return };
+        let Some(p) = island::resize(&app, &pref, start, window_now, min, (fx, fy), height, slot) else { return };
         // Unchanged (a click, or the first half of a double click): nothing to
         // save, and nothing to undo a reset with. The window only grows when
         // the size does.
         if p == start {
             return;
         }
-        update_island(&app, |s| {
-            s.island_width = island::clamp_width_to(p.width, min);
-            s.island_height = island::clamp_height(p.height);
-        });
+        let size = (island::clamp_width_to(p.width, min), island::clamp_height(p.height));
+        update_island(&app, |s| keep_size(s, slot, size));
     });
 }
 
-/// A double click on a grip: back to the usual width, height, or both.
+/// Keeps `size` (width, height) for a view's slot, or as the shared size
+/// when there is none (a page from before the sizes were per view).
+fn keep_size(s: &mut Settings, slot: Option<&str>, (width, height): (f64, f64)) {
+    match slot {
+        Some(slot) => {
+            s.island_sizes.insert(slot.to_string(), settings::ViewSize { width, height });
+        }
+        None => {
+            s.island_width = width;
+            s.island_height = height;
+        }
+    }
+}
+
+/// A double click on a grip: the view being shown goes back to the usual
+/// width, height, or both. The other views keep theirs.
 #[tauri::command]
-fn island_reset_size(app: AppHandle, width: bool, height: bool) {
+fn island_reset_size(app: AppHandle, width: bool, height: bool, view: Option<String>) {
+    let slot = island::size_slot(view.as_deref());
     update_island(&app, |s| {
-        if width {
-            s.island_width = island::DEFAULT_WIDTH;
-        }
-        if height {
-            s.island_height = 0.0;
-        }
+        let (w, h) = island::size_of(s, slot);
+        let size = (if width { island::DEFAULT_WIDTH } else { w }, if height { 0.0 } else { h });
+        keep_size(s, slot, size);
     });
 }
 
@@ -1488,7 +1507,23 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::diff_file;
+    use super::{diff_file, keep_size};
+    use crate::settings::{Settings, ViewSize};
+
+    #[test]
+    fn a_resized_view_keeps_its_size_and_leaves_the_others_alone() {
+        let mut s = Settings { island_width: 640.0, island_height: 0.0, ..Settings::default() };
+        keep_size(&mut s, Some("chat"), (1000.0, 520.0));
+        assert_eq!(s.island_sizes.get("chat"), Some(&ViewSize { width: 1000.0, height: 520.0 }));
+        assert_eq!(s.island_sizes.get("home"), None);
+        assert_eq!((s.island_width, s.island_height), (640.0, 0.0));
+        keep_size(&mut s, Some("home"), (440.0, 0.0));
+        assert_eq!(s.island_sizes.get("chat"), Some(&ViewSize { width: 1000.0, height: 520.0 }));
+        // Without a view (an older page), the shared size, as before.
+        keep_size(&mut s, None, (800.0, 300.0));
+        assert_eq!((s.island_width, s.island_height), (800.0, 300.0));
+        assert_eq!(s.island_sizes.len(), 2);
+    }
 
     #[test]
     fn only_an_existing_file_by_its_full_path_reaches_the_editor() {

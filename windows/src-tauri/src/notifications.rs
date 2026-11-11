@@ -64,7 +64,7 @@ mod imp {
             let _ = tx.send(UserNotificationListener::Current().and_then(|l| l.RequestAccessAsync()));
         })
         .map_err(|_| refused())?;
-        rx.recv().map_err(|_| refused())?.and_then(|op| op.get()).map_err(|_| refused())
+        rx.recv().map_err(|_| refused())?.and_then(|op| op.join()).map_err(|_| refused())
     }
 
     pub fn read(app: &tauri::AppHandle) -> Result<Vec<Notification>, String> {
@@ -76,7 +76,7 @@ mod imp {
         if status != UserNotificationListenerAccessStatus::Allowed {
             return Err(refused());
         }
-        let all = listener.GetNotificationsAsync(NotificationKinds::Toast).and_then(|op| op.get()).map_err(|e| e.message())?;
+        let all = listener.GetNotificationsAsync(NotificationKinds::Toast).and_then(|op| op.join()).map_err(|e| e.message())?;
         let generic = KnownNotificationBindings::ToastGeneric().map_err(|e| e.message())?;
         let mut out = Vec::new();
         for n in all {

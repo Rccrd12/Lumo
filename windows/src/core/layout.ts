@@ -251,6 +251,31 @@ export interface IslandShape {
 
 export const DEFAULT_SHAPE: IslandShape = { width: EXPANDED_W, height: 0 };
 
+/**
+ * The slot a view's size is kept under (island.rs SIZE_SLOTS): the chat and a
+ * Gemini Live call (which takes the chat's room) share one, every other view
+ * has its own, so resizing the chat leaves the home as it was. Null for the
+ * launch greeting, which keeps its own size whatever was dragged.
+ */
+export function sizeSlot(view: IslandViewName): string | null {
+  if (view === "greeting") return null;
+  return view === "prompt" || view === "live" ? "chat" : view;
+}
+
+/** The sizes the grips left: one per view's slot, and the one every view shared before. */
+export interface KeptSizes {
+  islandWidth: number;
+  islandHeight: number;
+  islandSizes?: Partial<Record<string, { width: number; height: number }>>;
+}
+
+/** What the grips were dragged to for `view`: its own size, or the shared one when it has none yet. */
+export function viewShape(kept: KeptSizes, view: IslandViewName): IslandShape {
+  const slot = sizeSlot(view);
+  const own = slot ? kept.islandSizes?.[slot] : undefined;
+  return own ? { width: own.width, height: own.height } : { width: kept.islandWidth, height: kept.islandHeight };
+}
+
 export function islandWidth(shape: IslandShape): number {
   return Number.isFinite(shape.width) ? Math.min(MAX_ISLAND_W, Math.max(MIN_ISLAND_W, shape.width)) : EXPANDED_W;
 }

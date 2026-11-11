@@ -333,10 +333,12 @@ export const Bridge = {
   islandRecenter: () => call<void>("island_recenter"),
   /** Drag on a grip of the island (see layout.gripFactors); Rust follows the mouse until it is let go. */
   /** `minWidth`: a view that goes narrower than the others (the new look's home), else none. */
-  islandResize: (fx: number, fy: number, height: number, minWidth: number | null = null) =>
-    call<void>("island_resize", { fx, fy, height, minWidth }),
-  /** Double click on a grip: the usual width, height, or both. */
-  islandResetSize: (width: boolean, height: boolean) => call<void>("island_reset_size", { width, height }),
+  /** `view`: the slot of the view being resized (layout.ts sizeSlot), whose size alone changes. */
+  islandResize: (fx: number, fy: number, height: number, minWidth: number | null = null, view: string | null = null) =>
+    call<void>("island_resize", { fx, fy, height, minWidth, view }),
+  /** Double click on a grip: the usual width, height, or both, for that view's slot. */
+  islandResetSize: (width: boolean, height: boolean, view: string | null = null) =>
+    call<void>("island_reset_size", { width, height, view }),
   /** Reopens a chat from the history, and the Claude Code session that answered it. */
   chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
     call<void>("chat_restore", { chatId, turns, session, compact }),
