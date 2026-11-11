@@ -379,6 +379,7 @@ function planSection(status: HookStatus, connected: Record<string, boolean>): HT
 // ── Claude API section ────────────────────────────────────────────────────────
 
 const MODELS: [string, string][] = [
+  ["claude-fable-5-2", "Claude Fable 5.2"],
   ["claude-opus-5-5", "Claude Opus 5.5"],
   ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
   ["claude-haiku-5-5", "Claude Haiku 5.5"],
@@ -387,6 +388,7 @@ const MODELS: [string, string][] = [
 /** What Claude Code runs: its own default, or one of the current models. */
 const CLAUDE_CODE_MODELS: [string, string][] = [
   ["default", N_("Default")],
+  ["claude-fable-5-2", "Fable 5.2"],
   ["claude-opus-5-5", "Opus 5.5"],
   ["claude-sonnet-5-5", "Sonnet 5.5"],
   ["claude-haiku-5-5", "Haiku 5.5"],
