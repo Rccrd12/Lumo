@@ -885,6 +885,24 @@ test("the other providers show the file first, then Thinking…", async (t) => {
   assert.equal(label(), "Thinking…");
 });
 
+test("Unsloth Studio still starting: the chat says so with the picker's seconds, not Thinking…", async () => {
+  State.settings = { ...State.settings, chatProvider: "unsloth" };
+  const pending = heldAnswers();
+  await ask("Ciao");
+  // The model picker started it 15 s ago: the question waits for that start.
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "starting", detail: "15" } });
+  assert.equal(label(), "Starting Unsloth Studio… 15 s");
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "starting", detail: "16" } });
+  assert.match(label(), /^Starting Unsloth Studio… 1[56] s$/, "one line, its seconds going on");
+  assert.equal(view.el.find(".typing").length, 1);
+  // Ready: what the model does next, from 0.
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "prompt", detail: "" } });
+  assert.equal(label(), "Processing the prompt…");
+  pending[0]({ text: "Ciao!", turns: 2 });
+  await flush();
+  view.sync();
+});
+
 test("each activity has its words, with a file name, a host or a tool", () => {
   const cases = [
     [{ kind: "thinking", detail: "" }, "Thinking…"],
