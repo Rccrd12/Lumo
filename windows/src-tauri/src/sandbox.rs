@@ -627,7 +627,7 @@ mod win {
                 return Err(format!("Windows couldn't put the tool in its job: {e}"));
             }
             if ResumeThread(thread.handle()) == u32::MAX {
-                let e = ::windows::core::Error::from_win32();
+                let e = ::windows::core::Error::from_thread();
                 let _ = TerminateJobObject(job.handle(), 1);
                 return Err(format!("Windows couldn't start the tool: {e}"));
             }

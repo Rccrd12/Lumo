@@ -43,7 +43,7 @@ keyring = { version = "3", features = ["windows-native"] }
 # Same versions as wry, so nothing new is compiled.
 webview2-com = "0.39"
 wv2_core = { package = "windows-core", version = "0.62" }
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
   "Win32_Foundation",
   # Update now: whether this Lumo came from the .msi (updater.rs).
   "Win32_System_ApplicationInstallationAndServicing",
