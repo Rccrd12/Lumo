@@ -1212,14 +1212,16 @@ fn run(
         kill_tree(&mut child);
         return Ok(state);
     }
-    let status = child.wait().ok();
-    if state.result.is_none() {
-        // The reader is done with stderr once the CLI ended.
-        std::thread::sleep(Duration::from_millis(50));
-        let stderr = stderr.lock().unwrap_or_else(|p| p.into_inner()).clone();
-        return Err(ended_without_answer(&stderr, status));
+    if state.result.is_some() {
+        // The answer is in: the CLI may end by itself, or is ended.
+        end_after_result(&mut child, &stop, AFTER_RESULT);
+        return Ok(state);
     }
-    Ok(state)
+    let status = child.wait().ok();
+    // The reader is done with stderr once the CLI ended.
+    std::thread::sleep(Duration::from_millis(50));
+    let stderr = stderr.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    Err(ended_without_answer(&stderr, status))
 }
 
 // ── One Claude Code per chat ──────────────────────────────────────────────────
@@ -1589,6 +1591,27 @@ pub fn close(chat_id: &str) {
 }
 
 /// An npm install runs `claude.cmd`: killing cmd.exe alone would leave node running.
+/// After its turn's `result`, a CLI run once gets this long to end by itself
+/// before it and its children are ended: a process it left behind holding its
+/// output must not keep the turn, and Stop, waiting for ever.
+pub(crate) const AFTER_RESULT: Duration = Duration::from_secs(10);
+
+/// Waits for `child` to end after its turn's result: at most `grace`, or until
+/// Stop. Past that, it and its children are ended. Its exit status when it
+/// ended by itself.
+pub(crate) fn end_after_result(child: &mut std::process::Child, stop: &Stop, grace: Duration) -> Option<std::process::ExitStatus> {
+    let since = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) if !stop.is_stopped() && since.elapsed() < grace => std::thread::sleep(Duration::from_millis(50)),
+            _ => break,
+        }
+    }
+    kill_tree(child);
+    None
+}
+
 pub(crate) fn kill_tree(child: &mut std::process::Child) {
     let mut kill = Command::new("taskkill");
     kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
@@ -1845,6 +1868,39 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A command that runs a minute unless it is ended.
+    #[cfg(windows)]
+    fn lingering() -> std::process::Child {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "ping -n 60 127.0.0.1 >NUL"]).stdout(Stdio::null()).stderr(Stdio::null());
+        platform::no_console(&mut cmd);
+        cmd.spawn().expect("cmd")
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_cli_that_lingers_after_its_answer_is_ended_and_stop_ends_it_at_once() {
+        let stop = Stop::default();
+        let mut child = lingering();
+        let started = Instant::now();
+        assert_eq!(end_after_result(&mut child, &stop, Duration::from_millis(300)), None);
+        assert!(started.elapsed() < Duration::from_secs(20), "{:?}", started.elapsed());
+        assert!(child.try_wait().expect("try_wait").is_some(), "ended");
+        // Stop after the answer: ended at once, not after the whole grace.
+        let mut child = lingering();
+        stop.stop();
+        let started = Instant::now();
+        assert_eq!(end_after_result(&mut child, &stop, Duration::from_secs(120)), None);
+        assert!(started.elapsed() < Duration::from_secs(20), "{:?}", started.elapsed());
+        // One that ends by itself gives its exit status.
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "exit 3"]);
+        platform::no_console(&mut cmd);
+        let mut quick = cmd.spawn().expect("cmd");
+        let status = end_after_result(&mut quick, &Stop::default(), Duration::from_secs(20));
+        assert_eq!(status.and_then(|s| s.code()), Some(3));
+    }
 
     const SID: &str = "0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b";
 
