@@ -74,10 +74,13 @@ jobs:
 
       - name: Session info
         shell: pwsh
+        continue-on-error: true
         run: |
-          query user 2>$null
-          [System.Windows.Forms.Screen]::AllScreens 2>$null
-          Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::AllScreens | Format-List
+          query user
+          Add-Type -AssemblyName System.Windows.Forms
+          [System.Windows.Forms.Screen]::AllScreens | Format-List
+          (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}').pv
+          exit 0
 
       - name: Spike
         shell: pwsh
