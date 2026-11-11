@@ -516,6 +516,15 @@ test("the card names the most specific thing the tool carries", () => {
   assert.equal(target("mcp__lumo__type", { text: "ciao\nmondo" }), "Type · ciao mondo");
   assert.equal(target("mcp__lumo__key", { text: "ctrl+s" }), "Press · ctrl+s");
   assert.equal(target("mcp__github__create_issue", { title: "x" }), 'mcp__github__create_issue · {"title":"x"}', "another server: all it is given");
+  // An MCP tool's path or command comes with what else Allow allows: all of it shows.
+  assert.equal(target("mcp__shell__run", { path: "C:\\repo", script: "del /s *" }), 'mcp__shell__run · {"path":"C:\\\\repo","script":"del /s *"}');
+  assert.equal(target("mcp__ssh__exec", { command: "ls", host: "prod", description: "List" }), 'mcp__ssh__exec · {"command":"ls","host":"prod"}');
+  assert.equal(target("mcp_fs_replace", { path: "src", pattern: "a", replacement: "b" }), 'mcp_fs_replace · {"path":"src","pattern":"a","replacement":"b"}');
+  // The one field alone, or only the agent's reason besides it: as it was.
+  assert.equal(target("mcp__lumo__live_read", { path: "C:\\a.pdf" }), "mcp__lumo__live_read · C:\\a.pdf");
+  assert.equal(target("mcp__fs__read", { path: "a.txt", description: "Read it" }), "mcp__fs__read · a.txt");
+  // Claude Code's own tools keep their one line: their other fields are known.
+  assert.equal(target("Grep", { pattern: "x", path: "src", glob: "*.ts" }), "Grep · src");
 });
 
 test("a simple request stays on the closed island, with its buttons (never answered by itself)", () => {

@@ -459,17 +459,25 @@ function approvalTarget(tool: string, input: Record<string, unknown>): string {
   // The chat's computer use: what the click or the keys will do.
   const action = describeComputerAction(tool, input);
   if (action) return action;
+  const given = Object.fromEntries(Object.entries(input).filter(([k]) => !REASON_KEYS.has(k)));
+  // An MCP server's tool: what its fields mean is its own. Its `path` or
+  // `command` may come with a script, a body or a host that Allow allows
+  // too: with anything besides the one field, the card shows it all.
+  const mcp = MCP_TOOL.test(tool);
   for (const field of APPROVAL_FIELDS) {
     const value = input[field];
     if (typeof value === "string" && value.trim()) {
+      if (mcp && Object.keys(given).some((k) => k !== field)) break;
       return `${tool} · ${value.trim()}`;
     }
   }
-  // Nothing that names it (an MCP tool's call): all it is given, since Allow
-  // allows exactly that. The agent's own explanation is the line above it.
-  const given = Object.fromEntries(Object.entries(input).filter(([k]) => !REASON_KEYS.has(k)));
+  // Nothing that names it alone (an MCP tool's call): all it is given, since
+  // Allow allows exactly that. The agent's own explanation is the line above it.
   return Object.keys(given).length ? `${tool} · ${JSON.stringify(given)}` : tool;
 }
+
+/** An MCP server's tool, as Claude Code ("mcp__github__create_issue") and others ("mcp_github_create_issue") name it. */
+const MCP_TOOL = /^mcp_/i;
 
 /** What the agent says of a call (core/approvals.ts REASON_FIELDS): shown as the line above, not as what it is given. */
 const REASON_KEYS = new Set(["description", "Description", "justification", "explanation", "Explanation", "toolSummary"]);
