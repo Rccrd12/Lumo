@@ -339,7 +339,9 @@ export class Ink {
     const end = lastCut(this.cuts, Math.min(arrived, this.paced + AHEAD));
     if (end !== this.drawn) {
       this.drawn = end;
-      into.replaceChildren();
+      // Drawn over what it shows, not into an emptied box: a node the draw
+      // keeps stays where it is, its CSS animations running on (the dots of
+      // a card still being written).
       this.draw(into, this.text.slice(0, end));
       this.lay(into);
       if (this.skipping) {
@@ -356,7 +358,6 @@ export class Ink {
     if (!caughtUp) return true;
     // Done: drawn once more, plainly, without the spans.
     if (this.complete && end === arrived) {
-      into.replaceChildren();
       this.draw(into, this.text);
       this.pieces = [];
     }

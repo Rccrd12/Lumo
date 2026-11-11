@@ -380,6 +380,31 @@ test("a finished card stays the same node while the answer goes on being written
   assert.notEqual(root.querySelector(".rc-steps"), card);
 });
 
+test("a block being written keeps one placeholder, and nothing kept is taken out and put back", () => {
+  const root = dom.root();
+  const head = "Intro\n```lumo-steps T\n## A\n$$a$$\n## B\n$$b$$\n```\n\n```lumo-quiz Planets\n? Which is";
+  renderMarkdown(root, head, { streaming: true, scope: "p#1" });
+  const card = root.querySelector(".rc-steps");
+  const pending = root.querySelector(".rc-pending");
+  assert.ok(pending);
+  // Taken out and put back, a node starts its CSS animations over: the dots,
+  // at every chunk. Only the new paragraphs go in.
+  const moved = [];
+  const insert = root.insertBefore.bind(root);
+  root.insertBefore = (node, ref) => (moved.push(node), insert(node, ref));
+  for (const more of [" the largest?", " the largest?\n- Mars", " the largest?\n- Mars\n+ Jupiter"]) {
+    renderMarkdown(root, head + more, { streaming: true, scope: "p#1" });
+    assert.equal(root.querySelector(".rc-pending"), pending, "the same placeholder");
+    assert.equal(root.querySelector(".rc-steps"), card);
+  }
+  assert.ok(!moved.includes(pending) && !moved.includes(card));
+  // Its fence closed: the card in the placeholder's place.
+  renderMarkdown(root, head + " the largest?\n- Mars\n+ Jupiter\n```", { streaming: true, scope: "p#1" });
+  assert.equal(root.querySelector(".rc-pending"), null);
+  assert.ok(root.querySelector(".rc-quiz"));
+  assert.equal(root.children.at(-1), root.querySelector(".rc-quiz"));
+});
+
 test("the same block in two messages keeps two states", () => {
   const text = "```lumo-steps Twins\n## A\n$$a$$\n## B\n$$b$$\n## C\n$$c$$\n```";
   const one = dom.root();

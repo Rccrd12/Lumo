@@ -56,6 +56,13 @@ const isBullet = (s: string) => /^[-*+] /.test(s);
 const ordered = (s: string) => /^(\d+)\.\s+/.exec(s);
 const isQuote = (s: string) => s.startsWith("> ") || s === ">";
 const isTableRow = (s: string) => s.startsWith("|") && s.length > 1;
+/**
+ * `[!NOTE] text` with no `>` before it, as small local models write it: the
+ * text after it and the lines under it, to a blank line, are its body.
+ */
+const LOOSE_CALLOUT = new RegExp(`^(?:\\*\\*)?\\[!(${CALLOUT_TYPES.join("|")})\\](?:\\*\\*)?[ \\t]*(.*)$`, "i");
+/** A line that ends a loose callout's text: a list item, a heading, a quote, a table row, a fence. */
+const LOOSE_CALLOUT_END = /^\s*(?:[-*+•]\s|\d+[.)]\s|#|>|\||```)/;
 /** `> [!TIP]`, `>[!warning] A title`: the alert's kind and title. */
 const CALLOUT = new RegExp(`^>\\s*\\[!(${CALLOUT_TYPES.join("|")})\\][ \\t]*(.*)$`, "i");
 /**
@@ -70,6 +77,16 @@ const FENCE_LINE = /^[ \t]*(`{3,})(.*)$/;
  * models write it, the cards as a list under it (views/rich/cards.ts).
  */
 const LOOSE_CARDS = /^[ \t]*(?:\*\*|`)?lumo-cards(?:\*\*|`)?(?:[ \t]+(.*?))?[ \t]*$/;
+/**
+ * A line of a chart left without its fence name (```, ```plot), as small
+ * local models write it: only these keys, with a curve and an x range.
+ */
+const LOOSE_PLOT_LINE = /^[ \t]*(formula|y|x|yrange|region)[ \t]*:/i;
+function loosePlot(lang: string, code: string[]): boolean {
+  if (lang !== "" && lang.toLowerCase() !== "plot") return false;
+  const keys = code.filter((l) => l.trim()).map((l) => LOOSE_PLOT_LINE.exec(l)?.[1].toLowerCase());
+  return keys.length > 0 && keys.every(Boolean) && keys.includes("y") && keys.includes("x");
+}
 /** A line that goes on a list: blank, indented, or an item. */
 const LIST_LINE = /^(?:[ \t]*$|[ \t]|[-*+•][ \t])/;
 /**
@@ -210,7 +227,8 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       const lang = line.slice(3).trim();
       const code: string[] = [];
       for (i++; i < lines.length && !lines[i].startsWith("```"); i++) code.push(lines[i]);
-      blocks.push({ kind: "code", lang, code: code.join("\n") });
+      if (loosePlot(lang, code)) blocks.push({ kind: "rich", type: "plot", title: "", body: code.join("\n"), open: i >= lines.length });
+      else blocks.push({ kind: "code", lang, code: code.join("\n") });
       i++;
       continue;
     }
@@ -267,6 +285,18 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       const body: string[] = [];
       for (i++; i < lines.length && lines[i].trim().startsWith(">"); i++) body.push(lines[i].trim().replace(/^> ?/, ""));
       blocks.push({ kind: "callout", type: alert[1].toLowerCase() as CalloutType, title: alert[2].trim(), body: body.join("\n") });
+      continue;
+    }
+    const bare = LOOSE_CALLOUT.exec(stripped);
+    // With no text, on its line or under it, it is no callout: left as written.
+    if (bare && (bare[2].replace(/\*\*$/, "").trim() || (lines[i + 1]?.trim() && !LOOSE_CALLOUT_END.test(lines[i + 1])))) {
+      // Bold around the whole line: the closing ** goes too.
+      const first = /^\*\*/.test(stripped) ? bare[2].trim().replace(/\*\*$/, "").trim() : bare[2].trim();
+      const body = first ? [first] : [];
+      // Its text runs to a blank line or another block: a list, a heading, a
+      // quote, a table or a fence stays its own (a task list, a checklist).
+      for (i++; i < lines.length && lines[i].trim() && !LOOSE_CALLOUT_END.test(lines[i]); i++) body.push(lines[i].trim());
+      blocks.push({ kind: "callout", type: bare[1].toLowerCase() as CalloutType, title: "", body: body.join("\n") });
       continue;
     }
     // The last line of a text still being written may be an address cut
@@ -679,6 +709,11 @@ export interface MarkdownOptions {
    * card's text): an answer downloads its first MAX_PER_ANSWER images only.
    */
   imagesBefore?: number;
+  /**
+   * Shown after the text, left in place when it is already there (the tool
+   * workshop's "Writing the tool…" line, its dot pulsing on across draws).
+   */
+  after?: HTMLElement | null;
 }
 
 /**
@@ -697,12 +732,14 @@ const shown = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
 /**
  * What identifies a card, image or callout across redraws of the same
  * container: its place and its text. Null for anything drawn again each time,
- * and for a block still being written.
+ * and for a block still being written but its placeholder.
  */
 function identity(block: Block, n: number, streaming: boolean, tail: boolean, images: number): string | null {
   switch (block.kind) {
     case "rich": {
-      if (block.open && streaming) return null;
+      // Still being written: its placeholder, the same node while the body
+      // grows, so its dots keep pulsing instead of starting over each chunk.
+      if (block.open && streaming) return `pending\u0000${n}\u0000${block.type}\u0000${block.title}`;
       // A checklist is drawn again when a list is written again further down.
       const lists = block.type === "checklist" ? checklistsEpoch() : "";
       return `rich\u0000${n}\u0000${lists}\u0000${block.type}\u0000${block.title}\u0000${block.body}\u0000${block.open}`;
@@ -718,6 +755,20 @@ function identity(block: Block, n: number, streaming: boolean, tail: boolean, im
     default:
       return null;
   }
+}
+
+/**
+ * Makes `into` show `nodes`, in order, leaving where they are the ones it
+ * already shows: a node taken out and put back starts its CSS animations
+ * over (the placeholder's dots, at every chunk of an answer).
+ */
+function place(into: HTMLElement, nodes: HTMLElement[]): void {
+  const wanted = new Set<Node>(nodes);
+  for (const child of Array.from(into.childNodes)) if (!wanted.has(child)) child.remove();
+  nodes.forEach((node, i) => {
+    const at = into.childNodes[i] ?? null;
+    if (at !== node) into.insertBefore(node, at);
+  });
 }
 
 /**
@@ -759,7 +810,8 @@ export function renderMarkdown(into: HTMLElement, markdown: string, opts: Markdo
     i--;
     if (lines.length) out.push(quoteRun(lines));
   }
-  into.replaceChildren(...out);
+  if (opts.after) out.push(opts.after);
+  place(into, out);
   if (kept.size) shown.set(into, kept);
   else shown.delete(into);
 }
