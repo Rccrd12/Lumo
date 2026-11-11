@@ -10,6 +10,24 @@ import { join } from "node:path";
 const SCRIPT = String.raw`
 param([int]$Owner, [string]$Press, [int]$Seconds)
 $tab = [string][char]9
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class LumoE2eBox {
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
+  public static void Click(int x, int y) {
+    SetCursorPos(x, y);
+    System.Threading.Thread.Sleep(150);
+    mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+    System.Threading.Thread.Sleep(50);
+    mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+  }
+}
+"@
+# Screen pixels, as UI Automation gives them.
+[void][LumoE2eBox]::SetProcessDPIAware()
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $A = [System.Windows.Automation.AutomationElement]
 $root = $A::RootElement
@@ -42,10 +60,14 @@ if (-not $box) {
 }
 $all = $box.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
 $text = ($all | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join " | "
-# A box's buttons are what can be pressed in it (a task dialog's own
-# buttons are not all of control type Button).
+# A task dialog's own buttons are panes with nothing to invoke: they are
+# found by name, after the text, and clicked with the real mouse.
 $invoke = [System.Windows.Automation.InvokePattern]::Pattern
-$buttons = @($all | Where-Object { $p = $null; $_.Current.Name -and $_.TryGetCurrentPattern($invoke, [ref]$p) })
+$buttons = @($all | Where-Object {
+  $p = $null
+  $_.Current.Name -and ($_.TryGetCurrentPattern($invoke, [ref]$p) -or
+    $_.Current.ControlType.ProgrammaticName -in @("ControlType.Button", "ControlType.Pane"))
+})
 $names = ($buttons | ForEach-Object { $_.Current.Name }) -join " | "
 $hit = $buttons | Where-Object { $_.Current.Name -eq $Press } | Select-Object -First 1
 if (-not $hit) {
@@ -53,7 +75,8 @@ if (-not $hit) {
   Write-Output ("NOBUTTON" + $tab + $names + $tab + $kinds)
   exit
 }
-$hit.GetCurrentPattern($invoke).Invoke()
+$r = $hit.Current.BoundingRectangle
+[LumoE2eBox]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
 Write-Output ("PRESSED" + $tab + $names + $tab + $text)
 `;
 
