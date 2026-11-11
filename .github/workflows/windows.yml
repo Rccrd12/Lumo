@@ -33,11 +33,16 @@ jobs:
         working-directory: windows
 
     steps:
+      # The token stays out of .git/config while npm and the crates' build
+      # scripts run; this job pushes nothing.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
+      # The same Node as Windows CI and the beta: the tests need 22.18 or newer.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: windows/package-lock.json
 
@@ -73,6 +78,31 @@ jobs:
           if ($tag -ne $pkg)   { $bad += "package.json says $pkg" }
           if ($tag -ne $cargo) { $bad += "Cargo.toml says $cargo" }
           if ($bad) { throw "tag says $tag but $($bad -join '; ')" }
+
+      # The checks of Windows CI again, on the very commit the tag names: a tag
+      # on a commit whose tests fail is never packed, signed or published. One
+      # command per step: PowerShell carries on after a failed command in the
+      # same step.
+      - name: Island tests
+        run: npm test
+
+      - name: Build the relay
+        run: cargo build --release -p lumo-hook --locked
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --workspace --locked
+
+      # A crate with a known vulnerability (RustSec) stops the release.
+      # Warnings (unmaintained, yanked, the Linux-only GTK crates) do not.
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-audit
+
+      - name: Rust advisories
+        run: cargo audit
 
       # `npm run build` (run by tauri as beforeBuildCommand) builds the relay (lumo-hook)
       # first, which tauri.conf.json then bundles as a resource. `pack` then

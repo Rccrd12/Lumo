@@ -63,7 +63,7 @@ jobs:
       # build script refuses to run until that file exists. One command per
       # step: PowerShell carries on after a failed command in the same step.
       - name: Build the relay
-        run: cargo build --release -p lumo-hook
+        run: cargo build --release -p lumo-hook --locked
 
       # Dead code and the like fail the build here rather than piling up.
       - name: Clippy
@@ -71,3 +71,15 @@ jobs:
 
       - name: Rust tests
         run: cargo test --workspace --locked
+
+      # Known vulnerabilities (RustSec) in Cargo.lock show up on the first pull
+      # request after they are published. Here it only warns, so an advisory
+      # that has nothing to do with a pull request keeps none out of the beta;
+      # the release (windows.yml) stops on one.
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-audit
+
+      - name: Rust advisories
+        continue-on-error: true
+        run: cargo audit

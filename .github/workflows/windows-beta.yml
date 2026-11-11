@@ -102,7 +102,7 @@ jobs:
 
       - name: Build the relay
         if: steps.merge.outputs.changes == 'true'
-        run: cargo build --release -p lumo-hook
+        run: cargo build --release -p lumo-hook --locked
 
       - name: Rust tests
         if: steps.merge.outputs.changes == 'true'

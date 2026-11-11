@@ -17758,6 +17758,18 @@
    "ru": "Lumo не смог спросить пользователя об этой странице (остров занят): попробуйте чуть позже.",
    "id": "Lumo tidak bisa menanyakan halaman ini kepada pengguna (pulau sedang sibuk): coba lagi sebentar lagi.",
    "it": "Lumo non è riuscito a chiedere all'utente di questa pagina (l'isola è occupata): riprova tra un momento."
+  },
+  "Lumo's Settings window shows the changes: look at them and confirm there.": {
+   "zh-Hans": "Lumo 的设置窗口会显示这些更改：请在那里查看并确认。",
+   "hi": "Lumo की सेटिंग्स विंडो बदलाव दिखाती है: उन्हें वहीं देखें और पुष्टि करें।",
+   "es": "La ventana de Ajustes de Lumo muestra los cambios: revísalos y confírmalos allí.",
+   "ar": "تعرض نافذة إعدادات Lumo التغييرات: راجِعها وأكِّدها هناك.",
+   "fr": "La fenêtre Réglages de Lumo affiche les changements : vérifiez-les et confirmez-les là-bas.",
+   "bn": "Lumo-র সেটিংস উইন্ডো পরিবর্তনগুলো দেখায়: সেখানে দেখে নিশ্চিত করুন।",
+   "pt-BR": "A janela de Ajustes do Lumo mostra as alterações: confira e confirme lá.",
+   "ru": "Окно настроек Lumo показывает изменения: проверьте и подтвердите их там.",
+   "id": "Jendela Pengaturan Lumo menampilkan perubahannya: periksa dan konfirmasi di sana.",
+   "it": "La finestra Impostazioni di Lumo mostra le modifiche: controllale e confermale lì."
   }
  }
 }
