@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { after, before } from "node:test";
 
 import { Lumo } from "./lib/app.mjs";
-import { answerBox } from "./lib/dialog.mjs";
+import { answerBox, windowsOnScreen } from "./lib/dialog.mjs";
 import { sleep } from "./lib/driver.mjs";
 import { flow, step } from "./lib/flow.mjs";
 
@@ -99,11 +99,12 @@ flow(G, "The relay is installed from the island after Windows' Yes, and the wind
   await d.until(`return !!${FRAME}.querySelector('.notice.ok')`, 10_000, "the island saying it is done");
   assert.ok(relayWritten(), "settings.json has the status line relay");
 
-  // The separate Settings window never came up.
-  await d.switchTo(app.handles.settings);
-  const shown = await d.js("return document.visibilityState");
-  await d.switchTo(app.handles.island);
-  assert.equal(shown, "hidden", "the Settings window stays shut");
+  // The separate Settings window never came up (Windows lists only the
+  // windows on screen; the island is one, untitled "Lumo").
+  const shown = windowsOnScreen(app.proc.pid);
+  step(`Lumo's windows on screen: ${JSON.stringify(shown)}`);
+  assert.ok(shown.length > 0, "Lumo's windows are listed");
+  assert.ok(!shown.some((title) => /settings/i.test(title)), "the Settings window stays shut");
 });
 
 flow(G, "No write without its preview, even from the island", app, async () => {

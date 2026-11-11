@@ -96,3 +96,25 @@ export function answerBox(pid, press, seconds = 10) {
   const [state, buttons = "", text = ""] = line.split("\t");
   return { found: state === "PRESSED" || state === "NOBUTTON", pressed: state === "PRESSED", buttons, text, raw: line || out.stderr };
 }
+
+const WINDOWS = String.raw`
+param([int]$Owner)
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$A = [System.Windows.Automation.AutomationElement]
+$mine = New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $Owner)
+foreach ($w in $A::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $mine)) {
+  Write-Output $w.Current.Name
+}
+`;
+
+/** The titles of the windows process `pid` shows on screen (hidden ones are not listed). */
+export function windowsOnScreen(pid) {
+  const script = join(tmpdir(), "lumo-e2e-windows.ps1");
+  writeFileSync(script, WINDOWS);
+  const out = spawnSync(
+    "powershell",
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-Owner", String(pid)],
+    { encoding: "utf8", timeout: 20_000 },
+  );
+  return (out.stdout ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+}
