@@ -51,6 +51,10 @@ const MAX_EVENT: usize = 8 * 1024 * 1024;
 const MAX_STREAM: usize = 64 * 1024 * 1024;
 /// Text and code files are inlined; anything larger is skipped.
 const MAX_INLINE_TEXT: u64 = 200_000;
+/// An image whose base64 fits the API's 5 MB (5 × 1024 × 1024 characters).
+const MAX_IMAGE_BYTES: u64 = 5 * 1024 * 1024 / 4 * 3;
+/// A PDF whose base64 leaves room in the API's 32 MB request.
+const MAX_PDF_BYTES: u64 = 22 * 1024 * 1024;
 
 pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
 
@@ -312,8 +316,12 @@ pub async fn send(
             let stopped_for_tools = stop == "tool_use" && !tools.is_empty();
             // A long web search hands the turn back halfway: sent again as it is, it goes on.
             let paused = stop == "pause_turn";
-            if !(stopped_for_tools || paused) || rounds == MAX_TOOL_ROUNDS {
-                return Ok::<_, String>(response);
+            if !(stopped_for_tools || paused) {
+                return Ok::<_, String>((response, false));
+            }
+            // Still at its tools after all its rounds: what it said is the answer.
+            if rounds == MAX_TOOL_ROUNDS {
+                return Ok((response, true));
             }
             rounds += 1;
             let blocks = response["content"].as_array().cloned().unwrap_or_default();
@@ -338,7 +346,15 @@ pub async fn send(
         }
         return Ok(ChatReply::stopped(shown, None));
     };
-    let response = response?;
+    let (response, capped) = response?;
+    if capped {
+        // Its last answer asks for tools that won't run: kept as its text,
+        // with no tool_use left unanswered in the conversation.
+        let blocks = response["content"].as_array().cloned().unwrap_or_default();
+        let text = capped_answer(said, response_text(&blocks), MAX_TOOL_ROUNDS);
+        chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
+        return Ok(ChatReply::answer(text, None));
+    }
     let (blocks, text) = interpret(&response)?;
     let text = with_cut_note(text, &response);
 
@@ -353,6 +369,47 @@ pub async fn send(
     let text = said.join("\n\n");
     chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
     Ok(ChatReply::answer(text, None))
+}
+
+/// The answer of a turn whose tools ran for all of MAX_TOOL_ROUNDS: what
+/// was said along the way and in the last answer, then why it ends there.
+pub(crate) fn capped_answer(mut said: Vec<String>, last: Option<String>, rounds: usize) -> String {
+    said.extend(last.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()));
+    said.push(format!("_{}_", tf("Lumo stopped the tools after {count} rounds: ask to continue.", &[("count", &rounds.to_string())])));
+    said.join("\n\n")
+}
+
+/// /compact: the conversation summed up, streamed with the model's whole room
+/// (a reasoning model thinks first, and a long chat's summary is long). No
+/// tools. A summary cut at the length limit is an error, not a summary.
+pub async fn summarize(model: &str, system: &str, prompt: &str) -> Result<String, String> {
+    let key = secrets::get(KEY).ok_or_else(|| t("API key missing. Open settings."))?;
+    let endpoint = endpoint()?;
+    let known = model_facts(&endpoint, &key, model).await;
+    let user = json!({ "role": "user", "content": prompt });
+    let mut body = request_body(model, system, &[], &user, known.max_tokens);
+    body.as_object_mut().map(|b| b.remove("tools"));
+    let mut smaller = false;
+    let mut retried = false;
+    let response = loop {
+        match stream_call(&endpoint, &key, &body, &mut None, |_| {}).await {
+            Ok(response) => break response,
+            Err(Failed::Status(400, e)) if !smaller && e.contains("max_tokens") => {
+                smaller = true;
+                body["max_tokens"] = json!(SMALL_MAX_TOKENS);
+            }
+            Err(Failed::Status(500 | 502 | 503 | 504 | 529, _)) if !retried => {
+                retried = true;
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    };
+    let (_, text) = interpret(&response)?;
+    if response["stop_reason"] == "max_tokens" {
+        return Err(t("The summary was cut off at the length limit. Try again."));
+    }
+    Ok(text)
 }
 
 /// One question with no conversation and no tools: the supervisor's review
@@ -626,14 +683,29 @@ impl ModelFacts {
     }
 }
 
+/// How long a model the list said nothing of is not asked about again: a
+/// gateway without the model list would cost every turn its 10 s otherwise.
+const UNKNOWN_FOR: Duration = Duration::from_secs(10 * 60);
+
 async fn model_facts(endpoint: &Url, key: &str, model: &str) -> ModelFacts {
     static KNOWN: LazyLock<Mutex<HashMap<String, ModelFacts>>> = LazyLock::new(Default::default);
+    static UNKNOWN: LazyLock<Mutex<HashMap<String, std::time::Instant>>> = LazyLock::new(Default::default);
     if let Some(facts) = KNOWN.lock().unwrap_or_else(|p| p.into_inner()).get(model) {
         return facts.clone();
     }
-    let Some(json) = model_entry(endpoint, key, model).await else { return ModelFacts::unknown() };
-    let Some(max_tokens) = json["max_tokens"].as_u64().filter(|n| *n >= 1024) else { return ModelFacts::unknown() };
-    let facts = ModelFacts { max_tokens, context: json["max_input_tokens"].as_u64().unwrap_or(0), efforts: efforts(&json) };
+    if UNKNOWN.lock().unwrap_or_else(|p| p.into_inner()).get(model).is_some_and(|at| at.elapsed() < UNKNOWN_FOR) {
+        return ModelFacts::unknown();
+    }
+    let facts = model_entry(endpoint, key, model).await.and_then(|json| {
+        let max_tokens = json["max_tokens"].as_u64().filter(|n| *n >= 1024)?;
+        Some(ModelFacts { max_tokens, context: json["max_input_tokens"].as_u64().unwrap_or(0), efforts: efforts(&json) })
+    });
+    let Some(facts) = facts else {
+        let mut unknown = UNKNOWN.lock().unwrap_or_else(|p| p.into_inner());
+        unknown.retain(|_, at| at.elapsed() < UNKNOWN_FOR);
+        unknown.insert(model.to_string(), std::time::Instant::now());
+        return ModelFacts::unknown();
+    };
     KNOWN.lock().unwrap_or_else(|p| p.into_inner()).insert(model.to_string(), facts.clone());
     facts
 }
@@ -720,6 +792,13 @@ fn file_block(path: &str) -> Option<Value> {
     };
 
     if let Some((block_type, media)) = media_type {
+        // Past what the API takes, the whole turn would be refused: the
+        // model is told instead, and the question still goes.
+        let len = std::fs::metadata(path).ok()?.len();
+        if len > max_attachment(block_type) {
+            let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            return Some(json!({ "type": "text", "text": too_large_note(&name, len, max_attachment(block_type)) }));
+        }
         let bytes = std::fs::read(path).ok()?;
         return Some(json!({
             "type": block_type,
@@ -733,6 +812,22 @@ fn file_block(path: &str) -> Option<Value> {
     }
     let text = std::fs::read_to_string(path).ok()?;
     Some(json!({ "type": "text", "text": format!("File contents:\n{text}") }))
+}
+
+/// The largest file of `block_type` the Messages API takes: an image's
+/// base64 may be 5 MB, a request 32 MB (a PDF's base64 with the rest).
+fn max_attachment(block_type: &str) -> u64 {
+    if block_type == "image" {
+        MAX_IMAGE_BYTES
+    } else {
+        MAX_PDF_BYTES
+    }
+}
+
+/// What the model reads in place of a file too large to send.
+fn too_large_note(name: &str, len: u64, max: u64) -> String {
+    let mb = |n: u64| format!("{:.1} MB", n as f64 / 1_000_000.0);
+    format!("(The file {name} was not sent: it is {}, and the API takes at most {}. Tell the user it is too large and ask for a smaller copy if it matters.)", mb(len), mb(max))
 }
 
 /// Small standalone base64 encoder — not worth another dependency.
@@ -758,6 +853,33 @@ fn base64(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_answer_still_at_its_tools_after_every_round_keeps_what_was_said() {
+        let text = capped_answer(vec!["Looking.".into()], Some("One more search.".into()), 25);
+        assert!(text.starts_with("Looking.\n\nOne more search.\n\n_"), "{text}");
+        assert!(text.contains("25"), "{text}");
+        // Nothing said at all: only why it ends there, never "No response text."
+        let text = capped_answer(Vec::new(), None, 25);
+        assert!(text.starts_with('_') && text.contains("25"), "{text}");
+    }
+
+    #[test]
+    fn a_picture_or_pdf_too_large_for_the_api_is_told_not_sent() {
+        let dir = std::env::temp_dir().join(format!("lumo-claude-big-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let small = dir.join("small.png");
+        std::fs::write(&small, vec![0u8; 1000]).unwrap();
+        assert_eq!(file_block(small.to_str().unwrap()).unwrap()["type"], "image");
+        let big = dir.join("photo.jpg");
+        std::fs::write(&big, vec![0u8; MAX_IMAGE_BYTES as usize + 1]).unwrap();
+        let block = file_block(big.to_str().unwrap()).unwrap();
+        assert_eq!(block["type"], "text");
+        assert!(block["text"].as_str().unwrap().contains("photo.jpg was not sent"));
+        // Its base64 fits the API's 5 MB.
+        assert!(MAX_IMAGE_BYTES.div_ceil(3) * 4 <= 5 * 1024 * 1024);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn base64_matches_rfc4648_vectors() {
