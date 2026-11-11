@@ -17,7 +17,7 @@ import {
   refreshAntigravityPlanUsage,
 } from "./usage";
 import { buildDiffCard } from "./diff";
-import { lastTextStep } from "../core/diff";
+import { lastTextStep, toOneLine } from "../core/diff";
 import { approvalKey, approvalKeysArmed, approvalOffer, armApprovalKeys } from "../core/approvals";
 import { formatSize } from "../core/screen";
 import { Bridge, type Decision } from "../core/bridge";
@@ -563,8 +563,8 @@ const KEY_QUIET_MS = 800;
 function foldButton(actions: ViewActions): HTMLElement {
   return h(
     "button",
-    { class: "icon-btn fold", title: tl("Later — keep it waiting"), onclick: () => actions.foldApproval() },
-    svg(ICONS.chevronUp, 8, { stroke: 2.4 }),
+    { class: "icon-btn fold", title: tl("Later — keep it waiting"), "aria-label": tl("Later — keep it waiting"), onclick: () => actions.foldApproval() },
+    svg(ICONS.chevronUp, 10, { stroke: 2.4 }),
   );
 }
 
@@ -958,18 +958,59 @@ function buildQuestion(actions: ViewActions): ViewHost {
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 
+/** Claude Code's StopFailure `error`, said plainly (code.claude.com/docs/en/hooks). */
+const FAILURE_TEXT: Record<string, string> = {
+  rate_limit: N_("Usage limit reached"),
+  overloaded: N_("Claude's servers are overloaded"),
+  authentication_failed: N_("Sign-in failed"),
+  oauth_org_not_allowed: N_("Sign-in failed"),
+  cloud_credential_error: N_("Sign-in failed"),
+  account_on_hold: N_("The account is on hold"),
+  billing_error: N_("A billing problem on the account"),
+  invalid_request: N_("The request was refused"),
+  model_not_found: N_("Model not found"),
+  server_error: N_("Server error"),
+  max_output_tokens: N_("The answer hit its length limit"),
+};
+
+const ERROR_TEXT = {
+  lastStep: N_("Last step: {step}"),
+};
+
+/**
+ * Why a turn stopped, for the error card: Claude Code's reason in words, with
+ * its code beside it; else what it said about it; else what the agent sent.
+ */
+export function failureWords(failure: { code: string; details: string } | null | undefined): { text: string; code: string } | null {
+  if (!failure) return null;
+  const known = FAILURE_TEXT[failure.code];
+  if (known) return { text: t(known), code: failure.code };
+  const text = failure.details || toOneLine(failure.code);
+  return text ? { text, code: "" } : null;
+}
+
+/** The error card has a second line, the last step in grey, under the reason (layout.ts errorCardHeight). */
+export function errorHasLastStep(task: AgentTask | null): boolean {
+  return failureWords(task?.failure) != null && task != null && lastTextStep(task.steps) != null;
+}
+
 function buildError(actions: ViewActions): ViewHost {
   const who = h("div");
   const title = h("div", { class: "title" });
-  const detail = h("div", { class: "detail" });
-  const openN8n = btn(tl("Open in n8n"), "secondary", () => void Bridge.openN8n());
+  const reason = h("span");
+  const code = h("span", { class: "err-code" });
+  const detail = h("div", { class: "detail" }, reason, code);
+  const last = h("div", { class: "detail-last" });
+  // Where the session can really go on: its terminal (Claude, for the desktop app's).
+  const open = btn(tl("Open terminal"), "primary", () => actions.openTerminal());
+  const openN8n = btn(tl("Open in n8n"), "primary", () => void Bridge.openN8n());
   const row = h("div", { class: "actions" },
-    btn(tl("Retry"), "primary", () => actions.setView(State.agentsView())),
+    open,
     openN8n,
     // Closes the card at once, even with the mouse still on the island.
     btn(tl("Close"), "secondary", () => actions.collapse()),
   );
-  const el = h("div", { class: "view" }, card("red", stack(116, 16, who, title, detail, row)));
+  const el = h("div", { class: "view" }, card("red", stack(116, 16, who, title, detail, last, row)));
   return {
     el,
     sync() {
@@ -979,9 +1020,20 @@ function buildError(actions: ViewActions): ViewHost {
       const whoLabel = task?.source === "n8n" ? "n8n" : task?.source === "agent" ? t("Agent") : "Claude Code";
       who.append(agentWho(task, whoLabel));
       title.textContent = task?.source === "n8n" ? t("Workflow stopped.") : t("Session stopped on an error.");
-      detail.textContent = (task && lastTextStep(task.steps)) ?? t("No detail available.");
-      // Only an n8n workflow has somewhere in n8n to open.
-      openN8n.style.display = task?.source === "n8n" ? "" : "none";
+      // In red what went wrong; the last step, often the request it was working on, in grey under it.
+      const step = task ? lastTextStep(task.steps) : null;
+      const why = failureWords(task?.failure);
+      reason.textContent = why?.text ?? step ?? t("No detail available.");
+      code.textContent = why?.code ? ` (${why.code})` : "";
+      last.textContent = why && step ? t(ERROR_TEXT.lastStep, { step }) : "";
+      last.hidden = !last.textContent;
+      // Only an n8n workflow has somewhere in n8n to open; anything else, a terminal.
+      const n8n = task?.source === "n8n";
+      openN8n.style.display = n8n ? "" : "none";
+      open.style.display = n8n ? "none" : "";
+      const label = task?.id === "agent_claude-desktop" ? t("Open Claude") : t("Open terminal");
+      const span = open.firstElementChild as HTMLElement;
+      if (span.textContent !== label) span.textContent = label;
     },
   };
 }
@@ -990,7 +1042,8 @@ function buildError(actions: ViewActions): ViewHost {
 
 function buildFinished(actions: ViewActions): ViewHost {
   const who = h("div");
-  const title = h("div", { class: "title one-line" });
+  // Claude's final message, up to three lines (look-new.css .title.final).
+  const title = h("div", { class: "title final" });
   const open = btn(tl("Open terminal"), "primary", () => actions.openTerminal());
   const row = h("div", { class: "actions" },
     open,
@@ -1005,13 +1058,20 @@ function buildFinished(actions: ViewActions): ViewHost {
       who.append(agentWho(State.focusTask, agent ? t("finished") : t("Claude Code finished")));
       // The final message, else the last step that is not a diff (FinishedView).
       const task = State.focusTask;
-      title.textContent = task?.finalLine || (task && lastTextStep(task.steps)) || t("Session finished");
+      const text = finishedText(task);
+      title.textContent = text;
+      title.title = text;
       // Sessions from the Claude desktop app live there, not in a terminal.
       const label = task?.id === "agent_claude-desktop" ? t("Open Claude") : t("Open terminal");
       const span = open.firstElementChild as HTMLElement;
       if (span.textContent !== label) span.textContent = label;
     },
   };
+}
+
+/** What the finished card says: Claude's final message, else the last step, else that it is done. */
+export function finishedText(task: AgentTask | null): string {
+  return task?.finalLine || (task && lastTextStep(task.steps)) || t("Session finished");
 }
 
 // ── Note ──────────────────────────────────────────────────────────────────────

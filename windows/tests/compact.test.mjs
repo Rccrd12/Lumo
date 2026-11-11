@@ -23,9 +23,9 @@ test("the chat comes first, then the call, then the agents", () => {
   const chat = { who: "Haiku", label: "Reading main.ts", color: "#E07950" };
   const live = { phase: "speaking", doing: null, color: "#4285F4" };
   const agent = { name: "Claude Code", state: "working", step: "Editing app.ts", color: "#D97757" };
-  assert.deepEqual(activityLine(chat, live, agent), { text: "Haiku · Reading main.ts", color: "#E07950" });
+  assert.deepEqual(activityLine(chat, live, agent), { text: "Haiku · Reading main.ts", color: "#E07950", lead: "Haiku" });
   assert.deepEqual(activityLine(null, live, agent), { text: "Gemini Live · Speaking", color: "#4285F4" });
-  assert.deepEqual(activityLine(null, null, agent), { text: "Claude Code · Editing app.ts", color: "#D97757" });
+  assert.deepEqual(activityLine(null, null, agent), { text: "Claude Code · Editing app.ts", color: "#D97757", lead: "Claude Code" });
   // Once the answer streams in, it is writing.
   assert.equal(activityLine({ ...chat, label: null }, null, null).text, "Haiku · Writes…");
   // What a tool does says more than the phase.

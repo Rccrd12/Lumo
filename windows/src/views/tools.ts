@@ -148,6 +148,27 @@ export function refreshTools() {
   });
 }
 
+/** The tool the workshop is making, if any: the draft so far, or none yet. */
+function inWorkshop(): { draft: ToolDraft | null } | null {
+  const chat = State.workshopChat();
+  if (!chat) return null;
+  return workshopTool(chat.chatHistory, savedLink(chat.chatId)?.key ?? null);
+}
+
+/** The tool shown open in the Tools tab, its details under it (one Tools tab is ever built). */
+let toolOpen: string | null = null;
+
+/**
+ * The rows the Tools tab lists while none is open, for the island to be as tall
+ * as they are (layout.ts toolsViewHeight); null while one is open or there are
+ * none, when it keeps its full height.
+ */
+export function toolsListRows(): number | null {
+  if (toolOpen != null && State.tools.some((x) => x.id === toolOpen)) return null;
+  const rows = State.tools.length + (inWorkshop() ? 1 : 0);
+  return rows || null;
+}
+
 export function buildTools(actions: ViewActions): ViewHost {
   const count = h("span", { class: "tools-count" });
   const folderBtn = h("button", { class: "tool-btn", title: tl(TOOLS_STRINGS.folder), "aria-label": tl(TOOLS_STRINGS.folder) },
@@ -180,8 +201,7 @@ export function buildTools(actions: ViewActions): ViewHost {
   cardEl.style.setProperty("--wash", "rgba(245,165,36,0.32)");
   const el = h("div", { class: "view tools-view" }, cardEl);
 
-  /** The tool shown open, the one whose Delete waits for its second click, and the dangerous one waiting to be turned on. */
-  let open: string | null = null;
+  /** The one whose Delete waits for its second click, and the dangerous one waiting to be turned on (the tool shown open: toolOpen). */
   let confirming: string | null = null;
   let confirmingOn: string | null = null;
   /** The tool whose description for the agents is unfolded. */
@@ -279,7 +299,7 @@ export function buildTools(actions: ViewActions): ViewHost {
       return;
     }
     confirming = null;
-    open = null;
+    toolOpen = null;
     State.tools = State.tools.filter((x) => x.id !== tool.id);
     Sound.play("pop");
     State.notify();
@@ -471,7 +491,7 @@ export function buildTools(actions: ViewActions): ViewHost {
       : confirmingOn === tool.id
         ? h("span", { class: "tool-desc missing", text: t(TOOLS_STRINGS.onAnyway) })
         : h("span", { class: "tool-desc", text: (tool.review?.summary || tool.description).split("\n")[0] });
-    const isOpen = open === tool.id;
+    const isOpen = toolOpen === tool.id;
     const head = h("div", { class: "tool-row-head", role: "button", tabindex: "0" },
       toolTile(tool.id),
       h("span", { class: "tool-text" }, h("span", { class: "tool-name", text: tool.name }),
@@ -481,7 +501,7 @@ export function buildTools(actions: ViewActions): ViewHost {
       needs(tool, false),
       sw);
     const toggleOpen = () => {
-      open = isOpen ? null : tool.id;
+      toolOpen = isOpen ? null : tool.id;
       confirming = null;
       confirmingOn = null;
       drawn = "";
@@ -497,13 +517,6 @@ export function buildTools(actions: ViewActions): ViewHost {
       }
     });
     return h("div", { class: `tool-row${tool.enabled ? "" : " off"}${isOpen ? " open" : ""}` }, head, isOpen ? detail(tool) : null);
-  }
-
-  /** The tool the workshop is making, if any: the draft so far, or none yet. */
-  function inWorkshop(): { draft: ToolDraft | null } | null {
-    const chat = State.workshopChat();
-    if (!chat) return null;
-    return workshopTool(chat.chatHistory, savedLink(chat.chatId)?.key ?? null);
   }
 
   /** Its row: In progress, and a click goes back to the workshop as it was. */
@@ -535,7 +548,7 @@ export function buildTools(actions: ViewActions): ViewHost {
   function draw() {
     const tools = State.tools;
     const building = inWorkshop();
-    const key = JSON.stringify([tools, building && [building.draft?.name, building.draft?.description], open, agentText, confirming, confirmingOn, [...reviewing], [...reviewErrors], terminalHas, terminalConfirm, terminalBusy, t(TOOLS_STRINGS.on)]);
+    const key = JSON.stringify([tools, building && [building.draft?.name, building.draft?.description], toolOpen, agentText, confirming, confirmingOn, [...reviewing], [...reviewErrors], terminalHas, terminalConfirm, terminalBusy, t(TOOLS_STRINGS.on)]);
     if (key === drawn) return;
     drawn = key;
     terminalBtn.classList.toggle("open", terminalHas);

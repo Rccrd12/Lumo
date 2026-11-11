@@ -286,8 +286,10 @@ interface HookPayload {
   last_assistant_message?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
-  /** PostToolUseFailure: what went wrong. */
+  /** PostToolUseFailure: what went wrong. StopFailure: the kind of API error (`rate_limit`, `overloaded`…). */
   error?: string;
+  /** StopFailure: more about the error, as Claude Code words it. */
+  error_details?: string;
   /** Set by the relay when an edit was too big to forward whole (> 256 KB). */
   lumo_diff_truncated?: boolean;
   /** Optional agent tag: lowercase, digits and hyphens, ≤ 24 chars. */
@@ -564,12 +566,15 @@ function clearSession(id: string) {
   t.sessionId = null;
   t.sessionTitle = null;
   t.finalLine = null;
+  t.failure = null;
 }
 
-/** The final message stays on the card until the next turn starts. */
+/** The final message, and the error a turn stopped on, stay on the card until the next turn starts. */
 function clearFinalLine(id: string) {
   const t = State.tasks.find((x) => x.id === id);
-  if (t) t.finalLine = null;
+  if (!t) return;
+  t.finalLine = null;
+  t.failure = null;
 }
 
 /**
@@ -836,7 +841,8 @@ function handleHook(island: Island, payload: HookPayload) {
       // agents report their last words the same way (Hermes, Codex) or as
       // `message`.
       const said = payload.last_assistant_message ?? payload.message ?? "";
-      const finalText = toOneLine(said);
+      // Up to three lines on the finished card (views.ts buildFinished).
+      const finalText = toOneLine(said, 300);
       if (finalText) {
         State.appendStep(agentId, finalText, fullTextDetail(said, finalText));
         const t = State.tasks.find((x) => x.id === agentId);
@@ -868,14 +874,20 @@ function handleHook(island: Island, payload: HookPayload) {
       State.setPillBadge(agentId, null);
       break;
 
-    case "StopFailure":
+    case "StopFailure": {
       supersedeStop();
+      // Why, as Claude Code says it: the error card shows it, not the last step.
+      const failed = State.tasks.find((x) => x.id === agentId);
+      const code = typeof payload.error === "string" ? payload.error.trim() : "";
+      const details = typeof payload.error_details === "string" ? toOneLine(payload.error_details) : "";
+      if (failed) failed.failure = code || details ? { code, details } : null;
       State.updateTask(agentId, "error");
       if (quiet) break;
       Sound.play("error");
       if (focused && !State.pendingApproval) surface("error", true);
       else State.setPillBadge(agentId, "error");
       break;
+    }
 
     case "SessionEnd":
       liveSessions.end(agentId, sessionId);

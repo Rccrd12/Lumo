@@ -296,3 +296,22 @@ test("my PRs that only wait (checks passed, no checks, draft) share one Home row
   assert.match(two[1].textContent, /passing/);
   assert.doesNotMatch(home.el.textContent, /open PR/);
 });
+
+test("the list is called In progress only while every session in it is at work", () => {
+  const home = buildHome({
+    openSession: () => {}, openGitHubPRs: () => {}, openRequest: () => {}, decide: () => {}, openChat: () => {},
+    openPlan: () => {}, openChatPlan: () => {}, openUrl: () => {}, makeTool: () => {},
+    activityData: emptyActivities, activity: () => {}, blip: () => {},
+  }, (task) => task.id.startsWith("agent_"));
+  const session = (id, state) => ({ id, name: id.slice(6), color: "#fff", state, stepIndex: 0, steps: ["Reads app.ts"], source: "agent", isIntegration: false });
+  State.tasks = [session("agent_api", "working"), session("agent_web", "thinking")];
+  home.sync();
+  assert.match(home.el.textContent, /In progress/);
+  assert.doesNotMatch(home.el.textContent, /Sessions/);
+
+  State.tasks = [session("agent_api", "working"), { ...session("agent_web", "finished"), finalLine: "Tests green" }];
+  home.sync();
+  assert.match(home.el.textContent, /Sessions/);
+  assert.doesNotMatch(home.el.textContent, /In progress/);
+  assert.match(home.el.textContent, /Tests green/);
+});
