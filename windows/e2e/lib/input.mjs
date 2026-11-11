@@ -63,6 +63,15 @@ export class Mouse {
     return this.send(`move ${this.at.x} ${this.at.y}`);
   }
 
+  /** Moves there in small steps, as a hand does: each step is a move the page can hear. */
+  async glide(x, y, steps = 8) {
+    const from = this.at ?? { x, y };
+    for (let i = 1; i <= steps; i++) {
+      await this.move(from.x + ((x - from.x) * i) / steps, from.y + ((y - from.y) * i) / steps);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
   down() {
     return this.send("down");
   }
