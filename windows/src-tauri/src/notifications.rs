@@ -60,12 +60,12 @@ mod imp {
         let listener = UserNotificationListener::Current().map_err(|_| "This version of Windows doesn't let apps read notifications.".to_string())?;
         let status = match listener.GetAccessStatus() {
             Ok(UserNotificationListenerAccessStatus::Allowed) => UserNotificationListenerAccessStatus::Allowed,
-            _ => listener.RequestAccessAsync().and_then(|op| op.get()).map_err(|_| refused())?,
+            _ => listener.RequestAccessAsync().and_then(|op| op.join()).map_err(|_| refused())?,
         };
         if status != UserNotificationListenerAccessStatus::Allowed {
             return Err(refused());
         }
-        let all = listener.GetNotificationsAsync(NotificationKinds::Toast).and_then(|op| op.get()).map_err(|e| e.message())?;
+        let all = listener.GetNotificationsAsync(NotificationKinds::Toast).and_then(|op| op.join()).map_err(|e| e.message())?;
         let generic = KnownNotificationBindings::ToastGeneric().map_err(|e| e.message())?;
         let mut out = Vec::new();
         for n in all {
