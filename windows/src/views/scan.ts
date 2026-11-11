@@ -1,8 +1,9 @@
 // The one reading of what in a text is code, a formula or an escaped
 // character, before any Markdown: these spans are set aside first, so a star,
 // an underscore, a pipe or a hash inside them is never read as emphasis, a
-// table's column or a heading. markdown.ts parses the rest, and the cards
-// that draw Markdown (views/rich) get the same reading through it.
+// table's column or a heading. markdown.ts parses the rest; ink.ts asks the
+// same price rules where a formula may start, and the steps card the same
+// spans for a step's formula.
 
 export type Span =
   | { kind: "code"; from: number; to: number; text: string }
@@ -112,7 +113,7 @@ export function scan(text: string, multiline = true): Span[] {
  * line, no digit just before the opening $ ("25$") or just after the closing
  * one ("$5 … $10"), and no ** inside ("$0,20 … **$ 130**").
  */
-function closingDollar(text: string, at: number): number | null {
+export function closingDollar(text: string, at: number): number | null {
   if (/\d/.test(text[at - 1] ?? "")) return null;
   for (let j = at + 1; j < text.length; j++) {
     const c = text[j];
@@ -161,4 +162,23 @@ export function unprotect(masked: string, spans: Span[], source: string): string
     out += s ? source.slice(s.from, s.to) : c;
   }
   return out;
+}
+
+/**
+ * `text` with its fenced code blocks (``` or ~~~, closed by a bare fence of
+ * the same mark at least as long) blanked, their lines kept: what scan()
+ * reads in a step or a card, where a $$ in a code block is code.
+ */
+export function blankFences(text: string): string {
+  let open = "";
+  return text
+    .split("\n")
+    .map((line) => {
+      const m = /^[ \t]*(`{3,}|~{3,})(.*)$/.exec(line);
+      if (!open && !m) return line;
+      if (!open && m) open = m[1];
+      else if (m && !m[2].trim() && m[1][0] === open[0] && m[1].length >= open.length) open = "";
+      return " ".repeat(line.length);
+    })
+    .join("\n");
 }

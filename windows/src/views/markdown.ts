@@ -63,7 +63,7 @@ const isTableRow = (s: string) => s.startsWith("|") && s.length > 1;
  */
 const LOOSE_CALLOUT = new RegExp(`^(?:\\*\\*)?\\[!(${CALLOUT_TYPES.join("|")})\\](?:\\*\\*)?[ \\t]*(.*)$`, "i");
 /** A line that ends a loose callout's text: a list item, a heading, a quote, a table row, a fence. */
-const LOOSE_CALLOUT_END = /^\s*(?:[-*+•]\s|\d+[.)]\s|#|>|\||```)/;
+const LOOSE_CALLOUT_END = /^\s*(?:[-*+•]\s|\d+[.)]\s|#|>|\||```|~~~)/;
 /** `> [!TIP]`, `>[!warning] A title`: the alert's kind and title. */
 const CALLOUT = new RegExp(`^>\\s*\\[!(${CALLOUT_TYPES.join("|")})\\][ \\t]*(.*)$`, "i");
 /**
@@ -71,8 +71,10 @@ const CALLOUT = new RegExp(`^>\\s*\\[!(${CALLOUT_TYPES.join("|")})\\][ \\t]*(.*)
  * more (````lumo-steps) let the block hold ``` code blocks of its own.
  */
 const RICH_FENCE = new RegExp(`^(\`{3,})[ \\t]*lumo-(${RICH_KINDS.join("|")})\\b[ \\t]*(.*)$`);
-/** A fence line: its backticks and what follows them. */
-const FENCE_LINE = /^[ \t]*(`{3,})(.*)$/;
+/** A fence line, ``` or ~~~ (as ink.ts and the steps card read them): its marks and what follows them. */
+const FENCE_LINE = /^[ \t]*(`{3,}|~{3,})(.*)$/;
+/** Whether a bare fence line `close` closes the code block `open` opened: the same mark, at least as long. */
+const closes = (open: string, close: string) => close[0] === open[0] && close.length >= open.length;
 /**
  * "lumo-cards A title" on a line of its own with no fence, as small local
  * models write it, the cards as a list under it (views/rich/cards.ts).
@@ -224,20 +226,20 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       // Only a bare fence of at least as many backticks closes the block, and
       // not inside a code block of its own (```bash … ```); one indented a
       // little closes it as well.
-      const fence = rich[1].length;
+      const fence = rich[1];
       const body: string[] = [];
-      let inner = 0;
+      let inner = "";
       let closed = false;
       for (i++; i < lines.length; i++) {
         const m = FENCE_LINE.exec(lines[i]);
         if (m) {
           const bare = m[2].trim() === "";
-          if (!inner && bare && m[1].length >= fence) {
+          if (!inner && bare && closes(fence, m[1])) {
             closed = true;
             break;
           }
-          if (!inner) inner = m[1].length;
-          else if (bare && m[1].length >= inner) inner = 0;
+          if (!inner) inner = m[1];
+          else if (bare && closes(inner, m[1])) inner = "";
         }
         body.push(lines[i]);
       }
@@ -263,8 +265,8 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       }
     }
 
-    // A code block: only a bare fence of at least as many backticks closes it,
-    // so a ```js inside a ````markdown block is part of its code. Indented
+    // A code block: only a bare fence of the same mark, at least as long,
+    // closes it, so a ```js inside a ````markdown block is part of its code. Indented
     // under a list item, it is still one, its lines without that indent.
     const fence = FENCE_LINE.exec(line);
     if (fence) {
@@ -273,7 +275,7 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       const code: string[] = [];
       for (i++; i < lines.length; i++) {
         const close = FENCE_LINE.exec(lines[i]);
-        if (close && close[1].length >= fence[1].length && !close[2].trim()) break;
+        if (close && closes(fence[1], close[1]) && !close[2].trim()) break;
         code.push(lines[i].replace(new RegExp(`^[ \\t]{0,${indent}}`), ""));
       }
       if (loosePlot(lang, code)) blocks.push({ kind: "rich", type: "plot", title: "", body: code.join("\n"), open: i >= lines.length });

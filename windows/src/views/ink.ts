@@ -17,6 +17,8 @@
 // uncovered the frames stop (no work while the answer waits or is hidden),
 // and once the answer is complete it is drawn once more, plainly.
 
+import { closingDollar } from "./scan";
+
 /** Characters a second, at the least. */
 const MIN_PACE = 70;
 /** How far behind what arrived the pace stays, in seconds. */
@@ -160,16 +162,13 @@ function holds(text: string, start: number, end: number, lineDone: boolean, clos
         i = j >= 0 ? j + 2 : end;
         continue;
       }
-      // "$5" or "$ 5": a price, not a formula (markdown.ts reads them so too).
-      if (i + 1 < n && /[\s\d]/.test(text[i + 1])) {
-        i++;
-        continue;
-      }
-      const j = text.indexOf("$", i + 1);
-      if (j >= 0 && j < end) hold(i, j + 1), (i = j + 1);
+      // Where the chat's Markdown closes it (scan.ts: "25$, … 12$" and
+      // "$5 … $10" are prices); a $ not closed yet on a line still being
+      // written may open a formula, unless a space or a digit follows it.
+      const j = closingDollar(text, i);
+      if (j != null && j < end) hold(i, j + 1), (i = j + 1);
       else {
-        // A lone $ on a finished line is a dollar, not a formula.
-        if (!lineDone) hold(i, n);
+        if (!lineDone && !/\d/.test(text[i - 1] ?? "") && !(i + 1 < n && /[\s\d]/.test(text[i + 1]))) hold(i, n);
         i++;
       }
       continue;

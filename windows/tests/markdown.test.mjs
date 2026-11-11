@@ -598,3 +598,14 @@ test("past the marks there are, the first formulas are kept and the rest stay as
   assert.equal(nodes.filter((n) => n.kind === "math").length, MARKS);
   assert.ok(nodes.at(-1).text.includes(`$x_${MARKS}$`));
 });
+
+test("a ~~~ fence is a code block too, closed only by the same mark", () => {
+  assert.deepEqual(parseMarkdown("~~~python\nx = 1\n```\ny\n~~~\nfine"), [
+    { kind: "code", lang: "python", code: "x = 1\n```\ny" },
+    { kind: "paragraph", text: "fine" },
+  ]);
+  // Inside a lumo- card, a ~~~ block holds a ``` line, which closes nothing.
+  const [card] = parseMarkdown("```lumo-steps\n## A\n~~~\n```\n~~~\n## B\n$$x$$\n```");
+  assert.equal(card.open, false);
+  assert.equal(card.body, "## A\n~~~\n```\n~~~\n## B\n$$x$$");
+});
