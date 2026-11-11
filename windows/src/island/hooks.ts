@@ -493,11 +493,13 @@ function approvalTarget(tool: string, input: Record<string, unknown>): string {
   // The chat's computer use: what the click or the keys will do.
   const action = describeComputerAction(tool, input);
   if (action) return action;
-  const given = Object.fromEntries(Object.entries(input).filter(([k]) => !REASON_KEYS.has(k)));
   // An MCP server's tool: what its fields mean is its own. Its `path` or
   // `command` may come with a script, a body or a host that Allow allows
-  // too: with anything besides the one field, the card shows it all.
+  // too: with anything besides the one field, the card shows it all. Its
+  // `description` too: there it is an argument (an issue's body, a file's
+  // text), not the agent's words, so it stays in what is shown.
   const mcp = MCP_TOOL.test(tool);
+  const given = mcp ? input : Object.fromEntries(Object.entries(input).filter(([k]) => !REASON_KEYS.has(k)));
   for (const field of APPROVAL_FIELDS) {
     const value = input[field];
     if (typeof value === "string" && value.trim()) {
@@ -523,7 +525,8 @@ const REASON_KEYS = new Set(["description", "Description", "justification", "exp
  */
 function approvalAbout(tool: string, input: Record<string, unknown>): { reason?: string; kind?: { text: string; vars?: Record<string, string> } } {
   if (describeComputerAction(tool, input)) return {};
-  const reason = requestReason(input);
+  // An MCP tool's `description` is one of its arguments, shown whole below: the line says what kind of call it is.
+  const reason = MCP_TOOL.test(tool) ? null : requestReason(input);
   if (reason) return { reason };
   const kind = requestKind(tool, input);
   return kind ? { kind } : {};

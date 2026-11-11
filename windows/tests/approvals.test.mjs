@@ -27,6 +27,17 @@ test("shell commands that only look are simple", () => {
   assert.ok(isSimpleRequest("view_file", { AbsolutePath: "/a" }));
 });
 
+test("the closed island takes only what its two lines show whole", () => {
+  // It shows two lines of the command: Allow there must never allow a third.
+  assert.equal(isSimpleRequest("Bash", { command: "ls\npwd\ngit status\ncat C:/Users/me/.ssh/id_rsa" }), false);
+  assert.equal(isSimpleRequest("Bash", { command: "ls\r\npwd" }), false);
+  assert.equal(isSimpleRequest("Bash", { command: `git log --oneline ${"src/".repeat(20)}` }), false);
+  assert.equal(isSimpleRequest("Read", { file_path: `C:\\${"cartella\\".repeat(10)}a.txt` }), false);
+  // A trailing newline is not a line of its own.
+  assert.ok(isSimpleRequest("Bash", { command: "git status\n" }));
+  assert.ok(isSimpleRequest("Read", { file_path: "C:\\repo\\README.md", limit: 40 }));
+});
+
 test("commands that change something, or that cannot be read for sure, are not", () => {
   for (const c of [
     "rm -rf build", "git push", "git commit -m x", "git branch -D old", "npm install", "echo hi > file.txt",

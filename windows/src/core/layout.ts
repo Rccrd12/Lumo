@@ -471,6 +471,14 @@ export function newLookQuestionHeight(options: number, multiSelect: boolean): nu
   return 156 + (options + (multiSelect ? 1 : 0)) * NEW_LOOK_OPTION_H;
 }
 
+/**
+ * The question card's height for all its questions, at most `max`: as tall as
+ * the tallest, since the second or third may have more choices than the first.
+ */
+export function questionsHeight(questions: readonly { options: readonly unknown[]; multiSelect?: boolean }[], max = 440): number {
+  return Math.min(max, Math.max(0, ...questions.map((q) => newLookQuestionHeight(q.options.length, q.multiSelect === true))));
+}
+
 /** The new look's home is this much wider than the other views (880 at the usual width): wider rather than taller (views/home.ts). */
 export const NEW_LOOK_HOME_W = 880;
 /**

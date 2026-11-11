@@ -98,14 +98,23 @@ export function isLookingCommand(command: string): boolean {
   return text.split(/\|\||&&|\r\n?|[|;\n]/).every(looks);
 }
 
-/** True when the request only reads or looks, and can be answered from the closed island. */
+/** The longest command or path the closed island's card takes: what its two lines hold. */
+export const QUICK_COMMAND_MAX = 80;
+
+const isShortLine = (text: string) => !/[\r\n]/.test(text.trim()) && text.trim().length <= QUICK_COMMAND_MAX;
+
+/**
+ * True when the request only reads or looks, and can be answered from the
+ * closed island: whole on its two lines, so Allow there never allows a line
+ * that was not on screen (a longer one goes to the full card).
+ */
 export function isSimpleRequest(tool: string, input: Record<string, unknown>): boolean {
   const name = tool.toLowerCase();
-  if (READ_TOOLS.has(name)) return true;
+  if (READ_TOOLS.has(name)) return Object.values(input).every((v) => typeof v !== "string" || isShortLine(v));
   if (SHELL_TOOLS.has(name)) {
     const command = input.command ?? input.cmd ?? input.script ?? input.CommandLine;
     const text = Array.isArray(command) ? command.join(" ") : command;
-    return typeof text === "string" && isLookingCommand(text);
+    return typeof text === "string" && isShortLine(text) && isLookingCommand(text);
   }
   return false;
 }

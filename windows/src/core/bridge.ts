@@ -41,9 +41,24 @@ const HOST: TauriHost | null = (() => {
 /** This page is the Settings inside the island, not the Settings window. */
 export const EMBEDDED = HOST != null;
 
+/**
+ * The writes that Settings inside the island confirm in Windows' own box
+ * (confirmed.rs by_hand): while it is up, a click on it is no click elsewhere.
+ */
+const ASKS_WINDOWS = new Set(["hooks_apply", "agent_hooks_apply", "status_line_apply"]);
+
 /** The island page lends its connection to Rust to the Settings inside it. */
 export function lendTauri() {
-  (window as unknown as { __LUMO_HOST__?: TauriHost }).__LUMO_HOST__ = { invoke, listen };
+  const lent: typeof invoke = async (cmd, args, options) => {
+    if (!ASKS_WINDOWS.has(cmd)) return invoke(cmd, args, options);
+    dialogs++;
+    try {
+      return await invoke(cmd, args, options);
+    } finally {
+      dialogs--;
+    }
+  };
+  (window as unknown as { __LUMO_HOST__?: TauriHost }).__LUMO_HOST__ = { invoke: lent, listen };
 }
 
 export const IS_TAURI =
