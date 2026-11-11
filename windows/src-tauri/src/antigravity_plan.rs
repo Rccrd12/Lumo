@@ -20,6 +20,7 @@
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{self, AtomicBool};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -71,17 +72,8 @@ pub fn read() -> Option<Value> {
 
     // Both streams are read, so neither can fill up and stall agy; the
     // answer is looked for on stdout first.
-    let reader = |stream: Option<Box<dyn Read + Send>>| {
-        std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            if let Some(s) = stream {
-                let _ = s.take(MAX_OUTPUT).read_to_end(&mut bytes);
-            }
-            bytes
-        })
-    };
-    let out = reader(child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>));
-    let err = reader(child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>));
+    let out = Output::read(child.stdout.take(), MAX_OUTPUT);
+    let err = Output::read(child.stderr.take(), MAX_OUTPUT);
 
     let started = Instant::now();
     loop {
@@ -94,9 +86,56 @@ pub fn read() -> Option<Value> {
             }
         }
     }
-    let out = out.join().unwrap_or_default();
-    let err = err.join().unwrap_or_default();
+    let out = out.after_exit();
+    let err = err.after_exit();
     quotas(&String::from_utf8_lossy(&out)).or_else(|| quotas(&String::from_utf8_lossy(&err)))
+}
+
+/// How long the output is still read once agy has ended: a program it
+/// started that still holds the output open must not hold Lumo too.
+const AFTER_EXIT: Duration = Duration::from_secs(2);
+
+/// One output of a program of agy's, read on a thread of its own to its end
+/// (what is past `cap` is read and dropped, so the program never stalls).
+pub(crate) struct Output {
+    bytes: Arc<Mutex<Vec<u8>>>,
+    done: mpsc::Receiver<()>,
+}
+
+impl Output {
+    pub(crate) fn read(stream: Option<impl Read + Send + 'static>, cap: u64) -> Output {
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let (tx, done) = mpsc::channel();
+        let kept = bytes.clone();
+        std::thread::spawn(move || {
+            if let Some(mut stream) = stream {
+                let mut buf = [0u8; 8192];
+                while let Ok(n) = stream.read(&mut buf) {
+                    if n == 0 {
+                        break;
+                    }
+                    let mut all = kept.lock().unwrap_or_else(|e| e.into_inner());
+                    let room = (cap as usize).saturating_sub(all.len());
+                    all.extend_from_slice(&buf[..n.min(room)]);
+                }
+            }
+            let _ = tx.send(());
+        });
+        Output { bytes, done }
+    }
+
+    /// What was read, the program having ended: its end waited for
+    /// AFTER_EXIT at most, then what came until then.
+    pub(crate) fn after_exit(self) -> Vec<u8> {
+        let _ = self.done.recv_timeout(AFTER_EXIT);
+        std::mem::take(&mut *self.bytes.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// `after_exit`, as text: bytes that aren't UTF-8 (a console's code
+    /// page) become �, the rest stays readable.
+    pub(crate) fn text_after_exit(self) -> String {
+        String::from_utf8_lossy(&self.after_exit()).into_owned()
+    }
 }
 
 /// The groups of a `/usage` answer found in `text`: the whole text as one
@@ -165,6 +204,26 @@ fn short(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_is_read_whole_capped_and_never_waited_for_past_its_end() {
+        let out = Output::read(Some(std::io::Cursor::new(b"abcdef".to_vec())), 4);
+        assert_eq!(out.after_exit(), b"abcd");
+        // Not UTF-8 (a console's code page): still text.
+        let out = Output::read(Some(std::io::Cursor::new(b"gpt-5 \xe8 ok".to_vec())), 64);
+        assert_eq!(out.text_after_exit(), "gpt-5 \u{fffd} ok");
+        // A stream nobody closes: given up on after AFTER_EXIT.
+        struct Never;
+        impl Read for Never {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                std::thread::sleep(Duration::from_secs(3600));
+                Ok(0)
+            }
+        }
+        let began = Instant::now();
+        assert!(Output::read(Some(Never), 64).after_exit().is_empty());
+        assert!(began.elapsed() < AFTER_EXIT + Duration::from_secs(2));
+    }
 
     const ANSWER: &str = r#"{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[
         {"name":"Gemini Models","description":["gemini-3.5-flash"],"buckets":[

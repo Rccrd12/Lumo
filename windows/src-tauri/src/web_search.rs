@@ -324,7 +324,23 @@ async fn engine_text(host: &str, response: reqwest::Response) -> Result<String, 
 /// A page that asks to prove one isn't a robot instead of giving results.
 fn is_challenge(page: &str) -> bool {
     let head: String = page.chars().take(200_000).collect::<String>().to_ascii_lowercase();
-    ["anomaly-modal", "challenge-form", "g-recaptcha", "h-captcha", "cf-challenge", "/captcha", "id=\"captcha"].iter().any(|m| head.contains(m))
+    // The markers as the page's own markup has them (an attribute, a form
+    // posting to the engine's own /captcha): a result that only names them,
+    // in its text or its address, is no challenge.
+    [
+        "anomaly-modal",
+        "id=\"challenge-form",
+        "class=\"g-recaptcha",
+        "class=\"h-captcha",
+        "id=\"cf-challenge",
+        "class=\"cf-challenge",
+        "src=\"/cdn-cgi/challenge-platform",
+        "action=\"/captcha",
+        "src=\"/captcha",
+        "id=\"captcha",
+    ]
+    .iter()
+    .any(|m| head.contains(m))
 }
 
 async fn bing(query: &str, range: &str) -> Result<Vec<Hit>, String> {
@@ -529,17 +545,30 @@ async fn fetch(raw: &str, focus: &str, provider: &str) -> Result<String, String>
     } else {
         let chunks: Vec<(usize, String)> = chunk(&page.text).into_iter().map(|c| (0, c)).collect();
         let picked = rank(focus, &chunks, provider).await;
-        let mut out = String::new();
-        for &i in picked.iter().take(12) {
-            if out.len() + chunks[i].1.len() > FETCH_MAX {
-                break;
-            }
-            out.push_str(&chunks[i].1);
-            out.push_str("\n\n[…]\n\n");
-        }
-        out
+        focused(&page.text, &chunks, &picked)
     };
     Ok(format!("{}\n{}\n\n{}", page.title, page.url, body.trim_end()))
+}
+
+/// The passages of a long page picked for the focus, best first, up to
+/// FETCH_MAX. None that matches (or fits): the page's beginning, saying so,
+/// so the model doesn't take the page for empty.
+fn focused(text: &str, chunks: &[(usize, String)], picked: &[usize]) -> String {
+    let mut out = String::new();
+    for &i in picked.iter().take(12) {
+        if out.len() + chunks[i].1.len() > FETCH_MAX {
+            break;
+        }
+        out.push_str(&chunks[i].1);
+        out.push_str("\n\n[…]\n\n");
+    }
+    if out.is_empty() {
+        out = format!(
+            "No passage of this long page matched the focus, so here is its beginning. Try other words in focus, or none for the start of the page.\n\n{}",
+            clip(text, FETCH_MAX)
+        );
+    }
+    out
 }
 
 /// A page read from this computer: only a public address, redirects too.
@@ -1133,6 +1162,21 @@ mod tests {
     fn a_page_that_asks_to_prove_one_is_not_a_robot_is_no_results_page() {
         assert!(is_challenge(r#"<html><body><div class="anomaly-modal__title">Unfortunately, bots use DuckDuckGo too.</div><form id="challenge-form"></form>"#));
         assert!(!is_challenge(r#"<li class="b_algo"><h2><a href="https://a.com/">Pasta</a></h2></li>"#));
+        assert!(is_challenge(r#"<form action="/sorry/index"><div id="recaptcha" class="g-recaptcha" data-sitekey="x"></div></form>"#));
+        // Results about captchas are results.
+        assert!(!is_challenge(r#"<li class="b_algo"><h2><a href="https://developers.google.com/recaptcha/docs/display">Add g-recaptcha to a form</a></h2><p>Use class=&quot;g-recaptcha&quot;.</p></li>"#));
+        assert!(!is_challenge(r#"<li class="b_algo"><a href="https://example.com/captcha">Captcha</a></li>"#));
+    }
+
+    #[test]
+    fn a_focus_nothing_on_the_page_matches_gives_its_beginning_and_says_so() {
+        let text = "a".repeat(FETCH_MAX * 2);
+        let chunks = vec![(0, "first".to_string()), (0, "second".to_string())];
+        assert_eq!(focused(&text, &chunks, &[1, 0]), "second\n\n[…]\n\nfirst\n\n[…]\n\n");
+        let none = focused(&text, &chunks, &[]);
+        assert!(none.starts_with("No passage of this long page matched the focus"));
+        assert!(none.len() <= FETCH_MAX + 200);
+        assert!(none.contains("aaaa"));
     }
 
     #[test]

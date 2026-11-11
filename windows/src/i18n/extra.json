@@ -17674,6 +17674,66 @@
    "ru": "{name} — программа Windows или оболочка: инструмент запускает вместо этого собственный скрипт.",
    "id": "{name} adalah program Windows atau shell: alat menjalankan skripnya sendiri sebagai gantinya.",
    "it": "{name} è un programma di Windows o una shell: uno strumento esegue invece uno script suo."
+  },
+  "The chat changed while it was being summed up. Send /compact again.": {
+   "zh-Hans": "总结期间对话发生了变化。请再次发送 /compact。",
+   "hi": "सारांश बनते समय चैट बदल गई। /compact फिर से भेजें।",
+   "es": "El chat cambió mientras se resumía. Envía /compact de nuevo.",
+   "ar": "تغيّرت المحادثة أثناء تلخيصها. أرسل /compact مرة أخرى.",
+   "fr": "La discussion a changé pendant son résumé. Renvoyez /compact.",
+   "bn": "সারাংশ তৈরির সময় চ্যাট বদলে গেছে। আবার /compact পাঠান।",
+   "pt-BR": "O chat mudou enquanto era resumido. Envie /compact de novo.",
+   "ru": "Чат изменился, пока составлялось резюме. Отправьте /compact ещё раз.",
+   "id": "Obrolan berubah saat sedang diringkas. Kirim /compact lagi.",
+   "it": "La chat è cambiata mentre veniva riassunta. Invia di nuovo /compact."
+  },
+  "Lumo stopped the tools after {count} rounds: ask to continue.": {
+   "zh-Hans": "Lumo 在 {count} 轮工具调用后停止了：请让它继续。",
+   "hi": "Lumo ने {count} दौर के बाद टूल रोक दिए: जारी रखने के लिए कहें।",
+   "es": "Lumo detuvo las herramientas tras {count} rondas: pide que continúe.",
+   "ar": "أوقف Lumo الأدوات بعد {count} جولة: اطلب المتابعة.",
+   "fr": "Lumo a arrêté les outils après {count} tours : demandez de continuer.",
+   "bn": "Lumo {count} রাউন্ডের পর টুল থামিয়েছে: চালিয়ে যেতে বলুন।",
+   "pt-BR": "O Lumo parou as ferramentas após {count} rodadas: peça para continuar.",
+   "ru": "Lumo остановил инструменты после {count} раундов: попросите продолжить.",
+   "id": "Lumo menghentikan alat setelah {count} putaran: minta untuk melanjutkan.",
+   "it": "Lumo ha fermato gli strumenti dopo {count} giri: chiedi di continuare."
+  },
+  "The summary was cut off at the length limit. Try again.": {
+   "zh-Hans": "摘要因长度上限被截断。请重试。",
+   "hi": "सारांश लंबाई की सीमा पर कट गया। फिर से कोशिश करें।",
+   "es": "El resumen se cortó en el límite de longitud. Inténtalo de nuevo.",
+   "ar": "اقتُطع الملخص عند حد الطول. حاول مرة أخرى.",
+   "fr": "Le résumé a été coupé à la limite de longueur. Réessayez.",
+   "bn": "সারাংশ দৈর্ঘ্যের সীমায় কেটে গেছে। আবার চেষ্টা করুন।",
+   "pt-BR": "O resumo foi cortado no limite de tamanho. Tente de novo.",
+   "ru": "Резюме обрезано на пределе длины. Попробуйте ещё раз.",
+   "id": "Ringkasan terpotong di batas panjang. Coba lagi.",
+   "it": "Il riassunto è stato tagliato al limite di lunghezza. Riprova."
+  },
+  "The connection closed before the answer was over: it may be cut. Ask to continue.": {
+   "zh-Hans": "回答结束前连接已关闭：内容可能不完整。请让它继续。",
+   "hi": "उत्तर पूरा होने से पहले कनेक्शन बंद हो गया: यह अधूरा हो सकता है। जारी रखने के लिए कहें।",
+   "es": "La conexión se cerró antes de terminar la respuesta: puede estar cortada. Pide que continúe.",
+   "ar": "أُغلق الاتصال قبل اكتمال الإجابة: قد تكون مقتطعة. اطلب المتابعة.",
+   "fr": "La connexion s'est fermée avant la fin de la réponse : elle est peut-être coupée. Demandez de continuer.",
+   "bn": "উত্তর শেষ হওয়ার আগেই সংযোগ বন্ধ হয়ে গেছে: এটি অসম্পূর্ণ হতে পারে। চালিয়ে যেতে বলুন।",
+   "pt-BR": "A conexão fechou antes do fim da resposta: ela pode estar cortada. Peça para continuar.",
+   "ru": "Соединение закрылось до конца ответа: он может быть обрезан. Попросите продолжить.",
+   "id": "Koneksi tertutup sebelum jawaban selesai: mungkin terpotong. Minta untuk melanjutkan.",
+   "it": "La connessione si è chiusa prima della fine della risposta: potrebbe essere tagliata. Chiedi di continuare."
+  },
+  "Unsloth Studio is still answering at its old address. Try again once that answer is done.": {
+   "zh-Hans": "Unsloth Studio 仍在旧地址上回答。请在该回答完成后重试。",
+   "hi": "Unsloth Studio अभी भी अपने पुराने पते पर जवाब दे रहा है। वह जवाब पूरा होने के बाद फिर से कोशिश करें।",
+   "es": "Unsloth Studio sigue respondiendo en su dirección anterior. Inténtalo de nuevo cuando termine esa respuesta.",
+   "ar": "لا يزال Unsloth Studio يجيب على عنوانه القديم. حاول مرة أخرى بعد انتهاء تلك الإجابة.",
+   "fr": "Unsloth Studio répond encore à son ancienne adresse. Réessayez une fois cette réponse terminée.",
+   "bn": "Unsloth Studio এখনও পুরোনো ঠিকানায় উত্তর দিচ্ছে। সেই উত্তর শেষ হলে আবার চেষ্টা করুন।",
+   "pt-BR": "O Unsloth Studio ainda está respondendo no endereço antigo. Tente de novo quando essa resposta terminar.",
+   "ru": "Unsloth Studio ещё отвечает по старому адресу. Попробуйте снова, когда этот ответ завершится.",
+   "id": "Unsloth Studio masih menjawab di alamat lamanya. Coba lagi setelah jawaban itu selesai.",
+   "it": "Unsloth Studio sta ancora rispondendo al vecchio indirizzo. Riprova quando quella risposta è finita."
   }
  }
 }

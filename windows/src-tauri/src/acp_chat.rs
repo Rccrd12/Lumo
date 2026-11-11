@@ -1178,8 +1178,11 @@ fn reap_idle() {
 
 /// Ends the chat's CLI, if one waits between two turns (the chat starts afresh).
 pub fn close(chat_id: &str) {
-    let gone = lives(|all| all.remove(chat_id));
-    drop(gone);
+    // Ending it waits for taskkill: never on the caller's thread, which is
+    // the window's for a new chat or an edited message.
+    if let Some(gone) = lives(|all| all.remove(chat_id)) {
+        std::thread::spawn(move || drop(gone));
+    }
 }
 
 /// What one turn needs besides the question.
@@ -1275,6 +1278,8 @@ fn live_turn(
     let mut cancelled: Option<Instant> = None;
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     let mut unsent = false;
+    // Files the turn read or wrote, not told to the island yet.
+    let mut noted: Vec<FileTouch> = Vec::new();
     let ended = loop {
         if stop.is_stopped() && cancelled.is_none() {
             state.stopped = true;
@@ -1359,6 +1364,16 @@ fn live_turn(
                 live.offer.set_choices(&params["update"]["configOptions"]);
             }
         }
+        // Looked at as soon as they are noted, while a file the tool writes
+        // may not be there yet: one that wasn't is "created". After Stop too,
+        // told once the turn is over.
+        noted.extend(state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir)).map(|touch| {
+            if touch.kind == "edited" {
+                FileTouch::written(&touch.path).unwrap_or(touch)
+            } else {
+                touch
+            }
+        }));
         if state.stopped {
             continue;
         }
@@ -1371,8 +1386,7 @@ fn live_turn(
         if let Some(activity) = activity {
             on_activity(&activity);
         }
-        for touch in state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir)) {
-            let touch = if touch.kind == "edited" { FileTouch::written(&touch.path).unwrap_or(touch) } else { touch };
+        for touch in noted.drain(..) {
             on_file(&touch);
         }
         if let Some(plan) = state.take_plan() {
@@ -1382,7 +1396,7 @@ fn live_turn(
     if unsent && !state.stopped {
         on_text(state.visible());
     }
-    for touch in state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir)) {
+    for touch in noted.into_iter().chain(state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir))) {
         on_file(&touch);
     }
     let session = Some(session).filter(|s| !s.is_empty());
@@ -1549,16 +1563,18 @@ pub async fn send(
         return Err(e.clone());
     }
     let answer = chat::keep_lumo_lines(state.answer(), &state.said());
-    let answer = if answer.trim().is_empty() {
+    if answer.trim().is_empty() {
         crate::log::line(format!("{}: empty answer ({}); {} declined", agent.tag(), state.stop_reason, state.denied));
-        match state.stop_reason.as_str() {
+        let why = match state.stop_reason.as_str() {
             "refusal" => tf("{agent} declined to answer this.", &[("agent", agent.name())]),
             _ if state.denied > 0 => tf("{agent} needed a permission that wasn't given.", &[("agent", agent.name())]),
             _ => tf("{agent} gave no answer.", &[("agent", agent.name())]),
-        }
-    } else {
-        answer
-    };
+        };
+        // The island shows why; the conversation keeps that there was no
+        // answer, not Lumo's words as if the agent had said them.
+        chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+        return Ok(ChatReply::answer(why, chat.cli_session()));
+    }
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
     Ok(ChatReply::answer(answer, chat.cli_session()))
 }

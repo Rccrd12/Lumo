@@ -166,6 +166,9 @@ pub fn preview(edits: &[FileEdit]) -> Result<Plan, String> {
     let mut backups = Vec::new();
     let mut paths = Vec::new();
     let mut prints = Vec::new();
+    // The backups are named for now: `apply` names them so too, however
+    // long the user takes to confirm (the stamp rides in the fingerprint).
+    let stamp = stamp();
     for file in edits {
         let current = read(&file.path)?;
         let change = (file.edit)(current.as_deref())?;
@@ -187,7 +190,7 @@ pub fn preview(edits: &[FileEdit]) -> Result<Plan, String> {
         }
         diffs.push(diff);
         if current.is_some() {
-            backups.push(backup_name(&file.path, &stamp(), 0).display().to_string());
+            backups.push(backup_name(&file.path, &stamp, 0).display().to_string());
         }
         paths.push(file.path.display().to_string());
         prints.push(fingerprint_of(current.as_deref()));
@@ -196,8 +199,26 @@ pub fn preview(edits: &[FileEdit]) -> Result<Plan, String> {
         diff: diffs.join("\n"),
         backup: backups.join("\n"),
         path: paths.join("\n"),
-        fingerprint: prints.join(":"),
+        fingerprint: format!("{stamp}{STAMP_END}{}", prints.join(":")),
     })
+}
+
+/// Ends the preview's stamp at the start of a fingerprint.
+const STAMP_END: char = '|';
+
+/// The preview's stamp and the files' fingerprints in `expected`; a
+/// fingerprint without a stamp (or with a broken one) backs up as of now.
+fn split_stamp(expected: &str) -> (String, &str) {
+    match expected.split_once(STAMP_END) {
+        Some((stamp, prints)) if is_stamp(stamp) => (stamp.to_string(), prints),
+        Some((_, prints)) => (stamp(), prints),
+        None => (stamp(), expected),
+    }
+}
+
+/// `20260102-030405`, as `stamp` writes it: nothing else goes in a file name.
+fn is_stamp(s: &str) -> bool {
+    s.len() == 15 && s.char_indices().all(|(i, c)| if i == 8 { c == '-' } else { c.is_ascii_digit() })
 }
 
 /// Applies the edits the user confirmed. Returns the backups taken.
@@ -208,6 +229,7 @@ pub fn preview(edits: &[FileEdit]) -> Result<Plan, String> {
 /// window, the user's own editor — stops everything: the only thing worse than
 /// not installing is silently reverting somebody else's edit.
 pub fn apply(edits: &[FileEdit], expected: &str) -> Result<Vec<PathBuf>, String> {
+    let (stamp, expected) = split_stamp(expected);
     let wanted: Vec<&str> = expected.split(':').collect();
     if wanted.len() != edits.len() {
         return Err(t("The preview is out of date. Nothing was written — review the new diff."));
@@ -228,7 +250,7 @@ pub fn apply(edits: &[FileEdit], expected: &str) -> Result<Vec<PathBuf>, String>
     let mut backups = Vec::new();
     for (file, current, _) in &planned {
         if let Some(bytes) = current {
-            let copy = back_up(&file.path, bytes)
+            let copy = back_up(&file.path, bytes, &stamp)
                 .map_err(|e| {
                     tf(
                         "Backup of {path} failed, nothing was written: {error}",
@@ -279,10 +301,9 @@ fn backup_name(path: &Path, stamp: &str, n: u32) -> PathBuf {
 /// Copies `bytes` — the very bytes the change was computed from — beside
 /// `path`. A backup that already exists is never written over, and one that
 /// could not be written whole is removed rather than left looking faithful.
-fn back_up(path: &Path, bytes: &[u8]) -> std::io::Result<PathBuf> {
-    let stamp = stamp();
+fn back_up(path: &Path, bytes: &[u8], stamp: &str) -> std::io::Result<PathBuf> {
     for n in 0..100 {
-        let copy = backup_name(path, &stamp, n);
+        let copy = backup_name(path, stamp, n);
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         match options.open(&copy) {
@@ -491,6 +512,26 @@ pub mod tests {
         std::fs::write(&path, format!("{}\n", pretty(&json!({ "model": "opus" })))).unwrap();
         assert!(!preview(&add_ours(&path)).unwrap().diff.contains(note), "already Lumo's layout");
         assert!(!preview(&remove_file_edit(&path)).unwrap().diff.contains(note), "nothing is written back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_backup_is_written_under_the_name_the_preview_showed() {
+        let dir = scratch("backup-name");
+        let path = dir.join("settings.json");
+        std::fs::write(&path, br#"{"model":"opus"}"#).unwrap();
+        let plan = preview(&add_ours(&path)).unwrap();
+        let backups = apply(&add_ours(&path), &plan.fingerprint).unwrap();
+        assert_eq!(backups[0].display().to_string(), plan.backup);
+        // However long the click took: the stamp is the preview's.
+        std::fs::write(&path, br#"{"model":"opus"}"#).unwrap();
+        let plan = preview(&add_ours(&path)).unwrap();
+        let (_, prints) = plan.fingerprint.split_once(STAMP_END).unwrap();
+        let backups = apply(&add_ours(&path), &format!("20200102-030405{STAMP_END}{prints}")).unwrap();
+        assert!(backups[0].display().to_string().ends_with("settings.json.bak-20200102-030405"));
+        // A stamp that isn't one names nothing: the backup is named for now.
+        assert!(!is_stamp("../../x-000000"));
+        assert!(is_stamp("20200102-030405"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

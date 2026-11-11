@@ -692,8 +692,11 @@ fn live_for(chat_id: &str, key: &str, exe: &Path, dir: &Path) -> Result<Live, St
 
 /// Ends the chat's Codex, if one waits between two turns (the chat starts afresh).
 pub fn close(chat_id: &str) {
-    let gone = lives(|all| all.remove(chat_id));
-    drop(gone);
+    // Ending it waits for taskkill: never on the caller's thread, which is
+    // the window's for a new chat or an edited message.
+    if let Some(gone) = lives(|all| all.remove(chat_id)) {
+        std::thread::spawn(move || drop(gone));
+    }
 }
 
 /// What one turn needs besides the question.
@@ -1031,16 +1034,18 @@ pub async fn send(
         return Err(codex_error(e));
     }
     let answer = chat::keep_lumo_lines(state.answer(), &state.said());
-    let answer = if answer.trim().is_empty() {
+    if answer.trim().is_empty() {
         crate::log::line(format!("codex: empty answer; {} declined", state.denied));
-        match &state.error {
+        let why = match &state.error {
             Some(e) => codex_error(e),
             None if state.denied > 0 => t("Codex needed a permission that wasn't given."),
             None => t("Codex gave no answer."),
-        }
-    } else {
-        answer
-    };
+        };
+        // The island shows why; the conversation keeps that there was no
+        // answer, not Lumo's words as if Codex had said them.
+        chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+        return Ok(ChatReply::answer(why, chat.cli_session()));
+    }
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
     Ok(ChatReply::answer(answer, chat.cli_session()))
 }
