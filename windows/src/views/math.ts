@@ -848,10 +848,12 @@ function draw(node: Node): Element {
         const tag = node.sub && node.sup ? "munderover" : node.sub ? "munder" : "mover";
         return m(tag, { class: "mx-limits" }, op, node.sub ? draw(node.sub) : null, node.sup ? draw(node.sup) : null);
       }
-      // \overbrace{…}^{n}, \underbrace{…}_{n}: always above and below.
+      // \overbrace{…}^{n}, \underbrace{…}_{n}: always above and below, with
+      // TeX's thin space each side, as an operator with limits has, so two
+      // side by side keep their notes apart.
       if (node.base?.t === "stack") {
         const tag = node.sub && node.sup ? "munderover" : node.sub ? "munder" : "mover";
-        return m(tag, { class: "mx-limits" }, base, node.sub ? draw(node.sub) : null, node.sup ? draw(node.sup) : null);
+        return m(tag, { class: "mx-limits mx-noted" }, base, node.sub ? draw(node.sub) : null, node.sup ? draw(node.sup) : null);
       }
       const cls = node.base?.t === "sym" && INTEGRALS.has(node.base.v) ? "mx-script mx-int" : "mx-script";
       if (node.sup && node.sub) return m("msubsup", { class: cls }, base, draw(node.sub), draw(node.sup));

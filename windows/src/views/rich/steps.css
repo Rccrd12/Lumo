@@ -246,7 +246,8 @@
 
 .rc-steps-row {
   display: flex;
-  align-items: center;
+  /* The number on the name's and the formula's line, also in a taller row. */
+  align-items: baseline;
   gap: 10px;
   min-width: 0;
   min-height: 26px;
@@ -306,6 +307,8 @@
 .rc-steps-row-what {
   flex: 1 1 0;
   min-width: 0;
+  /* Room for a fraction's or a subscript's ink, which the cut would clip. */
+  padding: 3px 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
