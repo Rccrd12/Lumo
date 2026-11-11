@@ -51,6 +51,8 @@ export interface AgentTask {
   sessionId?: string | null;
   /** Claude's final message after Stop, one line; cleared when a new turn starts. */
   finalLine?: string | null;
+  /** Why the turn stopped on an error (StopFailure's `error`, e.g. `rate_limit`, and its `error_details`); cleared when a new turn starts. */
+  failure?: { code: string; details: string } | null;
   /** The title of the session the pill shows (/rename, else Claude Code's own): its name, with the folder beside it. */
   sessionTitle?: string | null;
   /** A program's sessions in the background, grouped on this pill (core/background.ts): how many run, answered, failed. */

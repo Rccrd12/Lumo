@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra,
+  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra, errorCardHeight, finishedCardHeight, chatAutoHeight, toolsViewHeight,
   GRIPS, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -24,7 +24,8 @@ import { dropName } from "../upload/files";
 import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen, visiblePlanKinds } from "../views/usage";
-import { buildHeader, buildViews, hasSessionTicker, overviewDetailFor, type ViewActions, type ViewHost } from "../views/views";
+import { buildHeader, buildViews, errorHasLastStep, finishedText, hasSessionTicker, overviewDetailFor, type ViewActions, type ViewHost } from "../views/views";
+import { toolsListRows } from "../views/tools";
 import { cardsFollowDrag } from "../views/rich/resize";
 import { gitHubListSection } from "../views/github";
 import { backgroundRows } from "../views/background";
@@ -1271,6 +1272,10 @@ export class Island {
     }
     let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock, this.compact.size,
       compactWidth(State.settings.islandCompactWidth));
+    // A long answer: the chat grows for it (up to CHAT_AUTO_MAX_H), unless a height was picked or a list fills it.
+    if (State.mode === "expanded" && State.view === "prompt" && this.chatCount === State.chatHistory.length && !pickedHeight(this.shape)) {
+      h = Math.max(h, chatAutoHeight(State.chatHistory, w));
+    }
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
     }
@@ -1296,7 +1301,11 @@ export class Island {
       const extra = planSteps ? planAskExtra(planSteps) + (State.pendingApproval?.fromChat ? 0 : NEW_LOOK_SESSION_ALLOW_H)
         : State.view === "approval" && (State.pendingApproval?.sessionAllow === true || !!State.pendingApproval?.answerIn || State.pendingApproval?.remembered === true) ? NEW_LOOK_SESSION_ALLOW_H
         : 0;
-      h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
+      // The Tools tab: as tall as its list, not 372 with a gap under three tools.
+      if (State.view === "tools") h = Math.max(toolsViewHeight(toolsListRows()), pickedHeight(this.shape));
+      else h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
+      if (State.view === "error") h = Math.max(h, errorCardHeight(errorHasLastStep(State.focusTask)));
+      if (State.view === "finished") h = Math.max(h, finishedCardHeight(finishedText(State.focusTask), w));
       if (State.view === "overview" && planCardOpen()) h = Math.max(h, NEW_LOOK_PLAN_CARD_H);
       if (State.view === "overview" && overviewDetailFor() === "integration_github" && gitHubListSection()) h = Math.max(h, NEW_LOOK_GH_LIST_H);
       const background = State.view === "overview" ? State.focusTask?.background : null;

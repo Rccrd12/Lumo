@@ -4623,7 +4623,7 @@
    "pt-BR": "Fechar a ilha aberta",
    "ru": "Закрывать открытый остров",
    "id": "Tutup pulau yang terbuka",
-   "it": "Chiudi l’isola aperta"
+   "it": "Chiudi l'isola aperta"
   },
   "Open on hover": {
    "zh-Hans": "悬停时打开",
@@ -4647,7 +4647,7 @@
    "pt-BR": "abre a ilha fechada quando o mouse para sobre ela",
    "ru": "открывает закрытый остров, когда мышь задерживается на нём",
    "id": "membuka pulau yang tertutup saat mouse berhenti di atasnya",
-   "it": "apre l’isola chiusa quando il mouse ci si appoggia"
+   "it": "apre l'isola chiusa quando il mouse ci si appoggia"
   },
   "Hide when unused": {
    "zh-Hans": "闲置时隐藏",
@@ -4671,7 +4671,7 @@
    "pt-BR": "a ilha fechada se esconde na borda da tela um minuto depois que você sai dela",
    "ru": "закрытый остров уходит за край экрана через минуту после того, как вы с него ушли",
    "id": "pulau yang tertutup masuk ke tepi layar semenit setelah Anda meninggalkannya",
-   "it": "l’isola chiusa scivola nel bordo dello schermo un minuto dopo che l’hai lasciata"
+   "it": "l'isola chiusa scivola nel bordo dello schermo un minuto dopo che l'hai lasciata"
   },
   "Opening Settings…": {
    "zh-Hans": "正在打开设置…",
@@ -6087,7 +6087,7 @@
    "pt-BR": "Nenhum e-mail não lido",
    "ru": "Нет непрочитанных писем",
    "id": "Tidak ada email yang belum dibaca",
-   "it": "Nessuna email da leggere"
+   "it": "Nessuna email nuova"
   },
   "{server} did not answer in time.": {
    "zh-Hans": "{server} 没有及时响应。",
@@ -6207,7 +6207,7 @@
    "pt-BR": "Atividades ao vivo",
    "ru": "Live-активности",
    "id": "Aktivitas Langsung",
-   "it": "Live Activities"
+   "it": "Attività in corso"
   },
   "Minimize": {
    "zh-Hans": "最小化",
@@ -7571,7 +7571,7 @@
    "pt-BR": "Buscar nas configurações",
    "ru": "Поиск настроек",
    "id": "Cari pengaturan",
-   "it": "Cerca nelle impostazioni"
+   "it": "Cerca…"
   },
   "No setting matches “{query}”.": {
    "zh-Hans": "没有与“{query}”匹配的设置。",
@@ -14685,7 +14685,7 @@
    "pt-BR": "Borda da ilha",
    "ru": "Край острова",
    "id": "Tepi pulau",
-   "it": "Bordo dell’isola"
+   "it": "Bordo dell'isola"
   },
   "Full light": {
    "zh-Hans": "完整光",
@@ -14733,7 +14733,7 @@
    "pt-BR": "Só o brilho",
    "ru": "Только сияние",
    "id": "Hanya pendar",
-   "it": "Solo l’alone"
+   "it": "Solo l'alone"
   },
   "Stop the timer": {
    "zh-Hans": "停止计时器",
@@ -17674,6 +17674,126 @@
    "ru": "{name} — программа Windows или оболочка: инструмент запускает вместо этого собственный скрипт.",
    "id": "{name} adalah program Windows atau shell: alat menjalankan skripnya sendiri sebagai gantinya.",
    "it": "{name} è un programma di Windows o una shell: uno strumento esegue invece uno script suo."
+  },
+  "Usage limit reached": {
+   "zh-Hans": "已达到使用限额",
+   "hi": "उपयोग सीमा पूरी हो गई",
+   "es": "Límite de uso alcanzado",
+   "ar": "تم بلوغ حد الاستخدام",
+   "fr": "Limite d'utilisation atteinte",
+   "bn": "ব্যবহারের সীমা পূর্ণ হয়েছে",
+   "pt-BR": "Limite de uso atingido",
+   "ru": "Достигнут лимит использования",
+   "id": "Batas penggunaan tercapai",
+   "it": "Limite di utilizzo raggiunto"
+  },
+  "Claude's servers are overloaded": {
+   "zh-Hans": "Claude 的服务器负载过高",
+   "hi": "Claude के सर्वर पर बहुत ज़्यादा लोड है",
+   "es": "Los servidores de Claude están saturados",
+   "ar": "خوادم Claude مثقلة بالطلبات",
+   "fr": "Les serveurs de Claude sont surchargés",
+   "bn": "Claude-এর সার্ভারে অতিরিক্ত চাপ",
+   "pt-BR": "Os servidores do Claude estão sobrecarregados",
+   "ru": "Серверы Claude перегружены",
+   "id": "Server Claude sedang kelebihan beban",
+   "it": "I server di Claude sono sovraccarichi"
+  },
+  "Sign-in failed": {
+   "zh-Hans": "登录失败",
+   "hi": "साइन इन विफल रहा",
+   "es": "No se pudo iniciar sesión",
+   "ar": "فشل تسجيل الدخول",
+   "fr": "Échec de la connexion",
+   "bn": "সাইন ইন ব্যর্থ হয়েছে",
+   "pt-BR": "Falha no login",
+   "ru": "Не удалось войти",
+   "id": "Gagal masuk",
+   "it": "Accesso non riuscito"
+  },
+  "The account is on hold": {
+   "zh-Hans": "账户已被暂停",
+   "hi": "खाता रोका गया है",
+   "es": "La cuenta está suspendida",
+   "ar": "الحساب معلّق",
+   "fr": "Le compte est suspendu",
+   "bn": "অ্যাকাউন্টটি স্থগিত আছে",
+   "pt-BR": "A conta está suspensa",
+   "ru": "Аккаунт приостановлен",
+   "id": "Akun sedang ditangguhkan",
+   "it": "L'account è sospeso"
+  },
+  "A billing problem on the account": {
+   "zh-Hans": "账户存在账单问题",
+   "hi": "खाते में बिलिंग की समस्या",
+   "es": "Un problema de facturación en la cuenta",
+   "ar": "مشكلة في الفوترة على الحساب",
+   "fr": "Un problème de facturation sur le compte",
+   "bn": "অ্যাকাউন্টে বিলিংয়ের সমস্যা",
+   "pt-BR": "Um problema de cobrança na conta",
+   "ru": "Проблема с оплатой аккаунта",
+   "id": "Ada masalah tagihan di akun",
+   "it": "Un problema di fatturazione sull'account"
+  },
+  "The request was refused": {
+   "zh-Hans": "请求被拒绝",
+   "hi": "अनुरोध अस्वीकार कर दिया गया",
+   "es": "La solicitud fue rechazada",
+   "ar": "تم رفض الطلب",
+   "fr": "La requête a été refusée",
+   "bn": "অনুরোধটি প্রত্যাখ্যাত হয়েছে",
+   "pt-BR": "A solicitação foi recusada",
+   "ru": "Запрос отклонён",
+   "id": "Permintaan ditolak",
+   "it": "La richiesta è stata rifiutata"
+  },
+  "Model not found": {
+   "zh-Hans": "找不到模型",
+   "hi": "मॉडल नहीं मिला",
+   "es": "No se encontró el modelo",
+   "ar": "لم يتم العثور على النموذج",
+   "fr": "Modèle introuvable",
+   "bn": "মডেল পাওয়া যায়নি",
+   "pt-BR": "Modelo não encontrado",
+   "ru": "Модель не найдена",
+   "id": "Model tidak ditemukan",
+   "it": "Modello non trovato"
+  },
+  "Server error": {
+   "zh-Hans": "服务器错误",
+   "hi": "सर्वर त्रुटि",
+   "es": "Error del servidor",
+   "ar": "خطأ في الخادم",
+   "fr": "Erreur du serveur",
+   "bn": "সার্ভার ত্রুটি",
+   "pt-BR": "Erro do servidor",
+   "ru": "Ошибка сервера",
+   "id": "Kesalahan server",
+   "it": "Errore del server"
+  },
+  "The answer hit its length limit": {
+   "zh-Hans": "回答达到了长度上限",
+   "hi": "उत्तर अपनी लंबाई की सीमा तक पहुँच गया",
+   "es": "La respuesta alcanzó su longitud máxima",
+   "ar": "بلغت الإجابة حدها الأقصى للطول",
+   "fr": "La réponse a atteint sa longueur maximale",
+   "bn": "উত্তরটি দৈর্ঘ্যের সীমায় পৌঁছেছে",
+   "pt-BR": "A resposta atingiu o limite de tamanho",
+   "ru": "Ответ достиг предельной длины",
+   "id": "Jawaban mencapai batas panjangnya",
+   "it": "La risposta ha raggiunto la lunghezza massima"
+  },
+  "Last step: {step}": {
+   "zh-Hans": "最后一步：{step}",
+   "hi": "आख़िरी चरण: {step}",
+   "es": "Último paso: {step}",
+   "ar": "الخطوة الأخيرة: {step}",
+   "fr": "Dernière étape : {step}",
+   "bn": "শেষ ধাপ: {step}",
+   "pt-BR": "Última etapa: {step}",
+   "ru": "Последний шаг: {step}",
+   "id": "Langkah terakhir: {step}",
+   "it": "Ultimo passo: {step}"
   }
  }
 }

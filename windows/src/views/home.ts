@@ -32,6 +32,8 @@ export const HOME_TEXT = {
   needsYou: N_("Needs you"),
   paused: N_("Paused"),
   stop: N_("Stop the timer"),
+  inProgress: N_("In progress"),
+  sessions: N_("Sessions"),
 };
 
 /** The timer ring's radius, and its length. */
@@ -232,6 +234,12 @@ export function homeGitHubItems(): HomeGitHubItem[] {
 /** Active watches Lumo is currently listening to (GitHub PRs or local triggers). */
 export function homeWatches(): ListenWatch[] {
   return activeWatches(State.listening);
+}
+
+/** A session on the home still at work: not done, not stopped on an error, not waiting for its next prompt. */
+export function atWork(task: AgentTask): boolean {
+  if (task.background) return task.background.running > 0;
+  return task.state !== "finished" && task.state !== "error" && task.state !== "idle";
 }
 
 /** Total rows shown under "In progress" on the left side of the home. */
@@ -685,7 +693,10 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
         if (waiting) left.append(label(t(HOME_TEXT.needsYou), 1 + State.approvalQueue.length), waiting);
         const runningCount = sessions.length + chatPlans.length + chatRuns.length + ghItems.length + watches.length;
         if (runningCount > 0) {
-          left.append(label(t("In progress"), runningCount),
+          // "In progress" only while every session listed is at work: one that is done,
+          // stopped on an error or waiting for its next prompt is not, so then "Sessions".
+          const allAtWork = sessions.every(atWork);
+          left.append(label(t(allAtWork ? HOME_TEXT.inProgress : HOME_TEXT.sessions), runningCount),
             h("div", { class: "home-rows" },
               ...sessions.map(sessionRow),
               ...chatPlans.map(chatPlanRow),

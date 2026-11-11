@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   DIFF_MAX_LINES, buildFileDiff, fileName, fromEdit, fromNew, isDiffStep, lastTextStep,
-  makeDiffStep, parseDiffStep, toOneLine,
+  cutAtWord, makeDiffStep, parseDiffStep, toOneLine,
 } from "../src/core/diff.ts";
 
 const allLines = (d) => d.hunks.flatMap((h) => h.lines);
@@ -188,4 +188,13 @@ test("buildFileDiff — Write and other tools", () => {
   assert.equal(buildFileDiff("Write", { file_path: "/p/n.md", content: "" }), null);
   assert.equal(buildFileDiff("Bash", { command: "ls" }), null);
   assert.equal(buildFileDiff("Read", { file_path: "/p/n.md" }), null);
+});
+
+test("a line cut short says so with …, between two words", () => {
+  assert.equal(cutAtWord("short", 10), "short");
+  assert.equal(cutAtWord("TypeScript compiler warnings", 15), "TypeScript…");
+  assert.equal(cutAtWord("one, two, three", 10), "one, two…");
+  // One long word: cut in it, as there is no space close enough.
+  assert.equal(cutAtWord("abcdefghijklmnop", 6), "abcde…");
+  assert.equal(toOneLine("The TypeScript check passes", 16), "The TypeScript…");
 });

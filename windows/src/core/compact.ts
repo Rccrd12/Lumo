@@ -13,6 +13,11 @@ import { eventSoon, type CalEvent } from "./calendar";
 export interface CompactLine {
   text: string;
   color: string;
+  /**
+   * Who it is about, when `text` starts with it and " · ": the closed island
+   * shortens it first, so what is going on stays readable (island/compact.ts).
+   */
+  lead?: string;
 }
 
 /** An email that came in (mail.rs). */
@@ -158,7 +163,7 @@ export function activityLine(
   agent: AgentActivityInput | null,
 ): CompactLine | null {
   if (chat) {
-    return { text: `${chat.who} · ${chat.label ?? t(COMPACT_TEXT.writing)}`, color: chat.color };
+    return { text: `${chat.who} · ${chat.label ?? t(COMPACT_TEXT.writing)}`, color: chat.color, lead: chat.who };
   }
   if (live && live.phase !== "off") {
     const what = live.doing ?? (live.muted && live.phase === "listening" ? t(COMPACT_TEXT.muted) : liveWords(live.phase));
@@ -166,7 +171,7 @@ export function activityLine(
   }
   if (agent) {
     const what = agentWords(agent);
-    if (what) return { text: `${agent.name} · ${what}`, color: agent.color };
+    if (what) return { text: `${agent.name} · ${what}`, color: agent.color, lead: agent.name };
   }
   return null;
 }
