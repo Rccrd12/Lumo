@@ -35,9 +35,10 @@ export function parseTopic(v: unknown): LumoTopic {
 /** Everything `lumoStatus` reads, collected at one moment. */
 export interface LumoFacts {
   now: number;
-  /** Settings → Security keeps the email, or the calendar, from the AI. */
+  /** Settings → Security keeps the email, the calendar, or GitHub, from the AI. */
   mailOff?: boolean;
   calendarOff?: boolean;
+  githubOff?: boolean;
   tasks: AgentTask[];
   /** The sessions behind each pill (island/hooks.ts liveSessions), by pill id. */
   sessions: Record<string, LiveSession[]>;
@@ -84,6 +85,8 @@ export async function gatherLumo(topic: LumoTopic): Promise<LumoFacts> {
     now,
     mailOff: !aiReads(s.aiMailAccess),
     calendarOff: !aiReads(s.aiCalendarAccess),
+    // Only "read" lets the AI see GitHub, as in Rust (github_tools.rs): off by default.
+    githubOff: s.aiGithubAccess !== "read",
     tasks: State.tasks,
     sessions,
     diffs: State.sessionDiffs,
@@ -258,6 +261,8 @@ function notReady(i: IntegrationInfo | null, name: string): Json | null {
 }
 
 function github(f: LumoFacts, full: boolean): Json {
+  // The pull requests Lumo watches name the repositories too: all of it stays.
+  if (f.githubOff) return { off: KEPT_FROM_AI };
   const i = info(f, "integration_github");
   const missing = notReady(i, "GitHub");
   const out: Json = missing ?? {};
