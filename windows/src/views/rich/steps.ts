@@ -12,8 +12,8 @@
 // Markdown, its first display formula drawn large in the middle of the card.
 // A block with no heading at all is read line by line, each line a step. The
 // card keeps one height as it steps, its tallest step's (every step is laid
-// out in the same place, only the current one shown): the formula it comes
-// from small and dim above, the current one large, its number and name under
+// out in the same place, only the current one shown, a shorter one in the
+// middle of that height): the formula it comes from small and dim above, the current one large, its number and name under
 // it, and a bar of segments at the bottom, one per step. The list button shows
 // every step at once; a row of the list goes back to that step. The copy
 // button, after the title, shows when the pointer is over the card, as a

@@ -32,6 +32,7 @@
 - **Fixed**: a fence of three backticks inside a code block opened with more ended it; a quiz asked again kept the old score; dragging the island wiped a key being typed in Settings; Gemini Live's saved transcript kept only its last 400 lines; Italian texts cut on the home and in the Settings search, and "Live Activities" left in English; a finished session listed under "Working"; the "later" button was hard to hit
 - **Fixed**: "ci" in an Italian question loaded the GitHub tools and "risposta" the email tools; a big image or PDF given to Claude failed the whole turn instead of being described to it; an LM Studio error counted as a model in memory; an empty answer was saved as Lumo's own message
 - **Fixed**: a new push said "Checks passed" before its own checks started; a moment settings.json couldn't be read turned web images back on; a local model's answer whose plan check went back to work left the chat; a failed Stripe payment sounded like a success, and the balance added up different currencies; work Microsoft 365 accounts opened the wrong Outlook; copying a folder after one of its files failed; forwarding more than 10 attachments dropped some; Voice could open a program named with a trailing dot or a stream
+- **Fixed**: in the steps card, a shorter step stayed at the top with all the room left empty above the bar (it now sits in the middle), and the formula of the step before, small and dim above, was cut at the top and kept its root sign bright
 
 ## Windows 0.21.0 — November 10, 2026
 
