@@ -4,7 +4,7 @@
 
 import "../core/legacy";
 import "./settings.css";
-import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport, type UnslothStudio } from "../core/bridge";
+import { Bridge, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport, type UnslothStudio } from "../core/bridge";
 import {
   CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, isHidden, providerDef, urlExposure, visibleProviders,
 } from "../core/providers";
@@ -19,6 +19,7 @@ import {
 } from "../core/pills";
 import { h, clear } from "../views/dom";
 import { agentsSection } from "./agents";
+import { HANDOFF_KEY, IN_ISLAND, onHandoff, reviewInWindow, takeHandoff } from "./handoff";
 import { colorDot } from "./colors";
 import { accentDot, errorText, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
 import { SEARCH_STRINGS, applySearch } from "./search";
@@ -119,7 +120,13 @@ async function reviewChange(
   install: boolean,
   back: () => void,
   applied: () => void,
+  what: string,
 ) {
+  // Inside the island nothing is written (confirmed.rs): the window shows it.
+  if (embedded) {
+    reviewInWindow(body, what, install, back);
+    return;
+  }
   let preview;
   try {
     preview = await change.preview(install);
@@ -219,7 +226,7 @@ function claudeSection(status: HookStatus): HTMLElement {
     const install = h("button", {
       class: "primary",
       text: status.installed ? t("Reinstall hooks…") : t("Install hooks…"),
-      onclick: () => void reviewChange(body, HOOKS_CHANGE, true, redraw, () => void rebuild()),
+      onclick: () => void reviewChange(body, HOOKS_CHANGE, true, redraw, () => void rebuild(), "hooks"),
     });
     // Writing hook commands that point at a relay which isn't there would give
     // every Claude Code session a broken hook and nothing to show for it.
@@ -232,12 +239,17 @@ function claudeSection(status: HookStatus): HTMLElement {
       actions.append(h("button", {
         class: "danger",
         text: t("Uninstall hooks…"),
-        onclick: () => void reviewChange(body, HOOKS_CHANGE, false, redraw, () => void rebuild()),
+        onclick: () => void reviewChange(body, HOOKS_CHANGE, false, redraw, () => void rebuild(), "hooks"),
       }));
     }
     body.append(actions);
   }
 
+  // The island's Settings handed this change to the window.
+  onHandoff("hooks", (install) => {
+    void reviewChange(body, HOOKS_CHANGE, install, redraw, () => void rebuild(), "hooks");
+    return section;
+  });
   draw();
   return section;
 }
@@ -317,6 +329,24 @@ function planSection(status: HookStatus, connected: Record<string, boolean>): HT
     });
   }
 
+  /** The plan switch turned on with no relay: the relay's install first, the switch on once it is in. */
+  function planOn() {
+    void reviewChange(body, STATUS_LINE_CHANGE, true, () => void rebuild(), () => {
+      settings.planRelayInstalled = true;
+      settings.showPlanInNotch = true;
+      void save().then(rebuild);
+    }, "plan");
+  }
+  // The island's Settings handed one of these changes to the window.
+  onHandoff("plan", () => {
+    planOn();
+    return section;
+  });
+  onHandoff("statusline", (install) => {
+    void reviewChange(body, STATUS_LINE_CHANGE, install, redraw, () => void rebuild(), "statusline");
+    return section;
+  });
+
   function draw() {
     // The switch shows "on" while the install it asked for is being reviewed.
     const sw = toggle(settings.showPlanInNotch, (on) => {
@@ -328,11 +358,7 @@ function planSection(status: HookStatus, connected: Record<string, boolean>): HT
         void save();
       } else {
         // Turned on before the relay is in: install it first; it stays on once confirmed.
-        void reviewChange(body, STATUS_LINE_CHANGE, true, () => void rebuild(), () => {
-          settings.planRelayInstalled = true;
-          settings.showPlanInNotch = true;
-          void save().then(rebuild);
-        });
+        planOn();
       }
     });
     body.append(
@@ -344,12 +370,12 @@ function planSection(status: HookStatus, connected: Record<string, boolean>): HT
           ? h("button", {
               class: "danger",
               text: t("Uninstall relay…"),
-              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, false, redraw, () => void rebuild()),
+              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, false, redraw, () => void rebuild(), "statusline"),
             })
           : h("button", {
               class: "primary",
               text: t("Install relay…"),
-              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild()),
+              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild(), "statusline"),
             }),
       ),
       setting(t("Ask Anthropic"),
@@ -2338,7 +2364,7 @@ function showPage(id: PageId, fromClick = true) {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 /** Shown inside the island (views/settings-frame.ts) rather than in its own window. */
-const embedded = EMBEDDED || new URLSearchParams(location.search).has("embedded");
+const embedded = IN_ISLAND;
 
 function tellIsland(message: string) {
   window.parent.postMessage(message, location.origin);
@@ -2402,7 +2428,19 @@ async function main() {
       if (e.source === window.parent && e.origin === location.origin && e.data === FRAME_SHOWN) backOnScreen();
     });
   } else {
-    window.addEventListener("focus", backOnScreen);
+    // A change handed over by the island's Settings (handoff.ts) shows once
+    // the window is in front, after any redraw that would wipe it.
+    const handoff = async () => {
+      if (stale) {
+        stale = false;
+        await rerender();
+      }
+      takeHandoff(() => showPage("agents"));
+    };
+    window.addEventListener("focus", () => void handoff());
+    window.addEventListener("storage", (e) => {
+      if (e.key === HANDOFF_KEY && e.newValue && document.hasFocus()) void handoff();
+    });
   }
   void onEvent<Settings>("settings-changed", (s) => {
     if (Object.entries(s).some(([k, v]) => JSON.stringify(v) !== JSON.stringify((settings as unknown as Record<string, unknown>)[k]))) {
