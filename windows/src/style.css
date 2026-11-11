@@ -1843,12 +1843,15 @@ math.mx {
 }
 
 /* A formula on a line of its own: centred on the chat's own background,
-   scrolling sideways when wider than the chat. */
+   scrolling sideways when wider than the chat. No room at its sides: the
+   WebView lays a block formula's side padding all on its left, the last
+   letter on the box's right edge, so the box that holds it gives the room
+   (.md-math-scroll, .rc-steps-formula). */
 math.mx-display {
   display: block math;
   width: max-content;
   margin: 0 auto;
-  padding: 2px 4px;
+  padding: 2px 0;
   font-size: 18px;
   color: #f1f2f4;
 }
@@ -1859,7 +1862,10 @@ math.mx-display {
   white-space: normal;
 }
 
+/* 6px each side: an italic V, W or f leans up to 4px past its own box (at
+   18px), and the scroll would cut it at the end of a wide formula. */
 .md-math-scroll {
+  padding: 0 6px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
