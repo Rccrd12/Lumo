@@ -15,7 +15,7 @@ const d = app.d;
 before(() => app.launch());
 after(() => app.close());
 
-const widthOf = async () => (await app.islandBox()).cssW;
+const widthOf = () => app.settledWidth();
 
 /** Drags the island's right edge by `dx` page pixels, then puts the cursor back on it. */
 async function dragRight(dx) {
@@ -33,6 +33,13 @@ async function dragRight(dx) {
   await sleep(300);
 }
 
+/** From the home, the chat. */
+async function openChat() {
+  step("opens the chat from the home's field");
+  await app.click(await d.visible(".home-field"));
+  await d.gone(".home-field", 5_000);
+}
+
 /** Opens the island and goes to the home (it reopens on the view it was left on). */
 async function openHome() {
   await app.open();
@@ -46,18 +53,20 @@ async function openHome() {
   await d.visible(".home-field", 8_000, "the home's Ask me anything field");
 }
 
-flow(G, "The size picked is kept after Lumo restarts", app, async () => {
+flow(G, "The chat's size is kept after Lumo restarts", app, async () => {
   await openHome();
-  await dragRight(-200);
+  await openChat();
+  await dragRight(150);
   const before = await widthOf();
-  step(`home at ${before} px; Lumo restarts`);
+  step(`chat at ${before} px; Lumo restarts`);
   await app.closed();
   await app.quit();
   await app.launch({ fresh: false });
-  await openHome();
+  await app.open();
+  if (await d.find(".home-field")) await openChat();
   const afterRestart = await widthOf();
-  step(`home at ${afterRestart} px after the restart`);
-  assert.ok(Math.abs(afterRestart - before) <= 2, `the home was ${before} px wide before the restart and ${afterRestart} px after`);
+  step(`chat at ${afterRestart} px after the restart`);
+  assert.ok(Math.abs(afterRestart - before) <= 2, `the chat was ${before} px wide before the restart and ${afterRestart} px after`);
 });
 
 flow(G, "Resizing the chat leaves the home's size alone", app, async () => {
@@ -67,10 +76,7 @@ flow(G, "Resizing the chat leaves the home's size alone", app, async () => {
   const home = await widthOf();
   step(`home narrowed to ${home} px`);
 
-  step("opens the chat from the home's field");
-  await app.click(await d.visible(".home-field"));
-  await d.gone(".home-field", 5_000);
-  await sleep(600);
+  await openChat();
   const chatBefore = await widthOf();
   await dragRight(150);
   const chat = await widthOf();

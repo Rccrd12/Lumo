@@ -169,9 +169,19 @@ export class Lumo {
    * until it sits on the element, as an eye following it would.
    */
   async aim(id) {
+    // The element's centre, or for one partly under others (a resize grip
+    // under the chat's field) the first point along its middle that is its own.
     const where = () => this.d.js(`
-      const r = devicePixelRatio, b = arguments[0].getBoundingClientRect();
-      const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      const el = arguments[0], r = devicePixelRatio, b = el.getBoundingClientRect();
+      let cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      const own = (x, y) => { const e = document.elementFromPoint(x, y); return e === el || el.contains(e); };
+      if (!own(cx, cy)) {
+        const tall = b.height >= b.width;
+        for (let i = 1; i < 40; i++) {
+          const x = tall ? cx : b.left + (b.width * i) / 40, y = tall ? b.top + (b.height * i) / 40 : cy;
+          if (own(x, y)) { cx = x; cy = y; break; }
+        }
+      }
       return { cx, cy, x: (screenX + cx) * r, y: (screenY + cy) * r, r, seen: window.__e2eMove ?? null };`, this.d.ref(id));
     let t = await where();
     let at = { x: t.x, y: t.y };
@@ -264,6 +274,18 @@ export class Lumo {
     // The cursor stays over it, so it stays open.
     const open = await this.islandBox();
     await this.mouse.move(open.x + open.w / 2, open.y + 20);
+  }
+
+  /** The island's width once it has stopped moving (it springs to a new size). */
+  async settledWidth() {
+    let last = (await this.islandBox()).cssW;
+    for (let i = 0; i < 40; i++) {
+      await sleep(150);
+      const now = (await this.islandBox()).cssW;
+      if (Math.abs(now - last) < 0.5) return Math.round(now);
+      last = now;
+    }
+    return Math.round(last);
   }
 
   /** What the island shows: the views on screen, its size. */
