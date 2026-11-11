@@ -37,8 +37,9 @@ const DRAIN_GRACE: Duration = Duration::from_millis(200);
 const PREVIOUS_FILE: &str = "statusline-previous.json";
 
 pub fn run() -> ! {
-    let mut raw = Vec::new();
-    let _ = std::io::stdin().read_to_end(&mut raw);
+    // Within a few seconds and a ceiling, as a hook's event (main.rs): a
+    // stdin left open never holds the status line, nor Claude Code with it.
+    let mut raw = crate::read_stdin();
     if raw.starts_with(&[0xEF, 0xBB, 0xBF]) {
         raw.drain(..3);
     }

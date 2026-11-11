@@ -17,7 +17,7 @@
 // redirects included.
 
 use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -324,7 +324,23 @@ async fn engine_text(host: &str, response: reqwest::Response) -> Result<String, 
 /// A page that asks to prove one isn't a robot instead of giving results.
 fn is_challenge(page: &str) -> bool {
     let head: String = page.chars().take(200_000).collect::<String>().to_ascii_lowercase();
-    ["anomaly-modal", "challenge-form", "g-recaptcha", "h-captcha", "cf-challenge", "/captcha", "id=\"captcha"].iter().any(|m| head.contains(m))
+    // The markers as the page's own markup has them (an attribute, a form
+    // posting to the engine's own /captcha): a result that only names them,
+    // in its text or its address, is no challenge.
+    [
+        "anomaly-modal",
+        "id=\"challenge-form",
+        "class=\"g-recaptcha",
+        "class=\"h-captcha",
+        "id=\"cf-challenge",
+        "class=\"cf-challenge",
+        "src=\"/cdn-cgi/challenge-platform",
+        "action=\"/captcha",
+        "src=\"/captcha",
+        "id=\"captcha",
+    ]
+    .iter()
+    .any(|m| head.contains(m))
 }
 
 async fn bing(query: &str, range: &str) -> Result<Vec<Hit>, String> {
@@ -529,17 +545,30 @@ async fn fetch(raw: &str, focus: &str, provider: &str) -> Result<String, String>
     } else {
         let chunks: Vec<(usize, String)> = chunk(&page.text).into_iter().map(|c| (0, c)).collect();
         let picked = rank(focus, &chunks, provider).await;
-        let mut out = String::new();
-        for &i in picked.iter().take(12) {
-            if out.len() + chunks[i].1.len() > FETCH_MAX {
-                break;
-            }
-            out.push_str(&chunks[i].1);
-            out.push_str("\n\n[…]\n\n");
-        }
-        out
+        focused(&page.text, &chunks, &picked)
     };
     Ok(format!("{}\n{}\n\n{}", page.title, page.url, body.trim_end()))
+}
+
+/// The passages of a long page picked for the focus, best first, up to
+/// FETCH_MAX. None that matches (or fits): the page's beginning, saying so,
+/// so the model doesn't take the page for empty.
+fn focused(text: &str, chunks: &[(usize, String)], picked: &[usize]) -> String {
+    let mut out = String::new();
+    for &i in picked.iter().take(12) {
+        if out.len() + chunks[i].1.len() > FETCH_MAX {
+            break;
+        }
+        out.push_str(&chunks[i].1);
+        out.push_str("\n\n[…]\n\n");
+    }
+    if out.is_empty() {
+        out = format!(
+            "No passage of this long page matched the focus, so here is its beginning. Try other words in focus, or none for the start of the page.\n\n{}",
+            clip(text, FETCH_MAX)
+        );
+    }
+    out
 }
 
 /// A page read from this computer: only a public address, redirects too.
@@ -632,45 +661,9 @@ async fn check_public(url: &Url) -> Result<Vec<SocketAddr>, String> {
     Ok(addrs)
 }
 
+/// Only addresses on the internet: the one rule, web_image.rs's.
 fn is_public(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            let [a, b, c, _] = v4.octets();
-            !(v4.is_private()
-                || v4.is_loopback()
-                || v4.is_link_local()
-                || v4.is_broadcast()
-                || v4.is_documentation()
-                || v4.is_unspecified()
-                || v4.is_multicast()
-                || a == 0
-                || (a == 100 && (64..128).contains(&b))
-                || (a == 192 && b == 0 && c == 0)
-                || (a == 198 && (b == 18 || b == 19))
-                || a >= 240)
-        }
-        IpAddr::V6(v6) => {
-            if let Some(v4) = v6.to_ipv4_mapped() {
-                return is_public(IpAddr::V4(v4));
-            }
-            let seg = v6.segments();
-            let first = seg[0];
-            let v4 = |hi: u16, lo: u16| IpAddr::V4(Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8));
-            // An IPv4 address carried in an IPv6 one counts as that address:
-            // NAT64 (64:ff9b::/96) at its end, 6to4 (2002::/16) after the prefix.
-            if seg[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
-                return is_public(v4(seg[6], seg[7]));
-            }
-            if first == 0x2002 {
-                return is_public(v4(seg[1], seg[2]));
-            }
-            // Documentation (2001:db8::/32) and the old IPv4-compatible ::a.b.c.d.
-            if (first == 0x2001 && seg[1] == 0x0db8) || seg[..6] == [0, 0, 0, 0, 0, 0] {
-                return false;
-            }
-            !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80)
-        }
-    }
+    crate::web_image::is_public(ip)
 }
 
 // ── HTML ───────────────────────────────────────────────────────────────────
@@ -1133,6 +1126,21 @@ mod tests {
     fn a_page_that_asks_to_prove_one_is_not_a_robot_is_no_results_page() {
         assert!(is_challenge(r#"<html><body><div class="anomaly-modal__title">Unfortunately, bots use DuckDuckGo too.</div><form id="challenge-form"></form>"#));
         assert!(!is_challenge(r#"<li class="b_algo"><h2><a href="https://a.com/">Pasta</a></h2></li>"#));
+        assert!(is_challenge(r#"<form action="/sorry/index"><div id="recaptcha" class="g-recaptcha" data-sitekey="x"></div></form>"#));
+        // Results about captchas are results.
+        assert!(!is_challenge(r#"<li class="b_algo"><h2><a href="https://developers.google.com/recaptcha/docs/display">Add g-recaptcha to a form</a></h2><p>Use class=&quot;g-recaptcha&quot;.</p></li>"#));
+        assert!(!is_challenge(r#"<li class="b_algo"><a href="https://example.com/captcha">Captcha</a></li>"#));
+    }
+
+    #[test]
+    fn a_focus_nothing_on_the_page_matches_gives_its_beginning_and_says_so() {
+        let text = "a".repeat(FETCH_MAX * 2);
+        let chunks = vec![(0, "first".to_string()), (0, "second".to_string())];
+        assert_eq!(focused(&text, &chunks, &[1, 0]), "second\n\n[…]\n\nfirst\n\n[…]\n\n");
+        let none = focused(&text, &chunks, &[]);
+        assert!(none.starts_with("No passage of this long page matched the focus"));
+        assert!(none.len() <= FETCH_MAX + 200);
+        assert!(none.contains("aaaa"));
     }
 
     #[test]
@@ -1179,7 +1187,7 @@ mod tests {
 
     #[test]
     fn only_public_addresses_are_opened() {
-        for ip in ["127.0.0.1", "10.0.0.2", "192.168.1.1", "172.16.0.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:192.168.0.1", "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "2002:7f00:1::", "2002:c0a8:101::1", "2001:db8::1", "::7f00:1"] {
+        for ip in ["127.0.0.1", "10.0.0.2", "192.168.1.1", "172.16.0.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:192.168.0.1", "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "2002:7f00:1::", "2002:c0a8:101::1", "2001:db8::1", "::7f00:1", "2001::1", "fec0::1", "100::1"] {
             assert!(!is_public(ip.parse().unwrap()), "{ip}");
         }
         for ip in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "64:ff9b::5db8:d822", "2002:5db8:d822::1"] {

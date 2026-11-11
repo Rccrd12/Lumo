@@ -1,8 +1,10 @@
 // Chat through Claude Code itself: the `claude` CLI the user installed and
 // signed in to with their own Claude plan (Pro, Max…). No API key: Lumo runs
 // the unmodified binary as `claude -p`, and Claude Code answers with its own
-// sign-in, exactly as in a terminal. Lumo never reads, stores or forwards any
-// Claude credential.
+// sign-in, exactly as in a terminal. The chat never reads, stores or forwards
+// any Claude credential (only the plan's usage, plan_usage.rs, once the user
+// turned it on, reads Claude Code's access token when it asks, sends it to
+// Anthropic alone and keeps it nowhere).
 //
 // Unlike the other providers, Claude Code can act: read a dropped PDF or image,
 // read and edit files, run commands, search the web. Every action that needs a
@@ -179,7 +181,7 @@ fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool, island: bool, ma
     let name = if mail.is_empty() { name.to_string() } else { name.replace(".json", &format!("-{}.json", mail.replace(',', "-"))) };
     let path = crate::platform::local_dir().join(name);
     let text = mcp_config(computer, tools, island, mail).to_string();
-    let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
+    let written = write_config(&path, &text);
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
         args.push("--mcp-config".into());
@@ -203,6 +205,31 @@ fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool, island: bool, ma
         }
     }
     args
+}
+
+/// Writes one of the files the chat's Claude Code is pointed at, whether it
+/// is there now. Only when it changed, and whole: written beside it and
+/// renamed over it, so a Claude Code another chat starts meanwhile never
+/// reads half a file.
+fn write_config(path: &std::path::Path, text: &str) -> bool {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    if std::fs::read(path).is_ok_and(|now| now == text.as_bytes()) {
+        return true;
+    }
+    let Some(dir) = path.parent() else { return false };
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let n = NEXT.fetch_add(1, Ordering::SeqCst);
+    let temp = path.with_file_name(format!("{name}.lumo-{}-{n}", std::process::id()));
+    let written = std::fs::write(&temp, text).and_then(|()| std::fs::rename(&temp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+        // Another chat's write may have won the rename: the same text is there.
+        return std::fs::read(path).is_ok_and(|now| now == text.as_bytes());
+    }
+    true
 }
 
 /// The models offered for Claude Code: the current ones by id, so the picker
@@ -279,8 +306,9 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
 
 /// The settings the chat's run adds for itself (`--settings`; the user's
 /// settings.json is not touched):
-///   * Lumo's PermissionRequest hook, the same entry installing writes
-///     (hooks::permission_request_entry), so a card comes up exactly when
+///   * Lumo's PermissionRequest hook, the very entry settings.json has once
+///     installed (hooks::chat_permission_entry: Claude Code runs it once,
+///     not twice), else the one installing writes, so a card comes up exactly when
 ///     Claude Code would ask: what the user's own rules, the mode or an "Allow
 ///     for this session" already allow goes through without one. `claude -p`
 ///     denies what nobody decided.
@@ -305,8 +333,8 @@ fn chat_settings(permission: Value, guard: &str) -> Value {
 fn with_cards(mut args: Vec<String>) -> Vec<String> {
     let guard = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PreToolUse");
     let path = crate::platform::local_dir().join("chat-hooks.json");
-    let text = chat_settings(crate::hooks::permission_request_entry(), &guard).to_string();
-    let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
+    let text = chat_settings(crate::hooks::chat_permission_entry(), &guard).to_string();
+    let written = write_config(&path, &text);
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
         args.push("--settings".into());
@@ -1212,14 +1240,16 @@ fn run(
         kill_tree(&mut child);
         return Ok(state);
     }
-    let status = child.wait().ok();
-    if state.result.is_none() {
-        // The reader is done with stderr once the CLI ended.
-        std::thread::sleep(Duration::from_millis(50));
-        let stderr = stderr.lock().unwrap_or_else(|p| p.into_inner()).clone();
-        return Err(ended_without_answer(&stderr, status));
+    if state.result.is_some() {
+        // The answer is in: the CLI may end by itself, or is ended.
+        end_after_result(&mut child, &stop, AFTER_RESULT);
+        return Ok(state);
     }
-    Ok(state)
+    let status = child.wait().ok();
+    // The reader is done with stderr once the CLI ended.
+    std::thread::sleep(Duration::from_millis(50));
+    let stderr = stderr.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    Err(ended_without_answer(&stderr, status))
 }
 
 // ── One Claude Code per chat ──────────────────────────────────────────────────
@@ -1584,11 +1614,35 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
 
 /// Ends the chat's Claude Code, if one waits between two turns (the chat starts afresh).
 pub fn close(chat_id: &str) {
-    let gone = lives(|all| all.remove(chat_id));
-    drop(gone);
+    // Ending it waits for taskkill: never on the caller's thread, which is
+    // the window's for a new chat or an edited message.
+    if let Some(gone) = lives(|all| all.remove(chat_id)) {
+        std::thread::spawn(move || drop(gone));
+    }
 }
 
 /// An npm install runs `claude.cmd`: killing cmd.exe alone would leave node running.
+/// After its turn's `result`, a CLI run once gets this long to end by itself
+/// before it and its children are ended: a process it left behind holding its
+/// output must not keep the turn, and Stop, waiting for ever.
+pub(crate) const AFTER_RESULT: Duration = Duration::from_secs(10);
+
+/// Waits for `child` to end after its turn's result: at most `grace`, or until
+/// Stop. Past that, it and its children are ended. Its exit status when it
+/// ended by itself.
+pub(crate) fn end_after_result(child: &mut std::process::Child, stop: &Stop, grace: Duration) -> Option<std::process::ExitStatus> {
+    let since = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) if !stop.is_stopped() && since.elapsed() < grace => std::thread::sleep(Duration::from_millis(50)),
+            _ => break,
+        }
+    }
+    kill_tree(child);
+    None
+}
+
 pub(crate) fn kill_tree(child: &mut std::process::Child) {
     let mut kill = Command::new("taskkill");
     kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
@@ -1845,6 +1899,39 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A command that runs a minute unless it is ended.
+    #[cfg(windows)]
+    fn lingering() -> std::process::Child {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "ping -n 60 127.0.0.1 >NUL"]).stdout(Stdio::null()).stderr(Stdio::null());
+        platform::no_console(&mut cmd);
+        cmd.spawn().expect("cmd")
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_cli_that_lingers_after_its_answer_is_ended_and_stop_ends_it_at_once() {
+        let stop = Stop::default();
+        let mut child = lingering();
+        let started = Instant::now();
+        assert_eq!(end_after_result(&mut child, &stop, Duration::from_millis(300)), None);
+        assert!(started.elapsed() < Duration::from_secs(20), "{:?}", started.elapsed());
+        assert!(child.try_wait().expect("try_wait").is_some(), "ended");
+        // Stop after the answer: ended at once, not after the whole grace.
+        let mut child = lingering();
+        stop.stop();
+        let started = Instant::now();
+        assert_eq!(end_after_result(&mut child, &stop, Duration::from_secs(120)), None);
+        assert!(started.elapsed() < Duration::from_secs(20), "{:?}", started.elapsed());
+        // One that ends by itself gives its exit status.
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "exit 3"]);
+        platform::no_console(&mut cmd);
+        let mut quick = cmd.spawn().expect("cmd");
+        let status = end_after_result(&mut quick, &Stop::default(), Duration::from_secs(20));
+        assert_eq!(status.and_then(|s| s.code()), Some(3));
+    }
 
     const SID: &str = "0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b";
 

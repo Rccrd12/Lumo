@@ -388,14 +388,34 @@ fn settings_path() -> PathBuf {
     config_dir().join("settings.json")
 }
 
+/// The settings last read from settings.json or saved to it. Many modules read
+/// the file again for a setting (web_image.rs, web_search.rs…): when it can't be
+/// read for a moment (an antivirus holding it, a sync tool), they get these
+/// rather than the defaults, which would turn back on what the user turned off.
+static LAST_GOOD: Mutex<Option<Settings>> = Mutex::new(None);
+
 pub fn load() -> Settings {
-    load_from(&settings_path())
+    load_keeping(&settings_path(), &LAST_GOOD)
+}
+
+/// `load`, remembering in `last` what was read, and falling back on it.
+fn load_keeping(path: &Path, last: &Mutex<Option<Settings>>) -> Settings {
+    let mut last = last.lock().unwrap_or_else(PoisonError::into_inner);
+    match read_from(path) {
+        Some(settings) => {
+            *last = Some(settings.clone());
+            settings
+        }
+        None => last.clone().unwrap_or_default(),
+    }
 }
 
 pub fn save(settings: &Settings) -> std::io::Result<()> {
     let dir = config_dir();
     crate::platform::ensure_private_dir(&dir)?;
-    save_to(&settings_path(), settings)
+    save_to(&settings_path(), settings)?;
+    *LAST_GOOD.lock().unwrap_or_else(PoisonError::into_inner) = Some(settings.clone());
+    Ok(())
 }
 
 /// How many copies `set_aside` can make within one second before it gives up.
@@ -466,20 +486,27 @@ fn unusable_field(key: &str) -> String {
 /// Only a file that is not there means "start from the defaults" with nothing
 /// more to do. One that cannot be read, or cannot be used, also gives the
 /// defaults, but it still holds what the user had: it is kept, not written over.
+#[cfg(test)]
 fn load_from(path: &Path) -> Settings {
+    read_from(path).unwrap_or_default()
+}
+
+/// `load_from`, with `None` for a file that is there but could not be read or
+/// used (the defaults, unless `load` read it fine before).
+fn read_from(path: &Path) -> Option<Settings> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Settings::default(),
+        Err(err) if err.kind() == ErrorKind::NotFound => return Some(Settings::default()),
         Err(err) => {
-            note(format!("can't read {}: {err} — using the defaults", path.display()));
+            note(format!("can't read {}: {err} — using the defaults or the last settings read", path.display()));
             protect(path);
-            return Settings::default();
+            return None;
         }
     };
-    parse(&bytes).unwrap_or_else(|| {
+    parse(&bytes).or_else(|| {
         match set_aside(path, "corrupt", &bytes) {
             Ok(copy) => note(format!(
-                "{} is not usable — kept as {}, using the defaults",
+                "{} is not usable — kept as {}, using the defaults or the last settings read",
                 path.display(),
                 copy.display()
             )),
@@ -488,7 +515,7 @@ fn load_from(path: &Path) -> Settings {
                 protect(path);
             }
         }
-        Settings::default()
+        None
     })
 }
 
@@ -1022,6 +1049,27 @@ mod tests {
         let mut copies = kept(&dir, "corrupt");
         copies.sort();
         assert_eq!(copies, [first.to_vec(), second.to_vec()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_that_cant_be_read_for_a_moment_gives_the_last_settings_read() {
+        let (dir, file) = scratch("last-good");
+        let last = Mutex::new(None);
+        // Nothing read yet: the defaults.
+        std::fs::write(&file, b"{ half").unwrap();
+        assert_eq!(shown(&load_keeping(&file, &last)), defaults());
+        std::fs::write(&file, CUSTOM).unwrap();
+        assert_eq!(shown(&load_keeping(&file, &last)), custom());
+        // Unusable, then unreadable: what was read before, not the defaults.
+        std::fs::write(&file, b"{ half").unwrap();
+        assert_eq!(shown(&load_keeping(&file, &last)), custom());
+        std::fs::remove_file(&file).unwrap();
+        std::fs::create_dir(&file).unwrap();
+        assert_eq!(shown(&load_keeping(&file, &last)), custom());
+        // Gone for good: the defaults, as for a first launch.
+        std::fs::remove_dir(&file).unwrap();
+        assert_eq!(shown(&load_keeping(&file, &last)), defaults());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

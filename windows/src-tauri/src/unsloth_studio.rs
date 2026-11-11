@@ -240,6 +240,17 @@ async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<
         return Ok(());
     }
     owned_ended();
+    // Lumo's server on another port (the address was changed in Settings
+    // since): it goes, and one starts where the chat now asks. Not under an
+    // answer it is writing.
+    match owned(|o| o.as_ref().filter(|own| own.port != port).map(|own| own.busy)) {
+        Some(0) => {
+            crate::log::line(format!("[unsloth] the address moved to port {port}: stopping the server on the old one"));
+            stop_owned(app).await;
+        }
+        Some(_) => return Err(t("Unsloth Studio is still answering at its old address. Try again once that answer is done.")),
+        None => {}
+    }
     let python = python().ok_or_else(|| t("Unsloth Studio isn't installed on this computer."))?;
     if owned(|o| o.is_none()) {
         let child = spawn(&python, port).map_err(|e| {

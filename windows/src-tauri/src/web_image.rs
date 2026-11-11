@@ -1,7 +1,11 @@
 // The images in the chat's answers (views/rich/image.ts): a line that is
-// only `![alt](https://…)` shows the picture at once. The user chose this over
-// asking site by site; Settings → Security → Images from the web turns it off,
-// and then nothing is downloaded here either.
+// only `![alt](https://…)` shows the picture at once when it comes from a
+// site that keeps no record a writer of the address could read back
+// (AUTO_HOSTS: Wikimedia's), and after a click on Load image from any other.
+// The address is the AI's to write: a page or an email it read could have it
+// put the user's data in one (`https://site/p.png?d=…`), and an automatic
+// download would hand that to the site. Settings → Security → Images from the
+// web turns it off, and then nothing is downloaded here either.
 //
 // The island never reaches the site itself: its CSP lets images in only from
 // the app, data: and blob:. Lumo downloads the bytes here and hands them over
@@ -42,12 +46,29 @@ const PORT: u16 = 443;
 /// How wide a picture from Wikimedia is asked for (wikimedia_thumb).
 const THUMB_PX: u32 = 960;
 
+/// The sites whose images download without a click (image.ts AUTO_HOSTS).
+const AUTO_HOSTS: &[&str] = &["upload.wikimedia.org"];
+
+/// Whether `raw`'s image may download without the user's click: https on its
+/// usual port, from AUTO_HOSTS.
+fn loads_at_once(raw: &str) -> bool {
+    Url::parse(raw).is_ok_and(|u| {
+        u.scheme() == "https"
+            && u.port().is_none()
+            && u.host_str().is_some_and(|h| AUTO_HOSTS.contains(&h.trim_end_matches('.').to_ascii_lowercase().as_str()))
+    })
+}
+
 /// The image at `url`, its bytes as the site sent them (the island reads
-/// their type from their first bytes, as `sniff` does here).
+/// their type from their first bytes, as `sniff` does here). `asked`: the
+/// user clicked Load image for it, which any other site than AUTO_HOSTS needs.
 #[tauri::command]
-pub async fn web_image(url: String) -> Result<tauri::ipc::Response, String> {
+pub async fn web_image(url: String, asked: Option<bool>) -> Result<tauri::ipc::Response, String> {
     if !crate::settings::load().web_images {
         return Err("Images from the web are turned off in Settings.".into());
+    }
+    if asked != Some(true) && !loads_at_once(&url) {
+        return Err("Images from this site load only when you click Load image.".into());
     }
     let fetch = async {
         // From Wikimedia, its own smaller copy first; the original when there
@@ -283,8 +304,9 @@ fn next_hop(from: &Url, location: &str) -> Result<Url, String> {
 
 /// Only addresses on the internet: never this machine, the local network,
 /// link-local, shared (CGNAT), multicast, documentation or reserved ranges,
-/// in IPv4 or in any IPv6 form that carries an IPv4 address.
-fn is_public(ip: IpAddr) -> bool {
+/// in IPv4 or in any IPv6 form that carries an IPv4 address. Web search's
+/// pages (web_search.rs) go by this one too.
+pub(crate) fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             let [a, b, c, _] = v4.octets();
@@ -617,5 +639,16 @@ mod tests {
         ] {
             assert_eq!(wikimedia_thumb(kept), None, "{kept}");
         }
+    }
+
+    #[test]
+    fn only_wikimedia_loads_without_a_click() {
+        assert!(loads_at_once("https://upload.wikimedia.org/wikipedia/commons/a/a1/Op-amp.png"));
+        assert!(loads_at_once("https://Upload.Wikimedia.org./a.png"));
+        assert!(!loads_at_once("http://upload.wikimedia.org/a.png"));
+        assert!(!loads_at_once("https://upload.wikimedia.org:8443/a.png"));
+        assert!(!loads_at_once("https://upload.wikimedia.org.evil.com/a.png"));
+        assert!(!loads_at_once("https://evil.com/p.png?d=secret"));
+        assert!(!loads_at_once("not a url"));
     }
 }

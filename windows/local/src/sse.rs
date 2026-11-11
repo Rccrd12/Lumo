@@ -57,20 +57,32 @@ pub fn parse_sse_line(line: &str) -> Option<Event> {
     if let Some(error) = json.get("error").filter(|e| !e.is_null()) {
         return Some(Event::Error(error.as_str().map(str::to_string).unwrap_or_default()));
     }
-    if let Some(total) = json.pointer("/usage/total_tokens").and_then(Value::as_u64).filter(|_| json.pointer("/choices/0/delta/content").is_none()) {
-        return Some(Event::Usage(total));
+    // What the answer says comes first: the calls and the text of a chunk
+    // that also carries the usage (vLLM's continuous usage, a server that
+    // ends with both) are read all the same; `usage_of` reads its usage.
+    if let Some(delta) = json.pointer("/choices/0/delta") {
+        if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array).filter(|c| !c.is_empty()) {
+            return Some(Event::Calls(calls.clone()));
+        }
+        if let Some(text) = delta.get("content").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+            return Some(Event::Text(text.to_string()));
+        }
+        if ["reasoning_content", "reasoning"].iter().any(|k| delta.get(*k).and_then(Value::as_str).is_some_and(|r| !r.is_empty())) {
+            return Some(Event::Reasoning);
+        }
     }
-    let delta = json.pointer("/choices/0/delta")?;
-    if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array).filter(|c| !c.is_empty()) {
-        return Some(Event::Calls(calls.clone()));
+    json.pointer("/usage/total_tokens").and_then(Value::as_u64).map(Event::Usage)
+}
+
+/// The tokens an event line says the request and its answer took, whatever
+/// else it carries.
+pub fn usage_of(line: &str) -> Option<u64> {
+    let payload = line.strip_prefix("data:").map(str::trim_start)?;
+    if !payload.contains("total_tokens") {
+        return None;
     }
-    match delta.get("content").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-        Some(text) => Some(Event::Text(text.to_string())),
-        None => ["reasoning_content", "reasoning"]
-            .iter()
-            .any(|k| delta.get(*k).and_then(Value::as_str).is_some_and(|r| !r.is_empty()))
-            .then_some(Event::Reasoning),
-    }
+    let json = serde_json::from_str::<Value>(payload).ok()?;
+    json.pointer("/usage/total_tokens").and_then(Value::as_u64)
 }
 
 /// The tool calls of an answer, put together from their pieces: each one's
@@ -78,36 +90,77 @@ pub fn parse_sse_line(line: &str) -> Option<Event> {
 #[derive(Default)]
 pub struct CallParts {
     pub calls: Vec<Value>,
+    /// For each `index` the server gave, the call its pieces go to now.
+    slots: Vec<(u64, usize)>,
 }
+
+/// The most calls one answer is put together from.
+const MAX_CALLS: usize = 65;
 
 impl CallParts {
     pub fn feed(&mut self, pieces: &[Value]) {
-        for (n, piece) in pieces.iter().enumerate() {
-            let index = piece["index"].as_u64().map(|i| i as usize).unwrap_or(self.calls.len().max(n));
-            if index > 64 {
-                continue;
-            }
-            while self.calls.len() <= index {
-                self.calls.push(json!({ "id": "", "name": "", "arguments": "" }));
-            }
-            let call = &mut self.calls[index];
-            if let Some(id) = piece["id"].as_str().filter(|id| !id.is_empty()) {
+        for piece in pieces {
+            let id = piece["id"].as_str().filter(|id| !id.is_empty());
+            let name = piece.pointer("/function/name").and_then(Value::as_str).filter(|n| !n.is_empty());
+            let at = match piece["index"].as_u64() {
+                Some(index) => match self.slots.iter().find(|(i, _)| *i == index).map(|(_, at)| *at) {
+                    // Another id at an index already taken is another call:
+                    // Ollama, before it numbered them, sent every call whole
+                    // with index 0.
+                    Some(at) if id.is_some_and(|id| self.calls[at]["id"].as_str().is_some_and(|had| !had.is_empty() && had != id)) => self.start(Some(index)),
+                    Some(at) => Some(at),
+                    None => self.start(Some(index)),
+                },
+                // No index: a piece of a call already begun goes on with it
+                // (by its id, or the last one when it has neither id nor
+                // name); any other is a call of its own.
+                None => match id {
+                    Some(id) => self.calls.iter().position(|c| c["id"] == id).or_else(|| self.start(None)),
+                    None if name.is_none() => self.calls.len().checked_sub(1),
+                    None => self.start(None),
+                },
+            };
+            let Some(at) = at else { continue };
+            let call = &mut self.calls[at];
+            if let Some(id) = id {
                 call["id"] = json!(id);
             }
-            if let Some(name) = piece.pointer("/function/name").and_then(Value::as_str) {
-                let joined = format!("{}{name}", call["name"].as_str().unwrap_or(""));
-                call["name"] = json!(joined);
+            if let (Some(name), Some(Value::String(had))) = (name, call.get_mut("name")) {
+                // A name sent again whole with each piece is said once.
+                if had != name {
+                    had.push_str(name);
+                }
             }
             match piece.pointer("/function/arguments") {
                 Some(Value::String(more)) => {
-                    let joined = format!("{}{more}", call["arguments"].as_str().unwrap_or(""));
-                    call["arguments"] = json!(joined);
+                    if let Some(Value::String(had)) = call.get_mut("arguments") {
+                        had.push_str(more);
+                    }
                 }
                 // Some servers send the arguments as an object.
                 Some(v @ Value::Object(_)) => call["arguments"] = json!(v.to_string()),
                 _ => {}
             }
         }
+    }
+
+    /// A new call, for the server's `index` from now on. None past MAX_CALLS.
+    fn start(&mut self, index: Option<u64>) -> Option<usize> {
+        if self.calls.len() >= MAX_CALLS {
+            return None;
+        }
+        self.calls.push(json!({ "id": "", "name": "", "arguments": "" }));
+        let at = self.calls.len() - 1;
+        if let Some(index) = index {
+            self.slots.retain(|(i, _)| *i != index);
+            self.slots.push((index, at));
+        }
+        Some(at)
+    }
+
+    /// The bytes of the calls so far, their names and arguments.
+    pub fn size(&self) -> usize {
+        self.calls.iter().flat_map(|c| [&c["name"], &c["arguments"]]).filter_map(Value::as_str).map(str::len).sum()
     }
 
     pub fn done(self) -> Vec<Value> {
@@ -144,6 +197,16 @@ pub fn progressive_filter(text: &str) -> String {
     match first_opening(&cleaned) {
         Some((at, _, _)) => cleaned[..at].trim().to_string(),
         None => cleaned,
+    }
+}
+
+/// `text` as it streams in, without the start of a reasoning tag it may end
+/// with (`<thi`), which the next piece may make a block: never shown halfway.
+pub fn without_half_tag(text: &str) -> &str {
+    let half = THINKING_TAGS.iter().flat_map(|(open, _)| (1..open.len()).map(|n| &open[..n])).filter(|part| text.ends_with(part)).map(str::len).max();
+    match half {
+        Some(n) => text[..text.len() - n].trim_end(),
+        None => text,
     }
 }
 
@@ -204,8 +267,54 @@ mod tests {
         assert_eq!(progressive_filter("Sure. <think>let me think"), "Sure.");
         assert_eq!(progressive_filter("<think>still thinking"), "");
         assert_eq!(progressive_filter("<think>done</think>Visible <think>again"), "Visible");
-        // A tag that is only half written is not a block yet.
+        // A tag that is only half written is not a block yet, but while the
+        // answer streams in it isn't shown until it is one or isn't.
         assert_eq!(progressive_filter("text <thi"), "text <thi");
+        assert_eq!(without_half_tag("text <thi"), "text");
+        assert_eq!(without_half_tag("text <thou"), "text");
+        assert_eq!(without_half_tag("text <"), "text");
+        assert_eq!(without_half_tag("a <b"), "a <b");
+        assert_eq!(without_half_tag("text"), "text");
+    }
+
+    #[test]
+    fn a_chunk_with_the_usage_keeps_its_calls_and_text() {
+        let calls = r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"set_timer","arguments":"{}"}}]}}],"usage":{"total_tokens":120}}"#;
+        assert!(matches!(parse_sse_line(calls), Some(Event::Calls(c)) if c.len() == 1));
+        assert_eq!(usage_of(calls), Some(120));
+        let text = r#"data: {"choices":[{"delta":{"content":"Ciao"}}],"usage":{"total_tokens":121}}"#;
+        assert_eq!(parse_sse_line(text), Some(Event::Text("Ciao".into())));
+        assert_eq!(usage_of(text), Some(121));
+        assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":""}}],"usage":{"total_tokens":122}}"#), Some(Event::Usage(122)));
+        assert_eq!(usage_of(r#"data: {"choices":[{"delta":{"content":"total_tokens"}}]}"#), None);
+    }
+
+    #[test]
+    fn calls_all_numbered_0_or_not_numbered_stay_apart() {
+        // Ollama before it numbered them: each call whole, every one index 0.
+        let mut parts = CallParts::default();
+        parts.feed(&[
+            json!({"index":0,"id":"a","function":{"name":"set_timer","arguments":"{\"minutes\":1}"}}),
+            json!({"index":0,"id":"b","function":{"name":"listen","arguments":"{}"}}),
+        ]);
+        let calls = parts.done();
+        assert_eq!(calls.len(), 2);
+        assert_eq!((calls[0]["name"].as_str(), calls[1]["name"].as_str()), (Some("set_timer"), Some("listen")));
+        assert_eq!(calls[0]["arguments"], "{\"minutes\":1}");
+        // No index at all: each call of its own, and its pieces go on with it.
+        let mut parts = CallParts::default();
+        parts.feed(&[json!({"id":"a","function":{"name":"set_timer","arguments":"{\"min"}})]);
+        parts.feed(&[json!({"function":{"arguments":"utes\":2}"}})]);
+        parts.feed(&[json!({"id":"b","function":{"name":"listen","arguments":"{}"}})]);
+        let calls = parts.done();
+        assert_eq!(calls.len(), 2);
+        assert_eq!((calls[0]["name"].as_str(), calls[0]["arguments"].as_str()), (Some("set_timer"), Some("{\"minutes\":2}")));
+        assert_eq!(calls[1]["name"], "listen");
+        // A name sent again with each piece of the same call is said once.
+        let mut parts = CallParts::default();
+        parts.feed(&[json!({"index":0,"id":"a","function":{"name":"set_timer","arguments":"{"}})]);
+        parts.feed(&[json!({"index":0,"id":"a","function":{"name":"set_timer","arguments":"}"}})]);
+        assert_eq!(parts.done(), [json!({"id":"a","name":"set_timer","arguments":"{}"})]);
     }
 
     #[test]

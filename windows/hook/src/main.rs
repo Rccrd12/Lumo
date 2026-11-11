@@ -80,11 +80,18 @@ const MAX_DIFF_FIELD_LEN: usize = 256 * 1024;
 /// 1 MiB the app reads from the pipe even once JSON-escaped.
 const MAX_DIFF_TOTAL: usize = 512 * 1024;
 /// The `tool_input` keys a permission card shows as what Allow allows: the
-/// command, the file, the page.
-const TARGET_FIELDS: &[&str] = &["command", "cmd", "CommandLine", "script", "file_path", "notebook_path", "path", "url"];
+/// command, the file, the page, the plan Claude Code asks to start (its steps).
+const TARGET_FIELDS: &[&str] = &["command", "cmd", "CommandLine", "script", "file_path", "notebook_path", "path", "url", "plan"];
+/// The tools whose permission card names the file and counts the lines written
+/// (hooks.ts editStat), never showing the text itself: what they write is not
+/// what Allow is read by, so it travels on the live diff's budget.
+const CONTENT_TOOLS: &[&str] = &["Write", "Edit", "MultiEdit", "NotebookEdit"];
+/// Their `tool_input` keys holding the text written or replaced.
+const CONTENT_FIELDS: &[&str] = &["old_string", "new_string", "content", "new_source"];
 /// Per target string of a permission request: the card shows the whole of it,
-/// so a long script reaches the island whole. Past this the request carries
-/// `lumo_input_cut`, and the island neither allows it nor remembers it.
+/// so a long script reaches the island whole. Past this (or past the budget of
+/// a file's text, CONTENT_FIELDS) the request carries `lumo_input_cut`, and
+/// the island neither allows it nor remembers it.
 const MAX_TARGET_LEN: usize = 64 * 1024;
 
 mod win;
@@ -329,7 +336,9 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let island_card = is_island_run(env)
         && name == "PreToolUse"
         && args.agent == "antigravity"
-        && (reply::island_card(tool, map.get("tool_input")) || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map)));
+        && (reply::island_card(tool, map.get("tool_input"))
+            || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map))
+            || reply::reads_outside(tool, map.get("tool_input"), &workspaces(map)));
     // A shell command Antigravity is about to run in your own session (IDE or
     // CLI) that none of its rules covers: the island's Allow / Deny card, with
     // "Reply in Antigravity" to leave it to Antigravity's own prompt. Only with
@@ -392,14 +401,16 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
 }
 
 /// The shell command of an Antigravity `run_command` call, when it reached
-/// the relay whole: a command too long to forward whole is not one to approve
+/// the relay whole: a command too long to forward whole (a permission
+/// request's target goes whole up to MAX_TARGET_LEN) is not one to approve
 /// without seeing it, nor one its rules could read.
 fn shell_command<'a>(tool: &str, input: Option<&'a Value>) -> Option<&'a str> {
     if tool != "run_command" && !tool.ends_with(":run_command") {
         return None;
     }
-    let command = input?.get("command")?.as_str()?.trim();
-    (!command.is_empty() && command.chars().count() <= MAX_FIELD_LEN).then_some(command)
+    let command = input?.get("command")?.as_str()?;
+    let whole = command.len() <= MAX_TARGET_LEN;
+    Some(command.trim()).filter(|c| whole && !c.is_empty())
 }
 
 /// The user's home folder, where Antigravity keeps its rules (`.gemini`).
@@ -460,10 +471,11 @@ fn term_editor(env: &dyn Fn(&str) -> Option<String>) -> Option<&'static str> {
 /// not to show counts it cannot trust.
 fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
     if event == "PermissionRequest" {
+        let tool = payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let input = payload.as_object_mut().and_then(|map| map.remove("tool_input"));
         truncate_strings(payload);
         if let Some(mut input) = input {
-            let cut_any = cap_request_strings(&mut input);
+            let cut_any = cap_request_strings(&mut input, &tool);
             if let Some(map) = payload.as_object_mut() {
                 map.insert("tool_input".into(), input);
                 if cut_any {
@@ -530,14 +542,18 @@ fn cap_diff_strings(value: &mut serde_json::Value, budget: &mut usize, cut_any: 
 }
 
 /// `tool_input` of a permission request: its target (TARGET_FIELDS, at the
-/// top) up to MAX_TARGET_LEN, any other string the ordinary cap. True when
+/// top) up to MAX_TARGET_LEN, the text a file tool writes (CONTENT_TOOLS) up to
+/// the live diff's budget, any other string the ordinary cap. True when
 /// anything was cut: the island then knows the input it got is not the whole.
-fn cap_request_strings(input: &mut Value) -> bool {
+fn cap_request_strings(input: &mut Value, tool: &str) -> bool {
     let mut cut_any = false;
+    let writes = CONTENT_TOOLS.contains(&tool);
+    let mut budget = MAX_DIFF_TOTAL;
     if let Value::Object(map) = input {
         for (key, v) in map.iter_mut() {
             match v {
                 Value::String(s) if TARGET_FIELDS.contains(&key.as_str()) => cut_any |= cut(s, MAX_TARGET_LEN),
+                _ if writes => cut_any |= cap_content(v, key, &mut budget),
                 _ => cut_any |= cap_all(v),
             }
         }
@@ -545,6 +561,23 @@ fn cap_request_strings(input: &mut Value) -> bool {
         cut_any |= cap_all(input);
     }
     cut_any
+}
+
+/// Part of a file tool's input (MultiEdit's `edits` included): the text it
+/// writes or replaces shares MAX_DIFF_TOTAL, each piece at most
+/// MAX_DIFF_FIELD_LEN; any other string the ordinary cap. True when anything
+/// was cut.
+fn cap_content(value: &mut Value, key: &str, budget: &mut usize) -> bool {
+    match value {
+        Value::String(s) if CONTENT_FIELDS.contains(&key) => {
+            let was_cut = cut(s, MAX_DIFF_FIELD_LEN.min(*budget));
+            *budget = budget.saturating_sub(s.len());
+            was_cut
+        }
+        Value::Object(map) => map.iter_mut().fold(false, |any, (k, v)| cap_content(v, k, budget) | any),
+        Value::Array(items) => items.iter_mut().fold(false, |any, v| cap_content(v, key, budget) | any),
+        other => cap_all(other),
+    }
 }
 
 /// `truncate_strings`, saying whether anything was cut.
@@ -727,11 +760,19 @@ mod tests {
         assert_eq!(card_budget(Some(10_000)), DECISION_BUDGET, "never longer than any card");
         assert_eq!(card_budget(Some(0)), Duration::from_secs(1));
 
-        // A file read is no card: agy allows it by itself.
-        let read = br#"{"hook_event_name":"PreToolUse","toolCall":{"name":"view_file","args":{"AbsolutePath":"/a"}}}"#;
+        // A file read in the workspace is no card: agy allows it by itself.
+        let read = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"view_file","args":{"AbsolutePath":"/w/a"}}}"#;
         let ev = prepare(read, &agy, &island, "/p").unwrap();
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
+        // Outside it, it is a card: what the model reads, it can send on.
+        let outside = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"view_file","args":{"AbsolutePath":"/home/me/.ssh/id_ed25519"}}}"#;
+        let ev = prepare(outside, &agy, &island, "/p").unwrap();
+        assert!(ev.island_card);
+        assert_eq!(ev.name, "PermissionRequest");
+        // And a page read always is.
+        let page = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"read_url_content","args":{"Url":"https://example.com/?d=x"}}}"#;
+        assert!(prepare(page, &agy, &island, "/p").unwrap().island_card);
 
         // Outside the island's chat, with hooks that give the relay no time to
         // wait, Antigravity's own prompt keeps the command (with time, it is
@@ -882,7 +923,7 @@ mod tests {
     #[test]
     fn edits_are_still_capped_before_they_happen_and_for_other_tools() {
         let big = "é".repeat(4_000);
-        for (event, tool) in [("PreToolUse", "Edit"), ("PermissionRequest", "Write"), ("PostToolUse", "Bash")] {
+        for (event, tool) in [("PreToolUse", "Edit"), ("PermissionRequest", "Bash"), ("PostToolUse", "Bash")] {
             let mut v = serde_json::json!({ "tool_name": tool, "tool_input": { "content": big } });
             truncate_payload(&mut v, event);
             assert!(v["tool_input"]["content"].as_str().unwrap().len() <= MAX_FIELD_LEN + 4, "{event} {tool}");
@@ -910,6 +951,63 @@ mod tests {
         let mut v = serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": "ls" }, "cwd": "c".repeat(MAX_FIELD_LEN + 1) });
         truncate_payload(&mut v, "PermissionRequest");
         assert!(v.get("lumo_input_cut").is_none(), "only the input counts");
+    }
+
+    #[test]
+    fn a_file_write_asking_permission_is_not_cut_for_the_text_it_writes() {
+        // A new file of 14 KB: the card shows its path and counts its lines,
+        // so the text travels whole and nothing says "cut" (Allow stays).
+        let file = "export const x = 1;\n".repeat(700);
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/page.ts", "content": file } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["tool_input"]["content"].as_str().unwrap(), file);
+        assert!(v.get("lumo_input_cut").is_none());
+        // Edit, MultiEdit (its edits inside an array) and NotebookEdit the same.
+        let big = "line\n".repeat(1_000); // 5 KB
+        for (tool, input) in [
+            ("Edit", serde_json::json!({ "file_path": "C:/p/a.ts", "old_string": big, "new_string": big })),
+            ("MultiEdit", serde_json::json!({ "file_path": "C:/p/a.ts", "edits": [{ "old_string": big, "new_string": big }] })),
+            ("NotebookEdit", serde_json::json!({ "notebook_path": "C:/p/a.ipynb", "new_source": big })),
+        ] {
+            let mut v = serde_json::json!({ "tool_name": tool, "tool_input": input });
+            truncate_payload(&mut v, "PermissionRequest");
+            assert!(v.get("lumo_input_cut").is_none(), "{tool}");
+            assert!(v.to_string().contains(&big.replace('\n', "\\n")), "{tool} keeps its text");
+        }
+        // Past the diff budget it is cut, and flagged: the island then never allows it.
+        let huge = "x".repeat(MAX_DIFF_FIELD_LEN + 10);
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/big.txt", "content": huge } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v["tool_input"]["content"].as_str().unwrap().len() <= MAX_DIFF_FIELD_LEN + 4);
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        // The edits of one request together never pass the shared budget either.
+        let half = "y".repeat(MAX_DIFF_FIELD_LEN - 1);
+        let edits: Vec<_> = (0..4).map(|_| serde_json::json!({ "old_string": half, "new_string": half })).collect();
+        let mut v = serde_json::json!({ "tool_name": "MultiEdit", "tool_input": { "file_path": "C:/p/a.ts", "edits": edits } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v.to_string().len() < MAX_DIFF_TOTAL + 64 * 1024);
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        // Any other field of a file tool keeps the ordinary cap, and says so.
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/a.ts", "content": "a", "note": "n".repeat(MAX_FIELD_LEN + 1) } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        // Another tool's long text field is still cut: its card shows all of its input.
+        let mut v = serde_json::json!({ "tool_name": "mcp__x__y", "tool_input": { "content": "y".repeat(MAX_FIELD_LEN + 1) } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn a_long_plan_asking_to_start_reaches_the_island_whole() {
+        let plan = "1. Read the settings page\n2. Add the toggle\n\n".to_string() + &"Details. ".repeat(320); // ~2.9 KB
+        let mut v = serde_json::json!({ "tool_name": "ExitPlanMode", "tool_input": { "plan": plan } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["tool_input"]["plan"].as_str().unwrap(), plan);
+        assert!(v.get("lumo_input_cut").is_none());
+        let huge = "p".repeat(MAX_TARGET_LEN + 10);
+        let mut v = serde_json::json!({ "tool_name": "ExitPlanMode", "tool_input": { "plan": huge } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
     }
 
     #[test]
@@ -980,6 +1078,16 @@ mod tests {
             assert!(!ev.agy_gate, "{cmd}");
             assert_eq!(ev.name, "PreToolUse");
         }
+        // A long command goes to the island whole, as any permission request's
+        // target does; one too long to forward whole is left to Antigravity.
+        let long = format!("npm run build -- {}", "x".repeat(3 * MAX_FIELD_LEN));
+        let ev = prepare(run(&long).as_bytes(), &agy, &env, "/p").unwrap();
+        assert!(ev.agy_gate);
+        let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
+        assert_eq!(v["tool_input"]["command"], long.as_str());
+        assert!(v.get("lumo_input_cut").is_none());
+        let too_long = format!("npm run build -- {}", "x".repeat(MAX_TARGET_LEN));
+        assert!(!prepare(run(&too_long).as_bytes(), &agy, &env, "/p").unwrap().agy_gate);
         // Hooks that give no time to wait, another tool, or the island's own chat: no gate.
         let short = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: None, chat_guard: false };
         assert!(!prepare(run("npm install").as_bytes(), &short, &env, "/p").unwrap().agy_gate);

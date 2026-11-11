@@ -159,7 +159,7 @@ pub async fn run(app: AppHandle) {
                     None => Vec::new(),
                 };
                 seen = Some(newest);
-                cache = inbox.messages.iter().map(|(m, at)| (inbox.entries[&m.id].clone(), (m.clone(), *at))).collect();
+                cache = cache_of(&inbox);
                 let messages = inbox.messages.into_iter().map(|(m, _)| m).collect();
                 crate::mail::from_outlook(&app, Some(Ok((inbox.unread, messages))), fresh);
             }
@@ -478,18 +478,37 @@ fn fill(item: &Disp, account: Option<Account>, draft: &Draft, subject: &str, tex
 /// After the card: Send sends it out of Outlook (into its Sent Items);
 /// anything else throws it away.
 pub async fn finish(made: &Made, send: bool) -> Result<(), String> {
+    use std::sync::atomic::AtomicU8;
+    const WAITING: u8 = 0;
+    const SENDING: u8 = 1;
+    const GAVE_UP: u8 = 2;
     let token = made.token;
-    with_outlook(STEP, move |s| {
+    // Outlook may hold Send on a prompt of its own ("A program is trying to
+    // send…") past the wait, and send once the user allows it: once Send is
+    // called, no answer doesn't mean the email didn't go. Send is called only
+    // while Lumo still waits, so a wait that ends first means it wasn't.
+    let state = std::sync::Arc::new(AtomicU8::new(WAITING));
+    let job_state = state.clone();
+    let done = with_outlook(if send { SLOW_STEP } else { STEP }, move |s| {
         let item = s.pending.remove(&token).ok_or_else(|| "Outlook closed before the email went.".to_string())?;
-        if send {
+        if send && job_state.compare_exchange(WAITING, SENDING, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             item.call("Send", vec![]).map(|_| ())
         } else {
             throw_away(&item);
             Ok(())
         }
     })
-    .await
+    .await;
+    match done {
+        Err(e) if send && e == NO_ANSWER && state.compare_exchange(WAITING, GAVE_UP, Ordering::SeqCst, Ordering::SeqCst).is_err() => Err(MAYBE_SENT.into()),
+        other => other,
+    }
 }
+
+/// What `with_outlook` says when Outlook didn't answer within its wait.
+const NO_ANSWER: &str = "Outlook didn't answer in time: a window of its own may be waiting for the user.";
+/// What the AI reads when Outlook was told to send and never said it did.
+const MAYBE_SENT: &str = "The email may have been sent: Outlook was told to send it but didn't confirm in time (it may be asking the user to allow it). Do not send it again: ask the user to check Outlook's Sent Items and Outbox first.";
 
 /// Keeps the email in Outlook's Drafts: nothing is sent.
 pub async fn keep_draft(made: &Made) -> Result<String, String> {
@@ -679,7 +698,9 @@ async fn with_outlook<T: Send + 'static>(wait: Duration, job: impl FnOnce(&mut S
         if Instant::now() > deadline {
             return;
         }
-        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(s))).unwrap_or_else(|_| Err("Lumo's link to Outlook broke.".into()));
+        // No catch_unwind: the release profile is panic = "abort", where it
+        // would catch nothing. The jobs are written to have nothing to panic on.
+        let out = job(s);
         // MAPI's session lasts one job: nothing of it holds Outlook's profile in between.
         s.mapi = None;
         if GONE.with(|g| g.replace(false)) {
@@ -710,7 +731,7 @@ async fn with_outlook<T: Send + 'static>(wait: Duration, job: impl FnOnce(&mut S
     jobs.lock().unwrap().send(task).map_err(|_| "Lumo couldn't reach Outlook.".to_string())?;
     match tokio::time::timeout(wait, rx).await {
         Ok(Ok(out)) => out,
-        _ => Err("Outlook didn't answer in time: a window of its own may be waiting for the user.".into()),
+        _ => Err(NO_ANSWER.into()),
     }
 }
 
@@ -840,7 +861,12 @@ impl Session {
                 let id = book().lock().unwrap().id_for(&entry, &store);
                 let at = item.date("ReceivedTime").unwrap_or(0.0);
                 let message = match cached {
-                    Some(m) => m,
+                    // The id it had may be gone since (the Book starts again
+                    // past MOST_IDS): it goes under the one it has now.
+                    Some(mut m) => {
+                        m.id = id.clone();
+                        m
+                    }
                     None => {
                         let guarded = read.filter(|g| !g.body.is_empty()).or_else(|| self.guarded(&store, &entry, RAW_BODY_CHARS, false));
                         message_of(&item, &id, crate::mail::BODY_CHARS, guarded, Quiet::Yes)
@@ -858,6 +884,16 @@ impl Session {
         }
         Ok(Some(Inbox { unread, messages: all, entries }))
     }
+}
+
+/// What the next look already knows, by EntryID. A message whose id has no
+/// EntryID is left out (read again next time) rather than taking Lumo down.
+fn cache_of(inbox: &Inbox) -> HashMap<String, (Message, f64)> {
+    inbox
+        .messages
+        .iter()
+        .filter_map(|(m, at)| Some((inbox.entries.get(&m.id)?.clone(), (m.clone(), *at))))
+        .collect()
 }
 
 /// What a look at the inboxes found.
@@ -1626,5 +1662,28 @@ mod tests {
         assert_eq!(book.entry_of("outlook-1"), Some(("CCCC".into(), "S1".into())));
         assert_eq!(book.id_for("CCCC", "S1"), "outlook-1");
         assert!(is_id("outlook-3") && !is_id("inbox:3") && is_folder("outlook:ada/Inbox") && !is_folder("Sent"));
+    }
+
+    #[test]
+    fn a_cached_email_whose_id_started_again_never_takes_lumo_down() {
+        let mut book = Book::default();
+        let old = book.id_for("E1", "S1");
+        // Past MOST_IDS (wide agent searches), the ids start again.
+        for i in 0..MOST_IDS {
+            book.id_for(&format!("X{i}"), "S1");
+        }
+        let new = book.id_for("E1", "S1");
+        assert_ne!(old, new);
+        assert_eq!(book.entry_of(&old), None);
+        // A message cached before still carrying its old id: left out of the
+        // cache (read again next time), where `entries[&m.id]` panicked and,
+        // with panic = "abort", closed Lumo.
+        let stale = Message { id: old.clone(), subject: "Hi".into(), ..Message::default() };
+        let inbox = Inbox { unread: 1, messages: vec![(stale, 1.0)], entries: HashMap::from([(new.clone(), "E1".to_string())]) };
+        assert!(cache_of(&inbox).is_empty());
+        // As look() gives it now, under the id it has now: kept by its EntryID.
+        let fresh = Message { id: new.clone(), subject: "Hi".into(), ..Message::default() };
+        let inbox = Inbox { unread: 1, messages: vec![(fresh.clone(), 2.0)], entries: HashMap::from([(new, "E1".to_string())]) };
+        assert_eq!(cache_of(&inbox).get("E1"), Some(&(fresh, 2.0)));
     }
 }

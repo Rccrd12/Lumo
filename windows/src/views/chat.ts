@@ -79,6 +79,7 @@ import { checklistsIn, copyButton, renderMarkdown, writeClipboard } from "./mark
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
+import { forgetCardsFrom } from "./rich/index";
 import { Ink, inkWorks } from "./ink";
 import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
@@ -429,16 +430,24 @@ const NOT_A_CARD = "\u2060";
  * invisible mark goes before what the cards look for, outside code blocks.
  */
 export function plainQuestion(text: string): string {
-  let code = false;
+  // The backticks of the code block the line is in, 0 outside one: only a bare
+  // fence at least as long closes it (as views/markdown.ts reads it), so a
+  // ```js inside a ````markdown block does not.
+  let fence = 0;
   return text
     .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((line) => {
-      if (line.startsWith("```")) {
-        code = !code;
-        return code ? `\`\`\`${NOT_A_CARD}${line.slice(3)}` : line;
+      const mark = /^([ \t]*)(`{3,})(.*)$/.exec(line);
+      if (mark && !fence) {
+        fence = mark[2].length;
+        return `${mark[1]}${mark[2]}${NOT_A_CARD}${mark[3]}`;
       }
-      if (code) return line;
+      if (mark && mark[2].length >= fence && !mark[3].trim()) {
+        fence = 0;
+        return line;
+      }
+      if (fence) return line;
       return line
         .replace(/^(\s*)(?=!\[)/, `$1${NOT_A_CARD}`)
         .replace(/^(\s*>\s*)(?=\[!)/, `$1${NOT_A_CARD}`)
@@ -1798,12 +1807,13 @@ export function buildPrompt(
     if (planAskFor == null || performance.now() - planAskAt < PLAN_ASK_GUARD_MS) return;
     decide(d, planAskFor);
   };
+  const planApprove = h("button", { class: "plan-ask-btn approve", type: "button", onclick: planDecide("allow") }, h("span", { text: tl(STRINGS.planApprove) }));
   const planAsk = h("div", { class: "plan-ask" },
     h("div", { class: "plan-ask-head" }, planAskTitle, planAskWho),
     planAskList,
     h("div", { class: "plan-ask-actions" },
       h("button", { class: "plan-ask-btn keep", type: "button", onclick: planDecide("deny") }, h("span", { text: tl(STRINGS.planKeep) })),
-      h("button", { class: "plan-ask-btn approve", type: "button", onclick: planDecide("allow") }, h("span", { text: tl(STRINGS.planApprove) }))));
+      planApprove));
   planAsk.hidden = true;
   /** The plan this chat asks to start, if one is waiting for an answer. */
   const planAsking = () => {
@@ -1818,6 +1828,8 @@ export function buildPrompt(
     planAskFor = id;
     planAskAt = performance.now();
     planAsk.hidden = !req;
+    // A plan too long to reach the island whole is never approved from here (pipe.rs refuses it).
+    planApprove.style.display = req?.cut === true ? "none" : "";
     clear(planAskList);
     if (req?.plan) {
       planAskTitle.textContent = tn("{agent} has a plan · {count} step", "{agent} has a plan · {count} steps", req.plan.length,
@@ -2322,6 +2334,8 @@ export function buildPrompt(
     if (file?.sent && file.sentWith === id) file.sent = false;
     State.chatHistory = kept;
     State.chatSession = null;
+    // The cards of the dropped messages (a quiz's answers) are not the next answer's.
+    forgetCardsFrom(State.chatId, kept.filter((m) => !m.failed).length);
     renderedCount = -1;
     // The files of the dropped turns leave the chat's files, and Rust forgets them too.
     rewindChatFiles(State.chatId, keep);
@@ -4323,12 +4337,17 @@ export function buildPrompt(
   /** `auto`: compacted by itself before a question, with the context this full (%). */
   async function compactChat(auto?: number) {
     const chatId = State.chatId;
-    if (compacting || answering()) return;
+    if (compacting || answering() || (auto == null && preparing)) return;
     if (State.chatHistory.length === 0) {
       compactNotice(t(COMPACT_STRINGS.nothing), providerDef(State.settings.chatProvider).accent);
       return;
     }
     compacting = true;
+    // Asked with /compact: nothing is sent, edited or retried until the
+    // summary is in, or it would sum up a chat that has moved on (or replace
+    // the turns just asked). By itself, before a question, submit holds it already.
+    const own = auto == null;
+    if (own) preparing = true;
     closeUsage();
     compactingLabel = auto == null ? t(COMPACT_STRINGS.working) : t(COMPACT_STRINGS.auto, { pct: auto });
     drawIslandActivity();
@@ -4350,6 +4369,7 @@ export function buildPrompt(
       Sound.play("error");
     } finally {
       compacting = false;
+      if (own) preparing = false;
       compactingLabel = null;
       drawIslandActivity();
       row.remove();

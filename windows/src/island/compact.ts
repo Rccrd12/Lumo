@@ -289,11 +289,17 @@ export class CompactStrip {
           this.uploadPct,
         ].filter((n): n is HTMLElement => n != null);
       }
-      case "line":
-        return [
-          h("i", { class: item.notice ? "cp-dot notice" : "cp-dot", style: `background:${item.line.color}` }),
-          h("span", { class: "cp-text", text: item.line.text, title: item.line.text }),
-        ];
+      case "line": {
+        const { text, lead } = item.line;
+        const dot = h("i", { class: item.notice ? "cp-dot notice" : "cp-dot", style: `background:${item.line.color}` });
+        // Who, then what: a long name is cut first, what it is doing stays readable (style.css .cp-lead).
+        if (lead && text.startsWith(`${lead} · `)) {
+          return [dot, h("span", { class: "cp-line", title: text },
+            h("span", { class: "cp-text cp-lead", text: lead }),
+            h("span", { class: "cp-text cp-rest", text: text.slice(lead.length) }))];
+        }
+        return [dot, h("span", { class: "cp-text", text, title: text })];
+      }
       case "timer": {
         const cancel = this.button(ICONS.xmark, t(MAIL_TEXT.dismiss), () => {
           Feed.cancelTimer(item.timer.id);

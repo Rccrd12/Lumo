@@ -120,8 +120,12 @@ where
     });
 }
 
-/// One-shot refresh from the Refresh buttons in the island.
+/// One-shot refresh from the Refresh buttons in the island. Paused, Lumo
+/// reaches no network, so a click does nothing.
 pub async fn poll_once(app: AppHandle, id: &str) {
+    if PAUSED.load(Ordering::Relaxed) {
+        return;
+    }
     match id {
         "integration_stripe" => poll_stripe(app).await,
         "integration_github" => {
@@ -179,26 +183,7 @@ async fn poll_stripe(app: AppHandle) {
         .await;
 
     let (amount, currency) = match balance {
-        Ok(r) if r.status().is_success() => {
-            let json: Value = r.json().await.unwrap_or(json!({}));
-            let mut buckets: Vec<Value> = Vec::new();
-            for k in ["available", "pending"] {
-                if let Some(arr) = json.get(k).and_then(Value::as_array) {
-                    buckets.extend(arr.iter().cloned());
-                }
-            }
-            let currency = buckets
-                .first()
-                .and_then(|b| b.get("currency"))
-                .and_then(Value::as_str)
-                .unwrap_or("eur")
-                .to_string();
-            let amount: i64 = buckets
-                .iter()
-                .filter_map(|b| b.get("amount").and_then(Value::as_i64))
-                .sum();
-            (amount, currency)
-        }
+        Ok(r) if r.status().is_success() => stripe_balance(&r.json().await.unwrap_or(json!({}))),
         Ok(r) => {
             let code = r.status().as_u16();
             emit(&app, IntegrationUpdate {
@@ -273,7 +258,9 @@ async fn poll_stripe(app: AppHandle) {
                 let cents = payments[0].get("amount").and_then(Value::as_i64).unwrap_or(0);
                 format!("{:.2}", cents as f64 / 100.0)
             });
-        Some(IntegrationEvent { success: true, label, detail: None })
+        // A failed charge is no payment in: it sounds and shows as an error.
+        let failed = payments[0].get("status").and_then(Value::as_str) == Some("failed");
+        Some(IntegrationEvent { success: !failed, label, detail: None })
     } else {
         None
     };
@@ -284,6 +271,24 @@ async fn poll_stripe(app: AppHandle) {
         error: None,
         event,
     });
+}
+
+/// The card's balance, available and pending, from Stripe's /v1/balance: in
+/// the first currency it lists (one amount per currency, never added together).
+fn stripe_balance(json: &Value) -> (i64, String) {
+    let mut buckets: Vec<&Value> = Vec::new();
+    for k in ["available", "pending"] {
+        if let Some(arr) = json.get(k).and_then(Value::as_array) {
+            buckets.extend(arr.iter());
+        }
+    }
+    let currency = buckets.first().and_then(|b| b.get("currency")).and_then(Value::as_str).unwrap_or("eur").to_string();
+    let amount: i64 = buckets
+        .iter()
+        .filter(|b| b.get("currency").and_then(Value::as_str) == Some(currency.as_str()))
+        .filter_map(|b| b.get("amount").and_then(Value::as_i64))
+        .sum();
+    (amount, currency)
 }
 
 // ── GitHub ────────────────────────────────────────────────────────────────────
@@ -364,6 +369,8 @@ struct GitHubCache {
     /// (repositories, stars)
     stats: Option<(i64, i64)>,
     pulse: Option<GitHubPulse>,
+    /// My PRs that left the pulse's list (github::remember_gone).
+    gone_prs: Vec<github::GitHubPr>,
     activity: Option<GitHubActivity>,
 }
 
@@ -486,7 +493,9 @@ async fn run_github_pulse(app: &AppHandle) -> bool {
         if GITHUB.generation.load(Ordering::SeqCst) != generation {
             return pending;
         }
-        let events = GitHubPulse::events(cache.pulse.as_ref(), &pulse);
+        let events = GitHubPulse::events_knowing(cache.pulse.as_ref(), &cache.gone_prs, &pulse);
+        let old = cache.pulse.take();
+        github::remember_gone(&mut cache.gone_prs, old.as_ref(), &pulse);
         cache.pulse = Some(pulse);
         events
     };
@@ -556,6 +565,7 @@ pub fn github_token_changed(app: &AppHandle) {
     {
         let mut cache = GITHUB.cache.lock().unwrap();
         cache.pulse = None;
+        cache.gone_prs.clear();
         cache.activity = None;
         if !has_token {
             cache.stats = None;
@@ -917,7 +927,11 @@ async fn poll_n8n(app: AppHandle) {
     if !["success", "error", "crashed", "canceled", "failed"].contains(&status) {
         return;
     }
-    if !is_new("n8n", &id) {
+    // The first poll after Lumo starts fills the card, silently; after it,
+    // only a new execution is worth asking n8n about again.
+    let first = !SEEN.0.lock().unwrap().contains_key("n8n");
+    let fresh = is_new("n8n", &id);
+    if !first && !fresh {
         return;
     }
     let success = status == "success";
@@ -955,7 +969,7 @@ async fn poll_n8n(app: AppHandle) {
         id: "integration_n8n",
         data: json!({ "workflow": name, "status": status }),
         error: None,
-        event: Some(IntegrationEvent { success, label: name, detail }),
+        event: fresh.then_some(IntegrationEvent { success, label: name, detail }),
     });
 }
 
@@ -1043,5 +1057,15 @@ mod tests {
         assert_eq!(data["totalRepos"], json!(12));
         assert_eq!(data["activity"], json!({ "total": 5, "weeks": [], "fetchedAt": 9 }));
         assert!(data.get("pulse").is_none());
+    }
+
+    #[test]
+    fn the_stripe_balance_never_adds_two_currencies() {
+        let json = json!({
+            "available": [{ "amount": 1000, "currency": "eur" }, { "amount": 50000, "currency": "jpy" }],
+            "pending": [{ "amount": 250, "currency": "eur" }, { "amount": 700, "currency": "usd" }]
+        });
+        assert_eq!(stripe_balance(&json), (1250, "eur".to_string()));
+        assert_eq!(stripe_balance(&json!({})), (0, "eur".to_string()));
     }
 }

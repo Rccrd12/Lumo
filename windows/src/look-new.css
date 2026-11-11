@@ -898,6 +898,31 @@ html.look-new .approval-cut[hidden] {
   display: none;
 }
 
+/* A file to write: its lines added and removed and a new text's size, under its name. */
+html.look-new .approval-stat {
+  display: flex;
+  gap: 8px;
+  font: 500 12px var(--mono);
+  color: var(--dim);
+}
+
+html.look-new .approval-stat .size::before {
+  content: "·";
+  margin-right: 8px;
+}
+
+html.look-new .approval-stat .plus {
+  color: var(--green);
+}
+
+html.look-new .approval-stat .minus {
+  color: var(--red);
+}
+
+html.look-new .approval-stat[hidden] {
+  display: none;
+}
+
 /* ── A question: its options one under the other, each with its description ─ */
 
 .q-desc {

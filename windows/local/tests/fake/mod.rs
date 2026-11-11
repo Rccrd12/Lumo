@@ -24,6 +24,9 @@ pub enum Reply {
     Headers,
     /// The head of a streamed answer, these bytes as they are, then the close.
     Raw(Vec<u8>),
+    /// Event lines one at a time, this long apart, then the connection closes
+    /// (a model that takes its time over a long call).
+    Paced(Vec<String>, Duration),
 }
 
 pub struct Fake {
@@ -90,6 +93,15 @@ fn reply_on(mut conn: TcpStream, reply: Reply, kept: Arc<Mutex<Vec<Value>>>) {
         Reply::Raw(bytes) => {
             let _ = conn.write_all(sse.as_bytes());
             let _ = conn.write_all(&bytes);
+            false
+        }
+        Reply::Paced(events, gap) => {
+            let _ = conn.write_all(sse.as_bytes());
+            for event in &events {
+                let _ = conn.write_all(lines(std::slice::from_ref(event)).as_bytes());
+                let _ = conn.flush();
+                std::thread::sleep(gap);
+            }
             false
         }
     };

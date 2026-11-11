@@ -287,7 +287,8 @@ function dayOf(w: When, day: number): When | null {
 }
 
 function valid(r: Raw): boolean {
-  if (!Number.isFinite(r.year) || Math.abs(r.year) > 999_999) return false;
+  // Past about 271,000 years either way a Date has no day for it (NaN on the card).
+  if (!Number.isFinite(r.year) || Math.abs(r.year) > MAX_YEAR) return false;
   if (r.unit === "year") return true;
   if (r.month < 0 || r.month > 11) return false;
   if (r.unit === "month") return true;
@@ -295,6 +296,9 @@ function valid(r: Raw): boolean {
 }
 
 const DAY = 86_400_000;
+
+/** The furthest year either way a Date can count the days of (±271,821 at most). */
+const MAX_YEAR = 270_000;
 
 /** Days from 1 January 1970 to the date, any year (Date.UTC would read 0–99 as 1900–1999). */
 function dayNumber(year: number, month: number, day: number): number {
@@ -620,6 +624,9 @@ function renderPlan(tl: Timeline, now: Date, ctx: RichContext): HTMLElement {
     const f = X(d.from.start);
     return f * NARROW >= need[i] || (f > 0.5 && (1 - f) * NARROW < need[i]);
   });
+  // What the deadlines already placed take, by row: a second one close by
+  // goes to another row rather than over the first one's name.
+  const marks: { r: number; a: number; b: number }[] = [];
   const deadlineRows = deadlines.map((d, i) => {
     const room = (need[i] / NARROW) * span;
     const leftward = leftwards[i];
@@ -627,9 +634,11 @@ function renderPlan(tl: Timeline, now: Date, ctx: RichContext): HTMLElement {
     const b = leftward ? d.from.end : d.from.start + room;
     let r = 0;
     for (; r < rowEnds.length; r++) {
-      if (phases.every((p, i) => rows[i] !== r || p.to!.end <= a || p.from.start >= b)) break;
+      if (phases.every((p, i) => rows[i] !== r || p.to!.end <= a || p.from.start >= b)
+        && marks.every((m) => m.r !== r || m.b <= a || m.a >= b)) break;
     }
     if (r === rowEnds.length) rowEnds.push(0);
+    marks.push({ r, a, b });
     return r;
   });
 

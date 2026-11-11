@@ -240,6 +240,9 @@ const TIMEOUT: Duration = Duration::from_secs(25);
 const IDLE_ANSWER: Duration = Duration::from_secs(10);
 /// What one check may read from the server, all answers together.
 const MAX_READ: usize = 4 * 1024 * 1024;
+/// What a search for every email of a folder may read: its UIDs, for some
+/// four million emails.
+const MAX_SEARCH_READ: usize = 32 * 1024 * 1024;
 /// The newest unread messages kept: the island shows three, and the next ones
 /// move up when one is ignored.
 pub(crate) const FETCH: usize = 8;
@@ -528,7 +531,7 @@ fn report(app: &AppHandle, acct: &Account, account: &str, host: &str, unread: us
         last.insert(acct.slot, (account.to_string(), newest.max(seen.unwrap_or(0))));
         fresh
     };
-    let inbox = inbox_link(host).map(|l| gmail_user(l, acct));
+    let inbox = inbox_link(host).map(|l| account_link(l, acct));
     IMAP_NOW.lock().unwrap().insert(acct.slot, Ok(Read { unread, messages, inbox }));
     publish(app);
     announce(app, fresh);
@@ -538,20 +541,28 @@ fn report(app: &AppHandle, acct: &Account, account: &str, host: &str, unread: us
 /// before, another's id with its address (two Gmail accounts share a server,
 /// not their UIDs), and its Gmail link to that account.
 fn of_account(mut m: Message, acct: &Account) -> Message {
+    m.link = m.link.map(|l| account_link(l, acct));
     if acct.slot > 1 {
         m.id = format!("{}/{}", acct.address.to_ascii_lowercase(), m.id);
-        m.link = m.link.map(|l| gmail_user(l, acct));
     }
     m
 }
 
-/// A Gmail link (".../mail/u/0/...") to the account it is of, when that is
-/// not the first: Gmail takes the address in place of the number.
-fn gmail_user(link: String, acct: &Account) -> String {
+/// Outlook.com's own addresses: the others on Microsoft's servers are work or
+/// school accounts (Microsoft 365).
+pub(crate) const OUTLOOK_PERSONAL: [&str; 7] = ["outlook.com", "hotmail.com", "live.com", "msn.com", "outlook.it", "hotmail.it", "live.it"];
+
+/// A web mail link to the account it is of. A Gmail link (".../mail/u/0/..."),
+/// when that is not the first: Gmail takes the address in place of the number.
+/// An Outlook.com link, for a work or school account: Microsoft 365's Outlook.
+fn account_link(link: String, acct: &Account) -> String {
     if acct.slot > 1 && link.starts_with("https://mail.google.com/mail/u/0/") {
-        link.replacen("/mail/u/0/", &format!("/mail/u/{}/", acct.address.trim()), 1)
-    } else {
-        link
+        return link.replacen("/mail/u/0/", &format!("/mail/u/{}/", acct.address.trim()), 1);
+    }
+    let domain = acct.address.trim().rsplit('@').next().unwrap_or("").to_ascii_lowercase();
+    match link.strip_prefix("https://outlook.live.com/mail/0/") {
+        Some(rest) if !OUTLOOK_PERSONAL.contains(&domain.as_str()) => format!("https://outlook.office.com/mail/{rest}"),
+        _ => link,
     }
 }
 
@@ -830,7 +841,7 @@ fn of_account_found(found: Vec<Found>, acct: &Account, many: bool) -> Vec<Found>
             if many {
                 f.id = format!("{}:{}", acct.address.trim(), f.id);
             }
-            f.message.link = f.message.link.map(|l| gmail_user(l, acct));
+            f.message.link = f.message.link.map(|l| account_link(l, acct));
             f
         })
         .collect()
@@ -1258,8 +1269,14 @@ async fn newest_in(acct: &Account, count: usize, unread_only: bool, folder: Opti
         if folder != Folder::Inbox {
             enter(&mut imap, &folder, false).await?;
         }
-        let units = imap.run(if unread_only { "UID SEARCH UNSEEN" } else { "UID SEARCH ALL" }).await?;
-        let mut uids = search_uids(&units);
+        // Every UID of a big mailbox can weigh more than MAX_READ: about 8
+        // bytes each, 4 MB past half a million emails.
+        imap.read = 0;
+        imap.limit = MAX_SEARCH_READ;
+        let units = imap.run(if unread_only { "UID SEARCH UNSEEN" } else { "UID SEARCH ALL" }).await;
+        imap.limit = MAX_READ;
+        imap.read = 0;
+        let mut uids = search_uids(&units?);
         uids.sort_unstable();
         let newest: Vec<u32> = uids.iter().rev().take(count.clamp(1, MOST)).copied().collect();
         fetch(&mut imap, &host, &folder, &newest, BODY_BYTES, BODY_CHARS).await
@@ -1371,7 +1388,7 @@ pub async fn read(app: &AppHandle, id: &str) -> Result<(Found, Vec<Attached>), S
     let (found, files) = found?;
     let mut found = found.into_iter().next().ok_or_else(|| gone(id))?;
     found.id = id.trim().to_string();
-    found.message.link = found.message.link.map(|l| gmail_user(l, &acct));
+    found.message.link = found.message.link.map(|l| account_link(l, &acct));
     Ok((found, files))
 }
 
@@ -2431,7 +2448,15 @@ async fn fetch_original(app: &AppHandle, id: &str, with_files: bool) -> Result<(
         let mut files = Vec::new();
         if with_files {
             let mut total = 0usize;
-            for file in structure(&mut imap, uid).await?.iter().take(crate::smtp::MAX_ATTACHMENTS) {
+            let attached = structure(&mut imap, uid).await?;
+            if attached.len() > crate::smtp::MAX_ATTACHMENTS {
+                return Err(format!(
+                    "The email has {} files attached: Lumo forwards {} at most. The email can still be forwarded without them (with_files false).",
+                    attached.len(),
+                    crate::smtp::MAX_ATTACHMENTS
+                ));
+            }
+            for file in &attached {
                 total += file.file_size();
                 if total as u64 > crate::smtp::MAX_ATTACHED_BYTES {
                     return Err(format!("{} The email can still be forwarded without them (with_files false).", too_heavy()));
@@ -3688,9 +3713,16 @@ pub fn strip_html(html: &str) -> String {
     while i < bytes.len() {
         if bytes[i] == b'<' {
             for skip in ["<style", "<script", "<head"] {
-                if lower[i..].starts_with(skip) {
+                if whole_tag(&lower[i..], skip) {
                     let close = format!("</{}", &skip[1..]);
-                    i = lower[i..].find(&close).map(|e| i + e).unwrap_or(bytes.len());
+                    let mut at = i + skip.len();
+                    i = loop {
+                        match lower[at..].find(&close).map(|e| at + e) {
+                            Some(e) if whole_tag(&lower[e..], &close) => break e,
+                            Some(e) => at = e + close.len(),
+                            None => break bytes.len(),
+                        }
+                    };
                     break;
                 }
             }
@@ -3710,6 +3742,12 @@ pub fn strip_html(html: &str) -> String {
         i = next;
     }
     entities(&out)
+}
+
+/// Whether `text` starts with the tag `name` ("<head", "</head") as a whole
+/// name: `<head>` or `<head …>`, never `<header>`.
+fn whole_tag(text: &str, name: &str) -> bool {
+    text.starts_with(name) && text[name.len()..].chars().next().is_none_or(|c| c == '>' || c == '/' || c.is_ascii_whitespace())
 }
 
 /// `&rsquo;`, `&#8217;`, `&#x2019;` and the other common entities, read.
@@ -3833,7 +3871,10 @@ mod tests {
         assert_eq!(uid_of(&other.id), Some(7));
         assert_eq!(other.link.as_deref(), Some("https://mail.google.com/mail/u/Work@Gmail.com/#inbox"));
         let outlook = "https://outlook.live.com/mail/0/inbox".to_string();
-        assert_eq!(gmail_user(outlook.clone(), &acct(2, "a@b.it")), outlook);
+        assert_eq!(account_link(outlook.clone(), &acct(2, "a@Hotmail.it")), outlook);
+        assert_eq!(account_link(outlook.clone(), &acct(1, "ada@school.edu")), "https://outlook.office.com/mail/inbox", "Microsoft 365");
+        let work = Message { id: "outlook.office365.com:3".into(), link: Some(outlook.clone()), ..Default::default() };
+        assert_eq!(of_account(work, &acct(1, "ada@company.it")).link.as_deref(), Some("https://outlook.office.com/mail/inbox"));
     }
 
     #[test]
@@ -4235,6 +4276,8 @@ mod tests {
     fn html_entities_are_read() {
         assert_eq!(entities("McDonald&rsquo;s &amp; co &#8217; &#x2019; &egrave; &unknown; 5 & 6"), "McDonald’s & co ’ ’ è &unknown; 5 & 6");
         assert_eq!(strip_html("<p>Caff&egrave;&nbsp;<b>pronto</b></p>").trim(), "Caffè pronto");
+        assert_eq!(strip_html("<html><head><title>x</title></head><body><header>Newsletter</header><p>Hi</p></body></html>").trim(), "Newsletter\nHi");
+        assert_eq!(strip_html("<head>\n<style>p{}</style></head ><p>Ok</p>").trim(), "Ok");
     }
 
     #[test]

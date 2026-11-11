@@ -150,13 +150,42 @@ pub fn chat_ends_with_lumo(child: &std::process::Child) {
     }
 }
 
+/// COM on this thread while it is kept, given back when it is dropped: a
+/// thread of the blocking pool goes on to serve other work. Only a set-up that
+/// worked (`S_FALSE` too, when the thread already had it) is undone. Not
+/// `Send`: it is dropped on the thread that set it up.
+pub struct Com(bool, std::marker::PhantomData<*const ()>);
+
+impl Com {
+    pub fn init(model: ::windows::Win32::System::Com::COINIT) -> Com {
+        // SAFETY: no pointer is passed; Drop balances a call that worked.
+        Com(unsafe { ::windows::Win32::System::Com::CoInitializeEx(None, model) }.is_ok(), std::marker::PhantomData)
+    }
+}
+
+impl Drop for Com {
+    fn drop(&mut self) {
+        if self.0 {
+            // SAFETY: this thread's CoInitializeEx above succeeded.
+            unsafe { ::windows::Win32::System::Com::CoUninitialize() };
+        }
+    }
+}
+
 pub fn open_url(url: &str) {
     let _ = no_console(Command::new("rundll32.exe").args(["url.dll,FileProtocolHandler", url]))
         .spawn();
 }
 
+/// File Explorer on a folder. Quoted raw, as open_file: unquoted, a comma in
+/// its path is read as Explorer's separator and opens another place.
 pub fn reveal_folder(path: &str) {
-    let _ = Command::new("explorer").arg(path).spawn();
+    if path.contains('"') {
+        return;
+    }
+    // No separator before the closing quote, but a drive's own (`C:\`).
+    let path = if path.len() > 3 { path.trim_end_matches(['\\', '/']) } else { path };
+    let _ = Command::new("explorer").raw_arg(format!("\"{path}\"")).spawn();
 }
 
 /// A file opened by its type, in the app File Explorer would open it with.

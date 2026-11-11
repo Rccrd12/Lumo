@@ -114,7 +114,12 @@ pub fn server_entry() -> Value {
 /// configuration is never touched.
 pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
     let path = work.join(".agents").join("mcp_config.json");
-    let read = std::fs::read_to_string(&path).ok();
+    let read = match std::fs::read_to_string(&path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        // Not UTF-8 (a UTF-16 file), or not readable now: the user's, left alone.
+        Err(_) => return,
+    };
     let mut config = match read.as_deref().map(serde_json::from_str::<Value>) {
         Some(Ok(v)) if v.is_object() => v,
         // A file Lumo can't read is the user's: left alone.
@@ -146,9 +151,12 @@ pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
 
 /// A chat turn that may use the computer starts.
 pub fn begin_turn() {
-    STOPPED.store(false, Ordering::SeqCst);
     *VIEW.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    TURN.fetch_add(1, Ordering::SeqCst);
+    // Esc stops the computer for the turns under way: one that starts
+    // meanwhile (another chat) doesn't hand it back to them.
+    if TURN.fetch_add(1, Ordering::SeqCst) == 0 {
+        STOPPED.store(false, Ordering::SeqCst);
+    }
 }
 
 /// The turn is over: nothing more is done, and Esc and the mouse are the user's again.
@@ -157,6 +165,9 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
     if TURN.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))) != Ok(1) {
         return;
     }
+    // An action still under way (typing, a wait, a drag) stops as with Esc:
+    // the chat's Stop ended the turn, not only Esc does.
+    STOPPED.store(true, Ordering::SeqCst);
     ACTING.store(false, Ordering::SeqCst);
     release_stop_key(app);
     disengage(app);
@@ -912,6 +923,10 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     let app2 = app.clone();
     let answer = tauri::async_runtime::spawn_blocking(move || {
         let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        // Waiting on an action that was stopped (Esc, the chat's Stop): not done after it.
+        if stopped() {
+            return Err("Stopped before it started.".to_string());
+        }
         perform(&app2, action)
     })
     .await
@@ -932,6 +947,23 @@ fn view() -> Result<View, String> {
 
 fn base64(bytes: &[u8]) -> String {
     crate::claude::base64_for(bytes)
+}
+
+/// Refused when the point `p` (physical pixels) is on one of Lumo's own
+/// windows that takes the mouse while Claude acts: Settings, where a click
+/// could turn off a safeguard or apply a change to Claude Code's settings,
+/// and which screenshots leave out. The island and the glow let the mouse
+/// through then, so they are never what is under it.
+fn not_on_lumo(app: &AppHandle, p: (i32, i32)) -> Result<(), String> {
+    let mine: Vec<isize> = [crate::island::WINDOW_LABEL, OVERLAY]
+        .iter()
+        .filter_map(|label| app.get_webview_window(label))
+        .filter_map(|w| w.hwnd().ok().map(|h| h.0 as isize))
+        .collect();
+    if imp::lumo_window_at(p, &mine) {
+        return Err("That spot is on Lumo's own Settings window, which Claude may not click (and which screenshots leave out). Ask the user to move or close it, then take a screenshot again.".into());
+    }
+    Ok(())
 }
 
 /// Lumo's windows let the mouse through while `f` clicks or drags.
@@ -1005,7 +1037,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
                 return Err(format!("There are {} screens: pick one from 1 to {}.", rects.len(), rects.len()));
             };
             let view = View::new(index, rect);
-            let png = crate::screen::unseen(app, |hidden| crate::screen::grab_png(rect, view.w, view.h, hidden))?;
+            let png = crate::screen::unseen_by_claude(app, |hidden| crate::screen::grab_png(rect, view.w, view.h, hidden))?;
             let moved = VIEW.lock().unwrap_or_else(|e| e.into_inner()).replace(view).is_none_or(|v| v.rect != rect);
             // Another screen: the glow goes with Claude.
             if moved {
@@ -1017,7 +1049,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             Ok(json!({
                 "image": base64(&png),
                 "text": format!(
-                    "Screen {} of {}, {}×{} pixels (Lumo's island is left out). Coordinates for the other tools are in these pixels.",
+                    "Screen {} of {}, {}×{} pixels (Lumo's island and Settings are left out). Coordinates for the other tools are in these pixels.",
                     index + 1, rects.len(), view.w, view.h
                 ),
             }))
@@ -1026,7 +1058,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             let view = view()?;
             let rect = view.region(region)?;
             let (w, h) = zoom_size((rect.2 - rect.0) as u32, (rect.3 - rect.1) as u32);
-            let png = crate::screen::unseen(app, |hidden| crate::screen::grab_png(rect, w, h, hidden))?;
+            let png = crate::screen::unseen_by_claude(app, |hidden| crate::screen::grab_png(rect, w, h, hidden))?;
             fx(app, json!({ "kind": "look" }));
             Ok(json!({
                 "image": base64(&png),
@@ -1044,6 +1076,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
                     return Err("Stopped before the click.".to_string());
                 }
                 let here = imp::cursor().or(target).unwrap_or((view.rect.0, view.rect.1));
+                not_on_lumo(app, here)?;
                 let name = match button {
                     Button::Left => "left",
                     Button::Right => "right",
@@ -1066,7 +1099,10 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             let view = view()?;
             let (a, b) = (view.to_screen(from.0, from.1)?, view.to_screen(to.0, to.1)?);
             hands_off(app, || {
+                not_on_lumo(app, a)?;
+                not_on_lumo(app, b)?;
                 glide_to(app, &view, a, true)?;
+                not_on_lumo(app, a)?;
                 let ms = glide_ms(a, b).max(300) + 150;
                 fx(app, json!({ "kind": "drag", "from": rel(&view, a), "to": rel(&view, b), "ms": ms }));
                 imp::drag(a, b, ms)
@@ -1157,6 +1193,19 @@ mod imp {
         if !front.is_invalid() && !is_lumo(front) {
             TARGET.store(front.0 as isize, Ordering::Relaxed);
         }
+    }
+
+    /// Whether the top-level window under `p` is Lumo's and not one of
+    /// `through` (the island and the glow, which let the mouse through).
+    pub fn lumo_window_at(p: (i32, i32), through: &[isize]) -> bool {
+        use ::windows::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT};
+        let hit = unsafe { WindowFromPoint(POINT { x: p.0, y: p.1 }) };
+        if hit.is_invalid() {
+            return false;
+        }
+        let root = unsafe { GetAncestor(hit, GA_ROOT) };
+        let root = if root.is_invalid() { hit } else { root };
+        is_lumo(root) && !through.contains(&(root.0 as isize))
     }
 
     fn is_lumo(hwnd: HWND) -> bool {
@@ -1822,6 +1871,11 @@ mod tests {
         std::fs::write(&file, "not json").unwrap();
         agy_workspace(&dir, "mail", false);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json", "what Lumo can't read is left alone");
+        // Saved as UTF-16 (Notepad's "Unicode"): not text Lumo reads, so not written over.
+        let utf16: Vec<u8> = [0xFEFFu16].into_iter().chain("{}".encode_utf16()).flat_map(u16::to_le_bytes).collect();
+        std::fs::write(&file, &utf16).unwrap();
+        agy_workspace(&dir, "mail", false);
+        assert_eq!(std::fs::read(&file).unwrap(), utf16, "a UTF-16 file is left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1835,6 +1889,14 @@ mod tests {
         assert!(view().is_ok());
         begin_turn();
         assert!(view().is_err(), "each turn picks its screen again");
+        // Esc during a turn: a chat that starts meanwhile doesn't undo it…
+        STOPPED.store(true, Ordering::SeqCst);
+        begin_turn();
+        assert!(STOPPED.load(Ordering::SeqCst), "still stopped while the stopped turn runs");
+        // …the next turn, once they are over, starts afresh.
+        TURN.store(0, Ordering::SeqCst);
+        begin_turn();
+        assert!(!STOPPED.load(Ordering::SeqCst));
         TURN.store(0, Ordering::SeqCst);
     }
 }

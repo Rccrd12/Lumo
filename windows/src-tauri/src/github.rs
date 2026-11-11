@@ -242,13 +242,21 @@ impl GitHubPulse {
     /// - new commit or new PR: alert at once if its CI is already done; if it is
     ///   still running, the next poll on the same commit will catch the result;
     /// - default branches only ever raise "failed", never "passed".
+    #[cfg(test)]
     pub fn events(old: Option<&GitHubPulse>, new: &GitHubPulse) -> Vec<GitHubEvent> {
+        Self::events_knowing(old, &[], new)
+    }
+
+    /// `events`, knowing also the PRs of mine that left the list before (it
+    /// holds the 20 updated last, see `remember_gone`): one that comes back,
+    /// a comment bumping it, is no new PR, and its old CI result no news.
+    pub fn events_knowing(old: Option<&GitHubPulse>, gone: &[GitHubPr], new: &GitHubPulse) -> Vec<GitHubEvent> {
         let Some(old) = old else { return Vec::new() };
         let mut out = Vec::new();
 
         for pr in &new.my_prs {
             // First occurrence wins, should the old list hold a duplicate.
-            let prev = old.my_prs.iter().find(|p| p.id == pr.id);
+            let prev = old.my_prs.iter().find(|p| p.id == pr.id).or_else(|| gone.iter().find(|p| p.id == pr.id));
             match prev {
                 Some(prev) if prev.head_sha == pr.head_sha => {
                     if pr.ci == CiState::Failure && prev.ci != CiState::Failure {
@@ -286,6 +294,22 @@ impl GitHubPulse {
 
         out
     }
+}
+
+/// At most this many PRs remembered after they left the list.
+const MOST_GONE: usize = 200;
+
+/// After a poll: the PRs of mine `old` listed and `new` doesn't join `gone`
+/// (newest first, at most MOST_GONE), and the ones `new` lists leave it.
+pub fn remember_gone(gone: &mut Vec<GitHubPr>, old: Option<&GitHubPulse>, new: &GitHubPulse) {
+    gone.retain(|p| !new.my_prs.iter().any(|n| n.id == p.id));
+    if let Some(old) = old {
+        for pr in old.my_prs.iter().rev().filter(|p| !new.my_prs.iter().any(|n| n.id == p.id)) {
+            gone.retain(|p| p.id != pr.id);
+            gone.insert(0, pr.clone());
+        }
+    }
+    gone.truncate(MOST_GONE);
 }
 
 /// True when nothing was fetched yet or the last fetch is older than `max_age_secs`.
@@ -583,6 +607,29 @@ mod tests {
     fn first_poll_is_silent() {
         let p = GitHubPulse::parse(&valid_pulse(), 0).unwrap();
         assert!(GitHubPulse::events(None, &p).is_empty());
+    }
+
+    #[test]
+    fn a_pr_back_in_the_list_on_the_same_commit_is_no_news() {
+        let mut old = empty_pulse();
+        old.my_prs = vec![pr("r/p#1", CiState::Success, Some("abc")), pr("r/p#2", CiState::Pending, Some("def"))];
+        // #1 drops out of the 20 updated last…
+        let mut away = empty_pulse();
+        away.my_prs = vec![pr("r/p#2", CiState::Pending, Some("def"))];
+        let mut gone = Vec::new();
+        remember_gone(&mut gone, Some(&old), &away);
+        assert_eq!(gone.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), vec!["r/p#1"]);
+        // …and comes back with the commit and the CI it had: nothing to say.
+        let back = old.clone();
+        assert!(GitHubPulse::events_knowing(Some(&away), &gone, &back).is_empty());
+        assert_eq!(GitHubPulse::events(Some(&away), &back), vec![GitHubEvent::CiPassed { pr_id: "r/p#1".into() }], "what it said before");
+        // Back on a new commit whose CI is done: news.
+        let mut pushed = old.clone();
+        pushed.my_prs[0].head_sha = Some("xyz".into());
+        pushed.my_prs[0].ci = CiState::Failure;
+        assert_eq!(GitHubPulse::events_knowing(Some(&away), &gone, &pushed), vec![GitHubEvent::CiFailed { pr_id: "r/p#1".into() }]);
+        remember_gone(&mut gone, Some(&away), &back);
+        assert!(gone.is_empty(), "back in the list");
     }
 
     #[test]

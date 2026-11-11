@@ -39,8 +39,8 @@ pub fn unix_seconds(ticks: i64) -> i64 {
     ticks / 10_000_000 - 11_644_473_600
 }
 
-pub fn read() -> Result<Vec<Notification>, String> {
-    let mut list = imp::read()?;
+pub fn read(app: &tauri::AppHandle) -> Result<Vec<Notification>, String> {
+    let mut list = imp::read(app)?;
     list.sort_by_key(|r| std::cmp::Reverse(r.at));
     list.truncate(MAX);
     Ok(list)
@@ -56,11 +56,22 @@ mod imp {
         "Windows doesn't let Lumo read the notifications: the user can allow it in Settings → Privacy & security → Notifications.".into()
     }
 
-    pub fn read() -> Result<Vec<Notification>, String> {
+    /// Windows' question to the user: asked from the UI thread (Lumo's main
+    /// thread), as Windows wants it, and its answer waited for here, off it.
+    fn ask(app: &tauri::AppHandle) -> Result<UserNotificationListenerAccessStatus, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(UserNotificationListener::Current().and_then(|l| l.RequestAccessAsync()));
+        })
+        .map_err(|_| refused())?;
+        rx.recv().map_err(|_| refused())?.and_then(|op| op.get()).map_err(|_| refused())
+    }
+
+    pub fn read(app: &tauri::AppHandle) -> Result<Vec<Notification>, String> {
         let listener = UserNotificationListener::Current().map_err(|_| "This version of Windows doesn't let apps read notifications.".to_string())?;
         let status = match listener.GetAccessStatus() {
             Ok(UserNotificationListenerAccessStatus::Allowed) => UserNotificationListenerAccessStatus::Allowed,
-            _ => listener.RequestAccessAsync().and_then(|op| op.get()).map_err(|_| refused())?,
+            _ => ask(app)?,
         };
         if status != UserNotificationListenerAccessStatus::Allowed {
             return Err(refused());
@@ -94,8 +105,8 @@ mod imp {
 
 /// Gemini Live's read_notifications.
 #[tauri::command]
-pub async fn pc_notifications() -> Result<Vec<Notification>, String> {
-    tauri::async_runtime::spawn_blocking(read).await.map_err(|e| e.to_string())?
+pub async fn pc_notifications(app: tauri::AppHandle) -> Result<Vec<Notification>, String> {
+    tauri::async_runtime::spawn_blocking(move || read(&app)).await.map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]

@@ -25,11 +25,12 @@
 // confirmation is switched off (`--dangerously-skip-permissions`) and Lumo's
 // hook takes its place: every shell command, MCP or browser tool of this run
 // is an Allow / Deny card in the island (lumo-hook, `LUMO_ISLAND_RUN`), and
-// without a click it is denied. Without the hooks the flag is never passed,
-// and Plan only keeps agy's own confirmation too.
+// without a click it is denied. Without the hooks the flag is passed only in
+// Auto (below), and Plan only keeps agy's own confirmation too.
 //
-// Auto is agy's own Turbo preset: everything runs without asking, and the
-// island lets its cards through (src/island/hooks.ts).
+// Auto is agy's own Turbo preset (`--dangerously-skip-permissions`, hooks or
+// not): everything runs without asking, and the island lets its cards
+// through (src/island/hooks.ts).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
@@ -52,6 +53,8 @@ pub const PROVIDER: &str = "antigravity-cli";
 /// A long task (a build, many steps) may take an hour; one that hangs costs
 /// no tokens, and Stop is there.
 const PRINT_TIMEOUT: &str = "1440m";
+/// How long the end of agy's stderr is waited for once agy is gone.
+const STDERR_WAIT: Duration = Duration::from_secs(2);
 /// `agy models` answers at once, or not at all.
 const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 /// The island is told about new text at most this often.
@@ -699,7 +702,8 @@ fn run(
     }
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let stderr = child.stderr.take();
-    let err_text = std::thread::spawn(move || {
+    let (err_tx, err_text) = mpsc::channel::<String>();
+    std::thread::spawn(move || {
         let mut s = String::new();
         if let Some(e) = stderr {
             let mut e = e;
@@ -707,7 +711,7 @@ fn run(
             // Past the cap, keep the pipe flowing: a full one would stall agy.
             let _ = std::io::copy(&mut e, &mut std::io::sink());
         }
-        s
+        let _ = err_tx.send(s);
     });
 
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -742,6 +746,8 @@ fn run(
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     let mut unsent = false;
     let mut state = Run::default();
+    // When the turn's result came.
+    let mut result_at: Option<Instant> = None;
     loop {
         if stop.is_stopped() && state.result.is_none() {
             drop(stdin.take());
@@ -749,12 +755,20 @@ fn run(
             state.stopped = true;
             return Ok(state);
         }
+        // The answer is in: agy gets a moment to end, then it and what it
+        // started are ended, at once on Stop. A process left holding its
+        // output would otherwise keep the turn, and Stop, waiting for ever.
+        if done_waiting(result_at, stop.is_stopped(), claude_code::AFTER_RESULT) {
+            kill_tree(&mut child);
+            break;
+        }
         match rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
-                if state.result.is_some() {
+                if state.result.is_some() && result_at.is_none() {
                     // The turn is over: agy may end.
                     drop(stdin.take());
+                    result_at = Some(Instant::now());
                 }
                 let activity = state.take_activity();
                 if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) {
@@ -777,8 +791,15 @@ fn run(
         }
     }
     drop(stdin);
-    let status = child.wait().ok();
-    let stderr = err_text.join().unwrap_or_default();
+    let status = if state.result.is_some() {
+        // Ended already, or its output closed with the answer in: it may not
+        // be gone yet, and is not waited for past AFTER_RESULT.
+        claude_code::end_after_result(&mut child, &stop, claude_code::AFTER_RESULT)
+    } else {
+        child.wait().ok()
+    };
+    // A process agy left behind may still hold stderr: what was read by then.
+    let stderr = err_text.recv_timeout(STDERR_WAIT).unwrap_or_default();
     state.denied += stderr_denials(&stderr);
     state.stderr_tail = stderr_tail(&stderr);
     if state.result.is_none() {
@@ -786,6 +807,12 @@ fn run(
         return Err(failure(&stderr, &code));
     }
     Ok(state)
+}
+
+/// Whether a turn whose result came at `result_at` waited long enough for agy
+/// to end by itself: `grace` after it, or at once on Stop. Never before the result.
+fn done_waiting(result_at: Option<Instant>, stopped: bool, grace: Duration) -> bool {
+    result_at.is_some_and(|at| stopped || at.elapsed() >= grace)
 }
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -834,14 +861,7 @@ fn list_models(exe: PathBuf) -> Vec<String> {
     cmd.arg("models").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
     platform::no_console(&mut cmd);
     let Ok(mut child) = cmd.spawn() else { return Vec::new() };
-    let stdout = child.stdout.take();
-    let reader = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(out) = stdout {
-            let _ = out.take(256 * 1024).read_to_string(&mut s);
-        }
-        s
-    });
+    let reader = crate::antigravity_plan::Output::read(child.stdout.take(), 256 * 1024);
     let started = Instant::now();
     loop {
         match child.try_wait() {
@@ -853,7 +873,7 @@ fn list_models(exe: PathBuf) -> Vec<String> {
             }
         }
     }
-    parse_models(&reader.join().unwrap_or_default())
+    parse_models(&reader.text_after_exit())
 }
 
 /// The models for the picker: "Default" (agy's own choice), then what
@@ -1075,16 +1095,7 @@ fn run_on_its_own(exe: PathBuf, name: &str, dir: PathBuf) -> Result<String, Stri
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
     platform::chat_ends_with_lumo(&child);
-    let stdout = child.stdout.take();
-    let reader = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(out) = stdout {
-            let mut out = out;
-            let _ = (&mut out).take(MAX_COMMAND_OUTPUT).read_to_string(&mut s);
-            let _ = std::io::copy(&mut out, &mut std::io::sink());
-        }
-        s
-    });
+    let reader = crate::antigravity_plan::Output::read(child.stdout.take(), MAX_COMMAND_OUTPUT);
     let started = Instant::now();
     loop {
         match child.try_wait() {
@@ -1096,7 +1107,7 @@ fn run_on_its_own(exe: PathBuf, name: &str, dir: PathBuf) -> Result<String, Stri
             }
         }
     }
-    command_answer(&reader.join().unwrap_or_default())
+    command_answer(&reader.text_after_exit())
 }
 
 /// One of agy's commands typed in the chat: /compact in the conversation, the
@@ -1225,6 +1236,22 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn once_the_answer_is_in_agy_is_ended_after_a_moment_or_at_once_on_stop() {
+        let grace = claude_code::AFTER_RESULT;
+        // No result yet: Stop has its own way out, and work goes on as long as it takes.
+        assert!(!done_waiting(None, false, grace));
+        assert!(!done_waiting(None, true, grace));
+        let now = Instant::now();
+        // The result just came: agy gets its moment to end by itself…
+        assert!(!done_waiting(Some(now), false, grace));
+        // …but Stop ends it at once (it used to be ignored after the result)…
+        assert!(done_waiting(Some(now), true, grace));
+        // …and so does the end of the moment, where it used to wait for ever.
+        assert!(done_waiting(Some(now), false, Duration::ZERO));
+        assert!(grace >= Duration::from_secs(5) && grace <= Duration::from_secs(30));
+    }
 
     #[test]
     fn only_the_commands_agy_answers_headless_are_taken_alone() {

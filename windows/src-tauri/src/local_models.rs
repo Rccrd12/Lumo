@@ -215,6 +215,9 @@ pub async fn unload_all(provider: &str) -> Result<usize, String> {
             post_json(&server, &base, "api/v1/models/unload", json!({ "instance_id": m.handle }), UNLOAD).await?;
         }
     }
+    // What was said of its models (in memory) is asked again: the next
+    // question loads its model first instead of finding none.
+    forget_server(&server);
     Ok(models.len())
 }
 
@@ -452,6 +455,14 @@ pub fn forget(server: &Server, model: &str) {
     }
 }
 
+/// What was said of every model of `server` is asked again next time.
+fn forget_server(server: &Server) {
+    let prefix = format!("{}|", server.id);
+    if let Some(all) = CAPS.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        all.retain(|key, _| !key.starts_with(&prefix));
+    }
+}
+
 /// How long loading a model may take before it is given up on.
 const LOAD: Duration = Duration::from_secs(10 * 60);
 
@@ -497,6 +508,7 @@ async fn load_lmstudio(server: &Server, base: &Url, model: &str, on_progress: &m
                 Some(LoadEvent::Progress(p)) => on_progress(p),
                 // In memory: the rest of this answer is of no use.
                 Some(LoadEvent::Loaded) => return Ok(()),
+                Some(LoadEvent::Failed(e)) => return Err(e),
                 None => {}
             }
         }
@@ -513,6 +525,8 @@ enum LoadEvent {
     Progress(u8),
     /// It is in memory (it was, or it is now): nothing more to wait for.
     Loaded,
+    /// LM Studio said it couldn't (its words): not in memory.
+    Failed(String),
 }
 
 /// One line of LM Studio's chat stream, as far as loading goes: `data:` lines
@@ -524,6 +538,9 @@ fn load_event(line: &str) -> Option<LoadEvent> {
     match v["type"].as_str()? {
         "model_load.progress" => Some(LoadEvent::Progress((v["progress"].as_f64()?.clamp(0.0, 1.0) * 100.0).round() as u8)),
         "chat.start" | "model_load.start" => None,
+        "error" => Some(LoadEvent::Failed(
+            v.pointer("/error/message").or_else(|| v.get("message")).and_then(Value::as_str).unwrap_or("LM Studio couldn't load the model").to_string(),
+        )),
         _ => Some(LoadEvent::Loaded),
     }
 }
@@ -990,6 +1007,11 @@ mod tests {
         assert_eq!(load_event(r#"data: {"type":"prompt_processing.start"}"#), Some(LoadEvent::Loaded));
         assert_eq!(load_event("event: model_load.progress"), None);
         assert_eq!(load_event("data: nope"), None);
+        // A failure is no model in memory.
+        assert_eq!(
+            load_event(r#"data: {"type":"error","error":{"type":"model_load_failed","message":"Not enough memory"}}"#),
+            Some(LoadEvent::Failed("Not enough memory".into()))
+        );
     }
 
     #[test]

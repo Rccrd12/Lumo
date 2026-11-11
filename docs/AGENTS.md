@@ -143,7 +143,7 @@ rules decide, with two exceptions.
   grants of the project holding the working directory) is forwarded as a `PermissionRequest`
   tagged `lumo_agy_gate`. The island shows Allow, Deny and **Reply in Antigravity**: Allow
   prints `{"decision":"allow"}`, Deny `{"decision":"deny"}`, and Reply in Antigravity, no
-  click, Lumo closed or a command too long to forward whole print `{"decision":"ask"}`. This
+  click, Lumo closed or a command too long to forward whole (over 64 KB) print `{"decision":"ask"}`. This
   needs the `PreToolUse` hook with `--wait` (below); hooks installed without it never wait.
 - **The island's own chat with Antigravity CLI**, which runs `agy` headless (stream-json on
   stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that run only, the
@@ -151,7 +151,8 @@ rules decide, with two exceptions.
   `browser`, or of a file tool that writes, replaces, edits, deletes, moves, renames or creates
   outside the run's workspace, is forwarded as a `PermissionRequest`, shown as an Allow / Deny
   card over the chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a
-  click, or `ask` (headless agy then skips the call) with no click. Lumo's own email, plan and
+  click. With no click (or Lumo closed) it is `{"decision":"deny"}` too: agy's own confirmation
+  is off in that run, so nothing else would stop the call. Lumo's own email, plan and
   island tools, and the user's own tools (which Lumo asks about itself), get no card.
 
 The `PreToolUse` hook is installed as `--agent antigravity PreToolUse --wait 100` with a 110 s
