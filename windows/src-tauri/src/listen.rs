@@ -1015,11 +1015,8 @@ async fn local_round(app: &AppHandle) {
                     continue;
                 }
                 // A page saved before only public https pages were watched
-                // (http, another port, this PC, the local network): never
-                // opened, and ended with a word in the history, not left
-                // "listening" for good.
+                // (this PC, the local network): never opened, never "down".
                 if crate::web_image::public_url(&w.target).is_err() {
-                    fire(app, w.id, false, tf("Stopped listening to {what}: Lumo now watches only public https pages.", &[("what", &w.label())]), None);
                     continue;
                 }
                 let page = listen_local::page(&w.target).await;

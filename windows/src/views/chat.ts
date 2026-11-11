@@ -456,8 +456,6 @@ export function plainQuestion(text: string): string {
       return line
         .replace(/^(\s*)(?=!\[)/, `$1${NOT_A_CARD}`)
         .replace(/^(\s*>\s*)(?=\[!)/, `$1${NOT_A_CARD}`)
-        // The loose form too ("[!WARNING] is this right?"), bold or not.
-        .replace(/^(\s*)(?=(?:\*\*)?\[!)/, `$1${NOT_A_CARD}`)
         .replace(/^(\s*[-*+][ \t]+)(?=\[[ xX]\])/, `$1${NOT_A_CARD}`);
     })
     .join("\n");
@@ -3790,7 +3788,7 @@ export function buildPrompt(
     else void submit(text);
   };
 
-  async function submit(auto?: string, queuedText?: string, fromHeard?: ListenFired) {
+  async function submit(auto?: string, queuedText?: string) {
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
     if (!query || preparing) return;
@@ -3849,11 +3847,6 @@ export function buildPrompt(
         if (queuedText != null && !queued.has(askedIn)) {
           queued.set(askedIn, query);
           drawQueue();
-        }
-        // What a watch heard is never lost: back first in line, for its chat.
-        if (fromHeard) {
-          heard.unshift(fromHeard);
-          window.setTimeout(() => runHeard(), 0);
         }
         return;
       }
@@ -4152,7 +4145,7 @@ export function buildPrompt(
       else if (!fired.watch.task.trim()) return runHeard();
       else newChat();
     }
-    void submit(listenMessage(fired), undefined, fired);
+    void submit(listenMessage(fired));
   }
 
   void onEvent<ListenFired>("listen-fired", (fired) => {

@@ -130,11 +130,6 @@ export function loadsAtOnce(url: string): boolean {
   }
 }
 
-/** Whether `url`'s image is drawn without its Load image button: clicked for, or from AUTO_HOSTS. */
-export function imageAllowed(url: string): boolean {
-  return asked.has(url) || loadsAtOnce(url);
-}
-
 /** Whether images from the web are on (Settings → Security; on unless turned off). */
 export function webImagesOn(): boolean {
   return State.settings.webImages !== false;

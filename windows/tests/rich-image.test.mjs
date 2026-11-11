@@ -85,23 +85,6 @@ test("from a site that may keep a record, the image waits for a click on Load im
   assert.equal(state(renderImage("Chart", other)), "shown");
 });
 
-test("Load image clicked in an answer still being written stays the image at the next piece", async () => {
-  const other = "https://images.example.com/chart.png";
-  answers.set(other, PNG);
-  const into = document.createElement("div");
-  root.append?.(into);
-  renderMarkdown(into, `Here:\n![chart](${other})\nmore`, { streaming: true });
-  const load = () => into.find("BUTTON").find((b) => b.textContent === "Load image");
-  load().fire("click");
-  await settle();
-  assert.ok(!load() && into.querySelector(".rc-image-frame"));
-  // The answer grows: the chat is drawn again from its cache of cards.
-  renderMarkdown(into, `Here:\n![chart](${other})\nmore text arriving`, { streaming: true });
-  await settle();
-  assert.ok(!load(), "never the button again");
-  assert.ok(into.querySelector(".rc-image-frame"));
-});
-
 test("a plain http address, or another port, is never one that loads at once", async () => {
   const { loadsAtOnce } = await import("../src/views/rich/image.ts");
   assert.ok(loadsAtOnce(URL_A));

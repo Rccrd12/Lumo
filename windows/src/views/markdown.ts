@@ -18,7 +18,7 @@ import { renderMath } from "./math";
 import {
   CALLOUT_TYPES, RICH_KINDS, renderCallout, renderChecklist, renderDiffCard, renderImage, renderRich, type CalloutType, type RichContext,
 } from "./rich/index";
-import { MAX_PER_ANSWER, imageAllowed } from "./rich/image";
+import { MAX_PER_ANSWER } from "./rich/image";
 import { parseCards } from "./rich/cards";
 import { checklistsEpoch, parseChecklist, taskItem, type Checklist, type ChecklistItem } from "../core/checklists";
 import { N_, t } from "../i18n/i18n";
@@ -415,9 +415,7 @@ const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLI
  * star is one when a letter, a digit or a closing bracket comes before it and
  * a letter, a digit or an opening bracket after it (or a sign then a digit,
  * after a number: "2*-3"); a ** only between numbers or brackets ("2**10",
- * "(a+b)**(n-1)") or a letter and a digit ("x**2"), so "**API**s", "**1990**s" and "**Nota**(…)"
- * stay bold; a star that closes an emphasis left open before it is never one
- * ("*italic*(note)", "**2024**(gennaio)"). Such stars are swapped
+ * "(a+b)**(n-1)"), so "**API**s", "**1990**s" and "**Nota**(…)" stay bold. Such stars are swapped
  * for TIMES before the parse and given back in what it returns. ASCII only:
  * Chinese and Japanese put emphasis between letters, with no spaces.
  */
@@ -427,25 +425,15 @@ const FACTOR = /[A-Za-z0-9([]/;
 
 function maskProducts(text: string): string {
   if (!text.includes("*")) return text;
-  // The emphasis stars left as they are so far, * and ** apart: an odd count
-  // means one is open. A run that can close it, before a bracket or a digit
-  // rather than a letter, does ("*italic*(note)", "**2024**(gennaio)",
-  // "**Passo**1"); a single one only after a word, so "*f = 2*(x+1)*" keeps
-  // its product.
-  const open = [0, 0, 0];
   return text.replace(/\*+/g, (run: string, at: number) => {
     const before = text[at - 1] ?? "";
     const after = text[at + run.length] ?? "";
-    const closes = run.length <= 2 && open[run.length] % 2 === 1 && !/[A-Za-z]/.test(after) && (run.length === 2 || /[A-Za-z]/.test(before));
+    if (!BEFORE_FACTOR.test(before)) return run;
     const product =
-      !closes &&
-      BEFORE_FACTOR.test(before) &&
-      (run.length === 1
+      run.length === 1
         ? FACTOR.test(after) || (/[\d)]/.test(before) && /[-+]/.test(after) && /\d/.test(text[at + 2] ?? ""))
-        : run.length === 2 && ((/[\d)]/.test(before) && /[\d(]/.test(after)) || (/[A-Za-z]/.test(before) && /\d/.test(after))));
-    if (product) return TIMES.repeat(run.length);
-    if (run.length <= 2) open[run.length]++;
-    return run;
+        : run.length === 2 && /[\d)]/.test(before) && /[\d(]/.test(after);
+    return product ? TIMES.repeat(run.length) : run;
   });
 }
 
@@ -801,8 +789,7 @@ function identity(block: Block, n: number, streaming: boolean, tail: boolean, im
       return `rich\u0000${n}\u0000${lists}\u0000${block.type}\u0000${block.title}\u0000${block.body}\u0000${block.open}`;
     }
     case "image":
-      // Load image clicked since: drawn again as the image, not the button.
-      return `image\u0000${n}\u0000${images >= MAX_PER_ANSWER}\u0000${imageAllowed(block.url)}\u0000${block.url}\u0000${block.alt}`;
+      return `image\u0000${n}\u0000${images >= MAX_PER_ANSWER}\u0000${block.url}\u0000${block.alt}`;
     case "callout":
       return `callout\u0000${n}\u0000${tail}\u0000${block.type}\u0000${block.title}\u0000${block.body}`;
     case "checklist":

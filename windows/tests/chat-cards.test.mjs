@@ -194,14 +194,6 @@ test("the user's own question shows no cards: a task list, an image, an alert an
   assert.equal(plainQuestion("```md\n- [ ] a\n![x](https://e.com/a.png)\n```"), "```⁠md\n- [ ] a\n![x](https://e.com/a.png)\n```");
 });
 
-test("an alert written without its quote mark is no card in a question either", async () => {
-  const { parseMarkdown } = await import("../src/views/markdown.ts");
-  for (const q of ["[!WARNING] is this syntax right?", "**[!NOTE]** a question"]) {
-    const blocks = parseMarkdown(plainQuestion(q));
-    assert.ok(!blocks.some((b) => b.kind === "callout"), q);
-  }
-});
-
 test("a question's code block closes only on a bare fence as long as its own", () => {
   // The ``` inside the ````md block is code: the task item after it stays as written.
   assert.equal(plainQuestion("````md\n```\n- [ ] a\n````\n- [ ] b"), "````\u2060md\n```\n- [ ] a\n````\n- \u2060[ ] b");
