@@ -22,10 +22,10 @@ touches `windows/` (`.github/workflows/windows-e2e.yml`, on `windows-latest`).
 
 | File | What it checks |
 | --- | --- |
+| `chat-text.test.mjs` | A sent question's multiplications (`8*10^-9`) keep their stars, with no italics |
 | `permission.test.mjs` | Allow and Deny reach Claude Code (closed island and full card), the 600 ms click guard, a small and a 400 KB Write, a long plan, a question, two requests in line |
 | `never-block.test.mjs` | The relay answers at once when Lumo is closed, events nobody waits on, Lumo quitting while a card waits |
 | `island-size.test.mjs` | The chat's size across a restart, and resizing the chat leaves the home's size alone |
-| `chat-text.test.mjs` | A sent question's multiplications (`8*10^-9`) keep their stars, with no italics |
 
 A new flow is a `flow(group, name, app, async () => { … })` in a
 `*.test.mjs` file; `step()` lines are printed in the run's log. A known bug can
