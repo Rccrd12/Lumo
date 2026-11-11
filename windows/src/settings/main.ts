@@ -2477,7 +2477,7 @@ async function main() {
 }
 
 /** The settings the island keeps for itself, shown by no page of Settings. */
-const UNSHOWN_KEYS = new Set(["islandDock", "islandOffset", "islandFloat", "islandWidth", "islandHeight"]);
+const UNSHOWN_KEYS = new Set(["islandDock", "islandOffset", "islandFloat", "islandWidth", "islandHeight", "islandSizes"]);
 
 /** Inside the island, Settings take the island's look (settings.css, html.look-new). */
 function applyLook() {

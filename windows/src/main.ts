@@ -113,7 +113,7 @@ async function main() {
 
   await onEvent<null>("screen-changed", () => void Bridge.reposition());
   // An edge of the island being dragged: island.rs sends each new size.
-  await onEvent<{ width: number; height: number }>("island-resize", (size) => island.onResize(size));
+  await onEvent<{ width: number; height: number; slot?: string | null }>("island-resize", (size) => island.onResize(size));
   // A moved island was let go: island.rs says which edge it is heading for.
   await onEvent<{ dock: string; offset: number; float: number; shiftX: number; shiftY: number }>(
     "island-dock", (place) => island.onDock(place));

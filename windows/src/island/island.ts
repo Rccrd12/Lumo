@@ -5,7 +5,7 @@ import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra, errorCardHeight, finishedCardHeight, chatAutoHeight, toolsViewHeight,
-  GRIPS, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
+  GRIPS, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, sizeSlot, viewShape, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
   APPROVAL_MAX_H,
@@ -1505,12 +1505,13 @@ export class Island {
         cardsFollowDrag(true);
         // The home goes narrower than the other views, but not with three tiles in a row.
         const home = State.view === "home" && !homeTilesInARow(this.activities.data());
-        void Bridge.islandResize(f.fx, f.fy, this.height.value, home ? NEW_LOOK_HOME_MIN_SHARED : null);
+        // Only the view being shown takes the new size: the chat made big leaves the home small.
+        void Bridge.islandResize(f.fx, f.fy, this.height.value, home ? NEW_LOOK_HOME_MIN_SHARED : null, sizeSlot(State.view));
       });
       el.addEventListener("dblclick", (e) => {
         e.stopPropagation();
         const f = gripFactors(grip, this.dock);
-        if (f) void Bridge.islandResetSize(f.fx !== 0, f.fy !== 0);
+        if (f) void Bridge.islandResetSize(f.fx !== 0, f.fy !== 0, sizeSlot(State.view));
       });
     }
     window.addEventListener("mouseup", () => {
@@ -2135,8 +2136,11 @@ export class Island {
   }
 
   /** A new size while a grip is dragged: followed closely, on a stiff spring. */
-  onResize(size: { width: number; height: number }) {
-    State.settings = { ...State.settings, islandWidth: size.width, islandHeight: size.height };
+  onResize(size: { width: number; height: number; slot?: string | null }) {
+    const kept = { width: size.width, height: size.height };
+    State.settings = size.slot
+      ? { ...State.settings, islandSizes: { ...State.settings.islandSizes, [size.slot]: kept } }
+      : { ...State.settings, islandWidth: kept.width, islandHeight: kept.height };
     this.lastShape = JSON.stringify(this.shape);
     const { w, h } = this.targetSize();
     this.width.springTo(w, 0.22, 0.9);
@@ -2242,9 +2246,9 @@ export class Island {
     this.ensureRunning();
   }
 
-  /** What the grips were dragged to. */
+  /** What the grips were dragged to, for the view being shown (each keeps its own). */
   private get shape(): IslandShape {
-    return { width: State.settings.islandWidth, height: State.settings.islandHeight };
+    return viewShape(State.settings, State.view);
   }
 
   /** The bar at the top of the open island: tabs, settings, sound. */
