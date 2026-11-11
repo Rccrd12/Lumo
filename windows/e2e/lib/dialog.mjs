@@ -59,7 +59,9 @@ if (-not $box) {
   exit
 }
 $all = $box.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-$text = ($all | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join " | "
+# On one line: a box's text may hold line breaks (the files a write names),
+# and the answer is read from the last line printed.
+$text = (($all | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join " | ") -replace "[\r\n]+", " "
 # A task dialog's own buttons are panes with nothing to invoke: they are
 # found by name, after the text, and clicked with the real mouse.
 $invoke = [System.Windows.Automation.InvokePattern]::Pattern
