@@ -705,3 +705,41 @@ fn a_plan_check_whose_call_is_left_in_the_text_stays_unseen() {
     assert_eq!(island.shown.last().unwrap(), "Fatto!");
     assert_eq!(island.ran.last().unwrap().0, "update_plan");
 }
+
+#[test]
+fn a_long_call_after_some_text_is_said_until_it_is_made() {
+    // The text before the call isn't sent again while the call comes in, or
+    // the island would drop "Calling workspace_write" a moment after saying it.
+    let mut island = Island::default();
+    let mut events = vec![text("Scrivo il file."), call("c1", "workspace_write", "{\"path\":\"a\",\"content\":\"")];
+    events.extend((0..6).map(|_| call("", "", "riga ")));
+    events.extend([call("", "", "\"}"), finish("tool_calls"), DONE.into()]);
+    let replies = vec![Reply::Paced(events, Duration::from_millis(100)), answer("Fatto.")];
+    let (outcome, _) = turn(replies, &mut question("Scrivi a", &["workspace_write"]), &rules("long-call", ""), &mut island);
+    assert_eq!(outcome.unwrap().answer(), "Scrivo il file.\n\nFatto.");
+    assert!(island.doing.contains(&Doing::Calling("workspace_write".into())));
+    let again = island.shown.iter().filter(|s| *s == "Scrivo il file.").count();
+    assert!(again <= 2, "{:?}", island.shown);
+}
+
+#[test]
+fn half_a_thinking_tag_never_shows() {
+    let mut island = Island::default();
+    let events = vec![text("Ecco. <thi"), text("nk>penso"), text(" ancora"), text("</think>Risposta."), finish("stop"), DONE.into()];
+    let (outcome, _) = turn(vec![Reply::Paced(events, Duration::from_millis(100))], &mut question("x", &[]), &rules("half-tag", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Ecco. Risposta.");
+    assert!(!island.shown.iter().any(|s| s.contains('<')), "{:?}", island.shown);
+    assert_eq!(island.shown.last().unwrap(), "Ecco. Risposta.");
+}
+
+#[test]
+fn endless_call_arguments_are_too_large() {
+    let piece = "x".repeat(lumo_local::transport::MAX_LINE / 2);
+    let mut events = vec![call("c1", "workspace_write", "{\"content\":\"")];
+    events.extend((0..10).map(|_| call("", "", &piece)));
+    events.extend([call("", "", "\"}"), finish("tool_calls"), DONE.into()]);
+    let mut island = Island::default();
+    let (outcome, _) = turn(vec![Reply::Events(events), answer("Fatto.")], &mut question("x", &["workspace_write"]), &rules("endless-args", ""), &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::TooLarge);
+    assert!(island.ran.is_empty());
+}
