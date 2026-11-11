@@ -758,6 +758,16 @@ export function timedLabel(label: string, _provider: string, activity: ChatActiv
 }
 
 /**
+ * When `activity` began. Unsloth Studio starting says the seconds its start has
+ * taken (unsloth_studio.rs): a start the model picker began earlier goes on from
+ * its seconds, as the picker shows them, not from 0.
+ */
+export function activitySince(activity: ChatActivity, now = Date.now()): number {
+  const seconds = activity.kind === "starting" && /^\d{1,4}$/.test(activity.detail) ? Number(activity.detail) : 0;
+  return now - seconds * 1000;
+}
+
+/**
  * The same, in the closed island's fewer words (core/compact.ts): what it
  * looks for, runs or uses is left to the chat.
  */
@@ -3544,7 +3554,7 @@ export function buildPrompt(
    */
   function showActivity(run: Run, next: ChatActivity, again = false) {
     // The seconds start again only when the words do (reasoning is Thinking… too).
-    if (activityLabel(next) !== activityLabel(run.activity)) run.since = Date.now();
+    if (activityLabel(next) !== activityLabel(run.activity)) run.since = activitySince(next);
     run.activity = next;
     if (again && run.text) run.dots = true;
     drawIslandActivity();
