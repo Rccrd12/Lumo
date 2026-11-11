@@ -1,5 +1,6 @@
-// An image in an answer (src/views/rich/image.ts): downloaded at once, by
-// Rust (web_image), and shown through a blob: URL, unless Settings → Security
+// An image in an answer (src/views/rich/image.ts): downloaded at once from
+// Wikimedia, after a click on Load image from any other site, by Rust
+// (web_image), and shown through a blob: URL, unless Settings → Security
 // → Images from the web is off: then the card is one row with the site, the
 // alt text and the way to the browser, and nothing is downloaded. The card
 // survives the chat's redraws.
@@ -58,6 +59,40 @@ beforeEach(() => {
 
 test("images from the web are on unless the user turns them off", () => {
   assert.equal(DEFAULT_SETTINGS.webImages, true);
+});
+
+test("from a site that may keep a record, the image waits for a click on Load image", async () => {
+  const other = "https://images.example.com/p.png?d=secret";
+  answers.set(other, PNG);
+  const box = document.createElement("div");
+  const card = renderImage("Chart", other);
+  box.append(card);
+  await settle();
+  // Nothing downloaded: the row, with the site, the alt text, Load image and the browser.
+  assert.deepEqual(sent("web_image"), []);
+  assert.ok(card.className.includes("off"));
+  assert.equal(card.querySelector(".rc-image-cap").textContent, "Chart");
+  assert.ok(openButton(card));
+  byText(card, "Load image").fire("click");
+  await settle();
+  // The click downloads it, saying so to Rust, and the row becomes the image.
+  assert.deepEqual(sent("web_image"), [{ url: other, asked: true }]);
+  assert.ok(!box.childNodes.includes(card));
+  assert.equal(box.childNodes.length, 1);
+  const shown = box.childNodes[0];
+  assert.equal(state(shown), "shown");
+  // Drawn again (the chat redrawn), it stays the image.
+  assert.equal(state(renderImage("Chart", other)), "shown");
+});
+
+test("a plain http address, or another port, is never one that loads at once", async () => {
+  const { loadsAtOnce } = await import("../src/views/rich/image.ts");
+  assert.ok(loadsAtOnce(URL_A));
+  assert.ok(loadsAtOnce("https://Upload.Wikimedia.org./x.png"));
+  assert.ok(!loadsAtOnce("http://upload.wikimedia.org/x.png"));
+  assert.ok(!loadsAtOnce("https://upload.wikimedia.org:8443/x.png"));
+  assert.ok(!loadsAtOnce("https://upload.wikimedia.org.evil.com/x.png"));
+  assert.ok(!loadsAtOnce("https://evil.com/upload.wikimedia.org/x.png"));
 });
 
 test("the image's type is read from its first bytes, never from its name", () => {

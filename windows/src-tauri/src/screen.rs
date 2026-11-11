@@ -388,8 +388,19 @@ pub fn capture_unseen<R: tauri::Runtime>(app: &tauri::AppHandle<R>, index: Optio
 /// Runs `f` with Lumo's window (the island) kept out of screenshots; `f`
 /// hears whether it was, to give the compositor a moment.
 pub fn unseen<R: tauri::Runtime, T>(app: &tauri::AppHandle<R>, f: impl FnOnce(bool) -> T) -> T {
+    kept_out(app, &[crate::island::WINDOW_LABEL], f)
+}
+
+/// `unseen` for what Claude sees while it uses the computer (computer.rs):
+/// Settings, when it is open, is left out too, as it is out of what Claude
+/// may click (computer.rs not_on_lumo).
+pub fn unseen_by_claude<R: tauri::Runtime, T>(app: &tauri::AppHandle<R>, f: impl FnOnce(bool) -> T) -> T {
+    kept_out(app, &[crate::island::WINDOW_LABEL, crate::confirmed::SETTINGS_WINDOW], f)
+}
+
+fn kept_out<R: tauri::Runtime, T>(app: &tauri::AppHandle<R>, labels: &[&str], f: impl FnOnce(bool) -> T) -> T {
     use tauri::Manager;
-    let windows: Vec<_> = [crate::island::WINDOW_LABEL]
+    let windows: Vec<_> = labels
         .iter()
         .filter_map(|label| app.get_webview_window(label))
         .filter(|w| w.set_content_protected(true).is_ok())

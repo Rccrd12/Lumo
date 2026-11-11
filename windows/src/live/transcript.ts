@@ -13,7 +13,10 @@ export interface LiveLine {
 const MAX_LINES = 400;
 
 export class Transcript {
+  /** The last MAX_LINES lines, for the call view. */
   lines: LiveLine[] = [];
+  /** Every line of the call, for the chat history (turns). */
+  private all: LiveLine[] = [];
   /** The line the next piece of the same speaker joins, if it is still open. */
   private open: LiveLine | null = null;
 
@@ -38,6 +41,7 @@ export class Transcript {
       if (!text.trim()) return;
       this.open = { role, text: "" };
       this.lines.push(this.open);
+      this.all.push(this.open);
       if (this.lines.length > MAX_LINES) this.lines.shift();
     }
     this.open.text = joinPiece(this.open.text, text);
@@ -46,13 +50,14 @@ export class Transcript {
 
   clear() {
     this.lines = [];
+    this.all = [];
     this.open = null;
   }
 
   /** The conversation as chat turns: one per line, a speaker's lines in a row joined. */
   turns(): SavedTurn[] {
     const out: SavedTurn[] = [];
-    for (const line of this.lines) {
+    for (const line of this.all) {
       const content = line.text.trim();
       if (!content) continue;
       const role = line.role === "user" ? "user" : "assistant";

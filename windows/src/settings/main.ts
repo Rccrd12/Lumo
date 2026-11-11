@@ -4,7 +4,7 @@
 
 import "../core/legacy";
 import "./settings.css";
-import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport, type UnslothStudio } from "../core/bridge";
+import { Bridge, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport, type UnslothStudio } from "../core/bridge";
 import {
   CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, isHidden, providerDef, urlExposure, visibleProviders,
 } from "../core/providers";
@@ -19,6 +19,7 @@ import {
 } from "../core/pills";
 import { h, clear } from "../views/dom";
 import { agentsSection } from "./agents";
+import { HANDOFF_KEY, IN_ISLAND, onHandoff, reviewInWindow, takeHandoff } from "./handoff";
 import { colorDot } from "./colors";
 import { accentDot, errorText, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
 import { SEARCH_STRINGS, applySearch } from "./search";
@@ -119,7 +120,13 @@ async function reviewChange(
   install: boolean,
   back: () => void,
   applied: () => void,
+  what: string,
 ) {
+  // Inside the island nothing is written (confirmed.rs): the window shows it.
+  if (embedded) {
+    reviewInWindow(body, what, install, back);
+    return;
+  }
   let preview;
   try {
     preview = await change.preview(install);
@@ -219,7 +226,7 @@ function claudeSection(status: HookStatus): HTMLElement {
     const install = h("button", {
       class: "primary",
       text: status.installed ? t("Reinstall hooks…") : t("Install hooks…"),
-      onclick: () => void reviewChange(body, HOOKS_CHANGE, true, redraw, () => void rebuild()),
+      onclick: () => void reviewChange(body, HOOKS_CHANGE, true, redraw, () => void rebuild(), "hooks"),
     });
     // Writing hook commands that point at a relay which isn't there would give
     // every Claude Code session a broken hook and nothing to show for it.
@@ -232,12 +239,17 @@ function claudeSection(status: HookStatus): HTMLElement {
       actions.append(h("button", {
         class: "danger",
         text: t("Uninstall hooks…"),
-        onclick: () => void reviewChange(body, HOOKS_CHANGE, false, redraw, () => void rebuild()),
+        onclick: () => void reviewChange(body, HOOKS_CHANGE, false, redraw, () => void rebuild(), "hooks"),
       }));
     }
     body.append(actions);
   }
 
+  // The island's Settings handed this change to the window.
+  onHandoff("hooks", (install) => {
+    void reviewChange(body, HOOKS_CHANGE, install, redraw, () => void rebuild(), "hooks");
+    return section;
+  });
   draw();
   return section;
 }
@@ -317,6 +329,24 @@ function planSection(status: HookStatus, connected: Record<string, boolean>): HT
     });
   }
 
+  /** The plan switch turned on with no relay: the relay's install first, the switch on once it is in. */
+  function planOn() {
+    void reviewChange(body, STATUS_LINE_CHANGE, true, () => void rebuild(), () => {
+      settings.planRelayInstalled = true;
+      settings.showPlanInNotch = true;
+      void save().then(rebuild);
+    }, "plan");
+  }
+  // The island's Settings handed one of these changes to the window.
+  onHandoff("plan", () => {
+    planOn();
+    return section;
+  });
+  onHandoff("statusline", (install) => {
+    void reviewChange(body, STATUS_LINE_CHANGE, install, redraw, () => void rebuild(), "statusline");
+    return section;
+  });
+
   function draw() {
     // The switch shows "on" while the install it asked for is being reviewed.
     const sw = toggle(settings.showPlanInNotch, (on) => {
@@ -328,11 +358,7 @@ function planSection(status: HookStatus, connected: Record<string, boolean>): HT
         void save();
       } else {
         // Turned on before the relay is in: install it first; it stays on once confirmed.
-        void reviewChange(body, STATUS_LINE_CHANGE, true, () => void rebuild(), () => {
-          settings.planRelayInstalled = true;
-          settings.showPlanInNotch = true;
-          void save().then(rebuild);
-        });
+        planOn();
       }
     });
     body.append(
@@ -344,12 +370,12 @@ function planSection(status: HookStatus, connected: Record<string, boolean>): HT
           ? h("button", {
               class: "danger",
               text: t("Uninstall relay…"),
-              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, false, redraw, () => void rebuild()),
+              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, false, redraw, () => void rebuild(), "statusline"),
             })
           : h("button", {
               class: "primary",
               text: t("Install relay…"),
-              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild()),
+              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild(), "statusline"),
             }),
       ),
       setting(t("Ask Anthropic"),
@@ -794,7 +820,7 @@ const WEB_SETTINGS = {
 /** The images in the chat's answers (views/rich/image.ts, web_image.rs). */
 const WEB_IMAGES = {
   get label() { return t("Images from the web"); },
-  get hint() { return t("An image in an answer is downloaded and shown at once, from public https sites only. Off: just its site and a button to open it in the browser."); },
+  get hint() { return t("An image in an answer from Wikimedia is shown at once; from any other public https site, after a click on Load image, since the AI writes the address and it could carry what the AI read. Off: just its site and a button to open it in the browser."); },
 };
 
 const COMPUTER_SETTINGS = {
@@ -1488,6 +1514,23 @@ const MAIL_SOURCES = {
 };
 
 /**
+ * `listener` on the window's `type` events while `el` is on the page: each
+ * redraw of Settings builds its rows again, and a listener of the rows it
+ * replaced goes at its next event instead of piling up (one more Outlook and
+ * account check per focus at every redraw).
+ */
+function whileShown(el: HTMLElement, type: "focus", listener: () => void) {
+  const once = () => {
+    if (!el.isConnected) {
+      window.removeEventListener(type, once);
+      return;
+    }
+    listener();
+  };
+  window.addEventListener(type, once);
+}
+
+/**
  * Settings → Pills → Email's two sources, one switch each: the classic
  * Outlook on this PC with the accounts it has (outlook.rs), and IMAP with its
  * address, app password and server (mail.rs). Both can be on.
@@ -1514,7 +1557,7 @@ function mailSourceRows(imapFields: HTMLElement): HTMLElement[] {
   const showImap = () => { imapFields.hidden = !settings.mailImap; };
   void showOutlook();
   showImap();
-  window.addEventListener("focus", () => void showOutlook());
+  whileShown(found, "focus", () => void showOutlook());
   return [
     setting(MAIL_SOURCES.outlook, MAIL_SOURCES.outlookHint,
       toggle(settings.mailOutlook, (v) => { settings.mailOutlook = v; void showOutlook(); void save(); })),
@@ -1673,7 +1716,7 @@ function imapAccounts(keyChanged: (key: string, on: boolean) => void): HTMLEleme
   for (const input of [address, password, server]) {
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") void submit(); });
   }
-  window.addEventListener("focus", () => void refresh());
+  whileShown(box, "focus", () => void refresh());
   void refresh();
   box.append(list, form, addRow);
   return box;
@@ -2338,7 +2381,7 @@ function showPage(id: PageId, fromClick = true) {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 /** Shown inside the island (views/settings-frame.ts) rather than in its own window. */
-const embedded = EMBEDDED || new URLSearchParams(location.search).has("embedded");
+const embedded = IN_ISLAND;
 
 function tellIsland(message: string) {
   window.parent.postMessage(message, location.origin);
@@ -2402,10 +2445,25 @@ async function main() {
       if (e.source === window.parent && e.origin === location.origin && e.data === FRAME_SHOWN) backOnScreen();
     });
   } else {
-    window.addEventListener("focus", backOnScreen);
+    // A change handed over by the island's Settings (handoff.ts) shows once
+    // the window is in front, after any redraw that would wipe it.
+    const handoff = async () => {
+      if (stale) {
+        stale = false;
+        await rerender();
+      }
+      takeHandoff(() => showPage("agents"));
+    };
+    window.addEventListener("focus", () => void handoff());
+    window.addEventListener("storage", (e) => {
+      if (e.key === HANDOFF_KEY && e.newValue && document.hasFocus()) void handoff();
+    });
   }
   void onEvent<Settings>("settings-changed", (s) => {
-    if (Object.entries(s).some(([k, v]) => JSON.stringify(v) !== JSON.stringify((settings as unknown as Record<string, unknown>)[k]))) {
+    // Where the island sits and its size, saved as it is dragged or resized,
+    // are on no page here: they never draw the page again, which would wipe
+    // what is being typed (an API key) or the diff open.
+    if (Object.entries(s).some(([k, v]) => !UNSHOWN_KEYS.has(k) && JSON.stringify(v) !== JSON.stringify((settings as unknown as Record<string, unknown>)[k]))) {
       stale = true;
     }
     const before = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
@@ -2417,6 +2475,9 @@ async function main() {
     applyLanguage();
   });
 }
+
+/** The settings the island keeps for itself, shown by no page of Settings. */
+const UNSHOWN_KEYS = new Set(["islandDock", "islandOffset", "islandFloat", "islandWidth", "islandHeight"]);
 
 /** Inside the island, Settings take the island's look (settings.css, html.look-new). */
 function applyLook() {

@@ -61,11 +61,13 @@ pub fn stdout(agent: &str, event: &str, decision: Option<&str>, question: Option
 }
 
 /// The Antigravity tools the island's own chat (antigravity_cli.rs) shows a
-/// card for: shell commands, MCP tools and the browser — what agy would ask
-/// about, and what runs on nobody's say once agy's own confirmation is off.
-/// Reading and writing workspace files needs none, and neither does a call
-/// of Lumo's own email or plan tool, even through agy's `call_mcp_tool`, nor
-/// one of the user's own tools, which Lumo asks for itself.
+/// card for: shell commands, MCP tools, the browser, the web (a page read or a
+/// search carries in its address or its words whatever the model put there),
+/// and any tool not on the lists below — what agy would ask about, and what
+/// runs on nobody's say once agy's own confirmation is off. Its file tools
+/// need none here (reads_outside and writes_outside decide by the path), and
+/// neither does a call of Lumo's own email or plan tool, even through agy's
+/// `call_mcp_tool`, nor one of the user's own tools, which Lumo asks for itself.
 pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     // The user's own tools: Lumo asks for each call itself (tools.rs in the app).
     if crate::mcp::user_tool_call(tool, input) {
@@ -83,8 +85,111 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     }) {
         return false;
     }
-    let tool = tool.to_ascii_lowercase();
-    ["command", "shell", "terminal", "mcp", "browser"].iter().any(|w| tool.contains(w))
+    let tool = agy_tool(tool);
+    if tool.is_empty() {
+        return false;
+    }
+    if ["command", "shell", "terminal", "mcp", "browser"].iter().any(|w| tool.contains(w)) {
+        return true;
+    }
+    // Known, and on nobody's say only within what reads_outside and
+    // writes_outside let through; anything else (`read_url_content`,
+    // `search_web`, a subagent, a tool agy adds later) is a card.
+    !(AGY_READS.contains(&tool.as_str()) || AGY_WRITES.contains(&tool.as_str()) || AGY_OWN.contains(&tool.as_str()))
+}
+
+/// Antigravity's tools that read files or folders: no card inside the run's
+/// workspace (reads_outside).
+const AGY_READS: &[&str] = &[
+    "view_file", "view_file_outline", "view_code_item", "list_dir", "grep_search", "find_by_name", "codebase_search",
+];
+
+/// Antigravity's tools that change files: no card inside the run's workspace (writes_outside).
+const AGY_WRITES: &[&str] = &["write_to_file", "replace_file_content", "multi_replace_file_content"];
+
+/// Antigravity's own bookkeeping, which reaches nothing outside it: a chunk of
+/// a page already read (whose reading was a card), its plan's steps, a word to
+/// the user, its suggestions, its past conversations, an image of its model's.
+const AGY_OWN: &[&str] = &[
+    "view_content_chunk", "task_boundary", "notify_user", "suggested_responses", "trajectory_search", "generate_image",
+];
+
+/// A tool's name as agy's hooks give it, without a namespace (`default_api:view_file`), lower case.
+fn agy_tool(tool: &str) -> String {
+    tool.rsplit(':').next().unwrap_or(tool).trim().to_ascii_lowercase()
+}
+
+/// An Antigravity tool that reads (`view_file`, `list_dir`, `grep_search`…)
+/// a file or folder outside the run's workspace (`workspaces`), or one that
+/// holds keys or passwords wherever it is. agy reads anything without asking
+/// once its own confirmation is off, and what it reads the model can send on
+/// (a page's address, a search): so a read that leaves the workspace — the
+/// chat's folder, the inbox of dropped files, the folders the user shared —
+/// is a card, with its path on it. A path that cannot be placed for sure
+/// (`..`, no workspace known) is one too. Antigravity's own folder
+/// (`.gemini/antigravity…`, its plans) is its own to read.
+pub fn reads_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -> bool {
+    if !AGY_READS.contains(&agy_tool(tool).as_str()) {
+        return false;
+    }
+    let Some(input) = input.and_then(Value::as_object) else { return false };
+    let roots: Vec<String> = workspaces.iter().map(|w| norm_path(w)).filter(|w| !w.is_empty()).collect();
+    input
+        .iter()
+        .filter(|(key, _)| ["file", "path", "dir", "target"].iter().any(|w| key.to_ascii_lowercase().contains(w)))
+        .flat_map(|(_, value)| match value {
+            Value::String(s) => vec![s.as_str()],
+            Value::Array(items) => items.iter().filter_map(Value::as_str).collect(),
+            _ => Vec::new(),
+        })
+        .filter(|path| !path.trim().is_empty())
+        .any(|path| {
+            let p = norm_path(path);
+            if p.split('/').any(|part| part == "..") || holds_secrets(&p) {
+                return true;
+            }
+            let absolute = p.starts_with('/') || p.as_bytes().get(1) == Some(&b':') || p.starts_with("//");
+            let own = p.contains("/.gemini/antigravity");
+            absolute && !own && !roots.iter().any(|r| p == *r || p.starts_with(&format!("{r}/")))
+        })
+}
+
+/// A path (as norm_path writes it) to keys, passwords, sign-ins or a browser's
+/// profile: a card even inside the workspace. The app's live.rs is_sensitive
+/// is the fuller list, for what Lumo itself reads.
+fn holds_secrets(p: &str) -> bool {
+    const DIRS: &[&str] = &[
+        ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".password-store", ".claude", ".codex", ".copilot", ".cursor",
+        ".terraform.d", "gcloud", "usersecrets",
+    ];
+    const NAMES: &[&str] = &[
+        "credentials", "credentials.json", ".credentials.json", ".netrc", "_netrc", ".git-credentials", "id_rsa", "id_ed25519",
+        "id_ecdsa", "auth.json", "oauth_creds.json", ".npmrc", ".pypirc", ".pgpass", ".vault-token", "hosts.yml",
+    ];
+    const ENDINGS: &[&str] = &[".pem", ".key", ".pfx", ".p12", ".kdbx", ".ppk", ".gpg"];
+    const PLACES: &[&str] = &[
+        "/appdata/roaming/microsoft/credentials", "/appdata/local/microsoft/credentials", "/appdata/roaming/microsoft/protect",
+        "/user data/", "/firefox/profiles", "/thunderbird/profiles", "/opera software", "/com.rccrd12.lumo/",
+    ];
+    // Windows drops the dots and spaces a name ends with, and what follows a
+    // colon in a name is one of its streams (`id_rsa:x` is id_rsa).
+    let parts: Vec<&str> = p
+        .split('/')
+        .enumerate()
+        .map(|(i, part)| if i == 0 { part } else { part.split(':').next().unwrap_or(part) })
+        .map(|part| part.trim_end_matches(['.', ' ']))
+        .filter(|part| !part.is_empty())
+        .collect();
+    let name = parts.last().copied().unwrap_or_default();
+    let whole = format!("{}/", parts.join("/"));
+    parts.iter().any(|part| DIRS.contains(part))
+        || NAMES.contains(&name)
+        || ENDINGS.iter().any(|e| name.ends_with(e))
+        || name == ".env"
+        || name.starts_with(".env.")
+        || name.contains("password")
+        // Lumo's own data, but for the inbox of dropped files.
+        || (PLACES.iter().any(|place| whole.contains(place)) && !whole.contains("/com.rccrd12.lumo/inbox/"))
 }
 
 /// An Antigravity file tool that changes something (`write_to_file`,
@@ -474,7 +579,16 @@ mod tests {
         assert!(island_card("send_command_input", None));
         assert!(island_card("Shell", None));
         assert!(!island_card("view_file", None));
+        assert!(!island_card("default_api:view_file", None));
         assert!(island_card("mcp_github_create_issue", None));
+        // The web carries out what the model puts in an address or a search.
+        assert!(island_card("read_url_content", None));
+        assert!(island_card("search_web", None));
+        // A tool agy adds later, or a subagent, is a card until it is known.
+        assert!(island_card("browser_subagent", None));
+        assert!(island_card("deploy_web_app", None));
+        assert!(island_card("create_memory", None));
+        assert!(!island_card("task_boundary", None) && !island_card("view_content_chunk", None));
         assert!(island_card("browser_click", None));
         assert!(!island_card("write_to_file", None));
         let ws = ["C:\\Users\\me\\Lumo".to_string(), "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox".to_string()];
@@ -485,7 +599,23 @@ mod tests {
         assert!(!w("write_to_file", json!({"TargetFile": "notes/a.md"})), "relative: the workspace's");
         assert!(w("write_to_file", json!({"TargetFile": "C:\\Users\\me\\Lumo\\..\\x.txt"})), "leaves it");
         assert!(w("write_to_file", json!({"TargetFile": "C:\\Users\\me\\Lumo2\\x.txt"})), "a sibling is not inside");
-        assert!(!w("view_file", json!({"AbsolutePath": "C:\\Users\\Public\\a.pdf"})), "reading is free");
+        assert!(!w("view_file", json!({"AbsolutePath": "C:\\Users\\Public\\a.pdf"})), "not a write");
+        let r = |tool: &str, input: Value| reads_outside(tool, Some(&input), &ws);
+        assert!(!r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\Lumo\\notes.md"})), "the workspace's own");
+        assert!(!r("view_file", json!({"AbsolutePath": "c:/users/me/appdata/local/com.rccrd12.lumo/inbox/a.pdf"})), "a dropped file");
+        assert!(!r("grep_search", json!({"Query": "fn main", "SearchPath": "src"})), "relative: the workspace's");
+        assert!(r("view_file", json!({"AbsolutePath": "C:\\Users\\Public\\a.pdf"})), "outside: a card");
+        assert!(r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\.aws\\credentials"})), "keys");
+        assert!(r("list_dir", json!({"DirectoryPath": "C:\\Users\\me\\.ssh"})));
+        assert!(r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\Lumo\\.env"})), "keys, even inside");
+        assert!(r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\Lumo\\id_rsa:x"})), "a stream of a key file");
+        assert!(r("codebase_search", json!({"Query": "x", "TargetDirectories": ["C:\\Users\\me\\Lumo", "D:\\other"]})), "one of a list");
+        assert!(r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\Lumo\\..\\x.txt"})), "leaves it");
+        assert!(r("view_file", json!({"AbsolutePath": "\\\\server\\share\\a.txt"})), "a network path");
+        assert!(r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\EBWebView\\x"})), "Lumo's own data");
+        assert!(!r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\.gemini\\antigravity\\brain\\1\\task.md"})), "agy's own plan");
+        assert!(!r("write_to_file", json!({"TargetFile": "C:\\x.txt"})), "not a read");
+        assert!(reads_outside("view_file", Some(&json!({"AbsolutePath": "/x/a"})), &[]), "no workspace known");
         assert!(writes_outside("write_to_file", Some(&json!({"TargetFile": "/x/a"})), &[]), "no workspace known");
         // The home folder or a variable the tool may expand: not the workspace's.
         for path in ["~\\Desktop\\x.txt", "~/x", "%USERPROFILE%\\x.txt", "$HOME/x", "${env:USERPROFILE}\\x", "$env:APPDATA\\x", "file:///C%3A/Users/Public/x"] {

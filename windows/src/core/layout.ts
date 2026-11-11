@@ -164,10 +164,53 @@ export const QUESTION_PICKER_H = 200;
 
 /** The permission card with an email the AI wants to send: room to read it before Send. */
 export const EMAIL_CARD_H = 344;
+/**
+ * The tallest a permission card grows to show all it holds (views.ts
+ * fitHeight): its command scrolls past six lines, so this is room to spare.
+ */
+export const APPROVAL_MAX_H = 440;
 
 /** Chat view grows with the conversation — IslandContainer.chatPromptHeight. */
 export function chatPromptHeight(messageCount: number): number {
   return Math.min(300, 240 + messageCount * 40);
+}
+
+/** The most the chat grows by itself for a long answer; a height dragged to goes past it. */
+export const CHAT_AUTO_MAX_H = 440;
+/** The chat less its messages: the top bar, the buttons over the field, the field. */
+const CHAT_CHROME_H = 156;
+/** One line of a message in the chat (style.css .md-p). */
+const CHAT_LINE_H = 22;
+
+/**
+ * Roughly how many lines the last two messages take in the chat, at about
+ * 7.3 px a letter across the island less 60 px: a table row counts a little
+ * more than a line, a blank line half of one, each message one and a half
+ * for the room around it and its buttons.
+ */
+export function chatTextLines(messages: readonly { content: string }[], islandW: number): number {
+  const perLine = Math.max(20, Math.floor((islandW - 60) / 7.3));
+  let lines = 0;
+  for (const m of messages.slice(-2)) {
+    lines += 1.5;
+    for (const line of m.content.replace(/\r\n/g, "\n").split("\n")) {
+      const text = line.trim();
+      if (!text) lines += 0.5;
+      else if (/^\|?\s*:?-{3,}/.test(text)) continue;
+      else if (text.startsWith("|")) lines += 1.6;
+      else lines += Math.ceil(Array.from(text).length / perLine);
+    }
+  }
+  return lines;
+}
+
+/**
+ * The chat's height for what its last messages say (chatTextLines): taller
+ * than chatPromptHeight for a long answer, up to CHAT_AUTO_MAX_H, so it is
+ * not read through a slit; the island's own when they are short.
+ */
+export function chatAutoHeight(messages: readonly { content: string }[], islandW: number): number {
+  return Math.min(CHAT_AUTO_MAX_H, Math.round(CHAT_CHROME_H + chatTextLines(messages, islandW) * CHAT_LINE_H));
 }
 
 export const MIN_ISLAND_W = 560;
@@ -370,6 +413,32 @@ export function planAskExtra(steps: number): number {
 }
 
 export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372, wardrobe: 236 };
+
+/**
+ * The Tools tab as tall as its rows (50 px each, 5 between them) above "Add a
+ * tool", up to the new look's 372, past which the list scrolls; its full
+ * height while a tool is open or there is none (rows null).
+ */
+export function toolsViewHeight(rows: number | null): number {
+  const most = NEW_LOOK_HEIGHT.tools ?? 372;
+  return rows == null ? most : Math.min(most, 161 + rows * 55);
+}
+
+/** The error card with the last step in grey under the reason (views.ts buildError): one line more. */
+export function errorCardHeight(lastStep: boolean): number {
+  return VIEW_LAYOUTS.error.height + (lastStep ? 18 : 0);
+}
+
+/**
+ * The finished card: Claude's final message on up to three lines (style.css
+ * .title.final), counted from its length at about 7.2 px a letter across the
+ * card's text (the island less 50 px).
+ */
+export function finishedCardHeight(text: string, islandW: number): number {
+  const perLine = Math.max(20, Math.floor((islandW - 50) / 7.2));
+  const lines = Math.min(3, Math.max(1, Math.ceil(Array.from(text).length / perLine)));
+  return VIEW_LAYOUTS.finished.height + (lines - 1) * 21;
+}
 
 /** The new look's question card: its options one under the other, each this tall with its description. */
 export const NEW_LOOK_OPTION_H = 46;

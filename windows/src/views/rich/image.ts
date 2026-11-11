@@ -1,6 +1,11 @@
 // An image in an answer: a line that is only `![alt](https://…)`, as
-// markdown.ts finds it. The image is downloaded and shown at once (the user's
-// choice: asking site by site was too much), from a frame of one height
+// markdown.ts finds it. From a site that keeps no record of who asked for
+// what (AUTO_HOSTS: Wikimedia's), the image is downloaded and shown at once
+// (the user's choice: asking site by site was too much). From any other site
+// it waits for a click on Load image: the address is the AI's to write, so a
+// page or an email it read could have it put the user's data in it
+// (`https://site/p.png?d=…`), and downloading it would hand that to the
+// site with no one asking. Shown, it comes from a frame of one height
 // whatever it shows, so nothing in the chat jumps when the image comes: the
 // download, the image, or the failure with Try again. Settings → Security →
 // Images from the web turns it off: the card is then one row, the site, the
@@ -27,6 +32,8 @@ import { State } from "../../core/state";
 import "./image.css";
 
 export const IMAGE_STRINGS = {
+  load: N_("Load image"),
+  loadHint: N_("Lumo asks before downloading from {site}: the AI wrote this address."),
   loading: N_("Loading the image…"),
   failed: N_("Couldn't load the image"),
   retry: N_("Try again"),
@@ -101,6 +108,25 @@ export function siteOf(url: string): string {
     return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
   } catch {
     return "";
+  }
+}
+
+/**
+ * The sites whose images come at once: they keep no record a writer of the
+ * address could read back. Any other site's image waits for a click.
+ */
+const AUTO_HOSTS = new Set(["upload.wikimedia.org"]);
+
+/** Images the user clicked Load image for, this session. */
+const asked = new Set<string>();
+
+/** Whether `url`'s image downloads without a click: https, from AUTO_HOSTS. */
+export function loadsAtOnce(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && u.port === "" && AUTO_HOSTS.has(u.hostname.toLowerCase().replace(/\.$/, ""));
+  } catch {
+    return false;
   }
 }
 
@@ -193,7 +219,7 @@ function load(url: string): Promise<void> {
     const wait = turn();
     if (wait) await wait;
     try {
-      const data = await Bridge.webImage(url);
+      const data = await Bridge.webImage(url, asked.has(url));
       const bytes = data ? new Uint8Array(data) : null;
       const type = bytes && imageType(bytes);
       if (!bytes || !type) {
@@ -257,6 +283,38 @@ export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
       openBtn,
     );
     return h("div", { class: "rc-card rc-image off" }, foot);
+  }
+
+  // From a site that may keep a record: the same row, with Load image. The
+  // click downloads it, with the same checks, and the card becomes the image.
+  if (!asked.has(url) && !loadsAtOnce(url)) {
+    const openBtn = h("button", { class: "rc-nav", type: "button", title: t(IMAGE_STRINGS.open), "aria-label": t(IMAGE_STRINGS.open) }, svg(ICONS.arrowUpRight, 12));
+    openBtn.addEventListener("click", () => void Bridge.openUrl(url));
+    const loadBtn = h("button", { class: "rc-image-btn", type: "button", text: t(IMAGE_STRINGS.load), title: `${t(IMAGE_STRINGS.loadHint, { site })}\n${url}`, "aria-label": t(IMAGE_STRINGS.load) });
+    const caption = alt || t(IMAGE_STRINGS.image);
+    const row = h(
+      "div",
+      { class: "rc-card rc-image off" },
+      h(
+        "div",
+        { class: "rc-image-foot" },
+        h("span", { class: "rc-image-src", title: url }, svg(ICONS.globe, 10, { stroke: 1.8 }), h("span", { text: site })),
+        h("span", { class: "rc-image-cap", text: caption, title: caption }),
+        h("span", { class: "rc-sp" }),
+        loadBtn,
+        openBtn,
+      ),
+    );
+    loadBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      asked.add(url);
+      if (asked.size > 400) asked.delete(asked.values().next().value as string);
+      const parent = row.parentElement;
+      if (!parent) return;
+      parent.insertBefore(renderImage(alt, url, nth), row);
+      row.remove();
+    });
+    return row;
   }
 
   // Shown, the picture itself, its corners rounded, with no box around it;
@@ -351,4 +409,5 @@ export function resetImages() {
   clear.clear();
   faded.clear();
   cards.clear();
+  asked.clear();
 }

@@ -1502,27 +1502,35 @@ pub fn serve_list() -> Value {
 }
 
 /// Calls of a tool the user just allowed on Claude Code's own card (pipe.rs):
-/// that click covers the call that follows, once, for a short while.
-static ALLOWED: Mutex<Vec<(String, Instant)>> = Mutex::new(Vec::new());
+/// that click covers the call that follows, once, for a short while, and
+/// only with the very input the card showed.
+static ALLOWED: Mutex<Vec<(String, Value, Instant)>> = Mutex::new(Vec::new());
 
-/// Claude Code's card for `tool` (`mcp__lumo_tools__<id>`) was allowed with a click.
-pub fn note_allowed(tool: &str) {
+/// Claude Code's card for `tool` (`mcp__lumo_tools__<id>`) with `input` was allowed with a click.
+pub fn note_allowed(tool: &str, input: &Value) {
     let Some(id) = tool.strip_prefix(&format!("mcp__{SERVER}__")) else { return };
     let mut allowed = ALLOWED.lock().unwrap_or_else(|e| e.into_inner());
-    allowed.retain(|(_, at)| at.elapsed() < ALLOWED_FOR);
-    allowed.push((id.to_string(), Instant::now()));
+    allowed.retain(|(_, _, at)| at.elapsed() < ALLOWED_FOR);
+    allowed.push((id.to_string(), input.clone(), Instant::now()));
 }
 
-fn take_allowed(id: &str) -> bool {
+fn take_allowed(id: &str, input: &Value) -> bool {
     let mut allowed = ALLOWED.lock().unwrap_or_else(|e| e.into_inner());
-    allowed.retain(|(_, at)| at.elapsed() < ALLOWED_FOR);
-    match allowed.iter().position(|(a, _)| a == id) {
+    allowed.retain(|(_, _, at)| at.elapsed() < ALLOWED_FOR);
+    match allowed.iter().position(|(a, i, _)| a == id && same_input(i, input)) {
         Some(i) => {
             allowed.remove(i);
             true
         }
         None => false,
     }
+}
+
+/// The input the card showed, and the one the call came with: the same values
+/// (an empty input and none at all alike).
+fn same_input(shown: &Value, called: &Value) -> bool {
+    let empty = |v: &Value| v.is_null() || v.as_object().is_some_and(|o| o.is_empty());
+    shown == called || (empty(shown) && empty(called))
 }
 
 /// When a call of one of the user's tools needs a card. A tool the user
@@ -1594,7 +1602,7 @@ pub fn needs_card(tool: &ToolInfo, asking: Asking, sandboxed: bool) -> bool {
 /// Code's own card when there was one, else an Allow / Deny card on the island.
 async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value) -> Result<(), String> {
     let m = &tool.manifest;
-    if take_allowed(&m.id) {
+    if take_allowed(&m.id, input) {
         return Ok(());
     }
     let summary = m.review.as_ref().map(|r| r.summary.clone()).unwrap_or_default();
@@ -2053,11 +2061,16 @@ mod tests {
 
     #[test]
     fn a_click_on_claude_codes_own_card_covers_one_call_of_that_tool() {
-        note_allowed("mcp__lumo_tools__bench_card");
-        note_allowed("mcp__other__bench_card");
-        assert!(take_allowed("bench_card"));
-        assert!(!take_allowed("bench_card"), "once");
-        assert!(!take_allowed("other_card"));
+        let input = json!({ "runs": 3, "target": "C:/a" });
+        note_allowed("mcp__lumo_tools__bench_card", &input);
+        note_allowed("mcp__other__bench_card", &input);
+        // Another input than the card showed is not what was allowed.
+        assert!(!take_allowed("bench_card", &json!({ "runs": 3, "target": "C:/b" })));
+        assert!(take_allowed("bench_card", &json!({ "target": "C:/a", "runs": 3 })));
+        assert!(!take_allowed("bench_card", &input), "once");
+        assert!(!take_allowed("other_card", &input));
+        note_allowed("mcp__lumo_tools__bench_card", &Value::Null);
+        assert!(take_allowed("bench_card", &json!({})), "no input either way");
     }
 
     /// A reviewed tool as the chat sees it: `verdict` from the supervisor, `trust` from the user.

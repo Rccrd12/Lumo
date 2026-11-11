@@ -159,7 +159,7 @@ pub async fn run(app: AppHandle) {
                     None => Vec::new(),
                 };
                 seen = Some(newest);
-                cache = inbox.messages.iter().map(|(m, at)| (inbox.entries[&m.id].clone(), (m.clone(), *at))).collect();
+                cache = cache_of(&inbox);
                 let messages = inbox.messages.into_iter().map(|(m, _)| m).collect();
                 crate::mail::from_outlook(&app, Some(Ok((inbox.unread, messages))), fresh);
             }
@@ -861,7 +861,12 @@ impl Session {
                 let id = book().lock().unwrap().id_for(&entry, &store);
                 let at = item.date("ReceivedTime").unwrap_or(0.0);
                 let message = match cached {
-                    Some(m) => m,
+                    // The id it had may be gone since (the Book starts again
+                    // past MOST_IDS): it goes under the one it has now.
+                    Some(mut m) => {
+                        m.id = id.clone();
+                        m
+                    }
                     None => {
                         let guarded = read.filter(|g| !g.body.is_empty()).or_else(|| self.guarded(&store, &entry, RAW_BODY_CHARS, false));
                         message_of(&item, &id, crate::mail::BODY_CHARS, guarded, Quiet::Yes)
@@ -879,6 +884,16 @@ impl Session {
         }
         Ok(Some(Inbox { unread, messages: all, entries }))
     }
+}
+
+/// What the next look already knows, by EntryID. A message whose id has no
+/// EntryID is left out (read again next time) rather than taking Lumo down.
+fn cache_of(inbox: &Inbox) -> HashMap<String, (Message, f64)> {
+    inbox
+        .messages
+        .iter()
+        .filter_map(|(m, at)| Some((inbox.entries.get(&m.id)?.clone(), (m.clone(), *at))))
+        .collect()
 }
 
 /// What a look at the inboxes found.
@@ -1647,5 +1662,28 @@ mod tests {
         assert_eq!(book.entry_of("outlook-1"), Some(("CCCC".into(), "S1".into())));
         assert_eq!(book.id_for("CCCC", "S1"), "outlook-1");
         assert!(is_id("outlook-3") && !is_id("inbox:3") && is_folder("outlook:ada/Inbox") && !is_folder("Sent"));
+    }
+
+    #[test]
+    fn a_cached_email_whose_id_started_again_never_takes_lumo_down() {
+        let mut book = Book::default();
+        let old = book.id_for("E1", "S1");
+        // Past MOST_IDS (wide agent searches), the ids start again.
+        for i in 0..MOST_IDS {
+            book.id_for(&format!("X{i}"), "S1");
+        }
+        let new = book.id_for("E1", "S1");
+        assert_ne!(old, new);
+        assert_eq!(book.entry_of(&old), None);
+        // A message cached before still carrying its old id: left out of the
+        // cache (read again next time), where `entries[&m.id]` panicked and,
+        // with panic = "abort", closed Lumo.
+        let stale = Message { id: old.clone(), subject: "Hi".into(), ..Message::default() };
+        let inbox = Inbox { unread: 1, messages: vec![(stale, 1.0)], entries: HashMap::from([(new.clone(), "E1".to_string())]) };
+        assert!(cache_of(&inbox).is_empty());
+        // As look() gives it now, under the id it has now: kept by its EntryID.
+        let fresh = Message { id: new.clone(), subject: "Hi".into(), ..Message::default() };
+        let inbox = Inbox { unread: 1, messages: vec![(fresh.clone(), 2.0)], entries: HashMap::from([(new, "E1".to_string())]) };
+        assert_eq!(cache_of(&inbox).get("E1"), Some(&(fresh, 2.0)));
     }
 }
