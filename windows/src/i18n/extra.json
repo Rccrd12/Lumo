@@ -5009,6 +5009,18 @@
    "id": "Antigravity CLI terlalu lama dan dihentikan.",
    "it": "Antigravity CLI ci ha messo troppo ed è stato fermato."
   },
+  "The server sent nothing for {minutes} minutes: the answer was stopped.": {
+   "zh-Hans": "服务器 {minutes} 分钟没有发送任何内容：回答已停止。",
+   "hi": "सर्वर ने {minutes} मिनट तक कुछ नहीं भेजा: जवाब रोक दिया गया।",
+   "es": "El servidor no envió nada durante {minutes} minutos: la respuesta se detuvo.",
+   "ar": "لم يرسل الخادم أي شيء لمدة {minutes} دقيقة: تم إيقاف الإجابة.",
+   "fr": "Le serveur n'a rien envoyé pendant {minutes} minutes : la réponse a été arrêtée.",
+   "bn": "সার্ভার {minutes} মিনিট কিছু পাঠায়নি: উত্তর থামানো হয়েছে।",
+   "pt-BR": "O servidor não enviou nada por {minutes} minutos: a resposta foi interrompida.",
+   "ru": "Сервер ничего не присылал {minutes} мин.: ответ остановлен.",
+   "id": "Server tidak mengirim apa pun selama {minutes} menit: jawaban dihentikan.",
+   "it": "Il server non ha mandato niente per {minutes} minuti: la risposta è stata fermata."
+  },
   "Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.": {
    "zh-Hans": "Antigravity CLI 需要的权限未获批准。安装 Lumo 的 Antigravity hooks，即可在灵动岛中批准命令。",
    "hi": "Antigravity CLI को एक अनुमति चाहिए थी जो नहीं मिली। आइलैंड से कमांड मंज़ूर करने के लिए Lumo के Antigravity hooks इंस्टॉल करें।",

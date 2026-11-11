@@ -1,7 +1,7 @@
 // Chat view: the prompt box, the bubbles, the typing dots and the model picker.
 //
 // Answers, and questions once sent, are rendered as Markdown (markdown.ts).
-// A local model streams its answer: Rust sends `chat-delta` events with the
+// Every chat streams its answer (a local model, the cloud APIs, the agents): Rust sends `chat-delta` events with the
 // text visible so far. The model name above the text field opens the picker:
 // provider chips, then the models of the chosen provider, asked for only once
 // it is picked.
