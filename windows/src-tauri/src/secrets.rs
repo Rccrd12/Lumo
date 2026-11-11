@@ -42,6 +42,9 @@ pub const KNOWN_KEYS: &[&str] = &[
     "mail-app-password-5",
     // The live activities' calendar (calendar.rs): its iCal address, secret by nature.
     "calendar-ics-url",
+    // The webhooks' secrets, by watch (listen_events.rs): without it here
+    // none was ever stored, and every webhook got a new one at each launch.
+    "listen-webhooks",
 ];
 
 fn entry(key: &str) -> Option<Entry> {
@@ -86,6 +89,11 @@ mod tests {
                 assert!(super::KNOWN_KEYS.contains(&slot_key(base, slot).as_str()), "{base} {slot}");
             }
         }
+    }
+
+    #[test]
+    fn the_webhooks_secrets_can_be_stored() {
+        assert!(super::KNOWN_KEYS.contains(&crate::listen_events::SECRETS_KEY));
     }
 
     #[test]

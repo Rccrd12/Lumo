@@ -146,6 +146,24 @@ fn push_arg(line: &mut String, arg: &str) {
     line.push('"');
 }
 
+/// What a tool is given of Lumo's own environment: where Windows, the
+/// programs and the user's folders are, and the language and time zone. Not
+/// the rest, which can hold keys and tokens (an `OPENAI_API_KEY`, a
+/// `GITHUB_TOKEN`) that are no tool's to read. Names compared as Windows does.
+const PASSED_ON: &[&str] = &[
+    "ALLUSERSPROFILE", "APPDATA", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432",
+    "COMPUTERNAME", "COMSPEC", "HOME", "HOMEDRIVE", "HOMEPATH", "LANG", "LANGUAGE", "LC_ALL", "LOCALAPPDATA",
+    "NUMBER_OF_PROCESSORS", "OS", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432",
+    "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "PROGRAMDATA", "PROGRAMFILES",
+    "PROGRAMFILES(X86)", "PROGRAMW6432", "PUBLIC", "SYSTEMDRIVE", "SYSTEMROOT", "TZ", "USERDOMAIN", "USERNAME",
+    "USERPROFILE", "WINDIR",
+];
+
+/// Whether a variable of Lumo's own environment is passed on to a tool.
+pub fn passed_on(name: &std::ffi::OsStr) -> bool {
+    name.to_str().is_some_and(|n| PASSED_ON.iter().any(|p| p.eq_ignore_ascii_case(n)))
+}
+
 /// The environment block for CREATE_UNICODE_ENVIRONMENT: `base` (Lumo's own,
 /// in UTF-16) with `extra` on top, names compared without regard to case, a
 /// later one replacing an earlier one. Sorted by name the same way, each
@@ -533,6 +551,7 @@ mod win {
             .ok_or_else(|| format!("The path {} can't be passed to Windows.", launch.exe.display()))?;
         let mut command: Vec<u16> = super::command_line(program, launch.args).encode_utf16().chain([0]).collect();
         let base = std::env::vars_os()
+            .filter(|(k, _)| super::passed_on(k))
             .map(|(k, v)| (k.encode_wide().collect(), v.encode_wide().collect()))
             .collect();
         let env = super::env_block(base, launch.env);
@@ -726,6 +745,16 @@ mod tests {
 
     fn line(args: &[&str]) -> String {
         command_line("C:\\Program Files\\Python\\python.exe", &args.iter().map(|a| a.to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn a_tool_is_given_where_things_are_and_no_keys() {
+        for name in ["PATH", "Path", "SystemRoot", "APPDATA", "LocalAppData", "USERPROFILE", "ProgramFiles(x86)", "TZ"] {
+            assert!(passed_on(std::ffi::OsStr::new(name)), "{name}");
+        }
+        for name in ["OPENAI_API_KEY", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "AWS_SECRET_ACCESS_KEY", "PYTHONPATH", "PYTHONSTARTUP", "NODE_OPTIONS", "LUMO_TOOL_ALLOW", ""] {
+            assert!(!passed_on(std::ffi::OsStr::new(name)), "{name}");
+        }
     }
 
     #[test]

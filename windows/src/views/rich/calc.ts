@@ -310,9 +310,16 @@ function constant(text: string): number | null {
   }
 }
 
+/** The longest text read as a range. */
+const MAX_RANGE = 200;
+
 /** `0..24`, `-1 … 1`, `0 to 2pi`, `1–100`, with `step 0.5` after it or not. */
 export function parseRange(text: string): { min: number; max: number; step: number | null } | null {
-  const m = /^\s*\[?\s*(.+?)\s*(?:\.\.\.?|…|\bto\b|–|—)\s*(.+?)\s*\]?\s*(?:\bstep\s*[:=]?\s*(.+?))?\s*$/i.exec(text);
+  // A range is a few words. Longer, or with runs of spaces, the pattern below
+  // tries its ways of splitting it for seconds (600 spaces: about 5 s).
+  if (text.length > MAX_RANGE) return null;
+  text = text.replace(/\s+/g, " ").trim();
+  const m = /^\[?\s*(.+?)\s*(?:\.\.\.?|…|\bto\b|–|—)\s*(.+?)\s*\]?\s*(?:\bstep\s*[:=]?\s*(.+?))?\s*$/i.exec(text);
   if (!m) return null;
   let min = constant(m[1]);
   let max = constant(m[2]);

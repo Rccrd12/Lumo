@@ -2923,7 +2923,10 @@ impl Imap {
         let mut parts = Vec::new();
         loop {
             let mut line = Vec::new();
-            let n = self.stream.read_until(b'\n', &mut line).await.map_err(|e| e.to_string())?;
+            // A line never reads past what is left to read: a server that never
+            // ends one cannot fill the memory before `count` stops it.
+            let room = self.limit.saturating_sub(self.read).saturating_add(1) as u64;
+            let n = (&mut self.stream).take(room).read_until(b'\n', &mut line).await.map_err(|e| e.to_string())?;
             if n == 0 {
                 return Err(t("The mail server closed the connection."));
             }
@@ -2940,7 +2943,9 @@ impl Imap {
     }
 
     fn count(&mut self, n: usize) -> Result<(), String> {
-        self.read += n;
+        // Saturating: a literal announced as {18446744073709551615} is too much,
+        // never a wrap back to a small number.
+        self.read = self.read.saturating_add(n);
         if self.read > self.limit {
             return Err(t("The mail server sent too much."));
         }

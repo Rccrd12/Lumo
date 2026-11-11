@@ -1216,6 +1216,7 @@ const FAR_PERIOD_MS: u64 = 100;
 /// visible. Parked on a condvar the rest of the time.
 pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
     std::thread::spawn(move || {
+        let mut pressed_in_panel = false;
         let mut was_down = false;
         // Remembered across wakes so a display change while hidden is noticed the
         // moment the island comes back.
@@ -1300,6 +1301,12 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // file drag: make sure the drop target is ours before it arrives.
                 let down = left_button_down();
                 let acting = crate::computer::acting();
+                let in_panel = x >= 0.0 && x <= size.0 && y >= 0.0 && y <= size.1;
+                // Where the press began: on the panel's empty part, it was meant
+                // for the window under it (see `dragging`).
+                if down && !was_down {
+                    pressed_in_panel = in_panel && !on_island;
+                }
                 if down && !was_down && !acting {
                     if !on_island {
                         let _ = win.emit("outside-press", ());
@@ -1327,11 +1334,10 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // drop" cursor. So while a button is held anywhere over the panel,
                 // the whole panel takes the mouse, which also makes the drop zone
                 // forgiving.
-                let dragging = down
-                    && x >= 0.0
-                    && x <= size.0
-                    && y >= 0.0
-                    && y <= size.1;
+                // Not for a press that began on the panel's empty part: that
+                // is a click or a drag in the window under it, and taking the
+                // mouse half way through left that window without its release.
+                let dragging = down && in_panel && !pressed_in_panel;
 
                 let accept = (on_island || dragging) && !acting;
                 if gate.ignoring.load(Ordering::Relaxed) == accept {

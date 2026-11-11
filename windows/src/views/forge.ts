@@ -45,6 +45,7 @@ export const FORGE_STRINGS = {
   files: N_("Files"),
   runs: N_("Runs"),
   yourScript: N_("Your script, where it is"),
+  commandLine: N_("What Try runs"),
   tryIt: N_("Try"),
   trying: N_("Trying…"),
   worked: N_("It works · {time}"),
@@ -381,6 +382,14 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
       }
     }
 
+    // What Try and the agents run, whole: the program by its full path and
+    // every argument, with {param} where a value goes. A tool's arguments are
+    // never only in its tool.json.
+    const words = [isAbsolutePath(d.entry) ? d.entry : d.entry.replace(/^.*[\\/]/, ""), ...(d.args ?? [])];
+    const quote = (w: string) => (w === "" || /[\s"]/.test(w) ? `"${w.replace(/"/g, '\\"')}"` : w);
+    const commandLine = h("pre", { class: "forge-code forge-cmdline" }, h("code", { text: words.map(quote).join(" ") }));
+    commandLine.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
+
     // Try: the values, the button, and how it went.
     const key = draftKey(d);
     const mine = tried?.key === key ? tried : null;
@@ -417,6 +426,7 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
       section(TOOLS_STRINGS.params, params),
       section(FORGE_STRINGS.needs, needs),
       section(FORGE_STRINGS.files, files),
+      section(FORGE_STRINGS.commandLine, commandLine),
       h("div", { class: "forge-try" },
         d.params.length ? h("div", { class: "forge-fields" }, ...d.params.map(paramField)) : null,
         h("div", { class: "forge-buttons" }, tryBtn, saveBtn),

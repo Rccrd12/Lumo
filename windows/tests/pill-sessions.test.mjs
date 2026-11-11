@@ -40,6 +40,17 @@ test("only another session at work counts as busy", () => {
   assert.equal(r.othersBusy("p", ""), false);
 });
 
+test("the idle notice after a turn does not put the session back at work", () => {
+  const r = new PillSessions(clock().now);
+  r.touch("p", "a", "/a", "a", "UserPromptSubmit");
+  r.touch("p", "b", "/b", "b", "UserPromptSubmit");
+  r.touch("p", "b", "/b", "b", "Stop");
+  // A minute later: "Claude is waiting for your input".
+  r.touch("p", "b", "/b", "b", "Notification");
+  assert.equal(r.othersBusy("p", "a"), false);
+  assert.equal(r.live("p").find((s) => s.id === "b").midTurn, false);
+});
+
 test("ending a session leaves the others; no id ends them all", () => {
   const r = new PillSessions(clock().now);
   r.touch("p", "a", "/a", "a", "SessionStart");

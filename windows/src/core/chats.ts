@@ -55,12 +55,28 @@ function isChat(c: unknown): c is SavedChat {
   return !!x && typeof x.id === "string" && typeof x.title === "string" && Array.isArray(x.turns);
 }
 
-function store(list: SavedChat[]) {
-  try {
-    storage()?.setItem(KEY, JSON.stringify(list));
-  } catch {
-    // Storage full or unavailable: the history is a convenience, the chat goes on.
+/**
+ * Writes the list, newest first, and returns what was kept. Storage full: the
+ * oldest chats go until it fits. Kept whole, the list never fit again, and
+ * nothing more was saved from then on, the newest chat included.
+ */
+function store(list: SavedChat[]): SavedChat[] {
+  const s = storage();
+  if (!s) return list;
+  // An empty list is written too (the last chat deleted); a list that is not
+  // keeps one chat at least.
+  for (let keep = list.length; keep >= Math.min(1, list.length); keep--) {
+    const kept = list.slice(0, keep);
+    try {
+      s.setItem(KEY, JSON.stringify(kept));
+      return kept;
+    } catch {
+      // Full: one chat fewer.
+    }
   }
+  // Not even the newest fits, or storage is unavailable: the history is a
+  // convenience, the chat goes on.
+  return list;
 }
 
 /** The first question, on one line and shortened. */
@@ -100,8 +116,7 @@ export function saveChat(chat: SavedChat): SavedChat[] {
   unsaved.delete(chat.id);
   const saved = ticks && Object.keys(ticks).length ? { ...chat, checklists: ticks } : chat;
   const list = [saved, ...chats.filter((c) => c.id !== chat.id)].slice(0, MAX_CHATS);
-  store(list);
-  return list;
+  return store(list);
 }
 
 /** What the user ticked in a chat's checklists. */

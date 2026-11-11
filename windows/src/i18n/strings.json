@@ -24,17 +24,6 @@
    "ru": "5 часов",
    "id": "5 jam"
   },
-  "AUTO": {
-   "zh-Hans": "自动",
-   "hi": "AUTO",
-   "es": "AUTO",
-   "ar": "تلقائي",
-   "fr": "AUTO",
-   "bn": "অটো",
-   "pt-BR": "AUTO",
-   "ru": "АВТО",
-   "id": "AUTO"
-  },
   "Active pills": {
    "zh-Hans": "活跃标签页",
    "hi": "सक्रिय टैब",
@@ -101,28 +90,6 @@
    "ru": "Всегда",
    "id": "Selalu"
   },
-  "Anthropic API": {
-   "zh-Hans": "Anthropic API",
-   "hi": "Anthropic API",
-   "es": "API de Anthropic",
-   "ar": "واجهة برمجة Anthropic",
-   "fr": "API Anthropic",
-   "bn": "Anthropic API",
-   "pt-BR": "API da Anthropic",
-   "ru": "Anthropic API",
-   "id": "API Anthropic"
-  },
-  "Antigravity hooks": {
-   "zh-Hans": "Antigravity 钩子",
-   "hi": "Antigravity हुक",
-   "es": "Hooks de Antigravity",
-   "ar": "خطافات Antigravity",
-   "fr": "Hooks Antigravity",
-   "bn": "Antigravity হুক",
-   "pt-BR": "Hooks do Antigravity",
-   "ru": "Хуки Antigravity",
-   "id": "Hooks Antigravity"
-  },
   "Approved": {
    "zh-Hans": "已批准",
    "hi": "अनुमोदित",
@@ -134,17 +101,6 @@
    "ru": "Одобрено",
    "id": "Disetujui"
   },
-  "Ask Claude": {
-   "zh-Hans": "问 Claude",
-   "hi": "Claude से पूछें",
-   "es": "Preguntar a Claude",
-   "ar": "اسأل Claude",
-   "fr": "Demander à Claude",
-   "bn": "Claude-কে জিজ্ঞেস করুন",
-   "pt-BR": "Perguntar ao Claude",
-   "ru": "Спросить Claude",
-   "id": "Tanya Claude"
-  },
   "Ask me anything…": {
    "zh-Hans": "问我任何事…",
    "hi": "कुछ भी पूछें…",
@@ -155,17 +111,6 @@
    "pt-BR": "Pergunte qualquer coisa…",
    "ru": "Спроси меня о чём угодно…",
    "id": "Tanyakan apa saja…"
-  },
-  "Behavior": {
-   "zh-Hans": "行为",
-   "hi": "व्यवहार",
-   "es": "Comportamiento",
-   "ar": "السلوك",
-   "fr": "Comportement",
-   "bn": "আচরণ",
-   "pt-BR": "Comportamento",
-   "ru": "Поведение",
-   "id": "Perilaku"
   },
   "Busiest day": {
    "zh-Hans": "最忙的一天",
@@ -233,28 +178,6 @@
    "ru": "Claude Code завершил",
    "id": "Claude Code selesai"
   },
-  "Claude Code hooks": {
-   "zh-Hans": "Claude Code 钩子",
-   "hi": "Claude Code हुक",
-   "es": "Hooks de Claude Code",
-   "ar": "خطافات Claude Code",
-   "fr": "Hooks Claude Code",
-   "bn": "Claude Code হুক",
-   "pt-BR": "Hooks do Claude Code",
-   "ru": "Хуки Claude Code",
-   "id": "Hooks Claude Code"
-  },
-  "Claude Code is asking": {
-   "zh-Hans": "Claude Code 正在询问",
-   "hi": "Claude Code पूछ रहा है",
-   "es": "Claude Code está preguntando",
-   "ar": "Claude Code يسأل",
-   "fr": "Claude Code demande",
-   "bn": "Claude Code জিজ্ঞেস করছে",
-   "pt-BR": "Claude Code está perguntando",
-   "ru": "Claude Code спрашивает",
-   "id": "Claude Code bertanya"
-  },
   "Claude plan": {
    "zh-Hans": "Claude 计划",
    "hi": "Claude प्लान",
@@ -265,17 +188,6 @@
    "pt-BR": "Plano Claude",
    "ru": "План Claude",
    "id": "Paket Claude"
-  },
-  "Clear": {
-   "zh-Hans": "清除",
-   "hi": "साफ़ करें",
-   "es": "Borrar",
-   "ar": "مسح",
-   "fr": "Effacer",
-   "bn": "মুছুন",
-   "pt-BR": "Limpar",
-   "ru": "Очистить",
-   "id": "Hapus"
   },
   "Clear history": {
    "zh-Hans": "清除历史记录",
@@ -298,17 +210,6 @@
    "pt-BR": "Fechar",
    "ru": "Закрыть",
    "id": "Tutup"
-  },
-  "Codex hooks": {
-   "zh-Hans": "Codex 钩子",
-   "hi": "Codex हुक",
-   "es": "Hooks de Codex",
-   "ar": "خطافات Codex",
-   "fr": "Hooks Codex",
-   "bn": "Codex হুক",
-   "pt-BR": "Hooks do Codex",
-   "ru": "Хуки Codex",
-   "id": "Hooks Codex"
   },
   "Color": {
    "zh-Hans": "颜色",
@@ -497,17 +398,6 @@
    "ru": "Перетащите файлы сюда",
    "id": "Letakkan file Anda di sini"
   },
-  "Duplicate": {
-   "zh-Hans": "重复",
-   "hi": "डुप्लीकेट",
-   "es": "Duplicado",
-   "ar": "مكرر",
-   "fr": "Doublon",
-   "bn": "ডুপ্লিকেট",
-   "pt-BR": "Duplicado",
-   "ru": "Дублирующийся",
-   "id": "Duplikat"
-  },
   "Edits": {
    "zh-Hans": "编辑",
    "hi": "संपादित करता है",
@@ -617,39 +507,6 @@
    "pt-BR": "Hooks não instalados",
    "ru": "Хуки не установлены",
    "id": "Hooks belum terpasang"
-  },
-  "Install": {
-   "zh-Hans": "安装",
-   "hi": "इंस्टॉल करें",
-   "es": "Instalar",
-   "ar": "تثبيت",
-   "fr": "Installer",
-   "bn": "ইনস্টল করুন",
-   "pt-BR": "Instalar",
-   "ru": "Установить",
-   "id": "Pasang"
-  },
-  "Install hooks": {
-   "zh-Hans": "安装 Hooks",
-   "hi": "हुक इंस्टॉल करें",
-   "es": "Instalar hooks",
-   "ar": "تثبيت الخطافات",
-   "fr": "Installer les hooks",
-   "bn": "হুক ইনস্টল করুন",
-   "pt-BR": "Instalar hooks",
-   "ru": "Установить хуки",
-   "id": "Pasang hooks"
-  },
-  "Install relay": {
-   "zh-Hans": "安装中继",
-   "hi": "रिले इंस्टॉल करें",
-   "es": "Instalar relay",
-   "ar": "تثبيت المُرحِّل",
-   "fr": "Installer le relais",
-   "bn": "রিলে ইনস্টল করুন",
-   "pt-BR": "Instalar relay",
-   "ru": "Установить ретранслятор",
-   "id": "Pasang relay"
   },
   "Integrations": {
    "zh-Hans": "集成",
@@ -793,17 +650,6 @@
    "pt-BR": "Meus PRs",
    "ru": "Мои PR",
    "id": "PR saya"
-  },
-  "New email": {
-   "zh-Hans": "新邮件",
-   "hi": "नया ईमेल",
-   "es": "Nuevo email",
-   "ar": "بريد جديد",
-   "fr": "Nouvel email",
-   "bn": "নতুন ইমেইল",
-   "pt-BR": "Novo email",
-   "ru": "Новое письмо",
-   "id": "Email baru"
   },
   "Next": {
    "zh-Hans": "下一步",
@@ -970,17 +816,6 @@
    "ru": "Открыть в n8n",
    "id": "Buka di n8n"
   },
-  "Open settings": {
-   "zh-Hans": "打开设置",
-   "hi": "सेटिंग्स खोलें",
-   "es": "Abrir Ajustes",
-   "ar": "فتح الإعدادات",
-   "fr": "Ouvrir les réglages",
-   "bn": "সেটিংস খোলো",
-   "pt-BR": "Abrir Ajustes",
-   "ru": "Открыть настройки",
-   "id": "Buka Pengaturan"
-  },
   "Open terminal": {
    "zh-Hans": "打开终端",
    "hi": "टर्मिनल खोलें",
@@ -1080,17 +915,6 @@
    "ru": "Предыдущий",
    "id": "Sebelumnya"
   },
-  "Projects": {
-   "zh-Hans": "项目",
-   "hi": "प्रोजेक्ट",
-   "es": "Proyectos",
-   "ar": "المشاريع",
-   "fr": "Projets",
-   "bn": "প্রজেক্ট",
-   "pt-BR": "Projetos",
-   "ru": "Проекты",
-   "id": "Proyek"
-  },
   "Quit": {
    "zh-Hans": "退出",
    "hi": "छोड़ें",
@@ -1156,17 +980,6 @@
    "pt-BR": "Reiniciando…",
    "ru": "Сброс…",
    "id": "Mereset…"
-  },
-  "Restart Lumo": {
-   "zh-Hans": "重启 Lumo",
-   "hi": "Lumo को पुनः आरंभ करें",
-   "es": "Reiniciar Lumo",
-   "ar": "إعادة تشغيل Lumo",
-   "fr": "Redémarrer Lumo",
-   "bn": "Lumo পুনরায় শুরু করুন",
-   "pt-BR": "Reiniciar Lumo",
-   "ru": "Перезапустить Lumo",
-   "id": "Mulai ulang Lumo"
   },
   "Retry": {
    "zh-Hans": "重试",
@@ -1300,17 +1113,6 @@
    "ru": "Поделиться картинкой",
    "id": "Bagikan gambar"
   },
-  "Shortcut": {
-   "zh-Hans": "快捷键",
-   "hi": "शॉर्टकट",
-   "es": "Atajo",
-   "ar": "الاختصار",
-   "fr": "Raccourci",
-   "bn": "শর্টকাট",
-   "pt-BR": "Atalho",
-   "ru": "Сочетание клавиш",
-   "id": "Pintasan"
-  },
   "Shortcuts": {
    "zh-Hans": "快捷键",
    "hi": "शॉर्टकट",
@@ -1388,17 +1190,6 @@
    "ru": "Задачи",
    "id": "Tugas"
   },
-  "Tests": {
-   "zh-Hans": "测试",
-   "hi": "परीक्षण करता है",
-   "es": "Prueba",
-   "ar": "يختبر",
-   "fr": "Teste",
-   "bn": "পরীক্ষা করে",
-   "pt-BR": "Testa",
-   "ru": "Тестирует",
-   "id": "Menguji"
-  },
   "To": {
    "zh-Hans": "收件人",
    "hi": "प्रति",
@@ -1443,39 +1234,6 @@
    "ru": "Топ проект",
    "id": "Proyek teratas"
   },
-  "Uninstall": {
-   "zh-Hans": "卸载",
-   "hi": "अनइंस्टॉल करें",
-   "es": "Desinstalar",
-   "ar": "إلغاء التثبيت",
-   "fr": "Désinstaller",
-   "bn": "আনইনস্টল করুন",
-   "pt-BR": "Desinstalar",
-   "ru": "Удалить",
-   "id": "Hapus"
-  },
-  "Uninstall relay": {
-   "zh-Hans": "卸载中继",
-   "hi": "रिले अनइंस्टॉल करें",
-   "es": "Desinstalar relay",
-   "ar": "إلغاء تثبيت المُرحِّل",
-   "fr": "Désinstaller le relais",
-   "bn": "রিলে আনইনস্টল করুন",
-   "pt-BR": "Desinstalar relay",
-   "ru": "Удалить ретранслятор",
-   "id": "Hapus relay"
-  },
-  "Unknown": {
-   "zh-Hans": "未知",
-   "hi": "अज्ञात",
-   "es": "Desconocido",
-   "ar": "غير معروف",
-   "fr": "Inconnu",
-   "bn": "অজানা",
-   "pt-BR": "Desconhecido",
-   "ru": "Неизвестно",
-   "id": "Tidak diketahui"
-  },
   "Uploading {name}": {
    "zh-Hans": "正在上传 {name}",
    "hi": "{name} अपलोड हो रहा है",
@@ -1486,17 +1244,6 @@
    "pt-BR": "Enviando {name}",
    "ru": "Загружается {name}",
    "id": "Mengunggah {name}"
-  },
-  "Volume": {
-   "zh-Hans": "音量",
-   "hi": "वॉल्यूम",
-   "es": "Volumen",
-   "ar": "مستوى الصوت",
-   "fr": "Volume",
-   "bn": "ভলিউম",
-   "pt-BR": "Volume",
-   "ru": "Громкость",
-   "id": "Volume"
   },
   "Waiting for a response from Claude Code": {
    "zh-Hans": "等待 Claude Code 回复",
@@ -1673,17 +1420,6 @@
    "pt-BR": "sessões",
    "ru": "сессии",
    "id": "sesi"
-  },
-  "with": {
-   "zh-Hans": "附带",
-   "hi": "के साथ",
-   "es": "con",
-   "ar": "مع",
-   "fr": "avec",
-   "bn": "সহ",
-   "pt-BR": "com",
-   "ru": "с",
-   "id": "dengan"
   },
   "{n} h ago": {
    "zh-Hans": "{n} 小时前",
