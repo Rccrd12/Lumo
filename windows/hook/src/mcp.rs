@@ -490,12 +490,13 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
         Some(v) => v,
         None => return None,
     };
-    // The fields of the input, and those of an object in it ("tool": {…}).
+    // The fields of the input, and those of an object in it that describes
+    // the tool ("tool": {…}), never of its arguments (descriptor_key).
     let mut fields: Vec<(&str, &str)> = Vec::new();
     for (key, v) in input.as_object()? {
         match v {
             Value::String(s) => fields.push((key, s)),
-            Value::Object(inner) => fields.extend(inner.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.as_str(), s)))),
+            Value::Object(inner) if descriptor_key(key) => fields.extend(inner.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.as_str(), s)))),
             _ => {}
         }
     }
@@ -517,6 +518,15 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
         [server] if server.eq_ignore_ascii_case(SERVER) => tools.iter().find_map(|t| ours(t).or_else(|| lumo_tool(t))),
         _ => None,
     }
+}
+
+/// Whether an object under `key` in an MCP call's input describes the tool
+/// called ("tool": {"server": …, "name": …}), and so may name it: never the
+/// arguments the model writes for it ("Arguments", "input", "params"), even
+/// when they hold a `server` or a `tool` of their own.
+fn descriptor_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    (key.contains("tool") || key.contains("server")) && !["arg", "input", "param"].iter().any(|w| key.contains(w))
 }
 
 /// The server of the user's own tools (`--tools=user`), as agents name it.
@@ -574,10 +584,22 @@ fn user_tool_call_with(tool: &str, input: Option<&Value>, exists: &dyn Fn(&str) 
         None => return false,
     };
     // Only what names the server: never the arguments, which the model writes.
-    let names_server = |key: &str, v: &Value| key.to_ascii_lowercase().contains("server") && v.as_str().is_some_and(|s| s.trim().eq_ignore_ascii_case(USER_SERVER));
-    input.as_object().is_some_and(|o| {
-        o.iter().any(|(k, v)| names_server(k, v) || v.as_object().is_some_and(|inner| inner.iter().any(|(k, v)| names_server(k, v))))
-    })
+    // Every field that names a server, at the top and in an object in it
+    // ("tool": {…}), as lumo_call reads them: the user's own server only
+    // when it is the one server named. A call of another server whose
+    // arguments (an object, not text) carry `"server": "lumo_tools"` is
+    // that other server's, and keeps its card.
+    let Some(object) = input.as_object() else { return false };
+    let mut fields: Vec<(&String, &Value)> = Vec::new();
+    for (key, v) in object {
+        fields.push((key, v));
+        if let Some(inner) = v.as_object().filter(|_| descriptor_key(key)) {
+            fields.extend(inner.iter());
+        }
+    }
+    let servers: Vec<&str> =
+        fields.iter().filter(|(k, _)| k.to_ascii_lowercase().contains("server")).filter_map(|(_, v)| v.as_str()).map(str::trim).collect();
+    matches!(servers.as_slice(), [server] if server.eq_ignore_ascii_case(USER_SERVER))
 }
 
 /// Runs the server until the agent closes stdin.
@@ -968,6 +990,9 @@ mod tests {
         assert_eq!(lumo_call("call_mcp_tool", Some(&nested)), Some("mail_read"));
         let joined = json!({ "name": "mcp_lumo_update_plan" });
         assert_eq!(lumo_call("call_mcp_tool", Some(&joined)), Some("update_plan"));
+        // Another server's call whose arguments (an object) name Lumo's server and tool.
+        let posing = json!({ "name": "github__delete_repo", "arguments": { "server": "lumo", "tool": "update_plan" } });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&posing)), None);
         // Another server's tool, or a computer tool, still asks.
         let github = json!({ "ServerName": "github", "ToolName": "update_plan" });
         assert_eq!(lumo_call("call_mcp_tool", Some(&github)), None);
@@ -1010,6 +1035,18 @@ mod tests {
         assert!(!user_tool_call_with("lumo_tools_gh_create_issue", None, &has));
         assert!(!user_tool_exists("") && !user_tool_exists("..\\x") && !user_tool_exists("a/b"));
         assert!(!user_tool_call("run_command", Some(&call)), "only an MCP call");
+        // Arguments given as an object, not text: what they hold names nothing.
+        let other = json!({ "ServerName": "github", "ToolName": "delete_repo", "Arguments": { "server": "lumo_tools" } });
+        assert!(!user_tool_call("call_mcp_tool", Some(&other)));
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&other)));
+        let unnamed = json!({ "ToolName": "delete_repo", "Arguments": { "ServerName": "lumo_tools" } });
+        assert!(!user_tool_call("call_mcp_tool", Some(&unnamed)));
+        // Two servers named: not the user's own.
+        let two = json!({ "ServerName": "github", "tool": { "server": "lumo_tools", "name": "pdfcraft" } });
+        assert!(!user_tool_call("call_mcp_tool", Some(&two)));
+        // The tool described in an object of its own still is.
+        let nested = json!({ "tool": { "server": "lumo_tools", "name": "pdfcraft" }, "arguments": {} });
+        assert!(user_tool_call("call_mcp_tool", Some(&nested)));
     }
 
     #[test]
