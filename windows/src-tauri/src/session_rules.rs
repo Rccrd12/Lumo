@@ -2,11 +2,14 @@
 //
 // A click on it allows the request on screen, and Lumo remembers it: the same
 // request from the same session of the same agent is then allowed without a
-// card until that session ends (SessionEnd) or Lumo quits. Nothing is written
-// anywhere — the rules live in memory only.
+// card until that session ends (SessionEnd), sits unused for SESSION_IDLE (an
+// agent that crashed or was closed sends no SessionEnd) or Lumo quits.
+// Nothing is written anywhere — the rules live in memory only.
 //
-// The same request means the same tool with the same command, the same file
-// or page, or the same whole input. Anything else needs a card again. A
+// The same request means the same tool with the same command (in the same
+// folder, with the same other fields), the same file, the same page with the
+// same method, or the same whole input (always, for an MCP server's tool: what
+// its fields mean is its own). Anything else needs a card again. A
 // request the relay had to cut (`lumo_input_cut`) is never remembered: two
 // commands that only start alike are not the same request.
 //
@@ -18,11 +21,18 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+/// A session's rules go once it has asked nothing for this long.
+const SESSION_IDLE: Duration = Duration::from_secs(12 * 60 * 60);
+
+/// The requests a session allowed, and when it last asked.
+type Allowed = (HashSet<String>, Instant);
+
 /// Remembered rules: session scope → the requests allowed in it.
-static RULES: Mutex<Option<HashMap<String, HashSet<String>>>> = Mutex::new(None);
+static RULES: Mutex<Option<HashMap<String, Allowed>>> = Mutex::new(None);
 /// Requests on screen: request id → (scope, rule), kept until they are answered.
 static WAITING: Mutex<Option<HashMap<String, (String, String)>>> = Mutex::new(None);
 
@@ -47,24 +57,61 @@ pub fn rule(payload: &Value) -> Option<String> {
     }
     let input = payload.get("tool_input").unwrap_or(&Value::Null);
     let field = |keys: &[&str]| keys.iter().find_map(|k| input.get(*k).and_then(Value::as_str)).map(str::to_string);
-    let what = if let Some(command) = field(&["command", "cmd"]) {
-        format!("command\n{command}")
+    let what = if tool.starts_with("mcp__") {
+        // An MCP server's tool: its `url` or `path` may come with a method,
+        // a body or a flag that change everything. Only the very same call.
+        format!("input\n{input}")
+    } else if let Some(command) = field(&["command", "cmd"]) {
+        // The same command in another folder, or with another of its fields
+        // (Codex's sandbox or escalation, a background run), is another
+        // request: only what merely describes it (its description, its
+        // timeout) may differ.
+        let dir = field(&["workdir", "cwd", "directory", "dir"])
+            .or_else(|| payload.get("cwd").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_default();
+        let rest: serde_json::Map<String, Value> = input
+            .as_object()
+            .map(|o| {
+                o.iter()
+                    .filter(|(k, _)| !COMMAND_SAME.contains(&k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        format!("command\n{command}\nin\n{dir}\nwith\n{}", Value::Object(rest))
     } else if let Some(path) = field(&["file_path", "notebook_path", "path"]) {
         format!("file\n{path}")
     } else if let Some(url) = field(&["url"]) {
-        format!("url\n{url}")
+        // GET allowed is not DELETE allowed.
+        let method = field(&["method"]).map(|m| m.trim().to_ascii_uppercase()).unwrap_or_else(|| "GET".into());
+        format!("url\n{method} {url}")
     } else {
         format!("input\n{input}")
     };
     Some(format!("{tool}\n{what}"))
 }
 
+/// A command's fields that don't change what it does: the command itself and
+/// its folder (in the rule on their own), what describes it, how long to wait.
+const COMMAND_SAME: &[&str] = &["command", "cmd", "workdir", "cwd", "directory", "dir", "description", "timeout", "timeout_ms"];
+
 /// A card for `request_id` is about to come up: what to remember if it is
 /// allowed for the session. Returns true when the session already allowed this
 /// very request, and no card is needed.
 pub fn arrive(request_id: &str, payload: &Value) -> bool {
     let (Some(scope), Some(rule)) = (scope(payload), rule(payload)) else { return false };
-    if with(&RULES, |rules| rules.get(&scope).is_some_and(|set| set.contains(&rule))) {
+    let allowed = with(&RULES, |rules| {
+        // Sessions that ended without a word (no SessionEnd) are let go.
+        rules.retain(|_, (_, last)| last.elapsed() < SESSION_IDLE);
+        match rules.get_mut(&scope) {
+            Some((set, last)) => {
+                *last = Instant::now();
+                set.contains(&rule)
+            }
+            None => false,
+        }
+    });
+    if allowed {
         return true;
     }
     with(&WAITING, |waiting| waiting.insert(request_id.to_string(), (scope, rule)));
@@ -80,7 +127,11 @@ pub fn can_remember(request_id: &str) -> bool {
 pub fn answered(request_id: &str, decision: &str) {
     let Some((scope, rule)) = with(&WAITING, |waiting| waiting.remove(request_id)) else { return };
     if decision == "always" {
-        with(&RULES, |rules| rules.entry(scope).or_default().insert(rule));
+        with(&RULES, |rules| {
+            let (set, last) = rules.entry(scope).or_insert_with(|| (HashSet::new(), Instant::now()));
+            *last = Instant::now();
+            set.insert(rule);
+        });
     }
 }
 
@@ -133,6 +184,20 @@ mod tests {
     }
 
     #[test]
+    fn the_rules_of_a_session_that_went_quiet_go() {
+        assert!(!arrive("q1", &request("s-quiet", "Bash", json!({ "command": "make" }))));
+        answered("q1", "always");
+        assert!(arrive("q2", &request("s-quiet", "Bash", json!({ "command": "make" }))));
+        // No SessionEnd ever came, and it asked nothing for SESSION_IDLE.
+        with(&RULES, |rules| {
+            if let Some((_, last)) = rules.get_mut("\ns-quiet") {
+                *last = Instant::now().checked_sub(SESSION_IDLE + Duration::from_secs(1)).unwrap();
+            }
+        });
+        assert!(!arrive("q3", &request("s-quiet", "Bash", json!({ "command": "make" }))));
+    }
+
+    #[test]
     fn agents_never_share_a_session_rule() {
         let mut codex = request("s-agents", "Bash", json!({ "command": "ls" }));
         codex["lumo_agent"] = json!("codex");
@@ -143,12 +208,38 @@ mod tests {
     }
 
     #[test]
+    fn a_command_allowed_in_one_folder_is_not_allowed_in_another() {
+        let mut here = request("s-dir", "Bash", json!({ "command": "rm -rf build" }));
+        here["cwd"] = json!("C:/proj/a");
+        assert!(!arrive("d1", &here));
+        answered("d1", "always");
+        assert!(arrive("d2", &here));
+        let mut there = here.clone();
+        there["cwd"] = json!("C:/proj/b");
+        assert!(!arrive("d3", &there), "another folder");
+        // Codex says its folder in the input, and may ask to leave its sandbox.
+        let r = |input: Value| rule(&request("s", "shell", input));
+        assert_ne!(r(json!({ "command": "ls", "workdir": "C:/a" })), r(json!({ "command": "ls", "workdir": "C:/b" })));
+        assert_ne!(r(json!({ "command": "ls" })), r(json!({ "command": "ls", "with_escalated_permissions": true })));
+        assert_ne!(r(json!({ "command": "npm start" })), r(json!({ "command": "npm start", "run_in_background": true })));
+        assert_eq!(r(json!({ "command": "ls", "timeout": 5 })), r(json!({ "command": "ls", "description": "List" })));
+    }
+
+    #[test]
     fn what_counts_as_the_same_request() {
         let r = |tool: &str, input: Value| rule(&request("s", tool, input));
         // An MCP tool: the same call, not every call of the tool.
         assert_ne!(r("mcp__github__create_issue", json!({ "title": "a" })), r("mcp__github__create_issue", json!({ "title": "b" })));
         assert_eq!(r("mcp__github__create_issue", json!({ "title": "a" })), r("mcp__github__create_issue", json!({ "title": "a" })));
         assert_ne!(r("WebFetch", json!({ "url": "https://a.dev" })), r("WebFetch", json!({ "url": "https://b.dev" })));
+        // The same address with another method is another request.
+        assert_eq!(r("WebFetch", json!({ "url": "https://a.dev", "prompt": "x" })), r("WebFetch", json!({ "url": "https://a.dev", "method": "get" })));
+        assert_ne!(r("http", json!({ "url": "https://a.dev/1", "method": "GET" })), r("http", json!({ "url": "https://a.dev/1", "method": "DELETE" })));
+        // An MCP server's http tool: only the very same call.
+        let get = r("mcp__x__http", json!({ "url": "https://a.dev/1", "method": "GET" }));
+        assert_ne!(get, r("mcp__x__http", json!({ "url": "https://a.dev/1", "method": "DELETE" })));
+        assert_ne!(r("mcp__fs__write", json!({ "path": "C:/a", "content": "1" })), r("mcp__fs__write", json!({ "path": "C:/a", "content": "2" })));
+        assert_eq!(get, r("mcp__x__http", json!({ "url": "https://a.dev/1", "method": "GET" })));
         assert_ne!(r("Bash", json!({ "command": "ls" })), r("PowerShell", json!({ "command": "ls" })));
         assert_eq!(r("AskUserQuestion", json!({ "questions": [] })), None);
         assert_eq!(rule(&json!({ "session_id": "s" })), None);

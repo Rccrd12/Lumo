@@ -214,10 +214,15 @@ pub fn parse_item_ref(raw: &str) -> Option<(String, String, u64)> {
     let s = s.strip_prefix("github.com/").unwrap_or(s);
     let s = s.split('?').next().unwrap_or(s);
     if let Some((repo_part, num_part)) = s.split_once('#') {
-        let (owner, repo) = parse_repo(repo_part)?;
-        let num: u64 = num_part.trim().parse().ok()?;
-        return (num > 0).then_some((owner, repo, num));
+        // "owner/repo#42"; in a link ("…/pull/42#issuecomment-1") the part
+        // after # is only where the page scrolls to.
+        if repo_part.trim_matches('/').split('/').count() <= 2 {
+            let (owner, repo) = parse_repo(repo_part)?;
+            let num: u64 = num_part.trim().parse().ok()?;
+            return (num > 0).then_some((owner, repo, num));
+        }
     }
+    let s = s.split('#').next().unwrap_or(s);
     let parts: Vec<&str> = s.trim_matches('/').split('/').collect();
     match parts.as_slice() {
         [owner, repo, "pull" | "pulls" | "issues", num, ..] => {
@@ -527,7 +532,8 @@ pub fn format_pr_detail(
     if let Some(list) = comments.and_then(Value::as_array) {
         if !list.is_empty() {
             let start = list.len().saturating_sub(8);
-            out.push(format!("\nRecent comments ({} of {}):", list.len() - start, list.len()));
+            let total = pr["comments"].as_u64().unwrap_or(list.len() as u64).max(list.len() as u64);
+            out.push(format!("\nRecent comments ({} of {total}):", list.len() - start));
             for c in &list[start..] {
                 let author = c["user"]["login"].as_str().unwrap_or("?");
                 let date = c["created_at"].as_str().unwrap_or("");
@@ -540,6 +546,32 @@ pub fn format_pr_detail(
     out.join("\n")
 }
 
+/// How many of an item's newest comments its view shows.
+const RECENT_COMMENTS: u64 = 8;
+
+/// The pages, of RECENT_COMMENTS each, that hold the newest of `total`
+/// comments: GitHub lists an item's comments oldest first, and in no other order.
+fn recent_comment_pages(total: u64) -> Vec<u64> {
+    let last = total.div_ceil(RECENT_COMMENTS).max(1);
+    if last > 1 && !total.is_multiple_of(RECENT_COMMENTS) {
+        vec![last - 1, last]
+    } else {
+        vec![last]
+    }
+}
+
+/// The newest comments of a pull request or an issue (of `total`), oldest first.
+async fn recent_comments(token: &str, owner: &str, repo: &str, number: u64, total: u64) -> Option<Value> {
+    let mut all = Vec::new();
+    for page in recent_comment_pages(total) {
+        let params = [("per_page", RECENT_COMMENTS.to_string()), ("page", page.to_string())];
+        let got = rest_get(token, &format!("repos/{owner}/{repo}/issues/{number}/comments"), &params).await.ok()?;
+        all.extend(got.as_array().cloned().unwrap_or_default());
+    }
+    let start = all.len().saturating_sub(RECENT_COMMENTS as usize);
+    Some(Value::Array(all.split_off(start)))
+}
+
 async fn pr_view(token: &str, input: &Value) -> Result<String, String> {
     let (owner, repo, number) = item_from_input(input)?;
     let include_diff = input.get("include_diff").and_then(Value::as_bool).unwrap_or(false);
@@ -547,7 +579,7 @@ async fn pr_view(token: &str, input: &Value) -> Result<String, String> {
     let sha = pr["head"]["sha"].as_str().unwrap_or("").to_string();
 
     let files = rest_get(token, &format!("repos/{owner}/{repo}/pulls/{number}/files"), &[("per_page", "25".into())]).await.ok();
-    let comments = rest_get(token, &format!("repos/{owner}/{repo}/issues/{number}/comments"), &[("per_page", "15".into())]).await.ok();
+    let comments = recent_comments(token, &owner, &repo, number, pr["comments"].as_u64().unwrap_or(0)).await;
     let checks = if valid_segment(&sha) {
         rest_get(token, &format!("repos/{owner}/{repo}/commits/{sha}/check-runs"), &[("per_page", "25".into())]).await.ok()
     } else {
@@ -562,7 +594,7 @@ async fn issues(token: &str, input: &Value) -> Result<String, String> {
     if has_single {
         let (owner, repo, number) = item_from_input(input)?;
         let issue = rest_get(token, &format!("repos/{owner}/{repo}/issues/{number}"), &[]).await?;
-        let comments = rest_get(token, &format!("repos/{owner}/{repo}/issues/{number}/comments"), &[("per_page", "15".into())]).await.ok();
+        let comments = recent_comments(token, &owner, &repo, number, issue["comments"].as_u64().unwrap_or(0)).await;
         let title = issue["title"].as_str().unwrap_or("");
         let state = issue["state"].as_str().unwrap_or("unknown");
         let user = issue["user"]["login"].as_str().unwrap_or("?");
@@ -584,7 +616,8 @@ async fn issues(token: &str, input: &Value) -> Result<String, String> {
         }
         if let Some(list) = comments.as_ref().and_then(Value::as_array).filter(|l| !l.is_empty()) {
             let start = list.len().saturating_sub(8);
-            out.push(format!("\nRecent comments ({} of {}):", list.len() - start, list.len()));
+            let total = issue["comments"].as_u64().unwrap_or(list.len() as u64).max(list.len() as u64);
+            out.push(format!("\nRecent comments ({} of {total}):", list.len() - start));
             for c in &list[start..] {
                 let author = c["user"]["login"].as_str().unwrap_or("?");
                 let date = c["created_at"].as_str().unwrap_or("");
@@ -848,6 +881,19 @@ mod tests {
         assert_eq!(parse_item_ref("https://github.com/Rccrd12/Lumo/pull/42/files"), Some(("Rccrd12".into(), "Lumo".into(), 42)));
         assert_eq!(parse_item_ref("https://github.com/Rccrd12/Lumo/issues/7?foo=1"), Some(("Rccrd12".into(), "Lumo".into(), 7)));
         assert_eq!(parse_item_ref("Rccrd12/Lumo#0"), None);
+        assert_eq!(parse_item_ref("https://github.com/Rccrd12/Lumo/pull/42#issuecomment-123"), Some(("Rccrd12".into(), "Lumo".into(), 42)));
+        assert_eq!(parse_item_ref("https://github.com/Rccrd12/Lumo/pull/42/files#diff-abc"), Some(("Rccrd12".into(), "Lumo".into(), 42)));
+        assert_eq!(parse_item_ref("https://github.com/Rccrd12/Lumo#readme"), None);
+    }
+
+    #[test]
+    fn the_newest_comments_are_on_the_last_pages() {
+        assert_eq!(recent_comment_pages(0), vec![1]);
+        assert_eq!(recent_comment_pages(5), vec![1]);
+        assert_eq!(recent_comment_pages(8), vec![1]);
+        assert_eq!(recent_comment_pages(16), vec![2]);
+        // 60 comments: page 7 holds 49-56, page 8 holds 57-60.
+        assert_eq!(recent_comment_pages(60), vec![7, 8]);
     }
 
     #[test]

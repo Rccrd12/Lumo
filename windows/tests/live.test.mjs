@@ -601,3 +601,18 @@ test("set_reminder sends Rust the time in ms; a time it can't read asks again", 
     assert.equal(ok.result.id, 1);
   });
 });
+
+test("a long call is saved whole, though the call view keeps its last lines", () => {
+  const tr = new Transcript();
+  for (let i = 0; i < 450; i++) {
+    tr.heard(`q${i}`, true);
+    tr.said(`a${i}`);
+    tr.close();
+  }
+  assert.equal(tr.lines.length, 400);
+  const turns = tr.turns();
+  assert.equal(turns.length, 900);
+  assert.equal(turns[0].content, "q0");
+  tr.clear();
+  assert.deepEqual(tr.turns(), []);
+});

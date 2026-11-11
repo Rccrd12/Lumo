@@ -21,8 +21,14 @@ use tokio_rustls::TlsConnector;
 
 use crate::claude::base64_for;
 
-/// The whole exchange, from connecting to QUIT.
-const TIMEOUT: Duration = Duration::from_secs(60);
+/// How long one step may take: connecting, one answer of the server, one
+/// piece of the email on its way. A slow upload of a big email only has to keep
+/// moving, never to be over within one fixed time.
+const STEP: Duration = Duration::from_secs(60);
+/// After the final ".", the server may check the email before it answers.
+const DATA_END: Duration = Duration::from_secs(180);
+/// The email goes out in pieces this big, each with STEP to go.
+const PIECE: usize = 64 * 1024;
 /// What one answer of the server may weigh.
 const MAX_REPLY: usize = 64 * 1024;
 /// At most this many people, To and Cc together.
@@ -143,8 +149,7 @@ pub fn server_of(imap_typed: &str, address: &str) -> (String, u16) {
         "outlook.office365.com" => {
             let domain = address.rsplit('@').next().unwrap_or("").to_ascii_lowercase();
             // Outlook.com's own addresses, else a work or school account.
-            let personal = ["outlook.com", "hotmail.com", "live.com", "msn.com", "outlook.it", "hotmail.it", "live.it"];
-            return (if personal.contains(&domain.as_str()) { "smtp-mail.outlook.com" } else { "smtp.office365.com" }.into(), 587);
+            return (if crate::mail::OUTLOOK_PERSONAL.contains(&domain.as_str()) { "smtp-mail.outlook.com" } else { "smtp.office365.com" }.into(), 587);
         }
         "imap.mail.me.com" => return ("smtp.mail.me.com".into(), 587),
         "imap.mail.yahoo.com" => return ("smtp.mail.yahoo.com".into(), 465),
@@ -195,12 +200,13 @@ fn header_text(text: &str) -> String {
 pub fn message(from: &str, mail: &Outgoing, secs: u64, id: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!("From: {from}\r\n"));
-    // A draft may have nobody yet.
+    // A draft may have nobody yet. Folded, one address a line: twenty long
+    // addresses never make a line longer than the 998 characters servers take.
     if !mail.to.is_empty() {
-        out.push_str(&format!("To: {}\r\n", mail.to.join(", ")));
+        out.push_str(&format!("To: {}\r\n", mail.to.join(",\r\n ")));
     }
     if !mail.cc.is_empty() {
-        out.push_str(&format!("Cc: {}\r\n", mail.cc.join(", ")));
+        out.push_str(&format!("Cc: {}\r\n", mail.cc.join(",\r\n ")));
     }
     let subject: String = mail.subject.chars().filter(|c| !c.is_control()).collect();
     out.push_str(&format!("Subject: {}\r\n", header_text(&subject)));
@@ -239,14 +245,36 @@ pub fn message(from: &str, mail: &Outgoing, secs: u64, id: &str) -> String {
     out
 }
 
+/// `step`, given `wait` to finish.
+async fn timed<T>(wait: Duration, step: impl std::future::Future<Output = std::io::Result<T>>) -> Result<T, String> {
+    match tokio::time::timeout(wait, step).await {
+        Ok(done) => done.map_err(|e| e.to_string()),
+        Err(_) => Err("The mail server took too long to answer.".into()),
+    }
+}
+
+/// What the AI reads when the whole email reached the server but its answer
+/// never came: the email may well be on its way, and sending it again would
+/// send it twice.
+fn maybe_sent(host: &str, why: &str) -> String {
+    format!(
+        "The email may have been sent: {host} received all of it but never confirmed ({why}). Do not send it again: ask the user to check their Sent folder, or with the recipients, first."
+    )
+}
+
 /// One answer: its code and its lines' words. A long answer (EHLO's) comes on
 /// several lines, "250-…" until "250 …".
 async fn reply<S: AsyncRead + Unpin>(stream: &mut BufReader<S>) -> Result<(u16, Vec<String>), String> {
+    reply_within(stream, STEP).await
+}
+
+/// One answer, each of its lines coming within `wait`.
+async fn reply_within<S: AsyncRead + Unpin>(stream: &mut BufReader<S>, wait: Duration) -> Result<(u16, Vec<String>), String> {
     let mut lines = Vec::new();
     let mut read = 0;
     loop {
         let mut line = String::new();
-        let n = stream.read_line(&mut line).await.map_err(|e| e.to_string())?;
+        let n = timed(wait, stream.read_line(&mut line)).await?;
         if n == 0 {
             return Err("The mail server closed the connection.".into());
         }
@@ -264,10 +292,13 @@ async fn reply<S: AsyncRead + Unpin>(stream: &mut BufReader<S>) -> Result<(u16, 
     }
 }
 
-/// Writes `text` out at once (a TLS stream holds it until flushed).
+/// Writes `text` out at once (a TLS stream holds it until flushed), piece by
+/// piece, each with STEP to go.
 async fn write<S: AsyncRead + AsyncWrite + Unpin>(stream: &mut BufReader<S>, text: &str) -> Result<(), String> {
-    stream.get_mut().write_all(text.as_bytes()).await.map_err(|e| e.to_string())?;
-    stream.get_mut().flush().await.map_err(|e| e.to_string())
+    for piece in text.as_bytes().chunks(PIECE) {
+        timed(STEP, stream.get_mut().write_all(piece)).await?;
+    }
+    timed(STEP, stream.get_mut().flush()).await
 }
 
 /// Sends `line` and wants an answer with code `want`.
@@ -317,21 +348,34 @@ async fn session<S: AsyncRead + AsyncWrite + Unpin>(
     }
     command(stream, "DATA", 354, "the email").await?;
     write(stream, data).await?;
-    command(stream, ".", 250, "the email").await?;
+    // From the final "." on, the server may have taken the email even if its
+    // answer never arrives: only a refusal says for sure that it didn't go.
+    let ended = async {
+        write(stream, ".\r\n").await?;
+        reply_within(stream, DATA_END).await
+    };
+    match ended.await {
+        Ok((250, _)) => {}
+        Ok((code, lines)) => return Err(format!("The mail server refused the email: {code} {}", lines.join(" "))),
+        Err(e) => return Err(maybe_sent(host, e.trim_end_matches('.'))),
+    }
     let _ = command(stream, "QUIT", 221, "goodbye").await;
     Ok(())
 }
 
 async fn tls(host: &str, tcp: TcpStream) -> Result<tokio_rustls::client::TlsStream<TcpStream>, String> {
     let name = ServerName::try_from(host.to_string()).map_err(|_| format!("Not a valid server: {host}"))?;
-    TlsConnector::from(crate::mail::tls()?)
-        .connect(name, tcp)
+    timed(STEP, TlsConnector::from(crate::mail::tls()?).connect(name, tcp))
         .await
         .map_err(|e| format!("No secure connection to {host}: {e}"))
 }
 
 async fn exchange(host: &str, port: u16, address: &str, password: &str, recipients: &[String], data: &str) -> Result<(), String> {
-    let tcp = TcpStream::connect((host, port)).await.map_err(|_| format!("Can't reach the mail server {host}."))?;
+    let tcp = match tokio::time::timeout(STEP, TcpStream::connect((host, port))).await {
+        Ok(Ok(tcp)) => tcp,
+        Ok(Err(_)) => return Err(format!("Can't reach the mail server {host}.")),
+        Err(_) => return Err(format!("The mail server {host} took too long to answer.")),
+    };
     if port == 465 {
         let mut stream = BufReader::new(tls(host, tcp).await?);
         expect(&mut stream, 220, "the connection").await?;
@@ -363,11 +407,10 @@ pub async fn send(mail: &Outgoing, account: &crate::mail::Account) -> Result<Sen
     let data = message(&address, mail, secs, &id);
     let recipients: Vec<String> = mail.to.iter().chain(&mail.cc).cloned().collect();
     let message_id = format!("<{id}@{}>", address.rsplit('@').next().unwrap_or("lumo.local"));
-    match tokio::time::timeout(TIMEOUT, exchange(&host, port, &address, &password, &recipients, &data)).await {
-        Ok(Ok(())) => Ok(Sent { host, data, message_id }),
-        Ok(Err(e)) => Err(e),
-        Err(_) => Err(format!("The mail server {host} took too long to answer.")),
-    }
+    // Each step has its own time (STEP): a big email on a slow line goes as
+    // long as it keeps moving.
+    exchange(&host, port, &address, &password, &recipients, &data).await?;
+    Ok(Sent { host, data, message_id })
 }
 
 #[cfg(test)]
@@ -467,6 +510,10 @@ mod tests {
         assert!(head.contains("\r\nIn-Reply-To: <a1@example.com>\r\n"), "{head}");
         assert!(head.contains("\r\nReferences: <a0@example.com>\r\n <a1@example.com>\r\n"), "{head}");
         assert!(!head.contains("Bcc"), "only ids get into the header");
+        let many = Outgoing { to: (0..MAX_RECIPIENTS).map(|i| format!("{}{i}@example.com", "a".repeat(200))).collect(), ..reply.clone() };
+        let text = message("me@example.it", &many, 0, "1.2.lumo");
+        assert!(text.lines().all(|l| l.len() <= 998), "To folds");
+        assert!(text.contains(&format!("To: {}0@example.com,\r\n {}1@example.com,\r\n", "a".repeat(200), "a".repeat(200))));
         let draft = Outgoing { body: "x".into(), ..Outgoing::default() };
         assert!(!message("me@example.it", &draft, 0, "1").contains("\r\nTo:"));
         assert_eq!(message_ids("<a@b> junk <c d> <e@f>"), "<a@b> <e@f>");
@@ -525,5 +572,43 @@ mod tests {
         assert_eq!(said[4], "DATA");
         assert_eq!(said[5], "QUIT");
         assert_eq!(data, "Subject: x\r\n\r\nhi\r\n");
+    }
+
+    #[test]
+    fn no_answer_after_the_whole_email_may_mean_it_went() {
+        use tokio::io::{duplex, DuplexStream};
+        // The server takes the whole email, then answers `after` (or hangs up).
+        async fn server(s: DuplexStream, after: &'static str) {
+            let mut s = BufReader::new(s);
+            for reply in ["250 AUTH PLAIN\r\n", "235 ok\r\n", "250 ok\r\n", "250 ok\r\n", "354 go\r\n"] {
+                let mut line = String::new();
+                s.read_line(&mut line).await.unwrap();
+                s.get_mut().write_all(reply.as_bytes()).await.unwrap();
+            }
+            loop {
+                let mut line = String::new();
+                s.read_line(&mut line).await.unwrap();
+                if line == ".\r\n" {
+                    break;
+                }
+            }
+            s.get_mut().write_all(after.as_bytes()).await.unwrap();
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let outcome = |after: &'static str| {
+            runtime.block_on(async {
+                let (client, other) = duplex(64 * 1024);
+                let script = tokio::spawn(server(other, after));
+                let mut stream = BufReader::new(client);
+                let got = session(&mut stream, "smtp.example.com", "me@example.com", "pw", &["ada@example.com".into()], "Subject: x\r\n\r\nhi\r\n").await;
+                script.await.unwrap();
+                got
+            })
+        };
+        let hung_up = outcome("").unwrap_err();
+        assert!(hung_up.starts_with("The email may have been sent: smtp.example.com"), "{hung_up}");
+        assert!(hung_up.contains("Do not send it again"), "{hung_up}");
+        let refused = outcome("554 rejected as spam\r\n").unwrap_err();
+        assert_eq!(refused, "The mail server refused the email: 554 rejected as spam");
     }
 }

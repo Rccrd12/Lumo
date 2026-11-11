@@ -257,3 +257,28 @@ test("Settings → Security keeps the email and the calendar from Gemini when th
     assert.match(out, /Settings → Security/, topic);
   }
 });
+
+test("Settings → Security keeps GitHub from Gemini unless the user lets the AI read it", async () => {
+  const pr = { id: "acme/secret#7", title: "Private launch", url: "u", repo: "acme/secret", number: 7, isDraft: false, ci: "success", review: "pending", headSha: "a" };
+  const data = { totalRepos: 3, totalStars: 1, pulse: { login: "me", myPRs: [pr], toReview: [pr], mainCI: [{ repo: "acme/secret", url: "u", branch: "main", ci: "success", headSha: "x" }], fetchedAt: NOW } };
+  const integrations = { integration_github: { data, error: null, loaded: true, configured: true } };
+  const listening = [{ id: 1, repo: "acme/secret", number: 7, until: "green", task: "", chatId: "c", startedAt: NOW }];
+  const open = L.lumoStatus(facts({ integrations, listening }), "github").github;
+  assert.equal(open.myPullRequests[0].title, "Private launch");
+  const shut = facts({ integrations, listening, githubOff: true });
+  for (const topic of ["all", "github"]) {
+    const out = JSON.stringify(L.lumoStatus(shut, topic));
+    assert.doesNotMatch(out, /acme|secret|Private launch|"login"/, topic);
+    assert.match(out, /Settings → Security/, topic);
+  }
+  // What gatherLumo reads: off by default ("none"), and for anything but "read".
+  const before = State.settings.aiGithubAccess;
+  try {
+    for (const [access, off] of [["none", true], [undefined, true], ["write", true], ["read", false]]) {
+      State.settings.aiGithubAccess = access;
+      assert.equal((await L.gatherLumo("github")).githubOff, off, String(access));
+    }
+  } finally {
+    State.settings.aiGithubAccess = before;
+  }
+});

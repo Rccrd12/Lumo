@@ -191,6 +191,8 @@ struct Store {
     seen: HashMap<u64, Seen>,
     /// When each watch fired in the last hour.
     fires: HashMap<u64, Vec<u64>>,
+    /// The pull request's head commit at the last look, and since when (Unix ms), per watch.
+    heads: HashMap<u64, (String, u64)>,
 }
 
 #[derive(Default)]
@@ -414,6 +416,7 @@ pub fn stop(id: u64) -> bool {
         s.watches.retain(|w| w.id != id);
         s.misses.remove(&id);
         s.seen.remove(&id);
+        s.heads.remove(&id);
         save(&s.watches);
         before != s.watches.len()
     })
@@ -471,6 +474,7 @@ fn take(id: u64, met: bool, summary: &str, again_on: Option<&str>) -> Option<(Wa
         let watch = if ended {
             s.seen.remove(&id);
             s.fires.remove(&id);
+            s.heads.remove(&id);
             s.watches.remove(i)
         } else {
             let fires = s.fires.entry(id).or_default();
@@ -602,8 +606,19 @@ pub fn review_of(reviews: Option<&Value>) -> Review {
     }
 }
 
+/// How long the pull request has had this head commit, as far as Lumo saw:
+/// a push starts the wait for the checks GitHub has not listed yet again.
+fn head_age(heads: &mut HashMap<u64, (String, u64)>, id: u64, sha: &str, now: u64) -> u64 {
+    let (seen, since) = heads.entry(id).or_insert_with(|| (sha.to_string(), now));
+    if seen != sha {
+        *seen = sha.to_string();
+        *since = now;
+    }
+    now.saturating_sub(*since)
+}
+
 /// Whether the watch ends with this state of the pull request: (met, summary).
-/// `age_ms`: how long it has listened, for the checks GitHub has not listed yet.
+/// `age_ms`: how long its head commit has been seen (head_age), for the checks GitHub has not listed yet.
 pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
     let label = w.label();
     let pr_var = [("pr", label.as_str())];
@@ -824,8 +839,11 @@ async fn round(app: &AppHandle) -> Via {
         }
         match fetch(via, token.as_deref(), &w).await {
             Read::State(pr) => {
-                with_store(|s| s.misses.remove(&w.id));
-                if let Some((met, summary)) = judge(&w, &pr, age) {
+                let since_push = with_store(|s| {
+                    s.misses.remove(&w.id);
+                    head_age(&mut s.heads, w.id, &pr.head_sha, now)
+                });
+                if let Some((met, summary)) = judge(&w, &pr, since_push) {
                     let again_on = (pr.open && !pr.head_sha.is_empty()).then_some(pr.head_sha.as_str());
                     fire(app, w.id, met, summary, again_on);
                 }
@@ -1035,7 +1053,8 @@ async fn windows(app: &AppHandle, w: &Watch, now: u64) {
             if !due(w.id, now, NOTIFICATIONS_EVERY_MS) {
                 return;
             }
-            let read = tauri::async_runtime::spawn_blocking(crate::notifications::read).await;
+            let handle = app.clone();
+            let read = tauri::async_runtime::spawn_blocking(move || crate::notifications::read(&handle)).await;
             let list = match read {
                 Ok(Ok(list)) => list,
                 Ok(Err(why)) => {
@@ -1321,6 +1340,22 @@ mod tests {
     fn no_checks_yet_is_not_success_until_the_grace_is_over() {
         assert_eq!(judge(&watch("green"), &open(Checks::None), 10_000), None);
         assert_eq!(judge(&watch("green"), &open(Checks::None), NO_CHECKS_GRACE_MS).map(|j| j.0), Some(true));
+    }
+
+    #[test]
+    fn the_wait_for_checks_starts_again_with_each_push() {
+        let mut heads = HashMap::new();
+        assert_eq!(head_age(&mut heads, 1, "abc", 1_000), 0);
+        assert_eq!(head_age(&mut heads, 1, "abc", 1_000 + NO_CHECKS_GRACE_MS), NO_CHECKS_GRACE_MS);
+        // A push long after listening began: no checks listed yet is not success.
+        let later = 10 * NO_CHECKS_GRACE_MS;
+        let age = head_age(&mut heads, 1, "def", later);
+        assert_eq!(age, 0);
+        let pushed = PrState { head_sha: "def".into(), ..open(Checks::None) };
+        assert_eq!(judge(&watch("green"), &pushed, age), None);
+        assert_eq!(head_age(&mut heads, 1, "def", later + 60_000), 60_000);
+        // Each watch counts on its own.
+        assert_eq!(head_age(&mut heads, 2, "def", later + 60_000), 0);
     }
 
     #[test]

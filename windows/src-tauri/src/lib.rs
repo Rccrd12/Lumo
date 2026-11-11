@@ -132,7 +132,7 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
 
 #[tauri::command]
 fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
-    let (screen_changed, autostart_changed, shortcuts_changed, mail_changed) = {
+    let (settings, screen_changed, autostart_changed, shortcuts_changed, mail_changed) = {
         let mut current = shared.settings.lock().unwrap();
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
@@ -149,12 +149,13 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         settings.island_width = current.island_width;
         settings.island_height = current.island_height;
         *current = settings;
-        (screen_changed, autostart_changed, shortcuts_changed, mail_changed)
+        // Saved before the lock goes: another save (a drag of the island)
+        // can't reach the disk first with what was there before this one.
+        if let Err(err) = settings::save(&current) {
+            log::line(format!("could not save settings: {err}"));
+        }
+        (current.clone(), screen_changed, autostart_changed, shortcuts_changed, mail_changed)
     };
-    let settings = shared.settings.lock().unwrap().clone();
-    if let Err(err) = settings::save(&settings) {
-        log::line(format!("could not save settings: {err}"));
-    }
     if autostart_changed && autostart::writable() {
         let manager = app.autolaunch();
         let result = if settings.autostart { manager.enable() } else { manager.disable() };
@@ -254,11 +255,13 @@ pub(crate) fn update_island(app: &AppHandle, change: impl FnOnce(&mut Settings))
     let settings = {
         let mut s = shared.settings.lock().unwrap();
         change(&mut s);
+        // Saved under the lock, as save_settings does: the saves reach the
+        // disk in the order the changes were made.
+        if let Err(err) = settings::save(&s) {
+            log::line(format!("could not save settings: {err}"));
+        }
         s.clone()
     };
-    if let Err(err) = settings::save(&settings) {
-        log::line(format!("could not save settings: {err}"));
-    }
     let collapsed = shared.gate.collapsed.load(Ordering::Relaxed);
     island::apply_geometry(app, &settings.screen, island::Placement::of(&settings), collapsed);
     let _ = app.emit("settings-changed", settings);

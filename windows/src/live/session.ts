@@ -17,7 +17,7 @@ import { Bridge, onEvent, type LiveHelperActivity } from "../core/bridge";
 import { chatTitle, newChatId, saveChat } from "../core/chats";
 import { State } from "../core/state";
 import type { BotStateName } from "../core/layout";
-import { LANGUAGES, language, t } from "../i18n/i18n";
+import { language, t } from "../i18n/i18n";
 import { activityLabel } from "../views/chat";
 import { MicError, Microphone, Speaker } from "./audio";
 import {
@@ -63,9 +63,20 @@ function languageName(): string {
   if (code === "en") return "English";
   const names: Record<string, string> = {
     "zh-Hans": "Simplified Chinese", hi: "Hindi", es: "Spanish", ar: "Arabic", fr: "French",
-    bn: "Bengali", "pt-BR": "Brazilian Portuguese", ru: "Russian", id: "Indonesian",
+    bn: "Bengali", "pt-BR": "Brazilian Portuguese", ru: "Russian", id: "Indonesian", it: "Italian",
   };
-  return names[code] ?? LANGUAGES.find((l) => l.code === code)?.name ?? "English";
+  // A language added since: its English name from the system, never the
+  // picker's own ("Italiano"), which is in that language.
+  return names[code] ?? englishName(code) ?? "English";
+}
+
+function englishName(code: string): string | null {
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "language" }).of(code);
+    return name && name !== code ? name : null;
+  } catch {
+    return null;
+  }
 }
 
 function localNow(): string {

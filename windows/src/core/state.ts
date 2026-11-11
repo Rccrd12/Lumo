@@ -51,6 +51,8 @@ export interface AgentTask {
   sessionId?: string | null;
   /** Claude's final message after Stop, one line; cleared when a new turn starts. */
   finalLine?: string | null;
+  /** Why the turn stopped on an error (StopFailure's `error`, e.g. `rate_limit`, and its `error_details`); cleared when a new turn starts. */
+  failure?: { code: string; details: string } | null;
   /** The title of the session the pill shows (/rename, else Claude Code's own): its name, with the folder beside it. */
   sessionTitle?: string | null;
   /** A program's sessions in the background, grouped on this pill (core/background.ts): how many run, answered, failed. */
@@ -106,6 +108,8 @@ export interface ApprovalInfo {
   email?: OutgoingEmail;
   /** The plan Claude Code asks to start (ExitPlanMode), as steps: the card draws them as a list. */
   plan?: import("./agent-plan").PlanStep[];
+  /** A file tool's request: the lines it adds and removes, and a Write's size (core/approvals.ts editStat), under the file on the card. */
+  edit?: import("./approvals").EditStat;
   /** Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`): never allowed from the island, only denied or left to the agent's own prompt. */
   cut?: boolean;
 }
@@ -749,8 +753,9 @@ class AppState {
     const req = this.pendingApproval;
     if (!req) return;
     this.pendingApproval = null;
-    // A pin the user had set stays, as long as the island is still open.
-    this.isPinned = this.pinnedBeforeApproval === true && this.mode === "expanded";
+    // A pin the user had set stays, unless the island was closed meanwhile
+    // (Island.setMode lets go of it then, as a close does with no card).
+    this.isPinned = this.pinnedBeforeApproval === true;
     this.pinnedBeforeApproval = null;
     if (!req.fromChat) this.updateTask(req.pillId, "working");
     this.setPillBadge(req.pillId, null);
@@ -973,10 +978,7 @@ class AppState {
    * tab it was left on, Chat or Agents.
    */
   defaultView(): IslandViewName {
-    if (this.pendingApproval) {
-      if (planAskInChat(this.pendingApproval)) return "prompt";
-      return this.pendingApproval.questions ? "question" : "approval";
-    }
+    if (this.pendingApproval) return this.requestView(this.pendingApproval);
     // A file dropped and not yet asked about waits in the chat, so the island
     // opens there rather than on the home.
     if (this.droppedFile && !this.droppedFile.sent) return "prompt";
@@ -986,6 +988,20 @@ class AppState {
     if (this.lastTab === "agents") return this.agentsView();
     if (this.lastTab === "tools") return this.toolsInWorkshop && this.chatSlot === "forge" ? "prompt" : "tools";
     return this.liveActive ? "live" : "prompt";
+  }
+
+  /**
+   * The view a waiting request is answered on: its card (a permission or a
+   * question), or the chat for a plan the chat asks to start. The tool
+   * workshop never shows that plan (views/chat.ts planAsking), so the chat
+   * comes back in front of it, the workshop kept as it was.
+   */
+  requestView(req: ApprovalInfo): IslandViewName {
+    if (planAskInChat(req)) {
+      this.useSlot("chat");
+      return "prompt";
+    }
+    return req.questions ? "question" : "approval";
   }
 
   /** The home: it holds the sessions, the empty case and the rest. */

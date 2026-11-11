@@ -255,12 +255,14 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
   async function save() {
     const d = current;
     if (!d || saving) return;
+    // The chat the tool is saved from: another one may be on screen by the time it is.
+    const savedFrom = chatId;
     saving = true;
     saveError = "";
     redraw();
     try {
       const info = await Bridge.toolsSave(outgoing(d));
-      linkSaved(chatId, info.id, draftKey(d));
+      linkSaved(savedFrom, info.id, draftKey(d));
       Sound.play("proud");
     } catch (err) {
       saveError = String(err).replace(/^Error:\s*/, "");

@@ -13,6 +13,11 @@ import { eventSoon, type CalEvent } from "./calendar";
 export interface CompactLine {
   text: string;
   color: string;
+  /**
+   * Who it is about, when `text` starts with it and " · ": the closed island
+   * shortens it first, so what is going on stays readable (island/compact.ts).
+   */
+  lead?: string;
 }
 
 /** An email that came in (mail.rs). */
@@ -158,7 +163,7 @@ export function activityLine(
   agent: AgentActivityInput | null,
 ): CompactLine | null {
   if (chat) {
-    return { text: `${chat.who} · ${chat.label ?? t(COMPACT_TEXT.writing)}`, color: chat.color };
+    return { text: `${chat.who} · ${chat.label ?? t(COMPACT_TEXT.writing)}`, color: chat.color, lead: chat.who };
   }
   if (live && live.phase !== "off") {
     const what = live.doing ?? (live.muted && live.phase === "listening" ? t(COMPACT_TEXT.muted) : liveWords(live.phase));
@@ -166,7 +171,7 @@ export function activityLine(
   }
   if (agent) {
     const what = agentWords(agent);
-    if (what) return { text: `${agent.name} · ${what}`, color: agent.color };
+    if (what) return { text: `${agent.name} · ${what}`, color: agent.color, lead: agent.name };
   }
   return null;
 }
@@ -344,6 +349,8 @@ export class CompactFeed {
       const left = timer.pausedLeft;
       Object.defineProperty(timer, "endsAt", { value: now + left, writable: true, configurable: true, enumerable: true });
       delete timer.pausedLeft;
+      // Soonest first again: the one that waited may now ring before others.
+      this.timers.sort((a, b) => a.endsAt - b.endsAt);
     } else {
       const left = Math.max(0, timer.endsAt - now);
       timer.pausedLeft = left;
@@ -399,8 +406,10 @@ export class CompactFeed {
     if (this.mail) times.push(this.mail.until);
     const notice = this.currentNotice(now);
     if (notice) times.push(notice.until);
-    const timer = this.timers[0];
-    if (timer) times.push(timer.endsAt);
+    // The soonest one running: a paused one never rings, and the list may be
+    // out of order since one was paused.
+    const running = this.timers.filter((x) => x.pausedLeft == null);
+    if (running.length) times.push(Math.min(...running.map((x) => x.endsAt)));
     // An event about to start: its minutes count down; a later one comes in 15 minutes before.
     if (eventSoon(this.events, now)) times.push(now + 60_000 - (now % 60_000));
     const upcoming = this.events.find((e) => !e.allDay && e.start - 15 * 60_000 > now);

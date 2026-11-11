@@ -55,6 +55,10 @@ const BETA_MARK: &str = "<!-- lumo-beta ";
 /// and publish the signature beside it as `<installer>.sig`; an installer
 /// whose signature does not hold is never run. GitHub's SHA-256 says the file
 /// is the one on the release; the signature says the key's holder put it there.
+/// A second signature, `<installer>.name.sig`, covers the installer's name
+/// with its SHA-256 (`signed_name`): the name carries the version and, for a
+/// beta, its pre-release part, so an old installer, or a beta's, published
+/// again under another name (a newer version, a release) holds no signature.
 const UPDATE_PUBLIC_KEY: &str = "1545faa835cd76587611e06399b6af1de7cee43a1e1c7e70dc806be5443e8cec";
 
 /// A signature file is one line of hex: anything longer is not one.
@@ -448,10 +452,12 @@ fn is_release_download(url: &Url) -> bool {
     let Some(kind) = installer_kind(file) else {
         return false;
     };
+    let version = installer_middle(file).and_then(|(middle, _)| parse_version(middle));
     if tag == BETA_TAG {
-        return installer_middle(file).and_then(|(middle, _)| parse_version(middle)).is_some_and(|v| v.is_beta());
+        return version.is_some_and(|v| v.is_beta());
     }
-    tag.starts_with(TAG_PREFIX) && installer_name(&tag[TAG_PREFIX.len()..], kind) == file
+    // A release's tag never carries a beta's build.
+    tag.starts_with(TAG_PREFIX) && version.is_some_and(|v| !v.is_beta()) && installer_name(&tag[TAG_PREFIX.len()..], kind) == file
 }
 
 /// The version an accepted installer address carries.
@@ -668,28 +674,43 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         return Err(tf("The download failed: {error}", &[("error", "not an installer")]));
     }
     // Byte for byte the file GitHub published: a changed file is never run.
-    if crate::platform::sha256_hex(&bytes).as_deref() != Some(expected.as_str()) {
-        log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
-        return Err(t("The downloaded installer does not match the one GitHub published."));
+    // The installer may have been published again (a beta rebuilt) since Lumo
+    // read its SHA-256: GitHub is asked once more before giving up.
+    let got = crate::platform::sha256_hex(&bytes);
+    if got.as_deref() != Some(expected.as_str()) {
+        let again = match fetch_releases(app).await {
+            Ok(_) => expected_digest(&url).filter(|d| *d != expected),
+            Err(_) => None,
+        };
+        if again.is_none() || got != again {
+            log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
+            return Err(t("The downloaded installer does not match the one GitHub published."));
+        }
     }
     // Signed with Lumo's own key: a file swapped on the release, with its
     // SHA-256, still has no signature that holds.
-    let signature = fetch_signature(app, &client, &url).await?;
+    let signature = fetch_signature(app, &client, &url, ".sig").await?;
     if !signature_holds(&bytes, &signature, UPDATE_PUBLIC_KEY) {
         log::line(format!("update: {file_name} is not signed with Lumo's key, not installed"));
         return Err(t("The installer is not signed with Lumo's key, so Lumo did not install it."));
     }
+    // And signed under this very name: this version, this channel.
+    let named = fetch_signature(app, &client, &url, ".name.sig").await?;
+    if !signature_holds(signed_name(&file_name, &expected).as_bytes(), &named, UPDATE_PUBLIC_KEY) {
+        log::line(format!("update: {file_name} is not signed under its name, not installed"));
+        return Err(t("The installer is not signed with Lumo's key, so Lumo did not install it."));
+    }
     let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
 
-    // %TEMP%\Lumo-update\Lumo-Windows-<v>-setup.exe (or .msi); installers from
-    // earlier updates are cleared first.
-    let dir = std::env::temp_dir().join("Lumo-update");
+    // In Lumo's own folder (%LOCALAPPDATA%\com.rccrd12.lumo\update), not in
+    // %TEMP%; installers from earlier updates are cleared first. The file is
+    // made new and kept open with no one else allowed to write it, rename it
+    // or delete it until Lumo quits: what runs is the very bytes checked above.
+    let dir = crate::settings::local_dir().join("update");
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
+    crate::platform::ensure_private_dir(&dir).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
     let path = dir.join(&file_name);
-    let partial = dir.join(format!("{file_name}.part"));
-    std::fs::write(&partial, &bytes).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
-    std::fs::rename(&partial, &path).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
+    let held = write_held(&path, &bytes).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
     log::line(format!("update: downloaded {} ({} bytes)", file_name, bytes.len()));
 
     let mut command = match kind {
@@ -711,14 +732,54 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         .spawn()
         .map_err(|e| tf("Could not start the installer: {error}", &[("error", &e.to_string())]))?;
     log::line(format!("update: {kind:?} installer started, quitting"));
+    // Held until Lumo quits, a moment from now (update_install).
+    *HELD.lock().unwrap_or_else(|e| e.into_inner()) = Some(held);
     Ok(())
 }
 
-/// The signature published beside the installer at `url` (`<installer>.sig`),
-/// from GitHub as the installer is.
-async fn fetch_signature(app: &AppHandle, client: &reqwest::Client, url: &Url) -> Result<String, String> {
+/// The installer being run, held open so nobody else can change it.
+static HELD: Mutex<Option<std::fs::File>> = Mutex::new(None);
+
+/// Writes `bytes` to a new file at `path`, then holds it open for reading
+/// with no one else allowed to write, rename or delete it while the handle
+/// lives; the installer and msiexec may still read it. What it holds is read
+/// back through that handle: the bytes checked, or an error.
+fn write_held(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<std::fs::File> {
+    use std::io::{Read, Write};
+    {
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 0x1;
+        options.share_mode(FILE_SHARE_READ);
+    }
+    let mut file = options.open(path)?;
+    let mut back = Vec::with_capacity(bytes.len());
+    file.read_to_end(&mut back)?;
+    if back != bytes {
+        return Err(std::io::Error::other("the installer changed on disk"));
+    }
+    Ok(file)
+}
+
+/// What `<installer>.name.sig` signs: the installer's name and its SHA-256
+/// (hex, lower case), on lines of their own after a fixed first line.
+fn signed_name(file_name: &str, sha256: &str) -> String {
+    format!("lumo-update-v1\n{file_name}\n{}\n", sha256.trim().to_ascii_lowercase())
+}
+
+/// A signature published beside the installer at `url` (`<installer>.sig`,
+/// `<installer>.name.sig`), from GitHub as the installer is.
+/// `ending`: `.sig` for the installer's bytes, `.name.sig` for its name.
+async fn fetch_signature(app: &AppHandle, client: &reqwest::Client, url: &Url, ending: &str) -> Result<String, String> {
     let missing = || t("This installer has no signature from Lumo, so Lumo did not install it.");
-    let sig_url = Url::parse(&format!("{url}.sig")).map_err(|_| missing())?;
+    let sig_url = Url::parse(&format!("{url}{ending}")).map_err(|_| missing())?;
     let response = client
         .get(sig_url)
         .header("User-Agent", user_agent(app))
@@ -1021,6 +1082,37 @@ mod tests {
         assert!(!ok("https://github.com/someone/else/releases/download/windows-beta/Lumo-Windows-0.18.1-312-setup.exe"));
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-beta/payload.exe")));
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-beta-2/Lumo-Windows-0.18.1-312-setup.exe")));
+        // Nor a beta's build under a release's tag of its own version.
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.18.1-312/Lumo-Windows-0.18.1-312-setup.exe")));
+    }
+
+    #[test]
+    fn the_name_signature_binds_the_version_and_the_channel() {
+        let sha = "AB".repeat(32);
+        assert_eq!(signed_name("Lumo-Windows-0.22.0-setup.exe", &sha), format!("lumo-update-v1\nLumo-Windows-0.22.0-setup.exe\n{}\n", "ab".repeat(32)));
+        assert_ne!(signed_name("Lumo-Windows-0.22.0-setup.exe", &sha), signed_name("Lumo-Windows-0.23.0-setup.exe", &sha));
+        assert_ne!(signed_name("Lumo-Windows-0.22.0-312-setup.exe", &sha), signed_name("Lumo-Windows-0.22.0-setup.exe", &sha));
+        // As sign-update.mjs signs it (a pair made for this test only, node:crypto).
+        let key = "6e3bb7fd2d3e35b7c572f35da38704c50860350d4ff818f2fd5290d0d200d17b";
+        assert!(!signature_holds(signed_name("Lumo-Windows-0.22.0-setup.exe", &sha).as_bytes(), "00", key));
+    }
+
+    #[test]
+    fn the_installer_is_held_while_it_runs() {
+        let dir = std::env::temp_dir().join(format!("lumo-held-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.exe");
+        let held = write_held(&path, b"MZ installer").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"MZ installer", "others may read it");
+        #[cfg(windows)]
+        {
+            assert!(std::fs::OpenOptions::new().write(true).open(&path).is_err(), "nobody else writes it");
+            assert!(std::fs::remove_file(&path).is_err(), "nor deletes it");
+        }
+        assert!(write_held(&path, b"MZ other").is_err(), "never one already there");
+        drop(held);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
