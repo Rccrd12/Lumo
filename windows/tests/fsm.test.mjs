@@ -368,6 +368,59 @@ test("a sharing shortcut's grace keeps the island open with the mouse elsewhere,
   assert.equal(fsm.state, "petit");
 });
 
+test("an alert opened with the mouse elsewhere stays to be read, even set to close as the mouse leaves", () => {
+  fsm.homeToPetitDelay = 0.6;
+  fsm.mouseEntered();
+  fsm.mouseLeft();
+  seconds(60);
+  assert.equal(fsm.state, "hidden");
+  // Island.alert: the reading time first, then open; the island reports the mouse away.
+  fsm.holdOpen(8, false);
+  fsm.forceHome();
+  fsm.mouseLeft();
+  seconds(1);
+  assert.equal(fsm.state, "home", "not folded after the 0.6 s of a leave");
+  assert.equal(fsm.homeCollapseSpan, 8, "the countdown bar runs over the reading time");
+  assert.equal(fsm.clickEndsGrace, false, "a click meant for another window does not close it");
+  seconds(7);
+  assert.equal(fsm.state, "petit", "read or not, it folds once the reading time is over");
+  assert.equal(fsm.homeCollapseSpan, null);
+});
+
+test("an alert being read: the mouse coming and leaving closes it as usual", () => {
+  fsm.homeToPetitDelay = 0.6;
+  fsm.holdOpen(8, false);
+  fsm.forceHome();
+  fsm.mouseLeft();
+  seconds(2);
+  fsm.mouseEntered();
+  seconds(20);
+  assert.equal(fsm.state, "home", "open while the mouse is on it");
+  fsm.mouseLeft();
+  assert.equal(fsm.homeCollapseSpan, null, "the usual countdown");
+  seconds(0.6);
+  assert.equal(fsm.state, "petit");
+});
+
+test("a longer auto-close delay is kept over an alert's reading time", () => {
+  fsm.homeToPetitDelay = 30;
+  fsm.holdOpen(8, false);
+  fsm.forceHome();
+  fsm.mouseLeft();
+  assert.equal(fsm.homeCollapseSpan, null);
+  seconds(29);
+  assert.equal(fsm.state, "home");
+  seconds(1);
+  assert.equal(fsm.state, "petit");
+});
+
+test("a shortcut's grace is ended by a click elsewhere, an alert's is not", () => {
+  fsm.holdOpen(8, false);
+  assert.equal(fsm.clickEndsGrace, false);
+  fsm.holdOpen(10);
+  assert.equal(fsm.clickEndsGrace, true);
+});
+
 // ── Holding a leave back: the chat's field, a message being written ──────────
 
 function openLeaving(hold) {
