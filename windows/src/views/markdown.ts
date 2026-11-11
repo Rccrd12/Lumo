@@ -409,9 +409,44 @@ export function safeWebUrl(raw: string): string | null {
 const MATH = /\$\$([^$]+?)\$\$|\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$((?:\\.|[^$\\\n])+?)\$/;
 const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLINE.source.indexOf("|") + 1)}|(\\\\\\$)`, "g");
 
+/**
+ * Stars that sit between two operands are multiplication, never emphasis:
+ * "8*10^-9", "(2.25*10^-9*0.4^3)/(2*8,99*10^9)", "k*q1*q2", "x**2". A single
+ * star is one when a letter, a digit or a closing bracket comes before it and
+ * a letter, a digit or an opening bracket after it (or a sign then a digit,
+ * after a number: "2*-3"); a ** only when a number or an opening bracket
+ * follows, so "**API**s" and "**1990**s" stay bold. Such stars are swapped
+ * for TIMES before the parse and given back in what it returns. ASCII only:
+ * Chinese and Japanese put emphasis between letters, with no spaces.
+ */
+const TIMES = "\uFDD0";
+const BEFORE_FACTOR = /[A-Za-z0-9)\]]/;
+const FACTOR = /[A-Za-z0-9([]/;
+
+function maskProducts(text: string): string {
+  if (!text.includes("*")) return text;
+  return text.replace(/\*+/g, (run: string, at: number) => {
+    const before = text[at - 1] ?? "";
+    const after = text[at + run.length] ?? "";
+    if (!BEFORE_FACTOR.test(before)) return run;
+    const product =
+      run.length === 1
+        ? FACTOR.test(after) || (/[\d)]/.test(before) && /[-+]/.test(after) && /\d/.test(text[at + 2] ?? ""))
+        : run.length === 2 && /[\d(]/.test(after);
+    return product ? TIMES.repeat(run.length) : run;
+  });
+}
+
+const unmask = (t: string) => (t.includes(TIMES) ? t.split(TIMES).join("*") : t);
+
 export function parseInline(text: string): Inline[] {
+  return parseMasked(maskProducts(text));
+}
+
+function parseMasked(text: string): Inline[] {
   const out: Inline[] = [];
-  const pushText = (t: string) => {
+  const pushText = (raw: string) => {
+    const t = unmask(raw);
     if (!t) return;
     const last = out[out.length - 1];
     if (last?.kind === "text") last.text += t;
@@ -434,12 +469,12 @@ export function parseInline(text: string): Inline[] {
     pushText(text.slice(at, m.index));
     at = m.index + m[0].length;
     if (m[12] != null) pushText("$");
-    else if (m[1] != null) out.push({ kind: "code", text: m[1].slice(1, -1) });
+    else if (m[1] != null) out.push({ kind: "code", text: unmask(m[1].slice(1, -1)) });
     else if (m[2] != null || m[3] != null || m[4] != null || m[5] != null) {
-      out.push({ kind: "math", tex: m[2] ?? m[3] ?? m[4] ?? m[5], display: m[2] != null || m[4] != null });
-    } else if (m[10] != null) out.push({ kind: "link", url: safeWebUrl(m[11]), children: parseInline(m[10]) });
-    else if (m[6] != null || m[7] != null) out.push({ kind: "strong", children: parseInline(m[6] ?? m[7]) });
-    else out.push({ kind: "em", children: parseInline(m[8] ?? m[9]) });
+      out.push({ kind: "math", tex: unmask(m[2] ?? m[3] ?? m[4] ?? m[5]), display: m[2] != null || m[4] != null });
+    } else if (m[10] != null) out.push({ kind: "link", url: safeWebUrl(unmask(m[11])), children: parseMasked(m[10]) });
+    else if (m[6] != null || m[7] != null) out.push({ kind: "strong", children: parseMasked(m[6] ?? m[7]) });
+    else out.push({ kind: "em", children: parseMasked(m[8] ?? m[9]) });
   }
   pushText(text.slice(at));
   return out;
