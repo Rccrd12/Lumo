@@ -303,7 +303,10 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 answer.calls = calls;
                 answer.text = rest;
                 fixes.push("call read from the text");
-                hooks.shown(&after_before(&answer.text));
+                // The plan's check stays unseen: the answer shown stays as it was.
+                if !hushed {
+                    hooks.shown(&after_before(&answer.text));
+                }
             }
         }
         if let Some(tokens) = answer.used {
@@ -318,9 +321,13 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 let text = plan.checking.take().unwrap_or_default();
                 return Ok(Outcome { said, text, end: End::Answer, used, rounds, whole, fixes, notes });
             }
-            // Back at work with other tools: no longer a check, said as any round.
+            // Back at work with other tools: no longer a check, said as any
+            // round. The answer it gave stays where it was shown, before this
+            // round's words.
             if answer.calls.iter().any(|c| c["name"].as_str() != Some(plan::TOOL)) {
-                plan.checking = None;
+                if let Some(kept) = plan.checking.take().filter(|k| !k.is_empty()) {
+                    said.push(kept);
+                }
                 hooks.hush(false);
             }
         }

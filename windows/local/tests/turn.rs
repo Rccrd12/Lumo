@@ -661,3 +661,47 @@ fn a_job_of_several_changes_with_no_plan_is_asked_for_one_once() {
     let (outcome, _) = turn(replies, &mut question("Cerca", &["web_search", "update_plan"]), &rules("plan-ask-read", ""), &mut Island::default());
     assert!(outcome.unwrap().fixes.is_empty());
 }
+
+#[test]
+fn an_answer_whose_plan_check_goes_back_to_work_stays() {
+    // Asked, unseen, to put its plan right after its answer, the model goes
+    // back to work with other tools: the answer it gave stays, on the island
+    // and in what is kept of the turn.
+    let mut island = Island::default();
+    let replies = vec![
+        calls("c1", "update_plan", PLAN_ABC),
+        calls("c2", "workspace_write", "{\"path\":\"a\"}"),
+        calls("c3", "workspace_write", "{\"path\":\"b\"}"),
+        answer("Fatto A."),
+        calls("c4", "workspace_write", "{\"path\":\"c\"}"),
+        answer("Fatto anche C."),
+    ];
+    let mut body = question("Fai A, B e C", &["update_plan", "workspace_write"]);
+    let (outcome, requests) = turn(replies, &mut body, &rules("plan-back-to-work", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(requests.len(), 6);
+    assert_eq!(island.hushed, [true, false]);
+    assert_eq!(outcome.answer(), "Fatto A.\n\nFatto anche C.");
+    assert_eq!(island.shown.last().unwrap(), "Fatto A.\n\nFatto anche C.");
+}
+
+#[test]
+fn a_plan_check_whose_call_is_left_in_the_text_stays_unseen() {
+    let mut island = Island::default();
+    let check = format!("Aggiorno il piano.<tool_call>{{\"name\":\"update_plan\",\"arguments\":{PLAN_DONE}}}</tool_call>");
+    let replies = vec![
+        calls("c1", "update_plan", PLAN_ABC),
+        calls("c2", "workspace_write", "{\"path\":\"a\"}"),
+        calls("c3", "workspace_write", "{\"path\":\"b\"}"),
+        answer("Fatto!"),
+        answer(&check),
+        answer("OK"),
+    ];
+    let mut body = question("Fai A, B e C", &["update_plan", "workspace_write"]);
+    let (outcome, _) = turn(replies, &mut body, &rules("plan-check-text", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.answer(), "Fatto!");
+    assert!(!island.shown.iter().any(|s| s.contains("Aggiorno")), "{:?}", island.shown);
+    assert_eq!(island.shown.last().unwrap(), "Fatto!");
+    assert_eq!(island.ran.last().unwrap().0, "update_plan");
+}
