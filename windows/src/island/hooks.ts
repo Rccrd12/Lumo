@@ -340,11 +340,19 @@ export function cleanPayload(raw: unknown): HookPayload | null {
 const LIVE_FILE = {
   read: N_("Read a file you didn't give it"),
   open: N_("Open a file you didn't give it"),
+  page: N_("Open this page in the browser"),
 };
 
-/** Gemini Live's card for a file: the file's full path and what it wants to do; null when it is no such card. */
+/**
+ * Gemini Live's card for a file or a web page: the file's full path or the
+ * page's whole address, and what it wants to do; null when it is no such card.
+ */
 export function liveFileChange(raw: HookPayload["lumo_live_file"], input: Record<string, unknown>): { command: string; reason: string } | null {
   if (!raw || typeof raw !== "object") return null;
+  if (raw.action === "page") {
+    const url = typeof input.url === "string" ? input.url : "";
+    return url ? { command: url, reason: t(LIVE_FILE.page) } : null;
+  }
   const path = typeof input.path === "string" ? input.path : "";
   if (!path) return null;
   return { command: path, reason: t(raw.action === "open" ? LIVE_FILE.open : LIVE_FILE.read) };
