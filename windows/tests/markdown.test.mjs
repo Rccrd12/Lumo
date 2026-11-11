@@ -549,6 +549,14 @@ test("a $$ left open swallows nothing past a blank line, a heading or a fence", 
   const blocks = parseMarkdown("Costa $$ tanto\n# Titolo\n- uno\n\n```\ncode\n```\nfine $$ qui");
   assert.deepEqual(blocks.map((b) => b.kind), ["paragraph", "heading", "item", "code", "paragraph"]);
   assert.deepEqual(parseMarkdown("Costa $$ tanto\n\naltro $$ qui").map((b) => b.kind), ["paragraph", "paragraph"]);
+  // At the start of a line, the same: text when a blank line, a heading or a
+  // fence comes before its closer, a formula when the text ends first (an
+  // answer still being written).
+  assert.deepEqual(parseMarkdown("$$\nx = 1\n\n# Titolo"), [
+    { kind: "paragraph", text: "$$\nx = 1" },
+    { kind: "heading", level: 1, text: "Titolo" },
+  ]);
+  assert.deepEqual(parseMarkdown("$$\nx = 1\ny = 2"), [{ kind: "math", tex: "\nx = 1\ny = 2" }]);
   // Closed before any of them, it runs across what looks like a list.
   assert.deepEqual(parseMarkdown("Quindi $$\n- x + y\n= 3$$\nfine"), [
     { kind: "paragraph", text: "Quindi $$\n- x + y\n= 3$$" },

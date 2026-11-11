@@ -1,8 +1,8 @@
 // The one reading of what in a text is code, a formula or an escaped
 // character, before any Markdown: these spans are set aside first, so a star,
 // an underscore, a pipe or a hash inside them is never read as emphasis, a
-// table's column or a heading. markdown.ts parses the rest; ink.ts and the
-// cards ask the same spans where not to cut and where a formula is.
+// table's column or a heading. markdown.ts parses the rest, and the cards
+// that draw Markdown (views/rich) get the same reading through it.
 
 export type Span =
   | { kind: "code"; from: number; to: number; text: string }
@@ -25,6 +25,15 @@ export function scan(text: string, multiline = true): Span[] {
   const spans: Span[] = [];
   const n = text.length;
   let i = 0;
+  // Closers already looked for and missing from the rest of the text: never
+  // looked for again, so a thousand lone \( stay a single pass.
+  const missing = new Set<string>();
+  const find = (closer: string, from: number) => {
+    if (missing.has(closer)) return -1;
+    const at = text.indexOf(closer, from);
+    if (at < 0) missing.add(closer);
+    return at;
+  };
   const lineEnd = (from: number) => {
     const e = text.indexOf("\n", from);
     return e < 0 ? n : e;
@@ -42,7 +51,7 @@ export function scan(text: string, multiline = true): Span[] {
       // \( … \) and \[ … \]: always a formula.
       if (next === "(" || next === "[") {
         const close = next === "(" ? "\\)" : "\\]";
-        const end = text.indexOf(close, i + 2);
+        const end = find(close, i + 2);
         if (end > i + 2 && (multiline || !text.slice(i, end).includes("\n"))) {
           spans.push({ kind: "math", from: i, to: end + 2, tex: text.slice(i + 2, end), display: next === "[" });
           i = end + 2;
@@ -62,8 +71,9 @@ export function scan(text: string, multiline = true): Span[] {
       let k = i;
       while (text[k] === "`") k++;
       const ticks = k - i;
-      const end = text.indexOf("`".repeat(ticks), k);
       const stop = lineEnd(k);
+      const close = text.slice(k, stop).indexOf("`".repeat(ticks));
+      const end = close < 0 ? -1 : k + close;
       // A run of the same length closes it, on the same line, not part of a longer run.
       if (end >= 0 && end <= stop && text[end + ticks] !== "`" && end > k) {
         spans.push({ kind: "code", from: i, to: end + ticks, text: text.slice(k, end) });
@@ -75,7 +85,7 @@ export function scan(text: string, multiline = true): Span[] {
     }
     if (c === "$") {
       if (text[i + 1] === "$") {
-        const end = text.indexOf("$$", i + 2);
+        const end = find("$$", i + 2);
         if (end > i + 2 && (multiline || !text.slice(i, end).includes("\n"))) {
           spans.push({ kind: "math", from: i, to: end + 2, tex: text.slice(i + 2, end), display: true });
           i = end + 2;

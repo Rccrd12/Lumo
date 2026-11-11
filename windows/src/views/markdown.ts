@@ -181,6 +181,9 @@ function imageAt(line: string): Extract<Block, { kind: "image" }> | null {
   return image && url?.startsWith("https:") ? { kind: "image", alt: image[1].trim(), url } : null;
 }
 
+/** A line no formula runs across: blank, a heading or a code fence. */
+const endsDisplay = (line: string) => !line.trim() || /^#+(?:\s|$)/.test(line) || FENCE_LINE.test(line);
+
 /** The closer of a $$ or \\[ left open in `text` (outside code and closed formulas), null when none is. */
 function openDisplay(text: string): string | null {
   const opener = /\$\$|\\\[/.exec(protect(text).masked)?.[0];
@@ -198,7 +201,7 @@ function displayCloser(text: string, lines: string[], from: number): number {
   for (let k = from; k < lines.length; k++) {
     const line = lines[k];
     if (line.includes(closer)) return k;
-    if (!line.trim() || /^#+(?:\s|$)/.test(line) || FENCE_LINE.test(line)) return -1;
+    if (endsDisplay(line)) return -1;
   }
   return -1;
 }
@@ -280,19 +283,27 @@ export function parseMarkdown(input: string, partial = false): Block[] {
     }
 
     // $$ … $$ or \[ … \] on lines of their own: a formula on a line of its own.
-    const opener = line.trim().startsWith("$$") ? "$$" : line.trim().startsWith("\\[") ? "\\[" : null;
-    if (opener) {
-      const closer = opener === "$$" ? "$$" : "\\]";
-      const first = line.trim().slice(2);
+    let opener = line.trim().startsWith("$$") ? "$$" : line.trim().startsWith("\\[") ? "\\[" : null;
+    const closer = opener === "$$" ? "$$" : "\\]";
+    const first = line.trim().slice(2);
+    if (opener && first.includes(closer)) {
+      // On one line; anything after it goes on as text.
       const done = first.indexOf(closer);
-      if (done >= 0) {
-        // On one line; anything after it goes on as text.
-        blocks.push({ kind: "math", tex: first.slice(0, done) });
-        const rest = first.slice(done + 2).trim();
-        if (rest) blocks.push({ kind: "paragraph", text: rest });
-        i++;
-        continue;
-      }
+      blocks.push({ kind: "math", tex: first.slice(0, done) });
+      const rest = first.slice(done + 2).trim();
+      if (rest) blocks.push({ kind: "paragraph", text: rest });
+      i++;
+      continue;
+    }
+    if (opener) {
+      // Its lines run to the closer. A blank line, a heading or a fence
+      // before it: the $$ was text, and swallows nothing (as in a paragraph).
+      // The end of the text before it: an answer still being written, or cut.
+      let end = i + 1;
+      while (end < lines.length && !lines[end].includes(closer) && !endsDisplay(lines[end])) end++;
+      if (end < lines.length && !lines[end].includes(closer)) opener = null;
+    }
+    if (opener) {
       const tex: string[] = [first];
       for (i++; i < lines.length && !lines[i].includes(closer); i++) tex.push(lines[i]);
       let after = "";
