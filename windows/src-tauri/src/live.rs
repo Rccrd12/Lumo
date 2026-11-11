@@ -229,6 +229,15 @@ pub fn looks_like_text(bytes: &[u8]) -> bool {
     }
 }
 
+/// The type Windows opens `path` as: the name's last part with what follows a
+/// `:` (a stream of the same file, `setup.exe::$DATA`) left out and the dots
+/// and spaces at its end dropped, as Windows drops them (`setup.exe.`).
+fn opened_extension(path: &Path) -> String {
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let name = name.split(':').next().unwrap_or("").trim_end_matches(['.', ' ']);
+    name.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase()).unwrap_or_default()
+}
+
 /// Programs, scripts and shortcuts to them: never opened by their type.
 pub fn is_runnable(path: &Path) -> bool {
     const RUNNABLE: &[&str] = &[
@@ -239,7 +248,7 @@ pub fn is_runnable(path: &Path) -> bool {
         "chm", "msc", "appref-ms", "settingcontent-ms", "xll", "wsc", "sct", "diagcab", "appinstaller", "rdp",
         "iso", "img", "vhd", "vhdx", "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppam", "dll",
     ];
-    RUNNABLE.contains(&extension(path).as_str())
+    RUNNABLE.contains(&opened_extension(path).as_str())
 }
 
 /// What reading a path gives the model.
@@ -553,7 +562,8 @@ pub fn open(target: &str) -> Result<String, String> {
     if !path.is_file() {
         return Err(missing(target));
     }
-    if is_runnable(&path) {
+    // The name on disk too: a short name (`SETUP~1.SET`) hides the type.
+    if is_runnable(&path) || path.canonicalize().is_ok_and(|real| is_runnable(&real)) {
         return Err(t("Lumo doesn't open programs or scripts this way: ask for the app by its name instead."));
     }
     imp::open_document(&path)?;
@@ -881,6 +891,16 @@ fn given_by_explorer(parent: &Path, open: &[PathBuf], voice: &[PathBuf]) -> bool
     open.iter().any(|dir| same(parent, dir)) && !voice.iter().any(|dir| same(parent, dir))
 }
 
+/// A canonical path as File Explorer writes it: `\\?\C:\x` is `C:\x`, and
+/// `\\?\UNC\server\share` is `\\server\share` (not the relative `UNC\server\share`).
+fn plain(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    match s.strip_prefix(r"\\?\UNC\") {
+        Some(rest) => PathBuf::from(format!(r"\\{rest}")),
+        None => PathBuf::from(s.strip_prefix(r"\\?\").unwrap_or(&s)),
+    }
+}
+
 /// What the voice wants to do with a file.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Use {
@@ -891,8 +911,7 @@ pub enum Use {
 /// The user's go-ahead for `path`: none for a file already given, never for
 /// a sensitive one, else Lumo's own Allow / Deny card on the island.
 pub async fn may_use(app: &AppHandle, path: &Path, what: Use) -> Result<(), String> {
-    let real = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let real = PathBuf::from(real.to_string_lossy().trim_start_matches("\\\\?\\"));
+    let real = path.canonicalize().map(|p| plain(&p)).unwrap_or_else(|_| path.to_path_buf());
     if is_sensitive(path) || is_sensitive(&real) {
         return Err(t("That file holds keys or passwords: Lumo never reads or opens it for the voice."));
     }
@@ -957,7 +976,7 @@ pub async fn live_open(app: AppHandle, target: String) -> Result<String, String>
         may_use(&app, &full, Use::Open).await?;
         // A folder the voice opens is not one the user gave (`given`).
         if full.is_dir() {
-            let real = full.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches("\\\\?\\"))).unwrap_or(full);
+            let real = full.canonicalize().map(|p| plain(&p)).unwrap_or(full);
             VOICE_OPENED.lock().unwrap_or_else(|e| e.into_inner()).push(real);
         }
     }
@@ -1209,6 +1228,20 @@ mod tests {
         for name in ["report.pdf", "photo.JPG", "notes.txt", "sheet.xlsx", "deck.pptx", "song.mp3"] {
             assert!(!is_runnable(Path::new(name)), "{name}");
         }
+        // Windows drops the dots and spaces at the end, and opens a stream's file.
+        for name in ["setup.exe.", "setup.exe ", "setup.exe. . ", "run.bat::$DATA", "x.ps1:zone", ".exe", r"C:\Users\me\setup.EXE..."] {
+            assert!(is_runnable(Path::new(name)), "{name}");
+        }
+        for name in ["report.pdf.", "notes.txt::$DATA", "setup", "exe."] {
+            assert!(!is_runnable(Path::new(name)), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_canonical_path_is_written_as_explorer_does() {
+        assert_eq!(plain(Path::new(r"\\?\C:\Users\me\a.txt")), PathBuf::from(r"C:\Users\me\a.txt"));
+        assert_eq!(plain(Path::new(r"\\?\UNC\server\share\a.txt")), PathBuf::from(r"\\server\share\a.txt"));
+        assert_eq!(plain(Path::new(r"C:\a")), PathBuf::from(r"C:\a"));
     }
 
     #[test]
