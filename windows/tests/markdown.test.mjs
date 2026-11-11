@@ -537,3 +537,44 @@ test("a card drawn when nothing could be sent is drawn again once it can", () =>
   renderMarkdown(root, text, { scope: "ink-send", send: () => {} });
   assert.equal(root.find(".rc-quiz")[0], done);
 });
+
+// ── Code and formulas set aside first (src/views/scan.ts) ─────────────────────
+
+test("a pipe inside a formula or code stays in its cell, and \\| stays TeX's in a formula", () => {
+  const [table] = parseMarkdown("| a | b | c |\n|---|---|---|\n| $|x|$ | $\\|v\\|$ | `x\\|y` and a\\|b |");
+  assert.deepEqual(table.rows, [["$|x|$", "$\\|v\\|$", "`x|y` and a|b"]]);
+});
+
+test("a $$ left open swallows nothing past a blank line, a heading or a fence", () => {
+  const blocks = parseMarkdown("Costa $$ tanto\n# Titolo\n- uno\n\n```\ncode\n```\nfine $$ qui");
+  assert.deepEqual(blocks.map((b) => b.kind), ["paragraph", "heading", "item", "code", "paragraph"]);
+  assert.deepEqual(parseMarkdown("Costa $$ tanto\n\naltro $$ qui").map((b) => b.kind), ["paragraph", "paragraph"]);
+  // Closed before any of them, it runs across what looks like a list.
+  assert.deepEqual(parseMarkdown("Quindi $$\n- x + y\n= 3$$\nfine"), [
+    { kind: "paragraph", text: "Quindi $$\n- x + y\n= 3$$" },
+    { kind: "paragraph", text: "fine" },
+  ]);
+});
+
+test("quote lines join only around a formula that closes", () => {
+  const open = dom.root();
+  renderMarkdown(open, "> Prezzo $$ alto\n> riga due\n> riga tre");
+  assert.equal(open.find(".md-p").length, 3);
+  const blank = dom.root();
+  renderMarkdown(blank, "> uno $$\n>\n> due $$");
+  assert.equal(blank.find(".md-p").length, 2);
+  const formula = dom.root();
+  renderMarkdown(formula, "> Ricorda\n> $$\n> E = mc^2\n> $$");
+  assert.equal(formula.find(".md-p").length, 2);
+});
+
+test("past the marks there are, the first formulas are kept and the rest stay as written", async () => {
+  const { MARKS, protect } = await import("../src/views/scan.ts");
+  const text = Array.from({ length: MARKS + 5 }, (_, k) => `$x_${k}$`).join(" ") + " ";
+  const { masked, spans } = protect(text);
+  assert.equal(spans.length, MARKS);
+  assert.ok(masked.endsWith(`$x_${MARKS + 4}$ �`));
+  const nodes = parseInline(text);
+  assert.equal(nodes.filter((n) => n.kind === "math").length, MARKS);
+  assert.ok(nodes.at(-1).text.includes(`$x_${MARKS}$`));
+});

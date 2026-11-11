@@ -13,6 +13,8 @@ export type Span =
 /** The marks written in place of the spans: one character each, from the private use area. */
 const MARK_BASE = 0xe000;
 const MARK_LAST = 0xf8ff;
+/** How many spans one text can set aside. */
+export const MARKS = MARK_LAST - MARK_BASE + 1;
 export const isMark = (c: string) => c.length === 1 && c.charCodeAt(0) >= MARK_BASE && c.charCodeAt(0) <= MARK_LAST;
 
 /**
@@ -119,14 +121,22 @@ function closingDollar(text: string, at: number): number | null {
 
 /** The text with each span written as one mark, and the spans by mark. */
 export function protect(text: string, spans = scan(text)): { masked: string; spans: Span[] } {
-  if (!spans.length || spans.length > MARK_LAST - MARK_BASE) return { masked: text, spans: [] };
+  if (!spans.length) return { masked: text, spans: [] };
+  // More spans than marks (6,400 formulas in one paragraph): the first ones
+  // are set aside, the rest stay as written, never all of them lost.
+  let tail = (t: string) => t;
+  if (spans.length > MARKS) {
+    spans = spans.slice(0, MARKS);
+    // A character of the text that looks like a mark, past them, is no mark.
+    tail = (t: string) => t.replace(/[\ue000-\uf8ff]/g, "\ufffd");
+  }
   let masked = "";
   let at = 0;
   spans.forEach((s, k) => {
     masked += text.slice(at, s.from) + String.fromCharCode(MARK_BASE + k);
     at = s.to;
   });
-  return { masked: masked + text.slice(at), spans };
+  return { masked: masked + tail(text.slice(at)), spans };
 }
 
 /** The span a mark stands for. */

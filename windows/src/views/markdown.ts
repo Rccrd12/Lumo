@@ -111,8 +111,10 @@ function tableCells(line: string): string[] {
   const cells: string[] = [];
   let cell = "";
   for (let i = 0; i < s.length; i++) {
+    // \| outside code and formulas is a pipe of the cell; inside a formula
+    // it stays TeX's \| (a norm, ‖v‖), and the scan already kept it there.
     if (s[i] === "\\" && s[i + 1] === "|") {
-      cell += "\\|";
+      cell += "|";
       i++;
     } else if (s[i] === "|") {
       cells.push(cell);
@@ -123,7 +125,15 @@ function tableCells(line: string): string[] {
   // The outer pipes leave an empty cell at each end.
   if (s.startsWith("|")) cells.shift();
   if (cells.length > 1 && s.endsWith("|") && !s.endsWith("\\|")) cells.pop();
-  return cells.map((c) => unprotect(c, spans, source).replace(/\\\|/g, "|").trim());
+  // In `code`, \| is a pipe as GitHub reads it; in a formula it stays TeX.
+  const restore = (c: string) =>
+    [...c].map((ch) => {
+      const span = isMark(ch) ? spanOf(ch, spans) : undefined;
+      if (!span) return ch;
+      const raw = source.slice(span.from, span.to);
+      return span.kind === "code" ? raw.replace(/\\\|/g, "|") : raw;
+    }).join("");
+  return cells.map((c) => restore(c).trim());
 }
 
 /** A list item line, bullet or numbered, at any depth. */
@@ -171,16 +181,25 @@ function imageAt(line: string): Extract<Block, { kind: "image" }> | null {
   return image && url?.startsWith("https:") ? { kind: "image", alt: image[1].trim(), url } : null;
 }
 
+/** The closer of a $$ or \\[ left open in `text` (outside code and closed formulas), null when none is. */
+function openDisplay(text: string): string | null {
+  const opener = /\$\$|\\\[/.exec(protect(text).masked)?.[0];
+  return opener ? (opener === "$$" ? "$$" : "\\]") : null;
+}
+
 /**
  * The line at or after `from` that closes a $$ or \\[ left open in `text`,
- * -1 when none is open or nothing closes it within 60 lines.
+ * -1 when none is open or a blank line, a heading or a code fence comes
+ * first: a $$ written as text never swallows the rest of the answer.
  */
 function displayCloser(text: string, lines: string[], from: number): number {
-  const open = protect(text).masked;
-  const opener = /\$\$|\\\[/.exec(open)?.[0];
-  if (!opener) return -1;
-  const closer = opener === "$$" ? "$$" : "\\]";
-  for (let k = from; k < lines.length && k < from + 60; k++) if (lines[k].includes(closer)) return k;
+  const closer = openDisplay(text);
+  if (!closer) return -1;
+  for (let k = from; k < lines.length; k++) {
+    const line = lines[k];
+    if (line.includes(closer)) return k;
+    if (!line.trim() || /^#+(?:\s|$)/.test(line) || FENCE_LINE.test(line)) return -1;
+  }
   return -1;
 }
 
@@ -898,15 +917,22 @@ export function renderMarkdown(into: HTMLElement, markdown: string, opts: Markdo
       out.push(el);
       continue;
     }
-    const lines: string[] = [];
-    for (; i < blocks.length && blocks[i].kind === "quote"; i++) {
-      const text = (blocks[i] as { text: string }).text;
-      const last = lines.length - 1;
-      // A formula over several quote lines ("> $$", "> a = b", "> $$") stays one.
-      if (last >= 0 && /\$\$|\\\[/.test(protect(lines[last]).masked)) lines[last] += `\n${text}`;
-      else if (text) lines.push(text);
-    }
+    const texts: string[] = [];
+    for (; i < blocks.length && blocks[i].kind === "quote"; i++) texts.push((blocks[i] as { text: string }).text);
     i--;
+    const lines: string[] = [];
+    for (let k = 0; k < texts.length; k++) {
+      if (!texts[k]) continue;
+      // A formula over several quote lines ("> $$", "> a = b", "> $$") stays
+      // one, when its closer comes before a blank quote line.
+      let line = texts[k];
+      const close = displayCloser(line, texts, k + 1);
+      if (close >= 0) {
+        line = texts.slice(k, close + 1).join("\n");
+        k = close;
+      }
+      lines.push(line);
+    }
     if (lines.length) out.push(quoteRun(lines));
   }
   if (opts.after) out.push(opts.after);
