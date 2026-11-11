@@ -145,6 +145,7 @@ class FakeElement {
 
 export function installFakeDom() {
   globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.cancelAnimationFrame = () => {};
   globalThis.document = {
     createElement: (tag) => new FakeElement(tag),
     createElementNS: (ns, tag) => new FakeElement(tag, ns),

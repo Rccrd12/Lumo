@@ -263,6 +263,36 @@ test("away from its end, sending and the answer being written never scroll the c
   assert.equal(log.scrollTop, 300, "the next question does not scroll it either");
 });
 
+test("the finished answer drawn again keeps the place it was read while its cards fit themselves", async () => {
+  let finish;
+  answers.chat_send = () => new Promise((resolve) => (finish = resolve));
+  const log = $(".chat-log");
+  log.clientHeight = 100;
+  log.scrollHeight = 600;
+  log.scrollTop = 250;
+  log.fire("scroll");
+  $(".chat-input").value = "plot it";
+  $(".send-btn").fire("click");
+  await flush();
+  view.sync();
+  log.scrollHeight = 1000;
+  emit("chat-delta", { chat: State.chatId, text: "Here it is" });
+  const frames = [];
+  const now = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = (fn) => frames.push(fn);
+  try {
+    finish({ text: "Here it is." });
+    await flush();
+    view.sync();
+    assert.equal(log.scrollTop, 250, "put back where it was read");
+    assert.equal(log.style.overflowAnchor, "none", "no scroll anchoring on the cards' first size");
+    for (let i = 0; i < 2; i++) frames.splice(0).forEach((fn) => fn());
+    assert.equal(log.style.overflowAnchor, "", "then anchoring again, for what loads later");
+  } finally {
+    globalThis.requestAnimationFrame = now;
+  }
+});
+
 test("scrolled to its end, the chat follows the answer until the slightest scroll up", async () => {
   let finish;
   answers.chat_send = () => new Promise((resolve) => (finish = resolve));
