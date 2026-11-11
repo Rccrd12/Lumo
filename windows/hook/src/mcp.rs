@@ -49,10 +49,11 @@ const CALL_BUDGET: Duration = Duration::from_secs(90);
 /// A call of one of the user's tools waits for the island's card (108 s at
 /// most, pipe.rs) and then runs up to its own time limit (600 s, tools.rs).
 const TOOL_CALL_BUDGET: Duration = Duration::from_secs(108 + 600 + 12);
-/// Sending or changing an email waits for the user's click on the card (108 s
-/// at most, pipe.rs), then for the mail server (a forward first fetches the
+/// Sending or changing an email waits for the user's click on the card (an
+/// email to send up to 300 s, pipe.rs MAIL_CARD_TIMEOUT, room to change it
+/// before Send), then for the mail server (a forward first fetches the
 /// email's files).
-const MAIL_SEND_BUDGET: Duration = Duration::from_secs(108 + 130 + 12);
+const MAIL_SEND_BUDGET: Duration = Duration::from_secs(300 + 130 + 12);
 /// What Lumo may answer with, at most: a screenshot is well under this.
 const MAX_ANSWER: usize = 24 * 1024 * 1024;
 /// The protocol version answered when the client names none we know.

@@ -18022,6 +18022,138 @@
    "ru": "Удалить строку состояния Lumo из Claude Code?",
    "id": "Hapus baris status Lumo dari Claude Code?",
    "it": "Rimuovere la riga di stato di Lumo da Claude Code?"
+  },
+  "Add…": {
+   "zh-Hans": "添加…",
+   "hi": "जोड़ें…",
+   "es": "Añadir…",
+   "ar": "إضافة…",
+   "fr": "Ajouter…",
+   "bn": "যোগ করুন…",
+   "pt-BR": "Adicionar…",
+   "ru": "Добавить…",
+   "id": "Tambah…",
+   "it": "Aggiungi…"
+  },
+  "Click a field to change it before sending": {
+   "zh-Hans": "点击字段即可在发送前修改",
+   "hi": "भेजने से पहले बदलने के लिए किसी फ़ील्ड पर क्लिक करें",
+   "es": "Haz clic en un campo para cambiarlo antes de enviar",
+   "ar": "انقر على حقل لتغييره قبل الإرسال",
+   "fr": "Cliquez sur un champ pour le modifier avant l'envoi",
+   "bn": "পাঠানোর আগে বদলাতে একটি ঘরে ক্লিক করুন",
+   "pt-BR": "Clique num campo para alterá-lo antes de enviar",
+   "ru": "Нажмите на поле, чтобы изменить его перед отправкой",
+   "id": "Klik kolom untuk mengubahnya sebelum dikirim",
+   "it": "Clicca su un campo per modificarlo prima di inviare"
+  },
+  "Edited by you": {
+   "zh-Hans": "已由你修改",
+   "hi": "आपने बदला",
+   "es": "Editado por ti",
+   "ar": "عدّلته أنت",
+   "fr": "Modifié par vous",
+   "bn": "আপনি বদলেছেন",
+   "pt-BR": "Editado por você",
+   "ru": "Изменено вами",
+   "id": "Diubah oleh Anda",
+   "it": "Modificata da te"
+  },
+  "Undo changes": {
+   "zh-Hans": "撤销修改",
+   "hi": "बदलाव वापस लें",
+   "es": "Deshacer cambios",
+   "ar": "تراجع عن التغييرات",
+   "fr": "Annuler les modifications",
+   "bn": "পরিবর্তন ফেরান",
+   "pt-BR": "Desfazer alterações",
+   "ru": "Отменить изменения",
+   "id": "Batalkan perubahan",
+   "it": "Ripristina"
+  },
+  "{address} isn't a complete email address": {
+   "zh-Hans": "{address} 不是完整的邮箱地址",
+   "hi": "{address} पूरा ईमेल पता नहीं है",
+   "es": "{address} no es una dirección de correo completa",
+   "ar": "{address} ليس عنوان بريد إلكتروني كاملًا",
+   "fr": "{address} n'est pas une adresse e-mail complète",
+   "bn": "{address} সম্পূর্ণ ইমেল ঠিকানা নয়",
+   "pt-BR": "{address} não é um endereço de e-mail completo",
+   "ru": "{address} — неполный адрес почты",
+   "id": "{address} bukan alamat email yang lengkap",
+   "it": "{address} non è un indirizzo email completo"
+  },
+  "Add who it goes to": {
+   "zh-Hans": "添加收件人",
+   "hi": "बताएँ कि यह किसे जाए",
+   "es": "Añade a quién va",
+   "ar": "أضف إلى من يُرسل",
+   "fr": "Ajoutez à qui elle est destinée",
+   "bn": "কাকে যাবে তা যোগ করুন",
+   "pt-BR": "Adicione para quem vai",
+   "ru": "Добавьте получателя",
+   "id": "Tambahkan penerimanya",
+   "it": "Aggiungi a chi va"
+  },
+  "At most {count} people, To and Cc together": {
+   "zh-Hans": "“收件人”和“抄送”合计最多 {count} 人",
+   "hi": "प्रति और Cc मिलाकर अधिकतम {count} लोग",
+   "es": "Como máximo {count} personas, entre Para y Cc",
+   "ar": "{count} أشخاص كحد أقصى، بين إلى ونسخة معًا",
+   "fr": "{count} personnes au plus, À et Cc ensemble",
+   "bn": "প্রতি ও Cc মিলিয়ে সর্বোচ্চ {count} জন",
+   "pt-BR": "No máximo {count} pessoas, entre Para e Cc",
+   "ru": "Не больше {count} человек в «Кому» и «Копия» вместе",
+   "id": "Paling banyak {count} orang, Kepada dan Cc digabung",
+   "it": "Al massimo {count} persone, tra A e Cc"
+  },
+  "The email has no text": {
+   "zh-Hans": "邮件没有正文",
+   "hi": "ईमेल में कोई पाठ नहीं है",
+   "es": "El correo no tiene texto",
+   "ar": "البريد بلا نص",
+   "fr": "L'e-mail n'a pas de texte",
+   "bn": "ইমেলে কোনো লেখা নেই",
+   "pt-BR": "O e-mail não tem texto",
+   "ru": "В письме нет текста",
+   "id": "Email tidak berisi teks",
+   "it": "L'email non ha testo"
+  },
+  "The subject or the text is too long": {
+   "zh-Hans": "主题或正文太长",
+   "hi": "विषय या पाठ बहुत लंबा है",
+   "es": "El asunto o el texto es demasiado largo",
+   "ar": "الموضوع أو النص طويل جدًا",
+   "fr": "L'objet ou le texte est trop long",
+   "bn": "বিষয় বা লেখা অনেক লম্বা",
+   "pt-BR": "O assunto ou o texto é longo demais",
+   "ru": "Тема или текст слишком длинные",
+   "id": "Subjek atau teksnya terlalu panjang",
+   "it": "L'oggetto o il testo è troppo lungo"
+  },
+  "At most {count} files": {
+   "zh-Hans": "最多 {count} 个文件",
+   "hi": "अधिकतम {count} फ़ाइलें",
+   "es": "Como máximo {count} archivos",
+   "ar": "{count} ملفات كحد أقصى",
+   "fr": "{count} fichiers au plus",
+   "bn": "সর্বোচ্চ {count}টি ফাইল",
+   "pt-BR": "No máximo {count} arquivos",
+   "ru": "Не больше {count} файлов",
+   "id": "Paling banyak {count} file",
+   "it": "Al massimo {count} file"
+  },
+  "The files weigh more than {mb} MB together": {
+   "zh-Hans": "文件合计超过 {mb} MB",
+   "hi": "फ़ाइलें मिलाकर {mb} MB से ज़्यादा हैं",
+   "es": "Los archivos pesan más de {mb} MB en total",
+   "ar": "حجم الملفات معًا أكبر من {mb} ميغابايت",
+   "fr": "Les fichiers pèsent plus de {mb} Mo au total",
+   "bn": "ফাইলগুলো মিলিয়ে {mb} MB-এর বেশি",
+   "pt-BR": "Os arquivos somam mais de {mb} MB",
+   "ru": "Файлы вместе весят больше {mb} МБ",
+   "id": "Total ukuran file lebih dari {mb} MB",
+   "it": "I file pesano più di {mb} MB in tutto"
   }
  }
 }

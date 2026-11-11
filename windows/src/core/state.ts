@@ -131,6 +131,10 @@ export interface OutgoingEmail {
   body: string;
   /** The files attached: each one's name, size in bytes and full path. */
   attachments: { name: string; size: number; path: string }[];
+  /** The accounts a new email may go from, when there is more than one: the card's From picks one. */
+  accounts?: string[];
+  /** What the card checks the fields against (mail.rs card_mail). */
+  limits?: import("./mail-edit").MailLimits;
 }
 
 /** One question of an AskUserQuestion call. */

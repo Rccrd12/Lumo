@@ -437,7 +437,15 @@ under it) and `mail_forward` (with the email's files, or without): the email
 they want to send comes up on a card on the island, whole (from, to, cc,
 subject, the files attached with their size, text), and goes only when you
 click **Send**; **Discard** sends nothing. No permission mode (Auto included)
-and no key skips that card. `mail_draft` saves an email in your mailbox's
+and no key skips that card. Before **Send** you can change it right on the
+card: a click on a field turns it into a form, with who it goes to (each
+address with its ×, and **+ Cc**), the subject, the text, the files (each
+with its ×, and **Attach** for more, picked in Windows' own picker), and with
+more than one IMAP account who it is from. An address that isn't complete,
+no one to send to or files over the limits dim **Send** and say why;
+**Undo changes** puts the AI's email back. What you change is checked again
+before it goes, and the agent is told what went, not what it wrote. The card
+waits up to 5 minutes, room to change it. `mail_draft` saves an email in your mailbox's
 Drafts instead (IMAP `APPEND`), to finish and send yourself: nothing is sent.
 With Read, send and manage, they also get `mail_mark` (read or unread,
 starred or not), `mail_move`, `mail_archive` and `mail_trash`, one email at a

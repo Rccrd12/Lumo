@@ -407,6 +407,14 @@ export class Island {
         if (isComputerTool(req.tool)) this.lastGesture = 0;
         this.closeApproval();
       },
+      sendMail: (revised, requestId) => {
+        const req = State.pendingApproval;
+        void Bridge.log(`decide send (changed) req=${req?.requestId ?? "none"}`);
+        if (!req || req.requestId !== requestId || !req.email) return;
+        Sound.play("approve");
+        void Bridge.approvalMailSend(req.requestId, revised);
+        this.closeApproval();
+      },
       takeKeyboard: () => this.takeKeyboard(),
       answer: (answers, requestId) => {
         const req = State.pendingApproval;

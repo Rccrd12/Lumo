@@ -663,6 +663,14 @@ fn approval_decision(app: AppHandle, request_id: String, decision: String) {
     pipe::answer(&app, &request_id, &decision);
 }
 
+/// Send on an email's card the user changed: the email as it is now on the
+/// card (mail.rs deliver checks it all again before sending).
+#[tauri::command]
+fn approval_mail_send(app: AppHandle, request_id: String, revised: serde_json::Value) {
+    recap::record_decision(&app, &request_id, "allow");
+    pipe::answer_mail(&app, &request_id, revised);
+}
+
 /// An option picked on the island for a question Claude Code asked.
 #[tauri::command]
 fn approval_answer(
@@ -1366,6 +1374,8 @@ pub fn run() {
             plan_usage_fetch,
             approval_decision,
             approval_answer,
+            approval_mail_send,
+            mail::pick_attachments,
             approval_ack,
             approval_auto_allow,
             approval_decline,

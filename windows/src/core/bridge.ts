@@ -1,5 +1,6 @@
 import type { CopyDiff } from "./copy-diff";
 import type { ChatCompact } from "./chats";
+import type { MailRevision } from "./mail-edit";
 // Thin wrapper over the Tauri commands/events. Every call is a no-op when the
 // page is opened in a plain browser, so the island can be iterated on with
 // `npm run dev` alone.
@@ -263,6 +264,19 @@ export const Bridge = {
   /** Answers a question Claude Code asked: question text → chosen label. */
   approvalAnswer: (requestId: string, answers: Record<string, string | string[]>) =>
     call<void>("approval_answer", { requestId, answers }),
+
+  /** Send on an email's card the user changed: the email as it is on the card (pipe.rs answer_mail). */
+  approvalMailSend: (requestId: string, revised: MailRevision) =>
+    call<void>("approval_mail_send", { requestId, revised }),
+  /** Attach on an email's card: the system's picker; each file picked, by name, size and path (mail.rs). */
+  pickAttachments: async (): Promise<{ name: string; size: number; path: string }[]> => {
+    const picked = await call<unknown>("pick_attachments");
+    if (!Array.isArray(picked)) return [];
+    return picked
+      .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+      .map((f) => ({ name: typeof f.name === "string" ? f.name : "", size: typeof f.size === "number" ? f.size : 0, path: typeof f.path === "string" ? f.path : "" }))
+      .filter((f) => f.name && f.path);
+  },
 
   /** "Nobody can act on this" — Claude Code asks in the terminal right away. */
   approvalDecline: (requestId: string) => call<void>("approval_decline", { requestId }),

@@ -475,6 +475,75 @@ fn fill(item: &Disp, account: Option<Account>, draft: &Draft, subject: &str, tex
     Ok(Made { token: 0, from, to, cc, subject, body, files })
 }
 
+/// The email as the user left it on its card (mail.rs outlook_revision),
+/// checked: who it goes to, the subject, the text when it changed, the files
+/// kept (by their place on the card) and the paths added with Attach.
+pub struct Revision {
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
+    pub subject: String,
+    /// Only when the user changed it: Outlook's own text (a reply's HTML) stays otherwise.
+    pub new_body: Option<String>,
+    pub keep: Vec<usize>,
+    pub add: Vec<String>,
+    /// What changed, in words for the AI.
+    pub changed: Vec<&'static str>,
+}
+
+/// What the user changed on the card, put in Outlook's email before Send;
+/// `made` then says what the email holds now.
+pub async fn revise(made: &mut Made, change: Revision) -> Result<(), String> {
+    let token = made.token;
+    let (to, cc, subject, body, files) = with_outlook(SLOW_STEP, move |s| {
+        let item = s.pending.get(&token).ok_or_else(|| "Outlook closed before the email went.".to_string())?;
+        let recipients = item.obj("Recipients")?;
+        while recipients.int("Count")? > 0 {
+            recipients.call("Remove", vec![1.into()])?;
+        }
+        let add = |address: &str, kind: i32| -> Result<(), String> {
+            let r = recipients.call("Add", vec![address.into()])?.dispatch()?;
+            r.put("Type", kind.into())
+        };
+        for a in &change.to {
+            add(a, TO)?;
+        }
+        for a in &change.cc {
+            add(a, CC)?;
+        }
+        let _ = recipients.call("ResolveAll", vec![]);
+        item.put("Subject", change.subject.as_str().into())?;
+        if let Some(body) = &change.new_body {
+            item.put("Body", body.as_str().into())?;
+        }
+        // The files left out go, from the last one so the places hold.
+        let attachments = item.obj("Attachments")?;
+        let count = attachments.int("Count")?.max(0) as usize;
+        for i in (0..count).rev() {
+            if !change.keep.contains(&i) {
+                attachments.call("Remove", vec![((i + 1) as i32).into()])?;
+            }
+        }
+        for path in &change.add {
+            item.obj("Attachments")?.call("Add", vec![path.as_str().into()])?;
+        }
+        let (to, cc) = people(item)?;
+        let listed = files_of(item)?;
+        let body: String = item.text("Body").chars().take(crate::smtp::MAX_BODY).collect();
+        Ok((to, cc, item.text("Subject"), body, listed))
+    })
+    .await?;
+    let total: usize = files.iter().map(|f| f.size).sum();
+    if total as u64 > crate::smtp::MAX_ATTACHED_BYTES {
+        return Err(crate::mail::too_heavy());
+    }
+    made.to = to;
+    made.cc = cc;
+    made.subject = subject;
+    made.body = body;
+    made.files = files.iter().map(|f| json!({ "name": f.name, "size": f.size, "path": "" })).collect();
+    Ok(())
+}
+
 /// After the card: Send sends it out of Outlook (into its Sent Items);
 /// anything else throws it away.
 pub async fn finish(made: &Made, send: bool) -> Result<(), String> {

@@ -2130,27 +2130,93 @@ async fn outlook_deliver(
     text: String,
     paths: Vec<String>,
 ) -> Result<String, String> {
-    let made = crate::outlook::make(draft, subject, text, paths).await?;
+    let mut made = crate::outlook::make(draft, subject, text, paths).await?;
     let names: Vec<String> = made.files.iter().filter_map(|f| f.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect();
+    let shown = crate::smtp::Outgoing { to: made.to.clone(), cc: made.cc.clone(), subject: made.subject.clone(), body: made.body.clone(), ..Default::default() };
     let card = json!({
         "hook_event_name": "PermissionRequest",
         "lumo_island": true,
         "tool_name": format!("mcp__lumo__{tool}"),
         "tool_input": { "to": made.to, "cc": made.cc, "subject": made.subject, "attachments": names },
-        "lumo_mail_send": { "from": made.from, "to": made.to, "cc": made.cc, "subject": made.subject, "body": made.body, "attachments": made.files },
+        "lumo_mail_send": card_mail(&made.from, &shown, &made.files, &[]),
     });
     let answer = crate::pipe::ask(app, card).await;
-    let send = answer.as_deref() == Some("allow");
-    let done = crate::outlook::finish(&made, send).await;
-    match answer.as_deref() {
-        Some("allow") => {}
-        Some(_) => return Err("The user discarded the email: it was not sent. Ask them what to change if they want it sent.".into()),
-        None => return Err("Lumo couldn't show the email to the user (the island is paused or busy): it was not sent.".into()),
+    let revised = match card_answer(answer.as_deref()) {
+        Ok(revised) => revised,
+        Err(e) => {
+            let _ = crate::outlook::finish(&made, false).await;
+            return Err(e);
+        }
+    };
+    // What the user changed goes into Outlook's email before it is sent.
+    let mut changed = Vec::new();
+    if let Some(revised) = &revised {
+        let revision = match outlook_revision(&made, revised) {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = crate::outlook::finish(&made, false).await;
+                return Err(not_sent_after_changes(e));
+            }
+        };
+        changed = revision.changed.clone();
+        if let Err(e) = crate::outlook::revise(&mut made, revision).await {
+            let _ = crate::outlook::finish(&made, false).await;
+            return Err(not_sent_after_changes(e));
+        }
     }
-    done.inspect_err(|e| log::line(format!("[outlook] send: {e}")))?;
+    crate::outlook::finish(&made, true).await.inspect_err(|e| log::line(format!("[outlook] send: {e}")))?;
     log::line(format!("[outlook] sent to {} people", made.to.len() + made.cc.len()));
     wake();
-    Ok(format!("Sent from Outlook to {}.", made.to.iter().chain(&made.cc).cloned().collect::<Vec<_>>().join(", ")))
+    let done = format!("Sent from Outlook to {}.", made.to.iter().chain(&made.cc).cloned().collect::<Vec<_>>().join(", "));
+    let went = crate::smtp::Outgoing { to: made.to.clone(), cc: made.cc.clone(), subject: made.subject.clone(), body: made.body.clone(), ..Default::default() };
+    let mut out = with_changes(done, &changed, &made.from, &went);
+    if !changed.is_empty() && !made.files.is_empty() {
+        let names: Vec<&str> = made.files.iter().filter_map(|f| f.get("name").and_then(|n| n.as_str())).collect();
+        out = out.replacen("\nText:\n", &format!("\nFiles: {}\nText:\n", names.join(", ")), 1);
+    }
+    Ok(out)
+}
+
+/// The email as the user left it on its card, checked as in `revise`, for
+/// Outlook's own email (outlook.rs revise).
+fn outlook_revision(made: &crate::outlook::Made, revised: &serde_json::Value) -> Result<crate::outlook::Revision, String> {
+    let mut mail = crate::smtp::Outgoing { to: made.to.clone(), cc: made.cc.clone(), subject: made.subject.clone(), body: made.body.clone(), ..Default::default() };
+    // The files stay in Outlook: only their places and the paths added are needed.
+    let count = made.files.len();
+    let keep: Vec<usize> = revised
+        .get("keep")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|i| i.as_u64()).map(|i| i as usize).filter(|i| *i < count).collect())
+        .unwrap_or_else(|| (0..count).collect());
+    let mut keep = keep;
+    keep.sort_unstable();
+    keep.dedup();
+    let add: Vec<String> = revised.get("add").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|p| p.as_str()).map(str::to_string).collect()).unwrap_or_default();
+    let mut words = json!(revised);
+    words["keep"] = json!([]);
+    words["add"] = json!([]);
+    let mut changed = revise(&mut mail, &words)?;
+    changed.retain(|c| *c != "the files attached");
+    let added = read_picked(&add)?;
+    if keep.len() + added.len() > crate::smtp::MAX_ATTACHMENTS {
+        return Err(format!("at most {} files attached.", crate::smtp::MAX_ATTACHMENTS));
+    }
+    let kept: u64 = keep.iter().filter_map(|&i| made.files[i].get("size").and_then(|s| s.as_u64())).sum();
+    if kept + added.iter().map(|f| f.bytes.len() as u64).sum::<u64>() > crate::smtp::MAX_ATTACHED_BYTES {
+        return Err(too_heavy());
+    }
+    if keep.len() != count || !add.is_empty() {
+        changed.push("the files attached");
+    }
+    Ok(crate::outlook::Revision {
+        new_body: (mail.body != made.body).then(|| mail.body.clone()),
+        to: mail.to,
+        cc: mail.cc,
+        subject: mail.subject,
+        keep,
+        add,
+        changed,
+    })
 }
 
 /// `mail_mark`, `mail_move`, `mail_archive`, `mail_trash` on an Outlook
@@ -2307,8 +2373,9 @@ fn outgoing_for(input: &serde_json::Value, needs_to: bool) -> Result<(crate::smt
 async fn send(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
     let (mail, paths) = outgoing(input)?;
     let files = card_files(&mail, &paths);
-    let from = tool_accounts(app)?.remove(0);
-    deliver(app, "mail_send", mail, files, &from).await
+    let accounts = tool_accounts(app)?;
+    // A new email may go from any of the accounts: the card's From picks one.
+    deliver(app, "mail_send", mail, files, &accounts[0], &accounts).await
 }
 
 /// The files of an email as its card lists them: name, size, and the path it came from (none for an email's own).
@@ -2321,27 +2388,206 @@ fn card_files(mail: &crate::smtp::Outgoing, paths: &[String]) -> Vec<serde_json:
 }
 
 /// Any email the AI sends (a new one, a reply, a forward): on its card, whole,
-/// and sent only once the user clicks Send. Then a copy in Sent, where the
-/// server keeps none itself.
-async fn deliver(app: &AppHandle, tool: &str, mail: crate::smtp::Outgoing, files: Vec<serde_json::Value>, acct: &Account) -> Result<String, String> {
+/// and sent only once the user clicks Send, as the user left it on the card
+/// (they may change who it goes to, its subject, its text and its files, and
+/// with more than one account in `accounts`, who it is from). Then a copy in
+/// Sent, where the server keeps none itself.
+async fn deliver(
+    app: &AppHandle,
+    tool: &str,
+    mut mail: crate::smtp::Outgoing,
+    files: Vec<serde_json::Value>,
+    acct: &Account,
+    accounts: &[Account],
+) -> Result<String, String> {
     let names: Vec<&str> = mail.attachments.iter().map(|f| f.name.as_str()).collect();
     let from = acct.address.trim().to_string();
+    let choices: Vec<&str> = if accounts.len() > 1 { accounts.iter().map(|a| a.address.trim()).collect() } else { Vec::new() };
     let card = json!({
         "hook_event_name": "PermissionRequest",
         "lumo_island": true,
         "tool_name": format!("mcp__lumo__{tool}"),
         "tool_input": { "to": mail.to, "cc": mail.cc, "subject": mail.subject, "attachments": names },
-        "lumo_mail_send": { "from": from, "to": mail.to, "cc": mail.cc, "subject": mail.subject, "body": mail.body, "attachments": files },
+        "lumo_mail_send": card_mail(&from, &mail, &files, &choices),
     });
-    match crate::pipe::ask(app, card).await.as_deref() {
-        Some("allow") => {}
-        Some(_) => return Err("The user discarded the email: it was not sent. Ask them what to change if they want it sent.".into()),
-        None => return Err("Lumo couldn't show the email to the user (the island is paused or busy): it was not sent.".into()),
+    let answer = crate::pipe::ask(app, card).await;
+    let revised = card_answer(answer.as_deref())?;
+    let mut acct = acct;
+    let mut changed = Vec::new();
+    if let Some(revised) = &revised {
+        changed = revise(&mut mail, revised).map_err(not_sent_after_changes)?;
+        if let Some(asked) = revised.get("from").and_then(|v| v.as_str()).map(str::trim).filter(|a| !a.is_empty() && *a != from) {
+            acct = accounts.iter().find(|a| a.address.trim().eq_ignore_ascii_case(asked)).ok_or_else(|| not_sent_after_changes(format!("{asked} is not one of the user's accounts.")))?;
+            changed.insert(0, "the account it is sent from");
+        }
     }
     let sent = crate::smtp::send(&mail, acct).await.inspect_err(|e| log::line(format!("[mail] send: {e}")))?;
     log::line(format!("[mail] sent through {} to {} people", sent.host, mail.to.len() + mail.cc.len()));
     keep_copy(sent, acct.clone());
-    Ok(format!("Sent to {}.", mail.to.iter().chain(&mail.cc).cloned().collect::<Vec<_>>().join(", ")))
+    let done = format!("Sent to {}.", mail.to.iter().chain(&mail.cc).cloned().collect::<Vec<_>>().join(", "));
+    Ok(with_changes(done, &changed, &acct.address, &mail))
+}
+
+/// The email as its card shows it (views.ts emailEditor), with the limits its
+/// fields are checked against there and again here.
+fn card_mail(from: &str, mail: &crate::smtp::Outgoing, files: &[serde_json::Value], accounts: &[&str]) -> serde_json::Value {
+    json!({
+        "from": from, "to": mail.to, "cc": mail.cc, "subject": mail.subject, "body": mail.body, "attachments": files,
+        "accounts": accounts,
+        "limits": {
+            "recipients": crate::smtp::MAX_RECIPIENTS,
+            "subject": crate::smtp::MAX_SUBJECT,
+            "body": crate::smtp::MAX_BODY,
+            "files": crate::smtp::MAX_ATTACHMENTS,
+            "bytes": crate::smtp::MAX_ATTACHED_BYTES,
+        },
+    })
+}
+
+/// The click on an email's card: Send as it was (None), Send as the user
+/// changed it (the email on the card, pipe.rs answer_mail), or not sent.
+fn card_answer(answer: Option<&str>) -> Result<Option<serde_json::Value>, String> {
+    match answer {
+        Some("allow") => Ok(None),
+        Some(d) if d.starts_with('{') => serde_json::from_str::<serde_json::Value>(d)
+            .ok()
+            .and_then(|v| v.get("revised").filter(|r| r.is_object()).cloned())
+            .map(Some)
+            .ok_or_else(|| "Lumo couldn't read the email as the user left it on the card: it was not sent.".to_string()),
+        Some(_) => Err("The user discarded the email: it was not sent. Ask them what to change if they want it sent.".into()),
+        None => Err("Lumo couldn't show the email to the user (the island is paused or busy, or nobody clicked Send in time): it was not sent.".into()),
+    }
+}
+
+/// What the AI reads when the user's changes couldn't be used.
+fn not_sent_after_changes(why: String) -> String {
+    format!("The user changed the email on its card and clicked Send, but Lumo couldn't use it: {why} It was not sent. Ask the user what they want.")
+}
+
+/// The email as the user left it on its card, checked as the AI's is, put in
+/// `mail`: who it goes to, its subject, its text, the files kept (`keep`, by
+/// their place on the card) and the ones the user added with Attach (`add`,
+/// only files picked in the picker, `pick_attachments`). What changed, in
+/// words for the AI. The conversation it answers (a reply's) stays.
+fn revise(mail: &mut crate::smtp::Outgoing, revised: &serde_json::Value) -> Result<Vec<&'static str>, String> {
+    let to = addresses(revised.get("to"), "to")?;
+    let cc = addresses(revised.get("cc"), "cc")?;
+    if to.is_empty() {
+        return Err("it has nobody to go to.".into());
+    }
+    if to.len() + cc.len() > crate::smtp::MAX_RECIPIENTS {
+        return Err(format!("at most {} people, to and cc together.", crate::smtp::MAX_RECIPIENTS));
+    }
+    let (subject, body) = subject_and_body(revised)?;
+    let mut keep: Vec<usize> = revised
+        .get("keep")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|i| i.as_u64()).map(|i| i as usize).filter(|i| *i < mail.attachments.len()).collect())
+        .unwrap_or_else(|| (0..mail.attachments.len()).collect());
+    keep.sort_unstable();
+    keep.dedup();
+    let added: Vec<String> = revised.get("add").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|p| p.as_str()).map(str::to_string).collect()).unwrap_or_default();
+    let mut files: Vec<crate::smtp::Attachment> = keep.iter().map(|&i| mail.attachments[i].clone()).collect();
+    files.extend(read_picked(&added)?);
+    if files.len() > crate::smtp::MAX_ATTACHMENTS {
+        return Err(format!("at most {} files attached.", crate::smtp::MAX_ATTACHMENTS));
+    }
+    if files.iter().map(|f| f.bytes.len() as u64).sum::<u64>() > crate::smtp::MAX_ATTACHED_BYTES {
+        return Err(too_heavy());
+    }
+    let same = |a: &[String], b: &[String]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.eq_ignore_ascii_case(y));
+    let mut changed = Vec::new();
+    if !same(&to, &mail.to) || !same(&cc, &mail.cc) {
+        changed.push("who it goes to");
+    }
+    if subject != mail.subject.trim() {
+        changed.push("the subject");
+    }
+    if body != mail.body {
+        changed.push("the text");
+    }
+    if keep.len() != mail.attachments.len() || !added.is_empty() {
+        changed.push("the files attached");
+    }
+    *mail = crate::smtp::Outgoing { to, cc, subject, body, attachments: files, ..std::mem::take(mail) };
+    Ok(changed)
+}
+
+/// The tool's answer, and when the user changed the email first, what went:
+/// the AI must not go on from its own version.
+fn with_changes(done: String, changed: &[&str], from: &str, mail: &crate::smtp::Outgoing) -> String {
+    if changed.is_empty() {
+        return done;
+    }
+    const SHOWN: usize = 4000;
+    let mut text: String = mail.body.chars().take(SHOWN).collect();
+    if mail.body.chars().count() > SHOWN {
+        text.push('…');
+    }
+    let files: Vec<&str> = mail.attachments.iter().map(|f| f.name.as_str()).collect();
+    let mut out = format!("{done}\nBefore Send the user changed the email on its card ({}). This is what went, not what you wrote:\nFrom: {from}\nTo: {}\n", changed.join(", "), mail.to.join(", "));
+    if !mail.cc.is_empty() {
+        out.push_str(&format!("Cc: {}\n", mail.cc.join(", ")));
+    }
+    out.push_str(&format!("Subject: {}\n", mail.subject));
+    if !files.is_empty() {
+        out.push_str(&format!("Files: {}\n", files.join(", ")));
+    }
+    out.push_str(&format!("Text:\n{text}"));
+    out
+}
+
+/// How long a file picked with Attach on an email's card may be sent: the
+/// card itself waits at most pipe.rs MAIL_CARD_TIMEOUT.
+const PICKED_VALID_FOR: Duration = Duration::from_secs(15 * 60);
+
+/// Files the user picked with Attach on an email's card, and when: the only
+/// files the card can add (a path the page names is not enough).
+static PICKED: Mutex<Vec<(std::path::PathBuf, std::time::Instant)>> = Mutex::new(Vec::new());
+
+/// Attach on an email's card: the system's picker, then each file's name,
+/// size and path for the card. Only what the user picked there can be added.
+#[tauri::command]
+pub async fn pick_attachments(app: AppHandle) -> Result<Vec<serde_json::Value>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_files())
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    let now = std::time::Instant::now();
+    let mut out = Vec::new();
+    let mut list = PICKED.lock().unwrap_or_else(|e| e.into_inner());
+    list.retain(|(_, at)| now.duration_since(*at) < PICKED_VALID_FOR);
+    for file in picked {
+        let Ok(path) = file.into_path() else { continue };
+        let Ok(real) = path.canonicalize() else { continue };
+        let Ok(meta) = std::fs::metadata(&real) else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let name = real.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
+        out.push(json!({ "name": name, "size": meta.len(), "path": path.to_string_lossy() }));
+        list.push((real, now));
+    }
+    Ok(out)
+}
+
+/// The files added with Attach, read: each one must have been picked there.
+fn read_picked(paths: &[String]) -> Result<Vec<crate::smtp::Attachment>, String> {
+    let now = std::time::Instant::now();
+    let mut out = Vec::new();
+    for raw in paths {
+        let real = std::path::Path::new(raw.trim()).canonicalize().map_err(|_| format!("{raw} is no longer there."))?;
+        let picked = PICKED.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(p, at)| *p == real && now.duration_since(*at) < PICKED_VALID_FOR);
+        if !picked {
+            return Err(format!("{raw} was not picked with Attach on the card."));
+        }
+        let bytes = std::fs::read(&real).map_err(|e| format!("Lumo couldn't read {raw}: {e}"))?;
+        let name = real.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
+        let mime = crate::smtp::mime_of(&name);
+        out.push(crate::smtp::Attachment { name, mime, bytes });
+    }
+    Ok(out)
 }
 
 /// How long after sending Lumo looks in Sent for the server's own copy.
@@ -2571,7 +2817,7 @@ async fn reply(app: &AppHandle, input: &serde_json::Value) -> Result<String, Str
         references: Some(thread_of(&original)).filter(|r| !r.is_empty()),
     };
     let files = card_files(&mail, &paths);
-    deliver(app, "mail_reply", mail, files, &acct).await
+    deliver(app, "mail_reply", mail, files, &acct, &[]).await
 }
 
 /// The email forwarded, under the user's words: its header lines, then its text.
@@ -2629,7 +2875,7 @@ async fn forward(app: &AppHandle, input: &serde_json::Value) -> Result<String, S
         ..Default::default()
     };
     let files = card_files(&mail, &[]);
-    deliver(app, "mail_forward", mail, files, &acct).await
+    deliver(app, "mail_forward", mail, files, &acct, &[]).await
 }
 
 /// `mail_draft`: an email saved in the mailbox's Drafts (IMAP APPEND), for the
@@ -4420,5 +4666,126 @@ mod tests {
     fn search_answers_list_uids() {
         let units = vec![vec![Part::Text("* SEARCH 4 9 12".into())], vec![Part::Text("* OK".into())]];
         assert_eq!(search_uids(&units), vec![4, 9, 12]);
+    }
+
+    fn file(name: &str, bytes: &[u8]) -> crate::smtp::Attachment {
+        crate::smtp::Attachment { name: name.into(), mime: crate::smtp::mime_of(name), bytes: bytes.to_vec() }
+    }
+
+    fn reply_to_lunch() -> crate::smtp::Outgoing {
+        crate::smtp::Outgoing {
+            to: vec!["ada@example.com".into()],
+            cc: vec![],
+            subject: "Re: Lunch".into(),
+            body: "See you at 1.".into(),
+            attachments: vec![file("menu.pdf", b"menu"), file("map.png", b"map")],
+            in_reply_to: Some("<a@example.com>".into()),
+            references: Some("<a@example.com>".into()),
+        }
+    }
+
+    /// Send as it was, Send as changed, Discard and no click read as four different things.
+    #[test]
+    fn the_cards_answer_says_how_the_email_goes() {
+        assert_eq!(card_answer(Some("allow")), Ok(None));
+        let changed = json!({ "revised": { "to": ["ada@example.com"] } }).to_string();
+        assert_eq!(card_answer(Some(&changed)), Ok(Some(json!({ "to": ["ada@example.com"] }))));
+        assert!(card_answer(Some("deny")).unwrap_err().contains("discarded"));
+        assert!(card_answer(None).unwrap_err().contains("not sent"));
+        assert!(card_answer(Some("{\"answers\":{}}")).is_err(), "a question's answer is not an email");
+    }
+
+    /// The user's changes replace the AI's, and the reply stays in its conversation.
+    #[test]
+    fn the_email_goes_as_the_user_left_it() {
+        let mut mail = reply_to_lunch();
+        let revised = json!({
+            "to": ["ada@example.com", "grace@example.com"], "cc": ["bob@example.com"],
+            "subject": "Re: Lunch tomorrow", "body": "See you at 1, Grace comes too.", "keep": [1], "add": [],
+        });
+        let changed = revise(&mut mail, &revised).unwrap();
+        assert_eq!(changed, vec!["who it goes to", "the subject", "the text", "the files attached"]);
+        assert_eq!(mail.to, vec!["ada@example.com", "grace@example.com"]);
+        assert_eq!(mail.cc, vec!["bob@example.com"]);
+        assert_eq!(mail.subject, "Re: Lunch tomorrow");
+        assert_eq!(mail.body, "See you at 1, Grace comes too.");
+        assert_eq!(mail.attachments.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), vec!["map.png"]);
+        assert_eq!(mail.in_reply_to.as_deref(), Some("<a@example.com>"));
+        assert_eq!(mail.references.as_deref(), Some("<a@example.com>"));
+    }
+
+    /// Sent unchanged, nothing is said to have changed; a missing `keep` keeps every file.
+    #[test]
+    fn an_email_left_as_it_was_has_no_changes() {
+        let mut mail = reply_to_lunch();
+        let same = json!({ "to": ["ADA@example.com"], "cc": [], "subject": "Re: Lunch", "body": "See you at 1." });
+        assert_eq!(revise(&mut mail, &same).unwrap(), Vec::<&str>::new());
+        assert_eq!(mail.attachments.len(), 2);
+        let sent = with_changes("Sent to ada@example.com.".into(), &[], "me@example.com", &mail);
+        assert_eq!(sent, "Sent to ada@example.com.");
+    }
+
+    /// What the card sends back is checked as the AI's email is: nothing goes on a bad one.
+    #[test]
+    fn a_bad_email_from_the_card_is_refused() {
+        let base = json!({ "to": ["ada@example.com"], "subject": "Hi", "body": "Hello" });
+        let with = |key: &str, value: serde_json::Value| {
+            let mut v = base.clone();
+            v[key] = value;
+            revise(&mut reply_to_lunch(), &v)
+        };
+        assert!(with("to", json!([])).is_err(), "nobody to send to");
+        assert!(with("to", json!(["grace@example"])).is_err(), "an address with no domain");
+        assert!(with("cc", json!(["not an address"])).is_err());
+        assert!(with("body", json!("  ")).is_err(), "no text");
+        assert!(with("subject", json!("x".repeat(crate::smtp::MAX_SUBJECT + 1))).is_err());
+        let many: Vec<String> = (0..=crate::smtp::MAX_RECIPIENTS).map(|i| format!("p{i}@example.com")).collect();
+        assert!(with("to", json!(many)).is_err());
+    }
+
+    /// Only a file picked with Attach on the card is added: a path the page names is not enough.
+    #[test]
+    fn only_files_picked_on_the_card_are_added() {
+        let dir = std::env::temp_dir().join(format!("lumo-mail-pick-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let picked = dir.join("notes.txt");
+        let other = dir.join("secret.txt");
+        std::fs::write(&picked, b"notes").unwrap();
+        std::fs::write(&other, b"secret").unwrap();
+        PICKED.lock().unwrap().push((picked.canonicalize().unwrap(), std::time::Instant::now()));
+        let base = json!({ "to": ["ada@example.com"], "subject": "Hi", "body": "Hello", "keep": [] });
+        let mut ok = base.clone();
+        ok["add"] = json!([picked.to_string_lossy()]);
+        let mut mail = reply_to_lunch();
+        assert_eq!(revise(&mut mail, &ok).unwrap().last(), Some(&"the files attached"));
+        assert_eq!(mail.attachments.len(), 1);
+        assert_eq!(mail.attachments[0].name, "notes.txt");
+        assert_eq!(mail.attachments[0].bytes, b"notes");
+        let mut refused = base.clone();
+        refused["add"] = json!([other.to_string_lossy()]);
+        assert!(revise(&mut reply_to_lunch(), &refused).unwrap_err().contains("not picked"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The AI reads what went when the user changed it, not its own version.
+    #[test]
+    fn the_ai_is_told_what_went() {
+        let mut mail = reply_to_lunch();
+        let revised = json!({ "to": ["ada@example.com"], "subject": "Re: Lunch", "body": "Make it 2.", "keep": [0, 1] });
+        let changed = revise(&mut mail, &revised).unwrap();
+        let said = with_changes("Sent to ada@example.com.".into(), &changed, "me@example.com", &mail);
+        assert!(said.starts_with("Sent to ada@example.com.\nBefore Send the user changed the email on its card (the text)."), "{said}");
+        assert!(said.contains("From: me@example.com\nTo: ada@example.com\nSubject: Re: Lunch\nFiles: menu.pdf, map.png\nText:\nMake it 2."), "{said}");
+    }
+
+    /// The card gets the limits it checks its fields against, and the accounts only when there is a choice.
+    #[test]
+    fn the_card_knows_its_limits() {
+        let card = card_mail("me@example.com", &reply_to_lunch(), &[], &[]);
+        assert_eq!(card["limits"]["files"], crate::smtp::MAX_ATTACHMENTS);
+        assert_eq!(card["limits"]["bytes"], crate::smtp::MAX_ATTACHED_BYTES);
+        assert_eq!(card["accounts"], json!([]));
+        let card = card_mail("me@example.com", &reply_to_lunch(), &[], &["me@example.com", "work@example.com"]);
+        assert_eq!(card["accounts"], json!(["me@example.com", "work@example.com"]));
     }
 }
