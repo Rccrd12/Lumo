@@ -1,0 +1,101 @@
+// Settings inside the island: a change to another program's settings (here
+// the plan usage relay in Claude Code's settings.json) is looked at and
+// confirmed in the island itself. Since the page can't tell Rust it is
+// Settings, the write goes only after Windows' own Yes / No box, which no
+// page can click (confirmed.rs by_hand); the separate Settings window stays shut.
+
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { after, before } from "node:test";
+
+import { Lumo } from "./lib/app.mjs";
+import { answerBox } from "./lib/dialog.mjs";
+import { sleep } from "./lib/driver.mjs";
+import { flow, step } from "./lib/flow.mjs";
+
+const G = "Settings in the island";
+const app = new Lumo("settings-island");
+const d = app.d;
+
+before(() => app.launch());
+after(() => app.close());
+
+/** The Settings page in the island's frame, as the page script sees it. */
+const FRAME = "document.querySelector('.settings-frame iframe')?.contentDocument";
+
+const settingsJson = () => join(app.profile, "home", ".claude", "settings.json");
+const relayWritten = () => existsSync(settingsJson()) && /statusLine/.test(readFileSync(settingsJson(), "utf8"));
+
+async function openSettingsInIsland() {
+  step("opens Settings in the island (its global shortcut)");
+  await d.js(`window.__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "shortcut", payload: "settings" })`);
+  await d.until("return !!document.querySelector('.settings-frame iframe.ready')", 20_000, "Settings ready in the island");
+  await d.js(`const doc = ${FRAME}; doc.querySelector('[data-page="agents"]')?.click();`);
+  await sleep(500);
+}
+
+async function showRelayPreview() {
+  step("Install relay…, in the island");
+  const clicked = await d.js(`
+    const doc = ${FRAME};
+    const b = [...doc.querySelectorAll('button')].find((b) => /^install relay/i.test(b.textContent.trim()));
+    if (!b) return false;
+    b.click();
+    return true;`);
+  assert.ok(clicked, "an Install relay… button in the island's Settings");
+  await d.until(`return !!${FRAME}.querySelector('.diff')`, 10_000, "the diff in the island");
+}
+
+/** Presses the preview's Back up and write, in the island. */
+async function confirmInIsland() {
+  await d.js(`
+    const doc = ${FRAME};
+    const b = [...doc.querySelectorAll('.diff ~ .row button.primary, .diff ~ * button.primary')].find((b) => b.offsetParent);
+    b.click();`);
+}
+
+flow(G, "The relay is installed from the island after Windows' Yes, and the window stays shut", app, async () => {
+  await openSettingsInIsland();
+  await showRelayPreview();
+  assert.equal(relayWritten(), false);
+
+  step("Back up and write, then Cancel in Windows' box");
+  await confirmInIsland();
+  const no = answerBox(app.proc.pid, "Cancel");
+  step(`Windows' box: ${JSON.stringify(no)}`);
+  assert.ok(no.pressed, `a Yes / No box with Cancel came up: ${no.raw}`);
+  await sleep(800);
+  assert.equal(relayWritten(), false, "nothing written after Cancel");
+  const after = await d.js(`const doc = ${FRAME}; return {
+    diff: !!doc.querySelector('.diff'),
+    error: [...doc.querySelectorAll('.notice.err')].map((n) => n.textContent),
+  };`);
+  assert.deepEqual(after, { diff: true, error: [] }, "Cancel leaves the preview, with no error");
+
+  step("Back up and write again, then Yes");
+  await confirmInIsland();
+  const yes = answerBox(app.proc.pid, "Back up and write");
+  step(`Windows' box: ${JSON.stringify(yes)}`);
+  assert.ok(yes.pressed, `the box's Back up and write: ${yes.raw}`);
+  await d.until(`return !!${FRAME}.querySelector('.notice.ok')`, 10_000, "the island saying it is done");
+  assert.ok(relayWritten(), "settings.json has the status line relay");
+
+  // The separate Settings window never came up.
+  await d.switchTo(app.handles.settings);
+  const shown = await d.js("return document.visibilityState");
+  await d.switchTo(app.handles.island);
+  assert.equal(shown, "hidden", "the Settings window stays shut");
+});
+
+flow(G, "No write without its preview, even from the island", app, async () => {
+  step("the island's page asks for a write it never previewed");
+  const answer = await d.js(`
+    return window.__TAURI_INTERNALS__.invoke("status_line_apply", { install: false, fingerprint: "made-up" })
+      .then(() => "written", (e) => "refused: " + String(e));`);
+  step(answer);
+  assert.match(answer, /^refused/);
+  // Refused before any box: none comes up.
+  const box = answerBox(app.proc.pid, "Cancel", 2);
+  assert.equal(box.found, false, `no box for a write with no preview: ${box.raw}`);
+});
