@@ -37,7 +37,10 @@ function ask(agent, tool, input) {
 }
 
 async function told(req, ms = 5_000) {
-  const reply = await req.result(ms);
+  const reply = await req.result(ms).catch(async (err) => {
+    step(`the page's last press: ${JSON.stringify(await app.lastPress())}`);
+    throw err;
+  });
   step(`Claude Code is told: ${reply.stdout.trim().slice(0, 200) || "(nothing: no decision)"} after ${reply.ms} ms`);
   return reply;
 }

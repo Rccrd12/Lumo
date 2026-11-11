@@ -22,17 +22,30 @@ async function dragRight(dx) {
   const grip = await app.onScreen(".edge.edge-right.on");
   assert.ok(grip, "the island's right edge can be dragged");
   const r = (await app.screen()).r;
-  step(`drags the right edge by ${dx} px`);
+  const before = await widthOf();
+  step(`drags the right edge by ${dx} px from ${before} px (grip at ${Math.round(grip.x)}, ${Math.round(grip.y)})`);
+  // The cursor onto the island first, so it takes the mouse, then the grip.
+  const box = await app.islandBox();
+  await app.mouse.move(box.x + box.w / 2, box.y + 20);
+  await sleep(300);
   await app.mouse.drag(grip, { x: grip.x + dx * r, y: grip.y });
   await sleep(800);
+  step(`now ${await widthOf()} px; the page's last press: ${JSON.stringify(await app.lastPress())}`);
   const box = await app.islandBox();
   await app.mouse.move(box.x + box.w / 2, box.y + 20);
   await sleep(300);
 }
 
-/** Opens the home under the cursor. */
+/** Opens the island and goes to the home (it reopens on the view it was left on). */
 async function openHome() {
   await app.open();
+  for (let i = 0; i < 3 && !(await d.find(".home-field")); i++) {
+    const back = await d.find(".back-btn");
+    if (!back) break;
+    step("goes back towards the home");
+    await app.click(back);
+    await sleep(600);
+  }
   await d.visible(".home-field", 8_000, "the home's Ask me anything field");
 }
 

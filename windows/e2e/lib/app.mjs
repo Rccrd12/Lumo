@@ -101,6 +101,7 @@ export class Lumo {
       this.mouse = new Mouse();
       await this.mouse.start();
     }
+    await this.watchPresses();
     // The launch greeting first: the flows start from the closed island.
     await this.closed();
   }
@@ -154,14 +155,39 @@ export class Lumo {
    * (Rust lets clicks through it everywhere else), and presses.
    */
   async click(id) {
-    const at = await this.d.js(`
+    const centre = () => this.d.js(`
       const r = devicePixelRatio, b = arguments[0].getBoundingClientRect();
       return { x: (screenX + b.left + b.width / 2) * r, y: (screenY + b.top + b.height / 2) * r };`, this.d.ref(id));
-    await this.mouse.move(at.x, at.y);
-    await sleep(250);
+    // The island may grow or shift as the cursor comes onto it: aim again
+    // until the target stays put, as an eye following it would.
+    let at = await centre();
+    for (let i = 0; i < 4; i++) {
+      await this.mouse.move(at.x, at.y);
+      await sleep(300);
+      const now = await centre();
+      if (Math.abs(now.x - at.x) < 2 && Math.abs(now.y - at.y) < 2) break;
+      at = now;
+    }
     await this.mouse.down();
     await sleep(50);
     await this.mouse.up();
+  }
+
+  /** What the page saw of the last mouse press (set by watchPresses), for a flow's story. */
+  async lastPress() {
+    return this.d.js("return window.__e2ePress ?? null");
+  }
+
+  /** Notes every press the page receives, before the page's own handlers. */
+  async watchPresses() {
+    await this.d.js(`
+      if (!window.__e2eWatch) {
+        window.__e2eWatch = true;
+        window.addEventListener("mousedown", (e) => {
+          const t = e.target;
+          window.__e2ePress = { at: [e.clientX, e.clientY], target: (t.id ? "#" + t.id : "") + "." + String(t.className || t.tagName).split(" ").join(".") };
+        }, true);
+      }`);
   }
 
   /** The cursor far from the island. */
