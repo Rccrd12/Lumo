@@ -1017,8 +1017,15 @@ function drawAll(input: Node[]): Element {
     if (!inText && isDigit(n)) {
       // Digits, with a point or comma between digits: one number.
       let v = n.v;
-      while (isDigit(nodes[i + 1]) || (nodes[i + 1]?.t === "sym" && (nodes[i + 1] as { v: string }).v === "." && isDigit(nodes[i + 2]))) {
-        v += (nodes[++i] as { v: string }).v;
+      for (;;) {
+        const next = nodes[i + 1];
+        const point = next?.t === "sym" && next.v === ".";
+        // 9{,}81: TeX's decimal comma, with no room after it.
+        const comma = next?.t === "group" && next.c.length === 1 && next.c[0].t === "sym" && next.c[0].v === ",";
+        if (isDigit(next)) v += next.v;
+        else if ((point || comma) && isDigit(nodes[i + 2])) v += point ? "." : ",";
+        else break;
+        i++;
       }
       row.append(m("mn", {}, letterStyle ? [...v].map((c) => styled(c, letterStyle)).join("") : v));
       prev = n;

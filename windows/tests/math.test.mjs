@@ -17,6 +17,11 @@ test("formulas are found among the text, and money is not one", () => {
   assert.deepEqual(nodes.map((n) => n.kind), ["text", "math", "text", "strong", "text", "math"]);
   assert.equal(nodes[1].tex, "\\vec{x}_0");
   assert.deepEqual(parseInline("costa $5 e poi $10").map((n) => n.kind), ["text"]);
+  // A dollar after the amount, as Italian writes prices: still money.
+  for (const t of ["il biglietto costa 25$, il pranzo 12$.", "3$/kg oppure 5$/kg", "5$-10$", "1.000$; 2.500$"]) {
+    assert.deepEqual(parseInline(t), [{ kind: "text", text: t }], t);
+  }
+  assert.equal(parseInline("e quindi $E_k=\\frac12mv^2$, con")[1].kind, "math");
   assert.deepEqual(parseInline("`$x$` is code").map((n) => n.kind), ["code", "text"]);
   assert.equal(parseInline("inline \\(a+b\\) too")[1].kind, "math");
   assert.equal(parseInline("**sia $x$ reale**")[0].children[1].kind, "math");
@@ -185,4 +190,12 @@ test("the whole catalogue of symbols, and the constructs around them", () => {
   const n = renderMath("3.14 (x)");
   assert.equal(n.find("mn")[0].textContent, "3.14");
   assert.equal(n.find("mo")[0].getAttribute("stretchy"), "false");
+});
+
+test("TeX's decimal comma keeps its number whole", () => {
+  // 9{,}81 is how TeX writes 9,81 with no room after the comma; a bare 9,81 is a list.
+  const n = renderMath("g = 9{,}81\\,\\mathrm{m/s^2}");
+  assert.equal(n.find("mn")[0].textContent, "9,81");
+  assert.equal(renderMath("(12{,}5)^2").find("mn")[0].textContent, "12,5");
+  assert.equal(renderMath("x{,}y").find("mn").length, 0);
 });

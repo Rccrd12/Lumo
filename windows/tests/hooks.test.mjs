@@ -536,7 +536,10 @@ test("the card names the most specific thing the tool carries", () => {
   assert.equal(target("Task", { prompt: "do it" }), "Task · do it");
   // Nothing that names it: all it is given, since Allow allows exactly that.
   assert.equal(target("Odd", { command: "   ", count: 3 }), 'Odd · {"command":"   ","count":3}');
-  assert.equal(target("mcp__github__create_issue", { title: "Bug", body: "x", description: "Open an issue" }), 'mcp__github__create_issue · {"title":"Bug","body":"x"}');
+  // An MCP tool's `description` is one of its arguments (an issue's body, a file's text): it shows with the rest.
+  assert.equal(target("mcp__github__create_issue", { title: "Bug", body: "x", description: "Open an issue" }), 'mcp__github__create_issue · {"title":"Bug","body":"x","description":"Open an issue"}');
+  assert.equal(target("mcp__fs__write_file", { path: "C:/Users/me/.ssh/authorized_keys", description: "ssh-rsa AAAA x@y" }),
+    'mcp__fs__write_file · {"path":"C:/Users/me/.ssh/authorized_keys","description":"ssh-rsa AAAA x@y"}');
   assert.equal(target("Odd", {}), "Odd");
   assert.equal(target(undefined, undefined), "Tool");
   // The chat's computer use: what the click or the keys will do.
@@ -546,11 +549,11 @@ test("the card names the most specific thing the tool carries", () => {
   assert.equal(target("mcp__github__create_issue", { title: "x" }), 'mcp__github__create_issue · {"title":"x"}', "another server: all it is given");
   // An MCP tool's path or command comes with what else Allow allows: all of it shows.
   assert.equal(target("mcp__shell__run", { path: "C:\\repo", script: "del /s *" }), 'mcp__shell__run · {"path":"C:\\\\repo","script":"del /s *"}');
-  assert.equal(target("mcp__ssh__exec", { command: "ls", host: "prod", description: "List" }), 'mcp__ssh__exec · {"command":"ls","host":"prod"}');
+  assert.equal(target("mcp__ssh__exec", { command: "ls", host: "prod", description: "List" }), 'mcp__ssh__exec · {"command":"ls","host":"prod","description":"List"}');
   assert.equal(target("mcp_fs_replace", { path: "src", pattern: "a", replacement: "b" }), 'mcp_fs_replace · {"path":"src","pattern":"a","replacement":"b"}');
-  // The one field alone, or only the agent's reason besides it: as it was.
+  // The one field alone: as it was.
   assert.equal(target("mcp__lumo__live_read", { path: "C:\\a.pdf" }), "mcp__lumo__live_read · C:\\a.pdf");
-  assert.equal(target("mcp__fs__read", { path: "a.txt", description: "Read it" }), "mcp__fs__read · a.txt");
+  assert.equal(target("mcp__fs__read", { path: "a.txt", description: "Read it" }), 'mcp__fs__read · {"path":"a.txt","description":"Read it"}');
   // Claude Code's own tools keep their one line: their other fields are known.
   assert.equal(target("Grep", { pattern: "x", path: "src", glob: "*.ts" }), "Grep · src");
 });

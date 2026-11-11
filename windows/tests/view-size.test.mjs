@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { homeWidth, islandSize, sizeSlot, viewShape } from "../src/core/layout.ts";
+import { homeWidth, islandSize, newLookQuestionHeight, questionsHeight, sizeSlot, viewShape } from "../src/core/layout.ts";
 
 const shared = { islandWidth: 640, islandHeight: 0 };
 
@@ -47,4 +47,13 @@ test("the home made big leaves the chat as it was", () => {
   assert.deepEqual(viewShape(kept, "home"), { width: 1000, height: 500 });
   assert.deepEqual(viewShape(kept, "prompt"), { width: 640, height: 0 });
   assert.equal(islandSize("expanded", "prompt", 0, viewShape(kept, "prompt")).h, 240);
+});
+
+test("a question in several parts is as tall as its tallest part", () => {
+  const q = (n, multiSelect = false) => ({ options: Array.from({ length: n }, (_, i) => ({ label: String(i) })), multiSelect });
+  // The second has more choices and a Done button: the card is its height from the first part on.
+  assert.equal(questionsHeight([q(2), q(3, true), q(4)]), newLookQuestionHeight(4, false));
+  assert.equal(questionsHeight([q(2), q(4, true)]), newLookQuestionHeight(4, true));
+  assert.equal(questionsHeight([q(2)]), newLookQuestionHeight(2, false));
+  assert.equal(questionsHeight([q(2), q(20)]), 440);
 });

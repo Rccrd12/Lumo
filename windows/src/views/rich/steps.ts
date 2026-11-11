@@ -283,8 +283,16 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
       else s.setAttribute("aria-hidden", "true");
       s.inert = i !== at;
     });
-    if (all) body.replaceChildren(rows());
-    else if (body.firstChild !== deck) {
+    if (all) {
+      const box = rows();
+      body.replaceChildren(box);
+      // The current step in sight, in the middle when it can be: only the list scrolls, never the chat.
+      const row = listed[at];
+      if (row && box.scrollHeight > box.clientHeight) {
+        const offset = row.getBoundingClientRect().top - box.getBoundingClientRect().top;
+        box.scrollTop = Math.max(0, offset - (box.clientHeight - row.offsetHeight) / 2);
+      }
+    } else if (body.firstChild !== deck) {
       listed = [];
       body.replaceChildren(deck);
     }

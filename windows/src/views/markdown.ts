@@ -475,7 +475,8 @@ function parseMasked(text: string): Inline[] {
   let m: RegExpExecArray | null;
   // Groups: 1 code; 2 $$, 3 \(, 4 \[, 5 $; 6 **, 7 __, 8 *, 9 _; 10 link text, 11 its address; 12 \$.
   while ((m = re.exec(text))) {
-    if (m[5] != null && (/^\s|\s$/.test(m[5]) || m[5].includes("**") || /\d/.test(text[m.index + m[0].length] ?? ""))) {
+    // Money, not math: "$5 … $10" (a digit after the closing $) and "25$, … 12$" (one before the opening $).
+    if (m[5] != null && (/^\s|\s$/.test(m[5]) || m[5].includes("**") || /\d/.test(text[m.index + m[0].length] ?? "") || /\d/.test(text[m.index - 1] ?? ""))) {
       re.lastIndex = m.index + 1;
       continue;
     }

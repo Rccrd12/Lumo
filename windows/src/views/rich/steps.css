@@ -245,6 +245,8 @@
 }
 
 .rc-steps-row {
+  /* As tall as its formula: the list scrolls, its rows never squeeze. */
+  flex: none;
   display: flex;
   /* The number on the name's and the formula's line, also in a taller row. */
   align-items: baseline;

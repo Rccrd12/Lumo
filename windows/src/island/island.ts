@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra, errorCardHeight, finishedCardHeight, chatAutoHeight, toolsViewHeight,
+  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, questionsHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra, errorCardHeight, finishedCardHeight, chatAutoHeight, toolsViewHeight,
   GRIPS, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, sizeSlot, viewShape, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -1299,7 +1299,7 @@ export class Island {
     }
     const asked = State.pendingApproval?.questions?.[0];
     if (State.mode === "expanded" && State.view === "question" && asked) {
-      h = Math.min(440, newLookQuestionHeight(asked.options.length, asked.multiSelect === true));
+      h = questionsHeight(State.pendingApproval?.questions ?? [asked]);
     } else if (State.mode === "expanded" && !State.pendingApproval?.email) {
       const planSteps = State.view === "approval" ? State.pendingApproval?.plan?.length ?? 0 : 0;
       // A plan asking to start: its steps take the place of the command and of what it is for.
