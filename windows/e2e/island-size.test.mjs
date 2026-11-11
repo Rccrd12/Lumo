@@ -24,6 +24,8 @@ async function dragRight(dx) {
   const before = await widthOf();
   const hit = await app.aim(grip);
   step(`drags the right edge by ${dx} px from ${before} px (cursor ${hit})`);
+  // Pressed anywhere else, the drag would move the island instead.
+  assert.equal(hit, "on target", "the cursor is on the island's right edge before the drag");
   const r = (await app.screen()).r;
   await app.mouse.drag(null, { dx: dx * r, dy: 0 });
   await sleep(800);
