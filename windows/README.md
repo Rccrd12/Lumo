@@ -1320,6 +1320,8 @@ windows/
   hook/                lumo-hook.exe, the Claude Code relay
   local/               the chat with a model on this machine: stream, tool rounds,
                        checks, tested against a fake server (cargo test -p lumo-local)
+  e2e/                 end-to-end tests of the real app on every pull request
+                       (see e2e/README.md)
   scripts/             icon generator
 ```
 

@@ -90,4 +90,4 @@ flow(G, "Resizing the chat leaves the home's size alone", app, async () => {
   const homeAfter = await widthOf();
   step(`home is ${homeAfter} px`);
   assert.ok(Math.abs(homeAfter - home) <= 2, `the home was ${home} px wide and is ${homeAfter} px after the chat was widened`);
-}, { todo: "the island has one shared size, so the chat's width carries over to the home (reported 11/11/2026)" });
+});

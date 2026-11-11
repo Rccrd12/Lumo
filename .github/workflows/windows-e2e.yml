@@ -85,14 +85,10 @@ jobs:
           Add-Type -AssemblyName System.Windows.Forms
           [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 
-      # TEMPORARY while the suite is being built: no red run (and no email)
-      # until it is green. Removed before the pull request is ready.
       - name: Flows
-        continue-on-error: true
-        env:
-          LUMO_E2E_SHOTS_IN_LOG: '1'
         run: node --test --test-concurrency=1 --test-reporter=spec "e2e/*.test.mjs"
 
+      # The table on the run's page; the Flows step already says pass or fail.
       - name: Summary
         if: always()
         continue-on-error: true
