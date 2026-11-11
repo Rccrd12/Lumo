@@ -18,7 +18,7 @@ import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
-import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
+import { editStat, isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode, storedPermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import {
@@ -961,6 +961,8 @@ function handleHook(island: Island, payload: HookPayload) {
       const view = questions ? "question" : "approval";
       const planSteps = !questions && !email && !change && /^exit_?plan_?mode$/i.test(tool) && typeof input.plan === "string"
         ? stepsFromMarkdown(input.plan) : [];
+      // A file to write: how many lines, under its name (the text itself is not on the card).
+      const edit = !questions && !email && !change && !userTool ? editStat(tool, input) : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -980,6 +982,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
         // The plan Claude Code asks to start, step by step, for the new look's card and chat.
         ...(planSteps.length ? { plan: planSteps } : {}),
+        ...(edit ? { edit } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how
