@@ -1,0 +1,115 @@
+name: Windows E2E
+
+# The real app, driven like a user would on a Windows machine: Lumo built with
+# --features e2e (the release's code plus the DevTools port, never shipped),
+# msedgedriver attached to its windows, the real mouse, and a fake agent that
+# sends hook events through the real lumo-hook. See windows/e2e/README.md.
+
+on:
+  pull_request:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-e2e.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-e2e.yml'
+
+permissions:
+  contents: read
+
+# A new push to a pull request stops its run still going.
+concurrency:
+  group: windows-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: windows
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      # Windows CI's build cache, read only: saving one of its own would take
+      # longer than the build it saves.
+      - name: Cache cargo
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            windows/target
+          key: windows-ci-cargo-${{ github.repository }}-${{ hashFiles('windows/Cargo.lock') }}
+          restore-keys: windows-ci-cargo-${{ github.repository }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the relay
+        run: cargo build --release -p lumo-hook --locked
+
+      # Debug and without an installer: the same code, built faster.
+      - name: Build Lumo for the tests
+        run: npx tauri build --debug --no-bundle --features e2e --config src-tauri/tauri.e2e.conf.json
+
+      # The WebDriver of the WebView2 this machine has, of the same version.
+      - name: msedgedriver
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $v = (Get-ItemProperty $key).pv
+          Write-Host "WebView2 $v"
+          $zip = "$env:RUNNER_TEMP\edgedriver.zip"
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$v/edgedriver_win64.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\edgedriver" -Force
+          "MSEDGEDRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" | Out-File -Append $env:GITHUB_ENV
+
+      # The runner's screen is 1024 × 768: too small for the island's sizes.
+      - name: Screen
+        shell: pwsh
+        run: |
+          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+          Add-Type -AssemblyName System.Windows.Forms
+          [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+
+      - name: Flows
+        run: node --test --test-concurrency=1 --test-reporter=spec "e2e/*.test.mjs"
+
+      # The table on the run's page; the Flows step already says pass or fail.
+      - name: Summary
+        if: always()
+        continue-on-error: true
+        run: node e2e/summary.mjs
+
+      - name: Lumo's logs
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem e2e-out\profiles -Recurse -Filter lumo.log -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "--- $($_.FullName)"
+            Get-Content $_.FullName -Tail 60
+          }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: e2e
+          path: |
+            windows/e2e-out/shots
+            windows/e2e-out/results.jsonl
+            windows/e2e-out/profiles/*/local/com.rccrd12.lumo/lumo.log
+          retention-days: 14
+          if-no-files-found: ignore

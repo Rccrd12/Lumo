@@ -8,6 +8,7 @@ Lumo for Windows is a Tauri app (`windows/`), a fork of a macOS app by Louis Rai
 - `windows/assets/sounds/` — the 22 WAV sounds (served and bundled by `windows/vite.config.ts`).
 - `windows/i18n-source/Localizable.xcstrings` — the string catalog; `node windows/scripts/gen-strings.mjs` turns it into `windows/src/i18n/strings.json` (never edit by hand). Windows-only strings live in `windows/src/i18n/extra.json`.
 - `windows/screenshots/` — reference screenshots of the shipped views.
+- `windows/e2e/` — end-to-end tests of the real app (real mouse, real `lumo-hook`), run on every PR by `.github/workflows/windows-e2e.yml`; see `windows/e2e/README.md`.
 - `docs/AGENTS.md` — the hook payload protocol for agents.
 
 ## Build
