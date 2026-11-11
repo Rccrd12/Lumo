@@ -2077,11 +2077,14 @@ export class Island {
     // What the closed island says next to Lumo. Standing upright on a side
     // there is no room for it. A change of what it shows resizes the island.
     const compactOn = State.mode === "compact" && !isUpright(this.dock) && !this.onlyLumo;
+    const resized = this.compact.sync(compactOn);
     // Saving energy, a leaf at the right end, opposite Lumo; an email or a
-    // request filling the closed island has the corner to itself.
+    // request filling the closed island has the corner to itself. Asked after
+    // sync(), which is what decides an email or a request is shown: before it,
+    // the email that just came was not there yet and the leaf stayed under its X.
     this.leafEl.classList.toggle("on",
       compactOn && State.effort === "saver" && this.compact.mail == null && this.compact.approval == null);
-    if (this.compact.sync(compactOn) && State.mode === "compact") {
+    if (resized && State.mode === "compact") {
       this.animateGeometry(this.compact.size == null);
     }
 

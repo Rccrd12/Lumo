@@ -4,6 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   byEffort, distanceTo, effectiveEffort, parseEnergyMode, parseOnPower,
 } from "../src/core/energy.ts";
@@ -83,4 +84,15 @@ test("dozing still, Lumo eases into his sleep and asks for no more frames", (t) 
   // The mouse moves again: he comes back to life.
   a.still = false;
   assert.equal(a.ambientActive, true);
+});
+
+test("the leaf steps aside for a new email, already when it comes (island.ts)", () => {
+  // CompactStrip.sync() is what decides an email or a request is shown: the
+  // leaf asked before it saw the email that just came as not there yet, and
+  // stayed under the email's X until something else moved the island.
+  const island = readFileSync(new URL("../src/island/island.ts", import.meta.url), "utf8");
+  const sync = island.indexOf("this.compact.sync(compactOn)");
+  const leaf = island.indexOf("this.leafEl.classList.toggle(\"on\"");
+  assert.ok(sync > 0 && leaf > 0);
+  assert.ok(sync < leaf, "the leaf is decided after the closed island knows what it shows");
 });
