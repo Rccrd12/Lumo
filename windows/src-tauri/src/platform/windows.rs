@@ -150,6 +150,28 @@ pub fn chat_ends_with_lumo(child: &std::process::Child) {
     }
 }
 
+/// COM on this thread while it is kept, given back when it is dropped: a
+/// thread of the blocking pool goes on to serve other work. Only a set-up that
+/// worked (`S_FALSE` too, when the thread already had it) is undone. Not
+/// `Send`: it is dropped on the thread that set it up.
+pub struct Com(bool, std::marker::PhantomData<*const ()>);
+
+impl Com {
+    pub fn init(model: ::windows::Win32::System::Com::COINIT) -> Com {
+        // SAFETY: no pointer is passed; Drop balances a call that worked.
+        Com(unsafe { ::windows::Win32::System::Com::CoInitializeEx(None, model) }.is_ok(), std::marker::PhantomData)
+    }
+}
+
+impl Drop for Com {
+    fn drop(&mut self) {
+        if self.0 {
+            // SAFETY: this thread's CoInitializeEx above succeeded.
+            unsafe { ::windows::Win32::System::Com::CoUninitialize() };
+        }
+    }
+}
+
 pub fn open_url(url: &str) {
     let _ = no_console(Command::new("rundll32.exe").args(["url.dll,FileProtocolHandler", url]))
         .spawn();

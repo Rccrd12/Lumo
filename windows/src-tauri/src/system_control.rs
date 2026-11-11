@@ -137,15 +137,16 @@ mod imp {
     use ::windows::Win32::Foundation::{LocalFree, HLOCAL, WIN32_ERROR};
     use ::windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
     use ::windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator};
-    use ::windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
+    use ::windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL, COINIT_MULTITHREADED};
     use ::windows::Win32::System::Power::{PowerGetActiveScheme, PowerSetActiveScheme};
     use ::windows::Win32::System::Shutdown::LockWorkStation;
 
+    use crate::platform::Com;
+
+    /// The speakers' volume, for as long as the caller keeps COM (`Com`) set up.
     fn speakers() -> Result<IAudioEndpointVolume, String> {
         let none = || "No speakers or headphones were found.".to_string();
         unsafe {
-            // Already set up on this thread is fine.
-            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
             let devices: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(|_| none())?;
             let device = devices.GetDefaultAudioEndpoint(eRender, eConsole).map_err(|_| none())?;
             device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None).map_err(|_| none())
@@ -154,6 +155,7 @@ mod imp {
 
     /// The volume in %, and whether it is muted.
     pub fn volume() -> Result<(u32, bool), String> {
+        let _com = Com::init(COINIT_MULTITHREADED);
         let v = speakers()?;
         unsafe {
             let level = v.GetMasterVolumeLevelScalar().map_err(|e| e.message())?;
@@ -163,6 +165,7 @@ mod imp {
     }
 
     pub fn set_volume(percent: u32) -> Result<(), String> {
+        let _com = Com::init(COINIT_MULTITHREADED);
         let v = speakers()?;
         unsafe {
             v.SetMasterVolumeLevelScalar(percent.min(100) as f32 / 100.0, std::ptr::null()).map_err(|e| e.message())?;
@@ -175,6 +178,7 @@ mod imp {
     }
 
     pub fn set_mute(on: bool) -> Result<(), String> {
+        let _com = Com::init(COINIT_MULTITHREADED);
         let v = speakers()?;
         unsafe { v.SetMute(on, std::ptr::null()).map_err(|e| e.message()) }
     }
