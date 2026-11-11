@@ -80,7 +80,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
         // its card (permission or question) up. Nothing is answered from here.
         resume();
         State.setFocus(pending.pillId);
-        host.alert(pending.questions ? "question" : "approval");
+        host.alert(State.requestView(pending));
         armApprovalKeys(State.pendingApproval?.requestId);
         host.takeKeyboard();
         host.holdOpen();

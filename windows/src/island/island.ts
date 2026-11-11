@@ -363,7 +363,7 @@ export class Island {
         // A pill with a waiting request opens on its card: going back to it
         // after looking at another pill brings the card up again.
         const req = State.pendingApproval;
-        if (req?.pillId === id) this.setView(req.questions ? "question" : "approval");
+        if (req?.pillId === id) this.setView(State.requestView(req));
       },
       openTerminal: () => {
         const task = State.focusTask;
@@ -560,8 +560,10 @@ export class Island {
     if (mode === "expanded") Sound.play("open");
     if (prev === "expanded") {
       Sound.play("close");
-      // A folded card is still waiting: it keeps the island pinned.
+      // A folded card is still waiting: it keeps the island pinned, and the
+      // user's own pin goes once it is answered, as it would have gone now.
       if (!State.pendingApproval) State.isPinned = false;
+      else State.pinnedBeforeApproval = false;
       void Bridge.focusWindow(false);
     }
     if (mode !== "expanded") {

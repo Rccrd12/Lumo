@@ -92,7 +92,8 @@ export function isLookingCommand(command: string): boolean {
   // Writing to a file, running something inside (a PowerShell script block or
   // subexpression too), or a background job: not simple.
   if (/[>`{}()]|\$\(|<\(|(^|[^&])&($|[^&])/.test(text)) return false;
-  return text.split(/\|\||&&|[|;\n]/).every(looks);
+  // A lone carriage return ends a command too, in PowerShell and in cmd.
+  return text.split(/\|\||&&|\r\n?|[|;\n]/).every(looks);
 }
 
 /** True when the request only reads or looks, and can be answered from the closed island. */

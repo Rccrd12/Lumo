@@ -84,3 +84,9 @@ test("Y allows and N denies, alone and not held", () => {
   assert.equal(key("y", { altKey: true }), null);
   assert.equal(key("n", { repeat: true }), null);
 });
+
+test("a lone carriage return ends a command: what comes after it is looked at too", () => {
+  assert.equal(isLookingCommand("Get-ChildItem\rRemove-Item C:\\x -Recurse"), false);
+  assert.equal(isLookingCommand("Get-ChildItem\r\nGet-Location"), true);
+  assert.equal(isLookingCommand("Get-ChildItem\rGet-Location"), true);
+});
