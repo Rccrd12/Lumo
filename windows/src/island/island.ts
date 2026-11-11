@@ -2028,8 +2028,11 @@ export class Island {
     this.picture.sync(expanded && State.view === "prompt" && !this.uploadActive);
     for (const [name, view] of this.views) {
       const on = name === State.view;
+      const wasOn = view.el.classList.contains("on");
       view.el.classList.toggle("on", on);
-      if (on) view.sync();
+      // Settings leaving for another tab note it too: back with the gear,
+      // the page is told to show what changed meanwhile (settings-frame.ts).
+      if (on || (wasOn && name === "settings")) view.sync();
     }
 
     // The chat is the only view with a text field, so it is the only time the

@@ -24,7 +24,8 @@ use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
 use crate::chat_usage::{self, ChatUsage};
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
-use lumo_local::sse::{filter_thinking_blocks, progressive_filter};
+use lumo_local::sse::{filter_thinking_blocks, progressive_filter, without_half_tag};
+use lumo_local::transport::AFTER_FINISH;
 
 pub struct Provider {
     pub id: &'static str,
@@ -501,14 +502,19 @@ pub async fn send(
         chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
         return Ok(ChatReply::answer(text, None));
     }
-    let mut text = reply_text(p, &json)?;
+    // An empty last word after the tools (Gemini does it): what was said
+    // before them, and that they ran, stay; the turn is not thrown away.
+    let silent_after_tools = !said.is_empty()
+        && json.pointer("/error/message").is_none()
+        && json.pointer("/choices/0/message/content").and_then(Value::as_str).is_none_or(|c| c.trim().is_empty());
+    let mut text = if silent_after_tools { String::new() } else { reply_text(p, &json)? };
     if cut(&json) {
         text = format!("{text}\n\n_{}_", t("The answer was cut off at the length limit: ask to continue."));
     } else if json.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some(STOPPED_HALFWAY) {
         text = format!("{text}\n\n_{}_", t("The connection closed before the answer was over: it may be cut. Ask to continue."));
     }
     // After the user's tools, what was said before each call comes first.
-    let text = if said.is_empty() { text } else { said.into_iter().chain([text]).collect::<Vec<_>>().join("\n\n") };
+    let text = if said.is_empty() { text } else { said.into_iter().chain([text]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n") };
 
     chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
     Ok(ChatReply::answer(text, None))
@@ -678,7 +684,18 @@ async fn stream_post(
     let mut last = Instant::now().checked_sub(DELTA_INTERVAL).unwrap_or_else(Instant::now);
     let mut unsent = false;
     loop {
-        let chunk = match response.chunk().await {
+        // Once the answer said it was over, only a short wait for its usage
+        // and `[DONE]`: a server that keeps the line open never holds the
+        // turn for minutes.
+        let next = if answer.finish_reason.is_some() {
+            match tokio::time::timeout(AFTER_FINISH, response.chunk()).await {
+                Ok(next) => next,
+                Err(_) => break,
+            }
+        } else {
+            response.chunk().await
+        };
+        let chunk = match next {
             Ok(Some(chunk)) => chunk,
             Ok(None) => break,
             // The answer was over: a connection dropped after it loses nothing.
@@ -702,7 +719,8 @@ async fn stream_post(
         if unsent && last.elapsed() >= DELTA_INTERVAL {
             unsent = false;
             last = Instant::now();
-            on_text(&progressive_filter(&answer.content));
+            // Never the start of a reasoning tag the next piece may close (`<thi`).
+            on_text(without_half_tag(&progressive_filter(&answer.content)));
         }
         if answer.done {
             break;
@@ -731,9 +749,11 @@ const STOPPED_HALFWAY: &str = "lumo_stopped_halfway";
 #[derive(Default)]
 struct Assembly {
     content: String,
-    /// The tool calls by their `index`: id, type, function, and anything
-    /// else the provider puts on them (Gemini's `extra_content`).
+    /// The tool calls, in the order they began: id, type, function, and
+    /// anything else the provider puts on them (Gemini's `extra_content`).
     calls: Vec<Value>,
+    /// For each `index` the server gave, the call its pieces go to now.
+    slots: Vec<(u64, usize)>,
     /// OpenRouter's reasoning blocks, each one's pieces joined.
     reasoning_details: Vec<Value>,
     /// Other fields of the message the provider sends (kept, sent back).
@@ -759,13 +779,32 @@ fn merge(into: &mut Value, from: &Value) {
     }
 }
 
-/// `field` of `into` with `more` added at its end.
+/// `field` of `into` with `more` added at its end. Only into an object: a
+/// server's piece of another shape is left out, never a panic (which would
+/// take the whole app down).
 fn append(into: &mut Value, field: &str, more: &str) {
+    if !into.is_object() {
+        return;
+    }
     let joined = format!("{}{more}", into[field].as_str().unwrap_or_default());
     into[field] = json!(joined);
 }
 
 impl Assembly {
+    /// A new tool call, for the server's `index` from now on. None past 65.
+    fn start_call(&mut self, index: Option<u64>) -> Option<usize> {
+        if self.calls.len() > 64 {
+            return None;
+        }
+        self.calls.push(json!({ "id": "", "type": "function", "function": { "name": "", "arguments": "" } }));
+        let at = self.calls.len() - 1;
+        if let Some(index) = index {
+            self.slots.retain(|(i, _)| *i != index);
+            self.slots.push((index, at));
+        }
+        Some(at)
+    }
+
     /// One line of the event stream; true when the text grew.
     fn line(&mut self, line: &str) -> Result<bool, String> {
         let Some(data) = line.strip_prefix("data:").map(str::trim) else { return Ok(false) };
@@ -812,26 +851,29 @@ impl Assembly {
                 }
                 "tool_calls" => {
                     for piece in v.as_array().into_iter().flatten() {
-                        let index = match piece["index"].as_u64() {
-                            Some(i) => i as usize,
+                        let id = piece["id"].as_str().filter(|id| !id.is_empty());
+                        let at = match piece["index"].as_u64() {
+                            Some(index) => match self.slots.iter().find(|(i, _)| *i == index).map(|(_, at)| *at) {
+                                // Another id at an index already taken is another
+                                // call (as lumo_local::sse::CallParts): never two
+                                // calls fused into one made-up name.
+                                Some(at) if id.is_some_and(|id| self.calls[at]["id"].as_str().is_some_and(|had| !had.is_empty() && had != id)) => self.start_call(Some(index)),
+                                Some(at) => Some(at),
+                                None => self.start_call(Some(index)),
+                            },
                             // No index (some servers): a new id is a new call, the rest goes on the last one.
-                            None => {
-                                let id = piece["id"].as_str().filter(|id| !id.is_empty());
-                                match self.calls.last() {
-                                    Some(last) if id.is_none_or(|id| last["id"] == id || last["id"] == "") => self.calls.len() - 1,
-                                    _ => self.calls.len(),
-                                }
-                            }
+                            None => match self.calls.last() {
+                                Some(last) if id.is_none_or(|id| last["id"] == id || last["id"] == "") => Some(self.calls.len() - 1),
+                                _ => self.start_call(None),
+                            },
                         };
-                        if index > 64 {
-                            continue;
-                        }
-                        while self.calls.len() <= index {
-                            self.calls.push(json!({ "id": "", "type": "function", "function": { "name": "", "arguments": "" } }));
-                        }
-                        let call = &mut self.calls[index];
+                        let Some(at) = at else { continue };
+                        let call = &mut self.calls[at];
                         if let Some(name) = piece.pointer("/function/name").and_then(Value::as_str) {
-                            append(&mut call["function"], "name", name);
+                            // A name sent again whole with each piece is said once.
+                            if call["function"]["name"].as_str() != Some(name) {
+                                append(&mut call["function"], "name", name);
+                            }
                         }
                         match piece.pointer("/function/arguments") {
                             Some(Value::String(more)) => append(&mut call["function"], "arguments", more),
@@ -858,6 +900,10 @@ impl Assembly {
     /// One piece of a reasoning block: the text of the block it continues
     /// (same type and index) grows, or a new block starts.
     fn reasoning_detail(&mut self, piece: &Value) {
+        // A piece that is not an object is no block: left out.
+        if !piece.is_object() {
+            return;
+        }
         // An encrypted block comes whole: two in a row with no index are two blocks.
         let same = self.reasoning_details.last_mut().filter(|last| {
             last["type"] == piece["type"] && last.get("index") == piece.get("index") && (piece.get("index").is_some() || piece["type"] != "reasoning.encrypted")
@@ -1178,6 +1224,21 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_pieces_of_the_wrong_shape_are_no_panic() {
+        let (whole, _) = assemble(&[
+            r#"data: {"choices":[{"index":0,"delta":{"reasoning_details":[5,{"text":"x"},"y",{"text":"z"}]}}]}"#,
+            r#"data: {"choices":[{"index":0,"delta":{"content":"Ok."},"finish_reason":"stop"}]}"#,
+            "data: [DONE]",
+        ]);
+        let whole = whole.unwrap();
+        assert_eq!(whole["choices"][0]["message"]["content"], "Ok.");
+        assert_eq!(whole["choices"][0]["message"]["reasoning_details"], json!([{"text":"xz"}]));
+        let mut text = json!(5);
+        append(&mut text, "text", "more");
+        assert_eq!(text, json!(5), "only into an object");
+    }
+
+    #[test]
     fn a_streamed_answer_is_the_whole_one() {
         let (whole, texts) = assemble(&[
             r#"data: {"choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}"#,
@@ -1193,6 +1254,22 @@ mod tests {
         assert!(cut(&whole));
         assert_eq!(whole["usage"]["total_tokens"], 8);
         assert!(whole.pointer("/choices/0/message/tool_calls").is_none());
+    }
+
+    #[test]
+    fn two_calls_at_the_same_index_stay_two_calls() {
+        let (whole, _) = assemble(&[
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"set_timer","arguments":"{\"minutes\":1}"}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"b","type":"function","function":{"name":"listen","arguments":"{}"}}]}}]}"#,
+            // A name sent again whole with the next piece of its call.
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"c","function":{"name":"read_file","arguments":"{\"path\":"}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"name":"read_file","arguments":"\"a.txt\"}"}}]},"finish_reason":"tool_calls"}]}"#,
+            "data: [DONE]",
+        ]);
+        let whole = whole.unwrap();
+        let calls = whole.pointer("/choices/0/message/tool_calls").and_then(Value::as_array).unwrap();
+        let named: Vec<_> = calls.iter().map(|c| (c["id"].as_str().unwrap(), c["function"]["name"].as_str().unwrap(), c["function"]["arguments"].as_str().unwrap())).collect();
+        assert_eq!(named, [("a", "set_timer", r#"{"minutes":1}"#), ("b", "listen", "{}"), ("c", "read_file", r#"{"path":"a.txt"}"#)]);
     }
 
     #[test]

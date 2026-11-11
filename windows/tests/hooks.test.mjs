@@ -585,6 +585,9 @@ test("anything else, or an island that cannot show it, gets the full card", () =
   assert.deepEqual(card(ls, () => { State.settings.quickApprovals = false; }), { quick: false, asked: ["alert:approval"] });
   State.settings.quickApprovals = true;
   assert.deepEqual(card(ls, () => { quickFits = false; }), { quick: false, asked: ["quick", "alert:approval"] });
+  quickFits = true;
+  // A request the relay had to cut has no Allow: never the closed island's buttons.
+  assert.deepEqual(card({ ...ls, lumo_input_cut: true }), { quick: false, asked: ["alert:approval"] });
 });
 
 test("a request behind another pill comes to the front, and that pill comes back after", () => {

@@ -725,6 +725,8 @@ export interface ChatReply {
   stopped?: boolean;
   /** How many turns Rust's conversation holds after this one (`chatRewind`). */
   turns?: number;
+  /** What Rust's conversation kept for it, when not `text` ("(No answer.)"): given back as that by `chatRestore`. */
+  kept?: string;
 }
 
 /** A display the screen button can capture; `index` is its place in the menu. */

@@ -114,6 +114,24 @@ test("a file to write is counted for its card: lines added and removed, and a ne
   assert.equal(editStat("write_file", { file_path: "C:/p/a.ts", content: "x" }), null);
 });
 
+test("a Write cut short shows its real size, never the size of what is left of it", async () => {
+  const { editStat } = await import("../src/core/approvals.ts");
+  // What the relay forwards of a 400 KB Write: 256 KB and an ellipsis.
+  const left = "x".repeat(256 * 1024) + "…";
+  const input = { file_path: "C:/p/big.txt", content: left };
+  // With the size the relay read before cutting: that, lines and bytes.
+  assert.deepEqual(editStat("Write", input, { cut: true, writeBytes: 400 * 1024, writeLines: 4_096 }), { added: 4_096, removed: 0, bytes: 400 * 1024 });
+  // Without it (a relay from before), no numbers rather than the cut's ones.
+  assert.equal(editStat("Write", input, { cut: true }), null);
+  assert.equal(editStat("Write", input, { cut: true, writeBytes: "409600", writeLines: 1 }), null);
+  assert.equal(editStat("Write", input, { cut: true, writeBytes: -1, writeLines: 1 }), null);
+  // An edit cut short has no count to trust either: the lines left are not the edit's.
+  assert.equal(editStat("Edit", { file_path: "C:/p/a.ts", old_string: "a", new_string: left }, { cut: true }), null);
+  assert.equal(editStat("NotebookEdit", { notebook_path: "C:/p/a.ipynb", new_source: left }, { cut: true }), null);
+  // A size the relay sends goes only with a cut request: a whole one is counted from its text.
+  assert.deepEqual(editStat("Write", { file_path: "C:/p/a.txt", content: "a\nb\n" }, { writeBytes: 999, writeLines: 9 }), { added: 2, removed: 0, bytes: 4 });
+});
+
 test("a request cut short offers no button that does nothing: Allow and a plan's Approve both go", async () => {
   const { approvalOffer } = await import("../src/core/approvals.ts");
   const plan = [{ text: "Read the settings page" }, { text: "Add the toggle" }];

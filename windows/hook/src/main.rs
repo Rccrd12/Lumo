@@ -82,12 +82,23 @@ const MAX_DIFF_TOTAL: usize = 512 * 1024;
 /// The `tool_input` keys a permission card shows as what Allow allows: the
 /// command, the file, the page, the plan Claude Code asks to start (its steps).
 const TARGET_FIELDS: &[&str] = &["command", "cmd", "CommandLine", "script", "file_path", "notebook_path", "path", "url", "plan"];
-/// The tools whose permission card names the file and counts the lines written
-/// (hooks.ts editStat), never showing the text itself: what they write is not
-/// what Allow is read by, so it travels on the live diff's budget.
-const CONTENT_TOOLS: &[&str] = &["Write", "Edit", "MultiEdit", "NotebookEdit"];
-/// Their `tool_input` keys holding the text written or replaced.
-const CONTENT_FIELDS: &[&str] = &["old_string", "new_string", "content", "new_source"];
+/// The tools that write a file, whose text travels on the live diff's budget:
+/// Claude Code's (their card names the file and counts the lines, hooks.ts
+/// editStat), Antigravity's, Gemini CLI's, Copilot CLI's and OpenCode's. A
+/// file of a few KB is no reason for a card with Deny alone.
+const CONTENT_TOOLS: &[&str] = &[
+    "Write", "Edit", "MultiEdit", "NotebookEdit",
+    "write_to_file", "replace_file_content", "multi_replace_file_content",
+    "write_file", "replace",
+    "create", "edit", "write",
+];
+/// Their `tool_input` keys holding the text written or replaced (Antigravity's
+/// `ReplacementChunks` hold Target/ReplacementContent).
+const CONTENT_FIELDS: &[&str] = &[
+    "old_string", "new_string", "content", "new_source",
+    "CodeContent", "TargetContent", "ReplacementContent",
+    "file_text", "old_str", "new_str", "oldString", "newString",
+];
 /// Per target string of a permission request: the card shows the whole of it,
 /// so a long script reaches the island whole. Past this (or past the budget of
 /// a file's text, CONTENT_FIELDS) the request carries `lumo_input_cut`, and
@@ -473,13 +484,27 @@ fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
     if event == "PermissionRequest" {
         let tool = payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let input = payload.as_object_mut().and_then(|map| map.remove("tool_input"));
+        // Only the relay says how big a Write was: never what came in.
+        if let Some(map) = payload.as_object_mut() {
+            map.remove("lumo_write_bytes");
+            map.remove("lumo_write_lines");
+        }
         truncate_strings(payload);
         if let Some(mut input) = input {
+            // A Write's text is cut past MAX_DIFF_FIELD_LEN (cap_content: its
+            // only text field, well within the shared budget).
+            let whole = if tool == "Write" { write_size(&input).filter(|&(bytes, _)| bytes > MAX_DIFF_FIELD_LEN) } else { None };
             let cut_any = cap_request_strings(&mut input, &tool);
             if let Some(map) = payload.as_object_mut() {
                 map.insert("tool_input".into(), input);
                 if cut_any {
                     map.insert("lumo_input_cut".into(), serde_json::Value::Bool(true));
+                }
+                // The card counts what it got; when the text was cut, that is
+                // the cut's size, not the file's: the real one goes along.
+                if let Some((bytes, lines)) = whole {
+                    map.insert("lumo_write_bytes".into(), Value::from(bytes));
+                    map.insert("lumo_write_lines".into(), Value::from(lines));
                 }
             }
         }
@@ -509,6 +534,16 @@ fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
             }
         }
     }
+}
+
+/// The size of the text a Write asks to write: its bytes (UTF-8, what the file
+/// will weigh) and its lines, counted as the island counts them (diff.ts
+/// splitLines: a last line break ends a line, it does not start one).
+fn write_size(input: &Value) -> Option<(usize, usize)> {
+    let text = input.get("content")?.as_str()?;
+    let breaks = text.bytes().filter(|&b| b == b'\n').count();
+    let lines = breaks + usize::from(!text.is_empty() && !text.ends_with('\n'));
+    Some((text.len(), lines))
 }
 
 /// `tool_input` of a diff tool: edit strings share MAX_DIFF_TOTAL, each capped at
@@ -991,10 +1026,58 @@ mod tests {
         let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/a.ts", "content": "a", "note": "n".repeat(MAX_FIELD_LEN + 1) } });
         truncate_payload(&mut v, "PermissionRequest");
         assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        // The other agents' file tools the same: Antigravity, Copilot CLI, OpenCode.
+        let page = "<li>item</li>\n".repeat(250); // ~3.5 KB
+        for (tool, input) in [
+            ("write_to_file", serde_json::json!({ "TargetFile": "C:/w/menu.html", "CodeContent": page, "Overwrite": true })),
+            ("replace_file_content", serde_json::json!({ "TargetFile": "C:/w/a.md", "TargetContent": page, "ReplacementContent": page })),
+            ("multi_replace_file_content", serde_json::json!({ "TargetFile": "C:/w/a.md", "ReplacementChunks": [{ "TargetContent": page, "ReplacementContent": page }] })),
+            ("create", serde_json::json!({ "path": "C:/w/a.html", "file_text": page })),
+            ("edit", serde_json::json!({ "path": "C:/w/a.html", "old_str": page, "new_str": page })),
+            ("edit", serde_json::json!({ "filePath": "C:/w/a.html", "oldString": page, "newString": page })),
+            ("write_file", serde_json::json!({ "file_path": "C:/w/a.html", "content": page })),
+        ] {
+            let mut v = serde_json::json!({ "tool_name": tool, "tool_input": input });
+            truncate_payload(&mut v, "PermissionRequest");
+            assert!(v.get("lumo_input_cut").is_none(), "{tool}");
+            assert!(v.to_string().contains(&page.replace('\n', "\\n")), "{tool} keeps its text");
+        }
         // Another tool's long text field is still cut: its card shows all of its input.
         let mut v = serde_json::json!({ "tool_name": "mcp__x__y", "tool_input": { "content": "y".repeat(MAX_FIELD_LEN + 1) } });
         truncate_payload(&mut v, "PermissionRequest");
         assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn a_write_cut_short_still_tells_the_island_its_real_size() {
+        // 400 KB in 4 096 lines: the text is cut at 256 KB (Allow goes), and
+        // the card is told the file's own size, not the cut's.
+        let line = format!("{}\n", "x".repeat(99));
+        let huge = line.repeat(4_096);
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/big.txt", "content": huge } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        assert_eq!(v["lumo_write_bytes"], 400 * 1024);
+        assert_eq!(v["lumo_write_lines"], 4_096);
+        // Bytes, not characters; a last line with no break still counts.
+        let accents = "è".repeat(MAX_DIFF_FIELD_LEN) + "\nend";
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/a.txt", "content": accents } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["lumo_write_bytes"], MAX_DIFF_FIELD_LEN * 2 + 4);
+        assert_eq!(v["lumo_write_lines"], 2);
+        // Whole: the card counts the text itself, nothing else goes along.
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/a.txt", "content": "a\nb\n" } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v.get("lumo_write_bytes").is_none() && v.get("lumo_write_lines").is_none());
+        // Never a size that came in with the request.
+        let mut v = serde_json::json!({ "tool_name": "Write", "lumo_write_bytes": 1, "lumo_write_lines": 1, "tool_input": { "file_path": "C:/p/a.txt", "content": "a" } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v.get("lumo_write_bytes").is_none() && v.get("lumo_write_lines").is_none());
+        // Only a Write: another tool's cut text says nothing of a size.
+        let mut v = serde_json::json!({ "tool_name": "Edit", "tool_input": { "file_path": "C:/p/a.txt", "old_string": "a", "new_string": "x".repeat(MAX_DIFF_FIELD_LEN + 1) } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        assert!(v.get("lumo_write_bytes").is_none());
     }
 
     #[test]

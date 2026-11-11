@@ -312,6 +312,9 @@ interface HookPayload {
   lumo_remembered?: boolean;
   /** The relay had to cut the request's input (lumo-hook's truncate_payload): the card can't show it whole. */
   lumo_input_cut?: boolean;
+  /** A Write whose text was cut (lumo_input_cut): the real size of that text, read by the relay before cutting. */
+  lumo_write_bytes?: number;
+  lumo_write_lines?: number;
   /** The Claude Code session's title (/rename, else Claude Code's own), read from its transcript by the relay (hook/src/title.rs). */
   lumo_title?: string;
   /** A command of an Antigravity session that none of its rules covers (hook/src/main.rs): a card, else Antigravity asks. */
@@ -1021,7 +1024,9 @@ function handleHook(island: Island, payload: HookPayload) {
       const planSteps = !questions && !email && !change && /^exit_?plan_?mode$/i.test(tool) && typeof input.plan === "string"
         ? stepsFromMarkdown(input.plan) : [];
       // A file to write: how many lines, under its name (the text itself is not on the card).
-      const edit = !questions && !email && !change && !userTool ? editStat(tool, input) : null;
+      const edit = !questions && !email && !change && !userTool
+        ? editStat(tool, input, { cut: payload.lumo_input_cut === true, writeBytes: payload.lumo_write_bytes, writeLines: payload.lumo_write_lines })
+        : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -1048,7 +1053,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // long it waits. Either way the card goes just before.
       const cardMs = chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 107_000;
       if (inLine) {
-        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && isSimpleRequest(tool, input) ? { simple: true } : {}) });
+        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && !info.cut && isSimpleRequest(tool, input) ? { simple: true } : {}) });
         void Bridge.log(`permission ${tool} req=${requestId}${fromChat ? " (chat)" : ""} (waiting, ${State.approvalQueue.length + 1} in line)`);
         // A human will see it: the relay waits for the decision.
         void Bridge.approvalAck(requestId);
@@ -1059,8 +1064,9 @@ function handleHook(island: Island, payload: HookPayload) {
       }
       // A request that only reads or looks, while the island is closed, is
       // answered right there: Deny and Allow next to Lumo (Settings → Island).
-      // Still a click, never automatic; anything else opens the full card.
-      const quick = !questions && !email && !change && State.settings.quickApprovals !== false
+      // Still a click, never automatic; anything else opens the full card,
+      // a request the relay had to cut too (its card has no Allow).
+      const quick = !questions && !email && !change && !info.cut && State.settings.quickApprovals !== false
         && State.mode !== "expanded" && isSimpleRequest(tool, input);
       void Bridge.log(`permission ${tool} req=${requestId || "none"}${fromChat ? " (chat)" : ""}${quick ? " (closed island)" : ""}`);
       // The card always comes up, even over another pill or an island that is

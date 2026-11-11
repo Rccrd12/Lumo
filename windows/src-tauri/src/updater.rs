@@ -557,7 +557,11 @@ pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
     }
     let current = parse_version(&app.package_info().version.to_string());
     if let (Some(offered), Some(current)) = (installer_version(&url), current) {
-        if !may_install(&current, &offered) {
+        // Back from a beta: the releases GitHub lists say which is the newest.
+        if current.is_beta() && !offered.is_beta() && newest_release().is_none() {
+            fetch_releases(&app).await?;
+        }
+        if !may_install(&current, &offered, newest_release().as_ref()) {
             return Err(t("That version is not newer than the one installed."));
         }
     }
@@ -584,9 +588,22 @@ pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 /// Never an older (or the same) build than the one running, but for going
-/// back from a beta to a release.
-fn may_install(current: &Version, offered: &Version) -> bool {
-    offered > current || (current.is_beta() && !offered.is_beta())
+/// back from a beta to the newest release (`newest`, of the releases GitHub
+/// listed): never to an older one, which a page could otherwise ask for.
+fn may_install(current: &Version, offered: &Version, newest: Option<&Version>) -> bool {
+    offered > current || (current.is_beta() && !offered.is_beta() && newest == Some(offered))
+}
+
+/// The newest release (no beta) among the installers GitHub listed.
+fn newest_release() -> Option<Version> {
+    let digests = DIGESTS.lock().unwrap_or_else(|e| e.into_inner());
+    digests
+        .as_ref()?
+        .keys()
+        .filter_map(|u| Url::parse(u).ok())
+        .filter_map(|u| installer_version(&u))
+        .filter(|v| !v.is_beta())
+        .max()
 }
 
 async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
@@ -599,7 +616,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         .ok_or_else(|| t("Only installers from Lumo's GitHub releases can be installed."))?;
     // What GitHub says the file is, before anything is downloaded: asked again
     // when this run of Lumo has not read it yet. No SHA-256, no install.
-    let expected = match expected_digest(&url) {
+    let mut expected = match expected_digest(&url) {
         Some(d) => d,
         None => {
             fetch_releases(app).await?;
@@ -682,10 +699,12 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
             Ok(_) => expected_digest(&url).filter(|d| *d != expected),
             Err(_) => None,
         };
-        if again.is_none() || got != again {
+        let Some(again) = again.filter(|a| got.as_deref() == Some(a.as_str())) else {
             log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
             return Err(t("The downloaded installer does not match the one GitHub published."));
-        }
+        };
+        // Published again: its name is signed with its new SHA-256.
+        expected = again;
     }
     // Signed with Lumo's own key: a file swapped on the release, with its
     // SHA-256, still has no signature that holds.
@@ -1061,14 +1080,18 @@ mod tests {
     #[test]
     fn only_going_back_from_a_beta_installs_an_older_version() {
         let v = |s: &str| parse_version(s).unwrap();
-        assert!(may_install(&v("0.18.0"), &v("0.18.1")));
-        assert!(may_install(&v("0.18.0"), &v("0.18.1-312")));
-        assert!(may_install(&v("0.18.1-312"), &v("0.18.1-318")));
-        assert!(may_install(&v("0.18.1-312"), &v("0.18.0")), "back to the release");
-        assert!(!may_install(&v("0.18.0"), &v("0.18.0")));
-        assert!(!may_install(&v("0.18.1"), &v("0.18.0")));
-        assert!(!may_install(&v("0.18.1"), &v("0.18.1-312")));
-        assert!(!may_install(&v("0.18.1-318"), &v("0.18.1-312")), "an older beta, no");
+        let newest = v("0.18.0");
+        let n = Some(&newest);
+        assert!(may_install(&v("0.18.0"), &v("0.18.1"), n));
+        assert!(may_install(&v("0.18.0"), &v("0.18.1-312"), n));
+        assert!(may_install(&v("0.18.1-312"), &v("0.18.1-318"), n));
+        assert!(may_install(&v("0.18.1-312"), &v("0.18.0"), n), "back to the release");
+        assert!(!may_install(&v("0.18.1-312"), &v("0.10.0"), n), "never to an older release than the newest");
+        assert!(!may_install(&v("0.18.1-312"), &v("0.18.0"), None), "nor without knowing the newest");
+        assert!(!may_install(&v("0.18.0"), &v("0.18.0"), n));
+        assert!(!may_install(&v("0.18.1"), &v("0.18.0"), n));
+        assert!(!may_install(&v("0.18.1"), &v("0.18.1-312"), n));
+        assert!(!may_install(&v("0.18.1-318"), &v("0.18.1-312"), n), "an older beta, no");
     }
 
     #[test]

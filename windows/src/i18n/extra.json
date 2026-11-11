@@ -17950,6 +17950,18 @@
    "ru": "Записать изменения, показанные в настройках Lumo, в {target}? Сначала создаётся резервная копия.",
    "id": "Tulis perubahan yang ditampilkan di Pengaturan Lumo ke {target}? Cadangan dibuat terlebih dahulu.",
    "it": "Scrivere in {target} le modifiche mostrate nelle Impostazioni di Lumo? Prima viene fatto un backup."
+  },
+  "Not a public https page, so Lumo no longer watches it.": {
+   "zh-Hans": "不是公开的 https 页面，Lumo 不再监视它。",
+   "hi": "यह सार्वजनिक https पेज नहीं है, इसलिए Lumo अब इस पर नज़र नहीं रखता।",
+   "es": "No es una página https pública, así que Lumo ya no la vigila.",
+   "ar": "ليست صفحة https عامة، لذا لم يعد Lumo يراقبها.",
+   "fr": "Ce n'est pas une page https publique : Lumo ne la surveille plus.",
+   "bn": "এটি সর্বজনীন https পেজ নয়, তাই Lumo আর এটি নজরে রাখে না।",
+   "pt-BR": "Não é uma página https pública, então o Lumo não a observa mais.",
+   "ru": "Это не публичная страница https, поэтому Lumo больше за ней не следит.",
+   "id": "Bukan halaman https publik, jadi Lumo tidak lagi memantaunya.",
+   "it": "Non è una pagina https pubblica, quindi Lumo ha smesso di ascoltarla."
   }
  }
 }

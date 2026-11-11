@@ -77,12 +77,28 @@ test("from a site that may keep a record, the image waits for a click on Load im
   await settle();
   // The click downloads it, saying so to Rust, and the row becomes the image.
   assert.deepEqual(sent("web_image"), [{ url: other, asked: true }]);
-  assert.ok(!box.childNodes.includes(card));
-  assert.equal(box.childNodes.length, 1);
-  const shown = box.childNodes[0];
-  assert.equal(state(shown), "shown");
+  assert.deepEqual(box.childNodes, [card], "the row itself becomes the image");
+  assert.ok(!card.className.includes("off"));
+  assert.equal(state(card), "shown");
   // Drawn again (the chat redrawn), it stays the image.
   assert.equal(state(renderImage("Chart", other)), "shown");
+});
+
+test("an image loaded while its answer is still written stays at the next chunk", async () => {
+  const other = "https://images.example.com/q.png";
+  answers.set(other, PNG);
+  const box = document.createElement("div");
+  const first = "Here:\n\n![Plot](" + other + ")\n\nAnd";
+  renderMarkdown(box, first, { streaming: true, partial: true });
+  const card = box.querySelector(".rc-image");
+  byText(card, "Load image").fire("click");
+  await settle();
+  assert.equal(state(card), "shown");
+  // The next chunk draws the same container again: the image stays.
+  renderMarkdown(box, first + " more", { streaming: true, partial: true });
+  const now = box.querySelector(".rc-image");
+  assert.equal(now, card);
+  assert.equal(state(now), "shown");
 });
 
 test("a plain http address, or another port, is never one that loads at once", async () => {

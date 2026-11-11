@@ -546,6 +546,11 @@ test("TeX a model slips into the formulas is read as plain arithmetic", async ()
   assert.equal(at("\\left(x + 1\\right) \\times 3", { x: 1 }), 6);
   assert.equal(at("V_{out}", { V_out: 4 }), 4);
   assert.equal(at("$\\arctan(1)$"), Math.PI / 4);
+  // A command right before a digit: never one name with it.
+  assert.equal(at("3\\times10^{8}"), 3e8);
+  assert.equal(at("2\\cdot3"), 6);
+  assert.equal(fromTeX("x\\le3"), "x<=3");
+  assert.equal(fromTeX("x\\leqslant3"), "x<=3");
 
   // The local model's sine: a chart, from 0 to 2π.
   const plot = parsePlot("", "formula: \\sin(x)\ny: \\sin(x)\nx: 0..2\\pi");
@@ -569,4 +574,11 @@ test("a chart's lines in a fence left unnamed are the chart; other code stays co
   assert.equal(parseMarkdown("```\ny: 1\n```")[0].kind, "code");
   assert.equal(parseMarkdown("```\ny: 1\nx: 2\nname: z\n```")[0].kind, "code");
   assert.equal(parseMarkdown("```yaml\ny: 1\nx: 2\n```")[0].kind, "code");
+});
+
+test("a line of a card with thousands of spaces is read at once, not in seconds", () => {
+  const started = performance.now();
+  const plot = parsePlot("", `y: x${" ".repeat(50_000)}\nx: 0..1`);
+  assert.ok(performance.now() - started < 300);
+  assert.deepEqual(plot.x, [0, 1]);
 });
