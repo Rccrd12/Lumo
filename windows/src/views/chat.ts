@@ -1677,6 +1677,23 @@ export function buildPrompt(
   }
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(follow).observe(log);
   log.addEventListener("load", follow, true);
+  // The log drawn again (an answer just finished) puts back the place it was
+  // read at. Its cards are new and fit themselves once laid out (rich/resize.ts),
+  // so for that first frame one can be taller than it was while written: the
+  // browser's scroll anchoring would hold on to that and leave the chat higher
+  // up than where it was read. It is off until the cards have fitted, two frames.
+  let anchorFrame = 0;
+  function holdPlace() {
+    if (typeof requestAnimationFrame === "undefined") return;
+    log.style.overflowAnchor = "none";
+    cancelAnimationFrame(anchorFrame);
+    anchorFrame = requestAnimationFrame(() => {
+      anchorFrame = requestAnimationFrame(() => {
+        anchorFrame = 0;
+        log.style.overflowAnchor = "";
+      });
+    });
+  }
   toEnd.addEventListener("click", () => {
     stuck = true;
     follow();
@@ -4674,6 +4691,7 @@ export function buildPrompt(
         // The chat stays where it was read, or at its end when it is stuck
         // there; one just opened shows its end.
         if (openedChat) stuck = true;
+        if (!stuck) holdPlace();
         log.scrollTop = stuck ? log.scrollHeight : kept;
         openedChat = false;
         drawToEnd();
