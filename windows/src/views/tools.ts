@@ -56,6 +56,7 @@ export const TOOLS_STRINGS = {
   askEvery: N_("Ask every time"),
   trust: N_("Trust it"),
   trustNo: N_("Only a reviewed tool that Lumo can hold to what it says it needs can run without asking."),
+  trustPython: N_("For a Python script this is a guard rail, not a sandbox: it stops a tool that overreaches by mistake, not code written to get around it. Trust only a script you would run yourself."),
   supervisor: N_("Lumo's supervisor"),
   reviewing: N_("Reviewing…"),
   needsReview: N_("Needs a review"),
@@ -350,6 +351,8 @@ export function buildTools(actions: ViewActions): ViewHost {
     return h("div", { class: "trust" },
       h("div", { class: "trust-opts" }, choice(false, TOOLS_STRINGS.askEvery), choice(true, TOOLS_STRINGS.trust)),
       note ? h("div", { class: "tool-detail-note", text: t(note) }) : null,
+      // tool_guard.py holds a Python tool to what it declared, against mistakes only.
+      tool.mayTrust && /\.pyw?$/i.test(tool.entry) ? h("div", { class: "tool-detail-note", text: t(TOOLS_STRINGS.trustPython) }) : null,
       !tool.mayTrust && unguarded.length ? h("div", { class: "tool-detail-note", text: t(TOOLS_STRINGS.unguarded, { list: unguarded.join(", ") }) }) : null,
       !tool.mayTrust && !unguarded.length ? h("div", { class: "tool-detail-note", text: t(TOOLS_STRINGS.trustNo) }) : null);
   }

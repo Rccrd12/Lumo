@@ -1,5 +1,8 @@
 // Signs installers for Lumo's updater: `<file>.sig` beside each file, the
-// hex ed25519 signature of its bytes. Run by the release and beta workflows
+// hex ed25519 signature of its bytes, and `<file>.name.sig`, the signature of
+// its name with its SHA-256 (`signedName`, as updater.rs signed_name has it):
+// the name carries the version and, for a beta, its pre-release part, so an
+// installer published again under another name holds no signature. Run by the release and beta workflows
 // right before they publish, with the private key in LUMO_UPDATE_KEY (from
 // scripts/update-key.mjs):
 //
@@ -11,9 +14,9 @@
 // installer. Settings → Updates → Update now installs nothing without a
 // signature that holds (updater.rs).
 
-import { createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,6 +28,11 @@ const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
 export function signBytes(bytes, key) {
   const privateKey = createPrivateKey({ key: Buffer.from(key.trim(), "base64"), format: "der", type: "pkcs8" });
   return sign(null, bytes, privateKey).toString("hex");
+}
+
+/** What `<file>.name.sig` signs: the installer's name and its SHA-256 (hex, lower case). */
+export function signedName(fileName, sha256) {
+  return `lumo-update-v1\n${fileName}\n${sha256.trim().toLowerCase()}\n`;
 }
 
 /** True when `signature` (hex) is `bytes` signed by the raw public key `publicHex`. */
@@ -61,7 +69,14 @@ function main(files) {
       console.error("LUMO_UPDATE_KEY is not the key whose public half is in updater.rs: nothing signed.");
       process.exit(1);
     }
+    const named = Buffer.from(signedName(basename(file), createHash("sha256").update(bytes).digest("hex")));
+    const nameSignature = signBytes(named, key);
+    if (!verifyBytes(named, nameSignature, publicHex)) {
+      console.error("LUMO_UPDATE_KEY is not the key whose public half is in updater.rs: nothing signed.");
+      process.exit(1);
+    }
     writeFileSync(`${file}.sig`, `${signature}\n`);
+    writeFileSync(`${file}.name.sig`, `${nameSignature}\n`);
     console.log(`signed ${file}`);
   }
 }

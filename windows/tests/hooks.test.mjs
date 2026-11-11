@@ -1152,6 +1152,17 @@ test("Gemini Live's card to open a file says so", () => {
   assert.equal(State.pendingApproval?.reason, "Open a file you didn't give it");
 });
 
+test("Gemini Live's card to open a web page shows its whole address", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "g3", lumo_island: true,
+    tool_name: "mcp__lumo__live_open", tool_input: { url: "https://example.com/p?d=1234" },
+    lumo_live_file: { action: "page" },
+  });
+  assert.equal(State.pendingApproval?.project, "Gemini Live");
+  assert.equal(State.pendingApproval?.command, "https://example.com/p?d=1234");
+  assert.equal(State.pendingApproval?.reason, "Open this page in the browser");
+});
+
 // ── An email the AI wants to send (mail.rs send) ─────────────────────────────
 
 test("an email to send is its own card, whole, and never answered by itself", () => {

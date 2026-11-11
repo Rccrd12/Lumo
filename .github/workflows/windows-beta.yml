@@ -211,8 +211,10 @@ jobs:
           gh release create windows-beta \
             "release/Lumo-Windows-$VERSION-setup.exe" \
             "release/Lumo-Windows-$VERSION-setup.exe.sig" \
+            "release/Lumo-Windows-$VERSION-setup.exe.name.sig" \
             "release/Lumo-Windows-$VERSION.msi" \
             "release/Lumo-Windows-$VERSION.msi.sig" \
+            "release/Lumo-Windows-$VERSION.msi.name.sig" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --prerelease \

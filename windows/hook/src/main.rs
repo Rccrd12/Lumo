@@ -336,7 +336,9 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let island_card = is_island_run(env)
         && name == "PreToolUse"
         && args.agent == "antigravity"
-        && (reply::island_card(tool, map.get("tool_input")) || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map)));
+        && (reply::island_card(tool, map.get("tool_input"))
+            || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map))
+            || reply::reads_outside(tool, map.get("tool_input"), &workspaces(map)));
     // A shell command Antigravity is about to run in your own session (IDE or
     // CLI) that none of its rules covers: the island's Allow / Deny card, with
     // "Reply in Antigravity" to leave it to Antigravity's own prompt. Only with
@@ -756,11 +758,19 @@ mod tests {
         assert_eq!(card_budget(Some(10_000)), DECISION_BUDGET, "never longer than any card");
         assert_eq!(card_budget(Some(0)), Duration::from_secs(1));
 
-        // A file read is no card: agy allows it by itself.
-        let read = br#"{"hook_event_name":"PreToolUse","toolCall":{"name":"view_file","args":{"AbsolutePath":"/a"}}}"#;
+        // A file read in the workspace is no card: agy allows it by itself.
+        let read = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"view_file","args":{"AbsolutePath":"/w/a"}}}"#;
         let ev = prepare(read, &agy, &island, "/p").unwrap();
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
+        // Outside it, it is a card: what the model reads, it can send on.
+        let outside = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"view_file","args":{"AbsolutePath":"/home/me/.ssh/id_ed25519"}}}"#;
+        let ev = prepare(outside, &agy, &island, "/p").unwrap();
+        assert!(ev.island_card);
+        assert_eq!(ev.name, "PermissionRequest");
+        // And a page read always is.
+        let page = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"read_url_content","args":{"Url":"https://example.com/?d=x"}}}"#;
+        assert!(prepare(page, &agy, &island, "/p").unwrap().island_card);
 
         // Outside the island's chat, with hooks that give the relay no time to
         // wait, Antigravity's own prompt keeps the command (with time, it is
