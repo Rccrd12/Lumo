@@ -540,6 +540,18 @@ test("a card drawn when nothing could be sent is drawn again once it can", () =>
 
 // ── Code and formulas set aside first (src/views/scan.ts) ─────────────────────
 
+test("a star or an underscore inside a formula never opens or closes an emphasis", () => {
+  assert.deepEqual(parseInline("**Formula: $x^*$ ottimo**"), [
+    { kind: "strong", children: [{ kind: "text", text: "Formula: " }, { kind: "math", tex: "x^*", display: false }, { kind: "text", text: " ottimo" }] },
+  ]);
+  assert.deepEqual(parseInline("_Nota: per $x_1$ vale zero_"), [
+    { kind: "em", children: [{ kind: "text", text: "Nota: per " }, { kind: "math", tex: "x_1", display: false }, { kind: "text", text: " vale zero" }] },
+  ]);
+  assert.deepEqual(parseInline("*$a*b$*"), [{ kind: "em", children: [{ kind: "math", tex: "a*b", display: false }] }]);
+  // Nor inside code; prices stay text, as before.
+  assert.deepEqual(parseInline("`a*b*c` e 25$, 12$"), [{ kind: "code", text: "a*b*c" }, { kind: "text", text: " e 25$, 12$" }]);
+});
+
 test("a pipe inside a formula or code stays in its cell, and \\| stays TeX's in a formula", () => {
   const [table] = parseMarkdown("| a | b | c |\n|---|---|---|\n| $|x|$ | $\\|v\\|$ | `x\\|y` and a\\|b |");
   assert.deepEqual(table.rows, [["$|x|$", "$\\|v\\|$", "`x|y` and a|b"]]);
