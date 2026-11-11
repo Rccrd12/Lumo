@@ -126,6 +126,18 @@ test("a star between numbers or letters is a multiplication, not italics", () =>
     { kind: "strong", children: [{ kind: "text", text: "重要" }] },
     { kind: "text", text: "的" },
   ]);
+  // A star that closes an emphasis is never a product, a bracket after it or not.
+  assert.deepEqual(parseInline("*italic*(note), see *Figure*[1], **2024**(gennaio)"), [
+    { kind: "em", children: [{ kind: "text", text: "italic" }] },
+    { kind: "text", text: "(note), see " },
+    { kind: "em", children: [{ kind: "text", text: "Figure" }] },
+    { kind: "text", text: "[1], " },
+    { kind: "strong", children: [{ kind: "text", text: "2024" }] },
+    { kind: "text", text: "(gennaio)" },
+  ]);
+  assert.deepEqual(parseInline("*f = 2*(x+1)*"), [{ kind: "em", children: [{ kind: "text", text: "f = 2*(x+1)" }] }]);
+  // Powers written the Python way.
+  plain("x**2 + y**2 = r**2");
   // A link's address keeps its stars too.
   assert.deepEqual(parseInline("[a](https://example.com/a*b)"), [
     { kind: "link", url: "https://example.com/a*b", children: [{ kind: "text", text: "a" }] },
