@@ -55,11 +55,15 @@ pub fn rule(payload: &Value) -> Option<String> {
     if tool == "AskUserQuestion" || payload.get("lumo_input_cut").and_then(Value::as_bool) == Some(true) {
         return None;
     }
-    let input = payload.get("tool_input").unwrap_or(&Value::Null);
+    // No input to look at (an agent's arguments the relay couldn't read are
+    // cut before this): nothing the user saw to remember.
+    let input = payload.get("tool_input").filter(|v| v.is_object())?;
     let field = |keys: &[&str]| keys.iter().find_map(|k| input.get(*k).and_then(Value::as_str)).map(str::to_string);
-    let what = if tool.starts_with("mcp__") {
-        // An MCP server's tool: its `url` or `path` may come with a method,
-        // a body or a flag that change everything. Only the very same call.
+    let what = if !BUILT_IN.contains(&tool.to_ascii_lowercase().as_str()) {
+        // An MCP server's tool, whatever the agent calls it (`mcp__s__t`,
+        // Antigravity's `mcp_s_t`, `s/t`, Copilot's `s-t`), or any tool Lumo
+        // doesn't know: its `url` or `path` may come with a method, a body, a
+        // repository or a flag that change everything. Only the very same call.
         format!("input\n{input}")
     } else if let Some(command) = field(&["command", "cmd"]) {
         // The same command in another folder, or with another of its fields
@@ -90,6 +94,22 @@ pub fn rule(payload: &Value) -> Option<String> {
     };
     Some(format!("{tool}\n{what}"))
 }
+
+/// The agents' own tools whose command, file or address says what they do
+/// (Claude Code, Codex, Copilot, Gemini CLI, Antigravity, Cursor, OpenCode),
+/// in lower case: the same command, file or address is the same request.
+/// Any other tool is the same request only with the very same input.
+const BUILT_IN: &[&str] = &[
+    // Commands
+    "bash", "powershell", "shell", "local_shell", "exec_command", "shell_command", "run_shell_command", "run_command",
+    "run_in_terminal", "terminal",
+    // Files
+    "read", "write", "edit", "multiedit", "notebookedit", "view", "create", "str_replace", "str_replace_editor",
+    "read_file", "write_file", "edit_file", "replace", "read_many_files", "write_to_file", "replace_file_content",
+    "multi_replace_file_content", "view_file", "list_dir", "glob", "grep", "ls",
+    // Pages
+    "webfetch", "web_fetch", "read_url_content", "fetch", "http",
+];
 
 /// A command's fields that don't change what it does: the command itself and
 /// its folder (in the rule on their own), what describes it, how long to wait.
@@ -243,6 +263,23 @@ mod tests {
         assert_ne!(r("Bash", json!({ "command": "ls" })), r("PowerShell", json!({ "command": "ls" })));
         assert_eq!(r("AskUserQuestion", json!({ "questions": [] })), None);
         assert_eq!(rule(&json!({ "session_id": "s" })), None);
+        // No input, or input that isn't fields: nothing to remember (a rule
+        // "bash + null" would allow every other unreadable call).
+        assert_eq!(rule(&json!({ "session_id": "s", "tool_name": "bash" })), None);
+        assert_eq!(r("bash", json!("rm -rf ~")), None);
+        // An MCP tool as Antigravity (`mcp_server_tool`), Copilot or others name
+        // it: the same call, not the same path or address with other fields.
+        for tool in ["mcp_github_create_or_update_file", "github-mcp-server-create_or_update_file", "github/create_or_update_file"] {
+            let readme = |repo: &str, content: &str| r(tool, json!({ "path": "README.md", "repo": repo, "content": content }));
+            assert_ne!(readme("public", "a"), readme("private", "a"), "{tool}");
+            assert_ne!(readme("public", "a"), readme("public", "b"), "{tool}");
+            assert_eq!(readme("public", "a"), readme("public", "a"), "{tool}");
+        }
+        assert_ne!(r("mcp_fetch_fetch", json!({ "url": "https://a.dev", "body": "1" })), r("mcp_fetch_fetch", json!({ "url": "https://a.dev", "body": "2" })));
+        assert_ne!(r("mcp_shell_run", json!({ "command": "ls", "script": "a" })), r("mcp_shell_run", json!({ "command": "ls", "script": "b" })));
+        // The agents' own tools keep their rules, in any case.
+        assert!(r("RUN_COMMAND", json!({ "command": "ls" })).unwrap().starts_with("RUN_COMMAND\ncommand\nls\n"));
+        assert_eq!(r("write_to_file", json!({ "path": "C:/a", "content": "1" })), r("write_to_file", json!({ "path": "C:/a", "content": "2" })));
         // A command the relay had to cut: never "the same" as another.
         let mut cut = request("s", "Bash", json!({ "command": "npm run build && …" }));
         cut["lumo_input_cut"] = json!(true);

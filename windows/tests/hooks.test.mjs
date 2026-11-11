@@ -544,7 +544,7 @@ test("the card names the most specific thing the tool carries", () => {
   assert.equal(target(undefined, undefined), "Tool");
   // The chat's computer use: what the click or the keys will do.
   assert.equal(target("mcp__lumo__left_click", { coordinate: [640, 320] }), "Click · 640, 320");
-  assert.equal(target("mcp__lumo__type", { text: "ciao\nmondo" }), "Type · ciao mondo");
+  assert.equal(target("mcp__lumo__type", { text: "ciao\nmondo" }), "Type · ciao⏎\nmondo", "each Enter shown");
   assert.equal(target("mcp__lumo__key", { text: "ctrl+s" }), "Press · ctrl+s");
   assert.equal(target("mcp__github__create_issue", { title: "x" }), 'mcp__github__create_issue · {"title":"x"}', "another server: all it is given");
   // An MCP tool's path or command comes with what else Allow allows: all of it shows.
@@ -1361,7 +1361,22 @@ test("a hook event's fields of the wrong type are dropped, not trusted", async (
     hook_event_name: "Notification", message: 3, session_id: { a: 1 }, cwd: "/x",
     lumo_island: "true", lumo_card_secs: "9", tool_input: "rm -rf /", extra: 1,
   });
-  assert.deepEqual(p, { hook_event_name: "Notification", cwd: "/x", extra: 1 });
+  // Input that isn't an object is what the agent runs: kept as it came, and cut.
+  assert.deepEqual(p, { hook_event_name: "Notification", cwd: "/x", extra: 1, tool_input: { arguments: "rm -rf /" }, lumo_input_cut: true });
+  assert.deepEqual(cleanPayload({ tool_input: ["rm", "-rf"] }), { tool_input: { arguments: '["rm","-rf"]' }, lumo_input_cut: true });
+  assert.deepEqual(cleanPayload({ tool_input: null }), { tool_input: null });
+});
+
+test("a request whose input can't be read shows it as it came and can't be allowed", () => {
+  ask("u1", { tool_name: "bash", tool_input: "{\"command\":\"rm -rf ~/proj\"", lumo_session_allow: true });
+  assert.equal(State.pendingApproval.cut, true);
+  assert.equal(State.pendingApproval.sessionAllow, undefined);
+  assert.ok(State.pendingApproval.command.includes("rm -rf ~/proj"), State.pendingApproval.command);
+  State.pendingApproval = null;
+  // The relay's own mark for arguments it couldn't read (normalize.rs).
+  ask("u2", { tool_name: "bash", tool_input: { arguments: "{\"command\":\"ls\",\"x\":\"\\ud800\"}" }, lumo_input_cut: true });
+  assert.equal(State.pendingApproval.cut, true);
+  State.pendingApproval = null;
 });
 
 test("a Notification whose message is not text leaves the island working", () => {

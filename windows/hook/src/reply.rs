@@ -126,8 +126,9 @@ fn agy_tool(tool: &str) -> String {
 /// (a page's address, a search): so a read that leaves the workspace — the
 /// chat's folder, the inbox of dropped files, the folders the user shared —
 /// is a card, with its path on it. A path that cannot be placed for sure
-/// (`..`, no workspace known) is one too. Antigravity's own folder
-/// (`.gemini/antigravity…`, its plans) is its own to read.
+/// (`..`, no workspace known, `~`, `$HOME`, `%USERPROFILE%`) is one too, and
+/// so is a network path. Antigravity's own folder in the user's home
+/// (`.gemini/antigravity…`, its plans) is its own to read (agy_own).
 pub fn reads_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -> bool {
     if !AGY_READS.contains(&agy_tool(tool).as_str()) {
         return false;
@@ -148,10 +149,34 @@ pub fn reads_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -
             if p.split('/').any(|part| part == "..") || holds_secrets(&p) {
                 return true;
             }
-            let absolute = p.starts_with('/') || p.as_bytes().get(1) == Some(&b':') || p.starts_with("//");
-            let own = p.contains("/.gemini/antigravity");
-            absolute && !own && !roots.iter().any(|r| p == *r || p.starts_with(&format!("{r}/")))
+            if agy_own(&p) {
+                return false;
+            }
+            // The home folder or a variable the tool may expand: it can't be
+            // placed for sure, as for a write.
+            if p.starts_with(['~', '$']) || p.contains('%') {
+                return true;
+            }
+            // A network path (`\\server\share`, `\\?\UNC\…`, `\\.\…`) is
+            // absolute: only a card lets Windows reach that server.
+            let absolute = p.starts_with('/') || p.as_bytes().get(1) == Some(&b':');
+            absolute && !roots.iter().any(|r| p == *r || p.starts_with(&format!("{r}/")))
         })
+}
+
+/// Antigravity's own folder (its plans, its brain), as norm_path writes it:
+/// `<drive>:/users/<name>/.gemini/antigravity…` or `~/.gemini/antigravity…`,
+/// and only there. Not a `.gemini/antigravity` anywhere else in a path: on a
+/// network share (`//server/x/.gemini/antigravity`) a read would reach that
+/// server with no card.
+fn agy_own(p: &str) -> bool {
+    let parts: Vec<&str> = p.split('/').collect();
+    let rest = match parts.as_slice() {
+        [drive, "users", name, rest @ ..] if drive.len() == 2 && drive.ends_with(':') && drive.as_bytes()[0].is_ascii_alphabetic() && !name.is_empty() => rest,
+        ["~", rest @ ..] => rest,
+        _ => return false,
+    };
+    matches!(rest, [".gemini", "antigravity", ..])
 }
 
 /// A path (as norm_path writes it) to keys, passwords, sign-ins or a browser's
@@ -230,7 +255,11 @@ pub fn writes_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) 
 /// A path to compare: forward slashes, lower case (Windows), no `file://`, no trailing slash.
 fn norm_path(path: &str) -> String {
     let p = path.trim();
-    let p = p.strip_prefix("file:///").or_else(|| p.strip_prefix("file://")).unwrap_or(p);
+    // `file:///C:/x` is C:/x; `file://server/x` names a server: //server/x.
+    let p = match p.strip_prefix("file:///") {
+        Some(rest) => rest.to_string(),
+        None => p.strip_prefix("file://").map(|rest| format!("//{rest}")).unwrap_or_else(|| p.to_string()),
+    };
     let p = p.replace('\\', "/").to_lowercase();
     let p = if p.as_bytes().get(2) == Some(&b':') && p.starts_with('/') { p[1..].to_string() } else { p };
     p.trim_end_matches('/').to_string()
@@ -614,6 +643,24 @@ mod tests {
         assert!(r("view_file", json!({"AbsolutePath": "\\\\server\\share\\a.txt"})), "a network path");
         assert!(r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\EBWebView\\x"})), "Lumo's own data");
         assert!(!r("view_file", json!({"AbsolutePath": "C:\\Users\\me\\.gemini\\antigravity\\brain\\1\\task.md"})), "agy's own plan");
+        assert!(!r("view_file", json!({"AbsolutePath": "~/.gemini/antigravity/brain/1/task.md"})), "agy's own plan, from home");
+        // Antigravity's folder name on a network share or elsewhere is not its folder.
+        for path in [
+            "\\\\attacker.example\\x\\.gemini\\antigravity\\y.txt",
+            "\\\\data.attacker.example@SSL\\DavWWWRoot\\.gemini\\antigravity\\x",
+            "//attacker.example/x/.gemini/antigravity",
+            "\\\\?\\UNC\\attacker.example\\x\\.gemini\\antigravity\\y",
+            "\\\\?\\C:\\Users\\me\\.gemini\\antigravity\\y",
+            "D:\\stuff\\.gemini\\antigravity\\y.txt",
+            "file://attacker.example/x/.gemini/antigravity/y",
+        ] {
+            assert!(r("view_file", json!({ "AbsolutePath": path })), "{path}");
+            assert!(r("list_dir", json!({ "DirectoryPath": path })), "{path}");
+        }
+        // The home folder or a variable: not the workspace's, for a read too.
+        for path in ["~\\Documents\\tax.pdf", "%USERPROFILE%\\x.txt", "$HOME/x", "file:///C:/ws/%2e%2e/x"] {
+            assert!(r("view_file", json!({ "AbsolutePath": path })), "{path}");
+        }
         assert!(!r("write_to_file", json!({"TargetFile": "C:\\x.txt"})), "not a read");
         assert!(reads_outside("view_file", Some(&json!({"AbsolutePath": "/x/a"})), &[]), "no workspace known");
         assert!(writes_outside("write_to_file", Some(&json!({"TargetFile": "/x/a"})), &[]), "no workspace known");

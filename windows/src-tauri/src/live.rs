@@ -171,9 +171,11 @@ pub async fn token() -> Result<Token, String> {
 // ── Files ─────────────────────────────────────────────────────────────────────
 
 /// A path the model gave: absolute, as typed, or under the home folder for `~`.
+/// Never a network path (is_network): even a look at whether it exists makes
+/// Windows reach that server, before any card.
 pub fn full_path(raw: &str) -> Option<PathBuf> {
     let raw = raw.trim().trim_matches('"');
-    if raw.is_empty() || raw.len() > 1024 || raw.chars().any(char::is_control) {
+    if raw.is_empty() || raw.len() > 1024 || raw.chars().any(char::is_control) || is_network(raw) {
         return None;
     }
     let path = if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
@@ -254,7 +256,19 @@ pub enum Reading {
 }
 
 fn missing(path: &str) -> String {
+    if is_network(path) {
+        return t("Lumo doesn't open network paths for the voice, only what is on this computer.");
+    }
     tf("Nothing is at {path}.", &[("path", path)])
+}
+
+/// A network path: `\\server\share`, `//server/share`, `\\?\UNC\…`, `\\.\…`
+/// (and `\\?\C:\…`, which the voice never needs). Opening one, or only
+/// asking whether it is there, sends the server the user's Windows login
+/// (SMB) or a request with the path in it (WebDAV, DNS): a way out for what
+/// the voice has read, with no click.
+pub fn is_network(raw: &str) -> bool {
+    raw.trim().trim_matches('"').chars().take(2).filter(|c| matches!(c, '\\' | '/')).count() == 2
 }
 
 fn file_name_of(path: &Path) -> String {
@@ -1218,6 +1232,12 @@ mod tests {
         assert!(full_path("bad\npath").is_none());
         assert_eq!(full_path("~/Documents/a.pdf"), Some(platform::home_dir().join("Documents/a.pdf")));
         assert_eq!(full_path("C:\\Users\\me\\a.pdf"), Some(PathBuf::from("C:\\Users\\me\\a.pdf")));
+        // A network path is never looked at: Windows would reach the server.
+        for p in [r"\\attacker.example\share", r"\\data.attacker.example@SSL\DavWWWRoot\x", "//attacker.example/x", r"\\?\UNC\host\x", r"\\.\pipe\x", r"/\host\x", r#""\\host\x""#] {
+            assert!(is_network(p) && full_path(p).is_none(), "{p}");
+            assert!(missing(p).contains("network"), "{p}");
+        }
+        assert!(!is_network(r"C:\x") && !is_network("/home/me") && !is_network("~/x"));
     }
 
     #[test]

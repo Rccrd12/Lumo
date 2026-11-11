@@ -75,6 +75,10 @@ if (-not $hit) {
   Write-Output ("NOBUTTON" + $tab + $names + $tab + $kinds)
   exit
 }
+# Lumo's box greys its Yes out for a moment (confirmed.rs YES_AFTER_MS): a
+# hand waits for it, as a click on it before does nothing.
+$ready = (Get-Date).AddSeconds(5)
+while (-not $hit.Current.IsEnabled -and (Get-Date) -lt $ready) { Start-Sleep -Milliseconds 100 }
 $r = $hit.Current.BoundingRectangle
 [LumoE2eBox]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
 Write-Output ("PRESSED" + $tab + $names + $tab + $text)

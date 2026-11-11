@@ -17939,18 +17939,6 @@
    "id": "Lumo tidak bisa menanyakan halaman ini kepada pengguna (pulau sedang sibuk): coba lagi sebentar lagi.",
    "it": "Lumo non è riuscito a chiedere all'utente di questa pagina (l'isola è occupata): riprova tra un momento."
   },
-  "Write the changes shown in Lumo's Settings to {target}? A backup is made first.": {
-   "zh-Hans": "将 Lumo 设置中显示的更改写入 {target}？会先进行备份。",
-   "hi": "Lumo की सेटिंग्स में दिखाए गए बदलाव {target} में लिखें? पहले बैकअप बनाया जाता है।",
-   "es": "¿Escribir en {target} los cambios mostrados en los Ajustes de Lumo? Antes se hace una copia de seguridad.",
-   "ar": "هل تريد كتابة التغييرات المعروضة في إعدادات Lumo في {target}؟ تُنشأ نسخة احتياطية أولاً.",
-   "fr": "Écrire dans {target} les changements affichés dans les Réglages de Lumo ? Une sauvegarde est faite d'abord.",
-   "bn": "Lumo-র সেটিংসে দেখানো পরিবর্তনগুলো {target}-এ লিখবেন? আগে একটি ব্যাকআপ নেওয়া হয়।",
-   "pt-BR": "Gravar em {target} as alterações mostradas nos Ajustes do Lumo? Um backup é feito antes.",
-   "ru": "Записать изменения, показанные в настройках Lumo, в {target}? Сначала создаётся резервная копия.",
-   "id": "Tulis perubahan yang ditampilkan di Pengaturan Lumo ke {target}? Cadangan dibuat terlebih dahulu.",
-   "it": "Scrivere in {target} le modifiche mostrate nelle Impostazioni di Lumo? Prima viene fatto un backup."
-  },
   "Not a public https page, so Lumo no longer watches it.": {
    "zh-Hans": "不是公开的 https 页面，Lumo 不再监视它。",
    "hi": "यह सार्वजनिक https पेज नहीं है, इसलिए Lumo अब इस पर नज़र नहीं रखता।",
@@ -17962,6 +17950,78 @@
    "ru": "Это не публичная страница https, поэтому Lumo больше за ней не следит.",
    "id": "Bukan halaman https publik, jadi Lumo tidak lagi memantaunya.",
    "it": "Non è una pagina https pubblica, quindi Lumo ha smesso di ascoltarla."
+  },
+  "Lumo doesn't open network paths for the voice, only what is on this computer.": {
+   "zh-Hans": "Lumo 不会为语音打开网络路径，只打开这台电脑上的内容。",
+   "hi": "Lumo आवाज़ के लिए नेटवर्क पथ नहीं खोलता, केवल इस कंप्यूटर पर मौजूद चीज़ें।",
+   "es": "Lumo no abre rutas de red para la voz, solo lo que está en este equipo.",
+   "ar": "لا يفتح Lumo مسارات الشبكة للصوت، بل ما هو على هذا الكمبيوتر فقط.",
+   "fr": "Lumo n'ouvre pas de chemins réseau pour la voix, seulement ce qui est sur cet ordinateur.",
+   "bn": "Lumo ভয়েসের জন্য নেটওয়ার্ক পথ খোলে না, শুধু এই কম্পিউটারে যা আছে।",
+   "pt-BR": "O Lumo não abre caminhos de rede para a voz, só o que está neste computador.",
+   "ru": "Lumo не открывает сетевые пути для голоса, только то, что есть на этом компьютере.",
+   "id": "Lumo tidak membuka jalur jaringan untuk suara, hanya yang ada di komputer ini.",
+   "it": "Lumo non apre percorsi di rete per la voce, solo ciò che è su questo computer."
+  },
+  "Lumo writes these files, after a backup of each:": {
+   "zh-Hans": "Lumo 会写入这些文件，每个文件都会先备份：",
+   "hi": "Lumo ये फ़ाइलें लिखता है, हर एक का पहले बैकअप बनाकर:",
+   "es": "Lumo escribe estos archivos, tras una copia de seguridad de cada uno:",
+   "ar": "يكتب Lumo هذه الملفات، بعد نسخة احتياطية من كل منها:",
+   "fr": "Lumo écrit ces fichiers, après une sauvegarde de chacun :",
+   "bn": "Lumo এই ফাইলগুলো লেখে, প্রতিটির আগে একটি ব্যাকআপ নিয়ে:",
+   "pt-BR": "O Lumo grava estes arquivos, depois de um backup de cada um:",
+   "ru": "Lumo записывает эти файлы, сначала сохранив копию каждого:",
+   "id": "Lumo menulis file-file ini, setelah mencadangkan masing-masing:",
+   "it": "Lumo scrive questi file, dopo un backup di ciascuno:"
+  },
+  "Install Lumo's hooks in {agent}?": {
+   "zh-Hans": "在 {agent} 中安装 Lumo 的钩子？",
+   "hi": "{agent} में Lumo के हुक इंस्टॉल करें?",
+   "es": "¿Instalar los hooks de Lumo en {agent}?",
+   "ar": "هل تريد تثبيت خطافات Lumo في {agent}؟",
+   "fr": "Installer les hooks de Lumo dans {agent} ?",
+   "bn": "{agent}-এ Lumo-র হুক ইনস্টল করবেন?",
+   "pt-BR": "Instalar os hooks do Lumo no {agent}?",
+   "ru": "Установить хуки Lumo в {agent}?",
+   "id": "Pasang hook Lumo di {agent}?",
+   "it": "Installare gli hook di Lumo in {agent}?"
+  },
+  "Remove Lumo's hooks from {agent}?": {
+   "zh-Hans": "从 {agent} 中移除 Lumo 的钩子？",
+   "hi": "{agent} से Lumo के हुक हटाएँ?",
+   "es": "¿Quitar los hooks de Lumo de {agent}?",
+   "ar": "هل تريد إزالة خطافات Lumo من {agent}؟",
+   "fr": "Retirer les hooks de Lumo de {agent} ?",
+   "bn": "{agent} থেকে Lumo-র হুক সরাবেন?",
+   "pt-BR": "Remover os hooks do Lumo do {agent}?",
+   "ru": "Удалить хуки Lumo из {agent}?",
+   "id": "Hapus hook Lumo dari {agent}?",
+   "it": "Rimuovere gli hook di Lumo da {agent}?"
+  },
+  "Install Lumo's status line in Claude Code?": {
+   "zh-Hans": "在 Claude Code 中安装 Lumo 的状态栏？",
+   "hi": "Claude Code में Lumo की स्टेटस लाइन इंस्टॉल करें?",
+   "es": "¿Instalar la línea de estado de Lumo en Claude Code?",
+   "ar": "هل تريد تثبيت سطر حالة Lumo في Claude Code؟",
+   "fr": "Installer la ligne d'état de Lumo dans Claude Code ?",
+   "bn": "Claude Code-এ Lumo-র স্ট্যাটাস লাইন ইনস্টল করবেন?",
+   "pt-BR": "Instalar a linha de status do Lumo no Claude Code?",
+   "ru": "Установить строку состояния Lumo в Claude Code?",
+   "id": "Pasang baris status Lumo di Claude Code?",
+   "it": "Installare la riga di stato di Lumo in Claude Code?"
+  },
+  "Remove Lumo's status line from Claude Code?": {
+   "zh-Hans": "从 Claude Code 中移除 Lumo 的状态栏？",
+   "hi": "Claude Code से Lumo की स्टेटस लाइन हटाएँ?",
+   "es": "¿Quitar la línea de estado de Lumo de Claude Code?",
+   "ar": "هل تريد إزالة سطر حالة Lumo من Claude Code؟",
+   "fr": "Retirer la ligne d'état de Lumo de Claude Code ?",
+   "bn": "Claude Code থেকে Lumo-র স্ট্যাটাস লাইন সরাবেন?",
+   "pt-BR": "Remover a linha de status do Lumo do Claude Code?",
+   "ru": "Удалить строку состояния Lumo из Claude Code?",
+   "id": "Hapus baris status Lumo dari Claude Code?",
+   "it": "Rimuovere la riga di stato di Lumo da Claude Code?"
   }
  }
 }

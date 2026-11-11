@@ -124,6 +124,12 @@ impl Agent {
         Self::ALL.iter().copied().find(|a| a.id() == id)
     }
 
+    /// The files this agent's install touches, in the user's home (what
+    /// Windows' box of a write from the island names, confirmed.rs).
+    pub fn paths(self) -> Vec<PathBuf> {
+        self.files(&platform::home_dir())
+    }
+
     /// The files this agent's install touches, under `home`.
     fn files(self, home: &Path) -> Vec<PathBuf> {
         match self {

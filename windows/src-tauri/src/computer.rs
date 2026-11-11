@@ -849,11 +849,28 @@ fn point(input: &Value, key: &str) -> Result<Option<(i64, i64)>, String> {
     }
 }
 
+/// The keys held during a click or a scroll: modifiers only. Any other key
+/// (Enter, Space, Tab…) would go down and up in whatever window is in front,
+/// past the keyboard's checks: a Yes in a box, a switch flipped.
 fn held(input: &Value) -> Result<Vec<Key>, String> {
-    match input.get("text").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
-        Some(text) => parse_keys(text),
-        None => Ok(Vec::new()),
+    let keys = match input.get("text").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+        Some(text) => parse_keys(text)?,
+        None => return Ok(Vec::new()),
+    };
+    if let Some(other) = keys.iter().find(|k| !is_modifier(k)) {
+        return Err(format!(
+            "Only Ctrl, Shift, Alt and Win can be held during a click or a scroll, not {}. Press other keys with the key action.",
+            match other {
+                Key::Vk(vk) => format!("key 0x{vk:02X}"),
+                Key::Char(c) => format!("{c:?}"),
+            }
+        ));
     }
+    Ok(keys)
+}
+
+fn is_modifier(key: &Key) -> bool {
+    matches!(key, Key::Vk(VK_SHIFT | VK_CONTROL | VK_MENU | VK_LWIN))
 }
 
 /// The action a tool call asks for, or why it can't be done.
@@ -1002,7 +1019,7 @@ fn not_on_lumo(app: &AppHandle, p: (i32, i32)) -> Result<(), String> {
         .filter_map(|w| w.hwnd().ok().map(|h| h.0 as isize))
         .collect();
     if imp::lumo_window_at(p, &mine) {
-        return Err("That spot is on Lumo's own Settings window, which Claude may not click (and which screenshots leave out). Ask the user to move or close it, then take a screenshot again.".into());
+        return Err("That spot is on one of Lumo's own windows (its Settings, or a question Lumo asks the user), which Claude may not click. Ask the user to move or close it, then take a screenshot again.".into());
     }
     Ok(())
 }
@@ -1107,6 +1124,9 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             }))
         }
         Action::Click { at, button, count, hold } => {
+            if !hold.is_empty() {
+                keyboard_back(app);
+            }
             let view = view()?;
             let target = at.map(|(x, y)| view.to_screen(x, y)).transpose()?;
             let here = hands_off(app, || {
@@ -1151,6 +1171,9 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             Ok(json!({ "text": "Done. Take a screenshot to see what changed." }))
         }
         Action::Scroll { at, dx, dy, hold } => {
+            if !hold.is_empty() {
+                keyboard_back(app);
+            }
             let view = view()?;
             let target = at.map(|(x, y)| view.to_screen(x, y)).transpose()?;
             hands_off(app, || {
@@ -1332,7 +1355,12 @@ mod imp {
     }
 
     /// Holds `keys` down (in order), runs `f`, lets them go (in reverse).
+    /// Never while one of Lumo's windows is in front: the keys would land in
+    /// it (its chat, its Settings, the Yes / No box of a Settings write).
     fn holding<T>(keys: &[Key], f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        if !keys.is_empty() && lumo_in_front() {
+            return Err(LUMO_IN_FRONT.into());
+        }
         let mut vks = Vec::new();
         for k in keys {
             let (vk, mods) = resolve(*k)?;
@@ -1357,9 +1385,11 @@ mod imp {
         !front.is_invalid() && is_lumo(front)
     }
 
+    const LUMO_IN_FRONT: &str = "The keyboard is in Lumo's island: click the window to type in first.";
+
     fn keyboard_ready() -> Result<(), String> {
         if lumo_in_front() {
-            return Err("The keyboard is in Lumo's island: click the window to type in first.".into());
+            return Err(LUMO_IN_FRONT.into());
         }
         if !crate::selection::keys_released(Duration::from_secs(2)) {
             return Err("The user is holding keys down: try again in a moment.".into());
@@ -1635,6 +1665,11 @@ mod imp {
             if stop() {
                 break;
             }
+            // Each time: a window of Lumo's (a box it asks a question in) may
+            // have come to the front since the last one.
+            if lumo_in_front() {
+                return Err(LUMO_IN_FRONT.into());
+            }
             holding(mods, || {
                 let (vk, extra) = resolve(*last)?;
                 holding(&extra.iter().map(|v| Key::Vk(*v)).collect::<Vec<_>>(), || {
@@ -1680,6 +1715,10 @@ mod imp {
                     let vk = if c == '\n' { VK_RETURN } else { VK_TAB };
                     if stop() {
                         return Err(format!("Stopped after {typed} characters."));
+                    }
+                    // An Enter or a Tab goes only where the text went.
+                    if unsafe { GetForegroundWindow() } != front {
+                        return Err(format!("Another window came to the front: typing stopped after {typed} characters."));
                     }
                     send(&[vk_event(vk, false), vk_event(vk, true)]);
                     typed += 1;
@@ -1773,6 +1812,17 @@ mod tests {
             Action::Scroll { at: None, dx: 0, dy: -5, hold: vec![] }
         );
         assert!(parse("scroll", &json!({ "scroll_direction": "sideways" })).is_err());
+        // Only modifiers are held: Enter, Space or Tab "held" through a scroll
+        // or a click would reach the window in front past the keyboard's checks.
+        for key in ["Return", "space", "tab", "ctrl+Return", "a", "shift+1"] {
+            assert!(parse("scroll", &json!({ "scroll_direction": "down", "text": key })).is_err(), "{key}");
+            assert!(parse("left_click", &json!({ "coordinate": [1, 2], "text": key })).is_err(), "{key}");
+        }
+        assert_eq!(
+            parse("scroll", &json!({ "scroll_direction": "up", "text": "ctrl+shift" })).unwrap(),
+            Action::Scroll { at: None, dx: 0, dy: 3, hold: vec![Key::Vk(VK_CONTROL), Key::Vk(VK_SHIFT)] }
+        );
+        assert!(parse("left_click", &json!({ "text": "alt+win" })).is_ok());
         assert_eq!(
             parse("key", &json!({ "text": "Tab", "repeat": 500 })).unwrap(),
             Action::Keys { keys: vec![Key::Vk(VK_TAB)], repeat: 100, label: "Tab".into() }
