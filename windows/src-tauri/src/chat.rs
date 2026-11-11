@@ -664,9 +664,12 @@ fn lumo_markers(text: &str) -> Vec<&str> {
         let Some(end) = tail[2..].find("]]").map(|e| e + 4) else { break };
         let marker = &tail[..end];
         let word = marker[2..].trim_start().to_ascii_lowercase();
-        let ours = ["timer", "listen", "unlisten"]
-            .iter()
-            .any(|w| word.starts_with(w) && word[w.len()..].starts_with(|c: char| c.is_whitespace() || c == ']'));
+        // `[[listen]]`, `[[listen …]]`: the marker named in a sentence, not used.
+        let ours = ["timer", "listen", "unlisten"].iter().any(|w| {
+            word.starts_with(w)
+                && word[w.len()..].starts_with(|c: char| c.is_whitespace() || c == ']')
+                && !matches!(word[w.len()..].trim_end_matches(']').trim(), "" | "…" | "...")
+        });
         if ours && !marker[2..end - 2].contains("[[") {
             found.push(marker);
             rest = &tail[end..];
@@ -1197,6 +1200,7 @@ mod tests {
         // One bracket too many in front: the marker inside is still found.
         assert_eq!(lumo_markers("Set: [[[timer 5m tea]]"), ["[[timer 5m tea]]"]);
         assert_eq!(lumo_markers("[[[[listen o/r#3]]"), ["[[listen o/r#3]]"]);
+        assert!(lumo_markers("I `[[listen]]` chiedono conferma, come [[ timer … ]] e [[unlisten ...]].").is_empty());
     }
 
     fn turn_texts(history: &[Value]) -> Vec<(String, Value)> {

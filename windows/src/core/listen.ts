@@ -363,6 +363,9 @@ const PR_REFS = [
  */
 const MARKER_RE = /(`{0,3})[ \t]*\[\[\s*(un)?listen\b((?:(?!\]\]).)*)\]\][ \t]*\1[ \t]*/gi;
 
+/** What follows the word when a marker names nothing: nothing, or an ellipsis. */
+const NAMES_NOTHING = /^\s*(?:…|\.{3})?\s*$/;
+
 /** Where a line for Lumo was, until its row is taken out. */
 const GONE = "\u0000";
 
@@ -480,12 +483,17 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
   const listens: ListenAsk[] = [];
   const stops: ListenStop[] = [];
   const unread: string[] = [];
-  const take = (part: string) => part.replace(MARKER_RE, (all: string, _ticks: string, un: string | undefined, body: string) => {
+  const take = (part: string) => part.replace(MARKER_RE, (all: string, _ticks: string, un: string | undefined, body: string, at: number, whole: string) => {
+    // `[[listen]]`, `[[listen …]]`: the marker named, not used (an answer about Lumo).
+    if (NAMES_NOTHING.test(body)) return all;
+    // A line Lumo can't read in the middle of a sentence is an example, left as written.
+    const inSentence = whole.slice(0, at).split("\n").pop()!.trim() !== "" || whole.slice(at + all.length).split("\n")[0].trim() !== "";
     const local = readLocalTarget(body);
     const ref = local ? null : readRef(body);
     if (un) {
       if (local) stops.push({ source: local.source, repo: "", number: 0, target: local.target });
       else if (ref) stops.push({ source: "github.pr", repo: ref.repo, number: ref.number, target: "" });
+      else if (inSentence) return all;
       else unread.push(all.replace(/`/g, "").trim());
       return GONE;
     }
@@ -493,6 +501,7 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
     const asked = ref ? readUntil(ref.rest) : null;
     if (here) listens.push({ ...here, repo: "", number: 0 });
     else if (ref && asked) listens.push({ source: "github.pr", repo: ref.repo, number: ref.number, target: "", text: "", amount: 0, ...asked });
+    else if (inSentence) return all;
     else unread.push(all.replace(/`/g, "").trim());
     return GONE;
   });

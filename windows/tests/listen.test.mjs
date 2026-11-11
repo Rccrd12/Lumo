@@ -21,10 +21,26 @@ test("without a colon it only tells the user; the event is read in any case", ()
 });
 
 test("an event Lumo cannot watch, or no pull request, is taken out and said", () => {
-  const got = takeListens("ok [[listen o/r#3 deployed: x]] [[listen o#3 merged]] [[listen o/r merged]]");
+  const got = takeListens("ok\n[[listen o/r#3 deployed: x]]\n`[[listen o#3 merged]]`\n[[listen o/r merged]]");
   assert.deepEqual(got.listens, []);
   assert.equal(got.text, "ok");
   assert.deepEqual(got.unread, ["[[listen o/r#3 deployed: x]]", "[[listen o#3 merged]]", "[[listen o/r merged]]"]);
+});
+
+test("a marker only named in a sentence stays as written and is not said", () => {
+  for (const said of [
+    "I `[[listen]]` chiedono conferma.",
+    "Le righe [[listen]] e [[unlisten …]] ora chiedono conferma.",
+    "ok [[listen o/r#3 deployed: x]] [[listen o#3 merged]] [[listen o/r merged]]",
+    "Done.\n[[listen]]",
+    "Done.\n`[[listen ...]]`",
+  ]) {
+    const got = takeListens(said);
+    assert.equal(got.text, said);
+    assert.deepEqual([got.listens, got.stops, got.unread], [[], [], []]);
+  }
+  // One Lumo can read still counts in a sentence.
+  assert.equal(takeListens("Ok `[[listen o/r#3 ready: merge it]]` fatto").listens.length, 1);
 });
 
 test("without an event it waits for the checks, as a small model writes it", () => {
