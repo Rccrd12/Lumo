@@ -111,7 +111,10 @@ pub fn by_hand<R: Runtime>(app: &AppHandle<R>, window: &str, what: &str, fingerp
             if let Some(island) = app.get_webview_window(crate::island::WINDOW_LABEL) {
                 dialog = dialog.parent(&island);
             }
-            if !dialog.blocking_show() {
+            crate::log::line(format!("settings write {what}: Windows' box asks"));
+            let yes = dialog.blocking_show();
+            crate::log::line(format!("settings write {what}: {}", if yes { "yes" } else { "cancelled" }));
+            if !yes {
                 return Err(CANCELLED.into());
             }
         }

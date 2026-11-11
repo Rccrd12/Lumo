@@ -18,12 +18,28 @@ $cond = New-Object System.Windows.Automation.AndCondition(
   (New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $Owner)))
 $end = (Get-Date).AddSeconds($Seconds)
 $box = $null
+$mine = New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $Owner)
+$isBox = New-Object System.Windows.Automation.PropertyCondition($A::ClassNameProperty, "#32770")
 while ((Get-Date) -lt $end) {
+  # UI Automation shows a box with an owner (the island) under its owner, not
+  # on the desktop: looked for at both places.
   $box = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $cond)
+  if (-not $box) {
+    foreach ($top in $root.FindAll([System.Windows.Automation.TreeScope]::Children, $mine)) {
+      $box = $top.FindFirst([System.Windows.Automation.TreeScope]::Children, $isBox)
+      if ($box) { break }
+    }
+  }
   if ($box) { break }
   Start-Sleep -Milliseconds 200
 }
-if (-not $box) { Write-Output "NONE"; exit }
+if (-not $box) {
+  # What the process has on screen instead, to tell why.
+  $tops = $root.FindAll([System.Windows.Automation.TreeScope]::Children, $mine)
+  $seen = ($tops | ForEach-Object { $_.Current.ClassName + " '" + $_.Current.Name + "'" }) -join " | "
+  Write-Output ("NONE" + $tab + "" + $tab + $seen)
+  exit
+}
 $all = $box.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
 $text = ($all | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join " | "
 $buttons = $all | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button }

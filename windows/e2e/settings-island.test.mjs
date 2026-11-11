@@ -63,6 +63,16 @@ async function confirmInIsland() {
     b.click();`);
 }
 
+/** The preview as the island shows it, to tell a box still open from one never shown. */
+function previewState() {
+  return d.js(`const doc = ${FRAME}; return {
+    diff: !!doc.querySelector('.diff'),
+    waiting: [...doc.querySelectorAll('.diff ~ .row button.primary')].some((b) => b.disabled),
+    ok: !!doc.querySelector('.notice.ok'),
+    error: [...doc.querySelectorAll('.notice.err')].map((n) => n.textContent),
+  };`);
+}
+
 flow(G, "The relay is installed from the island after Windows' Yes, and the window stays shut", app, async () => {
   await openSettingsInIsland();
   await showRelayPreview();
@@ -71,7 +81,7 @@ flow(G, "The relay is installed from the island after Windows' Yes, and the wind
   step("Back up and write, then Cancel in Windows' box");
   await confirmInIsland();
   const no = answerBox(app.proc.pid, "Cancel");
-  step(`Windows' box: ${JSON.stringify(no)}`);
+  step(`Windows' box: ${JSON.stringify(no)}; the island: ${JSON.stringify(await previewState())}`);
   assert.ok(no.pressed, `a Yes / No box with Cancel came up: ${no.raw}`);
   await sleep(800);
   assert.equal(relayWritten(), false, "nothing written after Cancel");
@@ -84,7 +94,7 @@ flow(G, "The relay is installed from the island after Windows' Yes, and the wind
   step("Back up and write again, then Yes");
   await confirmInIsland();
   const yes = answerBox(app.proc.pid, "Back up and write");
-  step(`Windows' box: ${JSON.stringify(yes)}`);
+  step(`Windows' box: ${JSON.stringify(yes)}; the island: ${JSON.stringify(await previewState())}`);
   assert.ok(yes.pressed, `the box's Back up and write: ${yes.raw}`);
   await d.until(`return !!${FRAME}.querySelector('.notice.ok')`, 10_000, "the island saying it is done");
   assert.ok(relayWritten(), "settings.json has the status line relay");
