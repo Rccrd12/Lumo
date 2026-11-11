@@ -528,6 +528,7 @@ impl Live {
         cmd.env("LUMO_ISLAND_RUN", "1");
         platform::no_console(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| tf("Cannot start Codex: {error}", &[("error", &e.to_string())]))?;
+        platform::chat_ends_with_lumo(&child);
         let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("no stdin")?));
         let stderr = claude_code::read_stderr(&mut child);
         let rx = claude_code::read_lines(&mut child, usize::MAX)?;
@@ -923,8 +924,8 @@ fn list_models(exe: PathBuf) -> Vec<(String, String)> {
 pub async fn models() -> Result<Vec<ModelInfo>, String> {
     let exe = platform::codex_candidates().into_iter().next().ok_or_else(not_installed)?;
     let listed = tauri::async_runtime::spawn_blocking(move || list_models(exe)).await.map_err(|e| e.to_string())?;
-    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default") }];
-    out.extend(listed.into_iter().map(|(id, label)| ModelInfo { id, label }));
+    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default"), ..Default::default() }];
+    out.extend(listed.into_iter().map(|(id, label)| ModelInfo { id, label, ..Default::default() }));
     Ok(out)
 }
 

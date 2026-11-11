@@ -13,9 +13,9 @@
 //   ? (the next question)
 //   ```
 //
-// `?` starts a question, `-` is a wrong answer and `+` the right one (exactly
-// one, two to six answers), `>` the explanation shown once it is answered,
-// `=` a few words that name the question in the score's list of the ones
+// `?` starts a question, `-` is a wrong answer and `+` the right one (one;
+// when a model marks several, any of them counts; two to six answers), `>`
+// the explanation shown once it is answered, `=` a few words that name the question in the score's list of the ones
 // missed (the question itself, cut to a line, when there are none). A
 // question, an answer or an explanation goes on over the indented lines under
 // it. All of it is inline Markdown, formulas included. The answers stay hidden
@@ -65,8 +65,10 @@ export interface QuizQuestion {
   text: string;
   /** The answers, as inline Markdown, in the order written. */
   options: string[];
-  /** Which answer is right. */
+  /** Which answer is right: the first, when the block marks several. */
   right: number;
+  /** Every right answer, when the block marks more than one (a model's slip): any of them counts. */
+  rights?: number[];
   /** Why, as inline Markdown; "" when the block gives none. */
   why: string;
   /** A few words that name it among the ones missed, as inline Markdown; "" when the block gives none. */
@@ -101,9 +103,9 @@ const LETTERED = /^(?:[A-Fa-f]|[1-6])[.)]\s+(?=\S)/;
  * Reads a lumo-quiz block into its questions. Forgiving: a question written
  * without its `?` (a plain line once the one before has answers), `* ` for a
  * wrong answer, `- [x]` for the right one, a letter before each answer, an
- * explanation over several `>` lines. A question that can't be marked (no
- * right answer or more than one, fewer than two answers or more than six) is
- * left out. Null when no question is left or there are more than ten, and
+ * explanation over several `>` lines, several right answers (any counts).
+ * A question that can't be marked (no right answer or only right ones, fewer
+ * than two answers or more than six) is left out. Null when no question is left or there are more than ten, and
  * markdown.ts shows the block as code.
  */
 export function parseQuiz(title: string, body: string): Quiz | null {
@@ -178,11 +180,19 @@ function unletter(d: Draft): void {
 function questionOf(d: Draft): QuizQuestion | null {
   const options = d.options.map((o) => ({ text: joinLines(o.text), right: o.right })).filter((o) => o.text);
   if (options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) return null;
-  const right = options.filter((o) => o.right);
-  if (right.length !== 1) return null;
+  const rights = options.flatMap((o, i) => (o.right ? [i] : []));
+  // None right, or every one: nothing to pick.
+  if (!rights.length || rights.length === options.length) return null;
   const text = joinLines(d.text);
   if (!text) return null;
-  return { text, options: options.map((o) => o.text), right: options.findIndex((o) => o.right), why: joinLines(d.why), short: joinLines(d.short) };
+  const q: QuizQuestion = { text, options: options.map((o) => o.text), right: rights[0], why: joinLines(d.why), short: joinLines(d.short) };
+  if (rights.length > 1) q.rights = rights;
+  return q;
+}
+
+/** Whether answer `i` of `q` is a right one. */
+export function isRight(q: QuizQuestion, i: number | null | undefined): boolean {
+  return i != null && (q.rights ? q.rights.includes(i) : i === q.right);
 }
 
 /** Lines that go on one another, as one line of inline Markdown. */
@@ -298,7 +308,7 @@ export function renderQuiz(quiz: Quiz, ctx: RichContext, key: string): HTMLEleme
     end.hidden = !play.done;
     segments.forEach((seg, i) => {
       const p = play.picks[i];
-      seg.className = p != null ? (p === list[i].right ? "ok" : "ko") : !play.done && i === q ? "cur" : "";
+      seg.className = p != null ? (isRight(list[i], p) ? "ok" : "ko") : !play.done && i === q ? "cur" : "";
     });
     if (play.done) {
       foot.replaceChildren();
@@ -328,10 +338,10 @@ export function renderQuiz(quiz: Quiz, ctx: RichContext, key: string): HTMLEleme
       el,
       mark(picked) {
         buttons.forEach((b, i) => {
-          const state = picked == null ? "" : i === q.right ? " right" : i === picked ? " wrong" : " dim";
+          const state = picked == null ? "" : isRight(q, i) ? " right" : i === picked ? " wrong" : " dim";
           b.className = "rc-opt" + state;
           b.disabled = picked != null;
-          const icon = picked == null ? null : i === q.right ? svg(ICONS.check, 11, { stroke: 2.6 }) : i === picked ? svg(ICONS.xmark, 11) : null;
+          const icon = picked == null ? null : isRight(q, i) ? svg(ICONS.check, 11, { stroke: 2.6 }) : i === picked ? svg(ICONS.xmark, 11) : null;
           keys[i].replaceChildren(icon ?? LETTERS[i]);
         });
       },
@@ -345,13 +355,13 @@ export function renderQuiz(quiz: Quiz, ctx: RichContext, key: string): HTMLEleme
 
   /** Under an answered question: right or not, why, and the button that goes on. */
   function why(q: QuizQuestion, picked: number): HTMLElement {
-    const ok = picked === q.right;
+    const ok = isRight(q, picked);
     const text = h("div", { class: "rc-quiz-why-text" });
     const verdict = ok
       ? t(QUIZ_STRINGS.right)
       : q.why
         ? t(QUIZ_STRINGS.wrong, { letter: LETTERS[picked] })
-        : t(QUIZ_STRINGS.wrongIs, { letter: LETTERS[picked], right: LETTERS[q.right] });
+        : t(QUIZ_STRINGS.wrongIs, { letter: LETTERS[picked], right: (q.rights ?? [q.right]).map((r) => LETTERS[r]).join(" / ") });
     text.append(h("b", { text: verdict + (q.why ? " " : "") }));
     if (q.why) ctx.inline(text, q.why);
     const last = play.at === play.round.length - 1;
@@ -363,7 +373,7 @@ export function renderQuiz(quiz: Quiz, ctx: RichContext, key: string): HTMLEleme
   /** The end of a round: the score in a ring, a line on it, the questions missed and what to do next. */
   function result(): HTMLElement[] {
     const total = list.length;
-    const missed = list.map((_, i) => i).filter((i) => play.picks[i] !== list[i].right);
+    const missed = list.map((_, i) => i).filter((i) => !isRight(list[i], play.picks[i]));
     const score = total - missed.length;
     const title = missed.length === 0
       ? t(QUIZ_STRINGS.perfect)

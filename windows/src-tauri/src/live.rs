@@ -814,7 +814,18 @@ pub fn is_sensitive(path: &Path) -> bool {
         // GitHub CLI's hosts.yml, with its token when no credential store holds it.
         "\\appdata\\roaming\\github cli",
     ];
+    // Windows drops the dots and spaces a name ends with (`.ssh.` is .ssh), and
+    // what follows a colon in a name is one of its streams (`id_rsa:x` is id_rsa).
     let whole = path.to_string_lossy().replace('/', "\\").to_lowercase();
+    let whole = whole
+        .split('\\')
+        .enumerate()
+        .map(|(i, p)| {
+            let p = if i == 0 { p } else { p.split(':').next().unwrap_or(p) };
+            p.trim_end_matches(['.', ' ']).to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\\");
     let parts: Vec<&str> = whole.split('\\').filter(|p| !p.is_empty()).collect();
     let name = parts.last().copied().unwrap_or_default();
     parts.iter().any(|p| DIRS.contains(p))
@@ -845,8 +856,13 @@ fn under(path: &Path, dir: &Path) -> bool {
     !d.is_empty() && (p == d || p.starts_with(&format!("{d}\\")))
 }
 
-/// Given to the call already: dropped on the island, in a folder open in File
-/// Explorer, or said yes to before.
+/// Folders the voice opened in File Explorer itself (live_open): open, but not
+/// by the user, so what is in them is not given.
+static VOICE_OPENED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+/// Given to the call already: dropped on the island, right in a folder the
+/// user has open in File Explorer (not in one below it, nor in one the voice
+/// opened), or said yes to before.
 fn given(path: &Path) -> bool {
     if under(path, &crate::files::inbox_dir()) {
         return true;
@@ -854,7 +870,15 @@ fn given(path: &Path) -> bool {
     if SAID_YES.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|p| p == path) {
         return true;
     }
-    explorer::open_folders().iter().any(|dir| path.parent().is_some_and(|parent| under(parent, dir)))
+    let Some(parent) = path.parent() else { return false };
+    let voice = VOICE_OPENED.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    given_by_explorer(parent, &explorer::open_folders(), &voice)
+}
+
+/// `parent` is one of the folders open in File Explorer, and not one the voice opened.
+fn given_by_explorer(parent: &Path, open: &[PathBuf], voice: &[PathBuf]) -> bool {
+    let same = |a: &Path, b: &Path| under(a, b) && under(b, a);
+    open.iter().any(|dir| same(parent, dir)) && !voice.iter().any(|dir| same(parent, dir))
 }
 
 /// What the voice wants to do with a file.
@@ -931,6 +955,11 @@ pub async fn live_open(app: AppHandle, target: String) -> Result<String, String>
     // A web page opens as it did; a file or a folder of the computer is checked first.
     if let Some(full) = full_path(&target).filter(|p| p.exists()) {
         may_use(&app, &full, Use::Open).await?;
+        // A folder the voice opens is not one the user gave (`given`).
+        if full.is_dir() {
+            let real = full.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches("\\\\?\\"))).unwrap_or(full);
+            VOICE_OPENED.lock().unwrap_or_else(|e| e.into_inner()).push(real);
+        }
     }
     tauri::async_runtime::spawn_blocking(move || open(&target)).await.map_err(|e| e.to_string())?
 }
@@ -952,7 +981,9 @@ pub async fn live_help(
 ) -> Result<String, String> {
     let (helper, mode) = {
         let s = shared.settings.lock().unwrap();
-        (Helper::of(&s), s.chat_permission_mode.clone())
+        let helper = Helper::of(&s);
+        let mode = s.permission_mode_for(&helper.id);
+        (helper, mode)
     };
     help(&app, &helper, &mode, task, folder.filter(|f| !f.trim().is_empty())).await
 }
@@ -1135,8 +1166,23 @@ mod tests {
         for p in [r"C:\Users\me\Documents\contratto.pdf", r"C:\Users\me\proj\environment.md", r"C:\Users\me\keys.txt"] {
             assert!(!is_sensitive(Path::new(p)), "{p}");
         }
+        // As Windows reads them: a name's trailing dots and spaces dropped, a stream after a colon.
+        for p in [r"C:\Users\me\.ssh.\id_rsa", r"C:\Users\me\.ssh \config", r"C:\Users\me\id_rsa.", r"C:\Users\me\proj\.env:x"] {
+            assert!(is_sensitive(Path::new(p)), "{p}");
+        }
         assert!(under(Path::new(r"C:\Users\Me\Downloads\a.pdf"), Path::new(r"c:\users\me\downloads\")));
         assert!(!under(Path::new(r"C:\Users\me\Downloads2\a.pdf"), Path::new(r"C:\Users\me\Downloads")));
+    }
+
+    #[test]
+    fn only_what_is_right_in_a_folder_the_user_opened_is_given() {
+        let open = vec![PathBuf::from(r"C:\Users\me\Downloads")];
+        assert!(given_by_explorer(Path::new(r"C:\Users\me\Downloads"), &open, &[]));
+        assert!(given_by_explorer(Path::new(r"c:\users\me\downloads\"), &open, &[]));
+        // Not a folder below it, nor one the voice opened itself.
+        assert!(!given_by_explorer(Path::new(r"C:\Users\me\Downloads\old"), &open, &[]));
+        assert!(!given_by_explorer(Path::new(r"C:\Users\me\Downloads"), &open, &open));
+        assert!(!given_by_explorer(Path::new(r"C:\Users\me"), &open, &[]));
     }
 
     /// The sign-ins of the agents Lumo talks to: Codex, Gemini CLI, Copilot CLI,

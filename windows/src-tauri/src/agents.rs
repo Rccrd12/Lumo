@@ -514,7 +514,7 @@ fn groups_uninstall(root: &Value, agent: &str) -> Result<Value, String> {
         }
     }
     if out.is_empty() {
-        root.remove("hooks");
+        root.shift_remove("hooks");
     } else {
         root.insert("hooks".into(), Value::Object(out));
     }
@@ -625,7 +625,7 @@ fn antigravity_uninstall(root: &Value) -> Result<Value, String> {
     let mut root = root.as_object().cloned().unwrap_or_default();
     for group in [ANTIGRAVITY_GROUP, crate::migrate::OLD_GROUP] {
         if root.get(group).is_some_and(antigravity_is_ours) {
-            root.remove(group);
+            root.shift_remove(group);
         }
     }
     Ok(Value::Object(root))
@@ -751,7 +751,7 @@ fn copilot_uninstall(root: &Value) -> Result<Option<Value>, String> {
         }
         hooks.retain(|_, v| !v.as_array().is_some_and(Vec::is_empty));
         if hooks.is_empty() {
-            root.remove("hooks");
+            root.shift_remove("hooks");
         } else {
             root.insert("hooks".into(), Value::Object(hooks));
         }

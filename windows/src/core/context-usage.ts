@@ -103,7 +103,11 @@ function cells(line: string): string[] | null {
 /** The report in a /context answer; null for any other text. */
 export function parseContextReport(text: string): ContextReport | null {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  if (!lines.some((l) => /^#{1,3}\s*Context Usage\s*$/i.test(l.trim()))) return null;
+  // Claude Code's /context starts with its heading. An answer that only
+  // quotes one further down is an answer: drawn as a card, the rest of it
+  // was hidden.
+  const first = lines.find((l) => l.trim() !== "") ?? "";
+  if (!/^#{1,3}\s*Context Usage\s*$/i.test(first.trim())) return null;
   const field = (name: string) => {
     const line = lines.find((l) => new RegExp(`^\\*\\*${name}:\\*\\*`, "i").test(l.trim()));
     return line ? line.trim().replace(new RegExp(`^\\*\\*${name}:\\*\\*`, "i"), "").trim() : "";

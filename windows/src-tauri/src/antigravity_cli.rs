@@ -47,11 +47,11 @@ use crate::platform;
 
 pub const PROVIDER: &str = "antigravity-cli";
 
-/// A turn can wait on the user's Allow / Deny clicks, so it gets a long while:
-/// the same as Claude Code's.
-const TURN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-/// agy's own limit on a print run (5 minutes by default), set to the same.
-const PRINT_TIMEOUT: &str = "15m";
+/// agy's own limit on a print run (5 minutes by default), far past any task:
+/// a turn runs as long as agy works, as Claude Code's do, and Stop ends it.
+/// A long task (a build, many steps) may take an hour; one that hangs costs
+/// no tokens, and Stop is there.
+const PRINT_TIMEOUT: &str = "1440m";
 /// `agy models` answers at once, or not at all.
 const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 /// The island is told about new text at most this often.
@@ -689,6 +689,7 @@ fn run(
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
+    platform::chat_ends_with_lumo(&child);
 
     // Open until the turn's result: closing it ends agy's stream-json input.
     let mut stdin = child.stdin.take();
@@ -738,11 +739,9 @@ fn run(
         let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
 
-    let started = Instant::now();
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     let mut unsent = false;
     let mut state = Run::default();
-    let mut timed_out = false;
     loop {
         if stop.is_stopped() && state.result.is_none() {
             drop(stdin.take());
@@ -750,12 +749,7 @@ fn run(
             state.stopped = true;
             return Ok(state);
         }
-        let left = TURN_TIMEOUT.saturating_sub(started.elapsed());
-        if left.is_zero() {
-            timed_out = true;
-            break;
-        }
-        match rx.recv_timeout(left.min(STOP_POLL)) {
+        match rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
                 if state.result.is_some() {
@@ -783,10 +777,6 @@ fn run(
         }
     }
     drop(stdin);
-    if timed_out {
-        kill_tree(&mut child);
-        return Err(t("Antigravity CLI took too long and was stopped."));
-    }
     let status = child.wait().ok();
     let stderr = err_text.join().unwrap_or_default();
     state.denied += stderr_denials(&stderr);
@@ -871,8 +861,8 @@ fn list_models(exe: PathBuf) -> Vec<String> {
 pub async fn models() -> Result<Vec<ModelInfo>, String> {
     let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
     let listed = tauri::async_runtime::spawn_blocking(move || list_models(exe)).await.map_err(|e| e.to_string())?;
-    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default") }];
-    out.extend(listed.into_iter().map(|id| ModelInfo { label: id.clone(), id }));
+    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default"), ..Default::default() }];
+    out.extend(listed.into_iter().map(|id| ModelInfo { label: id.clone(), id, ..Default::default() }));
     Ok(out)
 }
 
@@ -1084,6 +1074,7 @@ fn run_on_its_own(exe: PathBuf, name: &str, dir: PathBuf) -> Result<String, Stri
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
+    platform::chat_ends_with_lumo(&child);
     let stdout = child.stdout.take();
     let reader = std::thread::spawn(move || {
         let mut s = String::new();
@@ -1192,14 +1183,13 @@ pub(crate) fn help(
     on_activity: impl FnMut(&Activity),
 ) -> Result<String, String> {
     let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
-    let folder = folder.filter(|d| safe_dir(d).is_some() && std::path::Path::new(d).is_dir());
-    let work = folder.map(PathBuf::from).unwrap_or_else(claude_code::work_dir);
+    // Always in Lumo's folder: the one Gemini Live named is only added to the
+    // workspace (claude_code::helper_folder), its own settings never loaded.
+    let folders: Vec<String> = claude_code::helper_folder(folder).into_iter().collect();
+    let work = claude_code::work_dir();
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &[]);
-    // Lumo's MCP configuration is only Lumo's folder's to write.
-    if folder.is_none() {
-        crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
-    }
+    let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
+    crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
     let _mail = crate::mail::agent_turn();
     let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {})?;
     if state.stopped {
@@ -1330,7 +1320,7 @@ mod tests {
         let a = args("gemini-3-pro", "default", Some(CID), "C:\\Users\\me\\Lumo", inbox, &[]);
         assert_eq!(
             &a[..7],
-            ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "15m"]
+            ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "1440m"]
         );
         assert!(!a.iter().any(|s| s == "-p" || s == "--print"), "-p would swallow the next flag as the prompt: {a:?}");
         assert!(!a.contains(&"--effort".to_string()), "the model's name carries its effort: {a:?}");

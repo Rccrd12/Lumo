@@ -466,8 +466,11 @@ pub fn lumo_tool(name: &str) -> Option<&'static str> {
 
 /// Which of Lumo's tools a call is: by the tool's own name, or, when the
 /// agent calls MCP tools through one tool of its own (Antigravity's
-/// `call_mcp_tool`), by what its input names: the server `lumo` and one of
-/// Lumo's tools, or the two already together ("mcp_lumo_update_plan").
+/// `call_mcp_tool`), by the fields of its input that name the server and the
+/// tool: the server `lumo` and one of Lumo's tools, or the two already
+/// together ("mcp_lumo_update_plan") with no other server named. Never by the
+/// arguments, nor by any other string the model wrote: a call of another
+/// server whose arguments mention one of Lumo's tools is not Lumo's.
 pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
     if let Some(name) = lumo_tool(tool) {
         return Some(name);
@@ -484,22 +487,33 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
         Some(v) => v,
         None => return None,
     };
-    // Its own strings, and those of the objects in it (not the arguments' contents).
-    let mut words: Vec<&str> = Vec::new();
-    for v in input.as_object()?.values() {
+    // The fields of the input, and those of an object in it ("tool": {…}).
+    let mut fields: Vec<(&str, &str)> = Vec::new();
+    for (key, v) in input.as_object()? {
         match v {
-            Value::String(s) => words.push(s),
-            Value::Object(inner) => words.extend(inner.values().filter_map(Value::as_str)),
+            Value::String(s) => fields.push((key, s)),
+            Value::Object(inner) => fields.extend(inner.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.as_str(), s)))),
             _ => {}
         }
     }
-    if let Some(name) = words.iter().find_map(|w| lumo_tool(w)) {
-        return Some(name);
+    let key_is = |key: &str, words: &[&str]| {
+        let key = key.to_ascii_lowercase();
+        words.iter().any(|w| key.contains(w))
+    };
+    // A field that names the server ("ServerName", "server").
+    let servers: Vec<&str> = fields.iter().filter(|(k, _)| key_is(k, &["server"])).map(|(_, v)| v.trim()).collect();
+    // A field that names the tool ("ToolName", "tool", "name"), not the server.
+    let tools: Vec<&str> =
+        fields.iter().filter(|(k, _)| !key_is(k, &["server"]) && key_is(k, &["tool", "name"])).map(|(_, v)| v.trim()).collect();
+    let ours = |name: &str| {
+        NAMES.iter().chain(MAIL_NAMES).chain(MAIL_SEND_NAMES).chain(MAIL_MANAGE_NAMES).chain(PLAN_NAMES).chain(ISLAND_NAMES).find(|n| name.eq_ignore_ascii_case(n)).copied()
+    };
+    match servers.as_slice() {
+        // No server named: only the tool's full name says it is Lumo's.
+        [] => tools.iter().find_map(|t| lumo_tool(t)),
+        [server] if server.eq_ignore_ascii_case(SERVER) => tools.iter().find_map(|t| ours(t).or_else(|| lumo_tool(t))),
+        _ => None,
     }
-    if !words.iter().any(|w| w.trim().eq_ignore_ascii_case(SERVER)) {
-        return None;
-    }
-    words.iter().find_map(|w| NAMES.iter().chain(MAIL_NAMES).chain(MAIL_SEND_NAMES).chain(MAIL_MANAGE_NAMES).chain(PLAN_NAMES).chain(ISLAND_NAMES).find(|n| w.trim().eq_ignore_ascii_case(n)).copied())
 }
 
 /// The server of the user's own tools (`--tools=user`), as agents name it.
@@ -911,6 +925,14 @@ mod tests {
         let click = json!({ "ServerName": "lumo", "ToolName": "left_click" });
         assert!(crate::reply::island_card("call_mcp_tool", Some(&click)));
         assert_eq!(lumo_call("view_file", Some(&call)), None, "only an MCP call");
+        // Another server's tool whose arguments or summary name one of Lumo's: still a card.
+        let disguised = json!({ "ServerName": "github", "ToolName": "delete_repo", "Arguments": "mcp_lumo_update_plan", "toolSummary": "lumo update_plan" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&disguised)), None);
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&disguised)));
+        let named = json!({ "ServerName": "github", "ToolName": "mcp_lumo_update_plan" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&named)), None, "the server field wins");
+        let loose = json!({ "Arguments": "{\"x\":\"mcp__lumo__update_plan\"}", "ToolName": "run" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&loose)), None);
     }
 
     #[test]

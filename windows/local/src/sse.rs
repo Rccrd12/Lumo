@@ -1,6 +1,6 @@
 // The lines of an answer streamed as server-sent events (the OpenAI API's
 // chat completions, as Ollama, LM Studio and llama.cpp send them), the tool
-// calls put back together from their pieces, and `<think>` blocks taken out.
+// calls put back together from their pieces, and `<think>` / `<thought>` blocks taken out.
 
 use serde_json::{json, Value};
 
@@ -115,14 +115,23 @@ impl CallParts {
     }
 }
 
-/// Removes finished `<think>…</think>` blocks (reasoning models such as DeepSeek-R1).
+/// The tags a model writes its reasoning between, in the text itself:
+/// `<think>` (DeepSeek-R1, Qwen) and `<thought>` (Gemma through Google AI).
+const THINKING_TAGS: [(&str, &str); 2] = [("<think>", "</think>"), ("<thought>", "</thought>")];
+
+/// The first reasoning block that opens in `text`: where, and its tags.
+fn first_opening(text: &str) -> Option<(usize, &'static str, &'static str)> {
+    THINKING_TAGS.iter().filter_map(|(open, close)| text.find(open).map(|at| (at, *open, *close))).min_by_key(|(at, _, _)| *at)
+}
+
+/// Removes finished reasoning blocks (`<think>…</think>`, `<thought>…</thought>`).
 pub fn filter_thinking_blocks(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
-    while let Some(start) = rest.find("<think>") {
-        let Some(len) = rest[start..].find("</think>") else { break };
+    while let Some((start, open, close)) = first_opening(rest) {
+        let Some(len) = rest[start + open.len()..].find(close) else { break };
         out.push_str(&rest[..start]);
-        rest = &rest[start + len + "</think>".len()..];
+        rest = &rest[start + open.len() + len + close.len()..];
     }
     out.push_str(rest);
     out.trim().to_string()
@@ -132,8 +141,8 @@ pub fn filter_thinking_blocks(text: &str) -> String {
 /// everything after a block that has not been closed yet.
 pub fn progressive_filter(text: &str) -> String {
     let cleaned = filter_thinking_blocks(text);
-    match cleaned.find("<think>") {
-        Some(at) => cleaned[..at].trim().to_string(),
+    match first_opening(&cleaned) {
+        Some((at, _, _)) => cleaned[..at].trim().to_string(),
         None => cleaned,
     }
 }
@@ -197,5 +206,14 @@ mod tests {
         assert_eq!(progressive_filter("<think>done</think>Visible <think>again"), "Visible");
         // A tag that is only half written is not a block yet.
         assert_eq!(progressive_filter("text <thi"), "text <thi");
+    }
+
+    #[test]
+    fn gemmas_thought_blocks_go_too() {
+        let gemma = "<thought>The user said \"Ciao\".\nPlan:\n1. Greet.</thought>Ciao! Come posso aiutarti oggi?";
+        assert_eq!(filter_thinking_blocks(gemma), "Ciao! Come posso aiutarti oggi?");
+        assert_eq!(progressive_filter("<thought>The user said"), "");
+        assert_eq!(progressive_filter("<think>a</think>Yes <thought>b</thought>and no"), "Yes and no");
+        assert_eq!(progressive_filter("Done. <thought>more"), "Done.");
     }
 }

@@ -10,7 +10,8 @@ import { installFakeDom } from "./fakedom.mjs";
 installFakeDom();
 const calcModule = await import("../src/views/rich/calc.ts");
 const { parseCalc, parsePlot, renderCalc, renderPlot, parseInput, parseRange, niceStep, formatNumber, formatValue, texName, tracePlot, autoRange, evaluateCalc } = calcModule;
-const { renderMarkdown } = await import("../src/views/markdown.ts");
+const markdownModule = await import("../src/views/markdown.ts");
+const { renderMarkdown } = markdownModule;
 const { keyOf } = await import("../src/views/rich/index.ts");
 
 const OHM = [
@@ -77,6 +78,16 @@ test("ranges as models write them", () => {
   assert.equal(parseRange("1..1"), null);
   assert.equal(parseRange("a..b"), null);
   assert.equal(parseRange("12"), null);
+  assert.deepEqual(parseRange("  0   ..    10  "), { min: 0, max: 10, step: null });
+});
+
+test("a range full of spaces is read at once", () => {
+  // 600 spaces took the pattern about 5 s, with the island frozen.
+  const started = performance.now();
+  assert.equal(parseRange(" ".repeat(600)), null);
+  assert.equal(parseRange("1..2" + " ".repeat(600) + "x"), null);
+  assert.equal(parseRange("1..2" + " ".repeat(150) + "x"), null);
+  assert.ok(performance.now() - started < 200);
 });
 
 test("a nice step, about a hundredth of the range, tenths for a few units to a few tens", () => {
@@ -188,7 +199,7 @@ test("a chart that can't be read is no card", () => {
   assert.equal(parsePlot("", "y: sin(x\nx: 0..1"), null);
   assert.equal(parsePlot("", "y: k * x"), null, "k is never declared");
   assert.equal(parsePlot("", "y: x\nx: wide"), null);
-  assert.equal(parsePlot("", "y: x\ny: x\ny: x\ny: x"), null);
+  assert.equal(parsePlot("", Array.from({ length: 7 }, () => "y: x").join("\n")), null, "six curves at most");
   assert.equal(parsePlot("", "y: x\ninput: x | 0..1"), null, "x is the chart's own");
   const inputs = Array.from({ length: 5 }, (_, i) => `input: a${i} | 0..1`).join("\n");
   assert.equal(parsePlot("", `y: x\n${inputs}`), null);
@@ -393,18 +404,169 @@ test("the chart takes the height the chat has room for: never under its usual, n
 });
 
 test("a curve that spends its length in a band of the chart asks for more height; a wave or a line doesn't", () => {
-  const { parsePlot, idealHeight, plotHeight, PLOT_HEIGHT } = calcModule;
+  const { parsePlot, idealHeight, plotHeight, PLOT_HEIGHT, PLOT_WANT_HEIGHT } = calcModule;
   const want = (body) => idealHeight(parsePlot("", body));
   const wave = want("y: sin(x)\ny: cos(x)\nx: 0..12");
   const line = want("y: 0.5*x+1\nx: -5..5");
   const flat = want("y: 3\nx: 0..5");
   const exp = want("y: exp(x)\nx: 0..5");
-  assert.equal(wave, PLOT_HEIGHT);
-  assert.equal(flat, PLOT_HEIGHT);
-  assert.ok(line < 130, `${line}`);
+  assert.equal(wave, PLOT_WANT_HEIGHT);
+  assert.equal(flat, PLOT_WANT_HEIGHT);
+  assert.equal(line, PLOT_WANT_HEIGHT);
   assert.ok(exp > 3 * PLOT_HEIGHT, `${exp}`);
   // As tall as it wants, as far as the chat has room.
-  assert.equal(plotHeight(600, 96, wave), PLOT_HEIGHT);
+  assert.equal(plotHeight(600, 96, wave), PLOT_WANT_HEIGHT);
+  // The island at its usual height: the usual chart, whatever it wants.
+  assert.equal(plotHeight(150, 96, exp), PLOT_HEIGHT);
   assert.equal(plotHeight(600, 96, exp), Math.round(exp));
   assert.equal(plotHeight(300, 96, exp), 300 - 96 - 12);
+
+  // A wave whose amplitude slider goes to 3, at 1: the frame is three times
+  // its height, but it is still a wave, never the whole island.
+  const slid = want("formula: y = A \\sin(\\omega x)\ny: A*sin(w*x)\nx: -6.28..6.28\ninput: A | Ampiezza | 0..3 | 1\ninput: w | Frequenza | 0.5..3 | 1");
+  assert.ok(slid > PLOT_WANT_HEIGHT && slid <= 1.75 * PLOT_WANT_HEIGHT, `${slid}`);
+  assert.ok(want("y: sin(x)\nx: 0..12\nyrange: -10..10") <= 1.75 * PLOT_WANT_HEIGHT);
+  // An exponential whose slider can take it far higher asks for its own
+  // shape's height, not more for the room left above it.
+  const grows = want("y: exp(k*x)\nx: -2..3\ninput: k | rate | 0.5..1.5 | 1");
+  assert.equal(Math.round(grows), Math.round(want("y: exp(x)\nx: -2..3")));
+});
+
+// ── The plane ─────────────────────────────────────────────────────────────────
+
+test("a region is read from its inequalities, chained or joined, and holds where they all do", () => {
+  const { parseRegion, inRegion } = calcModule;
+  const known = new Set(["x", "y"]);
+  const d = parseRegion("x <= y <= 3x and x^2 + y^2 ≤ 1", known);
+  assert.ok(d);
+  assert.equal(d.conditions.length, 2);
+  const at = (x, y) => inRegion(d, { x, y });
+  assert.ok(at(0.3, 0.6), "between the lines, inside the circle");
+  assert.ok(!at(0.6, 0.3), "under y = x");
+  assert.ok(!at(0.1, 0.5), "over y = 3x");
+  assert.ok(!at(0.6, 0.9), "outside the circle");
+  // Commas outside parentheses join too, and > reads as ≥.
+  assert.ok(parseRegion("y > max(x, 0), y < 2", known));
+  assert.equal(parseRegion("y + x", known), null, "no comparison");
+  assert.equal(parseRegion("y <= k", known), null, "k is never declared");
+  assert.equal(parseRegion("y <= sin(x", known), null);
+});
+
+test("a chart may shade regions, alone or with curves, on axes of one scale", () => {
+  const plot = parsePlot("D", "y: 3*x\ny: x\nx: 0..1\nyrange: 0..1\nregion: x <= y <= 3x and x^2 + y^2 <= 1");
+  assert.equal(plot.regions.length, 1);
+  assert.equal(plot.equal, true);
+  const alone = parsePlot("", "region: x^2 + y^2 <= 4\nx: -3..3");
+  assert.ok(alone);
+  assert.deepEqual(alone.y, [-3, 3], "no curve to frame: as tall as it is wide");
+  assert.equal(parsePlot("", "y: x\nscale: equal").equal, true);
+  assert.equal(parsePlot("", "y: x").equal, false);
+  assert.equal(parsePlot("", "region: y <= y0\ninput: y | 0..1"), null, "y is the plane's");
+  assert.equal(parsePlot("", "y: x\nregion: nothing to compare"), null);
+  // Six curves at most, three regions.
+  assert.ok(parsePlot("", Array.from({ length: 6 }, (_, i) => `y: x + ${i}`).join("\n")));
+  assert.equal(parsePlot("", "y: x\n" + Array.from({ length: 4 }, () => "region: y <= x").join("\n")), null);
+});
+
+test("the notable points: zeros, highs and lows, crossings, and no zero at a pole", () => {
+  const { notablePoints } = calcModule;
+  const kinds = (body, view) => {
+    const plot = parsePlot("", body);
+    return notablePoints(plot, {}, view ?? plot);
+  };
+  const cubic = kinds("y: x^3 - 3*x\nx: -2.5..2.5");
+  const near = (list, kind, x, y) => list.some((p) => p.kind === kind && Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6);
+  assert.ok(near(cubic, "zero", 0, 0));
+  assert.ok(near(cubic, "zero", Math.sqrt(3), 0) && near(cubic, "zero", -Math.sqrt(3), 0));
+  assert.ok(near(cubic, "max", -1, 2) && near(cubic, "min", 1, -2));
+  assert.equal(cubic.length, 5);
+
+  const lines = kinds("y: 3*x\ny: x^2\nx: -1..4\nyrange: -1..10");
+  assert.ok(near(lines, "cross", 0, 0) && near(lines, "cross", 3, 9));
+
+  // tan changes sign across its poles without crossing: only its true zeros.
+  const tan = kinds("y: tan(x)\nx: -4..4\nyrange: -5..5");
+  const zeros = tan.filter((p) => p.kind === "zero").map((p) => p.x);
+  assert.equal(zeros.length, 3, String(zeros));
+  for (const z of zeros) assert.ok(Math.abs(Math.sin(z)) < 1e-6);
+  assert.ok(!tan.some((p) => p.kind === "max" || p.kind === "min"));
+
+  // Dozens of zeros would hide the curve: that kind is left out for it.
+  assert.ok(!kinds("y: sin(20*x)\nx: -5..5").some((p) => p.kind === "zero"));
+  // Only what is in the view.
+  assert.equal(kinds("y: x^3 - 3*x\nx: -2.5..2.5", { x: [0.5, 2.5], y: [-3, 3] }).filter((p) => p.kind === "max").length, 0);
+});
+
+test("the plane moves under a drag and zooms around a point, within limits", () => {
+  const { zoomView, panView, equalView } = calcModule;
+  const v = { x: [-10, 10], y: [-5, 5] };
+  // Dragged right and down by a tenth: the plane follows the pointer.
+  assert.deepEqual(panView(v, 20, 10, 200, 100), { x: [-12, 8], y: [-4, 6] });
+  // Zoomed in by two around the middle, then around the left edge.
+  assert.deepEqual(zoomView(v, 0.5), { x: [-5, 5], y: [-2.5, 2.5] });
+  assert.deepEqual(zoomView(v, 0.5, 0, 1), { x: [-10, 0], y: [-5, 0] });
+  // Never past ten thousand times in or out of the frame it opened on.
+  let z = v;
+  for (let i = 0; i < 100; i++) z = zoomView(z, 0.1, 0.5, 0.5, v);
+  assert.ok(Math.abs(z.x[1] - z.x[0] - 20 / 1e4) < 1e-9);
+  // One scale: the frame widened along x to fill a wide chart, all still in sight.
+  const eq = equalView({ x: [0, 1], y: [0, 1] }, 400, 200);
+  assert.deepEqual(eq, { x: [-0.5, 1.5], y: [0, 1] });
+});
+
+test("the chart's buttons zoom it, and bring back its frame once it has moved", () => {
+  const body = "y: x^2\nx: -2..2";
+  const key = keyOf({ type: "plot", title: "", body });
+  const el = renderPlot(parsePlot("", body), ctx, key);
+  const [reset, zoomIn, zoomOut] = el.find(".rc-plot-btn");
+  assert.equal(zoomIn.getAttribute("aria-label"), "Zoom in");
+  assert.equal(zoomOut.getAttribute("aria-label"), "Zoom out");
+  assert.ok(reset.hidden, "at its frame: nothing to bring back");
+  zoomIn.fire("click");
+  assert.ok(!reset.hidden);
+  // Drawn again (the chat's redraw), it keeps where it was moved to.
+  const again = renderPlot(parsePlot("", body), ctx, key);
+  assert.ok(!again.find(".rc-plot-btn")[0].hidden);
+  again.find(".rc-plot-btn")[0].fire("click");
+  assert.ok(again.find(".rc-plot-btn")[0].hidden);
+});
+
+test("TeX a model slips into the formulas is read as plain arithmetic", async () => {
+  const { fromTeX, compile } = await import("../src/core/expr.ts");
+  const at = (tex, scope = {}) => compile(fromTeX(tex)).evaluate(scope);
+  assert.equal(fromTeX("x^2 + 1"), "x^2 + 1", "plain formulas come back as they were");
+  assert.equal(at("\\sin(x)", { x: Math.PI / 2 }), 1);
+  assert.equal(at("2\\pi"), 2 * Math.PI);
+  assert.equal(at("\\frac{1}{2}"), 0.5);
+  assert.equal(at("\\frac{\\frac{1}{2}}{4}"), 0.125);
+  assert.equal(at("\\sqrt{9} \\cdot 2"), 6);
+  assert.ok(Math.abs(at("\\sqrt[3]{8}") - 2) < 1e-12);
+  assert.equal(at("2\\sin x", { x: Math.PI / 2 }), 2);
+  assert.equal(at("e^{2x}", { x: 0 }), 1);
+  assert.equal(at("\\left(x + 1\\right) \\times 3", { x: 1 }), 6);
+  assert.equal(at("V_{out}", { V_out: 4 }), 4);
+  assert.equal(at("$\\arctan(1)$"), Math.PI / 4);
+
+  // The local model's sine: a chart, from 0 to 2π.
+  const plot = parsePlot("", "formula: \\sin(x)\ny: \\sin(x)\nx: 0..2\\pi");
+  assert.ok(plot);
+  assert.deepEqual(plot.x, [0, 2 * Math.PI]);
+  assert.equal(plot.formula, "\\sin(x)", "the top line stays TeX, drawn as math");
+  // A region in TeX's comparisons.
+  const d = parsePlot("", "y: x\nx: -1..1\nregion: x \\le y \\leq 3x \\land x^2 + y^2 \\le 1");
+  assert.ok(d);
+  assert.equal(d.regions[0].conditions.length, 2);
+});
+
+test("a chart's lines in a fence left unnamed are the chart; other code stays code", () => {
+  const { parseMarkdown } = markdownModule;
+  const [plot] = parseMarkdown("```\nformula: \\sin(x)\ny: \\sin(x)\nx: 0..2\\pi\n```");
+  assert.equal(plot.kind, "rich");
+  assert.equal(plot.type, "plot");
+  assert.equal(plot.open, false);
+  assert.equal(parseMarkdown("```plot\ny: x^2\nx: -2..2\n```")[0].type, "plot");
+  // No x range, other keys, or a language: code as written.
+  assert.equal(parseMarkdown("```\ny: 1\n```")[0].kind, "code");
+  assert.equal(parseMarkdown("```\ny: 1\nx: 2\nname: z\n```")[0].kind, "code");
+  assert.equal(parseMarkdown("```yaml\ny: 1\nx: 2\n```")[0].kind, "code");
 });

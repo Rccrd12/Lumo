@@ -8,7 +8,8 @@
 // the one this copy of Lumo came from, as the release workflow publishes it
 // (.github/workflows/windows.yml, named by scripts/pack.mjs): the NSIS
 // setup.exe, run without a window (INSTALLER_ARGS), or the .msi, through
-// msiexec with its progress bar (MSI_ARGS). Running the setup.exe over an .msi
+// msiexec with its progress bar (MSI_ARGS), once it matches GitHub's SHA-256
+// and its signature by Lumo's own key holds (UPDATE_PUBLIC_KEY). Running the setup.exe over an .msi
 // install would leave a second Lumo beside the first. Lumo quits right after
 // starting the installer so its files can be replaced, and the installer opens
 // the new Lumo when it is done.
@@ -47,6 +48,17 @@ const BETA_TAG: &str = "windows-beta";
 /// Where the beta's notes hold the list of what is in it, as JSON, up to ` -->`
 /// (scripts/beta.mjs BETA_MARK).
 const BETA_MARK: &str = "<!-- lumo-beta ";
+
+/// The public half of Lumo's update key (ed25519, hex), made by
+/// scripts/update-key.mjs. The release and beta workflows sign every installer
+/// with the private half (scripts/sign-update.mjs, the LUMO_UPDATE_KEY secret)
+/// and publish the signature beside it as `<installer>.sig`; an installer
+/// whose signature does not hold is never run. GitHub's SHA-256 says the file
+/// is the one on the release; the signature says the key's holder put it there.
+const UPDATE_PUBLIC_KEY: &str = "1545faa835cd76587611e06399b6af1de7cee43a1e1c7e70dc806be5443e8cec";
+
+/// A signature file is one line of hex: anything longer is not one.
+const MAX_SIGNATURE: u64 = 1024;
 
 /// Hosts a release download may come from: github.com, then the CDN it redirects to.
 const DOWNLOAD_HOSTS: [&str; 3] = [
@@ -660,6 +672,13 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
         return Err(t("The downloaded installer does not match the one GitHub published."));
     }
+    // Signed with Lumo's own key: a file swapped on the release, with its
+    // SHA-256, still has no signature that holds.
+    let signature = fetch_signature(app, &client, &url).await?;
+    if !signature_holds(&bytes, &signature, UPDATE_PUBLIC_KEY) {
+        log::line(format!("update: {file_name} is not signed with Lumo's key, not installed"));
+        return Err(t("The installer is not signed with Lumo's key, so Lumo did not install it."));
+    }
     let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
 
     // %TEMP%\Lumo-update\Lumo-Windows-<v>-setup.exe (or .msi); installers from
@@ -695,9 +714,74 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     Ok(())
 }
 
+/// The signature published beside the installer at `url` (`<installer>.sig`),
+/// from GitHub as the installer is.
+async fn fetch_signature(app: &AppHandle, client: &reqwest::Client, url: &Url) -> Result<String, String> {
+    let missing = || t("This installer has no signature from Lumo, so Lumo did not install it.");
+    let sig_url = Url::parse(&format!("{url}.sig")).map_err(|_| missing())?;
+    let response = client
+        .get(sig_url)
+        .header("User-Agent", user_agent(app))
+        .header("Accept", "application/octet-stream")
+        .send()
+        .await
+        .map_err(|e| tf("The download failed: {error}", &[("error", &e.to_string())]))?;
+    if !is_download_host(response.url()) || !response.status().is_success() {
+        return Err(missing());
+    }
+    if response.content_length().is_some_and(|n| n > MAX_SIGNATURE) {
+        return Err(missing());
+    }
+    let body = response.bytes().await.map_err(|e| tf("The download failed: {error}", &[("error", &e.to_string())]))?;
+    if body.len() as u64 > MAX_SIGNATURE {
+        return Err(missing());
+    }
+    String::from_utf8(body.to_vec()).map_err(|_| missing())
+}
+
+/// Bytes from hex, `None` for anything else.
+fn hex_bytes(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok()).collect()
+}
+
+/// True when `signature` (hex, as sign-update.mjs writes it) is `bytes` signed
+/// by the ed25519 key `key` (hex). A malformed key or signature never holds.
+fn signature_holds(bytes: &[u8], signature: &str, key: &str) -> bool {
+    let (Some(signature), Some(key)) = (hex_bytes(signature.trim()), hex_bytes(key)) else { return false };
+    if signature.len() != 64 || key.len() != 32 {
+        return false;
+    }
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key).verify(bytes, &signature).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_signature_by_the_key_holds() {
+        // A pair made for this test only, and "abc" signed with it (node:crypto).
+        let key = "6e3bb7fd2d3e35b7c572f35da38704c50860350d4ff818f2fd5290d0d200d17b";
+        let sig = "7d49ed0c2d31d99a31b8edd6fb532750c467b72b91926c8011dbf18fca0125ef160d56875a216d12ac62c76d798338fb02a6e48843cc829f74294599e584c403";
+        assert!(signature_holds(b"abc", sig, key));
+        assert!(signature_holds(b"abc", &format!("{}\n", sig.to_uppercase()), key), "as the .sig file has it");
+        assert!(!signature_holds(b"abd", sig, key), "another file");
+        let mut other = sig.to_string();
+        other.replace_range(0..2, "00");
+        assert!(!signature_holds(b"abc", &other, key), "another signature");
+        assert!(!signature_holds(b"abc", sig, &key.replace('6', "7")), "another key");
+        assert!(!signature_holds(b"abc", "", key));
+        assert!(!signature_holds(b"abc", "zz", key));
+        assert!(!signature_holds(b"abc", sig, "PUBLIC_KEY_PENDING"));
+    }
+
+    #[test]
+    fn lumo_carries_a_real_update_key() {
+        assert_eq!(hex_bytes(UPDATE_PUBLIC_KEY).map(|k| k.len()), Some(32), "UPDATE_PUBLIC_KEY: run scripts/update-key.mjs");
+    }
 
     fn release(tag: &str, assets: &[&str]) -> Release {
         Release {

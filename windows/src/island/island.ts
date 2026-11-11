@@ -47,6 +47,7 @@ import { isComputerTool } from "../core/computer";
 import { N_, t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { IslandPlan } from "./plan";
+import { Live } from "../live/session";
 // The plan's steps in the chat's strip (views/plan-strip.ts) wear the look
 // of the Plan island they came from: its stylesheet, here where it always was.
 import "../views/plan.css";
@@ -78,6 +79,13 @@ const STRAY_DRAG_MS = 300;
  * key typed in it gives it this long again.
  */
 const SHARE_GRACE = 10;
+/**
+ * An alert that opens the island on its own ("finished", an error, the recap…)
+ * finds the mouse elsewhere: it stays open this long, so it can be read, even
+ * set to close as soon as the mouse leaves (s). The mouse coming onto it ends
+ * the wait; leaving it then closes it as usual.
+ */
+const NOTICE_GRACE = 8;
 /** How close a dragged file comes to the island before it opens for the drop (page px). */
 const DRAG_NEAR = 120;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
@@ -107,6 +115,12 @@ const UPLOAD_SETTLE = 0.45;
 const UPLOADED_NOTE_MS = 2600;
 const UPLOAD_COLOR = "#34D399";
 
+/**
+ * A hidden island pauses every CSS animation in the page (style.css,
+ * `.island-hidden`): an infinite one left running in a closed island's piece (a
+ * shimmer, a ping) would keep the webview repainting with nothing to see.
+ */
+const markHidden = () => document.documentElement.classList.toggle("island-hidden", State.mode === "hidden");
 const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
 
 export class Island {
@@ -500,6 +514,10 @@ export class Island {
     this.fsm.onTransition = (from, to) => {
       switch (to) {
         case "hidden":
+          // A call goes on only where it can be seen: the compact island
+          // stays up for it (fsm.held), so only a pause or the – hides it.
+          // Hidden, the microphone would stay open with nothing on screen.
+          if (Live.active) Live.end();
           this.setMode("hidden");
           break;
         case "petit":
@@ -538,6 +556,7 @@ export class Island {
     if (mode === prev) return;
     this.menu?.close();
     State.mode = mode;
+    markHidden();
     if (mode === "expanded") Sound.play("open");
     if (prev === "expanded") {
       Sound.play("close");
@@ -627,8 +646,20 @@ export class Island {
   /** Alert from the hook server: open on this view. Pinned alerts never auto-close. */
   alert(view: IslandViewName) {
     this.fsm.pinned = State.isPinned;
+    this.giveReadingTime();
     this.fsm.forceHome();
     this.expand(view);
+  }
+
+  /**
+   * Something came up on the island while the mouse is elsewhere: it stays
+   * open NOTICE_GRACE, so the countdown of an island set to close as the
+   * mouse leaves does not fold it before it is read. A shortcut gives its own
+   * grace on top (holdOpen).
+   */
+  giveReadingTime() {
+    if (this.wasInIsland || this.fsm.pinned) return;
+    this.fsm.holdOpen(NOTICE_GRACE, false);
   }
 
   reveal() {
@@ -887,7 +918,7 @@ export class Island {
   onOutsidePress() {
     // While a sharing shortcut holds it open, a click elsewhere closes it in
     // any mode: that is how the user says they are done.
-    if (parseCloseMode(State.settings.islandClose) !== "click" && !this.fsm.inGrace) return;
+    if (parseCloseMode(State.settings.islandClose) !== "click" && !this.fsm.clickEndsGrace) return;
     if (State.mode !== "expanded" || this.fsm.state !== "home") return;
     if (this.fsm.pinned || State.isPinned || State.pendingApproval || isDialogOpen()) return;
     if (this.moving || this.resizing || this.uploadActive) return;
@@ -1929,7 +1960,8 @@ export class Island {
       this.countdown.style.width = "0px";
       return;
     }
-    const autoClose = this.fsm.homeToPetitDelay;
+    // A grace longer than the delay (an alert waiting to be read) counts down over its own length.
+    const autoClose = this.fsm.homeCollapseSpan ?? this.fsm.homeToPetitDelay;
     const windowS = Math.min(10, autoClose * 0.6);
     const remaining = (dueAt - nowMs) / 1000;
     this.countdown.style.width =
@@ -2053,6 +2085,7 @@ export class Island {
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
     // The island's look (look-new.css) hangs on this class.
     document.documentElement.classList.add("look-new");
+    markHidden();
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
     // the top (Settings, tray), or a new closed island width: grow, shrink or

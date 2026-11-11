@@ -377,9 +377,7 @@ export const Bridge = {
   screenCapture: (display: number | null) => callOrThrow<ScreenShot[]>("screen_capture", { display }),
   /** Deletes screenshots the user did not keep. */
   screenDiscard: (paths: string[]) => call<void>("screen_discard", { paths }),
-  /** The folder open in File Explorer, its name only, for the menu. Lists nothing. */
-  screenExplorerPeek: () => callOrThrow<ExplorerFolder | null>("screen_explorer_peek"),
-  /** That folder and what is in it, shared with the chat (explorer.rs). */
+  /** The folder open in File Explorer and what is in it, shared with the chat (explorer.rs). */
   screenExplorer: () => callOrThrow<ExplorerFolder | null>("screen_explorer"),
   /** Every folder open in File Explorer, names only, the front window's first. Lists nothing. */
   screenExplorerPeekAll: () => callOrThrow<ExplorerFolder[]>("screen_explorer_peek_all"),
@@ -442,7 +440,6 @@ export const Bridge = {
   workspaceDiff: (chat: string, path: string) => callOrThrow<CopyDiff>("workspace_diff", { chat, path }),
   /** The copy written over its original, after a click. */
   workspacePutBack: (chat: string, path: string) => callOrThrow<void>("workspace_put_back", { chat, path }),
-  workspaceReveal: (chat: string) => call<void>("workspace_reveal", { chat }),
   workspaceDelete: (chat: string) => call<void>("workspace_delete", { chat }),
   /** File Explorer on a chat's file, selected: "shown", "missing" or "refused". */
   chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),
@@ -836,6 +833,10 @@ export type SharedContext =
 export interface ModelInfo {
   id: string;
   label: string;
+  /** A provider called by its API: the reasoning levels the model takes, where its list says. */
+  reasoning?: string[];
+  /** The same: its context, in tokens. */
+  context?: number;
 }
 
 /** A model a local server holds in memory (local_models.rs). */
@@ -969,6 +970,9 @@ export async function onDragDrop(
     });
   }
   const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
+  const carriesLink = (e: DragEvent) => e.dataTransfer?.types.includes("text/uri-list") ?? false;
+  const editable = (target: EventTarget | null) =>
+    target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea") != null);
   // dragenter/dragleave fire for every element crossed; only the outermost pair counts.
   let depth = 0;
   // The cursor is near the island (`near`), not just in the window.
@@ -1010,6 +1014,14 @@ export async function onDragDrop(
     return on;
   };
   const onOver = (e: DragEvent) => {
+    // A link (from a browser, or one of the island's own) let go on the
+    // island: WebView2 would open it in place of the island. Refused, but
+    // over a text field, which takes it as text.
+    if (!hasFiles(e) && carriesLink(e) && !editable(e.target)) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
+      return;
+    }
     if (inside || !hasFiles(e)) return;
     // Without this WebView2 refuses the drop — or navigates to the file.
     // Off the island it is refused: "none" shows the no-drop cursor.

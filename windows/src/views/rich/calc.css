@@ -210,16 +210,71 @@
 /* The chart stops a little short of the card's right edge, under the end
    of the sliders' values rather than their edge, as in the card's design. */
 .rc-plot-frame {
-  padding: 8px 36px 0 12px;
+  position: relative;
+  padding: 8px 12px 0;
   min-width: 0;
 }
 
+/* The plane moves under a drag, a swipe included: the chart's, not the chat's. */
 .rc-plot-canvas {
   display: block;
   width: 100%;
   height: 92px;
   border-radius: 6px;
-  cursor: crosshair;
+  cursor: grab;
+  touch-action: none;
+}
+
+.rc-plot-frame.dragging .rc-plot-canvas {
+  cursor: grabbing;
+}
+
+.rc-plot-canvas:focus-visible {
+  outline: 1px solid rgba(143, 199, 255, 0.45);
+  outline-offset: 1px;
+}
+
+/* Zoom in, zoom out, and back to the frame it opened on, in the top corner. */
+.rc-plot-tools {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  display: flex;
+  gap: 4px;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.rc-plot-frame:hover .rc-plot-tools,
+.rc-plot-tools:focus-within {
+  opacity: 1;
+}
+
+.rc-plot-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(14, 15, 17, 0.85);
+  color: #c9ccd2;
+  cursor: pointer;
+}
+
+.rc-plot-btn:hover {
+  background: rgba(40, 42, 46, 0.95);
+  color: #fff;
+}
+
+.rc-plot-btn:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 1px;
+}
+
+.rc-plot-btn[hidden] {
+  display: none;
 }
 
 .rc-plot-in {

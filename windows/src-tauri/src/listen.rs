@@ -981,6 +981,11 @@ async fn local_round(app: &AppHandle) {
                 if !due(w.id, now, WEB_EVERY_MS) {
                     continue;
                 }
+                // A page saved before only public https pages were watched
+                // (this PC, the local network): never opened, never "down".
+                if crate::web_image::public_url(&w.target).is_err() {
+                    continue;
+                }
                 let page = listen_local::page(&w.target).await;
                 match w.until.as_str() {
                     "changed" => {

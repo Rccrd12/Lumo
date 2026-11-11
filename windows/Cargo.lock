@@ -2115,6 +2115,7 @@ dependencies = [
  "keyring",
  "lumo-local",
  "reqwest 0.12.28",
+ "ring",
  "serde",
  "serde_json",
  "tauri",

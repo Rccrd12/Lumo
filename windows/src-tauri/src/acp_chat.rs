@@ -977,6 +977,7 @@ impl Live {
         }
         platform::no_console(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| tf("Cannot start {agent}: {error}", &[("agent", agent.name()), ("error", &e.to_string())]))?;
+        platform::chat_ends_with_lumo(&child);
         let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("no stdin")?));
         let stderr = claude_code::read_stderr(&mut child);
         let rx = claude_code::read_lines(&mut child, usize::MAX)?;
@@ -1424,8 +1425,8 @@ pub async fn models(provider: &str) -> Result<Vec<ModelInfo>, String> {
     let agent = Agent::of(provider).ok_or_else(|| format!("Unknown chat provider: {provider}"))?;
     let exe = agent.exe().ok_or_else(|| agent.not_installed())?;
     let listed = tauri::async_runtime::spawn_blocking(move || list_models(agent, exe)).await.map_err(|e| e.to_string())?;
-    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default") }];
-    out.extend(listed.into_iter().filter(|(id, _)| id != DEFAULT_MODEL).map(|(id, label)| ModelInfo { id, label }));
+    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default"), ..Default::default() }];
+    out.extend(listed.into_iter().filter(|(id, _)| id != DEFAULT_MODEL).map(|(id, label)| ModelInfo { id, label, ..Default::default() }));
     Ok(out)
 }
 

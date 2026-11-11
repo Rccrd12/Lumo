@@ -18,11 +18,11 @@ test("the menu only has business with a slash first and no space yet", () => {
   assert.equal(slashQuery(""), null);
 });
 
-test("Lumo's commands are there with every provider, the shield with the CLIs and the model servers", () => {
+test("Lumo's commands are there with every provider, the shield with the CLIs, the model servers and the APIs", () => {
   for (const provider of ["anthropic", "openai", "ollama", "antigravity-cli", "claude-code"]) {
     const list = names(slashCommands(provider, null));
     for (const name of ["new", "history", "model", "attach", "screen", "timer"]) assert.ok(list.includes(name), `${provider}: ${name}`);
-    assert.equal(list.includes("permissions"), ["claude-code", "antigravity-cli", "ollama"].includes(provider), provider);
+    assert.ok(list.includes("permissions"), provider);
   }
 });
 
@@ -118,7 +118,7 @@ test("typing filters: names starting with it first, then those containing it", (
 test("Lumo's own commands typed in full run in Lumo; the rest goes to the AI", () => {
   assert.equal(lumoCommand("/new", "anthropic"), "new");
   assert.equal(lumoCommand(" /Model ", "ollama"), "model");
-  assert.equal(lumoCommand("/permissions", "anthropic"), null, "no shield with a cloud API");
+  assert.equal(lumoCommand("/permissions", "anthropic"), "permissions", "a cloud API runs Lumo's tools: a shield too");
   assert.equal(lumoCommand("/permissions", "lmstudio"), "permissions");
   assert.equal(lumoCommand("/permissions", "claude-code"), "permissions");
   assert.equal(lumoCommand("/timer", "anthropic"), null, "the timer waits for its duration");

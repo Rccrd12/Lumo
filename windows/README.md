@@ -56,10 +56,17 @@ administrator's consent, since the .msi installs for every user. Either way
 Lumo quits so the installer can replace it, and the installer opens the new
 Lumo when it is done, a few seconds later. Nothing is downloaded without that click. Only installers from that
 repository's GitHub releases are accepted, and only one that matches, byte for
-byte, the SHA-256 GitHub published for it is run.
+byte, the SHA-256 GitHub published for it, and whose signature by Lumo's own
+key holds, is run. The release and beta workflows sign each installer with
+the `LUMO_UPDATE_KEY` secret and publish the signature beside it
+(`<installer>.sig`, `windows/scripts/sign-update.mjs`); the public half of the
+key is `UPDATE_PUBLIC_KEY` in `windows/src-tauri/src/updater.rs`.
+`node windows/scripts/update-key.mjs` makes a new pair; the Lumo builds already
+installed accept only the key they carry.
 
 **Beta versions** (off unless you turn it on) also offers the beta: one build
-with main and every open pull request of the repository merged into it, so
+with main and every open pull request the repository's owner opened from one
+of its branches merged into it, so
 changes can be tried before they are released, with no terminal and no
 branch to check out. The **Windows beta** workflow
 (`.github/workflows/windows-beta.yml`, steps in `windows/scripts/beta.mjs`)
@@ -562,6 +569,18 @@ tools, the email and listening tools and your own tools. With **Lumo's web searc
 search the web (Bing, with Bing News for the latest, and Wikipedia only when neither answers; with Unsloth Studio, its own web search when Lumo has its key) and read a page; it is off
 until you turn it on. `/compact` summarises a long chat into a short one.
 
+With these providers and Anthropic's API the picker has an **Effort** slider
+for the models that reason, with the levels the model list says (Anthropic's,
+low to max, sent as `output_config.effort`; OpenRouter's for the models that
+declare it) or, where the list says nothing, for the families that reason
+(Gemini 2.5 and later, the o-series and GPT-5: low, medium, high, sent as
+`reasoning_effort`). **Auto** sends none, and a model that refuses the level
+is asked again at its own. With **Show remaining usage in the chat** on, the
+usage ring shows how full the chat's context is, read off each answer's own
+token count (no call of its own), next to Anthropic's and OpenAI's rate limits
+and OpenRouter's credits; its menu has **Compact the chat**. Their tools run on
+this PC, so the shield offers the local models' four modes and sandbox (below).
+
 **Local models**: **Settings… → Chat → Local models** connects **Ollama** or **LM
 Studio** (leave the address empty for the usual one on this PC; Ollama's
 `OLLAMA_HOST` is honoured) or any server that speaks the OpenAI API (vLLM,
@@ -575,7 +594,7 @@ started: an Unsloth Studio you opened stays on. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
-With a local model the shield offers **Ask for approval** (a card for every
+With a local model, or a provider called by its API, the shield offers **Ask for approval** (a card for every
 call of your tools and every web search or page read), **Approve for me** (a
 trusted tool asks only for risky calls), **Run automatically** (a trusted tool
 never asks when it can run in the Windows sandbox, and otherwise asks as
@@ -686,7 +705,7 @@ for the level its model is made for; it goes to Claude Code as `--effort`.
 Claude Code's own run never shows up as a session in the island: only its
 permission requests do, as a card over the chat.
 
-**The shield** next to the screen button (Claude Code, Antigravity CLI, Codex, Copilot CLI and Cursor CLI only)
+**The shield** next to the screen button (with Claude Code, Antigravity CLI, Codex, Copilot CLI and Cursor CLI; the local models and the API providers have their own four modes, above)
 says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
@@ -842,8 +861,13 @@ models included, and the chat draws them (`src/views/rich/`):
   each with its icon, a few values and a line of text.
 - **Calculator** (` ```lumo-calc `): a formula with its inputs on sliders and
   its results worked out as you move them.
-- **Function plot** (` ```lumo-plot `): one to three curves that follow the
-  sliders of their parameters, their values under the pointer.
+- **Function plot** (` ```lumo-plot `): up to six curves on a plane with a
+  squared grid and numbered axes, following the sliders of their parameters.
+  Drag to move the plane; zoom with its + and − buttons or Ctrl and the wheel
+  (a touchpad's pinch); the arrow keys and + − 0 work too. Zeros, highs and
+  lows, and where two curves cross are marked, and read with the pointer
+  over them, as are the curves' values anywhere else. Areas given by
+  inequalities (y ≥ x, x² + y² ≤ 1) are shaded, on axes with one scale.
 - **Quiz** (` ```lumo-quiz `): up to ten multiple-choice questions, one at a
   time. Answer with a click or the keys 1 to 6; Lumo marks it at once and
   explains, then gives the score and asks the missed ones again if you like.
@@ -865,7 +889,12 @@ models included, and the chat draws them (`src/views/rich/`):
   web** turns it off: the card then shows only the site and the button, and
   nothing is downloaded.
 
-A block the chat can't read is shown as it was written, as code.
+A block the chat can't read is shown as it was written, as code. The
+blocks forgive the ways small local models slip: a callout without its `>`,
+formulas in TeX, a calculator written a field a line, a chart row written
+`label: Q1 | 10, 12`, two right answers in a quiz (either counts). The local
+models are also shown one example of each block, which they copy far better
+than a description.
 
 ### Show the chat your screen
 
