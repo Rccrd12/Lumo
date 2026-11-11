@@ -407,6 +407,14 @@ export class Island {
         if (isComputerTool(req.tool)) this.lastGesture = 0;
         this.closeApproval();
       },
+      sendMail: (revised, requestId) => {
+        const req = State.pendingApproval;
+        void Bridge.log(`decide send (changed) req=${req?.requestId ?? "none"}`);
+        if (!req || req.requestId !== requestId || !req.email) return;
+        Sound.play("approve");
+        void Bridge.approvalMailSend(req.requestId, revised);
+        this.closeApproval();
+      },
       takeKeyboard: () => this.takeKeyboard(),
       answer: (answers, requestId) => {
         const req = State.pendingApproval;
@@ -1690,10 +1698,12 @@ export class Island {
       if (inIsland && !this.wasInIsland) {
         this.fsm.mouseEntered();
         this.scheduleHoverOpen();
+        this.compact.pointer(true);
       }
       if (!inIsland && this.wasInIsland) {
         this.cancelHoverOpen();
         this.fsm.mouseLeft();
+        this.compact.pointer(false);
       }
       // The closed island's own buttons (the music, a timer) are for clicking:
       // resting on them never opens it; leaving them for the rest of it does.

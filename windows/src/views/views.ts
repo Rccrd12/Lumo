@@ -4,7 +4,7 @@ import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
 import { StepsCard } from "./steps";
-import { State, keepPillPlaces, type AgentTask, type OutgoingEmail } from "../core/state";
+import { State, keepPillPlaces, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../character/minibots";
 import { planAskSteps } from "./plan-ask";
@@ -34,6 +34,8 @@ import { showGitHubSection } from "./github";
 import type { ActivitiesAction, ActivitiesData } from "./activities-view";
 import type { ComputerCursor } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
+import { mailEditor, type MailEditor } from "./mail-editor";
+import type { MailRevision } from "../core/mail-edit";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
@@ -48,6 +50,8 @@ export interface ViewActions {
   openUrl(url: string): void;
   /** Answers `requestId` only if it is still the one waiting. */
   decide(d: Decision, requestId: string): void;
+  /** Send on an email's card the user changed: the email as it is on the card, only if `requestId` still waits. */
+  sendMail(revised: MailRevision, requestId: string): void;
   /** The island takes the keyboard, so Y and N answer the card on screen. */
   takeKeyboard(): void;
   /** Answers the question Claude Code asked: question text → chosen label. */
@@ -568,42 +572,12 @@ function foldButton(actions: ViewActions): HTMLElement {
   );
 }
 
-/** The card of an email the AI wants to send (mail.rs send). */
+/** The card of an email the AI wants to send (mail.rs send): the email itself is views/mail-editor.ts. */
 const EMAIL_TEXT = {
   wants: N_("wants to send an email"),
-  from: N_("From"),
-  to: N_("To"),
-  cc: N_("Cc"),
-  subject: N_("Subject"),
-  attachments: N_("Attachments"),
-  noSubject: N_("(no subject)"),
   send: N_("Send"),
   discard: N_("Discard"),
 };
-
-/** The email on its card: who it is from and for, its subject, its files, its whole text. */
-function emailBlock(email: OutgoingEmail): HTMLElement {
-  // Who it goes to wraps onto more lines: every address is on the card, none behind an ellipsis.
-  const line = (label: string, value: string, title = value, wrap = false) =>
-    h("div", { class: "mail-line" }, h("span", { class: "mail-label", text: t(label) }), h("span", { class: wrap ? "mail-value wrap" : "mail-value", text: value, title }));
-  // Each file by its name and size; the full path of each one in the tooltip.
-  const files = email.attachments.map((f) => `${f.name} (${formatSize(f.size)})`).join(", ");
-  // A text longer than the card fades at its foot until it is scrolled to the end.
-  const body = h("div", { class: "mail-body", text: email.body });
-  const more = () => body.classList.toggle("more", body.scrollTop + body.clientHeight < body.scrollHeight - 2);
-  body.addEventListener("scroll", more);
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(more).observe(body);
-  return h(
-    "div",
-    { class: "mail-card" },
-    email.from ? line(EMAIL_TEXT.from, email.from) : null,
-    line(EMAIL_TEXT.to, email.to.join(", "), undefined, true),
-    email.cc.length ? line(EMAIL_TEXT.cc, email.cc.join(", "), undefined, true) : null,
-    line(EMAIL_TEXT.subject, email.subject || t(EMAIL_TEXT.noSubject)),
-    email.attachments.length ? line(EMAIL_TEXT.attachments, files, email.attachments.map((f) => f.path).join("\n")) : null,
-    body,
-  );
-}
 
 /** The new look's card for a plan Claude Code asks to start (concept C2). */
 const PLAN_ASK_TEXT = {
@@ -645,8 +619,18 @@ function buildApproval(actions: ViewActions): ViewHost {
   const stat = h("div", { class: "approval-stat" });
   const mail = h("div", { class: "mail-slot" });
   const row = h("div", { class: "actions approval-actions" });
-  // An email's card has its own buttons, Send and Discard, and no keys: only a click sends.
-  const mailRow = h("div", { class: "actions" });
+  // An email's card has its own buttons, Send and Discard, and no keys: only a
+  // click sends. Beside them what the email's editor says, and its Attach.
+  const mailRow = h("div", { class: "actions mail-actions" });
+  const mailNote = h("div", { class: "mail-note-slot" });
+  const mailAttach = h("div", { class: "mail-attach-slot" });
+  let editor: MailEditor | null = null;
+  const sendBtn = btn(tl(EMAIL_TEXT.send), "primary", () => {
+    if (!editor) return guarded("allow")();
+    const out = editor.send();
+    if (out.kind === "same") guarded("allow")();
+    else if (out.kind === "changed" && performance.now() - shownAt >= CLICK_GUARD_MS && shownFor != null) actions.sendMail(out.revised, shownFor);
+  });
   const sessionAllow = btn(tl("Allow for this session"), "secondary", () => guarded("always")());
   // A plan Claude Code asks to start: approved, and then it edits files without asking (its acceptEdits, for the session).
   const planEdits = btn(tl(PLAN_ASK_TEXT.approveEdits), "secondary", () => guarded("edits")());
@@ -766,7 +750,14 @@ function buildApproval(actions: ViewActions): ViewHost {
       if ((email ? req : null) !== mailFor) {
         mailFor = email ? req : null;
         clear(mail);
-        if (email) mail.append(emailBlock(email));
+        clear(mailNote);
+        clear(mailAttach);
+        editor = email ? mailEditor(email, (blocked) => sendBtn.classList.toggle("off", blocked)) : null;
+        if (editor) {
+          mail.append(editor.el);
+          mailNote.append(editor.note);
+          mailAttach.append(editor.attach);
+        }
       }
       mail.hidden = !email;
       // The email fills the card from the top, clear of the fold button and of its edges.
@@ -831,10 +822,7 @@ function buildApproval(actions: ViewActions): ViewHost {
         allowBtn,
       );
       clear(mailRow);
-      mailRow.append(
-        btn(tl(EMAIL_TEXT.discard), "secondary", guarded("deny")),
-        btn(tl(EMAIL_TEXT.send), "primary", guarded("allow")),
-      );
+      mailRow.append(btn(tl(EMAIL_TEXT.discard), "secondary", guarded("deny")), sendBtn, mailNote, mailAttach);
     },
   };
 }

@@ -14,6 +14,7 @@ import { failureDetail, fullTextDetail, toolStepDetail } from "../core/step-deta
 import { Sound } from "../core/sound";
 import { PillSessions } from "../core/pill-sessions";
 import { State, type ApprovalInfo, type AskedQuestion, type OutgoingEmail } from "../core/state";
+import type { MailLimits } from "../core/mail-edit";
 import { stepsFromMarkdown } from "../core/agent-plan";
 import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
@@ -322,7 +323,7 @@ interface HookPayload {
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
   /** An email the AI wants to send, on a card of its own (mail.rs send). */
-  lumo_mail_send?: { from?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown; attachments?: unknown };
+  lumo_mail_send?: { from?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown; attachments?: unknown; accounts?: unknown; limits?: unknown };
   /** A change the AI wants to make to one email (read, star, move, archive, trash), on a card of its own (mail.rs manage). */
   lumo_mail_action?: { actions?: unknown; folder?: unknown; from?: unknown; subject?: unknown; date?: unknown };
   /** Gemini Live wants to read or open a file the user didn't give it (live.rs may_use). */
@@ -431,7 +432,31 @@ export function outgoingEmail(raw: HookPayload["lumo_mail_send"]): OutgoingEmail
     .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
     .map((f) => ({ name: text(f.name), size: typeof f.size === "number" ? f.size : 0, path: text(f.path) }))
     .filter((f) => f.name);
-  return { from: text(raw.from), to, cc: list(raw.cc), subject: text(raw.subject), body: text(raw.body), attachments };
+  const accounts = list(raw.accounts);
+  const limits = mailLimits(raw.limits);
+  return {
+    from: text(raw.from), to, cc: list(raw.cc), subject: text(raw.subject), body: text(raw.body), attachments,
+    ...(accounts.length > 1 ? { accounts } : {}),
+    ...(limits ? { limits } : {}),
+  };
+}
+
+/** The limits an email's card checks its fields against, when mail.rs gave them all. */
+function mailLimits(raw: unknown): MailLimits | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Partial<Record<keyof MailLimits, unknown>>;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
+  const limits = { recipients: n(r.recipients), subject: n(r.subject), body: n(r.body), files: n(r.files), bytes: n(r.bytes) };
+  return Object.values(limits).every((v) => v != null) ? (limits as MailLimits) : null;
+}
+
+/**
+ * How long an email's card stays: as long as Lumo waits for it (mail.rs, up
+ * to 300 s, room to change it), a second less. 107 s when it does not say.
+ */
+export function mailCardMs(secs: unknown): number {
+  if (typeof secs !== "number" || !Number.isFinite(secs)) return 107_000;
+  return Math.max(500, Math.min(300, Math.max(1, secs)) * 1000 - 1000);
 }
 
 function lastPathComponent(p: string): string {
@@ -1059,7 +1084,8 @@ function handleHook(island: Island, payload: HookPayload) {
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how
       // long it waits. Either way the card goes just before.
-      const cardMs = chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 107_000;
+      const cardMs = email ? mailCardMs(payload.lumo_card_secs)
+        : chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 107_000;
       if (inLine) {
         State.approvalQueue.push({ ...info, ...(!questions && !email && !change && !info.cut && isSimpleRequest(tool, input) ? { simple: true } : {}) });
         void Bridge.log(`permission ${tool} req=${requestId}${fromChat ? " (chat)" : ""} (waiting, ${State.approvalQueue.length + 1} in line)`);

@@ -7,7 +7,8 @@
 // music only while the closed island is on screen.
 
 import {
-  COMPACT_TEXT, Feed, LIVE_COLOR, activityLines, compactNotice, timerLeft,
+  COMPACT_TEXT, Feed, LIVE_COLOR, MAIL_OPEN_DELAY_MS, MAIL_OPEN_W, activityLines, compactNotice, mailOpenHeight, mailPieces,
+  mailReadable, mailTime, timerLeft,
   type AgentActivityInput, type ApprovalPeek, type CompactItem, type CompactLine, type CompactShown, type MailPeek,
   type MediaActivity,
 } from "../core/compact";
@@ -22,7 +23,7 @@ import { COMPACT_SIZES } from "../core/layout";
 import { Live } from "../live/session";
 import { clear, h, svg } from "../views/dom";
 import { ICONS } from "../views/icons";
-import { N_, t } from "../i18n/i18n";
+import { N_, language, t } from "../i18n/i18n";
 
 const MEDIA_TEXT = {
   previous: N_("Previous"),
@@ -147,6 +148,11 @@ export class CompactStrip {
   private uploadFill: HTMLElement | null = null;
   private uploadPct: HTMLElement | null = null;
   private uploadAt = 0;
+  /** The email on show is open under the mouse: wider, all its text, scrolling. */
+  private mailOpen = false;
+  private openTimer: number | null = null;
+  /** The mouse is on the island (pointer). */
+  private inside = false;
 
   private host: CompactHost;
 
@@ -158,15 +164,43 @@ export class CompactStrip {
       Sound.play("finish");
       compactNotice(`${t(due.missed ? REMINDER_TEXT.missed : REMINDER_TEXT.reminder)} · ${due.reminder.text}`, TIMER_COLOR, 30_000);
     });
-    // The email stays while the mouse is on it, and a little after.
-    this.el.addEventListener("mouseenter", () => {
-      if (this.shown?.kind === "mail") Feed.holdMail(Infinity);
-    });
-    this.el.addEventListener("mouseleave", () => {
-      if (this.shown?.kind !== "mail") return;
-      Feed.holdMail(Date.now() + 3000);
-      this.schedule();
-    });
+  }
+
+  /**
+   * The mouse came onto the island or left it (island.ts onCursor). An email
+   * stays while the mouse is on it, and a little after; resting there a
+   * moment opens it, to read all of it, and leaving closes it again.
+   */
+  pointer(inside: boolean) {
+    this.inside = inside;
+    if (this.openTimer != null) window.clearTimeout(this.openTimer);
+    this.openTimer = null;
+    if (this.shown?.kind !== "mail") return;
+    if (inside) {
+      Feed.holdMail(Infinity);
+      this.openTimer = window.setTimeout(() => {
+        this.openTimer = null;
+        this.openMail(true);
+      }, MAIL_OPEN_DELAY_MS);
+      return;
+    }
+    Feed.holdMail(Date.now() + 3000);
+    this.openMail(false);
+    this.schedule();
+  }
+
+  /** Opens or closes the email on show; it opens only when some of it is hidden. */
+  private openMail(open: boolean) {
+    if (open === this.mailOpen || this.shown?.kind !== "mail") return;
+    const card = this.el.querySelector<HTMLElement>(".cp-mail-peek");
+    if (!card) return;
+    if (open && !mailHidesSome(card)) return;
+    this.mailOpen = open;
+    card.classList.toggle("open", open);
+    const text = card.querySelector<HTMLElement>(".cp-mail-text");
+    if (text && !open) text.scrollTop = 0;
+    this.measured = this.measure();
+    this.host.changed();
   }
 
   /** The size the closed island takes for what it shows, or null for the plain one. */
@@ -181,13 +215,24 @@ export class CompactStrip {
   private measure(): { w: number; h: number } | null {
     const s = this.shown;
     if (!s) return null;
-    if (s.kind === "mail") return { ...COMPACT_SIZES.mail };
+    if (s.kind === "mail") return this.mailOpen ? this.openMailSize() : { ...COMPACT_SIZES.mail };
     if (s.kind === "approval") return { ...COMPACT_SIZES.approval };
     const most = COMPACT_SIZES[s.items.length === 1 ? "one" : s.items.length === 2 ? "two" : "many"];
     this.el.classList.add("measure");
     const natural = this.el.scrollWidth;
     this.el.classList.remove("measure");
     return { w: Math.round(Math.min(most.w, natural + 2 * SIDE_ROOM + 4 + newLookEyesRoom())), h: most.h };
+  }
+
+  /** The open email's size: its natural height at the open width, laid out for an instant. */
+  private openMailSize(): { w: number; h: number } {
+    const left = parseFloat(getComputedStyle(this.el).left) || SIDE_ROOM;
+    this.el.style.width = `${MAIL_OPEN_W - left - MAIL_RIGHT_ROOM}px`;
+    this.el.classList.add("measure-open");
+    const natural = this.el.offsetHeight;
+    this.el.classList.remove("measure-open");
+    this.el.style.width = "";
+    return { w: MAIL_OPEN_W, h: mailOpenHeight(natural, COMPACT_SIZES.mail.h) };
   }
 
   /** The simple request on show, if any. */
@@ -255,11 +300,14 @@ export class CompactStrip {
     this.uploadFill = null;
     this.uploadPct = null;
     this.measured = null;
+    this.mailOpen = false;
     const many = s?.kind === "items" && s.items.length > 1;
     this.el.className = [s ? `on ${s.kind}` : "", many ? "many" : "", this.visible ? "shown" : ""].filter(Boolean).join(" ");
     if (!s) return;
     if (s.kind === "mail") {
       this.el.append(this.mailCard(s.mail));
+      // Come while the mouse was already on the island: held, and opened as if it had just come.
+      if (this.inside) window.setTimeout(() => this.pointer(this.inside), 0);
     } else if (s.kind === "approval") {
       this.el.append(this.approvalCard(s.approval));
     } else {
@@ -351,9 +399,13 @@ export class CompactStrip {
   }
 
   private mailCard(m: MailPeek): HTMLElement {
+    const time = mailTime(m.date, new Date(), language());
     const head = h("div", { class: "cp-mail-head" },
       h("span", { class: "cp-icon", style: `color:${MAIL_COLOR}` }, svg(ICONS.envelope, 12, { stroke: 1.8 })),
       h("b", { class: "cp-mail-from", text: m.from || m.address, title: m.address }),
+      m.from && m.address && m.address !== m.from ? h("span", { class: "cp-mail-addr", text: m.address }) : null,
+      h("span", { class: "cp-mail-gap" }),
+      time ? h("span", { class: "cp-mail-time", text: time }) : null,
       this.extraMail > 0 ? h("span", { class: "cp-mail-more", text: t(MAIL_TEXT.more, { count: this.extraMail }) }) : null,
       this.button(ICONS.xmark, t(MAIL_TEXT.dismiss), () => {
         Feed.dismissMail();
@@ -376,10 +428,29 @@ export class CompactStrip {
         }, t(MAIL_TEXT.open), svg(ICONS.arrowUpRight, 10))
         : null,
     );
-    return h("div", { class: "cp-mail" },
+    // All of its text, cut to two lines at rest; open, it scrolls.
+    const text = h("div", { class: "cp-mail-text" });
+    for (const piece of mailPieces(mailReadable(m))) {
+      if (piece.kind === "text") text.append(piece.text);
+      else {
+        text.append(h("button", {
+          class: "cp-mail-link", title: piece.url,
+          onclick: (e: Event) => {
+            e.stopPropagation();
+            void Bridge.openUrl(piece.url);
+          },
+        }, piece.label, svg(ICONS.arrowUpRight, 9)));
+      }
+    }
+    // A text longer than the card fades at its foot until it is scrolled to the end.
+    const more = () => text.classList.toggle("more", text.scrollTop + text.clientHeight < text.scrollHeight - 2);
+    text.addEventListener("scroll", more);
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(more).observe(text);
+    const subject = m.subject || t(MAIL_TEXT.noSubject);
+    return h("div", { class: "cp-mail cp-mail-peek" },
       head,
-      h("div", { class: "cp-mail-subject", text: m.subject || t(MAIL_TEXT.noSubject) }),
-      h("div", { class: "cp-mail-preview", text: m.preview }),
+      h("div", { class: "cp-mail-subject", text: subject, title: subject }),
+      text,
       actions,
     );
   }
@@ -535,6 +606,15 @@ function itemKey(item: CompactItem, now: number): string {
 
 /** Lumo's room on each side of what the closed island says (#compact left and right). */
 const SIDE_ROOM = 36;
+/** The room right of an email or a request (#compact.mail right). */
+const MAIL_RIGHT_ROOM = 10;
+
+/** Whether an email at rest hides some of itself: text past its two lines, or a subject cut. */
+function mailHidesSome(card: HTMLElement): boolean {
+  const text = card.querySelector<HTMLElement>(".cp-mail-text");
+  const subject = card.querySelector<HTMLElement>(".cp-mail-subject");
+  return (text != null && text.scrollHeight > text.clientHeight + 1) || (subject != null && subject.scrollWidth > subject.clientWidth + 1);
+}
 /**
  * The new look, on the top or bottom edge: a little more room after Lumo's
  * eyes, as much as between them and the island's end (look-new.css #compact).

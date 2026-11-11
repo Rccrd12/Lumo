@@ -41,6 +41,9 @@ use crate::session_window;
 
 /// Slightly under lumo-hook's own 110 s wait, so we always answer first.
 const DECISION_TIMEOUT: Duration = Duration::from_secs(108);
+/// An email's card waits longer: its fields can be changed before Send
+/// (mail.rs deliver). lumo-hook's MAIL_SEND_BUDGET counts on it.
+pub const MAIL_CARD_TIMEOUT: Duration = Duration::from_secs(300);
 /// How long the island gets to say "the card is up". This is the whole of B4:
 /// without it, an island that is paused, hidden behind a crashed webview or
 /// simply not listening would leave Claude Code staring at a prompt nobody can
@@ -73,6 +76,15 @@ static AUTO_ALLOWABLE: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 fn with_auto_allowable<T>(f: impl FnOnce(&mut HashSet<String>) -> T) -> T {
     f(AUTO_ALLOWABLE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashSet::new))
+}
+
+/// The cards of an email Lumo itself is about to send (mail.rs deliver): the
+/// only ones whose Send may carry the email as the user changed it on the
+/// card (`answer_mail`). Never an agent's request through the relay.
+static MAIL_CARDS: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+fn with_mail_cards<T>(f: impl FnOnce(&mut HashSet<String>) -> T) -> T {
+    f(MAIL_CARDS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashSet::new))
 }
 
 /// `\\.\pipe\lumo-<sid>` — must match lumo-hook's `pipe_path()` exactly.
@@ -294,7 +306,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // Answered in the terminal (or in the Claude app) instead: Claude Code ends
     // the relay, its end of the connection closes, and the island drops the
     // card at once rather than keep offering a question already settled.
-    let decided = async { Some(wait_for_decision(&id, &mut rx).await) };
+    let decided = async { Some(wait_for_decision(&id, &mut rx, DECISION_TIMEOUT).await) };
     let gone = async {
         client_gone(&mut pipe).await;
         None
@@ -376,9 +388,18 @@ fn pending_request(app: &AppHandle) -> (String, mpsc::Receiver<Reply>) {
 /// Lumo's own Allow / Deny card, for a call of one of the user's tools
 /// (tools.rs): `payload` is shaped as a permission request, and the click
 /// comes back as `allow` or `deny`. None when the island couldn't show it.
+///
+/// An email's card (`lumo_mail_send`) waits MAIL_CARD_TIMEOUT, and its Send
+/// may come back as `{"revised": …}`: the email as the user changed it.
 pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
     let (id, mut rx) = pending_request(app);
     payload["request_id"] = json!(id);
+    let mail = payload.get("lumo_mail_send").is_some_and(Value::is_object);
+    let wait = if mail { MAIL_CARD_TIMEOUT } else { DECISION_TIMEOUT };
+    if mail {
+        payload["lumo_card_secs"] = json!(MAIL_CARD_TIMEOUT.as_secs());
+        with_mail_cards(|set| set.insert(id.clone()));
+    }
     log::line(format!("tool card id={id}"));
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
     let decision = with_card(
@@ -390,12 +411,13 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
         |answered| {
             crate::computer::card_down(app);
             app.state::<Pending>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+            with_mail_cards(|set| set.remove(&id));
             // Nobody answers it any more: it leaves the island.
             if !answered {
                 let _ = app.emit_to(WINDOW_LABEL, "hook-settled", id.clone());
             }
         },
-        wait_for_decision(&id, &mut rx),
+        wait_for_decision(&id, &mut rx, wait),
     )
     .await;
     // A card of Lumo's own is never kept for a session.
@@ -457,7 +479,7 @@ fn note_session_window(pipe: &impl Relay, payload: &Value, event: &str) {
 }
 
 /// Two waits: a short one for "the card is up", then the long one for a human.
-async fn wait_for_decision(id: &str, rx: &mut mpsc::Receiver<Reply>) -> Option<String> {
+async fn wait_for_decision(id: &str, rx: &mut mpsc::Receiver<Reply>, wait: Duration) -> Option<String> {
     match tokio::time::timeout(ACK_TIMEOUT, rx.recv()).await {
         Ok(Some(Reply::Ack)) => {}
         // A click that beats the ack is still a click.
@@ -476,7 +498,7 @@ async fn wait_for_decision(id: &str, rx: &mut mpsc::Receiver<Reply>) -> Option<S
         }
     }
 
-    match tokio::time::timeout(DECISION_TIMEOUT, rx.recv()).await {
+    match tokio::time::timeout(wait, rx.recv()).await {
         Ok(Some(Reply::Decision(d))) => {
             log::line(format!("hook id={id} answered {}", loggable(&d)));
             Some(d)
@@ -492,10 +514,13 @@ async fn wait_for_decision(id: &str, rx: &mut mpsc::Receiver<Reply>) -> Option<S
     }
 }
 
-/// The log says a question was answered, never with what.
+/// The log says a question was answered, or an email changed, never with what.
 fn loggable(decision: &str) -> &str {
-    if decision.starts_with('{') { "a question" } else { decision }
+    if decision.starts_with(REVISED) { "send, as the user changed it" } else if decision.starts_with('{') { "a question" } else { decision }
 }
+
+/// How an email's Send changed by the user starts (`answer_mail`).
+const REVISED: &str = "{\"revised\":";
 
 fn send(app: &AppHandle, request_id: &str, reply: Reply, keep: bool) {
     let sender = {
@@ -536,6 +561,19 @@ pub fn answer(app: &AppHandle, request_id: &str, decision: &str) {
     };
     log::line(format!("decision id={request_id} {word}"));
     send(app, request_id, Reply::Decision(word.to_string()), false);
+}
+
+/// Send on an email's card the user changed (views.ts): the email as it is
+/// now on the card, for mail.rs to check and send instead of the AI's. Only
+/// for a card of Lumo's own email (`ask`); any other request is left as it is.
+pub fn answer_mail(app: &AppHandle, request_id: &str, revised: Value) {
+    if !with_mail_cards(|set| set.contains(request_id)) {
+        log::line(format!("decision id={request_id} refused: not an email's card"));
+        return;
+    }
+    log::line(format!("decision id={request_id} send, as the user changed it"));
+    // One line, as every decision: serde_json escapes the text's own newlines.
+    send(app, request_id, Reply::Decision(json!({ "revised": revised }).to_string()), false);
 }
 
 /// Auto in the island chat's Antigravity CLI run allows a command that only

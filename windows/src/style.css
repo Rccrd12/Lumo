@@ -549,14 +549,127 @@ body {
   color: var(--ink-2);
 }
 
-#compact .cp-mail-preview {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+/* An email on the closed island (island/compact.ts mailCard): who, when, the
+   subject and its text, two lines at rest. The mouse resting on it opens it,
+   wider and as tall as its text, which then scrolls. */
+#compact .cp-mail-peek .cp-mail-from {
+  flex: 0 1 auto;
+}
+
+#compact .cp-mail-addr {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--dim-3);
+  font-size: 10.5px;
+}
+
+#compact .cp-mail-gap {
+  flex: 1;
+}
+
+#compact .cp-mail-time {
+  flex: none;
+  color: var(--dim-3);
+  font-size: 10.5px;
+}
+
+#compact .cp-mail-peek .cp-mail-subject {
+  flex: none;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+#compact .cp-mail-peek.open .cp-mail-subject {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  margin-bottom: 2px;
+}
+
+#compact .cp-mail-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 3em;
   overflow: hidden;
   white-space: normal;
-  color: var(--dim);
-  font-size: 11px;
+  overflow-wrap: anywhere;
+  color: #c9ccd2;
+  font-size: 11.5px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+/* Open, its lines as the email has them. */
+#compact .cp-mail-peek.open .cp-mail-text {
+  max-height: none;
+  overflow-y: auto;
+  white-space: pre-line;
+  padding-right: 10px;
+  color: #d4d7dc;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+#compact .cp-mail-text.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.2em), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.2em), transparent);
+}
+
+#compact .cp-mail-text::-webkit-scrollbar {
+  width: 3px;
+}
+
+#compact .cp-mail-text::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+}
+
+#compact .cp-mail-text::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 2px;
+}
+
+/* An address on the web in its text: the site's name, opened on a click. */
+#compact .cp-mail-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 17px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(158, 197, 255, 0.1);
+  color: #9ec5ff;
+  font: inherit;
+  font-size: 0.92em;
+  line-height: 1;
+  vertical-align: 1px;
+  cursor: pointer;
+}
+
+#compact .cp-mail-link:hover {
+  background: rgba(158, 197, 255, 0.18);
+}
+
+#compact .cp-mail-peek .cp-mail-actions {
+  flex: none;
+  padding-top: 4px;
+}
+
+#compact .cp-mail-peek .cp-action.quiet {
+  margin-left: auto;
+}
+
+/* Laid out for an instant at the open width, as tall as it is (openMailSize). */
+#compact.mail.measure-open {
+  right: auto;
+  bottom: auto;
+}
+
+#compact.measure-open .cp-mail-peek,
+#compact.measure-open .cp-mail-text {
+  flex: none;
 }
 
 #compact .cp-mail-actions {
@@ -1531,6 +1644,284 @@ body {
   min-height: 0;
   overflow-y: auto;
   user-select: text;
+}
+
+/* The email can be changed before Send (views/mail-editor.ts). At rest it
+   reads as above; a click on a field turns the card into a form. */
+.mail-edit .mail-field {
+  position: relative;
+  align-items: center;
+  min-height: 15px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  cursor: text;
+}
+
+.mail-edit .mail-field[hidden],
+.mail-edit .mail-cc-link[hidden] {
+  display: none;
+}
+
+.mail-edit .mail-pen {
+  display: none;
+  margin-left: auto;
+  color: var(--dim);
+  flex: none;
+}
+
+.mail-edit:not(.editing) .mail-field:hover {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.mail-edit:not(.editing) .mail-field:hover .mail-pen {
+  display: inline-flex;
+}
+
+.mail-edit .mail-input,
+.mail-edit .mail-add {
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  user-select: text;
+  cursor: text;
+}
+
+.mail-edit .mail-input {
+  flex: 1 1 auto;
+  height: 15px;
+  text-overflow: ellipsis;
+}
+
+.mail-edit .mail-input::placeholder,
+.mail-edit .mail-add::placeholder {
+  color: var(--dim-3);
+}
+
+.mail-edit select.mail-input {
+  flex: 0 1 auto;
+  appearance: none;
+  cursor: pointer;
+}
+
+.mail-edit .mail-from-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mail-edit .mail-from-arrow {
+  display: none;
+  position: absolute;
+  right: 8px;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+.mail-edit.editing .mail-from-arrow {
+  display: inline-flex;
+}
+
+.mail-edit.editing select.mail-input {
+  padding-right: 24px;
+}
+
+.mail-edit select.mail-input option {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+.mail-edit .mail-people,
+.mail-edit .mail-files {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+}
+
+.mail-edit .mail-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mail-edit .mail-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-edit .mail-chip-x {
+  display: none;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.mail-edit .mail-chip-x:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+/* At rest the addresses and files read as a list, as before. */
+.mail-edit:not(.editing) .mail-chip:not(:last-of-type)::after {
+  content: ",";
+  margin-right: 4px;
+}
+
+.mail-edit:not(.editing) .mail-add,
+.mail-edit:not(.editing) .mail-cc-link {
+  display: none;
+}
+
+.mail-edit .mail-cc-link {
+  flex: none;
+  align-self: flex-start;
+  padding: 2px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mail-edit .mail-cc-link:hover {
+  color: var(--ink);
+}
+
+/* The form: each field in its box, the addresses and files as chips. */
+.mail-edit.editing {
+  gap: 4px;
+}
+
+.mail-edit.editing .mail-field {
+  min-height: 24px;
+}
+
+.mail-edit.editing .mail-people,
+.mail-edit.editing .mail-files {
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.mail-edit.editing .mail-chip {
+  height: 20px;
+  padding: 0 3px 0 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.09);
+  font-size: 11.5px;
+}
+
+.mail-edit.editing .mail-chip-x {
+  display: inline-grid;
+}
+
+.mail-edit.editing .mail-chip.bad {
+  background: rgba(244, 80, 94, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(244, 80, 94, 0.55);
+  color: var(--red-text);
+}
+
+.mail-edit.editing .mail-add {
+  flex: 1 1 90px;
+  height: 20px;
+}
+
+.mail-edit.editing .mail-input {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.mail-edit.editing textarea.mail-body {
+  padding: 6px 8px;
+  border-top-color: transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.mail-edit.editing .mail-input:focus,
+.mail-edit.editing textarea.mail-body:focus {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+
+/* The text: as .mail-body above, in a field. */
+.mail-edit textarea.mail-body {
+  display: block;
+  width: 100%;
+  resize: none;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  outline: 0;
+  padding: 6px 0 0;
+  background: transparent;
+  color: #e8e9ec;
+  cursor: text;
+}
+
+/* Send's line: what the editor says, then Attach at the end. */
+.mail-actions {
+  align-items: center;
+}
+
+.mail-note-slot {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mail-note {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim-3);
+  font: 400 11.5px var(--font);
+}
+
+.mail-note.bad {
+  color: var(--red-text);
+}
+
+.mail-note.edited {
+  color: var(--dim);
+}
+
+.mail-undo {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.mail-attach-slot {
+  flex: none;
 }
 
 .stack {
