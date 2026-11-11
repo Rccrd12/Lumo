@@ -1053,7 +1053,8 @@ async fn windows(app: &AppHandle, w: &Watch, now: u64) {
             if !due(w.id, now, NOTIFICATIONS_EVERY_MS) {
                 return;
             }
-            let read = tauri::async_runtime::spawn_blocking(crate::notifications::read).await;
+            let handle = app.clone();
+            let read = tauri::async_runtime::spawn_blocking(move || crate::notifications::read(&handle)).await;
             let list = match read {
                 Ok(Ok(list)) => list,
                 Ok(Err(why)) => {
