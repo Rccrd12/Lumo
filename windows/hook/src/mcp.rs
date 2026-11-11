@@ -528,12 +528,35 @@ pub const USER_SERVER: &str = "lumo_tools";
 /// for each of these calls itself before it runs (tools.rs in the app), so
 /// the hook needs no card of its own.
 pub fn user_tool_call(tool: &str, input: Option<&Value>) -> bool {
+    user_tool_call_with(tool, input, &user_tool_exists)
+}
+
+/// Whether the user has a tool with this id in Lumo: its folder, with its
+/// tool.json, in %APPDATA%\com.rccrd12.lumo\tools (tools.rs in the app).
+fn user_tool_exists(id: &str) -> bool {
+    let plain = !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    plain
+        && std::env::var_os("APPDATA").is_some_and(|dir| {
+            std::path::Path::new(&dir).join("com.rccrd12.lumo").join("tools").join(id).join("tool.json").is_file()
+        })
+}
+
+/// `user_tool_call`, with `exists` saying whether the user has a tool of that id.
+fn user_tool_call_with(tool: &str, input: Option<&Value>, exists: &dyn Fn(&str) -> bool) -> bool {
     let lower = tool.to_ascii_lowercase();
     // After the server's name, the separator the agent put before it:
     // "mcp__lumo_tools_gh__x" is the tool of a server named lumo_tools_gh.
     let named = |prefix: &str, seps: &[&str]| seps.iter().any(|s| lower.starts_with(&format!("{prefix}{USER_SERVER}{s}")));
-    if named("mcp__", &["__"]) || named("mcp_", &["_"]) || named("", &["__", "_", "/", "."]) {
+    if named("mcp__", &["__"]) || named("", &["__", "/", "."]) {
         return true;
+    }
+    // With one `_` on both sides (Antigravity's "mcp_<server>_<tool>"), the
+    // name can't tell server lumo_tools' tool gh_x from server lumo_tools_gh's
+    // tool x: only a tool the user really has in Lumo goes without a card.
+    for prefix in ["mcp_", ""] {
+        if let Some(id) = lower.strip_prefix(&format!("{prefix}{USER_SERVER}_")) {
+            return exists(id);
+        }
     }
     if !lower.contains("mcp") {
         return false;
@@ -965,7 +988,9 @@ mod tests {
     #[test]
     fn the_users_own_tools_are_asked_for_by_lumo_not_by_the_hook() {
         assert!(user_tool_call("mcp__lumo_tools__pdfcraft", None));
-        assert!(user_tool_call("mcp_lumo_tools_pdfcraft", None));
+        let has = |id: &str| ["pdfcraft", "gh_x"].contains(&id);
+        assert!(user_tool_call_with("mcp_lumo_tools_pdfcraft", None, &has));
+        assert!(user_tool_call_with("lumo_tools_pdfcraft", None, &has));
         let call = json!({ "ServerName": "lumo_tools", "ToolName": "pdfcraft", "Arguments": "{}" });
         assert!(user_tool_call("call_mcp_tool", Some(&call)));
         assert!(user_tool_call("call_mcp_tool", Some(&json!(call.to_string()))), "its input as JSON text");
@@ -979,6 +1004,11 @@ mod tests {
         assert!(!user_tool_call("mcp__lumo_tools_gh__create_issue", None), "a server named lumo_tools_gh");
         assert!(crate::reply::island_card("mcp__lumo_tools_gh__create_issue", None));
         assert!(user_tool_call("lumo_tools__pdfcraft", None) && user_tool_call("lumo_tools/pdfcraft", None));
+        // One `_` on both sides: only a tool the user has in Lumo.
+        assert!(!user_tool_call_with("mcp_lumo_tools_gh_create_issue", None, &has), "server lumo_tools_gh's tool");
+        assert!(user_tool_call_with("mcp_lumo_tools_gh_x", None, &has), "the user's own gh_x");
+        assert!(!user_tool_call_with("lumo_tools_gh_create_issue", None, &has));
+        assert!(!user_tool_exists("") && !user_tool_exists("..\\x") && !user_tool_exists("a/b"));
         assert!(!user_tool_call("run_command", Some(&call)), "only an MCP call");
     }
 
