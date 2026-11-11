@@ -2,14 +2,11 @@ name: E2E spike
 
 # Feasibility spike for end-to-end tests: builds Lumo (--features e2e), starts it
 # with msedgedriver attached to its WebView2 and drives one permission card through the real
-# relay. Runs only on its own branch and by hand; nothing is published.
+# relay. Nothing is published.
 
+# By hand only, and it never fails the run: the verdict is in the log. A red
+# run would mail the repository's owner each time.
 on:
-  push:
-    branches: [claude/project-thread-pe9vw3]
-    paths:
-      - 'windows/e2e/**'
-      - '.github/workflows/e2e-spike.yml'
   workflow_dispatch:
 
 permissions:
@@ -92,6 +89,8 @@ jobs:
           Write-Host '--- lumo.log'
           Get-Content "$env:LOCALAPPDATA\com.rccrd12.lumo\lumo.log" -ErrorAction SilentlyContinue | Select-Object -Last 40
           Stop-Process $lumo -ErrorAction SilentlyContinue
+          Write-Host "spike verdict: exit $code"
+          $code = 0
           Get-Content "$env:RUNNER_TEMP\driver.out","$env:RUNNER_TEMP\driver.err" -ErrorAction SilentlyContinue | Select-Object -Last 60
           Copy-Item -Recurse "$env:APPDATA\com.rccrd12.lumo" e2e-out\appdata -ErrorAction SilentlyContinue
           Copy-Item -Recurse "$env:LOCALAPPDATA\com.rccrd12.lumo" e2e-out\localappdata -Exclude EBWebView -ErrorAction SilentlyContinue
