@@ -178,16 +178,23 @@ export class Lumo {
    * until it sits on the element, as an eye following it would.
    */
   async aim(id) {
-    // The element's centre, or for one partly under others (a resize grip
-    // under the chat's field) the first point along its middle that is its own.
+    // The element's centre, inside the island's shape: the mouse goes through
+    // the window everywhere else (a resize grip sits half outside the island,
+    // so its own centre is on that border). For one partly under others (a
+    // grip under the chat's field), the first point along its middle that is
+    // its own.
     const where = () => this.d.js(`
       const el = arguments[0], r = devicePixelRatio, b = el.getBoundingClientRect();
-      let cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      const isl = document.getElementById('island').getBoundingClientRect();
+      let L = Math.max(b.left, isl.left + 1), R = Math.min(b.right, isl.right - 1);
+      let T = Math.max(b.top, isl.top + 1), B = Math.min(b.bottom, isl.bottom - 1);
+      if (R <= L || B <= T) { L = b.left; R = b.right; T = b.top; B = b.bottom; }
+      let cx = (L + R) / 2, cy = (T + B) / 2;
       const own = (x, y) => { const e = document.elementFromPoint(x, y); return e === el || el.contains(e); };
       if (!own(cx, cy)) {
-        const tall = b.height >= b.width;
+        const tall = B - T >= R - L;
         for (let i = 1; i < 40; i++) {
-          const x = tall ? cx : b.left + (b.width * i) / 40, y = tall ? b.top + (b.height * i) / 40 : cy;
+          const x = tall ? cx : L + ((R - L) * i) / 40, y = tall ? T + ((B - T) * i) / 40 : cy;
           if (own(x, y)) { cx = x; cy = y; break; }
         }
       }
