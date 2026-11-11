@@ -366,8 +366,12 @@ body {
   text-overflow: ellipsis;
 }
 
-/* A line about someone: their name takes at most 45 % of it and is cut first;
-   what they are doing keeps the rest (island/compact.ts). */
+/* A line about someone (island/compact.ts): whole when it fits. When it does
+   not, the name is cut first, down to 45 % of the line, and what they are
+   doing keeps the rest. Each part may shrink only to its own width or its
+   share, whichever is smaller (min-width: auto with a width, overflow: clip so
+   that minimum counts). A max-width in % would be read against the line's
+   uncut width and leave a hole on the right. */
 #compact .cp-line {
   flex: 0 1 auto;
   min-width: 0;
@@ -375,13 +379,19 @@ body {
   white-space: pre;
 }
 
+#compact .cp-lead,
+#compact .cp-rest {
+  flex: 0 1 content;
+  min-width: auto;
+  overflow: clip;
+}
+
 #compact .cp-lead {
-  max-width: 45%;
-  flex: 0 0 auto;
+  width: 45%;
 }
 
 #compact .cp-rest {
-  flex: 0 1 auto;
+  width: 55%;
 }
 
 /* One live activity: in the middle, as wide as it needs. Several: side by
