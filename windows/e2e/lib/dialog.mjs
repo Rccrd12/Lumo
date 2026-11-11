@@ -42,11 +42,18 @@ if (-not $box) {
 }
 $all = $box.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
 $text = ($all | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join " | "
-$buttons = $all | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button }
+# A box's buttons are what can be pressed in it (a task dialog's own
+# buttons are not all of control type Button).
+$invoke = [System.Windows.Automation.InvokePattern]::Pattern
+$buttons = @($all | Where-Object { $p = $null; $_.Current.Name -and $_.TryGetCurrentPattern($invoke, [ref]$p) })
 $names = ($buttons | ForEach-Object { $_.Current.Name }) -join " | "
 $hit = $buttons | Where-Object { $_.Current.Name -eq $Press } | Select-Object -First 1
-if (-not $hit) { Write-Output ("NOBUTTON" + $tab + $names + $tab + $text); exit }
-$hit.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+if (-not $hit) {
+  $kinds = ($all | ForEach-Object { $_.Current.ControlType.ProgrammaticName + " '" + $_.Current.Name + "'" }) -join " | "
+  Write-Output ("NOBUTTON" + $tab + $names + $tab + $kinds)
+  exit
+}
+$hit.GetCurrentPattern($invoke).Invoke()
 Write-Output ("PRESSED" + $tab + $names + $tab + $text)
 `;
 
