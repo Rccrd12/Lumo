@@ -575,13 +575,15 @@ impl Assembly {
     fn event(&mut self, event: &Value) -> Result<bool, String> {
         let index = event["index"].as_u64().map(|i| i as usize);
         match event["type"].as_str().unwrap_or_default() {
-            "message_start" => self.message = Some(event["message"].clone()),
+            // Only objects are kept: writing into anything else would panic.
+            "message_start" => self.message = event["message"].is_object().then(|| event["message"].clone()),
             "content_block_start" => {
                 let Some(i) = index.filter(|i| *i < 4096) else { return Ok(false) };
                 while self.blocks.len() <= i {
                     self.blocks.push(Value::Null);
                 }
-                self.blocks[i] = event["content_block"].clone();
+                let block = &event["content_block"];
+                self.blocks[i] = if block.is_object() { block.clone() } else { Value::Null };
                 // A text block may open with text of its own.
                 if let Some(text) = self.blocks[i]["text"].as_str().filter(|t| !t.is_empty() && self.blocks[i]["type"] == "text") {
                     self.text.push_str(text);
@@ -634,6 +636,9 @@ impl Assembly {
                         }
                     }
                     if let Some(used) = event["usage"].as_object() {
+                        if !message["usage"].is_object() {
+                            message["usage"] = json!({});
+                        }
                         for (k, v) in used {
                             message["usage"][k] = v.clone();
                         }
@@ -992,6 +997,27 @@ mod tests {
         let mut a = Assembly::default();
         let e = a.line(r#"data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#).unwrap_err();
         assert_eq!(e, "Claude API: Overloaded");
+    }
+
+    #[test]
+    fn a_stream_of_the_wrong_shapes_is_no_panic() {
+        // A proxy set through the base address may send anything: values that
+        // are not objects where objects go are left out, never written into.
+        let (message, texts) = assemble(&[
+            r#"data: {"type":"message_start","message":{"content":[],"usage":5}}"#,
+            r#"data: {"type":"content_block_start","index":0,"content_block":"text"}"#,
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}"#,
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"citations_delta","citation":1}}"#,
+            r#"data: {"type":"content_block_stop","index":0}"#,
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}"#,
+            r#"data: {"type":"message_stop"}"#,
+        ]);
+        assert_eq!(texts, ["Hi"]);
+        let message = message.unwrap();
+        assert_eq!(message["usage"]["output_tokens"], 2);
+        assert_eq!(message["content"][0]["text"], "Hi");
+        let (message, _) = assemble(&[r#"data: {"type":"message_start","message":[1]}"#, r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#, r#"data: {"type":"message_stop"}"#]);
+        assert!(message.is_err(), "no message to put together");
     }
 
     #[test]

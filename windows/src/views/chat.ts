@@ -451,6 +451,7 @@ export function plainQuestion(text: string): string {
       return line
         .replace(/^(\s*)(?=!\[)/, `$1${NOT_A_CARD}`)
         .replace(/^(\s*>\s*)(?=\[!)/, `$1${NOT_A_CARD}`)
+        .replace(/^(\s*)(?=(?:\*\*)?\[!)/, `$1${NOT_A_CARD}`)
         .replace(/^(\s*[-*+][ \t]+)(?=\[[ xX]\])/, `$1${NOT_A_CARD}`);
     })
     .join("\n");
@@ -3783,6 +3784,18 @@ export function buildPrompt(
     else void submit(text);
   };
 
+  /**
+   * `text`, which could not go into `chatId` (another chat came on screen),
+   * waits above that chat's field and goes once it is back. A question that
+   * waited already gives way to one queued since.
+   */
+  function waitAgain(chatId: string, text: string, wasQueued: boolean) {
+    const before = queued.get(chatId);
+    if (before != null && wasQueued) return;
+    queued.set(chatId, before ? `${before}\n${text}` : text);
+    drawQueue();
+  }
+
   async function submit(auto?: string, queuedText?: string) {
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
@@ -3839,10 +3852,9 @@ export function buildPrompt(
         preparing = false;
       }
       if (State.chatId !== askedIn) {
-        if (queuedText != null && !queued.has(askedIn)) {
-          queued.set(askedIn, query);
-          drawQueue();
-        }
+        // A question that waited, or a message Lumo wrote itself (a watch
+        // that fired), waits above that chat's field; what is typed stays there.
+        if (!typed) waitAgain(askedIn, query, queuedText != null);
         return;
       }
     }
@@ -3876,11 +3888,9 @@ export function buildPrompt(
       // field rather than into it.
       if (State.chatId !== askedIn) {
         if (typed && !input.value.trim()) setInput(query);
-        // A question that waited above the field waits there again.
-        else if (queuedText != null && !queued.has(askedIn)) {
-          queued.set(askedIn, query);
-          drawQueue();
-        }
+        // A question that waited above the field, or Lumo's own message,
+        // waits there again.
+        else if (!typed) waitAgain(askedIn, query, queuedText != null);
         return;
       }
 

@@ -7,7 +7,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeDom } from "./fakedom.mjs";
-import { calls, internals, sent } from "./tauri.mjs";
+import { calls, emit, internals, sent } from "./tauri.mjs";
 
 const mem = new Map();
 globalThis.localStorage = {
@@ -162,6 +162,39 @@ test("the quiz's more questions wait above the field while an answer is written,
   assert.match(queries()[2], /^Quiz me with 3 more questions/);
 });
 
+test("Lumo's own message waits for its chat when another chat opens while it is compacted", async () => {
+  State.settings = { ...State.settings, chatProvider: "lmstudio" };
+  view.sync();
+  answers.chat_send = { text: "```lumo-quiz Gain\n? Gain?\n- 1\n+ 2\n```", turns: 2 };
+  await ask("quiz me");
+  const askedIn = State.chatId;
+  // The chat is nearly full: the next message compacts it first.
+  emit("chat-usage", { provider: State.settings.chatProvider, context: { chat: askedIn, used: 90_000, total: 100_000 } });
+  let compacted;
+  answers.chat_compact = () =>
+    new Promise((resolve) => {
+      compacted = resolve;
+    });
+  moreQuestions(rows()[1]);
+  await flush();
+  assert.ok(compacted, "it compacts first");
+  // Another chat opens meanwhile.
+  State.chatId = `${askedIn}-other`;
+  State.chatHistory = [];
+  view.sync();
+  compacted(null);
+  await flush();
+  await flush();
+  assert.equal(queries().length, 1, "not sent into the other chat");
+  // Back in its chat, it goes.
+  State.chatId = askedIn;
+  view.sync();
+  await flush();
+  await flush();
+  assert.equal(queries().length, 2);
+  assert.match(queries()[1], /^Quiz me with 3 more questions/);
+});
+
 test("while a question is edited, the quiz's more questions go nowhere", async () => {
   answers.chat_send = { text: "```lumo-quiz Gain\n? Gain?\n- 1\n+ 2\n```", turns: 2 };
   await ask("quiz me");
@@ -192,6 +225,16 @@ test("the user's own question shows no cards: a task list, an image, an alert an
   assert.equal(queries().at(-1), question);
   // The same lines in an answer are cards; in a code block they stay as written.
   assert.equal(plainQuestion("```md\n- [ ] a\n![x](https://e.com/a.png)\n```"), "```⁠md\n- [ ] a\n![x](https://e.com/a.png)\n```");
+});
+
+test("a callout written with no quote in the user's question stays as written", async () => {
+  answers.chat_send = { text: "ok", turns: 2 };
+  await ask("[!WARNING] my build fails on CI\n**[!NOTE]** why?");
+  const bubble = rows()[0].querySelector(".bubble");
+  assert.equal(bubble.find(".rc-callout").length, 0);
+  assert.equal(bubble.textContent.includes("[!WARNING] my build fails on CI"), true);
+  assert.equal(plainQuestion("[!WARNING] x"), "\u2060[!WARNING] x");
+  assert.equal(plainQuestion("  **[!NOTE]** x"), "  \u2060**[!NOTE]** x");
 });
 
 test("a question's code block closes only on a bare fence as long as its own", () => {
