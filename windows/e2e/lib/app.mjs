@@ -155,22 +155,42 @@ export class Lumo {
    * (Rust lets clicks through it everywhere else), and presses.
    */
   async click(id) {
-    const centre = () => this.d.js(`
-      const r = devicePixelRatio, b = arguments[0].getBoundingClientRect();
-      return { x: (screenX + b.left + b.width / 2) * r, y: (screenY + b.top + b.height / 2) * r };`, this.d.ref(id));
-    // The island may grow or shift as the cursor comes onto it: aim again
-    // until the target stays put, as an eye following it would.
-    let at = await centre();
-    for (let i = 0; i < 4; i++) {
-      await this.mouse.move(at.x, at.y);
-      await sleep(300);
-      const now = await centre();
-      if (Math.abs(now.x - at.x) < 2 && Math.abs(now.y - at.y) < 2) break;
-      at = now;
-    }
+    await this.aim(id);
     await this.mouse.down();
     await sleep(50);
     await this.mouse.up();
+  }
+
+  /**
+   * Puts the real cursor on an element's centre and leaves it there. The
+   * island may grow or shift as the cursor comes onto it, and the page may
+   * place the cursor a few pixels from where the screen maths say: the page's
+   * own mousemove tells where the cursor really is, and the aim is corrected
+   * until it sits on the element, as an eye following it would.
+   */
+  async aim(id) {
+    const where = () => this.d.js(`
+      const r = devicePixelRatio, b = arguments[0].getBoundingClientRect();
+      const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      return { cx, cy, x: (screenX + cx) * r, y: (screenY + cy) * r, r, seen: window.__e2eMove ?? null };`, this.d.ref(id));
+    let t = await where();
+    let at = { x: t.x, y: t.y };
+    for (let i = 0; i < 6; i++) {
+      await this.mouse.move(at.x, at.y);
+      await sleep(250);
+      t = await where();
+      // Where the page saw the cursor, against where the element's centre is now.
+      const dx = t.seen ? t.cx - t.seen[0] : t.x - at.x;
+      const dy = t.seen ? t.cy - t.seen[1] : t.y - at.y;
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) break;
+      at = { x: at.x + dx * t.r, y: at.y + dy * t.r };
+    }
+    const hit = await this.d.js(`
+      const m = window.__e2eMove; if (!m) return "no mousemove seen";
+      const e = document.elementFromPoint(m[0], m[1]);
+      return arguments[0] === e || arguments[0].contains(e) ? "on target" : "on " + (e ? e.className || e.tagName : "nothing");`, this.d.ref(id));
+    if (hit !== "on target") console.log(`    · aim: ${hit}`);
+    return hit;
   }
 
   /** What the page saw of the last mouse press (set by watchPresses), for a flow's story. */
@@ -183,6 +203,7 @@ export class Lumo {
     await this.d.js(`
       if (!window.__e2eWatch) {
         window.__e2eWatch = true;
+        window.addEventListener("mousemove", (e) => { window.__e2eMove = [e.clientX, e.clientY]; }, true);
         window.addEventListener("mousedown", (e) => {
           const t = e.target;
           window.__e2ePress = { at: [e.clientX, e.clientY], target: (t.id ? "#" + t.id : "") + "." + String(t.className || t.tagName).split(" ").join(".") };

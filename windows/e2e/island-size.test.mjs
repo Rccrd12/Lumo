@@ -19,16 +19,13 @@ const widthOf = async () => (await app.islandBox()).cssW;
 
 /** Drags the island's right edge by `dx` page pixels, then puts the cursor back on it. */
 async function dragRight(dx) {
-  const grip = await app.onScreen(".edge.edge-right.on");
+  const grip = await d.find(".edge.edge-right.on");
   assert.ok(grip, "the island's right edge can be dragged");
-  const r = (await app.screen()).r;
   const before = await widthOf();
-  step(`drags the right edge by ${dx} px from ${before} px (grip at ${Math.round(grip.x)}, ${Math.round(grip.y)})`);
-  // The cursor onto the island first, so it takes the mouse, then the grip.
-  const start = await app.islandBox();
-  await app.mouse.move(start.x + start.w / 2, start.y + 20);
-  await sleep(300);
-  await app.mouse.drag(grip, { x: grip.x + dx * r, y: grip.y });
+  const hit = await app.aim(grip);
+  step(`drags the right edge by ${dx} px from ${before} px (cursor ${hit})`);
+  const r = (await app.screen()).r;
+  await app.mouse.drag(null, { dx: dx * r, dy: 0 });
   await sleep(800);
   step(`now ${await widthOf()} px; the page's last press: ${JSON.stringify(await app.lastPress())}`);
   const box = await app.islandBox();
@@ -49,7 +46,22 @@ async function openHome() {
   await d.visible(".home-field", 8_000, "the home's Ask me anything field");
 }
 
+flow(G, "The size picked is kept after Lumo restarts", app, async () => {
+  await openHome();
+  await dragRight(-200);
+  const before = await widthOf();
+  step(`home at ${before} px; Lumo restarts`);
+  await app.closed();
+  await app.quit();
+  await app.launch({ fresh: false });
+  await openHome();
+  const afterRestart = await widthOf();
+  step(`home at ${afterRestart} px after the restart`);
+  assert.ok(Math.abs(afterRestart - before) <= 2, `the home was ${before} px wide before the restart and ${afterRestart} px after`);
+});
+
 flow(G, "Resizing the chat leaves the home's size alone", app, async () => {
+  await app.closed();
   await openHome();
   await dragRight(-400);
   const home = await widthOf();
@@ -73,18 +85,3 @@ flow(G, "Resizing the chat leaves the home's size alone", app, async () => {
   step(`home is ${homeAfter} px`);
   assert.ok(Math.abs(homeAfter - home) <= 2, `the home was ${home} px wide and is ${homeAfter} px after the chat was widened`);
 }, { todo: "the island has one shared size, so the chat's width carries over to the home (reported 11/11/2026)" });
-
-flow(G, "The size picked is kept after Lumo restarts", app, async () => {
-  await app.closed();
-  await openHome();
-  await dragRight(-200);
-  const before = await widthOf();
-  step(`home at ${before} px; Lumo restarts`);
-  await app.closed();
-  await app.quit();
-  await app.launch({ fresh: false });
-  await openHome();
-  const afterRestart = await widthOf();
-  step(`home at ${afterRestart} px after the restart`);
-  assert.ok(Math.abs(afterRestart - before) <= 2, `the home was ${before} px wide before the restart and ${afterRestart} px after`);
-});

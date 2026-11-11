@@ -59,7 +59,8 @@ export class Mouse {
   }
 
   move(x, y) {
-    return this.send(`move ${Math.round(x)} ${Math.round(y)}`);
+    this.at = { x: Math.round(x), y: Math.round(y) };
+    return this.send(`move ${this.at.x} ${this.at.y}`);
   }
 
   down() {
@@ -70,13 +71,16 @@ export class Mouse {
     return this.send("up");
   }
 
-  /** Presses at `from`, moves to `to` in small steps, releases. */
+  /** Presses where the cursor is (or at `from`), moves by `to.dx`, `to.dy` in small steps, releases. */
   async drag(from, to, steps = 20) {
-    await this.move(from.x, from.y);
-    await new Promise((r) => setTimeout(r, 150));
+    if (from) {
+      await this.move(from.x, from.y);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    const start = from ?? this.at;
     await this.down();
     for (let i = 1; i <= steps; i++) {
-      await this.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
+      await this.move(start.x + (to.dx * i) / steps, start.y + (to.dy * i) / steps);
       await new Promise((r) => setTimeout(r, 25));
     }
     await new Promise((r) => setTimeout(r, 150));
