@@ -1,14 +1,15 @@
 // Feasibility spike for end-to-end tests (not a test suite yet).
-// Drives the real Lumo build through tauri-driver (W3C WebDriver on :4444)
+// Drives the real Lumo build (`--features e2e`, DevTools on 127.0.0.1:9222)
+// through msedgedriver (W3C WebDriver on :4444), attached to its WebView2,
 // with nothing but fetch: no WebdriverIO, no new dependency.
 //
-// node e2e/spike.mjs <path to lumo.exe> <path to lumo-hook.exe> <out dir>
+// node e2e/spike.mjs <path to lumo-hook.exe> <out dir>   (Lumo already running)
 
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const [app, hook, out] = process.argv.slice(2);
+const [hook, out] = process.argv.slice(2);
 mkdirSync(out, { recursive: true });
 const W = "http://127.0.0.1:4444";
 const ELEMENT = "element-6066-11e4-a52e-4f735466cecf";
@@ -70,9 +71,18 @@ const base = {
 };
 
 let sid;
+await step("devtools targets", async () => {
+  for (let i = 0; i < 60; i++) {
+    try {
+      const list = await (await fetch("http://127.0.0.1:9222/json/list")).json();
+      return list.map((t) => `${t.type} ${t.url} ${t.title}`);
+    } catch { await sleep(500); }
+  }
+  throw new Error("no DevTools on 9222 after 30 s");
+});
 const session = await step("new session", async () => {
   const v = await wd("POST", "/session", {
-    capabilities: { alwaysMatch: { browserName: "wry", "tauri:options": { application: app } } },
+    capabilities: { alwaysMatch: { browserName: "webview2", "ms:edgeOptions": { debuggerAddress: "127.0.0.1:9222" } } },
   });
   sid = v.sessionId;
   return { sessionId: v.sessionId, caps: Object.keys(v.capabilities || {}) };
@@ -149,4 +159,11 @@ if (settings) {
 
 await step("delete session", () => wd("DELETE", `/session/${sid}`));
 writeFileSync(join(out, "results.json"), JSON.stringify({ windows, results }, null, 2));
+// The run's artifacts are not readable from where this spike is reviewed: the
+// screenshots also go to the log, base64 in lines.
+for (const name of ["island-card", "island-after", "island-session", "start-0", "start-1"]) {
+  let b64;
+  try { b64 = readFileSync(join(out, `${name}.png`)).toString("base64"); } catch { continue; }
+  for (let i = 0; i < b64.length; i += 4000) console.log(`B64 ${name} ${b64.slice(i, i + 4000)}`);
+}
 process.exit(results.verdict.allowed ? 0 : 1);

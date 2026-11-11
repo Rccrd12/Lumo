@@ -1,7 +1,7 @@
 name: E2E spike
 
-# Feasibility spike for end-to-end tests: builds Lumo, starts it under
-# tauri-driver + msedgedriver and drives one permission card through the real
+# Feasibility spike for end-to-end tests: builds Lumo (--features e2e), starts it
+# with msedgedriver attached to its WebView2 and drives one permission card through the real
 # relay. Runs only on its own branch and by hand; nothing is published.
 
 on:
@@ -40,7 +40,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cargo/bin/tauri-driver.exe
             windows/target
           key: e2e-cargo-${{ github.repository }}-${{ hashFiles('windows/Cargo.lock') }}
           restore-keys: |
@@ -54,10 +53,7 @@ jobs:
         run: cargo build --release -p lumo-hook --locked
 
       - name: Build Lumo (debug, no installer)
-        run: npx tauri build --debug --no-bundle
-
-      - name: Install tauri-driver
-        run: if (!(Get-Command tauri-driver -ErrorAction SilentlyContinue)) { cargo install tauri-driver --locked }
+        run: npx tauri build --debug --no-bundle --features e2e --config src-tauri/tauri.e2e.conf.json
 
       - name: msedgedriver matching WebView2
         shell: pwsh
@@ -85,13 +81,17 @@ jobs:
       - name: Spike
         shell: pwsh
         run: |
-          $driver = Start-Process tauri-driver -ArgumentList '--native-driver',"$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\driver.out" -RedirectStandardError "$env:RUNNER_TEMP\driver.err"
-          Start-Sleep 3
+          $driver = Start-Process "$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" -ArgumentList '--port=4444' -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\driver.out" -RedirectStandardError "$env:RUNNER_TEMP\driver.err"
           $t0 = Get-Date
-          node e2e/spike.mjs "$PWD\target\debug\lumo.exe" "$PWD\target\release\lumo-hook.exe" "$PWD\e2e-out"
+          $lumo = Start-Process "$PWD\target\debug\lumo.exe" -PassThru
+          node e2e/spike.mjs "$PWD\target\release\lumo-hook.exe" "$PWD\e2e-out"
           $code = $LASTEXITCODE
-          Write-Host "spike took $(((Get-Date) - $t0).TotalSeconds) s, exit $code"
+          Write-Host "spike took $(((Get-Date) - $t0).TotalSeconds) s, exit $code, lumo exited: $($lumo.HasExited)"
+          Get-Process lumo -ErrorAction SilentlyContinue | Format-Table Id, CPU, WS
           Stop-Process $driver -ErrorAction SilentlyContinue
+          Write-Host '--- lumo.log'
+          Get-Content "$env:LOCALAPPDATA\com.rccrd12.lumo\lumo.log" -ErrorAction SilentlyContinue | Select-Object -Last 40
+          Stop-Process $lumo -ErrorAction SilentlyContinue
           Get-Content "$env:RUNNER_TEMP\driver.out","$env:RUNNER_TEMP\driver.err" -ErrorAction SilentlyContinue | Select-Object -Last 60
           Copy-Item -Recurse "$env:APPDATA\com.rccrd12.lumo" e2e-out\appdata -ErrorAction SilentlyContinue
           Copy-Item -Recurse "$env:LOCALAPPDATA\com.rccrd12.lumo" e2e-out\localappdata -Exclude EBWebView -ErrorAction SilentlyContinue

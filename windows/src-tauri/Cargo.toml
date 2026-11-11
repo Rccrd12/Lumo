@@ -10,6 +10,11 @@ license.workspace = true
 name = "lumo_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# The end-to-end tests' build (windows/e2e): opens the DevTools port the
+# WebDriver attaches to. Never in a release.
+e2e = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
