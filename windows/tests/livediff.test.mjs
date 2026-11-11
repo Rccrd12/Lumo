@@ -141,9 +141,21 @@ test("Stop falls back to `message`, and adds nothing when both are empty", () =>
   assert.equal(task().steps.at(-1), "again");
 });
 
-test("a long final message is kept to 200 characters", () => {
+test("a long final message is kept to 300 characters, cut between two words", () => {
   hook({ hook_event_name: "Stop", last_assistant_message: "word ".repeat(100) });
-  assert.ok(task().finalLine.length <= 200);
+  assert.ok(task().finalLine.length <= 300);
+  assert.match(task().finalLine, /word…$/);
+});
+
+test("StopFailure keeps Claude Code's reason until the next turn", () => {
+  hook({ hook_event_name: "UserPromptSubmit", prompt: "fix" });
+  hook({ hook_event_name: "StopFailure", error: "rate_limit", error_details: "429 Too Many Requests" });
+  assert.deepEqual(task().failure, { code: "rate_limit", details: "429 Too Many Requests" });
+  assert.equal(task().steps.at(-1), "fix");
+  hook({ hook_event_name: "UserPromptSubmit", prompt: "again" });
+  assert.equal(task().failure, null);
+  hook({ hook_event_name: "StopFailure" });
+  assert.equal(task().failure, null);
 });
 
 for (const [what, event] of [

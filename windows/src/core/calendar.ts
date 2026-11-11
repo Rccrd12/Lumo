@@ -116,17 +116,49 @@ export function zonedTime(y: number, mo: number, da: number, h: number, mi: numb
   return wall - offset(first);
 }
 
-/** An iCal date or date-time: its time, and whether it is a whole day. */
-export function parseIcsDate(value: string, params: Record<string, string> = {}): { time: number; allDay: boolean } | null {
+/** Turns a wall time (month from 0; days past the month's end roll over) into a time. */
+type Clock = (y: number, mo: number, da: number, h: number, mi: number, s: number) => number;
+
+const localClock: Clock = (y, mo, da, h, mi, s) => new Date(y, mo, da, h, mi, s).getTime();
+const utcClock: Clock = (y, mo, da, h, mi, s) => Date.UTC(y, mo, da, h, mi, s);
+
+/**
+ * An iCal date or date-time as it is written: its wall time, and the clock
+ * that reads it (UTC, its TZID's zone, or the computer's). A repeating event
+ * keeps its wall time on that clock, so 14:00 UTC stays 14:00 UTC after the
+ * computer's clock changes.
+ */
+interface IcsWall {
+  y: number;
+  mo: number;
+  da: number;
+  h: number;
+  mi: number;
+  s: number;
+  allDay: boolean;
+  clock: Clock;
+}
+
+function readIcsDate(value: string, params: Record<string, string>): IcsWall | null {
   const v = value.trim();
   const d = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(v);
   if (!d) return null;
   const [y, mo, da] = [+d[1], +d[2] - 1, +d[3]];
-  if (d[4] == null || params.VALUE === "DATE") return { time: new Date(y, mo, da).getTime(), allDay: true };
+  if (d[4] == null || params.VALUE === "DATE") return { y, mo, da, h: 0, mi: 0, s: 0, allDay: true, clock: localClock };
   const [h, mi, s] = [+d[4], +d[5], +(d[6] ?? 0)];
-  const zoned = d[7] || !params.TZID ? null : zonedTime(y, mo, da, h, mi, s, params.TZID);
-  const time = d[7] ? Date.UTC(y, mo, da, h, mi, s) : zoned ?? new Date(y, mo, da, h, mi, s).getTime();
-  return { time, allDay: false };
+  let clock = localClock;
+  if (d[7]) clock = utcClock;
+  else if (params.TZID && zoneFormat(params.TZID)) {
+    const tzid = params.TZID;
+    clock = (y, mo, da, h, mi, s) => zonedTime(y, mo, da, h, mi, s, tzid) ?? localClock(y, mo, da, h, mi, s);
+  }
+  return { y, mo, da, h, mi, s, allDay: false, clock };
+}
+
+/** An iCal date or date-time: its time, and whether it is a whole day. */
+export function parseIcsDate(value: string, params: Record<string, string> = {}): { time: number; allDay: boolean } | null {
+  const w = readIcsDate(value, params);
+  return w ? { time: w.clock(w.y, w.mo, w.da, w.h, w.mi, w.s), allDay: w.allDay } : null;
 }
 
 /** "PT1H30M", "P1D": an iCal duration in ms. */
@@ -168,18 +200,17 @@ function parseRule(v: string): Rule | null {
   };
 }
 
-/** The nth (1…5, or -1 for the last) `weekday` of a month, or null. */
-function nthWeekday(year: number, month: number, weekday: number, n: number, h: number, mi: number, s: number): Date | null {
+/** The day of the month of the nth (1…5, or -1 for the last) `weekday`, or null. */
+function nthWeekday(year: number, month: number, weekday: number, n: number): number | null {
+  const days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   if (n > 0) {
-    const first = new Date(year, month, 1).getDay();
+    const first = new Date(Date.UTC(year, month, 1)).getUTCDay();
     const day = 1 + ((weekday - first + 7) % 7) + (n - 1) * 7;
-    const d = new Date(year, month, day, h, mi, s);
-    return d.getMonth() === month ? d : null;
+    return day <= days ? day : null;
   }
-  const lastDay = new Date(year, month + 1, 0);
-  const day = lastDay.getDate() - ((lastDay.getDay() - weekday + 7) % 7) + (n + 1) * 7;
-  const d = new Date(year, month, day, h, mi, s);
-  return d.getMonth() === month ? d : null;
+  const last = new Date(Date.UTC(year, month, days)).getUTCDay();
+  const day = days - ((last - weekday + 7) % 7) + (n + 1) * 7;
+  return day >= 1 ? day : null;
 }
 
 /** The longest one step of each frequency can be (a day with a clock change, a 31-day month, a leap year). */
@@ -196,12 +227,15 @@ const STEPS = 2000;
 /**
  * The starts of a repeating event, in order, up to `to` (STEPS looked at). A
  * rule with no COUNT starts near `from`, so a daily event set up years ago
- * still shows; one with a COUNT is counted from its start.
+ * still shows; one with a COUNT is counted from its start. The days are
+ * counted on the event's own clock (its zone, UTC or the computer's), so an
+ * occurrence keeps the hour it was written with when a clock changes.
  */
-function occurrences(start: number, rule: Rule, from: number, to: number): number[] {
+function occurrences(first: IcsWall, rule: Rule, from: number, to: number): number[] {
   const out: number[] = [];
-  const first = new Date(start);
-  const [h, mi, s] = [first.getHours(), first.getMinutes(), first.getSeconds()];
+  const { y: fy, mo: fm, da: fd } = first;
+  const at = (y: number, mo: number, da: number) => first.clock(y, mo, da, first.h, first.mi, first.s);
+  const start = at(fy, fm, fd);
   const limit = Math.min(to, rule.until ?? Infinity);
   let produced = 0;
   const take = (t: number): boolean => {
@@ -217,38 +251,38 @@ function occurrences(start: number, rule: Rule, from: number, to: number): numbe
     ? Math.max(0, Math.floor((from - start) / (LONGEST_STEP[rule.freq] * rule.interval)) - 1)
     : 0;
   const steps = rule.count == null ? STEPS : Math.max(STEPS, Math.min(rule.count, 100_000));
+  // Weekdays and month lengths from a calendar with no clock changes.
+  const firstDay = new Date(Date.UTC(fy, fm, fd)).getUTCDay();
   for (let step = skip; step < skip + steps; step++) {
     const batch: number[] = [];
     if (rule.freq === "DAILY") {
-      batch.push(new Date(first.getFullYear(), first.getMonth(), first.getDate() + step * rule.interval, h, mi, s).getTime());
+      batch.push(at(fy, fm, fd + step * rule.interval));
     } else if (rule.freq === "WEEKLY") {
-      const weekStart = new Date(first.getFullYear(), first.getMonth(), first.getDate() - first.getDay() + step * 7 * rule.interval);
-      const days = rule.byDay.length ? rule.byDay.map((b) => b.day) : [first.getDay()];
-      for (const day of [...days].sort((a, b) => a - b)) {
-        batch.push(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + day, h, mi, s).getTime());
-      }
+      const weekStart = fd - firstDay + step * 7 * rule.interval;
+      const days = rule.byDay.length ? rule.byDay.map((b) => b.day) : [firstDay];
+      for (const day of [...days].sort((a, b) => a - b)) batch.push(at(fy, fm, weekStart + day));
     } else if (rule.freq === "MONTHLY") {
-      // Year and month counted on: nthWeekday checks the month it is given.
-      const month = new Date(first.getFullYear(), first.getMonth() + step * rule.interval, 1);
-      const y = month.getFullYear();
-      const m = month.getMonth();
+      // Year and month counted on.
+      const month = new Date(Date.UTC(fy, fm + step * rule.interval, 1));
+      const y = month.getUTCFullYear();
+      const m = month.getUTCMonth();
       if (rule.byDay.length) {
         for (const b of rule.byDay) {
           // "BYDAY=MO" with no number: every Monday of the month.
           for (const n of b.n ? [b.n] : [1, 2, 3, 4, 5]) {
-            const d = nthWeekday(y, m, b.day, n, h, mi, s);
-            if (d) batch.push(d.getTime());
+            const d = nthWeekday(y, m, b.day, n);
+            if (d != null) batch.push(at(y, m, d));
           }
         }
         batch.sort((a, b) => a - b);
-      } else {
-        const d = new Date(y, m, first.getDate(), h, mi, s);
+      } else if (fd <= new Date(Date.UTC(y, m + 1, 0)).getUTCDate()) {
         // The 31st in a month without one is skipped, as calendars do.
-        if (d.getDate() === first.getDate()) batch.push(d.getTime());
+        batch.push(at(y, m, fd));
       }
     } else {
-      const d = new Date(first.getFullYear() + step * rule.interval, first.getMonth(), first.getDate(), h, mi, s);
-      if (d.getMonth() === first.getMonth()) batch.push(d.getTime());
+      const y = fy + step * rule.interval;
+      // The 29th of February only in a leap year.
+      if (new Date(Date.UTC(y, fm, fd)).getUTCMonth() === fm) batch.push(at(y, fm, fd));
     }
     for (const t of batch) if (!take(t)) return out;
     if (batch.length && Math.min(...batch) > limit) return out;
@@ -283,8 +317,9 @@ export function parseIcs(text: string, from: number, to: number): CalEvent[] {
     const get = (n: string) => e.props.find((p) => p.name === n);
     if ((get("STATUS")?.value ?? "").toUpperCase() === "CANCELLED") continue;
     const dtStart = get("DTSTART");
-    const start = dtStart ? parseIcsDate(dtStart.value, dtStart.params) : null;
-    if (!start) continue;
+    const wall = dtStart ? readIcsDate(dtStart.value, dtStart.params) : null;
+    if (!wall) continue;
+    const start = { time: wall.clock(wall.y, wall.mo, wall.da, wall.h, wall.mi, wall.s), allDay: wall.allDay };
     const dtEnd = get("DTEND");
     const end = dtEnd ? parseIcsDate(dtEnd.value, dtEnd.params)?.time : null;
     const duration = end != null ? end - start.time
@@ -294,7 +329,7 @@ export function parseIcs(text: string, from: number, to: number): CalEvent[] {
     const location = unescape(get("LOCATION")?.value ?? "");
     const rruleProp = get("RRULE");
     const rule = rruleProp && !get("RECURRENCE-ID") ? parseRule(rruleProp.value) : null;
-    let starts = rule ? occurrences(start.time, rule, from, to) : [start.time];
+    let starts = rule ? occurrences(wall, rule, from, to) : [start.time];
     if (rule) {
       const skip = new Set<number>();
       for (const ex of e.props.filter((p) => p.name === "EXDATE")) {

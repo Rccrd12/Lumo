@@ -229,17 +229,10 @@ pub fn looks_like_text(bytes: &[u8]) -> bool {
     }
 }
 
-/// Programs, scripts and shortcuts to them: never opened by their type.
+/// Programs, scripts and shortcuts to them: never opened by their type. The
+/// same list as the chat's files (chat_files.rs runs).
 pub fn is_runnable(path: &Path) -> bool {
-    const RUNNABLE: &[&str] = &[
-        "exe", "com", "bat", "cmd", "ps1", "psm1", "psd1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "msi", "msp",
-        "msix", "appx", "scr", "hta", "cpl", "jar", "lnk", "url", "reg", "pif", "application", "gadget", "inf",
-        "sh", "bash", "zsh", "fish", "run", "bin", "py", "pyw", "pl", "rb",
-        "scpt", "app", "command",
-        "chm", "msc", "appref-ms", "settingcontent-ms", "xll", "wsc", "sct", "diagcab", "appinstaller", "rdp",
-        "iso", "img", "vhd", "vhdx", "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppam", "dll",
-    ];
-    RUNNABLE.contains(&extension(path).as_str())
+    crate::chat_files::runs(&path.to_string_lossy())
 }
 
 /// What reading a path gives the model.
@@ -787,13 +780,15 @@ pub fn install(app: &AppHandle) {
 pub fn is_sensitive(path: &Path) -> bool {
     // The agents' own folders too, where their sign-ins live: Codex's auth.json,
     // Gemini CLI's oauth_creds.json, Copilot CLI's and Cursor CLI's sessions.
+    // Google Cloud's sign-in (`gcloud`), .NET's user secrets, Terraform's tokens.
     const DIRS: &[&str] = &[
         ".ssh", ".aws", ".azure", ".gnupg", ".claude", ".kube", ".docker", ".password-store", ".codex", ".gemini", ".copilot",
-        ".cursor",
+        ".cursor", "gcloud", "usersecrets", ".terraform.d",
     ];
+    // Package registries' tokens (npm, PyPI, Yarn), PostgreSQL's and Vault's.
     const NAMES: &[&str] = &[
         "credentials", "credentials.json", ".credentials.json", ".netrc", "_netrc", ".git-credentials", "id_rsa", "id_ed25519",
-        "id_ecdsa", "auth.json", "oauth_creds.json",
+        "id_ecdsa", "auth.json", "oauth_creds.json", ".npmrc", ".pypirc", ".yarnrc.yml", ".pgpass", ".vault-token",
     ];
     const ENDINGS: &[&str] = &[".pem", ".key", ".pfx", ".p12", ".kdbx", ".ppk", ".gpg", ".asc"];
     // Codes that open an account by themselves (GitHub's, Google's…), a wallet's words, passwords.
@@ -813,6 +808,12 @@ pub fn is_sensitive(path: &Path) -> bool {
         "\\appdata\\roaming\\opera software",
         // GitHub CLI's hosts.yml, with its token when no credential store holds it.
         "\\appdata\\roaming\\github cli",
+        // Other browsers' and mail apps' profiles, VS Code's sign-ins and extensions' secrets.
+        "\\appdata\\local\\vivaldi\\user data",
+        "\\appdata\\local\\packages\\thebrowsercompany.arc",
+        "\\appdata\\roaming\\thunderbird\\profiles",
+        "\\appdata\\roaming\\code\\user\\globalstorage",
+        "\\appdata\\roaming\\code - insiders\\user\\globalstorage",
     ];
     // Windows drops the dots and spaces a name ends with (`.ssh.` is .ssh), and
     // what follows a colon in a name is one of its streams (`id_rsa:x` is id_rsa).
@@ -836,6 +837,21 @@ pub fn is_sensitive(path: &Path) -> bool {
         || name.starts_with(".env.")
         || PLACES.iter().any(|p| whole.contains(p))
         || in_claude_dir(&whole, &crate::hooks::claude_dir())
+        || in_lumos_data(&whole, &crate::platform::config_dir(), &crate::platform::local_dir())
+}
+
+/// Inside Lumo's own data: its settings, chats, history and its window's
+/// storage — all but the inbox of the files the user dropped and the local
+/// models' workspaces, which are the user's files. `whole` is lower case
+/// with backslashes, as is_sensitive makes it.
+fn in_lumos_data(whole: &str, config: &Path, local: &Path) -> bool {
+    let norm = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let inside = |dir: &str| !dir.is_empty() && (whole == dir || whole.starts_with(&format!("{dir}\\")));
+    let (config, local) = (norm(config), norm(local));
+    if inside(&config) {
+        return true;
+    }
+    inside(&local) && !["inbox", "workspaces"].iter().any(|own| inside(&format!("{local}\\{own}")))
 }
 
 /// Inside Claude Code's folder, wherever CLAUDE_CONFIG_DIR puts it: its
@@ -950,10 +966,48 @@ pub async fn live_document(app: AppHandle, path: String, question: String) -> Re
     document(&path, &question).await
 }
 
+/// Web pages the user said yes to in this run of Lumo: the same address
+/// again doesn't ask again.
+static PAGES_SAID_YES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// The user's go-ahead for opening the web page `url` in the browser: Lumo's
+/// Allow / Deny card on the island, with the whole address. The voice may
+/// have read a file or the notifications, any app's text: a page's address
+/// can carry what it read to whoever runs the site, so it is never opened on
+/// the voice's say alone.
+pub async fn may_open_page(app: &AppHandle, url: &str) -> Result<(), String> {
+    if PAGES_SAID_YES.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|u| u == url) {
+        return Ok(());
+    }
+    let payload = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": "mcp__lumo__live_open",
+        "tool_input": { "url": url },
+        "lumo_live_file": { "action": "page" },
+    });
+    match crate::pipe::ask(app, payload).await.as_deref() {
+        Some("allow") => {
+            let mut said = PAGES_SAID_YES.lock().unwrap_or_else(|e| e.into_inner());
+            said.push(url.to_string());
+            if said.len() > 200 {
+                said.remove(0);
+            }
+            Ok(())
+        }
+        Some(_) => Err(t("The user said no: don't open this page unless they ask again.")),
+        None => Err(t("Lumo couldn't ask the user about this page (the island is busy): try again in a moment.")),
+    }
+}
+
 #[tauri::command]
 pub async fn live_open(app: AppHandle, target: String) -> Result<String, String> {
-    // A web page opens as it did; a file or a folder of the computer is checked first.
-    if let Some(full) = full_path(&target).filter(|p| p.exists()) {
+    // A web page opens once the user allows it on a card; a file or a folder
+    // of the computer is checked first.
+    let page = target.trim();
+    if page.starts_with("https://") || page.starts_with("http://") {
+        may_open_page(&app, page).await?;
+    } else if let Some(full) = full_path(&target).filter(|p| p.exists()) {
         may_use(&app, &full, Use::Open).await?;
         // A folder the voice opens is not one the user gave (`given`).
         if full.is_dir() {
@@ -1185,6 +1239,25 @@ mod tests {
         assert!(!given_by_explorer(Path::new(r"C:\Users\me"), &open, &[]));
     }
 
+    #[test]
+    fn other_tokens_and_lumos_own_data_are_never_the_voices() {
+        for p in [r"C:\Users\me\AppData\Roaming\gcloud\credentials.db", r"C:\Users\me\AppData\Roaming\Microsoft\UserSecrets\x\secrets.json",
+            r"C:\Users\me\.npmrc", r"C:\Users\me\.pypirc", r"C:\Users\me\.terraform.d\credentials.tfrc.json",
+            r"C:\Users\me\AppData\Roaming\Code\User\globalStorage\state.vscdb",
+            r"C:\Users\me\AppData\Roaming\Thunderbird\Profiles\a.default\logins.json",
+            r"C:\Users\me\AppData\Local\Vivaldi\User Data\Default\Login Data"] {
+            assert!(is_sensitive(Path::new(p)), "{p}");
+        }
+        let (config, local) = (Path::new(r"C:\Users\me\AppData\Roaming\com.rccrd12.lumo"), Path::new(r"C:\Users\me\AppData\Local\com.rccrd12.lumo"));
+        assert!(in_lumos_data(r"c:\users\me\appdata\roaming\com.rccrd12.lumo\settings.json", config, local));
+        assert!(in_lumos_data(r"c:\users\me\appdata\local\com.rccrd12.lumo\ebwebview\default\local storage", config, local));
+        assert!(in_lumos_data(r"c:\users\me\appdata\local\com.rccrd12.lumo", config, local));
+        assert!(!in_lumos_data(r"c:\users\me\appdata\local\com.rccrd12.lumo\inbox\report.pdf", config, local), "dropped files");
+        assert!(!in_lumos_data(r"c:\users\me\appdata\local\com.rccrd12.lumo\workspaces\a\b.txt", config, local));
+        assert!(!in_lumos_data(r"c:\users\me\appdata\local\com.rccrd12.lumo2\a.txt", config, local));
+        assert!(!in_lumos_data(r"c:\users\me\documents\a.txt", config, local));
+    }
+
     /// The sign-ins of the agents Lumo talks to: Codex, Gemini CLI, Copilot CLI,
     /// Cursor CLI, GitHub CLI, and Claude Code's wherever CLAUDE_CONFIG_DIR puts it.
     #[test]
@@ -1203,7 +1276,8 @@ mod tests {
 
     #[test]
     fn programs_and_scripts_are_never_opened_by_their_type() {
-        for name in ["setup.exe", "run.BAT", "x.ps1", "link.lnk", "page.url", "a.vbs", "s.sh", "guide.chm", "conti.XLSM", "disk.iso", "fix.diagcab"] {
+        for name in ["setup.exe", "run.BAT", "x.ps1", "link.lnk", "page.url", "a.vbs", "s.sh", "guide.chm", "conti.XLSM", "disk.iso", "fix.diagcab",
+            "a.cmd.", "a.ps1xml", "a.ws", "a.website", "box.wsb", "noext"] {
             assert!(is_runnable(Path::new(name)), "{name}");
         }
         for name in ["report.pdf", "photo.JPG", "notes.txt", "sheet.xlsx", "deck.pptx", "song.mp3"] {

@@ -228,7 +228,7 @@ export function toolDeclarations(cfg: Pick<LiveConfig, "screen" | "helper" | "co
     },
     {
       name: TOOL.open,
-      description: "Opens a document, a folder (in the file manager) or a web page (http/https) for the user to see. Programs and scripts are not opened this way: use open_app.",
+      description: "Opens a document, a folder (in the file manager) or a web page (http/https) for the user to see. A web page opens once the user allows it on a card that shows its whole address. Programs and scripts are not opened this way: use open_app.",
       parameters: obj({ target: str("An absolute path or an https:// address.") }, ["target"]),
     },
     {

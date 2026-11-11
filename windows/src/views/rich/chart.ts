@@ -33,6 +33,7 @@
 // another point. The numbers are shown in the app's language (Intl).
 
 import { h } from "../dom";
+import { clipUnits } from "../../core/clip";
 import { N_, t, language } from "../../i18n/i18n";
 import { head, remember, type RichContext } from "./index";
 import "./chart.css";
@@ -548,7 +549,7 @@ function renderLines(chart: Chart): HTMLElement {
     chart.labels.forEach((label, i) => {
       if (i % every && i !== hover) return;
       if (i !== hover && hover >= 0 && Math.abs(i - hover) < every) return;
-      const text = label.length > 12 ? label.slice(0, 11) + "…" : label;
+      const text = label.length > 12 ? clipUnits(label, 11) + "…" : label;
       parts.push(node("text", { x: X(i).toFixed(1), y: H - 3, "text-anchor": "middle", class: i === hover ? "on" : "" }, text));
     });
     if (hover >= 0) parts.push(node("line", { x1: X(hover).toFixed(1), x2: X(hover).toFixed(1), y1: T, y2: T + ph, class: "cursor" }));

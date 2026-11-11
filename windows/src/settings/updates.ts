@@ -77,14 +77,22 @@ function lastInfo(): UpdateInfo | null {
   return "info" in phase ? phase.info : null;
 }
 
+/** Checks asked so far: only the last one's answer is shown. */
+let checks = 0;
+
 async function check() {
+  const mine = ++checks;
   set({ kind: "checking" });
+  // Beta versions turned on and off quickly: the first answer may come last,
+  // with the other channel's version. A download started meanwhile stays on screen.
+  const current = () => mine === checks && phase.kind !== "downloading" && phase.kind !== "launching";
   try {
     const info = await Bridge.updateCheck(betaOn());
+    if (!current()) return;
     rememberFound(info);
     set({ kind: "checked", info });
   } catch (err) {
-    set({ kind: "failed", error: errorText(err), info: null });
+    if (current()) set({ kind: "failed", error: errorText(err), info: null });
   }
 }
 

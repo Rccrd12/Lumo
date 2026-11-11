@@ -6,10 +6,10 @@
 // agent that crashed or was closed sends no SessionEnd) or Lumo quits.
 // Nothing is written anywhere — the rules live in memory only.
 //
-// The same request means the same tool with the same command, the same file,
-// the same page with the same method, or the same whole input (always, for an
-// MCP server's tool: what its fields mean is its own). Anything else needs a
-// card again. A
+// The same request means the same tool with the same command (in the same
+// folder, with the same other fields), the same file, the same page with the
+// same method, or the same whole input (always, for an MCP server's tool: what
+// its fields mean is its own). Anything else needs a card again. A
 // request the relay had to cut (`lumo_input_cut`) is never remembered: two
 // commands that only start alike are not the same request.
 //
@@ -62,7 +62,23 @@ pub fn rule(payload: &Value) -> Option<String> {
         // a body or a flag that change everything. Only the very same call.
         format!("input\n{input}")
     } else if let Some(command) = field(&["command", "cmd"]) {
-        format!("command\n{command}")
+        // The same command in another folder, or with another of its fields
+        // (Codex's sandbox or escalation, a background run), is another
+        // request: only what merely describes it (its description, its
+        // timeout) may differ.
+        let dir = field(&["workdir", "cwd", "directory", "dir"])
+            .or_else(|| payload.get("cwd").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_default();
+        let rest: serde_json::Map<String, Value> = input
+            .as_object()
+            .map(|o| {
+                o.iter()
+                    .filter(|(k, _)| !COMMAND_SAME.contains(&k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        format!("command\n{command}\nin\n{dir}\nwith\n{}", Value::Object(rest))
     } else if let Some(path) = field(&["file_path", "notebook_path", "path"]) {
         format!("file\n{path}")
     } else if let Some(url) = field(&["url"]) {
@@ -74,6 +90,10 @@ pub fn rule(payload: &Value) -> Option<String> {
     };
     Some(format!("{tool}\n{what}"))
 }
+
+/// A command's fields that don't change what it does: the command itself and
+/// its folder (in the rule on their own), what describes it, how long to wait.
+const COMMAND_SAME: &[&str] = &["command", "cmd", "workdir", "cwd", "directory", "dir", "description", "timeout", "timeout_ms"];
 
 /// A card for `request_id` is about to come up: what to remember if it is
 /// allowed for the session. Returns true when the session already allowed this
@@ -185,6 +205,24 @@ mod tests {
         answered("a1", "always");
         assert!(!arrive("a2", &request("s-agents", "Bash", json!({ "command": "ls" }))));
         assert!(arrive("a3", &codex));
+    }
+
+    #[test]
+    fn a_command_allowed_in_one_folder_is_not_allowed_in_another() {
+        let mut here = request("s-dir", "Bash", json!({ "command": "rm -rf build" }));
+        here["cwd"] = json!("C:/proj/a");
+        assert!(!arrive("d1", &here));
+        answered("d1", "always");
+        assert!(arrive("d2", &here));
+        let mut there = here.clone();
+        there["cwd"] = json!("C:/proj/b");
+        assert!(!arrive("d3", &there), "another folder");
+        // Codex says its folder in the input, and may ask to leave its sandbox.
+        let r = |input: Value| rule(&request("s", "shell", input));
+        assert_ne!(r(json!({ "command": "ls", "workdir": "C:/a" })), r(json!({ "command": "ls", "workdir": "C:/b" })));
+        assert_ne!(r(json!({ "command": "ls" })), r(json!({ "command": "ls", "with_escalated_permissions": true })));
+        assert_ne!(r(json!({ "command": "npm start" })), r(json!({ "command": "npm start", "run_in_background": true })));
+        assert_eq!(r(json!({ "command": "ls", "timeout": 5 })), r(json!({ "command": "ls", "description": "List" })));
     }
 
     #[test]

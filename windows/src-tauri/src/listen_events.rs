@@ -195,18 +195,22 @@ fn with_tokens<R>(f: impl FnOnce(&mut HashMap<u64, String>) -> (R, bool)) -> R {
     out
 }
 
-/// 32 random bytes, as hex: std's hasher keys come from the system's random source.
+/// 32 random bytes from the system's random source, as hex.
 fn random_token() -> String {
-    use std::hash::{BuildHasher, Hasher};
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    (0..4u8)
-        .map(|i| {
-            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-            h.write_u128(nanos);
-            h.write_u8(i);
-            format!("{:016x}", h.finish())
-        })
-        .collect()
+    use ring::rand::SecureRandom;
+    let mut bytes = [0u8; 32];
+    if ring::rand::SystemRandom::new().fill(&mut bytes).is_err() {
+        // No random source: no secret that could be guessed either.
+        return String::new();
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Whether two secrets are the same, in a time that doesn't tell how much of
+/// them matched.
+fn same_secret(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |diff, (x, y)| diff | (x ^ y)) == 0
 }
 
 /// The webhook's secret, made the first time.
@@ -215,6 +219,9 @@ pub fn token_for(id: u64) -> String {
         Some(token) => (token.clone(), false),
         None => {
             let token = random_token();
+            if token.is_empty() {
+                return (token, false);
+            }
             map.insert(id, token.clone());
             (token, true)
         }
@@ -314,7 +321,9 @@ async fn answer(app: &AppHandle, mut stream: tokio::net::TcpStream) {
     }
     body.truncate(want);
     let token = listen_local::hook_token(&path);
-    let id = (!token.is_empty()).then(|| with_tokens(|map| (map.iter().find(|(_, t)| t.as_str() == token).map(|(id, _)| *id), false))).flatten();
+    let id = (!token.is_empty())
+        .then(|| with_tokens(|map| (map.iter().find(|(_, t)| !t.is_empty() && same_secret(t, token)).map(|(id, _)| *id), false)))
+        .flatten();
     let watch = id.and_then(|id| listen::list().into_iter().find(|w| w.id == id && w.source == "webhook"));
     let reply: &[u8] = if watch.is_some() {
         b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\nok\n"
@@ -331,4 +340,21 @@ async fn answer(app: &AppHandle, mut stream: tokio::net::TcpStream) {
         tf("{name} was called: {body}", &[("name", &w.target), ("body", &sent)])
     };
     listen::fire(app, w.id, true, summary, Some(""));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_webhooks_secret_is_random_and_compared_whole() {
+        let (a, b) = (random_token(), random_token());
+        assert_eq!(a.len(), 64);
+        assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
+        assert!(same_secret(&a, &a.clone()));
+        assert!(!same_secret(&a, &b));
+        assert!(!same_secret(&a, &a[..63]));
+        assert!(!same_secret(&a, ""));
+    }
 }
