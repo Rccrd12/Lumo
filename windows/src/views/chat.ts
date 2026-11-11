@@ -1798,12 +1798,13 @@ export function buildPrompt(
     if (planAskFor == null || performance.now() - planAskAt < PLAN_ASK_GUARD_MS) return;
     decide(d, planAskFor);
   };
+  const planApprove = h("button", { class: "plan-ask-btn approve", type: "button", onclick: planDecide("allow") }, h("span", { text: tl(STRINGS.planApprove) }));
   const planAsk = h("div", { class: "plan-ask" },
     h("div", { class: "plan-ask-head" }, planAskTitle, planAskWho),
     planAskList,
     h("div", { class: "plan-ask-actions" },
       h("button", { class: "plan-ask-btn keep", type: "button", onclick: planDecide("deny") }, h("span", { text: tl(STRINGS.planKeep) })),
-      h("button", { class: "plan-ask-btn approve", type: "button", onclick: planDecide("allow") }, h("span", { text: tl(STRINGS.planApprove) }))));
+      planApprove));
   planAsk.hidden = true;
   /** The plan this chat asks to start, if one is waiting for an answer. */
   const planAsking = () => {
@@ -1818,6 +1819,8 @@ export function buildPrompt(
     planAskFor = id;
     planAskAt = performance.now();
     planAsk.hidden = !req;
+    // A plan too long to reach the island whole is never approved from here (pipe.rs refuses it).
+    planApprove.style.display = req?.cut === true ? "none" : "";
     clear(planAskList);
     if (req?.plan) {
       planAskTitle.textContent = tn("{agent} has a plan · {count} step", "{agent} has a plan · {count} steps", req.plan.length,

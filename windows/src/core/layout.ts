@@ -164,6 +164,11 @@ export const QUESTION_PICKER_H = 200;
 
 /** The permission card with an email the AI wants to send: room to read it before Send. */
 export const EMAIL_CARD_H = 344;
+/**
+ * The tallest a permission card grows to show all it holds (views.ts
+ * fitHeight): its command scrolls past six lines, so this is room to spare.
+ */
+export const APPROVAL_MAX_H = 440;
 
 /** Chat view grows with the conversation — IslandContainer.chatPromptHeight. */
 export function chatPromptHeight(messageCount: number): number {

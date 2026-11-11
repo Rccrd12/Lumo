@@ -8,6 +8,8 @@
 // anything by itself. It only decides where the buttons are.
 
 import { N_ } from "../i18n/i18n";
+import { buildFileDiff } from "./diff";
+import type { ApprovalInfo } from "./state";
 
 /** Tools that only read (Claude Code's names, and the common ones of other agents). */
 const READ_TOOLS = new Set([
@@ -170,6 +172,69 @@ export function requestKind(tool: string, input: Record<string, unknown>): { tex
   const mcp = /^mcp__(.+?)__/.exec(tool);
   if (mcp) return { text: REQUEST_KINDS.mcp, vars: { server: mcp[1] } };
   return null;
+}
+
+/** What a file tool asks to write, counted for its permission card: the lines it adds and removes, and a new text's size. */
+export interface EditStat {
+  added: number;
+  removed: number;
+  /** Write: the size of the whole text it writes. */
+  bytes?: number;
+}
+
+/**
+ * The lines a Write, Edit, MultiEdit or NotebookEdit asks to change, for the
+ * line under the file on its card: the card names the file Allow allows, and
+ * this says how much is written there without showing the text. Null for any
+ * other tool, or a call that changes nothing.
+ */
+export function editStat(tool: string, input: Record<string, unknown>): EditStat | null {
+  if (tool === "NotebookEdit") {
+    const source = input.new_source;
+    if (typeof source !== "string" || input.edit_mode === "delete" || !source) return null;
+    const lines = source.replace(/\r\n/g, "\n").split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+    return { added: lines.length, removed: 0 };
+  }
+  if (tool !== "Write" && tool !== "Edit" && tool !== "MultiEdit") return null;
+  const diff = buildFileDiff(tool, input);
+  if (!diff) return null;
+  const stat: EditStat = { added: diff.added, removed: diff.removed };
+  if (tool === "Write" && typeof input.content === "string") stat.bytes = new TextEncoder().encode(input.content).length;
+  return stat;
+}
+
+/** What a permission card offers besides Deny (views.ts buildApproval). */
+export interface ApprovalOffer {
+  /** Allow, or Approve on a plan. */
+  allow: boolean;
+  /** "Too long to show here whole": the request was cut, and Allow is gone. */
+  cutNote: boolean;
+  sessionAllow: boolean;
+  /** "Approve and let it edit files without asking", on a plan from a session. */
+  planEdits: boolean;
+  /** The line that sends the request back: to the agent named on the card, or to its own window. */
+  answerThere: "agent" | "elsewhere" | null;
+}
+
+/**
+ * The buttons of a permission card. A request the relay had to cut
+ * (`cut`) was never on the card whole: nothing allows it from here, a plan's
+ * Approve included (pipe.rs refuses it anyway), so no button is left that
+ * does nothing. Only Deny, and the agent's own prompt where it has one.
+ */
+export function approvalOffer(req: Pick<ApprovalInfo, "cut" | "email" | "plan" | "sessionAllow" | "fromChat" | "answerIn"> | null | undefined): ApprovalOffer {
+  const email = !!req?.email;
+  const plan = !email && (req?.plan?.length ?? 0) > 0;
+  const cut = req?.cut === true && !email;
+  const elsewhere = cut && !req?.fromChat;
+  return {
+    allow: !cut,
+    cutNote: cut,
+    sessionAllow: req?.sessionAllow === true && !plan && !cut,
+    planEdits: plan && !req?.fromChat && !cut,
+    answerThere: req?.answerIn && !plan ? "agent" : elsewhere ? "elsewhere" : null,
+  };
 }
 
 /**
