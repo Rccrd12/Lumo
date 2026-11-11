@@ -116,3 +116,33 @@ test("the calendar's web page, from the app that wrote the file", () => {
   assert.equal(calendarWebLink(head("-//Someone//Their Calendar//EN")), null);
   assert.equal(calendarWebLink("BEGIN:VCALENDAR\r\nEND:VCALENDAR"), null);
 });
+
+test("a repeating event keeps its own clock's hour across a change of time, and its exceptions", () => {
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "BEGIN:VEVENT", "UID:utc", "DTSTART:20260105T140000Z", "DTEND:20260105T150000Z", "RRULE:FREQ=WEEKLY", "SUMMARY:UTC", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:ny",
+    "DTSTART;TZID=America/New_York:20260105T090000", "DTEND;TZID=America/New_York:20260105T100000",
+    "RRULE:FREQ=WEEKLY;BYDAY=MO", "EXDATE;TZID=America/New_York:20260713T090000", "SUMMARY:NY", "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  const at = (title) => parseIcs(ics, Date.UTC(2026, 6, 1), Date.UTC(2026, 6, 21)).filter((e) => e.title === title).map((e) => new Date(e.start).toISOString());
+  // 14:00 UTC stays 14:00 UTC, whatever the computer's clock did in March.
+  assert.deepEqual(at("UTC"), ["2026-07-06T14:00:00.000Z", "2026-07-13T14:00:00.000Z", "2026-07-20T14:00:00.000Z"]);
+  // 9:00 in New York is 13:00 UTC in summer, and the 13th is left out.
+  assert.deepEqual(at("NY"), ["2026-07-06T13:00:00.000Z", "2026-07-20T13:00:00.000Z"]);
+  // And 14:00 UTC in winter.
+  const winter = parseIcs(ics, Date.UTC(2026, 0, 12), Date.UTC(2026, 0, 13)).filter((e) => e.title === "NY");
+  assert.deepEqual(winter.map((e) => new Date(e.start).toISOString()), ["2026-01-12T14:00:00.000Z"]);
+});
+
+test("a monthly event on the last Friday and a yearly one on 29 February land on their days", () => {
+  const ics = [
+    "BEGIN:VEVENT", "UID:m", "DTSTART:20260130T100000Z", "RRULE:FREQ=MONTHLY;BYDAY=-1FR", "SUMMARY:M", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:y", "DTSTART;VALUE=DATE:20240229", "RRULE:FREQ=YEARLY", "SUMMARY:Y", "END:VEVENT",
+  ].join("\n");
+  const m = parseIcs(ics, Date.UTC(2026, 2, 1), Date.UTC(2026, 4, 1)).filter((e) => e.title === "M");
+  assert.deepEqual(m.map((e) => new Date(e.start).toISOString()), ["2026-03-27T10:00:00.000Z", "2026-04-24T10:00:00.000Z"]);
+  const y = parseIcs(ics, Date.UTC(2025, 0, 1), Date.UTC(2029, 0, 1)).filter((e) => e.title === "Y");
+  assert.deepEqual(y.map((e) => new Date(e.start).getFullYear()), [2028]);
+});

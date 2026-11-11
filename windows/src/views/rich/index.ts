@@ -180,6 +180,21 @@ export function keyOf(block: Pick<RichBlock, "type" | "title" | "body">, ctx?: P
   return `${ctx?.scope ?? ""}\u0000${block.type}\u0000${block.title}\u0000${block.body}`;
 }
 
+/**
+ * Forgets the state of the cards in `chatId`'s messages from place `message`
+ * on (core/checklists.ts messageScope): those messages left the chat (an
+ * edit, a Retry), and the answer that takes their place starts afresh, even
+ * with the same quiz in it.
+ */
+export function forgetCardsFrom(chatId: string, message: number): void {
+  const prefix = `${chatId}#`;
+  for (const key of [...memory.keys()]) {
+    if (!key.startsWith(prefix)) continue;
+    const place = /^(\d+)[\u0000>]/.exec(key.slice(prefix.length));
+    if (place && Number(place[1]) >= message) memory.delete(key);
+  }
+}
+
 /** The state kept for `key`, made by `init` the first time. */
 export function remember<T>(key: string, init: () => T): T {
   if (memory.has(key)) {

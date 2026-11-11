@@ -336,7 +336,9 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let island_card = is_island_run(env)
         && name == "PreToolUse"
         && args.agent == "antigravity"
-        && (reply::island_card(tool, map.get("tool_input")) || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map)));
+        && (reply::island_card(tool, map.get("tool_input"))
+            || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map))
+            || reply::reads_outside(tool, map.get("tool_input"), &workspaces(map)));
     // A shell command Antigravity is about to run in your own session (IDE or
     // CLI) that none of its rules covers: the island's Allow / Deny card, with
     // "Reply in Antigravity" to leave it to Antigravity's own prompt. Only with
@@ -399,14 +401,16 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
 }
 
 /// The shell command of an Antigravity `run_command` call, when it reached
-/// the relay whole: a command too long to forward whole is not one to approve
+/// the relay whole: a command too long to forward whole (a permission
+/// request's target goes whole up to MAX_TARGET_LEN) is not one to approve
 /// without seeing it, nor one its rules could read.
 fn shell_command<'a>(tool: &str, input: Option<&'a Value>) -> Option<&'a str> {
     if tool != "run_command" && !tool.ends_with(":run_command") {
         return None;
     }
-    let command = input?.get("command")?.as_str()?.trim();
-    (!command.is_empty() && command.chars().count() <= MAX_FIELD_LEN).then_some(command)
+    let command = input?.get("command")?.as_str()?;
+    let whole = command.len() <= MAX_TARGET_LEN;
+    Some(command.trim()).filter(|c| whole && !c.is_empty())
 }
 
 /// The user's home folder, where Antigravity keeps its rules (`.gemini`).
@@ -756,11 +760,19 @@ mod tests {
         assert_eq!(card_budget(Some(10_000)), DECISION_BUDGET, "never longer than any card");
         assert_eq!(card_budget(Some(0)), Duration::from_secs(1));
 
-        // A file read is no card: agy allows it by itself.
-        let read = br#"{"hook_event_name":"PreToolUse","toolCall":{"name":"view_file","args":{"AbsolutePath":"/a"}}}"#;
+        // A file read in the workspace is no card: agy allows it by itself.
+        let read = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"view_file","args":{"AbsolutePath":"/w/a"}}}"#;
         let ev = prepare(read, &agy, &island, "/p").unwrap();
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
+        // Outside it, it is a card: what the model reads, it can send on.
+        let outside = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"view_file","args":{"AbsolutePath":"/home/me/.ssh/id_ed25519"}}}"#;
+        let ev = prepare(outside, &agy, &island, "/p").unwrap();
+        assert!(ev.island_card);
+        assert_eq!(ev.name, "PermissionRequest");
+        // And a page read always is.
+        let page = br#"{"hook_event_name":"PreToolUse","workspacePaths":["/w"],"toolCall":{"name":"read_url_content","args":{"Url":"https://example.com/?d=x"}}}"#;
+        assert!(prepare(page, &agy, &island, "/p").unwrap().island_card);
 
         // Outside the island's chat, with hooks that give the relay no time to
         // wait, Antigravity's own prompt keeps the command (with time, it is
@@ -1066,6 +1078,16 @@ mod tests {
             assert!(!ev.agy_gate, "{cmd}");
             assert_eq!(ev.name, "PreToolUse");
         }
+        // A long command goes to the island whole, as any permission request's
+        // target does; one too long to forward whole is left to Antigravity.
+        let long = format!("npm run build -- {}", "x".repeat(3 * MAX_FIELD_LEN));
+        let ev = prepare(run(&long).as_bytes(), &agy, &env, "/p").unwrap();
+        assert!(ev.agy_gate);
+        let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
+        assert_eq!(v["tool_input"]["command"], long.as_str());
+        assert!(v.get("lumo_input_cut").is_none());
+        let too_long = format!("npm run build -- {}", "x".repeat(MAX_TARGET_LEN));
+        assert!(!prepare(run(&too_long).as_bytes(), &agy, &env, "/p").unwrap().agy_gate);
         // Hooks that give no time to wait, another tool, or the island's own chat: no gate.
         let short = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: None, chat_guard: false };
         assert!(!prepare(run("npm install").as_bytes(), &short, &env, "/p").unwrap().agy_gate);

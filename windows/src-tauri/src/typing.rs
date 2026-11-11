@@ -110,6 +110,7 @@ mod imp {
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
         VIRTUAL_KEY, VK_RETURN, VK_SHIFT,
     };
+    use ::windows::Win32::Foundation::HWND;
     use ::windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
     /// UTF-16 units sent at once; a pause between batches lets slow apps keep up.
@@ -125,6 +126,19 @@ mod imp {
 
     fn send(inputs: &[INPUT]) -> bool {
         unsafe { SendInput(inputs, std::mem::size_of::<INPUT>() as i32) as usize == inputs.len() }
+    }
+
+    /// Before each batch and each line break: the same window in front (the
+    /// rest would go to another one), and no modifier held (a letter would be a
+    /// shortcut, Shift+Enter a Ctrl+Shift+Enter).
+    fn may_go_on(front: HWND, typed: usize) -> Result<(), String> {
+        if unsafe { GetForegroundWindow() } != front {
+            return Err(format!("The user moved to another window: typing stopped after {typed} characters."));
+        }
+        if !crate::selection::keys_released(Duration::from_millis(500)) {
+            return Err(format!("Keys are held down on the keyboard: typing stopped after {typed} characters."));
+        }
+        Ok(())
     }
 
     pub fn type_text(text: &str) -> Result<Typed, String> {
@@ -162,10 +176,7 @@ mod imp {
                         }
                     }
                     for (chunk, chars) in &batches {
-                        // The user moved to another window: the rest would go there.
-                        if unsafe { GetForegroundWindow() } != front {
-                            return Err(format!("The user moved to another window: typing stopped after {typed} characters."));
-                        }
+                        may_go_on(front, typed)?;
                         let inputs: Vec<INPUT> = chunk
                             .iter()
                             .flat_map(|&u| {
@@ -180,6 +191,7 @@ mod imp {
                     }
                 }
                 Piece::Break => {
+                    may_go_on(front, typed)?;
                     let none = KEYBD_EVENT_FLAGS(0);
                     let keys = [
                         input(VK_SHIFT, 0, none),

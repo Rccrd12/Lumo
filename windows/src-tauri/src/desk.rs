@@ -148,12 +148,12 @@ fn recent(name: &str) -> Option<PathBuf> {
 fn shortcut_target(link: &Path) -> Option<PathBuf> {
     use windows::core::{Interface, HSTRING};
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, STGM_READ,
+        CoCreateInstance, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, STGM_READ,
     };
     use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+    // This blocking thread may not have COM yet; it is given back after, the shortcut let go first.
+    let _com = crate::platform::Com::init(COINIT_APARTMENTTHREADED);
     unsafe {
-        // This blocking thread may not have COM yet; a second call is harmless.
-        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let shell: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
         let file: IPersistFile = shell.cast().ok()?;
         file.Load(&HSTRING::from(link.as_os_str()), STGM_READ).ok()?;

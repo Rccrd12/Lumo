@@ -52,14 +52,14 @@ pub async fn media_control(action: MediaAction) -> bool {
 
 fn session() -> Option<windows::Media::Control::GlobalSystemMediaTransportControlsSession> {
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager as Manager;
-    let manager = Manager::RequestAsync().ok()?.get().ok()?;
+    let manager = Manager::RequestAsync().ok()?.join().ok()?;
     manager.GetCurrentSession().ok()
 }
 
 fn now_playing() -> Option<NowPlaying> {
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status;
     let session = session()?;
-    let props = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
+    let props = session.TryGetMediaPropertiesAsync().ok()?.join().ok()?;
     let title = props.Title().map(|s| s.to_string()).unwrap_or_default();
     let artist = props.Artist().map(|s| s.to_string()).unwrap_or_default();
     if title.trim().is_empty() && artist.trim().is_empty() {
@@ -81,7 +81,7 @@ fn control(action: MediaAction) -> bool {
         MediaAction::Next => session.TrySkipNextAsync(),
         MediaAction::Previous => session.TrySkipPreviousAsync(),
     };
-    op.and_then(|op| op.get()).unwrap_or(false)
+    op.and_then(|op| op.join()).unwrap_or(false)
 }
 
 #[cfg(test)]

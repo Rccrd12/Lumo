@@ -366,6 +366,24 @@ body {
   text-overflow: ellipsis;
 }
 
+/* A line about someone: their name takes at most 45 % of it and is cut first;
+   what they are doing keeps the rest (island/compact.ts). */
+#compact .cp-line {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  white-space: pre;
+}
+
+#compact .cp-lead {
+  max-width: 45%;
+  flex: 0 0 auto;
+}
+
+#compact .cp-rest {
+  flex: 0 1 auto;
+}
+
 /* One live activity: in the middle, as wide as it needs. Several: side by
    side, sharing the width, a thin line between them. */
 #compact .cp-item {
@@ -925,12 +943,21 @@ body {
   z-index: 2;
 }
 
-/* Folds a waiting permission card or question away without answering it. */
+/* Folds a waiting permission card or question away without answering it:
+   24 px to click, centred where the 16 px one was, and lit under the mouse. */
 .fold {
   position: absolute;
-  top: 8px;
-  right: 10px;
+  top: 4px;
+  right: 6px;
   z-index: 2;
+  width: 24px;
+  height: 24px;
+  color: var(--dim-2);
+}
+
+.fold:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--ink);
 }
 
 /* Ticker */
@@ -1341,11 +1368,17 @@ body {
   font: 600 15px var(--font);
 }
 
-/* Claude's final message on the finished card: one line, never past the card. */
-.title.one-line {
-  white-space: nowrap;
+/* Claude's final message on the finished card: up to three lines, never past
+   the card (the island grows for them, layout.ts finishedCardHeight). */
+.title.final {
+  font-weight: 500;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   min-width: 0;
 }
 
@@ -1357,6 +1390,24 @@ body {
 .detail {
   font: 400 12px var(--font);
   color: var(--red-text);
+}
+
+/* The error card: the code beside the reason, and the last step under it, in grey. */
+.detail .err-code,
+.detail-last {
+  color: var(--dim-3);
+}
+
+.detail-last {
+  font: 400 12px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.detail-last[hidden] {
+  display: none;
 }
 
 .who-row {
@@ -2039,8 +2090,10 @@ math.mx .mx-cancel.mx-sout {
   opacity: 0.3;
 }
 
-/* Tables (Windows only): wider than the chat, they scroll on their own. */
+/* Tables (Windows only): wider than the chat, they scroll on their own; narrower,
+   the edge hugs them, with no empty strip right of the header and the rows. */
 .md-table {
+  width: fit-content;
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid rgba(255, 255, 255, 0.08);

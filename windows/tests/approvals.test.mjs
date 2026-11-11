@@ -121,3 +121,9 @@ test("a request cut short offers no button that does nothing: Allow and a plan's
   // An email is never "cut": its card has its own buttons.
   assert.equal(approvalOffer({ email: { to: ["a@b.c"] }, cut: true }).allow, true);
 });
+
+test("a lone carriage return ends a command: what comes after it is looked at too", () => {
+  assert.equal(isLookingCommand("Get-ChildItem\rRemove-Item C:\\x -Recurse"), false);
+  assert.equal(isLookingCommand("Get-ChildItem\r\nGet-Location"), true);
+  assert.equal(isLookingCommand("Get-ChildItem\rGet-Location"), true);
+});

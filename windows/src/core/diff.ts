@@ -249,9 +249,24 @@ function countFallback(oldText: string, newText: string, path: string): FileDiff
 // ── toOneLine ─────────────────────────────────────────────────────────────────
 
 /**
+ * Text cut to `maxChars` letters at most, "…" included: between two words when
+ * one ends close enough to the limit, so a word is never left cut in half.
+ */
+export function cutAtWord(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= maxChars) return text;
+  if (maxChars < 2) return chars.slice(0, maxChars).join("");
+  let cut = chars.slice(0, maxChars - 1).join("");
+  const space = cut.lastIndexOf(" ");
+  if (space > cut.length * 0.6) cut = cut.slice(0, space);
+  return `${cut.replace(/[\s,;:–—-]+$/u, "")}…`;
+}
+
+/**
  * A possibly multi-line Markdown message as one line of plain text: only the
  * first non-empty paragraph (a blank line, a horizontal rule or a table row ends
- * it), without `**`, `__`, backticks, leading `#` or list markers.
+ * it), without `**`, `__`, backticks, leading `#` or list markers. Longer than
+ * `maxChars`, it is cut between two words with "…" (cutAtWord).
  */
 export function toOneLine(text: string, maxChars = 200): string {
   const trimWS = (s: string) => s.replace(/^[ \t]+|[ \t]+$/g, "");
@@ -280,7 +295,7 @@ export function toOneLine(text: string, maxChars = 200): string {
       if (l) processed.push(l);
     }
     const collapsed = processed.join(" ").split(/\s+/).filter(Boolean).join(" ");
-    if (collapsed) return Array.from(collapsed).slice(0, maxChars).join("");
+    if (collapsed) return cutAtWord(collapsed, maxChars);
   }
   return "";
 }

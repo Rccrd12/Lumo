@@ -46,6 +46,9 @@ const MAX_ONE: usize = 16_000;
 const MIN_ONE: usize = 1_500;
 /// Tabs read at most for one message: the others go with their address only.
 const MAX_TABS_READ: usize = 12;
+/// Windows read at most for one message, each with its least, within the
+/// budget: the others go with their title only.
+const MAX_WINDOWS_READ: usize = TEXT_BUDGET / MIN_ONE;
 /// Tabs brought forward at most for one message (Windows), so "All tabs"
 /// doesn't leaf through every tab the user has open.
 const MAX_TABS_BROUGHT_FORWARD: usize = 6;
@@ -247,14 +250,20 @@ pub fn page_text(body: &[u8], content_type: &str) -> String {
     let ct = content_type.to_ascii_lowercase();
     if ct.contains("html") || (ct.is_empty() && text.trim_start().starts_with('<')) {
         // `<noscript>` and inline SVG are noise for the reader.
+        const SKIPPED: [&str; 3] = ["<noscript", "<svg", "<template"];
         let lower = text.to_ascii_lowercase();
         let mut kept = String::with_capacity(text.len());
         let mut i = 0;
+        // Where each tag is next, looked for again only once passed: the page is
+        // read once, not once for each tag in it.
+        let mut ahead: [Option<usize>; 3] = SKIPPED.map(|tag| lower.find(tag));
         while i < text.len() {
-            let next = ["<noscript", "<svg", "<template"]
-                .iter()
-                .filter_map(|tag| lower[i..].find(tag).map(|at| (i + at, *tag)))
-                .min_by_key(|(at, _)| *at);
+            for (at, tag) in ahead.iter_mut().zip(SKIPPED) {
+                if at.is_some_and(|at| at < i) {
+                    *at = lower[i..].find(tag).map(|e| i + e);
+                }
+            }
+            let next = ahead.iter().zip(SKIPPED).filter_map(|(at, tag)| at.map(|at| (at, tag))).min_by_key(|(at, _)| *at);
             let Some((at, tag)) = next else {
                 kept.push_str(&text[i..]);
                 break;
@@ -728,10 +737,14 @@ pub fn read_windows(ids: &[i64]) -> Result<Vec<SharedWindow>, String> {
     if picked.is_empty() {
         return Err(t("That window isn't open anymore."));
     }
-    let each = share_of_budget(picked.len());
+    let each = share_of_budget(picked.len().min(MAX_WINDOWS_READ));
     let reader = imp::Reader::new();
     let mut out = Vec::new();
-    for (id, info) in &picked {
+    for (n, (id, info)) in picked.iter().enumerate() {
+        if n >= MAX_WINDOWS_READ {
+            out.push(SharedWindow { title: info.title.clone(), app: info.app.clone(), ..SharedWindow::default() });
+            continue;
+        }
         let raw = reader.as_ref().map(|r| r.window_text(*id, each + 1)).unwrap_or_default();
         let (text, cut) = tidy_text(&raw, each);
         let document = crate::desk::documents(std::slice::from_ref(info))
@@ -854,7 +867,8 @@ fn read_from_browsers(picked: &mut [BrowserTab], each: usize) {
                         read_page(&reader, window, &tab.entry.name, false, each + 1).or(first)
                     }
                 }
-            } else if brought < MAX_TABS_BROUGHT_FORWARD && reader.select(tab) {
+            } else if on_screen.is_some() && brought < MAX_TABS_BROUGHT_FORWARD && reader.select(tab) {
+                // Only when the tab on screen is known: it is the one put back after.
                 brought += 1;
                 moved = true;
                 wait_for_page(&reader, window, tab, each + 1)
@@ -880,7 +894,10 @@ fn read_from_browsers(picked: &mut [BrowserTab], each: usize) {
         // The user's tab back on screen.
         if moved {
             if let Some(at) = on_screen {
-                reader.select(&found.tabs[at]);
+                if !reader.select(&found.tabs[at]) {
+                    std::thread::sleep(PAGE_POLL);
+                    reader.select(&found.tabs[at]);
+                }
             }
         }
     }
@@ -913,7 +930,10 @@ async fn download(url: &str, max: usize) -> String {
     let content_type =
         response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
     let Ok(body) = crate::net::read_capped(response, MAX_PAGE_BYTES).await else { return String::new() };
-    page_text(&body, &content_type).chars().take(max * 3).collect()
+    // Up to a few MB of markup: read off the async threads.
+    tauri::async_runtime::spawn_blocking(move || page_text(&body, &content_type).chars().take(max * 3).collect())
+        .await
+        .unwrap_or_default()
 }
 
 /// The tabs the page picked (by id, from the last list; all of them when
@@ -1665,6 +1685,8 @@ mod tests {
         assert_eq!(share_of_budget(1), MAX_ONE);
         assert_eq!(share_of_budget(1000), MIN_ONE);
         assert_eq!(share_of_budget(6), TEXT_BUDGET / 6);
+        // However many windows are shared, those read stay within the budget.
+        assert!(MAX_WINDOWS_READ * share_of_budget(MAX_WINDOWS_READ) <= TEXT_BUDGET);
     }
 
     #[test]
@@ -1674,6 +1696,10 @@ mod tests {
         let (text, _) = tidy_text(&text, 1000);
         assert_eq!(text, "Luce\nLa luce è bella.");
         assert_eq!(page_text(b"plain words", "text/plain"), "plain words");
+        // Each skipped tag is found where it is, however many there are.
+        let many = "a <svg>x</svg>".repeat(3) + "<template>t</template>b <noscript>n</noscript><svg>y</svg>c";
+        let (text, _) = tidy_text(&page_text(many.as_bytes(), "text/html"), 1000);
+        assert_eq!(text, "a a a b c");
         assert_eq!(page_text(b"%PDF-1.7", "application/pdf"), "", "not text: nothing");
     }
 

@@ -421,3 +421,30 @@ test("the same block in two messages keeps two states", () => {
   renderMarkdown(one, text, { scope: "chat#1" });
   assert.equal(one.find(".rc-count")[0].textContent, "2 / 3");
 });
+
+test("a code block holds a shorter fence, and one indented under a list item is still one", () => {
+  const nested = parseMarkdown("````markdown\n```js\nlet a = 1;\n```\n````\nAfter");
+  assert.deepEqual(nested, [
+    { kind: "code", lang: "markdown", code: "```js\nlet a = 1;\n```" },
+    { kind: "paragraph", text: "After" },
+  ]);
+  const listed = parseMarkdown("1. Run this:\n   ```bash\n   ls -la\n     cd x\n   ```\n2. Done");
+  assert.deepEqual(listed.map((b) => b.kind), ["item", "code", "item"]);
+  assert.deepEqual(listed[1], { kind: "code", lang: "bash", code: "ls -la\n  cd x" });
+  // A paragraph ends where an indented fence starts.
+  assert.deepEqual(parseMarkdown("Text\n  ```\nx\n  ```").map((b) => b.kind), ["paragraph", "code"]);
+});
+
+test("a card drawn when nothing could be sent is drawn again once it can", () => {
+  const root = dom.root();
+  const text = "```lumo-quiz Q\n? One?\n- a\n+ b\n```";
+  renderMarkdown(root, text, { scope: "ink-send", streaming: true });
+  const inked = root.find(".rc-quiz")[0];
+  assert.ok(inked);
+  renderMarkdown(root, text, { scope: "ink-send", send: () => {} });
+  const done = root.find(".rc-quiz")[0];
+  assert.notEqual(done, inked);
+  // Then it stays the same node from one draw to the next.
+  renderMarkdown(root, text, { scope: "ink-send", send: () => {} });
+  assert.equal(root.find(".rc-quiz")[0], done);
+});

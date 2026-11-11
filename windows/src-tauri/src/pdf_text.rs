@@ -639,9 +639,14 @@ fn utf16(bytes: &[u8]) -> String {
     String::from_utf16_lossy(&units)
 }
 
-/// A ToUnicode CMap's `bfchar` and `bfrange` entries.
+/// At most this many entries are read from one ToUnicode CMap, all its
+/// ranges together (two-byte codes are 65,536 at most).
+const MAX_CMAP_ENTRIES: usize = 1 << 20;
+
+/// A ToUnicode CMap's `bfchar` and `bfrange` entries, `MAX_CMAP_ENTRIES` at most.
 fn parse_cmap(cmap: &[u8]) -> HashMap<u32, String> {
     let mut map = HashMap::new();
+    let mut left = MAX_CMAP_ENTRIES;
     let mut lx = Lexer::new(cmap, 0);
     let mut operands: Vec<Obj> = Vec::new();
     while let Some(tok) = lx.next() {
@@ -651,6 +656,10 @@ fn parse_cmap(cmap: &[u8]) -> HashMap<u32, String> {
                     b"endbfchar" => {
                         for pair in operands.chunks(2) {
                             if let [Obj::Str(src), Obj::Str(dst)] = pair {
+                                if left == 0 {
+                                    return map;
+                                }
+                                left -= 1;
                                 map.insert(code_of(src), utf16(dst));
                             }
                         }
@@ -666,6 +675,10 @@ fn parse_cmap(cmap: &[u8]) -> HashMap<u32, String> {
                                 Obj::Str(first) => {
                                     let mut units: Vec<u16> = first.chunks(2).map(|p| u16::from(p[0]) << 8 | u16::from(*p.get(1).unwrap_or(&0))).collect();
                                     for code in lo..=hi {
+                                        if left == 0 {
+                                            return map;
+                                        }
+                                        left -= 1;
                                         map.insert(code, String::from_utf16_lossy(&units));
                                         if let Some(last) = units.last_mut() {
                                             *last = last.wrapping_add(1);
@@ -675,6 +688,10 @@ fn parse_cmap(cmap: &[u8]) -> HashMap<u32, String> {
                                 Obj::Arr(each) => {
                                     for (code, s) in (lo..=hi).zip(each) {
                                         if let Obj::Str(s) = s {
+                                            if left == 0 {
+                                                return map;
+                                            }
+                                            left -= 1;
                                             map.insert(code, utf16(s));
                                         }
                                     }
@@ -1165,5 +1182,26 @@ mod tests {
         assert_eq!(text_of(&locked, 100), None);
         assert_eq!(text_of(b"hello", 100), None);
         assert_eq!(text_of(b"%PDF-1.4 garbage ( [ << 1 0 obj", 100), None);
+    }
+
+    #[test]
+    fn a_cmap_reads_its_chars_and_ranges() {
+        let map = parse_cmap(b"1 beginbfchar <03> <0041> endbfchar 1 beginbfrange <10> <12> <0061> <20> <21> [<0058> <0059>] endbfrange");
+        assert_eq!(map.get(&3).map(String::as_str), Some("A"));
+        assert_eq!(map.get(&0x12).map(String::as_str), Some("c"));
+        assert_eq!(map.get(&0x21).map(String::as_str), Some("Y"));
+    }
+
+    #[test]
+    fn a_cmap_of_many_ranges_stops_at_its_limit() {
+        // Each range is allowed on its own; together they are billions of entries.
+        let mut many = b"beginbfrange ".to_vec();
+        for high in 0..100u32 {
+            many.extend_from_slice(format!("<{high:04X}0000> <{high:04X}FFFF> <0041> ").as_bytes());
+        }
+        many.extend_from_slice(b"endbfrange");
+        let map = parse_cmap(&many);
+        assert_eq!(map.len(), MAX_CMAP_ENTRIES);
+        assert_eq!(map.get(&0).map(String::as_str), Some("A"));
     }
 }

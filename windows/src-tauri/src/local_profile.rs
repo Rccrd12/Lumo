@@ -66,16 +66,24 @@ fn has_word(q: &str, word: &str) -> bool {
     q.split(|c: char| !c.is_alphanumeric()).any(|w| w == word)
 }
 
-/// Words that bring a group in, in the languages Lumo speaks most (lower case).
-const MAIL_WORDS: &[&str] = &[
-    "mail", "e-mail", "posta", "inbox", "casella", "allegat", "attachment", "newsletter", "mittente", "bozz",
-    "correo", "courriel", "gmail", "outlook", "邮件", "почт", "письм",
-];
+/// True when a word of `q` starts with `stem` ("allegat" in "allegato"), and
+/// not when `stem` is only inside one ("posta" in "risposta").
+fn has_stem(q: &str, stem: &str) -> bool {
+    q.split(|c: char| !c.is_alphanumeric()).any(|w| w.starts_with(stem))
+}
+
+/// Words that bring a group in, in the languages Lumo speaks most (lower case):
+/// anywhere in the question ("email", "gmail")…
+const MAIL_WORDS: &[&str] = &["mail", "inbox", "attachment", "newsletter", "outlook", "邮件", "почт", "письм"];
+/// …or at the start of a word only: "posta", not "risposta" or "proposta".
+const MAIL_STEMS: &[&str] = &["posta", "casella", "allegat", "mittente", "bozz", "correo", "courriel"];
 const GITHUB_PHRASES: &[&str] = &[
     "github", "pull request", "merge request", "workflow", "github actions", "repository", "repositories",
     "commit", "branch", "da revisionare", "to review", "code review",
 ];
-const GITHUB_WORDS: &[&str] = &["pr", "prs", "ci", "repo", "repos", "issue", "issues"];
+const GITHUB_WORDS: &[&str] = &["pr", "prs", "repo", "repos", "issue", "issues"];
+/// Continuous integration as written in capitals: "ci" is also Italian ("ci vediamo").
+const GITHUB_CAPITALS: &[&str] = &["CI"];
 const LISTEN_WORDS: &[&str] = &[
     "avvisami", "avvertimi", "dimmi quando", "fammi sapere quando", "appena finisce", "appena arriva", "notificami",
     "monitora", "tieni d'occhio", "ascolta", "tell me when", "let me know when", "notify me", "alert me", "ping me",
@@ -90,10 +98,13 @@ const PLAN_WORDS: &[&str] = &["plan", "piano"];
 pub fn named_groups(query: &str, user_tools: &[(String, String, Value)]) -> Vec<Group> {
     let q = query.to_lowercase();
     let mut found = Vec::new();
-    if MAIL_WORDS.iter().any(|w| q.contains(w)) {
+    if MAIL_WORDS.iter().any(|w| q.contains(w)) || MAIL_STEMS.iter().any(|w| has_stem(&q, w)) {
         found.push(Group::Mail);
     }
-    if GITHUB_PHRASES.iter().any(|w| q.contains(w)) || GITHUB_WORDS.iter().any(|w| has_word(&q, w)) {
+    if GITHUB_PHRASES.iter().any(|w| q.contains(w))
+        || GITHUB_WORDS.iter().any(|w| has_word(&q, w))
+        || GITHUB_CAPITALS.iter().any(|w| has_word(query, w))
+    {
         found.push(Group::GitHub);
     }
     // "Does the Downloads folder change?": a change to watch, not one to make.
@@ -121,9 +132,22 @@ fn sticky() -> &'static Mutex<HashMap<String, Vec<String>>> {
     STICKY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Chats whose loaded tools are kept at most: older ones are forgotten
+/// (their next question starts from the core tools again).
+const STICKY_CHATS: usize = 32;
+
+/// A new chat, an edited message or a chat from the history: what `chat`
+/// loaded goes, and its next question starts from the core tools.
+pub fn forget(chat: &str) {
+    sticky().lock().unwrap_or_else(|e| e.into_inner()).remove(chat);
+}
+
 /// The tools `chat` has loaded, after adding `more`.
 pub fn loaded(chat: &str, more: &[String]) -> Vec<String> {
     let mut all = sticky().lock().unwrap_or_else(|e| e.into_inner());
+    if all.len() >= STICKY_CHATS && !all.contains_key(chat) {
+        all.clear();
+    }
     let had = all.entry(chat.to_string()).or_default();
     for id in more {
         if !had.contains(id) {
@@ -497,6 +521,28 @@ mod tests {
         assert_eq!(named_groups("Ei, mi dici se la cartella download cambia?", &user), vec![Group::Listen]);
         assert_eq!(named_groups("Fammi un piano passo dopo passo", &user), vec![Group::Plan]);
         assert_eq!(named_groups("Unisci questi pdf con pdfcraft", &user), vec![Group::User]);
+    }
+
+    #[test]
+    fn everyday_italian_brings_in_no_group() {
+        let user = vec![tool("pdfcraft")];
+        // "ci" is a word of Italian, "posta" is inside "risposta" and "proposta".
+        assert_eq!(named_groups("Ci sono novità? Ci vediamo domani", &user), vec![]);
+        assert_eq!(named_groups("Dammi una risposta breve alla proposta", &user), vec![]);
+        // As words of their own they still count.
+        assert_eq!(named_groups("Controlla la posta", &user), vec![Group::Mail]);
+        assert_eq!(named_groups("Leggi gli allegati della mail", &user), vec![Group::Mail]);
+        assert_eq!(named_groups("La CI è rossa", &user), vec![Group::GitHub]);
+    }
+
+    #[test]
+    fn a_chat_forgotten_starts_again_from_the_core_tools() {
+        let chat = "test-forget-sticky";
+        assert_eq!(loaded(chat, &["mail_read".to_string()]), ["mail_read"]);
+        assert_eq!(loaded(chat, &[]), ["mail_read"]);
+        forget(chat);
+        assert!(loaded(chat, &[]).is_empty());
+        forget(chat);
     }
 
     #[test]

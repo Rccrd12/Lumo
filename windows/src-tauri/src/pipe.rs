@@ -286,6 +286,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     let payload_cut = payload.get("lumo_input_cut") == Some(&json!(true));
     log::line(format!("hook PermissionRequest id={id}"));
     let tool_name = payload.get("tool_name").and_then(Value::as_str).map(str::to_string);
+    let tool_input = payload.get("tool_input").cloned().unwrap_or(Value::Null);
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
 
     // While Claude uses the computer, the hand gets its mouse back to answer.
@@ -326,7 +327,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // its call needs (tools.rs), not a second card.
     if matches!(decision.as_deref(), Some("allow" | "always" | "edits")) {
         if let Some(tool) = &tool_name {
-            crate::tools::note_allowed(tool);
+            crate::tools::note_allowed(tool, &tool_input);
         }
     }
     // No decision: say nothing at all. lumo-hook then writes nothing to stdout

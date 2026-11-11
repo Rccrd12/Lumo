@@ -444,14 +444,17 @@ pub const NAMES: &[&str] = &[
 
 /// Which of Lumo's tools an agent's tool name is, whatever the agent puts in
 /// front: "mcp__lumo__screenshot" (Claude Code), "mcp_lumo_screenshot",
-/// "lumo/screenshot", "lumo.left_click"…
+/// "lumo/screenshot", "lumo.left_click"… Only the server named `lumo`:
+/// "mcp__work_lumo__screenshot" is another server's.
 pub fn lumo_tool(name: &str) -> Option<&'static str> {
     let lower = name.to_ascii_lowercase();
     let sep = |c: char| matches!(c, '_' | '/' | '.' | ':' | '-');
     let mut from = 0;
     while let Some(i) = lower[from..].find(SERVER).map(|i| i + from) {
         from = i + SERVER.len();
-        if i > 0 && !lower[..i].ends_with(sep) {
+        // Nothing in front of the server's name but the agent's own `mcp`.
+        let before = &lower[..i];
+        if !before.is_empty() && !(before.ends_with(sep) && before.trim_end_matches(sep) == "mcp") {
             continue;
         }
         let rest = lower[from..].trim_start_matches(sep);
@@ -535,9 +538,35 @@ pub const USER_SERVER: &str = "lumo_tools";
 /// for each of these calls itself before it runs (tools.rs in the app), so
 /// the hook needs no card of its own.
 pub fn user_tool_call(tool: &str, input: Option<&Value>) -> bool {
+    user_tool_call_with(tool, input, &user_tool_exists)
+}
+
+/// Whether the user has a tool with this id in Lumo: its folder, with its
+/// tool.json, in %APPDATA%\com.rccrd12.lumo\tools (tools.rs in the app).
+fn user_tool_exists(id: &str) -> bool {
+    let plain = !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    plain
+        && std::env::var_os("APPDATA").is_some_and(|dir| {
+            std::path::Path::new(&dir).join("com.rccrd12.lumo").join("tools").join(id).join("tool.json").is_file()
+        })
+}
+
+/// `user_tool_call`, with `exists` saying whether the user has a tool of that id.
+fn user_tool_call_with(tool: &str, input: Option<&Value>, exists: &dyn Fn(&str) -> bool) -> bool {
     let lower = tool.to_ascii_lowercase();
-    if ["mcp__", "mcp_", ""].iter().any(|p| ["__", "_", "/", "."].iter().any(|s| lower.starts_with(&format!("{p}{USER_SERVER}{s}")))) {
+    // After the server's name, the separator the agent put before it:
+    // "mcp__lumo_tools_gh__x" is the tool of a server named lumo_tools_gh.
+    let named = |prefix: &str, seps: &[&str]| seps.iter().any(|s| lower.starts_with(&format!("{prefix}{USER_SERVER}{s}")));
+    if named("mcp__", &["__"]) || named("", &["__", "/", "."]) {
         return true;
+    }
+    // With one `_` on both sides (Antigravity's "mcp_<server>_<tool>"), the
+    // name can't tell server lumo_tools' tool gh_x from server lumo_tools_gh's
+    // tool x: only a tool the user really has in Lumo goes without a card.
+    for prefix in ["mcp_", ""] {
+        if let Some(id) = lower.strip_prefix(&format!("{prefix}{USER_SERVER}_")) {
+            return exists(id);
+        }
     }
     if !lower.contains("mcp") {
         return false;
@@ -645,7 +674,9 @@ fn all_tools(kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>) -> Vec<Va
 fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>) -> Value {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
     let input = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
-    if !kit.tools().iter().any(|t| t["name"] == name) {
+    // `listen_pull_request`, `listen`'s name before, isn't listed but still works.
+    let island_before = kit.island && ISLAND_NAMES.contains(&name);
+    if !island_before && !kit.tools().iter().any(|t| t["name"] == name) {
         // One of the user's tools: Lumo knows whether it is there and on.
         if kit.user && !name.is_empty() {
             return answer(lumo(&json!({ "lumo_tool": { "tool": name, "input": input } })));
@@ -738,10 +769,24 @@ fn call_lumo(request: &Value) -> Result<Value, String> {
         CALL_BUDGET
     };
     match rx.recv_timeout(budget) {
-        Ok(Some(bytes)) => serde_json::from_slice(&bytes).map_err(|_| closed()),
+        Ok(Some(bytes)) => read_answer(&bytes).map_err(|too_large| if too_large { TOO_LARGE.to_string() } else { closed() }),
         Ok(None) => Err(closed()),
-        Err(_) => Err("Lumo took too long to answer.".into()),
+        // Lumo may still be at it (a card the user answers late): the call
+        // isn't to be made again as if nothing had happened.
+        Err(_) => Err(TOO_LONG.into()),
     }
+}
+
+/// What a call says when Lumo's answer is past MAX_ANSWER.
+const TOO_LARGE: &str = "Lumo's answer was too large to pass on.";
+/// What a call says when Lumo didn't answer within its budget.
+const TOO_LONG: &str = "Lumo took too long to answer, and it may still have done it. Don't make this call again: \
+check first, or ask the user, whether it was done.";
+
+/// Lumo's one-line answer as JSON, or whether it was past MAX_ANSWER (else
+/// it is no answer: the connection broke).
+fn read_answer(bytes: &[u8]) -> Result<Value, bool> {
+    serde_json::from_slice(bytes).map_err(|_| bytes.len() > MAX_ANSWER)
 }
 
 fn exchange(line: &str) -> Option<Vec<u8>> {
@@ -811,6 +856,11 @@ mod tests {
         assert_eq!(lumo_tool("mcp__lumo__format_disk"), None);
         assert_eq!(lumo_tool("lumoscreenshot"), None, "a separator is needed");
         assert_eq!(lumo_tool("Bash"), None);
+        // Another server whose name ends with lumo.
+        assert_eq!(lumo_tool("mcp__work_lumo__screenshot"), None);
+        assert_eq!(lumo_tool("mcp_work_lumo_update_plan"), None);
+        assert_eq!(lumo_tool("work_lumo/mail_send"), None);
+        assert!(crate::reply::island_card("mcp__work_lumo__update_plan", None));
     }
 
     #[test]
@@ -963,7 +1013,9 @@ mod tests {
     #[test]
     fn the_users_own_tools_are_asked_for_by_lumo_not_by_the_hook() {
         assert!(user_tool_call("mcp__lumo_tools__pdfcraft", None));
-        assert!(user_tool_call("mcp_lumo_tools_pdfcraft", None));
+        let has = |id: &str| ["pdfcraft", "gh_x"].contains(&id);
+        assert!(user_tool_call_with("mcp_lumo_tools_pdfcraft", None, &has));
+        assert!(user_tool_call_with("lumo_tools_pdfcraft", None, &has));
         let call = json!({ "ServerName": "lumo_tools", "ToolName": "pdfcraft", "Arguments": "{}" });
         assert!(user_tool_call("call_mcp_tool", Some(&call)));
         assert!(user_tool_call("call_mcp_tool", Some(&json!(call.to_string()))), "its input as JSON text");
@@ -974,6 +1026,14 @@ mod tests {
         assert!(crate::reply::island_card("call_mcp_tool", Some(&other)));
         assert!(!user_tool_call("mcp__lumo__screenshot", None));
         assert!(!user_tool_call("mcp__lumo_toolsmith__x", None));
+        assert!(!user_tool_call("mcp__lumo_tools_gh__create_issue", None), "a server named lumo_tools_gh");
+        assert!(crate::reply::island_card("mcp__lumo_tools_gh__create_issue", None));
+        assert!(user_tool_call("lumo_tools__pdfcraft", None) && user_tool_call("lumo_tools/pdfcraft", None));
+        // One `_` on both sides: only a tool the user has in Lumo.
+        assert!(!user_tool_call_with("mcp_lumo_tools_gh_create_issue", None, &has), "server lumo_tools_gh's tool");
+        assert!(user_tool_call_with("mcp_lumo_tools_gh_x", None, &has), "the user's own gh_x");
+        assert!(!user_tool_call_with("lumo_tools_gh_create_issue", None, &has));
+        assert!(!user_tool_exists("") && !user_tool_exists("..\\x") && !user_tool_exists("a/b"));
         assert!(!user_tool_call("run_command", Some(&call)), "only an MCP call");
         // Arguments given as an object, not text: what they hold names nothing.
         let other = json!({ "ServerName": "github", "ToolName": "delete_repo", "Arguments": { "server": "lumo_tools" } });
@@ -1005,6 +1065,17 @@ mod tests {
         let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"set_timer","arguments":{"seconds":600}}}"#;
         let v: Value = serde_json::from_str(&handle_with(line, kit, &lumo).unwrap()).unwrap();
         assert_eq!(v["result"]["content"], json!([{ "type": "text", "text": "The timer starts." }]));
+        // `listen`'s name before is still handed on, though not listed.
+        let before = |req: &Value| -> Result<Value, String> {
+            assert_eq!(req["lumo_island"]["tool"], "listen_pull_request");
+            Ok(json!({ "text": "Lumo listens." }))
+        };
+        let line = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"listen_pull_request","arguments":{"target":"o/r#1"}}}"#;
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &before).unwrap()).unwrap();
+        assert_eq!(v["result"]["content"], json!([{ "type": "text", "text": "Lumo listens." }]));
+        let plan_only = Kit { island: false, ..kit };
+        let v: Value = serde_json::from_str(&handle_with(line, plan_only, &never).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true, "only with the island's tools");
         assert_eq!(lumo_tool("mcp__lumo__listen_pull_request"), Some("listen_pull_request"));
         assert!(!crate::reply::island_card("mcp_lumo_set_timer", None) && !crate::reply::island_card("mcp_lumo_stop_listening", None));
         let call = json!({ "ServerName": "lumo", "ToolName": "listen_pull_request" });
@@ -1087,5 +1158,16 @@ mod tests {
 
         let v = ask(r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"format_disk"}}"#, &never);
         assert_eq!(v["result"]["isError"], true);
+    }
+
+    #[test]
+    fn an_answer_too_large_is_said_so_not_lumo_closed() {
+        assert_eq!(read_answer(br#"{"text":"ok"}"#), Ok(json!({ "text": "ok" })));
+        // Cut off past the ceiling, with no end of line: too large.
+        let mut huge = br#"{"image":""#.to_vec();
+        huge.resize(MAX_ANSWER + 2, b'A');
+        assert_eq!(read_answer(&huge), Err(true));
+        // Broken off before its end: no answer, as if Lumo had closed.
+        assert_eq!(read_answer(br#"{"text":"o"#), Err(false));
     }
 }
