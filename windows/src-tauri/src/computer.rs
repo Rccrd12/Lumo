@@ -70,6 +70,33 @@ static ENGAGED: AtomicBool = AtomicBool::new(false);
 static LUCCIOLA: AtomicBool = AtomicBool::new(false);
 /// Cards waiting on the island meanwhile: the hand has the mouse to answer them.
 static CARDS: AtomicUsize = AtomicUsize::new(0);
+/// The mouse changes hands one at a time, after a look at the turn under the
+/// same lock: a card answered (or a first action) while the chat's Stop ends
+/// the turn can never take it back after the end gave it to the user.
+static HAND: Mutex<()> = Mutex::new(());
+/// Counts the turns that started from none: Esc's late let-go (`stop`) leaves
+/// a turn that started since alone.
+static TURNS_STARTED: AtomicUsize = AtomicUsize::new(0);
+
+/// The mouse to Claude, if the turn still wants it: under way, not stopped,
+/// engaged, and no card waiting for the user's click.
+fn mouse_to_claude() -> bool {
+    let _hand = HAND.lock().unwrap_or_else(|e| e.into_inner());
+    let wanted = TURN.load(Ordering::SeqCst) > 0
+        && !STOPPED.load(Ordering::SeqCst)
+        && ENGAGED.load(Ordering::SeqCst)
+        && CARDS.load(Ordering::SeqCst) == 0;
+    if wanted {
+        imp::take_mouse(true);
+    }
+    wanted
+}
+
+/// The mouse to the user, whatever the turn says.
+fn mouse_to_user() {
+    let _hand = HAND.lock().unwrap_or_else(|e| e.into_inner());
+    imp::take_mouse(false);
+}
 
 /// The overlay's window (computer.html).
 pub const OVERLAY: &str = "computer";
@@ -155,6 +182,7 @@ pub fn begin_turn() {
     // Esc stops the computer for the turns under way: one that starts
     // meanwhile (another chat) doesn't hand it back to them.
     if TURN.fetch_add(1, Ordering::SeqCst) == 0 {
+        TURNS_STARTED.fetch_add(1, Ordering::SeqCst);
         STOPPED.store(false, Ordering::SeqCst);
     }
 }
@@ -170,6 +198,9 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
     STOPPED.store(true, Ordering::SeqCst);
     ACTING.store(false, Ordering::SeqCst);
     release_stop_key(app);
+    // Always, engaged or not: a card answered at this very moment may have
+    // taken it a moment ago (mouse_to_claude looks at STOPPED, set above).
+    mouse_to_user();
     disengage(app);
 }
 
@@ -195,9 +226,7 @@ fn engage(app: &AppHandle) {
     // The island closes to its compact form, Lumo's ring, while Claude works.
     let _ = app.emit_to(crate::island::WINDOW_LABEL, "computer-engaged", true);
     // A card already waiting on the island keeps the mouse the user's until it is answered.
-    if CARDS.load(Ordering::SeqCst) == 0 {
-        imp::take_mouse(true);
-    } else {
+    if !mouse_to_claude() && CARDS.load(Ordering::SeqCst) > 0 {
         fx(app, json!({ "kind": "pause" }));
     }
 }
@@ -207,7 +236,7 @@ fn disengage<R: Runtime>(app: &AppHandle<R>) {
     if !ENGAGED.swap(false, Ordering::SeqCst) {
         return;
     }
-    imp::take_mouse(false);
+    mouse_to_user();
     fx(app, json!({ "kind": "hide" }));
     let _ = app.emit_to(crate::island::WINDOW_LABEL, "computer-engaged", false);
     let app = app.clone();
@@ -228,7 +257,7 @@ fn disengage<R: Runtime>(app: &AppHandle<R>) {
 /// keeps the count right.
 pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
     if CARDS.fetch_add(1, Ordering::SeqCst) == 0 && ENGAGED.load(Ordering::SeqCst) {
-        imp::take_mouse(false);
+        mouse_to_user();
         fx(app, json!({ "kind": "pause" }));
     }
 }
@@ -236,8 +265,7 @@ pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
 /// The card was answered: Claude has the mouse again.
 pub fn card_down<R: Runtime>(app: &AppHandle<R>) {
     let before = CARDS.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))).unwrap_or(0);
-    if before == 1 && ENGAGED.load(Ordering::SeqCst) && !STOPPED.load(Ordering::SeqCst) {
-        imp::take_mouse(true);
+    if before == 1 && mouse_to_claude() {
         fx(app, json!({ "kind": "resume" }));
     }
 }
@@ -334,13 +362,17 @@ pub fn stop<R: Runtime>(app: &AppHandle<R>) {
     crate::log::line("computer use: stopped with Esc");
     release_stop_key_later(app);
     // The mouse is the user's at once; the glow turns red, then goes.
-    imp::take_mouse(false);
+    mouse_to_user();
     fx(app, json!({ "kind": "stopped" }));
     let _ = app.emit_to(crate::island::WINDOW_LABEL, "computer-stopped", ());
     let app = app.clone();
+    let turn = TURNS_STARTED.load(Ordering::SeqCst);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(700));
-        disengage(&app);
+        // A turn that started meanwhile keeps its glow and its mouse.
+        if TURNS_STARTED.load(Ordering::SeqCst) == turn {
+            disengage(&app);
+        }
     });
 }
 
@@ -920,6 +952,15 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     // not only from the first click.
     engage(app);
     hold_stop_key(app);
+    // The turn may have ended (the chat's Stop) or been stopped (Esc) between
+    // the checks above and here: what was just taken is given back at once,
+    // so Esc and the mouse never stay held after the turn.
+    if !(TURN.load(Ordering::SeqCst) > 0) || STOPPED.load(Ordering::SeqCst) {
+        release_stop_key(app);
+        disengage(app);
+        mouse_to_user();
+        return refuse(STOPPED_TEXT);
+    }
     let app2 = app.clone();
     let answer = tauri::async_runtime::spawn_blocking(move || {
         let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());

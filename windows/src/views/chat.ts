@@ -328,6 +328,11 @@ let sendFromCard: ((text: string) => void) | undefined;
 let sentTimes: { el: HTMLElement; at: number }[] = [];
 
 /** "just now", "12 min ago", "3 h ago", then the day: when a message was sent or answered. */
+/** A message as Rust's conversation holds it (chat_restore): what it kept, when not what shows. */
+export function conversationTurn(m: { role: "user" | "assistant"; content: string; kept?: string }): { role: "user" | "assistant"; content: string } {
+  return { role: m.role, content: m.kept ?? m.content };
+}
+
 export function sentAgo(at: number, now = Date.now()): string {
   if (now - at < 86_400_000) return ageLabel(at, now);
   const d = new Date(at);
@@ -3226,9 +3231,9 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined }));
+      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined }));
       State.chatSession = c.session;
-      void Bridge.chatRestore(c.id, c.turns.map(({ role, content }) => ({ role, content })), c.session, compactOf(c.id));
+      void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
     }
     State.chatId = c.id;
     State.droppedFile = null;
@@ -3345,7 +3350,7 @@ export function buildPrompt(
     // Rust lets a chat go once another is on screen: it gets this one back as it is.
     if (!runs.has(State.chatId) && State.chatHistory.length > 0) {
       State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, turn: i }));
-      void Bridge.chatRestore(State.chatId, State.chatHistory.map((m) => ({ role: m.role, content: m.content })), State.chatSession, compactOf(State.chatId));
+      void Bridge.chatRestore(State.chatId, State.chatHistory.map(conversationTurn), State.chatSession, compactOf(State.chatId));
     }
     const workshop = State.chatSlot === "forge";
     cardEl.classList.toggle("forge", workshop);
@@ -3408,7 +3413,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at }));
+    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}) }));
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -3976,6 +3981,7 @@ export function buildPrompt(
           content,
           at: Date.now(),
           stopped: reply.stopped || undefined,
+          kept: reply.kept,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
         });

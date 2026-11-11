@@ -216,6 +216,21 @@ fn interpret(response: &Value) -> Result<(Vec<Value>, String), String> {
     Ok((blocks, text))
 }
 
+/// A tool call the content leaves without its result: a `tool_use` (or a
+/// server tool's) cut off by the length limit. Kept in the history, every
+/// later request of the chat would be refused by the API.
+fn calls_left_open(blocks: &[Value]) -> bool {
+    let answered: std::collections::HashSet<&str> = blocks
+        .iter()
+        .filter(|b| b.get("type").and_then(Value::as_str).is_some_and(|t| t.ends_with("tool_result")))
+        .filter_map(|b| b.get("tool_use_id").and_then(Value::as_str))
+        .collect();
+    blocks.iter().any(|b| {
+        matches!(b.get("type").and_then(Value::as_str), Some("tool_use" | "server_tool_use"))
+            && !b.get("id").and_then(Value::as_str).is_some_and(|id| answered.contains(id))
+    })
+}
+
 /// The answer under the line that says it was cut at the length limit.
 fn with_cut_note(text: String, response: &Value) -> String {
     if response.get("stop_reason").and_then(Value::as_str) == Some("max_tokens") {
@@ -355,18 +370,26 @@ pub async fn send(
         chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
         return Ok(ChatReply::answer(text, None));
     }
-    let (blocks, text) = interpret(&response)?;
+    let (blocks, text) = match interpret(&response) {
+        // An empty last word after the tools: what was said before them stays.
+        Err(_) if !said.is_empty() && response["stop_reason"] != "refusal" => (Vec::new(), String::new()),
+        other => other?,
+    };
+    let said_now = text.clone();
     let text = with_cut_note(text, &response);
 
     // Store the whole content — tool_use / tool_result blocks included — so the
     // next turn has the right context. After the user's tools, the answer is
     // kept as its text: the calls and their results stay with this turn.
     if said.is_empty() {
-        chat.commit(&turn, user, json!({ "role": "assistant", "content": blocks }), &plain, &text);
+        // An answer cut while it was still writing a tool call keeps only its
+        // text: the call never ran, and left open it would break the chat.
+        let content = if calls_left_open(&blocks) { json!(said_now) } else { json!(blocks) };
+        chat.commit(&turn, user, json!({ "role": "assistant", "content": content }), &plain, &text);
         return Ok(ChatReply::answer(text, None));
     }
     said.push(text);
-    let text = said.join("\n\n");
+    let text = said.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n");
     chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
     Ok(ChatReply::answer(text, None))
 }
@@ -528,7 +551,7 @@ async fn stream_call(
         // Whole lines only: a chunk may end in the middle of one, or of a character.
         while let Some(end) = pending.iter().position(|b| *b == b'\n') {
             let line: Vec<u8> = pending.drain(..=end).collect();
-            unsent |= answer.line(String::from_utf8_lossy(&line).trim_end()).map_err(Failed::Other)?;
+            unsent |= answer.line(String::from_utf8_lossy(&line).trim_end()).map_err(|e| answer.failed(e))?;
         }
         if pending.len() > MAX_EVENT {
             return Err(Failed::Other(t("The server's answer is too large.")));
@@ -543,7 +566,7 @@ async fn stream_call(
         }
     }
     // A last line without its newline.
-    answer.line(String::from_utf8_lossy(&pending).trim_end()).map_err(Failed::Other)?;
+    answer.line(String::from_utf8_lossy(&pending).trim_end()).map_err(|e| answer.failed(e))?;
     on_text(&answer.text);
     answer.finish()
 }
@@ -561,9 +584,22 @@ struct Assembly {
     text: String,
     /// `message_stop` came.
     over: bool,
+    /// The stream ended on the API's own failure (overloaded, an internal
+    /// error) before anything was written: worth asking once more, as a 529.
+    retryable: bool,
 }
 
 impl Assembly {
+    /// A stream's `error` event as the call's failure: the API's own trouble,
+    /// with nothing written yet, goes the way of a 529 (asked once more).
+    fn failed(&self, e: String) -> Failed {
+        if self.retryable {
+            Failed::Status(529, e)
+        } else {
+            Failed::Other(e)
+        }
+    }
+
     /// One line of the event stream; true when the text grew.
     fn line(&mut self, line: &str) -> Result<bool, String> {
         let Some(data) = line.strip_prefix("data:") else { return Ok(false) };
@@ -643,6 +679,8 @@ impl Assembly {
             "message_stop" => self.over = true,
             "error" => {
                 let message = event.pointer("/error/message").and_then(Value::as_str).unwrap_or("error");
+                let kind = event.pointer("/error/type").and_then(Value::as_str).unwrap_or_default();
+                self.retryable = matches!(kind, "overloaded_error" | "api_error") && self.text.is_empty() && self.blocks.is_empty();
                 return Err(format!("Claude API: {message}"));
             }
             _ => {}
@@ -853,6 +891,40 @@ fn base64(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_overloaded_stream_is_asked_again_only_before_any_text() {
+        let start = r#"data: {"type":"message_start","message":{"id":"m","content":[],"usage":{}}}"#;
+        let overloaded = r#"data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
+        let mut a = Assembly::default();
+        a.line(start).unwrap();
+        let e = a.line(overloaded).unwrap_err();
+        assert!(matches!(a.failed(e), Failed::Status(529, _)));
+        // Text already shown: the failure is told, not asked again.
+        let mut a = Assembly::default();
+        a.line(start).unwrap();
+        a.line(r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#).unwrap();
+        a.line(r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Ciao"}}"#).unwrap();
+        let e = a.line(overloaded).unwrap_err();
+        assert!(matches!(a.failed(e), Failed::Other(_)));
+        // Any other error neither.
+        let mut a = Assembly::default();
+        let e = a.line(r#"data: {"type":"error","error":{"type":"invalid_request_error","message":"bad"}}"#).unwrap_err();
+        assert!(matches!(a.failed(e), Failed::Other(_)));
+    }
+
+    #[test]
+    fn a_tool_call_cut_at_the_length_limit_is_never_kept_open() {
+        let text = json!({ "type": "text", "text": "Sending it now." });
+        let call = json!({ "type": "tool_use", "id": "toolu_1", "name": "send_email", "input": {} });
+        assert!(calls_left_open(&[text.clone(), call]), "a tool_use with no result");
+        // Web search: the server's call and its result come back together.
+        let search = json!({ "type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": {} });
+        let found = json!({ "type": "web_search_tool_result", "tool_use_id": "srvtoolu_1", "content": [] });
+        assert!(!calls_left_open(&[search.clone(), found, text.clone()]));
+        assert!(calls_left_open(&[search, text.clone()]), "a search cut before its result");
+        assert!(!calls_left_open(&[text]));
+    }
 
     #[test]
     fn an_answer_still_at_its_tools_after_every_round_keeps_what_was_said() {
