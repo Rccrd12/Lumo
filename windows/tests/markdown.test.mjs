@@ -133,6 +133,26 @@ test("a star between numbers or letters is a multiplication, not italics", () =>
     { kind: "strong", children: [{ kind: "text", text: "2" }] },
     { kind: "text", text: "(two)" },
   ]);
+  // A number before the closing stars, and a bracket after them.
+  assert.deepEqual(parseInline("**Passo 1**(opzionale) e *Fase 2*(vedi sotto)"), [
+    { kind: "strong", children: [{ kind: "text", text: "Passo 1" }] },
+    { kind: "text", text: "(opzionale) e " },
+    { kind: "em", children: [{ kind: "text", text: "Fase 2" }] },
+    { kind: "text", text: "(vedi sotto)" },
+  ]);
+  // Stars that open or close nothing: a space inside them, or punctuation
+  // inside and a letter outside.
+  for (const s of ["cancella i file *.tmp e *.log", "def f(*args, **kwargs)", "x ** 2 + y ** 2"]) {
+    assert.deepEqual(parseInline(s), [{ kind: "text", text: s }], s);
+  }
+  // Italics inside bold, both at once, and stars written escaped.
+  assert.deepEqual(parseInline("**Nota: usa *sempre* il backup**"), [
+    { kind: "strong", children: [{ kind: "text", text: "Nota: usa " }, { kind: "em", children: [{ kind: "text", text: "sempre" }] }, { kind: "text", text: " il backup" }] },
+  ]);
+  assert.deepEqual(parseInline("***molto importante***"), [
+    { kind: "strong", children: [{ kind: "em", children: [{ kind: "text", text: "molto importante" }] }] },
+  ]);
+  assert.deepEqual(parseInline("\\*asterisco\\* e my\\_var"), [{ kind: "text", text: "*asterisco* e my_var" }]);
   assert.deepEqual(parseInline("*hi!* then a*b"), [
     { kind: "em", children: [{ kind: "text", text: "hi!" }] },
     { kind: "text", text: " then a*b" },

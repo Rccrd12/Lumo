@@ -34,7 +34,7 @@
 - **Fixed**: a new push said "Checks passed" before its own checks started; a moment settings.json couldn't be read turned web images back on; a local model's answer whose plan check went back to work left the chat; a failed Stripe payment sounded like a success, and the balance added up different currencies; work Microsoft 365 accounts opened the wrong Outlook; copying a folder after one of its files failed; forwarding more than 10 attachments dropped some; Voice could open a program named with a trailing dot or a stream
 - **Fixed**: in the steps card, a shorter step stayed at the top with all the room left empty above the bar (it now sits in the middle), and the formula of the step before, small and dim above, was cut at the top and kept its root sign bright
 - **Fixed**: in the steps card's list of every step, a taller row's number sat off its line and formulas lost the bottom of a subscript or a fraction; two `\underbrace`s side by side ran their notes together, in the whole chat
-- **Fixed**: a star between numbers or letters turned half a formula italic: `8*10^-9` and `(2.25*10^-9*0.4^3)/(2*8,99*10^9)` now keep their stars, in a question as in an answer, while `*n*th`, `the *API*s` and `**2**(two)` stay italic and bold
+- **Fixed**: a star between numbers or letters turned half a formula italic: `8*10^-9` and `(2.25*10^-9*0.4^3)/(2*8,99*10^9)` now keep their stars, in a question as in an answer, while `*n*th`, `the *API*s`, `**2**(two)` and `**Passo 1**(opzionale)` stay italic and bold; `*.tmp e *.log`, `f(*args, **kwargs)` and `x ** 2` keep their stars too, italics inside bold and `***both***` are drawn, and `\*` or `\_` written escaped show the star or the underscore
 
 ## Windows 0.21.0 — November 10, 2026
 

@@ -385,7 +385,7 @@ export type Inline =
  * comes first; the url's parentheses are kept when they pair up. No lookbehind: one regex literal an engine rejects would take
  * the whole island down with it.
  */
-const INLINE = /`([^`\n]+)`|\*\*([^*]+?)\*\*|__([^_]+?)__|\*([^*\s][^*]*?)\*|_([^_\s][^_]*?)_(?!\w)|\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+|[^)\s]+)\)/g;
+const INLINE = /`([^`\n]+)`|\*\*((?:[^*\s]|\*[^*\s][^*]*?\*)(?:(?:[^*]|\*[^*\s][^*]*?\*)*?(?:[^*\s]|\*[^*\s][^*]*?\*))?)\*\*|__([^_\s](?:[^_]*?[^_\s])?)__(?!\w)|\*([^*\s](?:[^*]*?[^*\s])?)\*|_([^_\s](?:[^_]*?[^_\s])?)_(?!\w)|\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+|[^)\s]+)\)/g;
 
 const isWordChar = (c: string | undefined) => c != null && /\w/.test(c);
 
@@ -407,7 +407,7 @@ export function safeWebUrl(raw: string): string | null {
  * $…$ never runs across bold's **, so prices like "\$0,20 … **\$ 130**" stay text.
  */
 const MATH = /\$\$([^$]+?)\$\$|\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$((?:\\.|[^$\\\n])+?)\$/;
-const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLINE.source.indexOf("|") + 1)}|(\\\\\\$)`, "g");
+const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLINE.source.indexOf("|") + 1)}|(\\\\\\$)|\\\\([*_\`~#])`, "g");
 
 /**
  * Stars that sit between two operands are multiplication, never emphasis:
@@ -425,34 +425,32 @@ const FACTOR = /[A-Za-z0-9([]/;
 
 function maskProducts(text: string): string {
   if (!text.includes("*")) return text;
-  // Where an emphasis of one star or of two was opened and not yet closed:
-  // "the *n*th term", "the *API*s" and "**2**(two)" close it right before a
-  // letter or a bracket, which a product would otherwise take.
-  const open: Record<number, number> = {};
+  // Where an emphasis of one star or of two was opened on this line (just
+  // after its stars), -1 when none is: the next star of its kind after a
+  // non-space closes it ("the *n*th term", "**Passo 1**(opzionale)").
+  const open = [-1, -1, -1];
   return text.replace(/\*+/g, (run: string, at: number) => {
     const before = text[at - 1] ?? "";
     const after = text[at + run.length] ?? "";
-    const factorBefore = BEFORE_FACTOR.test(before);
-    if (!factorBefore) {
-      // After a mark ("*hi!*") it closes the emphasis open; otherwise it may
-      // open one: something other than a space follows.
-      if (before && !/\s/.test(before) && open[run.length] != null) delete open[run.length];
-      else if (after && !/\s/.test(after)) open[run.length] = at + run.length;
+    if (before === "\n") open.fill(-1);
+    // Inside an open emphasis, only a star between a number or a one-letter
+    // name and a number or letter is a product ("*area = b*h*"), and not
+    // when the emphasis holds one word ("*n*th").
+    const short = /[\d)\]]/.test(before) || (/[A-Za-z]/.test(before) && !/[A-Za-z]/.test(text[at - 2] ?? ""));
+    const inside = run.length === 1 ? short && /[A-Za-z0-9]/.test(after) : /\d/.test(before) && /\d/.test(after);
+    const from = run.length <= 2 ? open[run.length] : -1;
+    if (from >= 0 && /\S/.test(before) && (!inside || !/\s/.test(text.slice(from, at)))) {
+      open[run.length] = -1;
+      return run;
+    }
+    if (!BEFORE_FACTOR.test(before)) {
+      if (run.length <= 2 && /\S/.test(after)) open[run.length] = at + run.length;
       return run;
     }
     const product =
       run.length === 1
         ? FACTOR.test(after) || (/[\d)]/.test(before) && /[-+]/.test(after) && /\d/.test(text[at + 2] ?? ""))
         : run.length === 2 && /[\d)]/.test(before) && /[\d(]/.test(after);
-    const from = open[run.length];
-    if (from != null) {
-      // The closing star of an emphasis around one word, never a product
-      // inside a longer one ("*area = b*h*").
-      if (!product || !/\s/.test(text.slice(from, at))) {
-        delete open[run.length];
-        return run;
-      }
-    }
     return product ? TIMES.repeat(run.length) : run;
   });
 }
@@ -482,13 +480,20 @@ function parseMasked(text: string): Inline[] {
       continue;
     }
     // snake_case_words are not italics: an opening _ must not follow a letter.
-    if (m[9] != null && isWordChar(text[m.index - 1])) {
+    if ((m[9] != null || m[7] != null) && isWordChar(text[m.index - 1])) {
+      re.lastIndex = m.index + 1;
+      continue;
+    }
+    // A star run next to punctuation on its inner side and a letter on its outer side opens or closes nothing: "f(*args", "*.log".
+    const starred = m[8] ?? m[6];
+    if (starred != null && ((/[^\w\s]/.test(starred[starred.length - 1]) && isWordChar(text[m.index + m[0].length])) || (/[^\w\s]/.test(starred[0]) && isWordChar(text[m.index - 1])))) {
       re.lastIndex = m.index + 1;
       continue;
     }
     pushText(text.slice(at, m.index));
     at = m.index + m[0].length;
-    if (m[12] != null) pushText("$");
+    if (m[13] != null) pushText(m[13]);
+    else if (m[12] != null) pushText("$");
     else if (m[1] != null) out.push({ kind: "code", text: unmask(m[1].slice(1, -1)) });
     else if (m[2] != null || m[3] != null || m[4] != null || m[5] != null) {
       out.push({ kind: "math", tex: unmask(m[2] ?? m[3] ?? m[4] ?? m[5]), display: m[2] != null || m[4] != null });
