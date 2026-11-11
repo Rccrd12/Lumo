@@ -401,14 +401,16 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
 }
 
 /// The shell command of an Antigravity `run_command` call, when it reached
-/// the relay whole: a command too long to forward whole is not one to approve
+/// the relay whole: a command too long to forward whole (a permission
+/// request's target goes whole up to MAX_TARGET_LEN) is not one to approve
 /// without seeing it, nor one its rules could read.
 fn shell_command<'a>(tool: &str, input: Option<&'a Value>) -> Option<&'a str> {
     if tool != "run_command" && !tool.ends_with(":run_command") {
         return None;
     }
-    let command = input?.get("command")?.as_str()?.trim();
-    (!command.is_empty() && command.chars().count() <= MAX_FIELD_LEN).then_some(command)
+    let command = input?.get("command")?.as_str()?;
+    let whole = command.len() <= MAX_TARGET_LEN;
+    Some(command.trim()).filter(|c| whole && !c.is_empty())
 }
 
 /// The user's home folder, where Antigravity keeps its rules (`.gemini`).
@@ -1076,6 +1078,16 @@ mod tests {
             assert!(!ev.agy_gate, "{cmd}");
             assert_eq!(ev.name, "PreToolUse");
         }
+        // A long command goes to the island whole, as any permission request's
+        // target does; one too long to forward whole is left to Antigravity.
+        let long = format!("npm run build -- {}", "x".repeat(3 * MAX_FIELD_LEN));
+        let ev = prepare(run(&long).as_bytes(), &agy, &env, "/p").unwrap();
+        assert!(ev.agy_gate);
+        let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
+        assert_eq!(v["tool_input"]["command"], long.as_str());
+        assert!(v.get("lumo_input_cut").is_none());
+        let too_long = format!("npm run build -- {}", "x".repeat(MAX_TARGET_LEN));
+        assert!(!prepare(run(&too_long).as_bytes(), &agy, &env, "/p").unwrap().agy_gate);
         // Hooks that give no time to wait, another tool, or the island's own chat: no gate.
         let short = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: None, chat_guard: false };
         assert!(!prepare(run("npm install").as_bytes(), &short, &env, "/p").unwrap().agy_gate);

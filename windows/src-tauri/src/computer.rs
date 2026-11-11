@@ -114,7 +114,12 @@ pub fn server_entry() -> Value {
 /// configuration is never touched.
 pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
     let path = work.join(".agents").join("mcp_config.json");
-    let read = std::fs::read_to_string(&path).ok();
+    let read = match std::fs::read_to_string(&path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        // Not UTF-8 (a UTF-16 file), or not readable now: the user's, left alone.
+        Err(_) => return,
+    };
     let mut config = match read.as_deref().map(serde_json::from_str::<Value>) {
         Some(Ok(v)) if v.is_object() => v,
         // A file Lumo can't read is the user's: left alone.
@@ -146,9 +151,12 @@ pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
 
 /// A chat turn that may use the computer starts.
 pub fn begin_turn() {
-    STOPPED.store(false, Ordering::SeqCst);
     *VIEW.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    TURN.fetch_add(1, Ordering::SeqCst);
+    // Esc stops the computer for the turns under way: one that starts
+    // meanwhile (another chat) doesn't hand it back to them.
+    if TURN.fetch_add(1, Ordering::SeqCst) == 0 {
+        STOPPED.store(false, Ordering::SeqCst);
+    }
 }
 
 /// The turn is over: nothing more is done, and Esc and the mouse are the user's again.
@@ -157,6 +165,9 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
     if TURN.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))) != Ok(1) {
         return;
     }
+    // An action still under way (typing, a wait, a drag) stops as with Esc:
+    // the chat's Stop ended the turn, not only Esc does.
+    STOPPED.store(true, Ordering::SeqCst);
     ACTING.store(false, Ordering::SeqCst);
     release_stop_key(app);
     disengage(app);
@@ -912,6 +923,10 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     let app2 = app.clone();
     let answer = tauri::async_runtime::spawn_blocking(move || {
         let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        // Waiting on an action that was stopped (Esc, the chat's Stop): not done after it.
+        if stopped() {
+            return Err("Stopped before it started.".to_string());
+        }
         perform(&app2, action)
     })
     .await
@@ -1856,6 +1871,11 @@ mod tests {
         std::fs::write(&file, "not json").unwrap();
         agy_workspace(&dir, "mail", false);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json", "what Lumo can't read is left alone");
+        // Saved as UTF-16 (Notepad's "Unicode"): not text Lumo reads, so not written over.
+        let utf16: Vec<u8> = [0xFEFFu16].into_iter().chain("{}".encode_utf16()).flat_map(u16::to_le_bytes).collect();
+        std::fs::write(&file, &utf16).unwrap();
+        agy_workspace(&dir, "mail", false);
+        assert_eq!(std::fs::read(&file).unwrap(), utf16, "a UTF-16 file is left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1869,6 +1889,14 @@ mod tests {
         assert!(view().is_ok());
         begin_turn();
         assert!(view().is_err(), "each turn picks its screen again");
+        // Esc during a turn: a chat that starts meanwhile doesn't undo it…
+        STOPPED.store(true, Ordering::SeqCst);
+        begin_turn();
+        assert!(STOPPED.load(Ordering::SeqCst), "still stopped while the stopped turn runs");
+        // …the next turn, once they are over, starts afresh.
+        TURN.store(0, Ordering::SeqCst);
+        begin_turn();
+        assert!(!STOPPED.load(Ordering::SeqCst));
         TURN.store(0, Ordering::SeqCst);
     }
 }

@@ -196,8 +196,9 @@ fn holds_secrets(p: &str) -> bool {
 /// `replace_file_content`…) outside the run's workspace (`workspaces`, agy's
 /// `workspacePaths`). agy would ask about it, but its own confirmation is off
 /// in the island's chat, so it is a card. A path that cannot be placed for
-/// sure (`..`, no workspace known) is one too. Reading stays free: the chat
-/// reads the documents the user has open, wherever they are.
+/// sure (`..`, no workspace known, the home folder or a variable the tool
+/// may expand: `~`, `$HOME`, `%USERPROFILE%`) is one too. Reading stays free:
+/// the chat reads the documents the user has open, wherever they are.
 pub fn writes_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -> bool {
     let tool = tool.to_ascii_lowercase();
     if !["write", "replace", "edit", "delete", "remove", "move", "rename", "create"].iter().any(|w| tool.contains(w)) {
@@ -213,6 +214,11 @@ pub fn writes_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) 
         .any(|path| {
             let p = norm_path(path);
             if p.split('/').any(|part| part == "..") {
+                return true;
+            }
+            // Not relative to the workspace once expanded: `~/…`, `$HOME/…`,
+            // `${env:…}`, `%USERPROFILE%\…` (and `%3A`, a `file://` address's colon).
+            if p.starts_with(['~', '$']) || p.contains('%') {
                 return true;
             }
             // A relative path is the workspace's own.
@@ -611,6 +617,10 @@ mod tests {
         assert!(!r("write_to_file", json!({"TargetFile": "C:\\x.txt"})), "not a read");
         assert!(reads_outside("view_file", Some(&json!({"AbsolutePath": "/x/a"})), &[]), "no workspace known");
         assert!(writes_outside("write_to_file", Some(&json!({"TargetFile": "/x/a"})), &[]), "no workspace known");
+        // The home folder or a variable the tool may expand: not the workspace's.
+        for path in ["~\\Desktop\\x.txt", "~/x", "%USERPROFILE%\\x.txt", "$HOME/x", "${env:USERPROFILE}\\x", "$env:APPDATA\\x", "file:///C%3A/Users/Public/x"] {
+            assert!(w("write_to_file", json!({ "TargetFile": path })), "{path}");
+        }
         assert!(!island_card("", None));
         assert!(!island_card("mcp_lumo_mail_recent", None) && !island_card("lumo/mail_read", None), "Lumo's email only reads");
         assert!(island_card("mcp_gmail_send_message", None));

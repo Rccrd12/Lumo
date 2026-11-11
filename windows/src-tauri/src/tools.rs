@@ -569,7 +569,8 @@ fn free_id(name: &str) -> String {
 /// the tool, and the user would find it there.
 fn old_entry(old: &Manifest, d: &Draft) -> Option<String> {
     let before = old.entry.as_str();
-    if before == d.entry || Path::new(before).is_absolute() || d.files.iter().any(|f| f.name.eq_ignore_ascii_case(before)) {
+    // NTFS names are the same whatever their case: `main.py` is `Main.py`.
+    if before.eq_ignore_ascii_case(&d.entry) || Path::new(before).is_absolute() || d.files.iter().any(|f| f.name.eq_ignore_ascii_case(before)) {
         return None;
     }
     let stem = Path::new(before).file_stem()?.to_str()?;
@@ -744,14 +745,26 @@ pub fn fill_args(args: &[String], input: &Value) -> Vec<String> {
             }
             continue;
         }
-        let mut filled = a.clone();
-        if let Some(obj) = input.as_object() {
-            for (k, v) in obj {
-                if let Some(v) = arg_value(v) {
-                    filled = filled.replace(&format!("{{{k}}}"), &v);
+        // In one pass: a value that holds `{other}` is the value, not another
+        // parameter's place.
+        let mut filled = String::new();
+        let mut rest = a.as_str();
+        while let Some(open) = rest.find('{') {
+            filled.push_str(&rest[..open]);
+            let after = &rest[open + 1..];
+            let value = after.find('}').and_then(|close| Some((close, input.get(&after[..close]).and_then(arg_value)?)));
+            match value {
+                Some((close, v)) => {
+                    filled.push_str(&v);
+                    rest = &after[close + 1..];
+                }
+                None => {
+                    filled.push('{');
+                    rest = after;
                 }
             }
         }
+        filled.push_str(rest);
         out.push(filled);
     }
     out
@@ -1105,18 +1118,33 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
             let _ = stdin.write_all(input_text.as_bytes());
         });
     }
+    // What it prints is kept as it comes: a program it started and left
+    // running with the same pipe keeps it open, and what the tool itself
+    // printed must not wait for that program to end.
     let pipe = |r: Option<Box<dyn Read + Send>>| {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let buf = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let held = buf.clone();
         std::thread::spawn(move || {
-            let mut buf = Vec::new();
             if let Some(mut r) = r {
-                let _ = r.by_ref().take((MAX_OUTPUT * 4) as u64).read_to_end(&mut buf);
-                // Whatever else it prints is read and dropped, so it never blocks on a full pipe.
-                let _ = std::io::copy(&mut r, &mut std::io::sink());
+                let mut chunk = [0u8; 8192];
+                loop {
+                    match r.read(&mut chunk) {
+                        Ok(0) => break,
+                        // Whatever else it prints is read and dropped, so it never blocks on a full pipe.
+                        Ok(n) => {
+                            let mut held = held.lock().unwrap_or_else(|e| e.into_inner());
+                            let room = (MAX_OUTPUT * 4).saturating_sub(held.len());
+                            held.extend_from_slice(&chunk[..n.min(room)]);
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                        Err(_) => break,
+                    }
+                }
             }
-            let _ = tx.send(String::from_utf8_lossy(&buf).to_string());
+            let _ = tx.send(());
         });
-        rx
+        (buf, rx)
     };
     let out = pipe(stdout);
     let err = pipe(stderr);
@@ -1143,8 +1171,10 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
         c.kill();
     }
     let deadline = Instant::now() + Duration::from_secs(2);
-    let collect = |rx: std::sync::mpsc::Receiver<String>| {
-        rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).unwrap_or_default()
+    let collect = |(buf, rx): (std::sync::Arc<Mutex<Vec<u8>>>, std::sync::mpsc::Receiver<()>)| {
+        let _ = rx.recv_timeout(deadline.saturating_duration_since(Instant::now()));
+        let held = buf.lock().unwrap_or_else(|e| e.into_inner());
+        String::from_utf8_lossy(&held).to_string()
     };
     let stdout = collect(out);
     let stderr = collect(err);
@@ -1866,6 +1896,9 @@ mod tests {
             ["--count", "3", "--name=pc", "-v", "true", "fixed"]
         );
         assert_eq!(fill_args(&args, &json!({ "name": "pc" })), ["--name=pc", "fixed"]);
+        // A value is put in once, as it is, even when it looks like a place.
+        let args: Vec<String> = ["--q={query}:{path}", "{{path}}", "x{nope}"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(fill_args(&args, &json!({ "query": "{path}", "path": "C:\\x" })), ["--q={path}:C:\\x", "{C:\\x}", "x{nope}"]);
     }
 
     #[test]
@@ -1981,6 +2014,7 @@ mod tests {
         assert_eq!(old_entry(&old, &draft("pdfcraft_mcp.py", &[("pdfcraft_mcp.py", "print(1)")])).as_deref(), Some("pdfcraft_tool.py"));
         assert_eq!(old_entry(&old, &draft("pdfcraft_mcp.py", &[("pdfcraft_mcp.py", "import pdfcraft_tool")])), None, "still imported");
         assert_eq!(old_entry(&old, &draft("pdfcraft_tool.py", &[])), None, "the same entry");
+        assert_eq!(old_entry(&manifest("Main.py", &[]), &draft("main.py", &[])), None, "the same file on NTFS, in another case");
         assert_eq!(old_entry(&old, &draft("b.py", &[("b.py", ""), ("pdfcraft_tool.py", "")])), None, "still one of its files");
         assert_eq!(old_entry(&manifest("C:\\Scripts\\x.py", &[]), &draft("b.py", &[("b.py", "")])), None, "the user's own script is never touched");
     }

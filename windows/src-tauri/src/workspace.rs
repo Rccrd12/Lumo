@@ -267,7 +267,12 @@ fn numbered_lines(content: &str) -> Option<String> {
             return None;
         }
         next = Some(n + 1);
+        // workspace_read writes `7| text`: data separated by `|` (`7|Anna|30`)
+        // has no space after it, and keeps its first column.
         let rest = &line[bar + 1..];
+        if !rest.is_empty() && !rest.starts_with(' ') {
+            return None;
+        }
         plain.push(rest.strip_prefix(' ').unwrap_or(rest));
     }
     let mut text = plain.join("\n");
@@ -275,6 +280,18 @@ fn numbered_lines(content: &str) -> Option<String> {
         text.push('\n');
     }
     Some(text)
+}
+
+/// What a copy made in the folder, taken away again when the copy doesn't
+/// finish (dropped while it still holds it).
+struct Undo(Option<PathBuf>);
+
+impl Drop for Undo {
+    fn drop(&mut self) {
+        if let Some(at) = self.0.take() {
+            let _ = if at.is_dir() { std::fs::remove_dir_all(&at) } else { std::fs::remove_file(&at) };
+        }
+    }
 }
 
 /// What a tool says, and the files it touched (their kind, for the chat's files).
@@ -392,15 +409,29 @@ impl Workspace {
         let meta = std::fs::metadata(from).map_err(|_| not_found(from))?;
         let mut entries = self.manifest();
         // Copied already: the copy, perhaps changed, stays as it is.
-        let same = |e: &Entry| Path::new(&e.original) == from || Path::new(&e.original).starts_with(from) && meta.is_dir();
-        if let Some(e) = entries.iter().find(|e| same(e)) {
-            let top = if meta.is_dir() { e.copy.split('/').next().unwrap_or(&e.copy).to_string() } else { e.copy.clone() };
+        // For a folder, a file of it copied with it (`proj (2)/src/a.rs` from
+        // `proj/src/a.rs`), not one copied on its own (`a.rs`): the folder's
+        // copy, where it is.
+        let copied = |e: &Entry| -> Option<String> {
+            if Path::new(&e.original) == from {
+                return Some(e.copy.clone());
+            }
+            if !meta.is_dir() {
+                return None;
+            }
+            let inner = rel_string(Path::new(&e.original).strip_prefix(from).ok()?);
+            let top = e.copy.strip_suffix(&inner)?.strip_suffix('/')?;
+            (!top.is_empty()).then(|| top.to_string())
+        };
+        if let Some(top) = entries.iter().find_map(copied) {
             return Ok((format!("Already copied: {top} (your changes to it are kept)."), Vec::new()));
         }
         let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "copy".into());
         let mut top = PathBuf::from(&name);
+        let mut fresh = false;
         for n in 2..1000 {
             if !self.dir.join(&top).exists() {
+                fresh = true;
                 break;
             }
             let p = Path::new(&name);
@@ -410,6 +441,9 @@ impl Workspace {
                 _ => format!("{name} ({n})"),
             });
         }
+        // A copy that stops halfway (too big, a file that can't be read) leaves
+        // nothing behind: no copy the manifest doesn't know, no `proj (2)` next time.
+        let mut undo = Undo(fresh.then(|| self.dir.join(&top)));
         let mut files: Vec<(PathBuf, PathBuf)> = Vec::new();
         if meta.is_dir() {
             let mut total = 0u64;
@@ -456,6 +490,7 @@ impl Workspace {
             entries.push(Entry { copy: rel_string(rel), original: src.to_string_lossy().to_string(), hash: hash_of(&to).unwrap_or(0) });
         }
         self.save_manifest(&entries)?;
+        undo.0 = None;
         let top_name = rel_string(&top);
         let what = if meta.is_dir() { format!("{} files", files.len()) } else { "the file".into() };
         let touched = if meta.is_dir() { Vec::new() } else { vec![("read", self.dir.join(&top))] };
@@ -530,6 +565,17 @@ impl Workspace {
             // Unpadded: a model that copies the text back drops "7| " and keeps no spaces.
             let next = format!("{}| {line}\n", i + 1);
             if out.len() + next.len() > MAX_READ {
+                // A line longer than a whole read (minified code, JSON on one
+                // line): its start, rather than nothing and the same read again.
+                if out.is_empty() {
+                    let mut end = MAX_READ.min(next.len());
+                    while !next.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    out.push_str(&next[..end]);
+                    out.push_str(&format!("\n… line {} is {} bytes long: only its start is shown.\n", i + 1, line.len()));
+                    last = i + 1;
+                }
                 break;
             }
             out.push_str(&next);
@@ -967,6 +1013,68 @@ mod tests {
             let said = ws.run(COPY, &json!({ "path": unc })).unwrap_err();
             assert!(said.contains("network"), "{unc}: {said}");
         }
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_folder_is_copied_even_after_one_of_its_files() {
+        let base = temp("folder-after-file");
+        let ws = Workspace::new(base.join("ws"));
+        std::fs::create_dir_all(base.join("proj/src")).unwrap();
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        std::fs::write(base.join("proj/src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(base.join("proj/README.md"), "# proj\n").unwrap();
+        ws.run(COPY, &json!({ "path": base.join("proj/README.md").to_string_lossy() })).unwrap();
+        let said = ws.run(COPY, &json!({ "path": base.join("proj").to_string_lossy() })).unwrap().0;
+        assert!(said.starts_with("Copied 2 files to proj"), "{said}");
+        assert!(ws.dir.join("proj/src/main.rs").is_file());
+        // The folder, and a folder in it, are copied already now.
+        assert_eq!(ws.run(COPY, &json!({ "path": base.join("proj").to_string_lossy() })).unwrap().0, "Already copied: proj (your changes to it are kept).");
+        assert_eq!(ws.run(COPY, &json!({ "path": base.join("proj/src").to_string_lossy() })).unwrap().0, "Already copied: proj/src (your changes to it are kept).");
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_copy_that_stops_halfway_leaves_nothing_behind() {
+        let base = temp("halfway");
+        let ws = Workspace::new(base.join("ws"));
+        std::fs::create_dir_all(base.join("proj")).unwrap();
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        for n in 0..=MAX_FILES {
+            std::fs::write(base.join("proj").join(format!("{n}.txt")), "x").unwrap();
+        }
+        let proj = base.join("proj").to_string_lossy().to_string();
+        assert!(ws.run(COPY, &json!({ "path": proj })).unwrap_err().contains("too big"));
+        assert!(!ws.dir.join("proj").exists());
+        assert!(ws.manifest().is_empty());
+        std::fs::remove_file(base.join("proj").join("0.txt")).unwrap();
+        let said = ws.run(COPY, &json!({ "path": proj })).unwrap().0;
+        assert!(said.contains(" to proj in your folder"), "{said}");
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_line_longer_than_a_read_shows_its_start() {
+        let base = temp("long-line");
+        let ws = Workspace::new(base.join("ws"));
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        std::fs::write(ws.dir.join("app.min.js"), format!("{}\nsecond\n", "é".repeat(MAX_READ))).unwrap();
+        let first = ws.run(READ, &json!({ "path": "app.min.js" })).unwrap().0;
+        assert!(first.starts_with("1| éé") && first.len() < MAX_READ + 200, "{}", first.len());
+        assert!(first.contains("only its start is shown") && first.ends_with("read on from line 2."), "{first}");
+        assert_eq!(ws.run(READ, &json!({ "path": "app.min.js", "from_line": 2 })).unwrap().0, "2| second\n");
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn data_separated_by_bars_keeps_its_first_column() {
+        assert_eq!(without_line_numbers("1|Anna|30\n2|Bruno|41\n"), None);
+        assert_eq!(without_line_numbers("1| Anna\n2|\n3| fine").as_deref(), Some("Anna\n\nfine"));
+        let base = temp("bars");
+        let ws = Workspace::new(base.join("ws"));
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        ws.run(WRITE, &json!({ "path": "people.txt", "content": "1|Anna|30\n2|Bruno|41\n" })).unwrap();
+        assert_eq!(std::fs::read_to_string(ws.dir.join("people.txt")).unwrap(), "1|Anna|30\n2|Bruno|41\n");
         let _ = std::fs::remove_dir_all(base);
     }
 

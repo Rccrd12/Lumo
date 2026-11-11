@@ -147,11 +147,27 @@ thread_local! {
     static TEST_LANG: std::cell::Cell<&'static str> = const { std::cell::Cell::new("en") };
 }
 
+/// Fills each `{name}` of `text` in one pass: a value that holds a
+/// placeholder itself (a title, a subject) is written as it is.
 fn interpolate(text: &str, vars: &[(&str, &str)]) -> String {
-    let mut out = text.to_string();
-    for (name, value) in vars {
-        out = out.replace(&format!("{{{name}}}"), value);
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let named = after.find('}').and_then(|close| vars.iter().find(|(name, _)| *name == &after[..close]));
+        match named {
+            Some((name, value)) => {
+                out.push_str(value);
+                rest = &after[name.len() + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
     }
+    out.push_str(rest);
     out
 }
 
@@ -227,6 +243,15 @@ mod tests {
         set_for_test("en");
         assert_eq!(t("Allow"), "Allow");
         assert_eq!(tf("Open {name}", &[("name", "Vercel")]), "Open Vercel");
+    }
+
+    #[test]
+    fn placeholders_are_filled_once() {
+        assert_eq!(interpolate("{a} and {b}, {a}", &[("a", "1"), ("b", "2")]), "1 and 2, 1");
+        // A value naming another placeholder stays as it is.
+        assert_eq!(interpolate("{pr}: {checks}", &[("pr", "x {checks}"), ("checks", "ci")]), "x {checks}: ci");
+        assert_eq!(interpolate("{unknown} {} {a", &[("a", "1")]), "{unknown} {} {a");
+        assert_eq!(interpolate("{é}", &[("é", "ok")]), "ok");
     }
 
     #[test]

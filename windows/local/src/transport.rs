@@ -1,13 +1,13 @@
 // One request to the server, its answer read as it streams in or, for a
 // server whose stream hangs (LM Studio, on some tool calls), whole.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::sse::{filter_thinking_blocks, finish_reason_of, parse_sse_line, progressive_filter, CallParts, Event};
+use crate::sse::{filter_thinking_blocks, finish_reason_of, parse_sse_line, progressive_filter, usage_of, without_half_tag, CallParts, Event};
 
 /// The text shown while streaming goes out at most this often.
 pub const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
@@ -207,6 +207,8 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let mut calls = CallParts::default();
     let mut pending = Vec::<u8>::new();
     let mut last = Instant::now().checked_sub(DELTA_INTERVAL).unwrap_or_else(Instant::now);
+    // The visible text last sent.
+    let mut shown = String::new();
     let mut started = false;
     // Some of the answer's text showed: what comes next is the answer, not reasoning.
     let mut visible = false;
@@ -223,12 +225,17 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let flowing = AtomicBool::new(false);
     let done = AtomicBool::new(false);
     let cut = AtomicBool::new(false);
+    // The bytes of the tool calls so far: they count against MAX_ANSWER as the text does.
+    let call_bytes = AtomicUsize::new(0);
     let mut take = |line: &str, text: &mut String, on: &mut dyn FnMut(Seen)| -> Result<(), Failure> {
         if let Some(reason) = finish_reason_of(line) {
             finished.store(true, Ordering::Relaxed);
             if reason == "length" {
                 cut.store(true, Ordering::Relaxed);
             }
+        }
+        if let Some(total) = usage_of(line) {
+            used = Some(total);
         }
         let event = parse_sse_line(line);
         // Only a sign of the model at work: LM Studio opens its answer with
@@ -264,7 +271,10 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             }
             Some(Event::Reasoning) | None => {}
             Some(Event::Usage(total)) => used = Some(total),
-            Some(Event::Calls(pieces)) => calls.feed(&pieces),
+            Some(Event::Calls(pieces)) => {
+                calls.feed(&pieces);
+                call_bytes.store(calls.size(), Ordering::Relaxed);
+            }
             Some(Event::Error(message)) => return Err(Failure::Server(message)),
         }
         Ok(())
@@ -299,12 +309,19 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         if done.load(Ordering::Relaxed) {
             break;
         }
-        if pending.len() > MAX_LINE || text.len() > MAX_ANSWER {
+        if pending.len() > MAX_LINE || text.len() + call_bytes.load(Ordering::Relaxed) > MAX_ANSWER {
             return Err(Failure::TooLarge);
         }
+        // Only text that changed goes out: the same text again would take
+        // what the answer is doing (a call it writes) off the island.
         if last.elapsed() >= DELTA_INTERVAL {
             last = Instant::now();
-            on(Seen::Text(progressive_filter(&text)));
+            let visible = progressive_filter(&text);
+            let visible = without_half_tag(&visible);
+            if visible != shown {
+                visible.clone_into(&mut shown);
+                on(Seen::Text(shown.clone()));
+            }
         }
     }
     // A last line without its newline.

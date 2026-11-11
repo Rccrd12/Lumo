@@ -674,9 +674,18 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         return Err(tf("The download failed: {error}", &[("error", "not an installer")]));
     }
     // Byte for byte the file GitHub published: a changed file is never run.
-    if crate::platform::sha256_hex(&bytes).as_deref() != Some(expected.as_str()) {
-        log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
-        return Err(t("The downloaded installer does not match the one GitHub published."));
+    // The installer may have been published again (a beta rebuilt) since Lumo
+    // read its SHA-256: GitHub is asked once more before giving up.
+    let got = crate::platform::sha256_hex(&bytes);
+    if got.as_deref() != Some(expected.as_str()) {
+        let again = match fetch_releases(app).await {
+            Ok(_) => expected_digest(&url).filter(|d| *d != expected),
+            Err(_) => None,
+        };
+        if again.is_none() || got != again {
+            log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
+            return Err(t("The downloaded installer does not match the one GitHub published."));
+        }
     }
     // Signed with Lumo's own key: a file swapped on the release, with its
     // SHA-256, still has no signature that holds.

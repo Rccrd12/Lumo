@@ -478,18 +478,37 @@ fn fill(item: &Disp, account: Option<Account>, draft: &Draft, subject: &str, tex
 /// After the card: Send sends it out of Outlook (into its Sent Items);
 /// anything else throws it away.
 pub async fn finish(made: &Made, send: bool) -> Result<(), String> {
+    use std::sync::atomic::AtomicU8;
+    const WAITING: u8 = 0;
+    const SENDING: u8 = 1;
+    const GAVE_UP: u8 = 2;
     let token = made.token;
-    with_outlook(STEP, move |s| {
+    // Outlook may hold Send on a prompt of its own ("A program is trying to
+    // send…") past the wait, and send once the user allows it: once Send is
+    // called, no answer doesn't mean the email didn't go. Send is called only
+    // while Lumo still waits, so a wait that ends first means it wasn't.
+    let state = std::sync::Arc::new(AtomicU8::new(WAITING));
+    let job_state = state.clone();
+    let done = with_outlook(if send { SLOW_STEP } else { STEP }, move |s| {
         let item = s.pending.remove(&token).ok_or_else(|| "Outlook closed before the email went.".to_string())?;
-        if send {
+        if send && job_state.compare_exchange(WAITING, SENDING, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             item.call("Send", vec![]).map(|_| ())
         } else {
             throw_away(&item);
             Ok(())
         }
     })
-    .await
+    .await;
+    match done {
+        Err(e) if send && e == NO_ANSWER && state.compare_exchange(WAITING, GAVE_UP, Ordering::SeqCst, Ordering::SeqCst).is_err() => Err(MAYBE_SENT.into()),
+        other => other,
+    }
 }
+
+/// What `with_outlook` says when Outlook didn't answer within its wait.
+const NO_ANSWER: &str = "Outlook didn't answer in time: a window of its own may be waiting for the user.";
+/// What the AI reads when Outlook was told to send and never said it did.
+const MAYBE_SENT: &str = "The email may have been sent: Outlook was told to send it but didn't confirm in time (it may be asking the user to allow it). Do not send it again: ask the user to check Outlook's Sent Items and Outbox first.";
 
 /// Keeps the email in Outlook's Drafts: nothing is sent.
 pub async fn keep_draft(made: &Made) -> Result<String, String> {
@@ -679,7 +698,9 @@ async fn with_outlook<T: Send + 'static>(wait: Duration, job: impl FnOnce(&mut S
         if Instant::now() > deadline {
             return;
         }
-        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(s))).unwrap_or_else(|_| Err("Lumo's link to Outlook broke.".into()));
+        // No catch_unwind: the release profile is panic = "abort", where it
+        // would catch nothing. The jobs are written to have nothing to panic on.
+        let out = job(s);
         // MAPI's session lasts one job: nothing of it holds Outlook's profile in between.
         s.mapi = None;
         if GONE.with(|g| g.replace(false)) {
@@ -710,7 +731,7 @@ async fn with_outlook<T: Send + 'static>(wait: Duration, job: impl FnOnce(&mut S
     jobs.lock().unwrap().send(task).map_err(|_| "Lumo couldn't reach Outlook.".to_string())?;
     match tokio::time::timeout(wait, rx).await {
         Ok(Ok(out)) => out,
-        _ => Err("Outlook didn't answer in time: a window of its own may be waiting for the user.".into()),
+        _ => Err(NO_ANSWER.into()),
     }
 }
 

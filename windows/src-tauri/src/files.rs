@@ -243,8 +243,24 @@ pub fn write_in(name: &str, bytes: &[u8]) -> Result<DroppedFile, String> {
         return Err(crate::i18n::t("This file is too big to paste. Attach it with the paperclip instead."));
     }
     let name = safe_file_name(name);
-    let dest = new_inbox_file(&name)?;
-    std::fs::write(&dest, bytes).map_err(|e| crate::i18n::tf("Cannot copy: {error}", &[("error", &e.to_string())]))?;
+    let cannot_copy = |e: std::io::Error| crate::i18n::tf("Cannot copy: {error}", &[("error", &e.to_string())]);
+    // The name is taken as the file is made (create_new): two pastes of
+    // "image.png" at once each get a file of their own, neither written over.
+    let mut attempts = 0;
+    let (dest, mut file) = loop {
+        let dest = new_inbox_file(&name)?;
+        match std::fs::File::options().write(true).create_new(true).open(&dest) {
+            Ok(file) => break (dest, file),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempts < 10 => attempts += 1,
+            Err(e) => return Err(cannot_copy(e)),
+        }
+    };
+    if let Err(e) = std::io::Write::write_all(&mut file, bytes) {
+        drop(file);
+        let _ = std::fs::remove_file(&dest);
+        return Err(cannot_copy(e));
+    }
+    drop(file);
     Ok(DroppedFile {
         name: dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(name),
         path: dest.to_string_lossy().to_string(),
@@ -472,6 +488,26 @@ mod paste_tests {
         let _ = std::fs::remove_file(&got.path);
         let _ = std::fs::remove_file(&again.path);
         assert!(write_in("big.bin", &vec![0u8; MAX_PASTE + 1]).is_err());
+    }
+
+    #[test]
+    fn pastes_of_the_same_name_at_once_never_write_over_each_other() {
+        let name = format!("paste-race-{}.png", std::process::id());
+        let pasted: Vec<DroppedFile> = std::thread::scope(|s| {
+            let all: Vec<_> = (0..8u8).map(|n| {
+                let name = &name;
+                s.spawn(move || write_in(name, &[n; 64]).unwrap())
+            }).collect();
+            all.into_iter().map(|t| t.join().unwrap()).collect()
+        });
+        let paths: std::collections::HashSet<&str> = pasted.iter().map(|p| p.path.as_str()).collect();
+        assert_eq!(paths.len(), 8, "each paste has a file of its own");
+        let mut held: Vec<u8> = pasted.iter().map(|p| std::fs::read(&p.path).unwrap()[0]).collect();
+        held.sort();
+        assert_eq!(held, (0..8u8).collect::<Vec<_>>(), "and each holds its own bytes");
+        for p in &pasted {
+            let _ = std::fs::remove_file(&p.path);
+        }
     }
 }
 
