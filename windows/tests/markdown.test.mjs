@@ -121,6 +121,22 @@ test("a star between numbers or letters is a multiplication, not italics", () =>
     { kind: "strong", children: [{ kind: "text", text: "Passo" }] },
     { kind: "text", text: "1" },
   ]);
+  // An emphasis around one word closes right before a letter or a bracket.
+  assert.deepEqual(parseInline("the *n*th term of *a*, the *API*s, **2**(two)"), [
+    { kind: "text", text: "the " },
+    { kind: "em", children: [{ kind: "text", text: "n" }] },
+    { kind: "text", text: "th term of " },
+    { kind: "em", children: [{ kind: "text", text: "a" }] },
+    { kind: "text", text: ", the " },
+    { kind: "em", children: [{ kind: "text", text: "API" }] },
+    { kind: "text", text: "s, " },
+    { kind: "strong", children: [{ kind: "text", text: "2" }] },
+    { kind: "text", text: "(two)" },
+  ]);
+  assert.deepEqual(parseInline("*hi!* then a*b"), [
+    { kind: "em", children: [{ kind: "text", text: "hi!" }] },
+    { kind: "text", text: " then a*b" },
+  ]);
   assert.deepEqual(parseInline("这是**重要**的"), [
     { kind: "text", text: "这是" },
     { kind: "strong", children: [{ kind: "text", text: "重要" }] },

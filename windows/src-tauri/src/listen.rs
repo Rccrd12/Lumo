@@ -242,11 +242,22 @@ fn with_store<R>(f: impl FnOnce(&mut Store) -> R) -> R {
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
         s.next_id = saved.iter().map(|w| w.id).max().unwrap_or(0) + 1;
-        s.watches = saved.into_iter().filter(kept).collect();
+        let (keep, gone): (Vec<Watch>, Vec<Watch>) = saved.into_iter().partition(kept);
+        s.watches = keep;
         s.history = std::fs::read_to_string(history_file())
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
+        // A page watched before only public https pages could be (plain http,
+        // this PC, the local network) is no longer watched: it goes to the
+        // past ones, saying why, rather than vanishing.
+        let pages: Vec<Watch> = gone.into_iter().filter(|w| w.source == "web").collect();
+        if !pages.is_empty() {
+            for w in &pages {
+                remember(&mut s, w, false, &t("Not a public https page, so Lumo no longer watches it."));
+            }
+            save(&s.watches);
+        }
     }
     f(&mut s)
 }

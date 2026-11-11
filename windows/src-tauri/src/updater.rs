@@ -599,7 +599,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         .ok_or_else(|| t("Only installers from Lumo's GitHub releases can be installed."))?;
     // What GitHub says the file is, before anything is downloaded: asked again
     // when this run of Lumo has not read it yet. No SHA-256, no install.
-    let expected = match expected_digest(&url) {
+    let mut expected = match expected_digest(&url) {
         Some(d) => d,
         None => {
             fetch_releases(app).await?;
@@ -682,10 +682,12 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
             Ok(_) => expected_digest(&url).filter(|d| *d != expected),
             Err(_) => None,
         };
-        if again.is_none() || got != again {
+        let Some(again) = again.filter(|a| got.as_deref() == Some(a.as_str())) else {
             log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
             return Err(t("The downloaded installer does not match the one GitHub published."));
-        }
+        };
+        // Published again: its name is signed with its new SHA-256.
+        expected = again;
     }
     // Signed with Lumo's own key: a file swapped on the release, with its
     // SHA-256, still has no signature that holds.

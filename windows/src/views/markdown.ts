@@ -425,14 +425,34 @@ const FACTOR = /[A-Za-z0-9([]/;
 
 function maskProducts(text: string): string {
   if (!text.includes("*")) return text;
+  // Where an emphasis of one star or of two was opened and not yet closed:
+  // "the *n*th term", "the *API*s" and "**2**(two)" close it right before a
+  // letter or a bracket, which a product would otherwise take.
+  const open: Record<number, number> = {};
   return text.replace(/\*+/g, (run: string, at: number) => {
     const before = text[at - 1] ?? "";
     const after = text[at + run.length] ?? "";
-    if (!BEFORE_FACTOR.test(before)) return run;
+    const factorBefore = BEFORE_FACTOR.test(before);
+    if (!factorBefore) {
+      // After a mark ("*hi!*") it closes the emphasis open; otherwise it may
+      // open one: something other than a space follows.
+      if (before && !/\s/.test(before) && open[run.length] != null) delete open[run.length];
+      else if (after && !/\s/.test(after)) open[run.length] = at + run.length;
+      return run;
+    }
     const product =
       run.length === 1
         ? FACTOR.test(after) || (/[\d)]/.test(before) && /[-+]/.test(after) && /\d/.test(text[at + 2] ?? ""))
         : run.length === 2 && /[\d)]/.test(before) && /[\d(]/.test(after);
+    const from = open[run.length];
+    if (from != null) {
+      // The closing star of an emphasis around one word, never a product
+      // inside a longer one ("*area = b*h*").
+      if (!product || !/\s/.test(text.slice(from, at))) {
+        delete open[run.length];
+        return run;
+      }
+    }
     return product ? TIMES.repeat(run.length) : run;
   });
 }

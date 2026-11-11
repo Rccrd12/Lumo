@@ -309,10 +309,14 @@ export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
       e.stopPropagation();
       asked.add(url);
       if (asked.size > 400) asked.delete(asked.values().next().value as string);
-      const parent = row.parentElement;
-      if (!parent) return;
-      parent.insertBefore(renderImage(alt, url, nth), row);
-      row.remove();
+      // The row itself becomes the image: the chat keeps this node for the
+      // card across its redraws (an answer still streaming), so a new one
+      // put in its place would be swapped back for the row at the next chunk.
+      const card = renderImage(alt, url, nth);
+      row.className = card.className;
+      row.replaceChildren(...Array.from(card.childNodes));
+      const live = liveOf.get(card);
+      if (live) track(row, live);
     });
     return row;
   }
