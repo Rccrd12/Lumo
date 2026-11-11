@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CompactFeed, MAIL_PEEK_MS, NOTICE_MS, activityLine, activityLines, parseDuration, speakerName, takeTimers, timerLeft,
+  CompactFeed, MAIL_OPEN_MAX_H, MAIL_PEEK_MS, NOTICE_MS, activityLine, mailOpenHeight, mailPieces, mailReadable, mailTime, activityLines, parseDuration, speakerName, takeTimers, timerLeft,
 } from "../src/core/compact.ts";
 import { COMPACT_SIZES, COMPACT_W, NOTCH_H, computerCompact, islandSize } from "../src/core/layout.ts";
 
@@ -203,4 +203,39 @@ test("a timer started again after a pause is woken for in its turn", () => {
   assert.equal(feed.nextChange(now + 25 * min), now + 30 * min);
   const shownTimers = feed.shown(null, now + 25 * min).items.filter((i) => i.kind === "timer").map((i) => i.timer.label);
   assert.deepEqual(shownTimers, ["b", "a"]);
+});
+
+// ── An email on the closed island, read there (island/compact.ts mailCard) ────
+
+test("an email's text keeps its lines, without runs of blank ones", () => {
+  assert.equal(mailReadable({ body: "Ciao,\r\n\r\n\r\n\r\nA domani   \n", preview: "x" }), "Ciao,\n\nA domani");
+  assert.equal(mailReadable({ body: "  ", preview: "Only the preview" }), "Only the preview", "no text: the preview");
+  assert.equal(mailReadable({ preview: "Hey!" }), "Hey!");
+});
+
+test("an address on the web in the text is a link with its site's name", () => {
+  assert.deepEqual(mailPieces("View results: https://github.com/a/b/runs/1.\nBye"), [
+    { kind: "text", text: "View results: " },
+    { kind: "link", url: "https://github.com/a/b/runs/1", label: "github.com" },
+    { kind: "text", text: ".\nBye" },
+  ]);
+  assert.deepEqual(mailPieces("Manage <https://www.example.com/settings>"), [
+    { kind: "text", text: "Manage " },
+    { kind: "link", url: "https://www.example.com/settings", label: "example.com" },
+  ]);
+  assert.deepEqual(mailPieces("No link, ftp://x.it or javascript:alert(1)"), [{ kind: "text", text: "No link, ftp://x.it or javascript:alert(1)" }]);
+});
+
+test("an email's time: the hour today, the day before, nothing when unreadable", () => {
+  const now = new Date(2026, 10, 11, 19, 0);
+  assert.match(mailTime(new Date(2026, 10, 11, 18, 18).toString(), now, "it"), /^18[:.]18$/);
+  assert.match(mailTime(new Date(2026, 10, 9, 10, 0).toString(), now, "it"), /^9 nov/);
+  assert.equal(mailTime("", now, "it"), "");
+  assert.equal(mailTime("not a date", now, "it"), "");
+});
+
+test("an open email is as tall as its text, between its height at rest and the most", () => {
+  assert.equal(mailOpenHeight(90, 120), 120);
+  assert.equal(mailOpenHeight(250.4, 120), 250);
+  assert.equal(mailOpenHeight(2000, 120), MAIL_OPEN_MAX_H);
 });

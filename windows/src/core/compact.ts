@@ -30,6 +30,76 @@ export interface MailPeek {
   preview: string;
   /** Where to read it in the browser, when the server is a known webmail. */
   link?: string;
+  /** Its text, as much as the poller keeps (mail.rs BODY_CHARS). */
+  body?: string;
+  /** Its Date header, as the server wrote it. */
+  date?: string;
+}
+
+/**
+ * An email on the closed island, open under the mouse: wider, as tall as its
+ * text up to this, which then scrolls (island/compact.ts mailCard).
+ */
+export const MAIL_OPEN_W = 600;
+export const MAIL_OPEN_MAX_H = 380;
+/** How long the mouse rests on an email before it opens. */
+export const MAIL_OPEN_DELAY_MS = 450;
+
+/** A piece of an email's text: words, or an address on the web shown as a small link. */
+export type MailPiece = { kind: "text"; text: string } | { kind: "link"; url: string; label: string };
+
+/** An email's text to read on the closed island: its lines kept, no run of blank ones. */
+export function mailReadable(m: Pick<MailPeek, "body" | "preview">): string {
+  const text = (m.body?.trim() ? m.body : m.preview).replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n");
+  return text.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * The text cut where it names a web address: each one becomes a link
+ * labelled with its site, so a long tracking URL never fills the card.
+ */
+export function mailPieces(text: string): MailPiece[] {
+  const out: MailPiece[] = [];
+  const re = /<?(https?:\/\/[^\s<>"]+)>?/g;
+  let at = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    // Punctuation closing the sentence is not part of the address.
+    const raw = m[1].replace(/[.,;:!?'\])]+$/, "");
+    let label: string;
+    try {
+      label = new URL(raw).hostname.replace(/^www\./, "");
+    } catch {
+      continue;
+    }
+    if (!label) continue;
+    if (m.index > at) out.push({ kind: "text", text: text.slice(at, m.index) });
+    out.push({ kind: "link", url: raw, label });
+    const end = m[0].startsWith("<") || m[0].endsWith(">") ? m.index + m[0].length : m.index + raw.length;
+    at = end;
+    re.lastIndex = end;
+  }
+  if (at < text.length) out.push({ kind: "text", text: text.slice(at) });
+  return out;
+}
+
+/** When the email was sent: its time today, its day otherwise; nothing when the date can't be read. */
+export function mailTime(date: string | undefined, now: Date, lang: string): string {
+  const d = date ? new Date(date) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  const today = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  try {
+    return today
+      ? d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString(lang, { day: "numeric", month: "short" });
+  } catch {
+    return "";
+  }
+}
+
+/** The open email's height: what it needs, never less than at rest nor more than MAIL_OPEN_MAX_H. */
+export function mailOpenHeight(natural: number, rest: number): number {
+  return Math.round(Math.min(MAIL_OPEN_MAX_H, Math.max(rest, natural)));
 }
 
 export interface TimerActivity {

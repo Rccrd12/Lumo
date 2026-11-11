@@ -179,9 +179,11 @@ them never opens the island, even with Open on hover.
   answered" when Gemini Live's helper is done, a session on another pill
   that finished, a deploy or a workflow, GitHub's CI passing or failing
   and a review asked of you.
-- **A new email** (the **Email** pill): the sender, the subject and the
-  first lines, with **Summarize**, **Draft a reply** and **Open**. It stays
-  while the mouse is on it. Summarize and Draft a reply open the chat with
+- **A new email** (the **Email** pill): the sender, when it came, the
+  subject and the first lines, with **Summarize**, **Draft a reply** and
+  **Open**. It stays while the mouse is on it, and resting there a moment
+  opens it wider with all its text, which the wheel scrolls (web addresses
+  in it show as their site's name, opened with a click); leaving it closes it. Summarize and Draft a reply open the chat with
   the email attached and ask; nothing is ever sent: you copy the draft and
   send it yourself.
 - **Timers**: ask any model in the chat or Gemini Live ("set a 10 minute
