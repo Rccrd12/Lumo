@@ -86,6 +86,59 @@ test("snake_case words and code spans are not italics", () => {
   assert.deepEqual(parseInline("2 * 3 * 4"), [{ kind: "text", text: "2 * 3 * 4" }]);
 });
 
+test("a star between numbers or letters is a multiplication, not italics", () => {
+  const plain = (s) => assert.deepEqual(parseInline(s), [{ kind: "text", text: s }], s);
+  // As written in the chat: the two lines are one paragraph.
+  plain("A me esce 8*10^-9.\nHo fatto (2.25*10^-9*0.4^3)/(2*8,99*10^9*10^-12)");
+  plain("F = k*q1*q2/r^2, a*b*c, (a+b)*(c+d)*e, x[0]*y[1]*2");
+  plain("2*-3 and 4*+5, 2**10 and (a+b)**(n-1) and 3**(2*x)");
+  // Copy, the code span and the formula keep the stars as written.
+  assert.deepEqual(parseInline("`2*3*4` and $2*3*4$"), [
+    { kind: "code", text: "2*3*4" },
+    { kind: "text", text: " and " },
+    { kind: "math", tex: "2*3*4", display: false },
+  ]);
+  // Emphasis around a product still works, and keeps the product's stars.
+  assert.deepEqual(parseInline("*area = b*h* and **2*3 = 6**"), [
+    { kind: "em", children: [{ kind: "text", text: "area = b*h" }] },
+    { kind: "text", text: " and " },
+    { kind: "strong", children: [{ kind: "text", text: "2*3 = 6" }] },
+  ]);
+  // Bold and italics next to a letter, as answers write them, are untouched.
+  assert.deepEqual(parseInline("the **API**s, the **1990**s, *really*, l'**idea**"), [
+    { kind: "text", text: "the " },
+    { kind: "strong", children: [{ kind: "text", text: "API" }] },
+    { kind: "text", text: "s, the " },
+    { kind: "strong", children: [{ kind: "text", text: "1990" }] },
+    { kind: "text", text: "s, " },
+    { kind: "em", children: [{ kind: "text", text: "really" }] },
+    { kind: "text", text: ", l'" },
+    { kind: "strong", children: [{ kind: "text", text: "idea" }] },
+  ]);
+  assert.deepEqual(parseInline("**Nota**(vedi sotto) e **Passo**1"), [
+    { kind: "strong", children: [{ kind: "text", text: "Nota" }] },
+    { kind: "text", text: "(vedi sotto) e " },
+    { kind: "strong", children: [{ kind: "text", text: "Passo" }] },
+    { kind: "text", text: "1" },
+  ]);
+  assert.deepEqual(parseInline("这是**重要**的"), [
+    { kind: "text", text: "这是" },
+    { kind: "strong", children: [{ kind: "text", text: "重要" }] },
+    { kind: "text", text: "的" },
+  ]);
+  // A link's address keeps its stars too.
+  assert.deepEqual(parseInline("[a](https://example.com/a*b)"), [
+    { kind: "link", url: "https://example.com/a*b", children: [{ kind: "text", text: "a" }] },
+  ]);
+});
+
+test("a question with products shows its stars, in the bubble as in an answer", () => {
+  const root = document.createElement("div");
+  renderMarkdown(root, "A me esce 8*10^-9.\nHo fatto (2.25*10^-9*0.4^3)/(2*8,99*10^9*10^-12)");
+  assert.equal(root.querySelectorAll("em").length, 0);
+  assert.match(root.textContent, /8\*10\^-9\.[\s\S]*\(2\.25\*10\^-9\*0\.4\^3\)\/\(2\*8,99\*10\^9\*10\^-12\)/);
+});
+
 test("only http and https addresses become links", () => {
   assert.equal(safeWebUrl("https://example.com"), "https://example.com/");
   assert.equal(safeWebUrl("http://localhost:3000/x"), "http://localhost:3000/x");

@@ -9,6 +9,15 @@ export function errorText(err: unknown): string {
   return String(err).replace(/^Error:\s*/, "");
 }
 
+/**
+ * The write was turned down in Windows' own Yes / No box (confirmed.rs
+ * by_hand, Settings inside the island): nothing was written and nothing went
+ * wrong, so the preview stays as it was, ready for another click.
+ */
+export function cancelledByHand(err: unknown): boolean {
+  return errorText(err) === "cancelled";
+}
+
 export function statusDot(ok: boolean): HTMLElement {
   return h("i", { class: "dot", style: `background:${ok ? "#22c55e" : "#f4505e"}` });
 }
