@@ -25,6 +25,7 @@ import { N_, t } from "../../i18n/i18n";
 import { head, remember, RICH_STRINGS, type RichContext } from "./index";
 import "./steps.css";
 import { onResize } from "./resize";
+import { blankFences, scan } from "../scan";
 
 export const STEPS_STRINGS = {
   previous: N_("Previous step"),
@@ -56,10 +57,6 @@ export interface Steps {
 const HEADING = /^ {0,3}#{1,6}(?!#)[ \t]*(.*)$/;
 /** A code fence line, ``` or ~~~: its marker. */
 const FENCE = /^[ \t]*(`{3,}|~{3,})(.*)$/;
-/** A display formula: `$$…$$` or `\[…\]`, on one line or several. */
-const DISPLAY = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/;
-/** A line that is only an inline formula, `$…$`, written where a display one was meant. */
-const LONE_INLINE = /^[ \t]*\$([^$\n]+)\$[ \t]*$/m;
 /** A step's number written into its name ("2. ", "2) ", "Step 2: "), which the card shows already. */
 const NUMBERED = /^(?:\p{L}+[ \t]+)?\d+[ \t]*[.):\-–—][ \t]+(?=\S)/u;
 /** A list marker before a line, in a block written without headings. */
@@ -150,16 +147,29 @@ function byLines(lines: string[]): Step[] {
 function stepOf(label: string, markdown: string): Step | null {
   let text = markdown.trim();
   let tex: string | null = null;
-  const m = DISPLAY.exec(text) ?? LONE_INLINE.exec(text);
-  if (m) {
-    const found = (m[1] ?? m[2] ?? "").trim();
-    if (found) {
-      tex = found;
-      text = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trim().replace(/\n{3,}/g, "\n\n");
-    }
+  const found = stepFormula(text);
+  if (found) {
+    tex = found.tex;
+    text = (text.slice(0, found.from) + text.slice(found.to)).trim().replace(/\n{3,}/g, "\n\n");
   }
   if (!label && !tex && !text) return null;
   return { label, tex, text };
+}
+
+/**
+ * A step's formula, as the chat reads formulas (scan.ts): its first display
+ * one, else an inline one alone on its line; never one in `code` or in a
+ * code block.
+ */
+function stepFormula(text: string): { tex: string; from: number; to: number } | null {
+  const maths = scan(blankFences(text)).filter((s) => s.kind === "math" && s.tex.trim());
+  const alone = (s: { from: number; to: number }) => {
+    const start = text.lastIndexOf("\n", s.from - 1) + 1;
+    const end = text.indexOf("\n", s.to);
+    return !text.slice(start, s.from).trim() && !text.slice(s.to, end < 0 ? text.length : end).trim();
+  };
+  const m = maths.find((s) => s.kind === "math" && s.display) ?? maths.find(alone);
+  return m && m.kind === "math" ? { tex: m.tex.trim(), from: m.from, to: m.to } : null;
 }
 
 /** A heading's text as a step's name: without a closing `##` or a number the card already shows. */

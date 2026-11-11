@@ -55,3 +55,12 @@ test("a table row comes whole", () => {
 test("without a real page (tests, reduced motion) the answer is drawn as it comes", () => {
   assert.equal(inkWorks(), false);
 });
+
+test("prices are cut where the chat reads them as prices (scan.ts), formulas whole", () => {
+  // "25$, … 12$" is text in the chat: its words are drawn one by one.
+  assert.deepEqual(cutPoints("Prezzo 25$, pranzo 12$ ok", true), [6, 11, 18, 22, 25]);
+  assert.deepEqual(cutPoints("Costa $5 e $10 ok", true), [5, 8, 10, 14, 17]);
+  // A formula still comes whole, and one not closed yet waits.
+  assert.deepEqual(cutPoints("Sia $x_1$ ok", true), [3, 9, 12]);
+  assert.equal(drawn("Sia $x_1 e"), "Sia");
+});
