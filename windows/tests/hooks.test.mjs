@@ -514,6 +514,8 @@ test("a permission request puts the card up, says exactly what it authorises, an
     command: "Write · C:\\Users\\me\\proj\\.env",
     kind: { text: "Changes a file." },
     project: "proj",
+    // What it writes there, counted: one line, 8 bytes.
+    edit: { added: 1, removed: 0, bytes: 8 },
   });
   assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
   assert.deepEqual(sent("approval_decline"), []);
@@ -1215,6 +1217,17 @@ test("Gemini Live's card to open a file says so", () => {
   assert.equal(State.pendingApproval?.reason, "Open a file you didn't give it");
 });
 
+test("Gemini Live's card to open a web page shows its whole address", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "g3", lumo_island: true,
+    tool_name: "mcp__lumo__live_open", tool_input: { url: "https://example.com/p?d=1234" },
+    lumo_live_file: { action: "page" },
+  });
+  assert.equal(State.pendingApproval?.project, "Gemini Live");
+  assert.equal(State.pendingApproval?.command, "https://example.com/p?d=1234");
+  assert.equal(State.pendingApproval?.reason, "Open this page in the browser");
+});
+
 // ── An email the AI wants to send (mail.rs send) ─────────────────────────────
 
 test("an email to send is its own card, whole, and never answered by itself", () => {
@@ -1339,4 +1352,17 @@ test("a hook event's fields of the wrong type are dropped, not trusted", async (
 test("a Notification whose message is not text leaves the island working", () => {
   emit("hook", { hook_event_name: "Notification", session_id: "s1", cwd: "/w", message: 42 });
   emit("hook", { hook_event_name: "Stop", session_id: "s1", cwd: "/w", lumo_agent: "constructor" });
+});
+
+test("a file to write keeps Allow and says how much it writes; a plan cut short keeps its steps", () => {
+  const content = "export const x = 1;\n".repeat(700);
+  ask("w1", { tool_input: { file_path: "C:\\Users\\me\\proj\\page.ts", content } });
+  assert.equal(State.pendingApproval.cut, undefined);
+  assert.deepEqual(State.pendingApproval.edit, { added: 700, removed: 0, bytes: 14_000 });
+  State.pendingApproval = null;
+  // A plan the relay had to cut (past 64 KB): its steps still show, and it says it was cut.
+  ask("p1", { tool_name: "ExitPlanMode", tool_input: { plan: "1. Read\n2. Write" }, lumo_input_cut: true });
+  assert.equal(State.pendingApproval.cut, true);
+  assert.equal(State.pendingApproval.plan.length, 2);
+  assert.equal(State.pendingApproval.edit, undefined);
 });

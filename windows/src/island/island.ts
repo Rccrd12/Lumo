@@ -8,6 +8,7 @@ import {
   GRIPS, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
+  APPROVAL_MAX_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
   zoomStep,
 } from "../core/layout";
@@ -185,6 +186,8 @@ export class Island {
   private edgeLight = "";
   /** The new look's open size as last set (sync), and the look as last applied. */
   private newLookSize = "";
+  /** The island was still moving at the last frame (frame: a permission card is measured again when it stops). */
+  private wasSettling = false;
   private views!: Map<IslandViewName, ViewHost>;
   private uploadCanvas!: UploadCanvas;
   /** A picture of the chat's previews, opened big over the whole island (views/picture.ts). */
@@ -1299,6 +1302,12 @@ export class Island {
         : State.view === "approval" && (State.pendingApproval?.sessionAllow === true || !!State.pendingApproval?.answerIn || State.pendingApproval?.remembered === true) ? NEW_LOOK_SESSION_ALLOW_H
         : 0;
       h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
+      // A permission card holding more than its usual height (a command on
+      // several lines): as tall as it needs, so who asks and its buttons stay on it.
+      if (State.view === "approval" && State.pendingApproval) {
+        const fit = this.views.get("approval")?.fitHeight?.(w, this.islandEl.offsetWidth, this.islandEl.offsetHeight);
+        if (fit != null) h = Math.max(h, Math.min(APPROVAL_MAX_H, fit));
+      }
       if (State.view === "overview" && planCardOpen()) h = Math.max(h, NEW_LOOK_PLAN_CARD_H);
       if (State.view === "overview" && overviewDetailFor() === "integration_github" && gitHubListSection()) h = Math.max(h, NEW_LOOK_GH_LIST_H);
       const background = State.view === "overview" ? State.focusTask?.background : null;
@@ -1306,6 +1315,15 @@ export class Island {
     }
     const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;
     return { w, h, r };
+  }
+
+  /** The island's size again, as render() does: a change resizes it. */
+  private refit() {
+    const size = this.targetSize();
+    const key = `${size.w}x${size.h}`;
+    if (key === this.newLookSize) return;
+    this.newLookSize = key;
+    this.animateGeometry(false);
   }
 
   private animateGeometry(shrinking: boolean) {
@@ -1808,6 +1826,10 @@ export class Island {
     const settling =
       this.width.animating || this.height.animating || this.radius.animating || this.gap.animating
       || this.flat.animating;
+    // A permission card that opened from the closed island was measured
+    // before it had its room: once the island stops, it is measured again.
+    if (this.wasSettling && !settling && State.mode === "expanded" && State.view === "approval") this.refit();
+    this.wasSettling = settling;
     const busy = State.mode === "hidden"
       ? settling
       : settling ||

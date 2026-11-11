@@ -19,7 +19,7 @@ import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
-import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
+import { editStat, isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode, storedPermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import {
@@ -364,11 +364,19 @@ export function cleanPayload(raw: unknown): HookPayload | null {
 const LIVE_FILE = {
   read: N_("Read a file you didn't give it"),
   open: N_("Open a file you didn't give it"),
+  page: N_("Open this page in the browser"),
 };
 
-/** Gemini Live's card for a file: the file's full path and what it wants to do; null when it is no such card. */
+/**
+ * Gemini Live's card for a file or a web page: the file's full path or the
+ * page's whole address, and what it wants to do; null when it is no such card.
+ */
 export function liveFileChange(raw: HookPayload["lumo_live_file"], input: Record<string, unknown>): { command: string; reason: string } | null {
   if (!raw || typeof raw !== "object") return null;
+  if (raw.action === "page") {
+    const url = typeof input.url === "string" ? input.url : "";
+    return url ? { command: url, reason: t(LIVE_FILE.page) } : null;
+  }
   const path = typeof input.path === "string" ? input.path : "";
   if (!path) return null;
   return { command: path, reason: t(raw.action === "open" ? LIVE_FILE.open : LIVE_FILE.read) };
@@ -989,6 +997,8 @@ function handleHook(island: Island, payload: HookPayload) {
       const view = questions ? "question" : "approval";
       const planSteps = !questions && !email && !change && /^exit_?plan_?mode$/i.test(tool) && typeof input.plan === "string"
         ? stepsFromMarkdown(input.plan) : [];
+      // A file to write: how many lines, under its name (the text itself is not on the card).
+      const edit = !questions && !email && !change && !userTool ? editStat(tool, input) : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -1008,6 +1018,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
         // The plan Claude Code asks to start, step by step, for the new look's card and chat.
         ...(planSteps.length ? { plan: planSteps } : {}),
+        ...(edit ? { edit } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how

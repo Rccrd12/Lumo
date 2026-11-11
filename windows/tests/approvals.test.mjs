@@ -85,6 +85,43 @@ test("Y allows and N denies, alone and not held", () => {
   assert.equal(key("n", { repeat: true }), null);
 });
 
+test("a file to write is counted for its card: lines added and removed, and a new text's size", async () => {
+  const { editStat } = await import("../src/core/approvals.ts");
+  const file = "export const x = 1;\n".repeat(700); // 14 000 bytes
+  assert.deepEqual(editStat("Write", { file_path: "C:/p/page.ts", content: file }), { added: 700, removed: 0, bytes: 14_000 });
+  // Bytes, not characters: what the file will weigh.
+  assert.equal(editStat("Write", { file_path: "C:/p/a.txt", content: "è\n" }).bytes, 3);
+  assert.deepEqual(editStat("Edit", { file_path: "C:/p/a.ts", old_string: "a\nb\n", new_string: "a\nc\nd\n" }), { added: 2, removed: 1 });
+  assert.deepEqual(editStat("MultiEdit", { file_path: "C:/p/a.ts", edits: [{ old_string: "x", new_string: "y" }, { old_string: "", new_string: "z\nw" }] }),
+    { added: 3, removed: 1 });
+  assert.deepEqual(editStat("NotebookEdit", { notebook_path: "C:/p/a.ipynb", new_source: "import x\nx()\n" }), { added: 2, removed: 0 });
+  // Nothing to count: no line under the file.
+  assert.equal(editStat("NotebookEdit", { notebook_path: "C:/p/a.ipynb", new_source: "x", edit_mode: "delete" }), null);
+  assert.equal(editStat("Edit", { file_path: "C:/p/a.ts", old_string: "same", new_string: "same" }), null);
+  assert.equal(editStat("Write", { file_path: "C:/p/a.ts", content: "" }), null);
+  assert.equal(editStat("Bash", { command: "ls" }), null);
+  assert.equal(editStat("write_file", { file_path: "C:/p/a.ts", content: "x" }), null);
+});
+
+test("a request cut short offers no button that does nothing: Allow and a plan's Approve both go", async () => {
+  const { approvalOffer } = await import("../src/core/approvals.ts");
+  const plan = [{ text: "Read the settings page" }, { text: "Add the toggle" }];
+  // Whole: Allow, and what the request can have besides.
+  assert.deepEqual(approvalOffer({ sessionAllow: true }), { allow: true, cutNote: false, sessionAllow: true, planEdits: false, answerThere: null });
+  assert.deepEqual(approvalOffer({ plan }), { allow: true, cutNote: false, sessionAllow: false, planEdits: true, answerThere: null });
+  assert.deepEqual(approvalOffer({ plan, fromChat: true }), { allow: true, cutNote: false, sessionAllow: false, planEdits: false, answerThere: null });
+  // Cut: no Allow, no session, back to the agent's own window (not from the chat: it has none).
+  assert.deepEqual(approvalOffer({ cut: true, sessionAllow: true }), { allow: false, cutNote: true, sessionAllow: false, planEdits: false, answerThere: "elsewhere" });
+  assert.deepEqual(approvalOffer({ cut: true, fromChat: true }), { allow: false, cutNote: true, sessionAllow: false, planEdits: false, answerThere: null });
+  // A plan cut short: its Approve is gone too (pipe.rs would refuse it), and says why.
+  assert.deepEqual(approvalOffer({ plan, cut: true }), { allow: false, cutNote: true, sessionAllow: false, planEdits: false, answerThere: "elsewhere" });
+  // An agent that answers in its own window says so by name, on any card but a plan's.
+  assert.equal(approvalOffer({ answerIn: "Antigravity" }).answerThere, "agent");
+  assert.equal(approvalOffer({ answerIn: "Antigravity", plan }).answerThere, null);
+  // An email is never "cut": its card has its own buttons.
+  assert.equal(approvalOffer({ email: { to: ["a@b.c"] }, cut: true }).allow, true);
+});
+
 test("a lone carriage return ends a command: what comes after it is looked at too", () => {
   assert.equal(isLookingCommand("Get-ChildItem\rRemove-Item C:\\x -Recurse"), false);
   assert.equal(isLookingCommand("Get-ChildItem\r\nGet-Location"), true);

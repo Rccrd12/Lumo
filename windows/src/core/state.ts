@@ -106,6 +106,8 @@ export interface ApprovalInfo {
   email?: OutgoingEmail;
   /** The plan Claude Code asks to start (ExitPlanMode), as steps: the card draws them as a list. */
   plan?: import("./agent-plan").PlanStep[];
+  /** A file tool's request: the lines it adds and removes, and a Write's size (core/approvals.ts editStat), under the file on the card. */
+  edit?: import("./approvals").EditStat;
   /** Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`): never allowed from the island, only denied or left to the agent's own prompt. */
   cut?: boolean;
 }

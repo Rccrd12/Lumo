@@ -17,7 +17,7 @@
 // redirects included.
 
 use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -632,45 +632,9 @@ async fn check_public(url: &Url) -> Result<Vec<SocketAddr>, String> {
     Ok(addrs)
 }
 
+/// Only addresses on the internet: the one rule, web_image.rs's.
 fn is_public(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            let [a, b, c, _] = v4.octets();
-            !(v4.is_private()
-                || v4.is_loopback()
-                || v4.is_link_local()
-                || v4.is_broadcast()
-                || v4.is_documentation()
-                || v4.is_unspecified()
-                || v4.is_multicast()
-                || a == 0
-                || (a == 100 && (64..128).contains(&b))
-                || (a == 192 && b == 0 && c == 0)
-                || (a == 198 && (b == 18 || b == 19))
-                || a >= 240)
-        }
-        IpAddr::V6(v6) => {
-            if let Some(v4) = v6.to_ipv4_mapped() {
-                return is_public(IpAddr::V4(v4));
-            }
-            let seg = v6.segments();
-            let first = seg[0];
-            let v4 = |hi: u16, lo: u16| IpAddr::V4(Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8));
-            // An IPv4 address carried in an IPv6 one counts as that address:
-            // NAT64 (64:ff9b::/96) at its end, 6to4 (2002::/16) after the prefix.
-            if seg[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
-                return is_public(v4(seg[6], seg[7]));
-            }
-            if first == 0x2002 {
-                return is_public(v4(seg[1], seg[2]));
-            }
-            // Documentation (2001:db8::/32) and the old IPv4-compatible ::a.b.c.d.
-            if (first == 0x2001 && seg[1] == 0x0db8) || seg[..6] == [0, 0, 0, 0, 0, 0] {
-                return false;
-            }
-            !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80)
-        }
-    }
+    crate::web_image::is_public(ip)
 }
 
 // ── HTML ───────────────────────────────────────────────────────────────────
@@ -1179,7 +1143,7 @@ mod tests {
 
     #[test]
     fn only_public_addresses_are_opened() {
-        for ip in ["127.0.0.1", "10.0.0.2", "192.168.1.1", "172.16.0.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:192.168.0.1", "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "2002:7f00:1::", "2002:c0a8:101::1", "2001:db8::1", "::7f00:1"] {
+        for ip in ["127.0.0.1", "10.0.0.2", "192.168.1.1", "172.16.0.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:192.168.0.1", "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "2002:7f00:1::", "2002:c0a8:101::1", "2001:db8::1", "::7f00:1", "2001::1", "fec0::1", "100::1"] {
             assert!(!is_public(ip.parse().unwrap()), "{ip}");
         }
         for ip in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "64:ff9b::5db8:d822", "2002:5db8:d822::1"] {

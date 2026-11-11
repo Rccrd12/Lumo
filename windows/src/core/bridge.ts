@@ -167,7 +167,8 @@ export const Bridge = {
    * only, PNG, JPEG, GIF, WebP or AVIF, 8 MB at most): its bytes as they
    * came; it throws what went wrong when it could not be.
    */
-  webImage: (url: string) => callOrThrow<ArrayBuffer>("web_image", { url }),
+  /** `asked`: the user clicked Load image for it (any other site than web_image.rs AUTO_HOSTS needs that). */
+  webImage: (url: string, asked = false) => callOrThrow<ArrayBuffer>("web_image", asked ? { url, asked } : { url }),
 
   /** "Open terminal" → opens the folder in VS Code when `code` is on PATH. */
   openInVSCode: (path: string | null) => call<boolean>("open_in_vscode", { path }),

@@ -18,7 +18,7 @@ import {
 } from "./usage";
 import { buildDiffCard } from "./diff";
 import { lastTextStep } from "../core/diff";
-import { approvalKey, approvalKeysArmed, armApprovalKeys } from "../core/approvals";
+import { approvalKey, approvalKeysArmed, approvalOffer, armApprovalKeys } from "../core/approvals";
 import { formatSize } from "../core/screen";
 import { Bridge, type Decision } from "../core/bridge";
 import { buildRecap } from "./recap";
@@ -83,6 +83,12 @@ export interface ViewHost {
   focus?(): void;
   /** Called every frame while the view is on screen. True = needs another frame. */
   tick?(nowMs: number): boolean | void;
+  /**
+   * The island's height the view needs to show all it holds at the island
+   * width `width`, given the island's size now (`nowW` × `nowH`); null when
+   * it can't say. Only views whose content can outgrow their usual height.
+   */
+  fitHeight?(width: number, nowW: number, nowH: number): number | null;
 }
 
 // ── Shared pieces ─────────────────────────────────────────────────────────────
@@ -635,6 +641,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   const code = h("div", { class: "code approval-code" });
   code.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
   const cutNote = h("div", { class: "approval-cut", text: tl(CUT_TEXT.note) });
+  // A file to write: its lines added and removed, and a new text's size (the text is not shown).
+  const stat = h("div", { class: "approval-stat" });
   const mail = h("div", { class: "mail-slot" });
   const row = h("div", { class: "actions approval-actions" });
   // An email's card has its own buttons, Send and Discard, and no keys: only a click sends.
@@ -649,7 +657,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   // Copilot CLI and Cursor CLI in Auto: Allow stands for the rest of the chat, and the card says so (new look only).
   const rememberedNote = h("div", { class: "session-allow session-note", text: tl(REMEMBERED_TEXT) });
   const allowBtn = withClass(planWords(btn(tl("Allow"), "primary", () => guarded("allow")(), "Y"), PLAN_ASK_TEXT.approve), "allow-btn");
-  const body = stack(116, 16, who, about, planSlot, code, cutNote, mail, row, mailRow);
+  const body = stack(116, 16, who, about, planSlot, code, stat, cutNote, mail, row, mailRow);
   let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
   let mailFor: string | null = null;
@@ -659,6 +667,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   // moments after a new request appears are ignored.
   let shownFor: string | null = null;
   let shownAt = 0;
+  /** The island around the card, for fitHeight. */
+  let fitChrome: { w: number; h: number } | null = null;
   const guarded = (d: Decision) => () => {
     if (performance.now() - shownAt < CLICK_GUARD_MS) return;
     // Never allowed from here: it was not on the card whole (pipe.rs refuses it too).
@@ -710,6 +720,29 @@ function buildApproval(actions: ViewActions): ViewHost {
   );
   return {
     el,
+    // The card's usual height holds a command on one line. A longer one (a
+    // commit message, a script: up to six lines before it scrolls), the line
+    // that says why there is no Allow, a reason on two lines: the island grows
+    // so that who asks and the buttons stay on it. Measured on a copy laid out
+    // at the width the island is going to, not the one it is passing through.
+    fitHeight(width, nowW, nowH) {
+      if (body.classList.contains("mail-on")) return null;
+      // What the island has around the card (its header, its edges) is the
+      // same at any size: read whenever the card has room, as on an open
+      // island, and kept for the closed one opening onto it.
+      if (body.offsetWidth > 40 && body.offsetHeight > 40) fitChrome = { w: nowW - body.offsetWidth, h: nowH - body.offsetHeight };
+      if (!fitChrome) return null;
+      const copy = body.cloneNode(true) as HTMLElement;
+      copy.setAttribute("aria-hidden", "true");
+      Object.assign(copy.style, {
+        position: "absolute", left: "0", top: "0", visibility: "hidden", pointerEvents: "none",
+        height: "auto", width: `${Math.max(0, width - fitChrome.w)}px`,
+      });
+      body.after(copy);
+      const need = copy.offsetHeight;
+      copy.remove();
+      return Math.ceil(need + fitChrome.h);
+    },
     sync() {
       const req = State.pendingApproval?.requestId ?? null;
       if (req !== shownFor) {
@@ -754,9 +787,18 @@ function buildApproval(actions: ViewActions): ViewHost {
         code.textContent = target;
       }
       code.title = target;
-      const cut = pending?.cut === true && !email && !plan;
-      cutNote.hidden = !cut;
-      allowBtn.style.display = cut ? "none" : "";
+      // Which of the card's buttons and lines it offers (core/approvals.ts).
+      const offer = approvalOffer(pending);
+      cutNote.hidden = !offer.cutNote;
+      allowBtn.style.display = offer.allow ? "" : "none";
+      const edit = !email && !plan ? pending?.edit ?? null : null;
+      clear(stat);
+      if (edit) {
+        if (edit.added > 0) stat.append(h("span", { class: "plus", text: `+${edit.added}` }));
+        if (edit.removed > 0) stat.append(h("span", { class: "minus", text: `−${edit.removed}` }));
+        if (edit.bytes != null) stat.append(h("span", { class: "size", text: formatSize(edit.bytes) }));
+      }
+      stat.hidden = !stat.childElementCount;
       // What it is for: the agent's own words, else what the request does.
       const text = email ? "" : pending?.reason ?? (pending?.kind ? t(pending.kind.text, pending.kind.vars) : "");
       about.textContent = text;
@@ -764,14 +806,14 @@ function buildApproval(actions: ViewActions): ViewHost {
       about.hidden = !text || !!plan;
       // "Allow for this session" only where the request has a session to be
       // kept for (session_rules.rs): shown or hidden, never rebuilt.
-      sessionAllow.style.display = pending?.sessionAllow === true && !plan && !cut ? "" : "none";
+      sessionAllow.style.display = offer.sessionAllow ? "" : "none";
       // In its place on a plan asking to start, from a session (the island's chat has its own way).
-      planEdits.style.display = plan && !pending?.fromChat ? "" : "none";
+      planEdits.style.display = offer.planEdits ? "" : "none";
       // A request cut short goes back to the agent's own prompt, where it is whole (not the chat's: it has none).
-      const elsewhere = cut && !pending?.fromChat;
-      answerThere.style.display = (pending?.answerIn || elsewhere) && !plan ? "" : "none";
+      answerThere.style.display = offer.answerThere ? "" : "none";
       rememberedNote.style.display = pending?.remembered === true && !plan ? "" : "none";
-      const answerWords = pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn }) : elsewhere ? t(CUT_TEXT.elsewhere) : "";
+      const answerWords = offer.answerThere === "agent" && pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn })
+        : offer.answerThere === "elsewhere" ? t(CUT_TEXT.elsewhere) : "";
       if (answerThere.firstElementChild && answerThere.firstElementChild.textContent !== answerWords) answerThere.firstElementChild.textContent = answerWords;
 
       sessionAllow.title = t("Allowed again without asking until this session ends");
