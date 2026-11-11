@@ -1514,6 +1514,23 @@ const MAIL_SOURCES = {
 };
 
 /**
+ * `listener` on the window's `type` events while `el` is on the page: each
+ * redraw of Settings builds its rows again, and a listener of the rows it
+ * replaced goes at its next event instead of piling up (one more Outlook and
+ * account check per focus at every redraw).
+ */
+function whileShown(el: HTMLElement, type: "focus", listener: () => void) {
+  const once = () => {
+    if (!el.isConnected) {
+      window.removeEventListener(type, once);
+      return;
+    }
+    listener();
+  };
+  window.addEventListener(type, once);
+}
+
+/**
  * Settings → Pills → Email's two sources, one switch each: the classic
  * Outlook on this PC with the accounts it has (outlook.rs), and IMAP with its
  * address, app password and server (mail.rs). Both can be on.
@@ -1540,7 +1557,7 @@ function mailSourceRows(imapFields: HTMLElement): HTMLElement[] {
   const showImap = () => { imapFields.hidden = !settings.mailImap; };
   void showOutlook();
   showImap();
-  window.addEventListener("focus", () => void showOutlook());
+  whileShown(found, "focus", () => void showOutlook());
   return [
     setting(MAIL_SOURCES.outlook, MAIL_SOURCES.outlookHint,
       toggle(settings.mailOutlook, (v) => { settings.mailOutlook = v; void showOutlook(); void save(); })),
@@ -1699,7 +1716,7 @@ function imapAccounts(keyChanged: (key: string, on: boolean) => void): HTMLEleme
   for (const input of [address, password, server]) {
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") void submit(); });
   }
-  window.addEventListener("focus", () => void refresh());
+  whileShown(box, "focus", () => void refresh());
   void refresh();
   box.append(list, form, addRow);
   return box;
@@ -2443,7 +2460,10 @@ async function main() {
     });
   }
   void onEvent<Settings>("settings-changed", (s) => {
-    if (Object.entries(s).some(([k, v]) => JSON.stringify(v) !== JSON.stringify((settings as unknown as Record<string, unknown>)[k]))) {
+    // Where the island sits and its size, saved as it is dragged or resized,
+    // are on no page here: they never draw the page again, which would wipe
+    // what is being typed (an API key) or the diff open.
+    if (Object.entries(s).some(([k, v]) => !UNSHOWN_KEYS.has(k) && JSON.stringify(v) !== JSON.stringify((settings as unknown as Record<string, unknown>)[k]))) {
       stale = true;
     }
     const before = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
@@ -2455,6 +2475,9 @@ async function main() {
     applyLanguage();
   });
 }
+
+/** The settings the island keeps for itself, shown by no page of Settings. */
+const UNSHOWN_KEYS = new Set(["islandDock", "islandOffset", "islandFloat", "islandWidth", "islandHeight"]);
 
 /** Inside the island, Settings take the island's look (settings.css, html.look-new). */
 function applyLook() {

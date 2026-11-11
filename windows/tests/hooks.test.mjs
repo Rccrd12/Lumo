@@ -78,6 +78,34 @@ test("a paused island ignores every other event", () => {
   assert.deepEqual(calls, []);
 });
 
+test("a turn that ends while paused still brings its pill to rest, quietly", () => {
+  hook({ hook_event_name: "UserPromptSubmit", prompt: "go" });
+  assert.equal(task().state, "thinking");
+  State.paused = true;
+  asked = [];
+  hook({ hook_event_name: "Stop", last_assistant_message: "Done." });
+  seconds(5.2);
+  assert.equal(task().state, "idle");
+  assert.deepEqual(asked, []);
+});
+
+test("an agent's session that ends while paused takes its pill with it", () => {
+  hook({ hook_event_name: "SessionStart", lumo_agent: "gemini" });
+  assert.notEqual(task("agent_gemini"), undefined);
+  State.paused = true;
+  hook({ hook_event_name: "SessionEnd", lumo_agent: "gemini" });
+  assert.equal(task("agent_gemini"), undefined);
+});
+
+test("an alert during the launch greeting opens the island for real", () => {
+  State.mode = "expanded";
+  State.view = "greeting";
+  State.focusId = CLAUDE;
+  asked = [];
+  hook({ hook_event_name: "StopFailure" });
+  assert.deepEqual(asked, ["alert:error"]);
+});
+
 // ── Session and work events ───────────────────────────────────────────────────
 
 test("a session names the pill after its folder and reveals the island", () => {
@@ -647,6 +675,18 @@ test("an unanswered card is withdrawn after 107 s, before Lumo stops waiting at 
   assert.equal(State.isPinned, false);
   assert.equal(task().state, "working");
   assert.equal(task().pillBadge, null);
+  // Folded away (the island closed), the card goes without opening the island.
+  assert.deepEqual(asked, ["dropPin"]);
+  assert.equal(State.view, "home");
+});
+
+test("an unanswered card on the open island gives way to the home", () => {
+  State.mode = "expanded";
+  ask("r1");
+  State.view = "approval";
+  asked = [];
+  seconds(107);
+  assert.equal(State.pendingApproval, null);
   assert.deepEqual(asked, ["dropPin", "setView:home"]);
 });
 
@@ -754,6 +794,31 @@ test("an agent's session ending takes its stop timer with it", () => {
   hook({ hook_event_name: "SessionStart", lumo_agent: "gemini" });
   seconds(5.2);
   assert.notEqual(task("agent_gemini"), undefined);
+});
+
+test("an agent's new session within 5.2 s of its stop keeps its pill, at rest", () => {
+  hook({ hook_event_name: "Stop", lumo_agent: "gemini" });
+  seconds(1);
+  hook({ hook_event_name: "SessionStart", lumo_agent: "gemini", session_id: "s2" });
+  seconds(5);
+  assert.equal(task("agent_gemini")?.state, "idle");
+});
+
+test("a pin set with the island closed outlasts a request answered there", () => {
+  State.mode = "compact";
+  State.isPinned = true;
+  ask("r1");
+  State.endApproval();
+  assert.equal(State.isPinned, true);
+});
+
+test("a plan the chat asks to start brings the chat back over the tool workshop", () => {
+  State.useSlot("forge");
+  const plan = { requestId: "p1", sessionId: "", pillId: CLAUDE, tool: "ExitPlanMode", command: "", fromChat: true, plan: [{ text: "Read", status: "pending" }] };
+  assert.equal(State.requestView(plan), "prompt");
+  assert.equal(State.chatSlot, "chat");
+  assert.equal(State.requestView({ ...plan, fromChat: undefined }), "approval");
+  assert.equal(State.requestView({ ...plan, fromChat: undefined, questions: [] }), "question");
 });
 
 test("a second stop restarts the 5.2 s: the first stop's timer no longer counts", () => {

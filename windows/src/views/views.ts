@@ -1052,7 +1052,7 @@ function buildHomeView(actions: ViewActions): ViewHost {
     },
     openRequest: () => {
       const req = State.pendingApproval;
-      if (req) actions.setView(req.questions ? "question" : "approval");
+      if (req) actions.setView(State.requestView(req));
     },
     decide: (d, requestId) => actions.decide(d, requestId),
     openChat,

@@ -314,3 +314,17 @@ test("model text never reaches a style: positions are numbers the card computed"
     if (style) assert.match(style, /^(?:left|right|height):[\w.() %+*-]+(?:;[\w.() %+*:-]+)*$/);
   }
 });
+
+test("a year past what a date can count is no date: never NaN on the card", () => {
+  const tl = parseTimeline("", "300000 BC Something\n1947 Transistor\n2000 Y2K", NOW);
+  assert.deepEqual(tl.items.map((i) => i.label), ["Transistor", "Y2K"]);
+  assert.ok(tl.items.every((i) => Number.isFinite(i.from.start) && Number.isFinite(i.from.end)));
+});
+
+test("two deadlines a day apart go on two rows, not one over the other", () => {
+  const tl = parseTimeline("", "2026-11-01 – 2026-11-20 Build\n2026-11-21 – 2026-12-10 Test\n◆ 2026-11-14 Review one\n◆ 2026-11-15 Review two", NOW);
+  const card = renderTimeline(tl, ctx, "deadline-rows", NOW);
+  const tops = card.find(".rc-tl-mile").map((m) => /top:(\d+)px/.exec(m.getAttribute("style"))[1]);
+  assert.equal(tops.length, 2);
+  assert.notEqual(tops[0], tops[1]);
+});
