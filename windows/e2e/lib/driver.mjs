@@ -98,6 +98,11 @@ export class Driver {
     }
   }
 
+  /** An element as an argument of js(). */
+  ref(id) {
+    return { [ELEMENT]: id };
+  }
+
   click(id) {
     return this.call("POST", this.s(`/element/${id}/click`), {});
   }

@@ -148,6 +148,22 @@ export class Lumo {
       return { x: (screenX + b.left + b.width / 2) * r, y: (screenY + b.top + b.height / 2) * r };`, css);
   }
 
+  /**
+   * Clicks an element (an id from the driver) with the real mouse, as a hand
+   * would: the cursor goes there, waits for the island to take the mouse
+   * (Rust lets clicks through it everywhere else), and presses.
+   */
+  async click(id) {
+    const at = await this.d.js(`
+      const r = devicePixelRatio, b = arguments[0].getBoundingClientRect();
+      return { x: (screenX + b.left + b.width / 2) * r, y: (screenY + b.top + b.height / 2) * r };`, this.d.ref(id));
+    await this.mouse.move(at.x, at.y);
+    await sleep(250);
+    await this.mouse.down();
+    await sleep(50);
+    await this.mouse.up();
+  }
+
   /** The cursor far from the island. */
   async away() {
     const s = await this.screen();
@@ -159,8 +175,17 @@ export class Lumo {
     return this.d.js("return document.getElementById('island').getBoundingClientRect().height");
   }
 
-  /** Waits for the island to be closed (or hidden): no greeting, no card, no home. */
+  /**
+   * Waits for the island to be closed (or hidden): no greeting, no card, no
+   * home. The cursor passes over it and leaves, as after a click: an island
+   * the cursor never left stays open.
+   */
   async closed(ms = 20_000) {
+    if ((await this.islandHeight()) >= 60) {
+      const box = await this.islandBox();
+      await this.mouse.move(box.x + box.w / 2, box.y + Math.min(20, box.h / 2));
+      await sleep(300);
+    }
     await this.away();
     await this.d.until("return document.getElementById('island').getBoundingClientRect().height < 60", ms, "the island closing");
   }
@@ -168,18 +193,27 @@ export class Lumo {
   /** Opens the island as a user does: the cursor onto it, then a click on the closed island. */
   async open() {
     const s = await this.screen();
-    // The wake strip at the edge, then the closed island it brings out.
-    await this.mouse.move(s.w / 2, 2);
-    await sleep(500);
-    const box = await this.islandBox();
-    await this.mouse.move(box.x + box.w / 2, box.y + box.h / 2);
-    await sleep(300);
-    if ((await this.islandHeight()) < 100) {
-      await this.mouse.down();
-      await sleep(60);
-      await this.mouse.up();
+    for (let attempt = 1; ; attempt++) {
+      // The wake strip at the edge, then the closed island it brings out.
+      await this.mouse.move(s.w / 2, 2);
+      await sleep(600);
+      const box = await this.islandBox();
+      await this.mouse.move(box.x + box.w / 2, box.y + box.h / 2);
+      await sleep(500);
+      if ((await this.islandHeight()) < 100) {
+        await this.mouse.down();
+        await sleep(60);
+        await this.mouse.up();
+      }
+      try {
+        await this.d.until("return document.getElementById('island').getBoundingClientRect().height > 100", 4_000, "the island opening on a click");
+        break;
+      } catch (err) {
+        if (attempt >= 3) throw err;
+        await this.away();
+        await sleep(1_000);
+      }
     }
-    await this.d.until("return document.getElementById('island').getBoundingClientRect().height > 100", 8_000, "the island opening on a click");
     // The cursor stays over it, so it stays open.
     const open = await this.islandBox();
     await this.mouse.move(open.x + open.w / 2, open.y + 20);

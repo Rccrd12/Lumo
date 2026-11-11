@@ -77,6 +77,14 @@ jobs:
           Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\edgedriver" -Force
           "MSEDGEDRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" | Out-File -Append $env:GITHUB_ENV
 
+      # The runner's screen is 1024 × 768: too small for the island's sizes.
+      - name: Screen
+        shell: pwsh
+        run: |
+          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+          Add-Type -AssemblyName System.Windows.Forms
+          [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+
       # TEMPORARY while the suite is being built: no red run (and no email)
       # until it is green. Removed before the pull request is ready.
       - name: Flows

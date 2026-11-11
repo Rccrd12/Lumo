@@ -43,7 +43,7 @@ flow(G, "Resizing the chat leaves the home's size alone", app, async () => {
   step(`home narrowed to ${home} px`);
 
   step("opens the chat from the home's field");
-  await d.click(await d.visible(".home-field"));
+  await app.click(await d.visible(".home-field"));
   await d.gone(".home-field", 5_000);
   await sleep(600);
   const chatBefore = await widthOf();
@@ -53,7 +53,7 @@ flow(G, "Resizing the chat leaves the home's size alone", app, async () => {
   assert.ok(chat > chatBefore + 50, "dragging the chat's edge widens the chat");
 
   step("goes back to the home");
-  await d.click(await d.visible(".back-btn", 5_000, "the Back button"));
+  await app.click(await d.visible(".back-btn", 5_000, "the Back button"));
   await d.visible(".home-field", 5_000, "the home");
   await sleep(800);
   const homeAfter = await widthOf();
