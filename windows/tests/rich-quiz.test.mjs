@@ -353,3 +353,23 @@ test("the missed ones by their = line; more questions asked of the AI when the c
     ["Start over", "rc-quiz-btn"],
   ]);
 });
+
+test("several answers marked right, as a model may slip: any of them counts, all turn green", () => {
+  const body = "? The area of a square of side L?\n- L * 4\n+ L * L\n- L + L\n+ L ** 2";
+  assert.deepEqual(parseQuiz("", body).questions[0].rights, [1, 3]);
+  // Only right answers: nothing to pick.
+  assert.equal(parseQuiz("", "? x\n+ a\n+ b"), null);
+  const root = dom.root();
+  renderMarkdown(root, fence("Square", body), { scope: "rights" });
+  const card = root.find(".rc-quiz")[0];
+  const opts = options(card);
+  opts[3].fire("click");
+  assert.deepEqual(opts.map((o) => o.className), ["rc-opt dim", "rc-opt right", "rc-opt dim", "rc-opt right"]);
+  assert.equal(card.find(".rc-quiz-why")[0].className, "rc-quiz-why ok");
+  assert.deepEqual(bar(card), ["ok"]);
+  const again = dom.root();
+  renderMarkdown(again, fence("Square", body), { scope: "rights-wrong" });
+  const wrong = again.find(".rc-quiz")[0];
+  options(wrong)[0].fire("click");
+  assert.equal(wrong.find(".rc-quiz-why")[0].find("B")[0].textContent, "Not A: it's B / D.");
+});

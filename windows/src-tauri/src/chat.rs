@@ -665,7 +665,7 @@ pub(crate) use math_note;
 /// command line when its instructions can't go in a file.
 macro_rules! rich_note {
     () => {
-        " Lumo draws rich blocks: use them on your own, unasked, wherever one makes the answer clearer, usually one or two per answer, never one inside another. Callouts: GitHub alerts, [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION], a title optional after it. Checklists: GitHub task lists, titled in a lumo-checklist block; to update one, write it again with the same title; what the user ticked comes with their next message. Code changes: diff blocks, the file path after diff. Then fenced blocks whose language is one of these, a title after it. lumo-steps, a derivation or procedure step by step: per step ## step name, then its Markdown, often one $$…$$ line. lumo-cards, 2 to 8 things side by side: per card ## name, optional sub: subtitle and icon: an emoji or 1-2 letters and a colour (blue green amber red pink indigo cyan gray #hex) or icon: planet colour, lines - key: value, a short line of text. lumo-calc, a formula to play with: formula: TeX, lines input: symbol, name, min..max, value, unit and output: symbol, name, expression, unit, fields separated by vertical bars; step s may follow a range; expressions like V/R or A*sin(w*x)+x**2. lumo-plot: formula: TeX, one to three y: expressions in x, x: min..max, optional yrange: min..max, inputs as in lumo-calc. lumo-quiz, at most 10 questions: per question a line ? question, lines - wrong answer and + right answer (one right), a quote line explaining it, = a few words naming it. lumo-chart, bar or line before the title: optional unit: and series: A, B, then lines label: value, a value per series. lumo-timeline: lines date name: detail, dates as 1947, 1971-11 or 2026-11-08; a from..to range makes it a plan, its single dates deadlines. A picture: a line ![what it shows](https://…), the real address of an image file on any site, one a search found or one you are sure of (Wikimedia Commons is the surest), never one made up."
+        " Lumo draws rich blocks: use them on your own, unasked, wherever one makes the answer clearer, usually one or two per answer, never one inside another. Callouts: GitHub alerts, a quote whose first line is [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION], a title optional after it, then its text, every line a quote line. Checklists: GitHub task lists, titled in a lumo-checklist block; to update one, write it again with the same title; what the user ticked comes with their next message. Code changes: diff blocks, the file path after diff. Then fenced blocks whose language is one of these, a title after it. lumo-steps, a derivation or procedure: per step ## step name, then its Markdown, often one $$…$$ line. lumo-cards, 2 to 8 things side by side: per card ## name, optional sub: subtitle and icon: an emoji or 1-2 letters and a colour (blue green amber red pink indigo cyan gray #hex) or icon: planet colour, lines - key: value, a short line of text. lumo-calc, a formula to play with: formula: TeX, lines input: symbol, name, min..max, value, unit and output: symbol, name, expression, unit, each on one line, fields separated by vertical bars; step s may follow a range; expressions in plain arithmetic, never TeX, like V/R, A*sin(w*x)+x**2 or 2*pi. lumo-plot: formula: TeX, up to six y: expressions in x, x: min..max, optional yrange: min..max, inputs as in lumo-calc, region: only when an area is asked for, the points where all its conditions hold, as y ≥ 0 and y ≤ sin(x) for the area under a curve, or x*x+y*y ≤ 1; zeros, extrema and crossings are marked, never list them. lumo-quiz, at most 10 questions: per question a line ? question, lines - wrong answer and + right answer (exactly one right), a quote line explaining it, = a few words naming it. lumo-chart, bar or line before the title: optional unit: and series: A, B, then a line per label, as Q1: 1200, 1450, the label, a colon and its values in the order of the series. lumo-timeline: lines date name: detail, dates as 1947, 1971-11 or 2026-11-08; a from..to range makes it a plan, its single dates deadlines. A picture: a line ![what it shows](https://…), the real address of an image file on any site, one a search found or one you are sure of (Wikimedia Commons is the surest), never one made up."
     };
 }
 pub(crate) use rich_note;
@@ -1490,6 +1490,7 @@ mod tests {
             "y:",
             "x: min..max",
             "yrange:",
+            "region:",
             "? question",
             "- wrong answer and + right answer",
             "a quote line",
@@ -1497,21 +1498,28 @@ mod tests {
             "bar or line",
             "unit:",
             "series:",
-            "label: value",
+            "a line per label, as Q1: 1200, 1450",
             "date name: detail",
             "from..to",
             "![what it shows](https://",
         ] {
             assert!(note.contains(key), "{key}");
         }
+        // A region is where its conditions hold, a curve among them, and
+        // only when an area is asked for (calc.ts parseRegion reads it).
+        assert!(note.contains("only when an area is asked for") && note.contains("the points where all its conditions hold") && note.contains("y ≥ 0 and y ≤ sin(x) for the area under a curve"));
+        // What local models got wrong when the note only named them: the
+        // callout's quote lines, a chart row's shape, one line per input, no TeX.
+        assert!(note.contains("every line a quote line") && note.contains("each on one line") && note.contains("never TeX") && note.contains("exactly one right"));
         assert!(note.contains("on your own, unasked") && note.contains("makes the answer clearer") && note.contains("never one made up") && note.contains("on any site"));
         // It goes on Claude Code's command line too (claude_code.rs): nothing
         // cmd.exe reads as syntax, and on one line.
         assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']));
         assert!(note.starts_with(' '), "it follows the note before it");
-        // Light: it goes with every message, about 480 tokens at four
-        // characters a token, all the cards included.
-        assert!(note.len() < 2000, "{} bytes", note.len());
+        // It goes with every message, all the cards included: worded so a
+        // model gets each one right the first time, and no longer than that
+        // (about 650 tokens at four characters a token).
+        assert!(note.len() < 2600, "{} bytes", note.len());
     }
 
     #[test]

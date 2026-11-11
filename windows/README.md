@@ -861,8 +861,13 @@ models included, and the chat draws them (`src/views/rich/`):
   each with its icon, a few values and a line of text.
 - **Calculator** (` ```lumo-calc `): a formula with its inputs on sliders and
   its results worked out as you move them.
-- **Function plot** (` ```lumo-plot `): one to three curves that follow the
-  sliders of their parameters, their values under the pointer.
+- **Function plot** (` ```lumo-plot `): up to six curves on a plane with a
+  squared grid and numbered axes, following the sliders of their parameters.
+  Drag to move the plane; zoom with its + and − buttons or Ctrl and the wheel
+  (a touchpad's pinch); the arrow keys and + − 0 work too. Zeros, highs and
+  lows, and where two curves cross are marked, and read with the pointer
+  over them, as are the curves' values anywhere else. Areas given by
+  inequalities (y ≥ x, x² + y² ≤ 1) are shaded, on axes with one scale.
 - **Quiz** (` ```lumo-quiz `): up to ten multiple-choice questions, one at a
   time. Answer with a click or the keys 1 to 6; Lumo marks it at once and
   explains, then gives the score and asks the missed ones again if you like.
@@ -884,7 +889,12 @@ models included, and the chat draws them (`src/views/rich/`):
   web** turns it off: the card then shows only the site and the button, and
   nothing is downloaded.
 
-A block the chat can't read is shown as it was written, as code.
+A block the chat can't read is shown as it was written, as code. The
+blocks forgive the ways small local models slip: a callout without its `>`,
+formulas in TeX, a calculator written a field a line, a chart row written
+`label: Q1 | 10, 12`, two right answers in a quiz (either counts). The local
+models are also shown one example of each block, which they copy far better
+than a description.
 
 ### Show the chat your screen
 

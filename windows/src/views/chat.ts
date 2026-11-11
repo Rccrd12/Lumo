@@ -761,6 +761,16 @@ export function timedLabel(label: string, _provider: string, activity: ChatActiv
 }
 
 /**
+ * When `activity` began. Unsloth Studio starting says the seconds its start has
+ * taken (unsloth_studio.rs): a start the model picker began earlier goes on from
+ * its seconds, as the picker shows them, not from 0.
+ */
+export function activitySince(activity: ChatActivity, now = Date.now()): number {
+  const seconds = activity.kind === "starting" && /^\d{1,4}$/.test(activity.detail) ? Number(activity.detail) : 0;
+  return now - seconds * 1000;
+}
+
+/**
  * The same, in the closed island's fewer words (core/compact.ts): what it
  * looks for, runs or uses is left to the chat.
  */
@@ -846,11 +856,17 @@ function drawAnswer(into: HTMLElement, text: string, workshop: boolean, scope: s
     return;
   }
   const words = stripDraft(shown);
-  renderMarkdown(into, words.text, { streaming: true, scope });
+  let line: HTMLElement | null = null;
   if (words.writing || words.draft) {
-    into.append(h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) })));
+    // The same line from one draw to the next, so its dot pulses on.
+    line = forgeLines.get(into) ?? h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) }));
+    forgeLines.set(into, line);
   }
+  renderMarkdown(into, words.text, { streaming: true, scope, after: line });
 }
+
+/** The workshop's "Writing the tool…" line of each answer being written. */
+const forgeLines = new WeakMap<HTMLElement, HTMLElement>();
 
 /** The checklists read from each answer's text, so a redraw doesn't read them again. */
 const answerLists = new Map<string, Checklist[]>();
@@ -3568,7 +3584,7 @@ export function buildPrompt(
    */
   function showActivity(run: Run, next: ChatActivity, again = false) {
     // The seconds start again only when the words do (reasoning is Thinking… too).
-    if (activityLabel(next) !== activityLabel(run.activity)) run.since = Date.now();
+    if (activityLabel(next) !== activityLabel(run.activity)) run.since = activitySince(next);
     run.activity = next;
     if (again && run.text) run.dots = true;
     drawIslandActivity();

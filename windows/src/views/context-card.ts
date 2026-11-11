@@ -22,8 +22,8 @@ import { t, tn } from "../i18n/i18n";
 export function renderAnswer(into: HTMLElement, text: string, opts: MarkdownOptions = {}) {
   const report = parseContextReport(text);
   const usage = report ? null : antigravityUsageOfText(text);
-  if (report) into.append(contextCard(report));
-  else if (usage) into.append(usageCard(antigravityLine(usage, Date.now()).rows));
+  if (report) into.replaceChildren(contextCard(report));
+  else if (usage) into.replaceChildren(usageCard(antigravityLine(usage, Date.now()).rows));
   else renderMarkdown(into, text, opts);
 }
 
