@@ -7,7 +7,7 @@
 // music only while the closed island is on screen.
 
 import {
-  COMPACT_TEXT, Feed, LIVE_COLOR, activityLines, compactNotice, speakerName, timerLeft,
+  COMPACT_TEXT, Feed, LIVE_COLOR, activityLines, compactNotice, timerLeft,
   type AgentActivityInput, type ApprovalPeek, type CompactItem, type CompactLine, type CompactShown, type MailPeek,
   type MediaActivity,
 } from "../core/compact";
@@ -15,7 +15,7 @@ import { gitHubRunning, readPulse } from "../core/github";
 import { LISTEN_COLOR, activeWatches, listeningLine, onGitHub, watchColor } from "../core/listen";
 import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
-import { activeModel, isCliProvider, providerDef } from "../core/providers";
+import { isCliProvider } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, aiSends, isSessionTask, type AgentTask } from "../core/state";
 import { COMPACT_SIZES } from "../core/layout";
@@ -234,11 +234,10 @@ export class CompactStrip {
   }
 
   private activity() {
+    // Who answers comes with the answer: picking another model while it is
+    // written changes the next one, not this one's name.
     const chat = State.chatActivity;
-    const p = providerDef(State.settings.chatProvider);
-    const chatInput = chat
-      ? { who: speakerName(p.id, t(p.name), activeModel(State.settings)), label: chat.label, color: p.accent }
-      : null;
+    const chatInput = chat ? { who: chat.who, label: chat.label, color: chat.color } : null;
     const liveInput = Live.active
       ? { phase: Live.phase, doing: Live.doingDone ? null : Live.doing, muted: Live.muted, color: LIVE_COLOR }
       : null;
