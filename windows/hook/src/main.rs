@@ -82,12 +82,23 @@ const MAX_DIFF_TOTAL: usize = 512 * 1024;
 /// The `tool_input` keys a permission card shows as what Allow allows: the
 /// command, the file, the page, the plan Claude Code asks to start (its steps).
 const TARGET_FIELDS: &[&str] = &["command", "cmd", "CommandLine", "script", "file_path", "notebook_path", "path", "url", "plan"];
-/// The tools whose permission card names the file and counts the lines written
-/// (hooks.ts editStat), never showing the text itself: what they write is not
-/// what Allow is read by, so it travels on the live diff's budget.
-const CONTENT_TOOLS: &[&str] = &["Write", "Edit", "MultiEdit", "NotebookEdit"];
-/// Their `tool_input` keys holding the text written or replaced.
-const CONTENT_FIELDS: &[&str] = &["old_string", "new_string", "content", "new_source"];
+/// The tools that write a file, whose text travels on the live diff's budget:
+/// Claude Code's (their card names the file and counts the lines, hooks.ts
+/// editStat), Antigravity's, Gemini CLI's, Copilot CLI's and OpenCode's. A
+/// file of a few KB is no reason for a card with Deny alone.
+const CONTENT_TOOLS: &[&str] = &[
+    "Write", "Edit", "MultiEdit", "NotebookEdit",
+    "write_to_file", "replace_file_content", "multi_replace_file_content",
+    "write_file", "replace",
+    "create", "edit", "write",
+];
+/// Their `tool_input` keys holding the text written or replaced (Antigravity's
+/// `ReplacementChunks` hold Target/ReplacementContent).
+const CONTENT_FIELDS: &[&str] = &[
+    "old_string", "new_string", "content", "new_source",
+    "CodeContent", "TargetContent", "ReplacementContent",
+    "file_text", "old_str", "new_str", "oldString", "newString",
+];
 /// Per target string of a permission request: the card shows the whole of it,
 /// so a long script reaches the island whole. Past this (or past the budget of
 /// a file's text, CONTENT_FIELDS) the request carries `lumo_input_cut`, and
@@ -991,6 +1002,22 @@ mod tests {
         let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/a.ts", "content": "a", "note": "n".repeat(MAX_FIELD_LEN + 1) } });
         truncate_payload(&mut v, "PermissionRequest");
         assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        // The other agents' file tools the same: Antigravity, Copilot CLI, OpenCode.
+        let page = "<li>item</li>\n".repeat(250); // ~3.5 KB
+        for (tool, input) in [
+            ("write_to_file", serde_json::json!({ "TargetFile": "C:/w/menu.html", "CodeContent": page, "Overwrite": true })),
+            ("replace_file_content", serde_json::json!({ "TargetFile": "C:/w/a.md", "TargetContent": page, "ReplacementContent": page })),
+            ("multi_replace_file_content", serde_json::json!({ "TargetFile": "C:/w/a.md", "ReplacementChunks": [{ "TargetContent": page, "ReplacementContent": page }] })),
+            ("create", serde_json::json!({ "path": "C:/w/a.html", "file_text": page })),
+            ("edit", serde_json::json!({ "path": "C:/w/a.html", "old_str": page, "new_str": page })),
+            ("edit", serde_json::json!({ "filePath": "C:/w/a.html", "oldString": page, "newString": page })),
+            ("write_file", serde_json::json!({ "file_path": "C:/w/a.html", "content": page })),
+        ] {
+            let mut v = serde_json::json!({ "tool_name": tool, "tool_input": input });
+            truncate_payload(&mut v, "PermissionRequest");
+            assert!(v.get("lumo_input_cut").is_none(), "{tool}");
+            assert!(v.to_string().contains(&page.replace('\n', "\\n")), "{tool} keeps its text");
+        }
         // Another tool's long text field is still cut: its card shows all of its input.
         let mut v = serde_json::json!({ "tool_name": "mcp__x__y", "tool_input": { "content": "y".repeat(MAX_FIELD_LEN + 1) } });
         truncate_payload(&mut v, "PermissionRequest");
