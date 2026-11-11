@@ -262,6 +262,8 @@ export interface Settings {
   /** Width of the open island and its height (0 = each view's own); owned by Rust. */
   islandWidth: number;
   islandHeight: number;
+  /** The size each view was dragged to, by its slot (layout.ts sizeSlot); a view with none takes the two above. Owned by Rust. */
+  islandSizes?: Partial<Record<string, { width: number; height: number }>>;
   /** How big the icons are drawn (1 = their usual size). */
   iconScale: number;
   /** When the open island closes on its own (settings.rs island_close). */
@@ -429,6 +431,7 @@ export const DEFAULT_SETTINGS: Settings = {
   islandFloat: 0,
   islandWidth: 640,
   islandHeight: 0,
+  islandSizes: {},
   iconScale: 1.25,
   islandClose: "timer",
   islandHoverOpen: false,

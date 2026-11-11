@@ -11,6 +11,14 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 /// The right-click menu's items out of the box (src/core/context-menu.ts).
 pub const DEFAULT_CONTEXT_MENU: &[&str] = &["newChat", "pin", "sound", "activities", "center", "settings"];
 
+/// A size a view's grips were dragged to: its width, and its height (0 = the
+/// view's own), in page pixels (see `Settings::island_sizes`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ViewSize {
+    pub width: f64,
+    pub height: f64,
+}
+
 /// A field the file lacks takes its value from `Default`, so a settings.json
 /// written by an older build still loads, whatever has been added since.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +52,11 @@ pub struct Settings {
     /// page pixels. Dragged from the island's grips, so owned by Rust too.
     pub island_width: f64,
     pub island_height: f64,
+    /// The size each view was dragged to, by its slot (island.rs size_slot):
+    /// resizing the chat leaves the home as it was. A view with none here
+    /// takes `island_width` and `island_height`, the size every view shared
+    /// before. Owned by Rust like them.
+    pub island_sizes: BTreeMap<String, ViewSize>,
     /// How big the icons are drawn, against their design size.
     pub icon_scale: f64,
     /// When the open island closes on its own: "timer" (`auto_close_interval`
@@ -308,6 +321,7 @@ impl Default for Settings {
             island_float: 0.0,
             island_width: crate::island::DEFAULT_WIDTH,
             island_height: 0.0,
+            island_sizes: BTreeMap::new(),
             icon_scale: DEFAULT_ICON_SCALE,
             island_close: "timer".into(),
             island_hover_open: false,
@@ -680,6 +694,7 @@ mod tests {
   "islandFloat": 240.0,
   "islandWidth": 900.0,
   "islandHeight": 420.0,
+  "islandSizes": { "chat": { "width": 1000.0, "height": 560.0 }, "home": { "width": 460.0, "height": 0.0 } },
   "iconScale": 1.5,
   "islandClose": "click",
   "islandHoverOpen": true,
@@ -1002,6 +1017,7 @@ mod tests {
             ("mainPill", json!(["agent_cursor"])),
             ("screen", Value::Null),
             ("shortcuts", json!("Ctrl+Alt+A")),
+            ("islandSizes", json!({ "chat": 900 })),
         ] {
             let loaded = parse(&custom_with(key, Some(wrong)))
                 .unwrap_or_else(|| panic!("a file with a bad {key} was thrown away"));
@@ -1227,6 +1243,7 @@ mod tests {
                 "islandFloat",
                 "islandWidth",
                 "islandHeight",
+                "islandSizes",
                 "iconScale",
                 "islandClose",
                 "islandHoverOpen",
