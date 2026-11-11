@@ -238,6 +238,7 @@ fn write_config(path: &std::path::Path, text: &str) -> bool {
 const DEFAULT_MODEL: &str = "default";
 const MODELS: &[(&str, &str)] = &[
     (DEFAULT_MODEL, "Default"),
+    ("claude-fable-5-2", "Fable 5.2"),
     ("claude-opus-5-5", "Opus 5.5"),
     ("claude-sonnet-5-5", "Sonnet 5.5"),
     ("claude-haiku-5-5", "Haiku 5.5"),
@@ -1952,6 +1953,15 @@ mod tests {
         assert!(a.windows(2).any(|w| w == ["--effort", "max"]));
         let a = args_with(HELPER_PROMPT, "opus & calc", "lots", "default", None, "/inbox", &[]);
         assert!(!a.iter().any(|s| s == "--model" || s == "--effort"));
+    }
+
+    #[test]
+    fn every_model_in_the_picker_reaches_the_command_line() {
+        let ids: Vec<String> = models().into_iter().map(|m| m.id).collect();
+        assert_eq!(ids, ["default", "claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
+        for id in &ids[1..] {
+            assert_eq!(safe_model(id), Some(id.as_str()));
+        }
     }
 
     #[test]
