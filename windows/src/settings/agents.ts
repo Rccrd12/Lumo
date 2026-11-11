@@ -4,8 +4,7 @@
 
 import { Bridge, type AgentHookStatus } from "../core/bridge";
 import { clear, h } from "../views/dom";
-import { errorText, renderDiff, sectionHead, setting, statusDot } from "./parts";
-import { IN_ISLAND, onHandoff, reviewInWindow } from "./handoff";
+import { cancelledByHand, errorText, renderDiff, sectionHead, setting, statusDot } from "./parts";
 import { t } from "../i18n/i18n";
 
 /** In the current language (src/i18n); the settings window redraws on a change. */
@@ -101,11 +100,6 @@ function agentBlock(initial: AgentHookStatus): HTMLElement {
   }
 
   async function showPreview(install: boolean) {
-    // Inside the island nothing is written (confirmed.rs): the window shows it.
-    if (IN_ISLAND) {
-      reviewInWindow(body, `agent:${status.id}`, install, draw);
-      return;
-    }
     let plan;
     try {
       plan = await Bridge.agentHooksPreview(status.id, install);
@@ -138,17 +132,13 @@ function agentBlock(initial: AgentHookStatus): HTMLElement {
         window.setTimeout(() => void refresh(), 2600);
       } catch (err) {
         confirm.disabled = false;
+        if (cancelledByHand(err)) return;
         body.append(h("div", { class: "notice err", text: TEXT.failed(err) }));
       }
     });
     body.append(h("div", { class: "row" }, confirm, h("button", { text: TEXT.cancel, onclick: draw })));
   }
 
-  // The island's Settings handed this agent's change to the window.
-  onHandoff(`agent:${status.id}`, (install) => {
-    void showPreview(install);
-    return block;
-  });
   draw();
   return block;
 }

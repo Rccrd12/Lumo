@@ -498,24 +498,33 @@ fn agent_hooks_status() -> std::collections::HashMap<String, bool> {
 #[tauri::command(async)]
 fn hooks_preview(window: tauri::WebviewWindow, install: bool) -> Result<HookPreview, String> {
     let preview = hooks::preview(install)?;
-    if window.label() == confirmed::SETTINGS_WINDOW {
+    if confirmed::may_show(window.label()) {
         confirmed::shown(&format!("hooks:{install}"), &preview.fingerprint);
     }
     Ok(preview)
 }
 
-/// Only ever called from an explicit click in the settings window: refused
-/// from any other, and without the preview Settings showed just before.
-#[tauri::command(async)]
-fn hooks_apply(
+/// The write of a change shown in Settings may go (confirmed.rs by_hand). Off
+/// the async threads: from the island, Windows' Yes / No box may stay up a while.
+async fn confirm_write(app: &AppHandle, window: &tauri::WebviewWindow, what: String, fingerprint: &str, target: String) -> Result<(), String> {
+    let (app, label, fingerprint) = (app.clone(), window.label().to_string(), fingerprint.to_string());
+    tauri::async_runtime::spawn_blocking(move || confirmed::by_hand(&app, &label, &what, &fingerprint, &target))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Only ever called from an explicit click in Settings (confirmed.rs): refused
+/// from any other window, and without the preview Settings showed just before.
+#[tauri::command]
+async fn hooks_apply(
     app: AppHandle,
     window: tauri::WebviewWindow,
-    shared: State<Shared>,
+    shared: State<'_, Shared>,
     install: bool,
     fingerprint: String,
 ) -> Result<String, String> {
-    confirmed::from_settings(window.label())?;
-    confirmed::take(&format!("hooks:{install}"), &fingerprint)?;
+    let target = hooks::settings_path().display().to_string();
+    confirm_write(&app, &window, format!("hooks:{install}"), &fingerprint, target).await?;
     // The fingerprint comes from the preview the user actually looked at, so a
     // settings.json that changed in between is refused rather than overwritten.
     let backup = hooks::write(install, &fingerprint)?;
@@ -542,18 +551,18 @@ fn agent_hooks_list() -> Vec<agents::AgentStatus> {
 #[tauri::command(async)]
 fn agent_hooks_preview(window: tauri::WebviewWindow, agent: String, install: bool) -> Result<config_file::Plan, String> {
     let plan = agents::preview(&agent, install)?;
-    if window.label() == confirmed::SETTINGS_WINDOW {
+    if confirmed::may_show(window.label()) {
         confirmed::shown(&format!("agent:{agent}:{install}"), &plan.fingerprint);
     }
     Ok(plan)
 }
 
-/// Only ever called from an explicit click in the settings window, with the
-/// fingerprint of the preview the user looked at (confirmed.rs).
-#[tauri::command(async)]
-fn agent_hooks_apply(window: tauri::WebviewWindow, agent: String, install: bool, fingerprint: String) -> Result<String, String> {
-    confirmed::from_settings(window.label())?;
-    confirmed::take(&format!("agent:{agent}:{install}"), &fingerprint)?;
+/// Only ever called from an explicit click in Settings, with the fingerprint
+/// of the preview the user looked at (confirmed.rs).
+#[tauri::command]
+async fn agent_hooks_apply(app: AppHandle, window: tauri::WebviewWindow, agent: String, install: bool, fingerprint: String) -> Result<String, String> {
+    let target = agents::Agent::from_id(&agent).map(|a| a.name().to_string()).unwrap_or_else(|| agent.clone());
+    confirm_write(&app, &window, format!("agent:{agent}:{install}"), &fingerprint, target).await?;
     let backups = agents::apply(&agent, install, &fingerprint)?;
     let done = if install { "installed" } else { "removed" };
     log::line(format!("agent hooks {done} for {agent}"));
@@ -567,23 +576,23 @@ fn agent_hooks_apply(window: tauri::WebviewWindow, agent: String, install: bool,
 #[tauri::command(async)]
 fn status_line_preview(window: tauri::WebviewWindow, install: bool) -> Result<HookPreview, String> {
     let preview = hooks::status_line_preview(install)?;
-    if window.label() == confirmed::SETTINGS_WINDOW {
+    if confirmed::may_show(window.label()) {
         confirmed::shown(&format!("statusline:{install}"), &preview.fingerprint);
     }
     Ok(preview)
 }
 
-/// Only ever called from an explicit click in the settings window (confirmed.rs).
-#[tauri::command(async)]
-fn status_line_apply(
+/// Only ever called from an explicit click in Settings (confirmed.rs).
+#[tauri::command]
+async fn status_line_apply(
     app: AppHandle,
     window: tauri::WebviewWindow,
-    shared: State<Shared>,
+    shared: State<'_, Shared>,
     install: bool,
     fingerprint: String,
 ) -> Result<String, String> {
-    confirmed::from_settings(window.label())?;
-    confirmed::take(&format!("statusline:{install}"), &fingerprint)?;
+    let target = hooks::settings_path().display().to_string();
+    confirm_write(&app, &window, format!("statusline:{install}"), &fingerprint, target).await?;
     let backup = hooks::status_line_write(install, &fingerprint)?;
     let updated = {
         let mut current = shared.settings.lock().unwrap();

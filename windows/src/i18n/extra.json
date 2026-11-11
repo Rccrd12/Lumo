@@ -17939,17 +17939,17 @@
    "id": "Lumo tidak bisa menanyakan halaman ini kepada pengguna (pulau sedang sibuk): coba lagi sebentar lagi.",
    "it": "Lumo non è riuscito a chiedere all'utente di questa pagina (l'isola è occupata): riprova tra un momento."
   },
-  "Lumo's Settings window shows the changes: look at them and confirm there.": {
-   "zh-Hans": "Lumo 的设置窗口会显示这些更改：请在那里查看并确认。",
-   "hi": "Lumo की सेटिंग्स विंडो बदलाव दिखाती है: उन्हें वहीं देखें और पुष्टि करें।",
-   "es": "La ventana de Ajustes de Lumo muestra los cambios: revísalos y confírmalos allí.",
-   "ar": "تعرض نافذة إعدادات Lumo التغييرات: راجِعها وأكِّدها هناك.",
-   "fr": "La fenêtre Réglages de Lumo affiche les changements : vérifiez-les et confirmez-les là-bas.",
-   "bn": "Lumo-র সেটিংস উইন্ডো পরিবর্তনগুলো দেখায়: সেখানে দেখে নিশ্চিত করুন।",
-   "pt-BR": "A janela de Ajustes do Lumo mostra as alterações: confira e confirme lá.",
-   "ru": "Окно настроек Lumo показывает изменения: проверьте и подтвердите их там.",
-   "id": "Jendela Pengaturan Lumo menampilkan perubahannya: periksa dan konfirmasi di sana.",
-   "it": "La finestra Impostazioni di Lumo mostra le modifiche: controllale e confermale lì."
+  "Write the changes shown in Lumo's Settings to {target}? A backup is made first.": {
+   "zh-Hans": "将 Lumo 设置中显示的更改写入 {target}？会先进行备份。",
+   "hi": "Lumo की सेटिंग्स में दिखाए गए बदलाव {target} में लिखें? पहले बैकअप बनाया जाता है।",
+   "es": "¿Escribir en {target} los cambios mostrados en los Ajustes de Lumo? Antes se hace una copia de seguridad.",
+   "ar": "هل تريد كتابة التغييرات المعروضة في إعدادات Lumo في {target}؟ تُنشأ نسخة احتياطية أولاً.",
+   "fr": "Écrire dans {target} les changements affichés dans les Réglages de Lumo ? Une sauvegarde est faite d'abord.",
+   "bn": "Lumo-র সেটিংসে দেখানো পরিবর্তনগুলো {target}-এ লিখবেন? আগে একটি ব্যাকআপ নেওয়া হয়।",
+   "pt-BR": "Gravar em {target} as alterações mostradas nos Ajustes do Lumo? Um backup é feito antes.",
+   "ru": "Записать изменения, показанные в настройках Lumo, в {target}? Сначала создаётся резервная копия.",
+   "id": "Tulis perubahan yang ditampilkan di Pengaturan Lumo ke {target}? Cadangan dibuat terlebih dahulu.",
+   "it": "Scrivere in {target} le modifiche mostrate nelle Impostazioni di Lumo? Prima viene fatto un backup."
   }
  }
 }
