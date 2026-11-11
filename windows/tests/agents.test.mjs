@@ -36,3 +36,17 @@ test("approval cards are for the agents the relay answers, no one else", () => {
   // Must match takes_decisions() in hook/src/reply.rs.
   assert.deepEqual([...APPROVAL_AGENTS].sort(), ["claude-desktop", "codex", "copilot", "muse", "opencode"]);
 });
+
+test("an agent named like one of Object's own keys is just an unknown agent", () => {
+  for (const id of ["constructor", "tostring", "hasownproperty", "__proto__"]) {
+    const valid = validateAgent(id);
+    if (valid === null) continue;
+    assert.equal(agentName(valid), valid);
+    assert.match(agentColor(valid), /^#[0-9A-F]{6}$/);
+  }
+  assert.equal(agentName("constructor"), "constructor");
+  assert.match(agentColor("constructor"), /^#[0-9A-F]{6}$/);
+  // A tag that is not text at all is no agent.
+  assert.equal(validateAgent(123), null);
+  assert.equal(validateAgent(["codex"]), null);
+});

@@ -102,8 +102,13 @@ test("Claude Code's effort is one row: a filled slider, its level, and Auto at t
 });
 
 test("the shield picks what Claude Code and Antigravity CLI may do without asking", () => {
-  // The API providers run no tools: no shield.
-  assert.equal($(".perm-btn").hidden, true);
+  // An API provider runs Lumo's tools on this computer: the local models' shield, sandbox and all.
+  assert.equal($(".perm-btn").hidden, false);
+  $(".perm-btn").fire("click");
+  assert.deepEqual(view.el.find(".perm-row").map((r) => r.querySelector(".picker-model-name").textContent), ["Ask for approval", "Approve for me", "Run automatically", "Plan only"]);
+  assert.ok($(".sandbox-chip"), "the sandbox's level beside the title");
+  $(".perm-btn").fire("click");
+  assert.ok(!$(".chat-body").classList.contains("authorizing"));
   State.settings = { ...State.settings, chatProvider: "claude-code" };
   view.sync();
   const shield = $(".perm-btn");
@@ -883,6 +888,24 @@ test("the other providers show the file first, then Thinking…", async (t) => {
   await tick();
   view.sync();
   assert.equal(label(), "Thinking…");
+});
+
+test("Unsloth Studio still starting: the chat says so with the picker's seconds, not Thinking…", async () => {
+  State.settings = { ...State.settings, chatProvider: "unsloth" };
+  const pending = heldAnswers();
+  await ask("Ciao");
+  // The model picker started it 15 s ago: the question waits for that start.
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "starting", detail: "15" } });
+  assert.equal(label(), "Starting Unsloth Studio… 15 s");
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "starting", detail: "16" } });
+  assert.match(label(), /^Starting Unsloth Studio… 1[56] s$/, "one line, its seconds going on");
+  assert.equal(view.el.find(".typing").length, 1);
+  // Ready: what the model does next, from 0.
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "prompt", detail: "" } });
+  assert.equal(label(), "Processing the prompt…");
+  pending[0]({ text: "Ciao!", turns: 2 });
+  await flush();
+  view.sync();
 });
 
 test("each activity has its words, with a file name, a host or a tool", () => {

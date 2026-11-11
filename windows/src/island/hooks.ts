@@ -19,7 +19,7 @@ import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents"
 import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
 import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
-import { parsePermissionMode } from "../core/providers";
+import { parsePermissionMode, storedPermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import {
   BACKGROUND_COLOR, BACKGROUND_TEXT, BackgroundRuns, QUIET_MS, STALE_MS, answerLine, answerText, backgroundGroupId, batchTotal, backgroundLine,
@@ -101,6 +101,20 @@ function withdrawQueued(drop: (q: ApprovalInfo) => boolean): void {
     clearCardTimer(q.requestId);
     void Bridge.approvalDecline(q.requestId);
   }
+}
+
+/**
+ * Lumo is paused: every request waiting, on the card or in line, goes back
+ * to its terminal at once. Kept, it would hold the agent until the relay's
+ * time ran out, nearly two minutes, behind an island nobody can see.
+ */
+export function releaseAllApprovals(island: Island): void {
+  withdrawQueued(() => true);
+  const pending = State.pendingApproval;
+  if (!pending) return;
+  clearCardTimer(pending.requestId);
+  if (pending.requestId) void Bridge.approvalDecline(pending.requestId);
+  dropPendingCard(island);
 }
 
 /** A request in line whose time ran out: the terminal took it over. */
@@ -205,7 +219,11 @@ export function settledElsewhere(
   if (TURN_OVER.has(name)) return true;
   if (name !== "PostToolUse" && name !== "PostToolUseFailure") return false;
   const t = tool ?? "Tool";
-  return t === q.tool && approvalTarget(t, input ?? {}) === q.command;
+  if (t !== q.tool) return false;
+  const target = approvalTarget(t, input ?? {});
+  // A call with nothing that names it shows all it was given, which its
+  // PostToolUse may carry cut: the same tool in the same session is it.
+  return q.command === target || (target === t && q.command.startsWith(`${t} · {`));
 }
 
 /**
@@ -266,6 +284,8 @@ interface HookPayload {
   lumo_session_allow?: boolean;
   /** A card of the chat's Copilot CLI or Cursor CLI in Auto: Allow is answered with the CLI's "always allow" (acp_chat.rs card). */
   lumo_remembered?: boolean;
+  /** The relay had to cut the request's input (lumo-hook's truncate_payload): the card can't show it whole. */
+  lumo_input_cut?: boolean;
   /** The Claude Code session's title (/rename, else Claude Code's own), read from its transcript by the relay (hook/src/title.rs). */
   lumo_title?: string;
   /** A command of an Antigravity session that none of its rules covers (hook/src/main.rs): a card, else Antigravity asks. */
@@ -284,6 +304,37 @@ interface HookPayload {
   lumo_launcher?: string;
   /** How many questions the program asks in all (LUMO_BATCH_TOTAL), when it says. */
   lumo_batch_total?: number;
+}
+
+/** HookPayload's fields that are text, yes-or-no, a number or an object. */
+const TEXT_FIELDS = [
+  "hook_event_name", "request_id", "session_id", "cwd", "message", "notification_type", "reason", "trigger",
+  "prompt", "last_assistant_message", "tool_name", "error", "lumo_agent", "platform", "term_editor",
+  "lumo_task_id", "lumo_title", "lumo_launcher",
+] as const;
+const FLAG_FIELDS = [
+  "lumo_diff_truncated", "lumo_island", "lumo_session_allow", "lumo_remembered", "lumo_agy_gate", "lumo_background",
+] as const;
+const NUMBER_FIELDS = ["lumo_card_secs", "lumo_batch_total"] as const;
+const OBJECT_FIELDS = ["tool_input", "lumo_user_tool", "lumo_mail_send", "lumo_mail_action", "lumo_live_file"] as const;
+
+/**
+ * A hook event as the island reads it: an object, and each field it knows of
+ * the type it expects, or gone. The relay forwards what an agent wrote, and a
+ * number where text belongs (`"message": 3`) threw in the middle of an
+ * event, leaving a card or a pill half made.
+ */
+export function cleanPayload(raw: unknown): HookPayload | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const p = { ...(raw as Record<string, unknown>) };
+  const drop = (fields: readonly string[], ok: (v: unknown) => boolean) => {
+    for (const f of fields) if (f in p && p[f] != null && !ok(p[f])) delete p[f];
+  };
+  drop(TEXT_FIELDS, (v) => typeof v === "string");
+  drop(FLAG_FIELDS, (v) => typeof v === "boolean");
+  drop(NUMBER_FIELDS, (v) => typeof v === "number" && Number.isFinite(v));
+  drop(OBJECT_FIELDS, (v) => typeof v === "object" && !Array.isArray(v));
+  return p as HookPayload;
 }
 
 const LIVE_FILE = {
@@ -414,8 +465,14 @@ function approvalTarget(tool: string, input: Record<string, unknown>): string {
       return `${tool} · ${value.trim()}`;
     }
   }
-  return tool;
+  // Nothing that names it (an MCP tool's call): all it is given, since Allow
+  // allows exactly that. The agent's own explanation is the line above it.
+  const given = Object.fromEntries(Object.entries(input).filter(([k]) => !REASON_KEYS.has(k)));
+  return Object.keys(given).length ? `${tool} · ${JSON.stringify(given)}` : tool;
 }
+
+/** What the agent says of a call (core/approvals.ts REASON_FIELDS): shown as the line above, not as what it is given. */
+const REASON_KEYS = new Set(["description", "Description", "justification", "explanation", "Explanation", "toolSummary"]);
 
 /**
  * The line under the who-row that says what the request is for: the agent's
@@ -501,7 +558,10 @@ function recordDiff(agentId: string, payload: HookPayload) {
 export function registerHookHandlers(island: Island) {
   // The last plan numbers seen survive a restart.
   State.planUsage ??= restorePlanUsage(storedClaudePlanUsage());
-  void onEvent<HookPayload>("hook", (payload) => handleHook(island, payload));
+  void onEvent<unknown>("hook", (raw) => {
+    const payload = cleanPayload(raw);
+    if (payload) handleHook(island, payload);
+  });
   // A request answered in the terminal instead: the relay hung up (pipe.rs).
   void onEvent<string>("hook-settled", (requestId) => settleRequest(island, requestId));
   // The same numbers from a chat answer of Claude Code (claude_code.rs), which
@@ -861,7 +921,7 @@ function handleHook(island: Island, payload: HookPayload) {
       const liveFile = email ? null : liveFileChange(payload.lumo_live_file, payload.tool_input ?? {});
       const change = email ? null : mailChange(payload.lumo_mail_action) ?? liveFile;
       // The chat's Antigravity CLI run in Auto, agy's own Turbo preset: everything runs.
-      const agyMode = chatAgy ? parsePermissionMode(State.settings.chatPermissionMode, "antigravity-cli") : "default";
+      const agyMode = chatAgy ? parsePermissionMode(storedPermissionMode(State.settings, "antigravity-cli"), "antigravity-cli") : "default";
       if (chatAgy && requestId && !email && !change && agyMode === "auto") {
         void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by ${agyMode})`);
         void Bridge.approvalAutoAllow(requestId);
@@ -912,8 +972,9 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(email ? { email } : change ? { reason: change.reason } : userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
-        ...(payload.lumo_session_allow === true && !questions && !agyGate ? { sessionAllow: true } : {}),
+        ...(payload.lumo_session_allow === true && payload.lumo_input_cut !== true && !questions && !agyGate ? { sessionAllow: true } : {}),
         ...(payload.lumo_remembered === true && !questions ? { remembered: true } : {}),
+        ...(payload.lumo_input_cut === true && !questions && !email && !change && !userTool ? { cut: true } : {}),
         ...(agyGate ? { answerIn: agentName("antigravity") } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),

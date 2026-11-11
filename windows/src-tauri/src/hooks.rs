@@ -157,6 +157,30 @@ fn entry_is_ours(entry: &Value) -> bool {
         .unwrap_or(false)
 }
 
+/// `list` (one event's groups) without Lumo's hooks. Only Lumo's own hooks
+/// go: a group the user shares with Lumo keeps its other hooks, and a group
+/// left with none goes with them. Everything else stays exactly as it was.
+fn without_our_hooks(list: &[Value]) -> Vec<Value> {
+    list.iter()
+        .filter_map(|group| {
+            let Some(inner) = group.get("hooks").and_then(Value::as_array) else {
+                return Some(group.clone());
+            };
+            let is_ours = |h: &Value| h.get("command").and_then(Value::as_str).is_some_and(is_relay_command);
+            if !inner.iter().any(is_ours) {
+                return Some(group.clone());
+            }
+            let kept: Vec<Value> = inner.iter().filter(|h| !is_ours(h)).cloned().collect();
+            if kept.is_empty() {
+                return None;
+            }
+            let mut group = group.clone();
+            group["hooks"] = Value::Array(kept);
+            Some(group)
+        })
+        .collect()
+}
+
 /// The status line in settings.json is Lumo's relay (old installs wrote
 /// `StatusLine`, later ones `--statusline`; both match).
 fn status_line_is_ours(v: &Value) -> bool {
@@ -180,7 +204,7 @@ fn merged(existing: &Value) -> Result<Value, String> {
             Some(Value::Array(list)) => list.clone(),
             Some(_) => return Err(unexpected(&format!("\"hooks\".\"{event}\""))),
         };
-        list.retain(|entry| !entry_is_ours(entry));
+        list = without_our_hooks(&list);
         list.push(our_entry(event, *timeout));
         hooks.insert((*event).to_string(), Value::Array(list));
     }
@@ -205,8 +229,7 @@ fn without_ours(existing: &Value) -> Result<Value, String> {
     for (event, value) in hooks {
         match value.as_array() {
             Some(list) => {
-                let kept: Vec<Value> =
-                    list.iter().filter(|e| !entry_is_ours(e)).cloned().collect();
+                let kept = without_our_hooks(list);
                 if !kept.is_empty() {
                     out.insert(event, Value::Array(kept));
                 }
@@ -217,7 +240,7 @@ fn without_ours(existing: &Value) -> Result<Value, String> {
         }
     }
     if out.is_empty() {
-        root.remove("hooks");
+        root.shift_remove("hooks");
     } else {
         root.insert("hooks".into(), Value::Object(out));
     }
@@ -343,7 +366,7 @@ fn status_line_settings(current: &Value, install: bool, previous: Option<&Value>
     }
     match status_line_after(root.get("statusLine"), install, previous) {
         Some(sl) => root.insert("statusLine".into(), sl),
-        None => root.remove("statusLine"),
+        None => root.shift_remove("statusLine"),
     };
     Ok(Value::Object(root))
 }
@@ -511,6 +534,33 @@ mod tests {
     }
 
     #[test]
+    fn a_group_shared_with_the_user_keeps_their_hooks() {
+        let ours = hook_command("Stop");
+        let shared = json!({ "hooks": { "Stop": [
+            { "matcher": "", "hooks": [
+                { "type": "command", "command": "node ~/.claude/notify.js" },
+                { "type": "command", "command": ours },
+            ] },
+            { "hooks": [{ "type": "command", "command": "~/bin/other" }] },
+        ] } });
+        let theirs = json!({ "type": "command", "command": "node ~/.claude/notify.js" });
+
+        let installed = merged(&shared).unwrap();
+        let stop = installed["hooks"]["Stop"].as_array().unwrap();
+        assert_eq!(stop.len(), 3, "their two groups, then Lumo's");
+        assert_eq!(stop[0]["hooks"], json!([theirs]), "only Lumo's hook left their group");
+        assert_eq!(stop[0]["matcher"], "");
+        assert_eq!(stop[1], shared["hooks"]["Stop"][1]);
+        assert_eq!(stop.iter().filter(|e| entry_is_ours(e)).count(), 1);
+
+        let removed = without_ours(&shared).unwrap();
+        let stop = removed["hooks"]["Stop"].as_array().unwrap();
+        assert_eq!(stop.len(), 2);
+        assert_eq!(stop[0]["hooks"], json!([theirs]));
+        assert!(!stop.iter().any(entry_is_ours));
+    }
+
+    #[test]
     fn the_hooks_leave_the_status_line_alone() {
         let theirs = json!({ "statusLine": { "type": "command", "command": "~/bin/my-line" } });
         assert_eq!(merged(&theirs).unwrap()["statusLine"], theirs["statusLine"]);
@@ -553,6 +603,19 @@ mod tests {
         assert_eq!(status_line_settings(&theirs, false, Some(&previous)).unwrap()["statusLine"], theirs["statusLine"]);
         // A statusLine we do not understand is refused, never replaced.
         assert!(status_line_settings(&json!({ "statusLine": "echo hi" }), true, None).is_err());
+    }
+
+    #[test]
+    fn removing_keeps_the_other_keys_in_their_order() {
+        let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+        let mut with = status_line_settings(&json!({ "model": "opus", "theme": "dark" }), true, None).unwrap();
+        with.as_object_mut().unwrap().insert("permissions".into(), json!({}));
+        with.as_object_mut().unwrap().insert("env".into(), json!({}));
+        let after = status_line_settings(&with, false, None).unwrap();
+        assert_eq!(keys(&after), ["model", "theme", "permissions", "env"]);
+
+        let hooks = json!({ "a": 1, "hooks": merged(&json!({})).unwrap()["hooks"].clone(), "b": 2, "c": 3 });
+        assert_eq!(keys(&without_ours(&hooks).unwrap()), ["a", "b", "c"]);
     }
 
     #[test]

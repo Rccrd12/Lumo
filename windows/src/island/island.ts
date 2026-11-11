@@ -47,6 +47,7 @@ import { isComputerTool } from "../core/computer";
 import { N_, t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { IslandPlan } from "./plan";
+import { Live } from "../live/session";
 // The plan's steps in the chat's strip (views/plan-strip.ts) wear the look
 // of the Plan island they came from: its stylesheet, here where it always was.
 import "../views/plan.css";
@@ -114,6 +115,12 @@ const UPLOAD_SETTLE = 0.45;
 const UPLOADED_NOTE_MS = 2600;
 const UPLOAD_COLOR = "#34D399";
 
+/**
+ * A hidden island pauses every CSS animation in the page (style.css,
+ * `.island-hidden`): an infinite one left running in a closed island's piece (a
+ * shimmer, a ping) would keep the webview repainting with nothing to see.
+ */
+const markHidden = () => document.documentElement.classList.toggle("island-hidden", State.mode === "hidden");
 const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
 
 export class Island {
@@ -507,6 +514,10 @@ export class Island {
     this.fsm.onTransition = (from, to) => {
       switch (to) {
         case "hidden":
+          // A call goes on only where it can be seen: the compact island
+          // stays up for it (fsm.held), so only a pause or the – hides it.
+          // Hidden, the microphone would stay open with nothing on screen.
+          if (Live.active) Live.end();
           this.setMode("hidden");
           break;
         case "petit":
@@ -545,6 +556,7 @@ export class Island {
     if (mode === prev) return;
     this.menu?.close();
     State.mode = mode;
+    markHidden();
     if (mode === "expanded") Sound.play("open");
     if (prev === "expanded") {
       Sound.play("close");
@@ -2073,6 +2085,7 @@ export class Island {
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
     // The island's look (look-new.css) hangs on this class.
     document.documentElement.classList.add("look-new");
+    markHidden();
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
     // the top (Settings, tray), or a new closed island width: grow, shrink or

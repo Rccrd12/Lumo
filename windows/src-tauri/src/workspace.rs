@@ -224,7 +224,9 @@ struct Entry {
     hash: u64,
 }
 
-/// A copy that is no longer what was copied, or a file the model made.
+/// A copy that is no longer what was copied, or a file the model made (what
+/// the tests check the manifest against).
+#[cfg(test)]
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Change {
@@ -382,7 +384,9 @@ impl Workspace {
             return Err(format!("{source}: give the full path of the file or folder on the computer."));
         }
         // Keys, passwords, recovery codes, browser profiles: never copied (live.rs).
-        if crate::live::is_sensitive(from) {
+        // As written, and where Windows takes it (a link, a junction, `.ssh.`).
+        let real = crate::file_moves::real_path(from);
+        if crate::live::is_sensitive(from) || crate::live::is_sensitive(&real) {
             return Err(format!("{source} holds keys or passwords: Lumo never copies it."));
         }
         let meta = std::fs::metadata(from).map_err(|_| not_found(from))?;
@@ -639,6 +643,7 @@ impl Workspace {
         Ok(format!("Deleted {gone} from your folder (never the user's own)."))
     }
 
+    #[cfg(test)]
     fn changes(&self) -> Vec<Change> {
         let entries = self.manifest();
         let mut out = Vec::new();
@@ -695,12 +700,6 @@ impl Workspace {
     }
 }
 
-/// What changed in the chat's folder: the copies changed, the files made.
-#[tauri::command(async)]
-pub fn workspace_changes(chat: String) -> Vec<Change> {
-    Workspace::new(dir(&chat)).changes()
-}
-
 /// The copy and its original, line by line, for the user to see before
 /// putting it back: `-` the original's lines, `+` the copy's.
 #[tauri::command(async)]
@@ -725,14 +724,6 @@ pub fn workspace_diff(chat: String, path: String) -> Result<Diff, String> {
 #[tauri::command(async)]
 pub fn workspace_put_back(chat: String, path: String) -> Result<(), String> {
     Workspace::new(dir(&chat)).put_back(Path::new(&path))
-}
-
-/// The chat's folder in File Explorer.
-#[tauri::command(async)]
-pub fn workspace_reveal(chat: String) {
-    let d = dir(&chat);
-    let _ = std::fs::create_dir_all(&d);
-    crate::platform::reveal_folder(&d.to_string_lossy());
 }
 
 /// The chat is deleted: its folder too.

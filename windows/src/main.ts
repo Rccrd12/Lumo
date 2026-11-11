@@ -7,7 +7,7 @@ import { Bridge, IS_TAURI, lendTauri, onEvent, type IslandShift, type MailMessag
 import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
 import { Island } from "./island/island";
-import { registerHookHandlers } from "./island/hooks";
+import { registerHookHandlers, releaseAllApprovals } from "./island/hooks";
 import { registerIntegrationHandlers, refreshConfigured } from "./island/integrations";
 import { startCalendarListening } from "./island/listen-calendar";
 import { registerShortcutHandlers } from "./island/shortcuts";
@@ -102,7 +102,10 @@ async function main() {
         break;
       case "pause":
         setPaused(!State.paused);
-        if (State.paused) island.fsm.forceHidden();
+        if (State.paused) {
+          releaseAllApprovals(island);
+          island.fsm.forceHidden();
+        }
         else island.reveal();
         break;
     }

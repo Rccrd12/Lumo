@@ -1,7 +1,7 @@
 // Chat view: the prompt box, the bubbles, the typing dots and the model picker.
 //
 // Answers, and questions once sent, are rendered as Markdown (markdown.ts).
-// A local model streams its answer: Rust sends `chat-delta` events with the
+// Every chat streams its answer (a local model, the cloud APIs, the agents): Rust sends `chat-delta` events with the
 // text visible so far. The model name above the text field opens the picker:
 // provider chips, then the models of the chosen provider, asked for only once
 // it is picked.
@@ -87,7 +87,7 @@ import {
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
-  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps,
+  activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps, storedPermissionMode, withPermissionMode,
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -118,7 +118,7 @@ import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
-import { LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
+import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, takeListens, untilText, watchColor, watchLabel, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { CONTEXT_STRINGS } from "../core/context-usage";
@@ -130,11 +130,19 @@ import {
   SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
 } from "../core/slash";
 
+/** At most this many watches wait for the user's word in one chat: the latest are kept. */
+const MAX_LISTEN_ASKS = 6;
+
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
   placeholderNext: N_("Continue…"),
   planKeep: N_("Keep planning"),
   planApprove: N_("Approve the plan"),
+  listenAsk: N_("Start listening?"),
+  listenWhy: N_("The answer asks Lumo to listen. What Lumo hears goes back to the chat as a message."),
+  listenThen: N_("then: {task}"),
+  listenNo: N_("Not now"),
+  listenYes: N_("Listen"),
   planChange: N_("Or write what to change…"),
   send: N_("Send"),
   toEnd: N_("Go to the bottom"),
@@ -241,7 +249,10 @@ const PERMISSION_TEXT: Record<Exclude<PermissionMode, "off">, { name: string; no
 const AGY_AUTO_NOTE = N_("Runs every command and changes any file without asking.");
 /** Auto with Copilot CLI or Cursor CLI: an action allowed once is allowed for the rest of the chat (acp_chat.rs). */
 const ACP_AUTO_NOTE = N_("Asks when the CLI asks. What you allow is allowed for the rest of the chat.");
-/** The modes with a local model, whose actions are the user's tools and the web (local_chat.rs). */
+/**
+ * The modes with a local model or a provider called by its API, whose actions
+ * are the user's tools and the web (local_chat.rs, tools.rs Asking).
+ */
 const LOCAL_TEXT: Record<PermissionMode, { name: string; note: string }> = {
   default: { name: N_("Ask for approval"), note: N_("Asks before using tools or the internet.") },
   auto: { name: N_("Approve for me"), note: N_("Only asks for risky actions.") },
@@ -251,7 +262,7 @@ const LOCAL_TEXT: Record<PermissionMode, { name: string; note: string }> = {
 
 /** A mode's name and note with `provider`. */
 function modeText(provider: ProviderDef, mode: PermissionMode): { name: string; note: string } {
-  if (provider.urlField || mode === "off") return LOCAL_TEXT[mode];
+  if (usesLumoTools(provider.id) || mode === "off") return LOCAL_TEXT[mode];
   const text = PERMISSION_TEXT[mode];
   if (mode === "auto" && provider.id === "antigravity-cli") return { ...text, note: AGY_AUTO_NOTE };
   if (mode === "auto" && (provider.id === "copilot-cli" || provider.id === "cursor-cli")) return { ...text, note: ACP_AUTO_NOTE };
@@ -750,6 +761,16 @@ export function timedLabel(label: string, _provider: string, activity: ChatActiv
 }
 
 /**
+ * When `activity` began. Unsloth Studio starting says the seconds its start has
+ * taken (unsloth_studio.rs): a start the model picker began earlier goes on from
+ * its seconds, as the picker shows them, not from 0.
+ */
+export function activitySince(activity: ChatActivity, now = Date.now()): number {
+  const seconds = activity.kind === "starting" && /^\d{1,4}$/.test(activity.detail) ? Number(activity.detail) : 0;
+  return now - seconds * 1000;
+}
+
+/**
  * The same, in the closed island's fewer words (core/compact.ts): what it
  * looks for, runs or uses is left to the chat.
  */
@@ -835,11 +856,17 @@ function drawAnswer(into: HTMLElement, text: string, workshop: boolean, scope: s
     return;
   }
   const words = stripDraft(shown);
-  renderMarkdown(into, words.text, { streaming: true, scope });
+  let line: HTMLElement | null = null;
   if (words.writing || words.draft) {
-    into.append(h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) })));
+    // The same line from one draw to the next, so its dot pulses on.
+    line = forgeLines.get(into) ?? h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) }));
+    forgeLines.set(into, line);
   }
+  renderMarkdown(into, words.text, { streaming: true, scope, after: line });
 }
+
+/** The workshop's "Writing the tool…" line of each answer being written. */
+const forgeLines = new WeakMap<HTMLElement, HTMLElement>();
 
 /** The checklists read from each answer's text, so a redraw doesn't read them again. */
 const answerLists = new Map<string, Checklist[]>();
@@ -1305,17 +1332,26 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
   /**
    * A local model's server is asked what the model picked can do (pictures,
    * tools, reasoning, its context) each time the model changes: the effort
-   * slider, the screenshots and the line next to the model follow.
+   * slider, the screenshots and the line next to the model follow. A provider
+   * called by its API says it in its model list, once the picker has it: no
+   * call of its own.
    */
   let capsKey = "";
   function refreshCaps(force = false) {
     if (force) capsKey = "";
     const p = providerDef(State.settings.chatProvider);
     const model = activeModel(State.settings);
-    const key = p.urlField && model ? `${p.id}|${model}` : "";
+    const api = isApiProvider(p.id);
+    const key = (p.urlField || api) && model ? `${p.id}|${model}|${api && cache.has(p.id) ? "listed" : ""}` : "";
     if (key === capsKey) return;
     capsKey = key;
     if (!key) return;
+    if (api) {
+      setLocalCaps(p.id, apiCaps(cache.get(p.id)?.find((m) => m.id === model)));
+      drawEfforts();
+      onChange();
+      return;
+    }
     setLocalCaps(p.id, null);
     void Bridge.localCaps(p.id, model)
       .then((caps) => {
@@ -1470,6 +1506,8 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
         saveSettings();
         onChange();
       }
+      // The list says what its models take: the effort slider follows.
+      if (isApiProvider(p.id)) refreshCaps();
       drawModels(p, models);
     } catch (err) {
       if (ticket === request) status(String(err).replace(/^Error:\s*/, ""), Boolean(p.key));
@@ -1717,6 +1755,8 @@ export function buildPrompt(
     onclick: () => showPlan(),
   }, svg(ICONS.plan, 13, { stroke: 1.8 }));
   planBtn.style.display = "none";
+  /** Watches each chat's answers asked for, waiting for the user's Listen (drawListenAsk). */
+  const listenAsks = new Map<string, ListenAsk[]>();
   // The plan: a chip beside the model in place of the icon, its steps rising
   // over the chat from this row (plan-strip.ts).
   const planStrip = buildPlanStrip(() => showPlan());
@@ -1762,6 +1802,48 @@ export function buildPrompt(
     }
     onHeightChange();
   }
+  // What an answer asked Lumo to listen for, over the field, waiting for the
+  // user's word: nothing listens, and nothing is sent to the chat later, until
+  // Listen is clicked (concept: ascolto-con-conferma).
+  const listenAskList = h("div", { class: "listen-ask-list" });
+  let listenAskShownFor = "";
+  let listenAskAt = 0;
+  const listenAskDecide = (yes: boolean) => () => {
+    // A click meant for something else, as the box came up, answers nothing.
+    if (performance.now() - listenAskAt < PLAN_ASK_GUARD_MS) return;
+    const chatId = State.chatId;
+    const asks = listenAsks.get(chatId) ?? [];
+    listenAsks.delete(chatId);
+    drawListenAsk();
+    if (yes && asks.length) void startListens(chatId, asks);
+  };
+  const listenAsk = h("div", { class: "plan-ask listen-ask" },
+    h("div", { class: "plan-ask-head" }, h("span", { class: "plan-ask-title", text: tl(STRINGS.listenAsk) })),
+    h("div", { class: "listen-ask-why", text: tl(STRINGS.listenWhy) }),
+    listenAskList,
+    h("div", { class: "plan-ask-actions" },
+      h("button", { class: "plan-ask-btn keep", type: "button", onclick: listenAskDecide(false) }, h("span", { text: tl(STRINGS.listenNo) })),
+      h("button", { class: "plan-ask-btn approve", type: "button", onclick: listenAskDecide(true) }, h("span", { text: tl(STRINGS.listenYes) }))));
+  listenAsk.hidden = true;
+  /** The box for the chat on screen: each watch its answer asked for, by name, event and what then. */
+  function drawListenAsk() {
+    const asks = State.chatSlot !== "forge" ? listenAsks.get(State.chatId) ?? [] : [];
+    const key = asks.length ? `${State.chatId}:${JSON.stringify(asks)}` : "";
+    if (key === listenAskShownFor) return;
+    listenAskShownFor = key;
+    listenAskAt = performance.now();
+    listenAsk.hidden = asks.length === 0;
+    clear(listenAskList);
+    for (const ask of asks) {
+      const w = { ...ask, id: 0, chatId: State.chatId, startedAt: 0 } as ListenWatch;
+      listenAskList.append(h("div", { class: "listen-ask-row", style: `--watch:${watchColor(w)}` },
+        h("span", { class: "listen-ask-dot" }),
+        h("span", { class: "listen-ask-text" },
+          h("span", { class: "listen-ask-what", text: `${watchLabel(w)} · ${untilText(w)}${w.text ? ` "${w.text}"` : ""}` }),
+          ask.task ? h("span", { class: "listen-ask-then", text: t(STRINGS.listenThen, { task: ask.task }) }) : null)));
+    }
+    onHeightChange();
+  }
   // The ring sits right before the model it measures.
   const modelRow = h("div", { class: "model-row" },
     planStrip.el,
@@ -1789,10 +1871,10 @@ export function buildPrompt(
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
     // The usage menu holds the context and the limits: as much room as Listening.
-    // A local model's four modes want more room than the CLIs' three.
+    // A local model's four modes (an API provider's too) want more room than the CLIs' three.
     const tall = (body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
       || body.classList.contains("screening")
-      || (body.classList.contains("authorizing") && providerDef(State.settings.chatProvider).urlField !== null);
+      || (body.classList.contains("authorizing") && usesLumoTools(State.settings.chatProvider));
     if (open === State.chatPanelOpen && hearing === State.listeningOpen && tall === State.chatPanelTall) return;
     State.chatPanelOpen = open;
     State.listeningOpen = hearing;
@@ -1863,7 +1945,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, listenAsk, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -1989,7 +2071,9 @@ export function buildPrompt(
   function drawUsage(now = Date.now()) {
     const local = Boolean(providerDef(State.settings.chatProvider).urlField);
     const seen = local ? seenContext.get(State.chatId) : seenUsage.get(State.settings.chatProvider);
-    const line = usageLine(State.settings, State.planUsage, seen, now, State.antigravityPlanUsage, State.chatId);
+    // A provider called by its API: this chat's context too, next to its limits.
+    const context = isApiProvider(State.settings.chatProvider) ? seenContext.get(State.chatId) : undefined;
+    const line = usageLine(State.settings, State.planUsage, seen, now, State.antigravityPlanUsage, State.chatId, context);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -2008,8 +2092,9 @@ export function buildPrompt(
   /** The menu: each limit with how much is used, its bar and when it resets. */
   function drawUsageMenu() {
     const line = usageLineShown;
-    // A local model's ring is its context: the menu says only that.
-    const local = providerDef(State.settings.chatProvider).urlField !== null;
+    // A local model's ring is its context: the menu says only that. So does
+    // an API provider's that tells no limits (Google's).
+    const local = providerDef(State.settings.chatProvider).urlField !== null || Boolean(line?.context);
     usageTitle.textContent = USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
@@ -2031,8 +2116,8 @@ export function buildPrompt(
     });
     // Taller while it holds the context (the menu may be open as /context lands).
     if (body.classList.contains("metering")) panelChanged();
-    // A local model's context: /compact from here, under its bar.
-    if (local && State.chatHistory.length > 0) {
+    // A local model's context, or an API provider's: /compact from here, under its bar.
+    if ((local || isApiProvider(State.settings.chatProvider)) && State.chatHistory.length > 0) {
       const compact = h("button", { class: "usage-compact", title: t(SLASH_STRINGS.compact), onclick: () => void compactChat() },
         svg(COMPACT_ICON, 12, { stroke: 1.8 }), h("span", { text: t(COMPACT_STRINGS.action) }));
       usageList.append(h("div", { class: "usage-compact-row" }, compact));
@@ -2074,6 +2159,11 @@ export function buildPrompt(
 
   function keepUsage(u: ChatUsage | null | undefined) {
     if (!u || typeof u.provider !== "string") return;
+    // An API provider's model whose context Rust doesn't know: its list's, when the picker has it.
+    if (u.context && !(u.context.total > 0) && isApiProvider(u.provider)) {
+      const total = localCapsOf(u.provider)?.maxContext ?? 0;
+      if (total > 0) u = { ...u, context: { ...u.context, total } };
+    }
     seenUsage.set(u.provider, { ...u, at: Date.now() });
     if (u.context && typeof u.context.chat === "string") seenContext.set(u.context.chat, { ...u, at: Date.now() });
     // The usage menu open on this chat shows how full it now is.
@@ -2219,21 +2309,23 @@ export function buildPrompt(
   // ── Permissions ───────────────────────────────────────────────────────────
   //
   // What Claude Code or Antigravity CLI may do without a card, from the next
-  // message on: each turn starts the CLI again with that mode. A local model
-  // has a fourth mode, and its sandbox's level behind the chip in the title.
+  // message on: each turn starts the CLI again with that mode. A local model,
+  // and a provider called by its API, whose actions are Lumo's tools run on
+  // this computer, have a fourth mode, and the sandbox's level behind the
+  // chip in the title.
 
-  /** What the panel shows with a local model: the modes, or the sandbox's levels. */
+  /** What the panel shows with a local model or an API provider: the modes, or the sandbox's levels. */
   let permView: "modes" | "sandbox" = "modes";
 
   function drawPermissions() {
     clear(permList);
     const p = providerDef(State.settings.chatProvider);
-    if (p.urlField && permView === "sandbox") {
+    if (usesLumoTools(p.id) && permView === "sandbox") {
       drawSandbox(p);
       return;
     }
     drawPermHead(p);
-    const current = parsePermissionMode(State.settings.chatPermissionMode, p.id);
+    const current = parsePermissionMode(storedPermissionMode(State.settings, p.id), p.id);
     for (const mode of permissionModesFor(p.id)) {
       const on = mode === current;
       const text = modeText(p, mode);
@@ -2249,10 +2341,11 @@ export function buildPrompt(
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
       row.addEventListener("click", () => {
-        // The stored mode, not the one shown: one setting serves every provider,
-        // and a CLI shows a local model's "off" as "default".
-        if (State.settings.chatPermissionMode !== mode) {
-          State.settings = { ...State.settings, chatPermissionMode: mode };
+        // The stored mode, not the one shown: one setting serves every provider
+        // but Antigravity CLI, which keeps its own, and a CLI shows a local
+        // model's "off" as "default".
+        if (storedPermissionMode(State.settings, p.id) !== mode) {
+          State.settings = withPermissionMode(State.settings, p.id, mode);
           saveSettings();
           Sound.play("blip");
         }
@@ -2263,10 +2356,10 @@ export function buildPrompt(
     }
   }
 
-  /** The panel's title: with a local model, the sandbox's chip beside it. */
+  /** The panel's title: with a local model or an API provider, the sandbox's chip beside it. */
   function drawPermHead(p: ProviderDef) {
     clear(permHead);
-    if (!p.urlField) {
+    if (!usesLumoTools(p.id)) {
       permHead.className = "picker-title";
       permHead.textContent = t(STRINGS.permissions);
       return;
@@ -2332,12 +2425,12 @@ export function buildPrompt(
     panelChanged();
   }
 
-  /** The shield: shown for the CLIs and the model servers, lit when they may do more than ask. */
+  /** The shield: shown for the CLIs, the model servers and the API providers, lit when they may do more than ask. */
   function drawPermButton() {
     const cli = hasPermissions(State.settings.chatProvider);
     permBtn.hidden = !cli;
     if (!cli) closePermissions();
-    const mode = parsePermissionMode(State.settings.chatPermissionMode, State.settings.chatProvider);
+    const mode = parsePermissionMode(storedPermissionMode(State.settings, State.settings.chatProvider), State.settings.chatProvider);
     permBtn.classList.toggle("lit", mode !== "default");
     permBtn.title = `${t(STRINGS.permissions)} · ${t(modeText(providerDef(State.settings.chatProvider), mode).name)}`;
     permBtn.setAttribute("aria-label", permBtn.title);
@@ -3491,7 +3584,7 @@ export function buildPrompt(
    */
   function showActivity(run: Run, next: ChatActivity, again = false) {
     // The seconds start again only when the words do (reasoning is Thinking… too).
-    if (activityLabel(next) !== activityLabel(run.activity)) run.since = Date.now();
+    if (activityLabel(next) !== activityLabel(run.activity)) run.since = activitySince(next);
     run.activity = next;
     if (again && run.text) run.dots = true;
     drawIslandActivity();
@@ -3695,12 +3788,23 @@ export function buildPrompt(
     }
     // Nearly full: the chat is compacted first, the question waiting in the field.
     const full = editing == null ? autoCompactAt() : null;
+    // The chat the question was asked in. Compacting, rewinding or reading
+    // the screen first takes time, and another chat opened meanwhile must
+    // not get the question.
+    const askedIn = State.chatId;
     if (full != null) {
       preparing = true;
       try {
         await compactChat(full);
       } finally {
         preparing = false;
+      }
+      if (State.chatId !== askedIn) {
+        if (queuedText != null && !queued.has(askedIn)) {
+          queued.set(askedIn, query);
+          drawQueue();
+        }
+        return;
       }
     }
     if (picker.isOpen) picker.close();
@@ -3729,6 +3833,17 @@ export function buildPrompt(
       const waiting = screen;
       const shared = auto ? waiting : await withAuto(waiting);
       if (!auto && (shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], query);
+      // Another chat came on screen meanwhile: the question goes back to the
+      // field rather than into it.
+      if (State.chatId !== askedIn) {
+        if (typed && !input.value.trim()) setInput(query);
+        // A question that waited above the field waits there again.
+        else if (queuedText != null && !queued.has(askedIn)) {
+          queued.set(askedIn, query);
+          drawQueue();
+        }
+        return;
+      }
 
       // The file goes with the first question asked after it was added, once.
       const file = auto ? null : State.droppedFile;
@@ -3896,16 +4011,28 @@ export function buildPrompt(
       if (stop.source === "github.pr") void Bridge.listenCancel(stop.repo, stop.number);
       else void Bridge.listenCancelLocal(stop.source, stop.target);
     }
-    const addOne = (ask: ListenAsk) => ask.source === "github.pr"
-      ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, chatId, ask.mode)
-      : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, chatId, ask.mode, ask.amount);
-    const added = await Promise.all(answered.listens.map(addOne));
-    // A line Lumo could not read or start is said, never just dropped.
-    const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
-    const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map(named)];
+    // What it asked to listen for waits for the user's Listen, over the field.
+    if (answered.listens.length) {
+      listenAsks.set(chatId, [...(listenAsks.get(chatId) ?? []), ...answered.listens].slice(-MAX_LISTEN_ASKS));
+      drawListenAsk();
+    }
+    // A line Lumo could not read is said, never just dropped.
+    const unheard = answered.unread;
     return unheard.length
       ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
       : answered.text;
+  }
+
+  /** The watches the user said Listen to, for chat `chatId`: what can't start is said on the island. */
+  async function startListens(chatId: string, asks: ListenAsk[]) {
+    const addOne = (ask: ListenAsk) => ask.source === "github.pr"
+      ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, chatId, ask.mode)
+      : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, chatId, ask.mode, ask.amount);
+    const added = await Promise.all(asks.map(addOne));
+    const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
+    const unheard = asks.filter((_, i) => !added[i]).map(named);
+    Sound.play(unheard.length ? "error" : "blip");
+    if (unheard.length) compactNotice(t(LISTEN_STRINGS.unread, { what: unheard.join(", ") }), LISTEN_COLOR, 10_000);
   }
 
   // ── What Claude Code writes by itself ─────────────────────────────────────
@@ -4338,6 +4465,7 @@ export function buildPrompt(
       // (they show on the home).
       const ownPlan = !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
       drawPlanAsk();
+      drawListenAsk();
       planStrip.sync(State.planOpen ? ownPlan : null);
       const planIconShown = ownPlan != null && planStrip.chip.hidden;
       // The home asked for a chat (its plan's row): that one comes on screen.

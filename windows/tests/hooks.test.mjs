@@ -504,13 +504,16 @@ test("the card names the most specific thing the tool carries", () => {
   assert.equal(target("Bash", { command: "rm -rf build", file_path: "x" }), "Bash · rm -rf build");
   assert.equal(target("WebFetch", { url: "https://example.com" }), "WebFetch · https://example.com");
   assert.equal(target("Task", { prompt: "do it" }), "Task · do it");
-  assert.equal(target("Odd", { command: "   ", count: 3 }), "Odd");
+  // Nothing that names it: all it is given, since Allow allows exactly that.
+  assert.equal(target("Odd", { command: "   ", count: 3 }), 'Odd · {"command":"   ","count":3}');
+  assert.equal(target("mcp__github__create_issue", { title: "Bug", body: "x", description: "Open an issue" }), 'mcp__github__create_issue · {"title":"Bug","body":"x"}');
+  assert.equal(target("Odd", {}), "Odd");
   assert.equal(target(undefined, undefined), "Tool");
   // The chat's computer use: what the click or the keys will do.
   assert.equal(target("mcp__lumo__left_click", { coordinate: [640, 320] }), "Click · 640, 320");
   assert.equal(target("mcp__lumo__type", { text: "ciao\nmondo" }), "Type · ciao mondo");
   assert.equal(target("mcp__lumo__key", { text: "ctrl+s" }), "Press · ctrl+s");
-  assert.equal(target("mcp__github__create_issue", { title: "x" }), "mcp__github__create_issue", "another server: as before");
+  assert.equal(target("mcp__github__create_issue", { title: "x" }), 'mcp__github__create_issue · {"title":"x"}', "another server: all it is given");
 });
 
 test("a simple request stays on the closed island, with its buttons (never answered by itself)", () => {
@@ -897,7 +900,7 @@ test("an Antigravity request the relay did not hold for a card stays in the agen
 });
 
 test("in Auto, every request of the chat's Antigravity CLI run goes through with no card", () => {
-  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto" };
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionModeAgy: "auto" };
   for (const [id, command] of [["a4", "git status --short"], ["a5", "npm install"]]) {
     hook({
       hook_event_name: "PermissionRequest", request_id: id, lumo_island: true, lumo_agent: "antigravity",
@@ -909,6 +912,30 @@ test("in Auto, every request of the chat's Antigravity CLI run goes through with
   assert.deepEqual(sent("approval_decision"), [], "not a click: nothing for the recap");
   assert.equal(State.pendingApproval, null);
   assert.deepEqual(asked, []);
+});
+
+test("Claude Code's Auto is not Antigravity's: its own mode, which asks until picked", () => {
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto" };
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "a9", lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "run_command", tool_input: { command: "npm install" },
+  });
+  assert.deepEqual(sent("approval_auto_allow"), []);
+  assert.equal(State.pendingApproval?.requestId, "a9");
+  State.pendingApproval = null;
+  // "turbo", from when one mode served every provider, stays Antigravity's Auto.
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "turbo" };
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "a10", lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "run_command", tool_input: { command: "ls" },
+  });
+  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a10" }]);
+});
+
+test("a request the relay had to cut is never offered Allow for this session, and says so", () => {
+  ask("c1", { tool_name: "Bash", tool_input: { command: "npm run build && …" }, lumo_input_cut: true, lumo_session_allow: true });
+  assert.equal(State.pendingApproval.cut, true);
+  assert.equal(State.pendingApproval.sessionAllow, undefined);
 });
 
 test("Auto lets nothing through when asking every time, nor for a session outside the chat", () => {
@@ -1230,4 +1257,21 @@ test("an Antigravity command no rule covers gets a card that can go back to Anti
   assert.equal(State.pendingApproval?.requestId, "g1");
   seconds(2);
   assert.equal(State.pendingApproval, null);
+});
+
+test("a hook event's fields of the wrong type are dropped, not trusted", async () => {
+  const { cleanPayload } = await import("../src/island/hooks.ts");
+  assert.equal(cleanPayload(null), null);
+  assert.equal(cleanPayload("Stop"), null);
+  assert.equal(cleanPayload([1, 2]), null);
+  const p = cleanPayload({
+    hook_event_name: "Notification", message: 3, session_id: { a: 1 }, cwd: "/x",
+    lumo_island: "true", lumo_card_secs: "9", tool_input: "rm -rf /", extra: 1,
+  });
+  assert.deepEqual(p, { hook_event_name: "Notification", cwd: "/x", extra: 1 });
+});
+
+test("a Notification whose message is not text leaves the island working", () => {
+  emit("hook", { hook_event_name: "Notification", session_id: "s1", cwd: "/w", message: 42 });
+  emit("hook", { hook_event_name: "Stop", session_id: "s1", cwd: "/w", lumo_agent: "constructor" });
 });

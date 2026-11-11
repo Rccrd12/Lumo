@@ -182,6 +182,11 @@ interface Row {
 /** A body line as `key: value`, split at its last colon (or `=`), so `10:30: 5` keeps its label. */
 function splitLine(line: string): Row | null {
   const s = line.replace(/^\s*(?:[-*•+]\s+|\d+[.)]\s+)/, "").trim();
+  // `Q1 | 1200, 1450` and `label: Q1 | 1200, 1450`, as small models write a
+  // row: the label before the bar, the values after it.
+  // A label that reads as a number is a row of labels (`label: 2021 | 2022`).
+  const bar = /^(?:(?:label|row|item|point)\s*[:=]\s*)?([^|:=]+?)\s*\|\s*(.+)$/i.exec(s);
+  if (bar && readValue(bar[1]) === undefined && splitValues(bar[2], true).every((c) => readValue(c) !== undefined)) return { label: bar[1], value: bar[2] };
   const m = /^(.+?)\s*[:=]\s*(.*)$/.exec(s);
   if (!m) return null;
   const last = /^(.+)[:=]\s*(.*)$/.exec(s)!;
@@ -205,6 +210,7 @@ export function parseChart(title: string, body: string): Chart | null {
   let unit = "";
   let seriesNames: string[] | null = null;
   let xLabels: string[] | null = null;
+  let xLines = 0;
   const rows: Row[] = [];
   for (const raw of body.replace(/\r\n?/g, "\n").split("\n")) {
     const line = raw.trim();
@@ -212,6 +218,8 @@ export function parseChart(title: string, body: string): Chart | null {
     const row = splitLine(line);
     if (!row) continue;
     const key = keyName(row.label);
+    // A `label:` line of words, not numbers: two of them name no columns.
+    if (X_KEYS.has(key) && splitValues(row.value, true).some((c) => readValue(c) === undefined)) xLines++;
     // A key only when its value fits it: `X: 550` (the network) and `Unit: 5` are data.
     const bare = parseNumber(row.value)?.unit === "";
     if (UNIT_KEYS.has(key) && !unit && !bare) unit = plain(row.value);
@@ -224,6 +232,9 @@ export function parseChart(title: string, body: string): Chart | null {
   const readings: (Reading | null)[] = [];
   let labels: string[];
   let series: Series[];
+  // One row of labels: two `label:` lines of words (`label: Value for A`,
+  // then B) name no columns.
+  if (xLines > 1) xLabels = null;
   if (xLabels) {
     // Turned around: a row of labels, then a series per row.
     labels = xLabels;

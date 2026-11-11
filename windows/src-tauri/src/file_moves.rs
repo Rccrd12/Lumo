@@ -66,8 +66,34 @@ fn show(p: &Path) -> String {
 }
 
 /// A path we may touch: inside `home`, outside its AppData, through no hidden
-/// folder at any depth, with no `..`.
+/// folder at any depth, with no `..`; as written, and as Windows resolves it
+/// (`real_path`: links, junctions, short names), so `AppData.\x` or a
+/// junction to AppData is AppData.
 pub fn allowed(path: &Path, home: &Path) -> bool {
+    allowed_as_written(path, home) && allowed_as_written(&real_path(path), &real_path(home))
+}
+
+/// Where Windows takes `path`: its deepest part that exists, resolved
+/// (links, junctions, 8.3 names, case), with the rest after it as written.
+pub fn real_path(path: &Path) -> PathBuf {
+    let mut base = path.to_path_buf();
+    let mut rest: Vec<std::ffi::OsString> = Vec::new();
+    loop {
+        if let Ok(real) = base.canonicalize() {
+            let real = PathBuf::from(real.to_string_lossy().trim_start_matches("\\\\?\\").to_string());
+            return rest.into_iter().rev().fold(real, |p, part| p.join(part));
+        }
+        match (base.file_name().map(|n| n.to_os_string()), base.parent()) {
+            (Some(name), Some(parent)) => {
+                rest.push(name);
+                base = parent.to_path_buf();
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
+fn allowed_as_written(path: &Path, home: &Path) -> bool {
     use std::path::Component;
     if path.components().any(|c| matches!(c, Component::ParentDir)) {
         return false;
@@ -78,8 +104,10 @@ pub fn allowed(path: &Path, home: &Path) -> bool {
         return false;
     }
     // Every part, not just the first: `Documents\.ssh` and a project's `.git`
-    // are as much not ours to move as `AppData` is.
-    parts.all(|p| p != "appdata" && !p.starts_with('.'))
+    // are as much not ours to move as `AppData` is. Windows drops the dots and
+    // spaces a name ends with (`AppData.` is AppData), and a colon names a
+    // file's hidden stream: such a name is never ours either.
+    parts.all(|p| p != "appdata" && !p.starts_with('.') && !p.ends_with(['.', ' ']) && !p.contains(':'))
 }
 
 fn path_of(raw: &str) -> Option<PathBuf> {
@@ -273,6 +301,11 @@ mod tests {
         assert!(!allowed(&home.join("code").join("app").join(".git").join("HEAD"), home));
         assert!(!allowed(Path::new(r"C:\Windows\System32"), home));
         assert!(!allowed(&home.join("Downloads").join("..").join("AppData"), home));
+        // What Windows reads as AppData or a hidden folder, however it is written.
+        assert!(!allowed(&home.join("AppData.").join("x"), home));
+        assert!(!allowed(&home.join("AppData ").join("x"), home));
+        assert!(!allowed(&home.join(".ssh.").join("id"), home));
+        assert!(!allowed(&home.join("Documents").join("a.txt:hidden"), home));
     }
 
     // One test, as the plans share one store.

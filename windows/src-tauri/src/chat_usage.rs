@@ -6,8 +6,10 @@
 // are read off those responses. OpenRouter puts nothing of the kind on its
 // answers, so its key's credits are asked from its own key endpoint, with the
 // user's OpenRouter key, only while the option is on (chat_usage in lib.rs).
-// Google and the custom server: nothing is read. Ollama and LM Studio: how
-// much of the model's context the chat fills (ContextUse, local_chat.rs).
+// The custom server: nothing is read. The local models, and the providers
+// called by their API: how much of the model's context the chat fills
+// (ContextUse, local_chat.rs; claude.rs and openai_compat.rs read it off the
+// answer's own `usage`).
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -71,6 +73,33 @@ fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
 
 fn count(headers: &HeaderMap, name: &str) -> Option<u64> {
     header(headers, name)?.parse().ok()
+}
+
+/// How many tokens of the context an answer's `usage` says the request and
+/// its answer fill: the Messages API's input (cached or not) and output, or
+/// the chat completions' prompt and completion. None when it says nothing.
+pub fn context_tokens(usage: &Value) -> Option<u64> {
+    let n = |k: &str| usage.get(k).and_then(Value::as_u64);
+    if let Some(input) = n("input_tokens") {
+        let cached = n("cache_creation_input_tokens").unwrap_or(0) + n("cache_read_input_tokens").unwrap_or(0);
+        return Some(input + cached + n("output_tokens").unwrap_or(0));
+    }
+    if let Some(total) = n("total_tokens").filter(|t| *t > 0) {
+        return Some(total);
+    }
+    let prompt = n("prompt_tokens")?;
+    Some(prompt + n("completion_tokens").unwrap_or(0))
+}
+
+/// `usage` with how much of chat `chat`'s context the last request filled
+/// (`total` 0: not known here, the island has it from the model list), next
+/// to the limits it may already hold.
+pub fn with_context(usage: &mut Option<ChatUsage>, provider: &str, chat: &str, used: u64, total: u64) {
+    let context = Some(ContextUse { chat: chat.to_string(), used, total });
+    match usage {
+        Some(u) => u.context = context,
+        None => *usage = Some(ChatUsage { provider: provider.to_string(), context, tokens: None, requests: None, credits: None }),
+    }
 }
 
 // ── Anthropic ─────────────────────────────────────────────────────────────────
@@ -357,5 +386,26 @@ mod tests {
     fn the_key_endpoint_is_openrouters_own() {
         let p = openai_compat::provider("openrouter").unwrap();
         assert_eq!(openai_compat::url(p, "key").unwrap().as_str(), "https://openrouter.ai/api/v1/key");
+    }
+
+    #[test]
+    fn the_context_filled_is_read_off_either_apis_usage() {
+        // The Messages API: input, cached or not, and output.
+        let anthropic = json!({"input_tokens":10,"cache_creation_input_tokens":200,"cache_read_input_tokens":3000,"output_tokens":40});
+        assert_eq!(context_tokens(&anthropic), Some(3250));
+        // Chat completions: the total, or prompt and completion.
+        assert_eq!(context_tokens(&json!({"prompt_tokens":5,"completion_tokens":3,"total_tokens":8})), Some(8));
+        assert_eq!(context_tokens(&json!({"prompt_tokens":5,"completion_tokens":3})), Some(8));
+        assert_eq!(context_tokens(&Value::Null), None);
+
+        let mut usage = None;
+        with_context(&mut usage, "google", "chat-1", 8, 1_048_576);
+        let u = usage.clone().unwrap();
+        assert_eq!((u.provider.as_str(), u.context.unwrap()), ("google", ContextUse { chat: "chat-1".into(), used: 8, total: 1_048_576 }));
+        // Next to the limits the answer already said.
+        let mut usage = Some(ChatUsage { provider: "openai".into(), context: None, tokens: Some(Quota { remaining: 1, limit: None, resets_at: None }), requests: None, credits: None });
+        with_context(&mut usage, "openai", "chat-1", 8, 0);
+        let u = usage.unwrap();
+        assert!(u.tokens.is_some() && u.context.is_some());
     }
 }

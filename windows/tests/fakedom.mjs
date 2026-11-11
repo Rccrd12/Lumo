@@ -11,6 +11,9 @@ class FakeText {
   get textContent() {
     return this.data;
   }
+  remove() {
+    this.parentNode?.removeChild(this);
+  }
 }
 
 class FakeElement {
@@ -95,6 +98,16 @@ class FakeElement {
   }
   removeChild(node) {
     this.childNodes = this.childNodes.filter((n) => n !== node);
+    if (node.parentNode === this) node.parentNode = null;
+    return node;
+  }
+  /** Moves `node` before `ref` (at the end when null), out of where it was. */
+  insertBefore(node, ref) {
+    node.parentNode?.removeChild(node);
+    const at = ref ? this.childNodes.indexOf(ref) : -1;
+    this.childNodes.splice(at < 0 ? this.childNodes.length : at, 0, node);
+    node.parentNode = this;
+    this.moves = (this.moves ?? 0) + 1;
     return node;
   }
   remove() {
