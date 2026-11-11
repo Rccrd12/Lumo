@@ -356,6 +356,14 @@ const OBJECT_FIELDS = ["tool_input", "lumo_user_tool", "lumo_mail_send", "lumo_m
 export function cleanPayload(raw: unknown): HookPayload | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const p = { ...(raw as Record<string, unknown>) };
+  // Input that is not an object of fields (text, a list): what the agent runs
+  // is in it, so it stays on the card as it came, and it is cut, never allowed
+  // from here. Dropped, the card would show only the tool's name.
+  const input = p.tool_input;
+  if (input != null && (typeof input !== "object" || Array.isArray(input))) {
+    p.tool_input = { arguments: typeof input === "string" ? input : JSON.stringify(input) };
+    p.lumo_input_cut = true;
+  }
   const drop = (fields: readonly string[], ok: (v: unknown) => boolean) => {
     for (const f of fields) if (f in p && p[f] != null && !ok(p[f])) delete p[f];
   };

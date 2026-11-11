@@ -51,12 +51,15 @@ const SCROLLS: Record<string, string> = {
   right: N_("Scroll right"),
 };
 
-/** Typed text on the card: long enough to know it, on one line. */
-const TYPED_PREVIEW = 120;
 
 /** True for one of Lumo's computer use tools. */
 export function isComputerTool(tool: string): boolean {
   return computerToolName(tool) != null;
+}
+
+/** Typed text for the card: ⏎ at each Enter (then a new line), ⇥ at each Tab. */
+function typedText(text: string): string {
+  return text.replace(/\r\n?|\n/g, "⏎\n").replace(/\t/g, "⇥");
 }
 
 function point(v: unknown): string | null {
@@ -96,9 +99,12 @@ export function describeComputerAction(tool: string, input: Record<string, unkno
       return line(SCROLLS[dir] ?? SCROLLS.down, `${at}${amount}`);
     }
     case "type": {
-      const text = typeof input.text === "string" ? input.text.replace(/\s+/g, " ").trim() : "";
-      const shown = [...text].length > TYPED_PREVIEW ? `${[...text].slice(0, TYPED_PREVIEW - 1).join("")}…` : text;
-      return line(COMPUTER_TEXT.type, shown);
+      // All of it, as it will be typed: each line break is an Enter (a
+      // command run in a terminal or in Run), each tab a Tab, so both are
+      // shown where they fall. The card wraps and scrolls a long text; the
+      // relay marks one it had to cut, which can't be allowed.
+      const text = typeof input.text === "string" ? typedText(input.text) : "";
+      return line(COMPUTER_TEXT.type, text);
     }
     case "key": {
       const keys = typeof input.text === "string" ? input.text.trim() : "";

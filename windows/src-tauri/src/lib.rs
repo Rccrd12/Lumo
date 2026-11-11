@@ -506,11 +506,20 @@ fn hooks_preview(window: tauri::WebviewWindow, install: bool) -> Result<HookPrev
 
 /// The write of a change shown in Settings may go (confirmed.rs by_hand). Off
 /// the async threads: from the island, Windows' Yes / No box may stay up a while.
-async fn confirm_write(app: &AppHandle, window: &tauri::WebviewWindow, what: String, fingerprint: &str, target: String) -> Result<(), String> {
+async fn confirm_write(app: &AppHandle, window: &tauri::WebviewWindow, what: String, fingerprint: &str, asked: confirmed::Asked) -> Result<(), String> {
     let (app, label, fingerprint) = (app.clone(), window.label().to_string(), fingerprint.to_string());
-    tauri::async_runtime::spawn_blocking(move || confirmed::by_hand(&app, &label, &what, &fingerprint, &target))
+    tauri::async_runtime::spawn_blocking(move || confirmed::by_hand(&app, &label, &what, &fingerprint, &asked))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// The question of Windows' box for a hooks write: what it does, and to which agent.
+fn hooks_title(install: bool, agent: &str) -> String {
+    if install {
+        i18n::tf("Install Lumo's hooks in {agent}?", &[("agent", agent)])
+    } else {
+        i18n::tf("Remove Lumo's hooks from {agent}?", &[("agent", agent)])
+    }
 }
 
 /// Only ever called from an explicit click in Settings (confirmed.rs): refused
@@ -523,8 +532,11 @@ async fn hooks_apply(
     install: bool,
     fingerprint: String,
 ) -> Result<String, String> {
-    let target = hooks::settings_path().display().to_string();
-    confirm_write(&app, &window, format!("hooks:{install}"), &fingerprint, target).await?;
+    let asked = confirmed::Asked {
+        title: hooks_title(install, "Claude Code"),
+        files: vec![hooks::settings_path().display().to_string()],
+    };
+    confirm_write(&app, &window, format!("hooks:{install}"), &fingerprint, asked).await?;
     // The fingerprint comes from the preview the user actually looked at, so a
     // settings.json that changed in between is refused rather than overwritten.
     let backup = hooks::write(install, &fingerprint)?;
@@ -561,8 +573,12 @@ fn agent_hooks_preview(window: tauri::WebviewWindow, agent: String, install: boo
 /// of the preview the user looked at (confirmed.rs).
 #[tauri::command]
 async fn agent_hooks_apply(app: AppHandle, window: tauri::WebviewWindow, agent: String, install: bool, fingerprint: String) -> Result<String, String> {
-    let target = agents::Agent::from_id(&agent).map(|a| a.name().to_string()).unwrap_or_else(|| agent.clone());
-    confirm_write(&app, &window, format!("agent:{agent}:{install}"), &fingerprint, target).await?;
+    let known = agents::Agent::from_id(&agent).ok_or_else(|| format!("Unknown agent: {agent}"))?;
+    let asked = confirmed::Asked {
+        title: hooks_title(install, known.name()),
+        files: known.paths().iter().map(|p| p.display().to_string()).collect(),
+    };
+    confirm_write(&app, &window, format!("agent:{agent}:{install}"), &fingerprint, asked).await?;
     let backups = agents::apply(&agent, install, &fingerprint)?;
     let done = if install { "installed" } else { "removed" };
     log::line(format!("agent hooks {done} for {agent}"));
@@ -591,8 +607,15 @@ async fn status_line_apply(
     install: bool,
     fingerprint: String,
 ) -> Result<String, String> {
-    let target = hooks::settings_path().display().to_string();
-    confirm_write(&app, &window, format!("statusline:{install}"), &fingerprint, target).await?;
+    let asked = confirmed::Asked {
+        title: if install {
+            i18n::t("Install Lumo's status line in Claude Code?")
+        } else {
+            i18n::t("Remove Lumo's status line from Claude Code?")
+        },
+        files: vec![hooks::settings_path().display().to_string()],
+    };
+    confirm_write(&app, &window, format!("statusline:{install}"), &fingerprint, asked).await?;
     let backup = hooks::status_line_write(install, &fingerprint)?;
     let updated = {
         let mut current = shared.settings.lock().unwrap();

@@ -16,9 +16,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
-use crate::i18n::{t, tf};
+use crate::i18n::t;
 
 /// The window Settings opens in (lib.rs open_settings).
 pub const SETTINGS_WINDOW: &str = "settings";
@@ -88,11 +87,28 @@ pub fn take(what: &str, fingerprint: &str) -> Result<(), String> {
     }
 }
 
+/// What Windows' box says of a write: what it does (`title`: "Install Lumo's
+/// hooks in Claude Code?") and the files it writes (`files`, whole paths).
+pub struct Asked {
+    pub title: String,
+    pub files: Vec<String>,
+}
+
+/// The box's text under its title: the files, and the backup.
+fn box_text(files: &[String]) -> String {
+    let mut text = t("Lumo writes these files, after a backup of each:");
+    for file in files {
+        text.push('\n');
+        text.push_str(file);
+    }
+    text
+}
+
 /// The write of `what`, asked by `window`, may go: the preview with this
 /// fingerprint was shown, and from Settings inside the island the user said
-/// Yes to writing `target` in Windows' own box. Turned down there: CANCELLED.
+/// Yes to it in Windows' own box. Turned down there: CANCELLED.
 /// Blocks while the box is up (run it off the main thread).
-pub fn by_hand<R: Runtime>(app: &AppHandle<R>, window: &str, what: &str, fingerprint: &str, target: &str) -> Result<(), String> {
+pub fn by_hand<R: Runtime>(app: &AppHandle<R>, window: &str, what: &str, fingerprint: &str, asked: &Asked) -> Result<(), String> {
     match confirm_for(window) {
         Confirm::Refused => return Err(t("Only Lumo's Settings can change this, after you look at the changes.")),
         Confirm::Click => {}
@@ -101,18 +117,10 @@ pub fn by_hand<R: Runtime>(app: &AppHandle<R>, window: &str, what: &str, fingerp
             if !is_shown(what, fingerprint) {
                 return Err(show_again());
             }
-            let mut dialog = app
-                .dialog()
-                .message(tf("Write the changes shown in Lumo's Settings to {target}? A backup is made first.", &[("target", target)]))
-                .title("Lumo")
-                .kind(MessageDialogKind::Warning)
-                .buttons(MessageDialogButtons::OkCancelCustom(t("Back up and write"), t("Cancel")));
             // Over the island, which is always on top.
-            if let Some(island) = app.get_webview_window(crate::island::WINDOW_LABEL) {
-                dialog = dialog.parent(&island);
-            }
+            let island = app.get_webview_window(crate::island::WINDOW_LABEL);
             crate::log::line(format!("settings write {what}: Windows' box asks"));
-            let yes = dialog.blocking_show();
+            let yes = ask_windows(island.as_ref(), &asked.title, &box_text(&asked.files));
             crate::log::line(format!("settings write {what}: {}", if yes { "yes" } else { "cancelled" }));
             if !yes {
                 return Err(CANCELLED.into());
@@ -120,6 +128,80 @@ pub fn by_hand<R: Runtime>(app: &AppHandle<R>, window: &str, what: &str, fingerp
         }
     }
     take(what, fingerprint)
+}
+
+/// How long Windows' box keeps its Yes greyed out: a click or an Enter meant
+/// for what was there before it came up never says Yes.
+#[cfg(windows)]
+const YES_AFTER_MS: usize = 1000;
+
+/// Windows' own Yes / No box (a task dialog), which no page can click: the
+/// question as its title, `text` under it, "Back up and write" and "Cancel".
+/// Cancel is the default button (Enter, Space), and "Back up and write" works
+/// only after YES_AFTER_MS. True only for "Back up and write"; Cancel, Esc,
+/// the box closed, or a box Windows couldn't show are all a No.
+#[cfg(windows)]
+fn ask_windows<R: Runtime>(parent: Option<&tauri::WebviewWindow<R>>, title: &str, text: &str) -> bool {
+    use windows::core::{HRESULT, PCWSTR};
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Controls::{
+        TaskDialogIndirect, TASKDIALOGCONFIG, TASKDIALOGCONFIG_0, TASKDIALOG_BUTTON, TASKDIALOG_NOTIFICATIONS,
+        TDF_ALLOW_DIALOG_CANCELLATION, TDF_CALLBACK_TIMER, TDF_SIZE_TO_CONTENT, TDM_ENABLE_BUTTON, TDN_CREATED, TDN_TIMER,
+        TD_WARNING_ICON,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+
+    const ID_WRITE: i32 = 1000;
+    const ID_CANCEL: i32 = 1001;
+
+    unsafe extern "system" fn callback(hwnd: HWND, msg: TASKDIALOG_NOTIFICATIONS, wparam: WPARAM, _: LPARAM, _: isize) -> HRESULT {
+        // TDN_TIMER's wparam: the milliseconds since the box came up.
+        let enable = match msg {
+            TDN_CREATED => Some(false),
+            TDN_TIMER if wparam.0 >= YES_AFTER_MS => Some(true),
+            _ => None,
+        };
+        if let Some(on) = enable {
+            let _: LRESULT = unsafe { SendMessageW(hwnd, TDM_ENABLE_BUTTON.0 as u32, Some(WPARAM(ID_WRITE as usize)), Some(LPARAM(on as isize))) };
+        }
+        HRESULT(0)
+    }
+
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (caption, title, text) = (wide("Lumo"), wide(title), wide(text));
+    let (write, cancel) = (wide(&t("Back up and write")), wide(&t("Cancel")));
+    let buttons = [
+        TASKDIALOG_BUTTON { nButtonID: ID_WRITE, pszButtonText: PCWSTR(write.as_ptr()) },
+        TASKDIALOG_BUTTON { nButtonID: ID_CANCEL, pszButtonText: PCWSTR(cancel.as_ptr()) },
+    ];
+    let owner = parent.and_then(|w| w.hwnd().ok()).map(|h| HWND(h.0 as _)).unwrap_or_default();
+    let config = TASKDIALOGCONFIG {
+        cbSize: std::mem::size_of::<TASKDIALOGCONFIG>() as u32,
+        hwndParent: owner,
+        dwFlags: TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_CALLBACK_TIMER,
+        pszWindowTitle: PCWSTR(caption.as_ptr()),
+        Anonymous1: TASKDIALOGCONFIG_0 { pszMainIcon: TD_WARNING_ICON },
+        pszMainInstruction: PCWSTR(title.as_ptr()),
+        pszContent: PCWSTR(text.as_ptr()),
+        cButtons: buttons.len() as u32,
+        pButtons: buttons.as_ptr(),
+        nDefaultButton: ID_CANCEL,
+        pfCallback: Some(callback),
+        ..Default::default()
+    };
+    let mut pressed = 0i32;
+    let shown = unsafe { TaskDialogIndirect(&config, Some(&mut pressed), None, None) };
+    if let Err(e) = shown {
+        crate::log::line(format!("settings write: Windows' box could not be shown: {e}"));
+        return false;
+    }
+    pressed == ID_WRITE
+}
+
+/// Off Windows (the tests' builds): no box to ask in, so never a Yes.
+#[cfg(not(windows))]
+fn ask_windows<R: Runtime>(_: Option<&tauri::WebviewWindow<R>>, _: &str, _: &str) -> bool {
+    false
 }
 
 #[cfg(test)]
@@ -142,6 +224,12 @@ mod tests {
         assert!(!is_shown("test:look", "g"));
         assert!(take("test:look", "f").is_ok());
         assert!(!is_shown("test:look", "f"));
+    }
+
+    #[test]
+    fn the_box_names_every_file_it_writes() {
+        let text = box_text(&["C:\\Users\\me\\.claude\\settings.json".into(), "C:\\Users\\me\\.codex\\hooks.json".into()]);
+        assert!(text.contains("\nC:\\Users\\me\\.claude\\settings.json\nC:\\Users\\me\\.codex\\hooks.json"), "{text}");
     }
 
     #[test]

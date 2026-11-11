@@ -94,6 +94,17 @@ pub fn fields(map: &mut Map<String, Value>, env: &dyn Fn(&str) -> Option<String>
         });
         if let Some(input) = input {
             map.insert("tool_input".into(), Value::Object(input));
+        } else if let Some(raw) = unread_args(map, tool_call.as_ref()) {
+            // Arguments the relay can't read as fields: JSON text serde
+            // refuses (a lone surrogate, nesting past 128 levels) though the
+            // agent's own parser takes it and runs the call. The card shows
+            // them as they came, and they are cut: never allowed from Lumo,
+            // never a rule for the session (a card with only the tool's name
+            // would allow what nobody saw).
+            let mut shown = Map::new();
+            shown.insert("arguments".into(), Value::String(raw));
+            map.insert("tool_input".into(), Value::Object(shown));
+            map.insert("lumo_input_cut".into(), Value::Bool(true));
         }
     }
 
@@ -118,6 +129,19 @@ pub fn fields(map: &mut Map<String, Value>, env: &dyn Fn(&str) -> Option<String>
         if let Some(cwd) = cwd {
             map.insert("cwd".into(), Value::String(cwd));
         }
+    }
+}
+
+/// Arguments an agent sent (Copilot's `toolArgs`, Antigravity's
+/// `toolCall.args`) that are not an object of fields, as text: what the card
+/// shows of a call the relay can't read. None when there are none.
+fn unread_args(map: &Map<String, Value>, tool_call: Option<&Map<String, Value>>) -> Option<String> {
+    let raw = map.get("toolArgs").or_else(|| tool_call?.get("args"))?;
+    match raw {
+        Value::Null | Value::Object(_) => None,
+        Value::String(s) if s.trim().is_empty() => None,
+        Value::String(s) => Some(s.clone()),
+        other => Some(other.to_string()),
     }
 }
 
@@ -201,6 +225,37 @@ mod tests {
     }
 
     #[test]
+    fn arguments_the_relay_cant_read_are_shown_raw_and_cut() {
+        // JSON text serde refuses (a lone surrogate) but JavaScript's parser takes.
+        let raw = r#"{"command":"Remove-Item -Recurse C:\\Users\\me\\proj","x":"\ud800"}"#;
+        assert!(serde_json::from_str::<Value>(raw).is_err());
+        let mut m = obj(json!({ "toolName": "bash", "toolArgs": raw }));
+        fields(&mut m, &no_env);
+        assert_eq!(m["tool_input"]["arguments"], raw);
+        assert_eq!(m["lumo_input_cut"], true);
+        // Nesting past serde's 128 levels.
+        let deep = format!("{}1{}", "[".repeat(200), "]".repeat(200));
+        let mut m = obj(json!({ "toolName": "bash", "toolArgs": format!(r#"{{"command":"ls","x":{deep}}}"#) }));
+        fields(&mut m, &no_env);
+        assert_eq!(m["lumo_input_cut"], true);
+        // Not an object at all.
+        let mut m = obj(json!({ "toolName": "bash", "toolArgs": ["rm", "-rf", "x"] }));
+        fields(&mut m, &no_env);
+        assert_eq!(m["tool_input"]["arguments"], r#"["rm","-rf","x"]"#);
+        assert_eq!(m["lumo_input_cut"], true);
+        let mut m = obj(json!({ "toolCall": { "name": "run_command", "args": "rm -rf x" } }));
+        fields(&mut m, &no_env);
+        assert_eq!(m["tool_input"]["arguments"], "rm -rf x");
+        assert_eq!(m["lumo_input_cut"], true);
+        // No arguments at all: nothing to show, nothing cut.
+        for payload in [json!({ "toolName": "bash" }), json!({ "toolName": "bash", "toolArgs": "" }), json!({ "toolName": "bash", "toolArgs": null })] {
+            let mut m = obj(payload);
+            fields(&mut m, &no_env);
+            assert!(m.get("tool_input").is_none() && m.get("lumo_input_cut").is_none());
+        }
+    }
+
+    #[test]
     fn copilot_tool_name_args_and_workdir_are_read() {
         let mut m = obj(json!({
             "toolName": "bash",
@@ -254,8 +309,11 @@ mod tests {
         let mut m = obj(json!({ "toolCall": "nope", "toolArgs": "not json", "workspacePaths": "x", "tool": 3 }));
         fields(&mut m, &no_env);
         assert!(!m.contains_key("tool_name"));
-        assert!(!m.contains_key("tool_input"));
         assert!(!m.contains_key("cwd"));
+        // Arguments that can't be read are not trusted as fields: shown as they
+        // came, and cut (arguments_the_relay_cant_read_are_shown_raw_and_cut).
+        assert_eq!(m["tool_input"], json!({ "arguments": "not json" }));
+        assert_eq!(m["lumo_input_cut"], true);
     }
 
     #[test]

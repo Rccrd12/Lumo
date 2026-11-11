@@ -59,7 +59,9 @@ if (-not $box) {
   exit
 }
 $all = $box.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-$text = ($all | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join " | "
+# On one line: a box's text may hold line breaks (the files a write names),
+# and the answer is read from the last line printed.
+$text = (($all | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join " | ") -replace "[\r\n]+", " "
 # A task dialog's own buttons are panes with nothing to invoke: they are
 # found by name, after the text, and clicked with the real mouse.
 $invoke = [System.Windows.Automation.InvokePattern]::Pattern
@@ -75,6 +77,10 @@ if (-not $hit) {
   Write-Output ("NOBUTTON" + $tab + $names + $tab + $kinds)
   exit
 }
+# Lumo's box greys its Yes out for a moment (confirmed.rs YES_AFTER_MS): a
+# hand waits for it, as a click on it before does nothing.
+$ready = (Get-Date).AddSeconds(5)
+while (-not $hit.Current.IsEnabled -and (Get-Date) -lt $ready) { Start-Sleep -Milliseconds 100 }
 $r = $hit.Current.BoundingRectangle
 [LumoE2eBox]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
 Write-Output ("PRESSED" + $tab + $names + $tab + $text)
