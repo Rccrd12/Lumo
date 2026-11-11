@@ -85,8 +85,16 @@ jobs:
           Add-Type -AssemblyName System.Windows.Forms
           [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 
+      # TEMPORARY: three rounds to check the flows are steady. Removed before review.
       - name: Flows
-        run: node --test --test-concurrency=1 --test-reporter=spec "e2e/*.test.mjs"
+        continue-on-error: true
+        env:
+          LUMO_E2E_SHOTS_IN_LOG: '1'
+        run: |
+          foreach ($i in 1..3) {
+            Write-Host "=== round $i"
+            node --test --test-concurrency=1 --test-reporter=spec "e2e/*.test.mjs"
+          }
 
       # The table on the run's page; the Flows step already says pass or fail.
       - name: Summary
