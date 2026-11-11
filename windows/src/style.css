@@ -1906,6 +1906,12 @@ math.mx .mx-sqrt {
   background-position: left top, right top;
 }
 
+/* A brace with its note under or over it (views/math.ts): TeX's thin space
+   each side, so the notes of two braces side by side don't run together. */
+math.mx .mx-noted {
+  padding-inline: 0.1667em;
+}
+
 math.mx .mx-root-index {
   font-size: 0.6em;
   margin-right: -0.42em;
