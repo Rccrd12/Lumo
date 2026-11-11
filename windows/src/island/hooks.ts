@@ -312,6 +312,9 @@ interface HookPayload {
   lumo_remembered?: boolean;
   /** The relay had to cut the request's input (lumo-hook's truncate_payload): the card can't show it whole. */
   lumo_input_cut?: boolean;
+  /** A Write whose text was cut (lumo_input_cut): the real size of that text, read by the relay before cutting. */
+  lumo_write_bytes?: number;
+  lumo_write_lines?: number;
   /** The Claude Code session's title (/rename, else Claude Code's own), read from its transcript by the relay (hook/src/title.rs). */
   lumo_title?: string;
   /** A command of an Antigravity session that none of its rules covers (hook/src/main.rs): a card, else Antigravity asks. */
@@ -1018,7 +1021,9 @@ function handleHook(island: Island, payload: HookPayload) {
       const planSteps = !questions && !email && !change && /^exit_?plan_?mode$/i.test(tool) && typeof input.plan === "string"
         ? stepsFromMarkdown(input.plan) : [];
       // A file to write: how many lines, under its name (the text itself is not on the card).
-      const edit = !questions && !email && !change && !userTool ? editStat(tool, input) : null;
+      const edit = !questions && !email && !change && !userTool
+        ? editStat(tool, input, { cut: payload.lumo_input_cut === true, writeBytes: payload.lumo_write_bytes, writeLines: payload.lumo_write_lines })
+        : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,

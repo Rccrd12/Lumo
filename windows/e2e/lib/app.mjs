@@ -102,8 +102,17 @@ export class Lumo {
       await this.mouse.start();
     }
     await this.watchPresses();
-    // The launch greeting first: the flows start from the closed island.
+    // The launch greeting first: the flows start from the closed island. The
+    // page sets itself up before it greets (main.ts, island.launch()), which
+    // on a slow machine is seconds after #island exists: wait for the
+    // greeting to come out, then for the island to close after it.
+    await this.d
+      .until("const i = document.getElementById('island'); return i.classList.contains('greet-light') || i.getBoundingClientRect().height >= 60", 20_000, "the launch greeting")
+      .catch(() => console.log("    · no launch greeting seen"));
     await this.closed();
+    // Closed and staying closed: nothing of the launch is left to come out.
+    await sleep(1_500);
+    if ((await this.islandHeight()) >= 60) await this.closed();
   }
 
   /** Quits Lumo the hard way, as a crash or a shutdown would. */
@@ -169,37 +178,72 @@ export class Lumo {
    * until it sits on the element, as an eye following it would.
    */
   async aim(id) {
-    // The element's centre, or for one partly under others (a resize grip
-    // under the chat's field) the first point along its middle that is its own.
+    // The element's centre, inside the island's shape: the mouse goes through
+    // the window everywhere else (a resize grip sits half outside the island,
+    // so its own centre is on that border). For one partly under others (a
+    // grip under the chat's field), the first point along its middle that is
+    // its own.
     const where = () => this.d.js(`
       const el = arguments[0], r = devicePixelRatio, b = el.getBoundingClientRect();
-      let cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      const isl = document.getElementById('island').getBoundingClientRect();
+      let L = Math.max(b.left, isl.left + 1), R = Math.min(b.right, isl.right - 1);
+      let T = Math.max(b.top, isl.top + 1), B = Math.min(b.bottom, isl.bottom - 1);
+      if (R <= L || B <= T) { L = b.left; R = b.right; T = b.top; B = b.bottom; }
+      let cx = (L + R) / 2, cy = (T + B) / 2;
       const own = (x, y) => { const e = document.elementFromPoint(x, y); return e === el || el.contains(e); };
       if (!own(cx, cy)) {
-        const tall = b.height >= b.width;
+        const tall = B - T >= R - L;
         for (let i = 1; i < 40; i++) {
-          const x = tall ? cx : b.left + (b.width * i) / 40, y = tall ? b.top + (b.height * i) / 40 : cy;
+          const x = tall ? cx : L + ((R - L) * i) / 40, y = tall ? T + ((B - T) * i) / 40 : cy;
           if (own(x, y)) { cx = x; cy = y; break; }
         }
       }
       return { cx, cy, x: (screenX + cx) * r, y: (screenY + cy) * r, r, seen: window.__e2eMove ?? null };`, this.d.ref(id));
-    let t = await where();
-    let at = { x: t.x, y: t.y };
-    for (let i = 0; i < 6; i++) {
-      await this.mouse.move(at.x, at.y);
-      await sleep(250);
-      t = await where();
-      // Where the page saw the cursor, against where the element's centre is now.
-      const dx = t.seen ? t.cx - t.seen[0] : t.x - at.x;
-      const dy = t.seen ? t.cy - t.seen[1] : t.y - at.y;
-      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) break;
-      at = { x: at.x + dx * t.r, y: at.y + dy * t.r };
-    }
-    const hit = await this.d.js(`
+    const onIt = () => this.d.js(`
       const m = window.__e2eMove; if (!m) return "no mousemove seen";
       const e = document.elementFromPoint(m[0], m[1]);
       return arguments[0] === e || arguments[0].contains(e) ? "on target" : "on " + (e ? e.className || e.tagName : "nothing");`, this.d.ref(id));
-    if (hit !== "on target") console.log(`    · aim: ${hit}`);
+    let hit = "";
+    for (let round = 0; round < 3; round++) {
+      // Onto the island first, then over to the element in small steps. The
+      // window lets the mouse through until Rust sees the cursor over the
+      // island, so a cursor that jumps straight onto it from outside is never
+      // heard by the page there, and a click lands on what is under it.
+      const box = await this.islandBox();
+      await this.mouse.move(box.x + box.w / 2, box.y + Math.min(box.h / 2, 30 * (await this.screen()).r));
+      await sleep(200);
+      let t = await where();
+      let at = { x: t.x, y: t.y };
+      for (let i = 0; i < 6; i++) {
+        // Only a move the page heard after this one counts: an older reading
+        // would send the cursor off by however far it was.
+        await this.d.js("window.__e2eMove = null");
+        await this.mouse.glide(at.x, at.y);
+        let seen = null;
+        for (let k = 0; k < 8 && !seen; k++) {
+          await sleep(80);
+          t = await where();
+          seen = t.seen;
+        }
+        if (!seen) {
+          // The page did not hear it: by the element's place again, a pixel
+          // to one side, so the next try is a move too.
+          at = { x: t.x + (i % 2 ? -1 : 1), y: t.y };
+          continue;
+        }
+        // Where the page saw the cursor, against where the element's centre is now.
+        const dx = t.cx - seen[0], dy = t.cy - seen[1];
+        if (Math.abs(dx) < 2 && Math.abs(dy) < 2) break;
+        // More than a correction (the island moved under the cursor): start
+        // again from the element's place.
+        at = Math.abs(dx) > 60 || Math.abs(dy) > 60 ? { x: t.x, y: t.y } : { x: at.x + dx * t.r, y: at.y + dy * t.r };
+      }
+      await sleep(150);
+      hit = await onIt();
+      if (hit === "on target") return hit;
+      console.log(`    · aim: ${hit}`);
+      await sleep(400);
+    }
     return hit;
   }
 
