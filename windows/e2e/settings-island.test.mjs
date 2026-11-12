@@ -118,3 +118,31 @@ flow(G, "No write without its preview, even from the island", app, async () => {
   const box = answerBox(app.proc.pid, "Cancel", 2);
   assert.equal(box.found, false, `no box for a write with no preview: ${box.raw}`);
 });
+
+flow(G, "The separate Settings window, made only when first opened, shows its page", app, async () => {
+  const before = await d.windows();
+  assert.equal(before.settings, undefined, "no Settings window until it is asked for");
+
+  step("Open in a window");
+  await d.js(`window.__TAURI_INTERNALS__.invoke("open_settings_window"); return true;`);
+  let handles = {};
+  for (let i = 0; !handles.settings; i++) {
+    if (i > 50) throw new Error(`the Settings window did not come up: ${Object.keys(handles).join(", ")}`);
+    await sleep(200);
+    handles = await d.windows();
+  }
+  // Not blank: the page has drawn its sections.
+  await d.switchTo(handles.settings);
+  await d.until("return document.querySelectorAll('[data-page]').length > 0", 20_000, "the Settings window's sections");
+  const shown = windowsOnScreen(app.proc.pid);
+  step(`Lumo's windows on screen: ${JSON.stringify(shown)}`);
+  assert.ok(shown.some((title) => /settings/i.test(title)), "the Settings window is on screen");
+
+  step("Open in a window again: the same window, not a second one");
+  await d.switchTo(handles.island);
+  await d.js(`window.__TAURI_INTERNALS__.invoke("open_settings_window"); return true;`);
+  await sleep(800);
+  const again = await d.call("GET", d.s("/window/handles"));
+  assert.equal(again.length, Object.keys(handles).length, "no second Settings window");
+  await d.switchTo(handles.island);
+});

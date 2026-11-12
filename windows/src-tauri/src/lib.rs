@@ -88,7 +88,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
 use chat::{ChatContext, ChatReply, Chats, ModelInfo};
@@ -1259,11 +1259,13 @@ fn settings_page_url(app: &AppHandle) -> WebviewUrl {
     WebviewUrl::App("settings.html".into())
 }
 
-/// The settings window is created hidden at launch and only ever shown and
-/// hidden afterwards. A WebView2 window created later — on the main thread or
-/// not — silently comes up blank in this app, so the window that works is the
-/// one that exists before the island's webview does.
-fn create_settings_window(app: &AppHandle) {
+/// The settings window is created the first time it is asked for ("Open in a
+/// window"), not at launch: most launches never show it, and a webview made
+/// at launch is one more process starting with Lumo and staying for nothing.
+/// Afterwards it is only ever shown and hidden. It must ask for BROWSER_ARGS,
+/// as the computer overlay (computer.rs), also made later, does: a window
+/// asking for other arguments comes up blank.
+fn create_settings_window(app: &AppHandle) -> Option<WebviewWindow> {
     let url = settings_page_url(app);
     match WebviewWindowBuilder::new(app, confirmed::SETTINGS_WINDOW, url)
         .additional_browser_args(BROWSER_ARGS)
@@ -1287,16 +1289,17 @@ fn create_settings_window(app: &AppHandle) {
                     webview_memory::set_low(&hidden, true);
                 }
             });
-            // Made hidden: small until it is first shown.
-            webview_memory::set_low(&win, true);
+            Some(win)
         }
-        Err(err) => log::line(format!("settings window failed: {err}")),
+        Err(err) => {
+            log::line(format!("settings window failed: {err}"));
+            None
+        }
     }
 }
 
 fn show_settings_window(app: &AppHandle) {
-    let Some(win) = app.get_webview_window("settings") else {
-        log::line("settings window missing");
+    let Some(win) = app.get_webview_window(confirmed::SETTINGS_WINDOW).or_else(|| create_settings_window(app)) else {
         return;
     };
     webview_memory::set_low(&win, false);
@@ -1305,8 +1308,10 @@ fn show_settings_window(app: &AppHandle) {
     let _ = win.set_focus();
 }
 
+/// Async: a window made from a command that runs on the main thread (a
+/// synchronous one) would wait on that same thread, and never come.
 #[tauri::command]
-fn open_settings_window(app: AppHandle) {
+async fn open_settings_window(app: AppHandle) {
     show_settings_window(&app);
 }
 
@@ -1509,8 +1514,7 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
             tray::build(&handle)?;
-            // Before the island: see create_settings_window.
-            create_settings_window(&handle);
+            // The settings window is made when first asked for: see create_settings_window.
 
             if let Some(win) = island::window(&handle) {
                 platform::make_non_activating(&win);
