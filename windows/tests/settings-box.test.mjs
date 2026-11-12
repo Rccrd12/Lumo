@@ -60,9 +60,12 @@ test("the island is told when Windows' box opens and closes, so its leave countd
 
 test("Settings in the island close on leave as every other view does (island.ts applyBehaviour)", () => {
   // They used to stay open whatever Settings → Island said.
-  const island = readFileSync(new URL("../src/island/island.ts", import.meta.url), "utf8");
+  const island = readFileSync(new URL("../src/island/island.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const start = island.indexOf("private applyBehaviour()");
-  const body = island.slice(start, island.indexOf("\n  }\n", start));
+  assert.ok(start >= 0);
+  const end = island.indexOf("\n  }\n", start);
+  assert.ok(end > start, "the end of applyBehaviour");
+  const body = island.slice(start, end);
   assert.match(body, /closeOnLeave = mode === "timer" \|\| mode === "leave"/);
   assert.doesNotMatch(body, /State\.view/, "the close mode does not depend on the view");
 });
