@@ -92,6 +92,18 @@ export function buildMailView(actions: ViewActions): ViewHost {
   gentleWheel(list);
   const reader = h("div", { class: "mv-reader" });
   gentleWheel(reader);
+  // More below than shows: the list's bottom edge fades out (.more-below).
+  const fadeIf = (box: HTMLElement) => box.classList.toggle("more-below", box.scrollTop + box.clientHeight < box.scrollHeight - 2);
+  const fades = () => {
+    fadeIf(list);
+    fadeIf(reader);
+  };
+  for (const box of [list, reader]) box.addEventListener("scroll", () => fadeIf(box), { passive: true });
+  if (typeof ResizeObserver !== "undefined") {
+    const resized = new ResizeObserver(fades);
+    resized.observe(list);
+    resized.observe(reader);
+  }
   const foot = h("div", { class: "mv-foot" });
   const body = h("div", { class: "mv-body" }, head, chips, list, reader, foot);
   const el = h("div", { class: "view mail-view" }, h("div", { class: "card mail-card" }, body));
@@ -295,6 +307,8 @@ export function buildMailView(actions: ViewActions): ViewHost {
     if (m) drawReader(d, m);
     else drawList(d);
     drawFoot(d);
+    // Once laid out: whether there is more below.
+    requestAnimationFrame(fades);
   }
 
   return {

@@ -8567,6 +8567,12 @@ button.bg-row:hover {
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
+.mv-list.more-below,
+.mv-reader.more-below {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+}
+
 .mv-reader,
 .mv-body.reading .mv-list,
 .mv-body.reading .mv-chips {
