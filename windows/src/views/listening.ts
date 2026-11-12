@@ -14,6 +14,7 @@ import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { Bridge } from "../core/bridge";
 import { State } from "../core/state";
+import { loadChats } from "../core/chats";
 import {
   EVERY_UNTILS, LISTEN_AGENTS, LISTEN_SERVICES, LISTEN_UNTILS, LOCAL_UNTILS, LOCAL_UNTIL_TEXT, SOURCE_COLOR, UNTIL_TEXT,
   activeWatches, amountOf, onGitHub, readPullRequest, untilText, watchLabel,
@@ -78,6 +79,11 @@ export const LISTENING_STRINGS = {
   webHint: N_("https://…"),
   text: N_("Text to wait for"),
   textHint: N_("e.g. In stock"),
+  goneText: N_("Text that must go"),
+  goneHint: N_("e.g. Sold out"),
+  tokenWarn: N_("GitHub doesn't accept the token"),
+  tokenFix: N_("Update"),
+  tooOften: N_("Paused: it happened too often"),
   notPath: N_("Write the full path of a file or folder, like C:\\Users\\you\\Downloads."),
   notPort: N_("Write the port as a number, like 3000."),
   notProgram: N_("Write the program's name, like node.exe."),
@@ -213,8 +219,13 @@ function listenedFor(at: number): string {
   return Date.now() - at < 60_000 ? t("just now") : t(LISTENING_STRINGS.since, { time: timeAgo(at) });
 }
 
-/** The source's tile: its icon in its colour. */
-function tile(w: ListenWatch): HTMLElement {
+/** The chat a watch answers to is still there (on screen, or in Past chats). */
+function chatKept(chatId: string): boolean {
+  return !!chatId && (chatId === State.chatId || chatId === State.parkedChatId() || loadChats().some((c) => c.id === chatId));
+}
+
+/** The source's tile: its icon in its colour (also beside what was heard, in the chat). */
+export function watchTile(w: ListenWatch): HTMLElement {
   const source = sourceOf(w);
   const el = h("span", { class: "listen-tile" }, svg(source.icon, 14, { stroke: 1.8 }));
   el.style.setProperty("--tile", source.color);
@@ -236,7 +247,13 @@ function empty(title: string, hint: string): HTMLElement {
     h("div", { class: "files-empty-hint", text: hint }));
 }
 
-export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; close: () => void; openWorkshop: () => void }): ListeningPanel {
+export function buildListeningPanel(opts: {
+  goToChat: (chatId: string) => void;
+  close: () => void;
+  openWorkshop: () => void;
+  /** Settings, on the page of the pills (the GitHub token). */
+  openPills: () => void;
+}): ListeningPanel {
   let tab: "active" | "history" = "active";
   /** The lists, the sources' menu, or the form for a pull request. */
   let view: "list" | "catalog" | "form" = "list";
@@ -372,9 +389,9 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
       }));
     }
     // The text a page or a tool shows; the words of an event's title.
-    const wantsText = until === "contains" || until === "soon";
-    textLabel.textContent = t(until === "soon" ? LISTENING_STRINGS.titleWords : LISTENING_STRINGS.text);
-    textInput.placeholder = t(until === "soon" ? LISTENING_STRINGS.titleWordsHint : LISTENING_STRINGS.textHint);
+    const wantsText = until === "contains" || until === "gone" || until === "soon";
+    textLabel.textContent = t(until === "soon" ? LISTENING_STRINGS.titleWords : until === "gone" ? LISTENING_STRINGS.goneText : LISTENING_STRINGS.text);
+    textInput.placeholder = t(until === "soon" ? LISTENING_STRINGS.titleWordsHint : until === "gone" ? LISTENING_STRINGS.goneHint : LISTENING_STRINGS.textHint);
     textLabel.hidden = !wantsText;
     textInput.hidden = !wantsText;
     const amount = amountOf(kind, until);
@@ -491,8 +508,10 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
 
   async function start() {
     const task = taskInput.value.trim();
-    // A change keeps the chat the watch answers to, and takes the old one's place.
+    // A change keeps the chat the watch answers to, and takes the old one's
+    // place: Rust keeps its id (a webhook keeps its address) when it can.
     const chatId = editing?.chatId ?? State.chatId;
+    const replace = editing?.id ?? null;
     let watch: ListenWatch | null;
     if (kind === "github.pr") {
       const pr = readPullRequest(targetInput.value);
@@ -501,7 +520,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
         targetInput.focus();
         return;
       }
-      watch = await Bridge.listenAdd(pr.repo, pr.number, until, task, chatId, mode);
+      watch = await Bridge.listenAdd(pr.repo, pr.number, until, task, chatId, mode, replace);
     } else {
       const target = PICKS.has(kind) ? picked : targetRow.hidden ? "" : targetInput.value.trim().replace(/^["“]|["”]$/g, "");
       const wrong = wrongTarget(target);
@@ -511,13 +530,13 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
         return;
       }
       const text = textInput.hidden ? "" : textInput.value.trim();
-      if (until === "contains" && !text) {
+      if ((until === "contains" || until === "gone") && !text) {
         formError.textContent = t(LISTENING_STRINGS.noText);
         textInput.focus();
         return;
       }
       const amount = amountInput.hidden ? 0 : Math.max(0, Math.round(Number(amountInput.value) || 0));
-      const got = await Bridge.listenTryLocal(kind, target.replace(/^:/, ""), until, text, task, chatId, mode, amount);
+      const got = await Bridge.listenTryLocal(kind, target.replace(/^:/, ""), until, text, task, chatId, mode, amount, replace);
       watch = got.watch ?? null;
       if (!watch) {
         formError.textContent = neededText(got.error) ?? t(LISTENING_STRINGS.failed);
@@ -593,7 +612,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   /** A row: the source's tile, what it waits for and what then, its labels on the right. */
   function row(w: ListenWatch, cls: string, title: string, name: string, detail: Node[], meta: Node[]): HTMLElement {
     return h("div", { class: `listen-row ${cls}`.trim(), title },
-      tile(w),
+      watchTile(w),
       h("span", { class: "listen-text" },
         h("span", { class: "listen-name", text: name }),
         h("span", { class: "listen-detail" }, ...detail)),
@@ -614,7 +633,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
         : act(t(LISTENING_STRINGS.pause), svg(ICONS.pause, 9), () => void Bridge.listenPause(w.id, true)),
       act(t(LISTENING_STRINGS.edit), svg(ICONS.pencil, 10, { stroke: 1.8 }), () => showForm(w)),
       w.source === "webhook" ? copyAddress(w) : null,
-      w.chatId === State.chatId ? null : act(t(LISTENING_STRINGS.goToChat), svg(ICONS.bubble, 10), () => opts.goToChat(w.chatId)),
+      w.chatId === State.chatId || !chatKept(w.chatId) ? null : act(t(LISTENING_STRINGS.goToChat), svg(ICONS.bubble, 10), () => opts.goToChat(w.chatId)),
       act(t(LISTENING_STRINGS.stop), svg(ICONS.xmark, 9), () => {
         openRow = null;
         void Bridge.listenStop(w.id);
@@ -650,6 +669,29 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     return [...then, document.createTextNode(` · ${chat}`)];
   }
 
+  /**
+   * What went wrong with a watch, said on it rather than ending it: GitHub
+   * refuses the token (it keeps listening, Update opens Settings), or it was
+   * paused for happening too often (Resume).
+   */
+  function warningLine(w: ListenWatch): HTMLElement | null {
+    const fix = (label: string, run: () => void) => h("button", { class: "listen-head-btn listen-warn-btn", type: "button", onclick: (e: Event) => {
+      e.stopPropagation();
+      run();
+    } }, h("span", { text: label }));
+    if (w.warning === "token") {
+      return h("span", { class: "listen-warn token" },
+        h("span", { class: "listen-warn-text" }, h("span", { class: "listen-warn-dot" }), t(LISTENING_STRINGS.tokenWarn)),
+        fix(t(LISTENING_STRINGS.tokenFix), () => opts.openPills()));
+    }
+    if (w.warning === "too_often" && w.paused) {
+      return h("span", { class: "listen-warn too-often" },
+        h("span", { class: "listen-warn-text" }, h("span", { class: "listen-warn-dot" }), t(LISTENING_STRINGS.tooOften)),
+        fix(t(LISTENING_STRINGS.resume), () => void Bridge.listenPause(w.id, false)));
+    }
+    return null;
+  }
+
   function watchRow(w: ListenWatch): HTMLElement {
     const event = untilText(w);
     const every = w.mode === "every";
@@ -661,6 +703,8 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     const el = row(w, `${w.paused ? "paused" : ""}${open ? " open" : ""}`, onGitHub(w) ? label : w.target ?? label, `${label} · ${event}`,
       thenAndChat(w.task, w.chatId),
       [pill(t(every ? LISTENING_STRINGS.every : LISTENING_STRINGS.once), every ? "every" : ""), h("span", { class: "listen-status", text: status })]);
+    const warn = warningLine(w);
+    if (warn) el.querySelector(".listen-text")?.append(warn);
     onPress(el, () => {
       openRow = open ? null : w.id;
       draw();
@@ -684,10 +728,11 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     const event = untilText(w);
     const then = w.task || t(LISTENING_STRINGS.onlyTell);
     const el = h("div", { class: `listen-card${w.paused ? " paused" : ""}`, title: `${label} · ${event}\n${then}` },
-      h("span", { class: "listen-card-top" }, tile(w), every ? pill(t(LISTENING_STRINGS.every), "every") : null),
+      h("span", { class: "listen-card-top" }, watchTile(w), every ? pill(t(LISTENING_STRINGS.every), "every") : null),
       h("span", { class: "listen-card-name", text: label }),
       h("span", { class: "listen-card-line", text: event }),
-      h("span", { class: "listen-card-line dim", text: `${then} · ${status}` }));
+      h("span", { class: "listen-card-line dim", text: `${then} · ${status}` }),
+      warningLine(w));
     onPress(el, () => {
       openRow = w.id;
       draw();
@@ -708,7 +753,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     const el = row(w, "past", p.summary, p.summary, thenAndChat(w.task, w.chatId),
       [pill(t(p.met ? LISTENING_STRINGS.met : LISTENING_STRINGS.notMet), p.met ? "met" : "not-met"),
         h("span", { class: "listen-status", text: Date.now() - p.at < 60_000 ? t("just now") : t("{time} ago", { time: timeAgo(p.at) }) })]);
-    if (w.chatId !== State.chatId) onPress(el, () => opts.goToChat(w.chatId));
+    if (w.chatId !== State.chatId && chatKept(w.chatId)) onPress(el, () => opts.goToChat(w.chatId));
     return el;
   }
 

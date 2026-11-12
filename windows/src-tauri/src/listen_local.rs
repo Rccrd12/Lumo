@@ -24,8 +24,8 @@ use std::time::Duration;
 pub const FS_UNTILS: &[&str] = &["created", "changed", "deleted", "download"];
 /// What a watch on a program (its executable's name) or a port waits for.
 pub const PROCESS_UNTILS: &[&str] = &["started", "exited", "port_open", "port_closed"];
-/// What a watch on a web page waits for.
-pub const WEB_UNTILS: &[&str] = &["changed", "up", "down", "contains"];
+/// What a watch on a web page waits for; `gone`: the page no longer shows a text.
+pub const WEB_UNTILS: &[&str] = &["changed", "up", "down", "contains", "gone"];
 /// What a watch on the inbox waits for: any new email, one from someone, one with words in its subject.
 pub const EMAIL_UNTILS: &[&str] = &["new", "from", "subject"];
 /// What a watch on a service waits for; `soon`: an event on the calendar coming up.
@@ -186,7 +186,7 @@ pub fn target(source: &str, until: &str, target: &str, text: &str, home: &Path) 
     }
     let wants_text = |text: &str| -> Result<(), String> {
         if text.trim().is_empty() || text.chars().count() > MAX_TEXT {
-            return Err(format!("contains needs the text to wait for, at most {MAX_TEXT} characters."));
+            return Err(format!("{until} needs the text to wait for, at most {MAX_TEXT} characters."));
         }
         Ok(())
     };
@@ -216,7 +216,7 @@ pub fn target(source: &str, until: &str, target: &str, text: &str, home: &Path) 
             if !target.to_ascii_lowercase().starts_with("https://") || target.contains(char::is_whitespace) || crate::web_image::public_url(target).is_err() {
                 return Err("Give the page as a public link starting with https://.".into());
             }
-            if until == "contains" {
+            if until == "contains" || until == "gone" {
                 wants_text(text)?;
             }
             Ok(target.to_string())
@@ -485,6 +485,23 @@ pub fn contains(page: &Page, text: &str) -> bool {
     page.up() && page.text.to_lowercase().contains(&text.trim().to_lowercase())
 }
 
+/// What changed between two looks at a page's words: the words that went and
+/// the words that came, once what both start and end with is taken away, each
+/// cut short. None: the same words.
+pub fn change_excerpt(before: &str, after: &str) -> Option<(String, String)> {
+    let a: Vec<&str> = before.split_whitespace().collect();
+    let b: Vec<&str> = after.split_whitespace().collect();
+    let head = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let (a, b) = (&a[head..], &b[head..]);
+    let tail = a.iter().rev().zip(b.iter().rev()).take_while(|(x, y)| x == y).count();
+    let gone = a[..a.len() - tail].join(" ");
+    let came = b[..b.len() - tail].join(" ");
+    if gone.is_empty() && came.is_empty() {
+        return None;
+    }
+    Some((excerpt(&gone, 60), excerpt(&came, 60)))
+}
+
 // ── Windows ───────────────────────────────────────────────────────────────────
 
 /// Whether this PC has a way out to the internet: the route a packet would
@@ -585,6 +602,45 @@ pub fn news_matches(until: &str, news: &News) -> bool {
     }
 }
 
+// ── The calendar ──────────────────────────────────────────────────────────────
+
+/// An event's title as a calendar watch keeps it: one line, at most 200 characters.
+fn calendar_key(key: &str) -> String {
+    let one = key.replace(['\n', '\r'], " ");
+    one.trim().chars().take(200).collect::<String>().trim_end().to_string()
+}
+
+/// What a calendar watch keeps of the events it told (its `last_sha`): the
+/// start of the latest one (Unix ms), then the title of each event told that
+/// starts then, one per line, so two events starting together both fire. A
+/// watch kept before has the start alone. The new `last_sha` once the event
+/// starting `at` titled `key` is told; None when it was told already, or an
+/// event that starts later was.
+///
+/// The start alone, with no title after it, says an event starting then was
+/// told but not which one: kept by an earlier Lumo (which knew no titles), or
+/// an event without a title. It counts as this one, so an update or a restart
+/// in the minutes before an event never tells it twice; a second event at
+/// that start goes untold, which is rarer and costs less.
+pub fn calendar_next(last_sha: &str, at: u64, key: &str) -> Option<String> {
+    let key = calendar_key(key);
+    let mut lines = last_sha.lines();
+    let last = lines.next().and_then(|first| first.trim().parse::<u64>().ok());
+    match last {
+        Some(last) if at < last => None,
+        Some(last) if at == last => {
+            let told: Vec<&str> = lines.collect();
+            if key.is_empty() || told.is_empty() || told.contains(&key.as_str()) {
+                None
+            } else {
+                Some(format!("{}\n{key}", last_sha.trim_end()))
+            }
+        }
+        _ if key.is_empty() => Some(at.to_string()),
+        _ => Some(format!("{at}\n{key}")),
+    }
+}
+
 // ── Webhooks ──────────────────────────────────────────────────────────────────
 
 /// A request's first line and headers: its method, its path, how long its body is.
@@ -643,6 +699,10 @@ mod tests {
         assert!(target("web", "changed", "example.com", "", home).is_err());
         assert!(target("web", "contains", "https://example.com", " ", home).is_err());
         assert!(target("web", "contains", "https://example.com", "In stock", home).is_ok());
+        // gone, like contains, needs the text it waits to see go.
+        assert!(target("web", "gone", "https://example.com", "", home).is_err());
+        assert_eq!(target("web", "gone", "https://example.com", "Sold out", home).unwrap(), "https://example.com");
+        assert!(untils("web").contains(&"gone") && !untils("tool").contains(&"gone"));
         assert!(target("web", "up", "https://example.com/\"]]", "", home).is_err());
         // Never this PC or the local network, nor plain http.
         for page in ["http://example.com", "https://localhost:3000", "https://127.0.0.1/", "https://192.168.1.1/admin", "https://router.local/", "https://[::1]/", "https://10.0.0.5:8443/"] {
@@ -656,6 +716,7 @@ mod tests {
         assert_eq!(label("process", "port_open", "3000"), ":3000");
         assert_eq!(label("process", "exited", "node.exe"), "node.exe");
         assert_eq!(label("web", "up", "https://www.example.com/"), "example.com");
+        assert_eq!(label("web", "gone", "https://shop.example.com/item/"), "shop.example.com/item");
         assert_eq!(label("fs", "changed", "D:\\"), "D:\\");
         assert_eq!(folder_of("C:\\nowhere-at-all\\report.pdf"), "nowhere-at-all");
     }
@@ -696,6 +757,57 @@ mod tests {
         assert!(contains(&page, "in STOCK"));
         assert!(!contains(&Page { status: Some(500), text: "In stock".into() }, "in stock"));
         assert!(!Page { status: None, text: String::new() }.up());
+    }
+
+    #[test]
+    fn a_change_is_the_words_that_went_and_came() {
+        let pair = change_excerpt;
+        // What both start and end with is taken away.
+        assert_eq!(pair("Price: 10 euro, in stock", "Price: 12 euro, in stock"), Some(("10".into(), "12".into())));
+        assert_eq!(pair("a b c d", "a x y d"), Some(("b c".into(), "x y".into())));
+        // Only added, only removed.
+        assert_eq!(pair("In stock", "In stock now"), Some(("".into(), "now".into())));
+        assert_eq!(pair("Open today until 6", "Open today"), Some(("until 6".into(), "".into())));
+        assert_eq!(pair("", "Hello"), Some(("".into(), "Hello".into())));
+        // The same words, whatever the spaces between them.
+        assert_eq!(pair("a  b\nc", "a b c"), None);
+        assert_eq!(pair("", ""), None);
+        // A word repeated at the edge is not taken twice.
+        assert_eq!(pair("a a", "a"), Some(("a".into(), "".into())));
+        // Long middles are cut short.
+        let long_a = format!("start {} end", "old ".repeat(40));
+        let long_b = format!("start {} end", "new ".repeat(40));
+        let (gone, came) = change_excerpt(&long_a, &long_b).unwrap();
+        assert_eq!(gone.chars().count(), 60);
+        assert!(gone.ends_with('…') && gone.starts_with("old old"));
+        assert!(came.ends_with('…') && came.starts_with("new new"));
+    }
+
+    #[test]
+    fn two_events_starting_together_both_fire_once() {
+        // A watch kept before: the start alone. The event told then was most
+        // likely this one, so it is not told again after an update.
+        assert_eq!(calendar_next("1000", 1000, ""), None);
+        assert_eq!(calendar_next("1000", 900, "Standup"), None);
+        assert_eq!(calendar_next("1000", 1000, "Standup"), None);
+        assert_eq!(calendar_next("1000", 2000, "Standup"), Some("2000\nStandup".into()));
+        // The first event told.
+        assert_eq!(calendar_next("", 1000, "Standup"), Some("1000\nStandup".into()));
+        assert_eq!(calendar_next("", 1000, ""), Some("1000".into()));
+        // Another event at the same start fires too; each only once.
+        let told = calendar_next("1000\nStandup", 1000, "Review").unwrap();
+        assert_eq!(told, "1000\nStandup\nReview");
+        assert_eq!(calendar_next(&told, 1000, "Standup"), None);
+        assert_eq!(calendar_next(&told, 1000, "Review"), None);
+        assert_eq!(calendar_next(&told, 1000, ""), None);
+        // A later one starts afresh; an earlier one was before it.
+        assert_eq!(calendar_next(&told, 2000, "Lunch"), Some("2000\nLunch".into()));
+        assert_eq!(calendar_next(&told, 900, "Early"), None);
+        // A title is one line, at most 200 characters.
+        assert_eq!(calendar_next("", 1000, "  Plan\nthe week\r\n "), Some("1000\nPlan the week".into()));
+        assert_eq!(calendar_next("1000\nPlan the week", 1000, "Plan\nthe week"), None);
+        let long = calendar_next("", 1, &"x".repeat(300)).unwrap();
+        assert_eq!(long.lines().nth(1).unwrap().chars().count(), 200);
     }
 
     #[test]

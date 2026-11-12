@@ -725,6 +725,8 @@ async fn chat_send(
     // Held until the answer is done: the user can move to another chat, and
     // this one keeps being answered in the background.
     let chat = chats.get(&chat_id);
+    // A chat loaded off screen (chat_load): this answer holds it from now on.
+    chats.unpin(&chat_id);
     // The settings as they are now: a model, effort or permission picked
     // while this answer is written goes with the next message.
     let settings = shared.settings.lock().unwrap().clone();
@@ -900,6 +902,21 @@ struct SavedTurn {
 #[tauri::command]
 fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
     chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+}
+
+/// chat_restore for a chat that is not on screen: the Listening events use it
+/// to answer in the chat that asked while the user is in another one. Unlike
+/// chat_restore it leaves the chat on screen alone (focus would forget its
+/// conversation, which Rust holds, once it is idle). The saved turns are only
+/// taken when Rust holds no conversation for the chat: when it does (the
+/// chat on screen, or an answer to an earlier event still being written) its
+/// own is the newer one, and restoring would drop that answer.
+#[tauri::command]
+fn chat_load(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
+    let (chat, fresh) = chats.load(&chat_id);
+    if fresh {
+        chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+    }
 }
 
 /// A chat's /compact, as its saved file keeps it: the summary of its first `upto` turns.
@@ -1397,6 +1414,7 @@ pub fn run() {
             unsloth_studio_stop,
             chat_reset,
             chat_restore,
+            chat_load,
             chat_compact,
             chat_commands,
             chat_stop,

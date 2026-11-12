@@ -1599,6 +1599,27 @@ html.look-new .listen-ask-then {
   overflow-wrap: anywhere;
 }
 
+html.look-new .listen-ask-what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+/* The path or page whole, as Lumo will listen to it. */
+html.look-new .listen-ask-target {
+  color: #9aa0a8;
+  font: 400 11.5px/1.4 ui-monospace, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+/* A task is done without asking again: said in amber before Listen. */
+html.look-new .listen-ask-warn {
+  color: #fbbf24;
+  font: 400 12px/1.4 var(--font);
+  overflow-wrap: anywhere;
+}
+
 html.look-new .plan-ask-actions {
   display: flex;
   justify-content: flex-end;
@@ -1662,6 +1683,11 @@ html.look-new .picker-list.listen-list.listen-cards {
   grid-auto-rows: min-content;
   align-content: start;
   gap: 8px;
+}
+
+/* Hidden (History or the form on show) wins over the grid. */
+html.look-new .picker-list.listen-list.listen-cards[hidden] {
+  display: none;
 }
 
 html.look-new .listen-cards > .listen-card-open,

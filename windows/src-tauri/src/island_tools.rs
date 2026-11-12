@@ -176,7 +176,7 @@ amp, hermes, muse; for webhook, a short name; for tool, the tool's id.",
             "description": "github.pr: checks (finished, passed or failed), green (passed), approved, ready (checks \
 passed and it can be merged), merged, closed. fs: created, changed, deleted, download (a download finished in the \
 folder). process: started, exited, port_open, port_closed. web: changed (what the page shows), up, down, contains \
-(the page shows text). email: new, from, subject. service: event, succeeded, failed, or soon for the calendar (an \
+(the page shows text), gone (the page no longer shows text). email: new, from, subject. service: event, succeeded, failed, or soon for the calendar (an \
 event starts within amount minutes). windows: notification, battery_low, plugged, unplugged, offline, online, usb (a \
 drive is connected), back (the user is back after amount minutes away). agent: finished, permission (it asks for a \
 permission or a reply), failed. webhook: called. tool: changed (what it prints), contains.",
@@ -190,7 +190,7 @@ github.pr only for checks or green, once for each new commit, until the pull req
         watch["text"] = json!({
             "type": "string",
             "maxLength": 200,
-            "description": "contains only (web, tool): the text to wait for.",
+            "description": "contains and gone (web, tool): the text; soon (calendar): words the event's title must have.",
         });
         watch["amount"] = json!({
             "type": "integer",
@@ -261,7 +261,10 @@ fn local_line(source: &str, input: &Value) -> Result<(String, String), String> {
         return Err("mode must be once or every.".into());
     }
     let every = if mode == "every" { "every " } else { "" };
-    let mut words = if event == "contains" { format!(" \"{text}\"") } else { String::new() };
+    // The text a page or a tool shows (or no longer shows), the words an
+    // event's title has: the line carries them, or the watch would wait for
+    // any event, or for nothing.
+    let mut words = if matches!(event.as_str(), "contains" | "gone" | "soon") && !text.is_empty() { format!(" \"{text}\"") } else { String::new() };
     if amount > 0 {
         words.push_str(&format!(" {amount}"));
     }
@@ -505,6 +508,19 @@ mod tests {
         assert_eq!(ok(LISTEN, json!({ "source": "email", "target": "Marco", "event": "from", "then": "reply" })), "[[listen email \"Marco\" from: reply]]");
         assert_eq!(ok(LISTEN, json!({ "source": "agent", "target": "Claude Code", "event": "finished", "mode": "every" })), "[[listen agent \"claude\" every finished]]");
         assert_eq!(ok(LISTEN, json!({ "source": "calendar", "target": "", "event": "soon", "amount": 15 })), "[[listen service \"calendar\" soon 15]]");
+        // The words the event's title must have are kept, not dropped.
+        assert_eq!(
+            ok(LISTEN, json!({ "source": "calendar", "target": "", "event": "soon", "text": "Stand-up \"team\"", "amount": 15 })),
+            "[[listen service \"calendar\" soon \"Stand-up 'team'\" 15]]"
+        );
+        // A page that no longer shows a text.
+        assert_eq!(
+            ok(LISTEN, json!({ "source": "web", "target": "https://example.com/p", "event": "gone", "text": "Sold out" })),
+            "[[listen web \"https://example.com/p\" gone \"Sold out\"]]"
+        );
+        assert!(line(LISTEN, &json!({ "source": "web", "target": "https://example.com/p", "event": "gone" })).is_err());
+        // Text given for an event that has none is not on the line.
+        assert_eq!(ok(LISTEN, json!({ "source": "web", "target": "https://example.com/p", "event": "up", "text": "x" })), "[[listen web \"https://example.com/p\" up]]");
         assert_eq!(ok(LISTEN, json!({ "source": "battery", "event": "battery_low" })), "[[listen windows \"pc\" battery_low 20]]");
         assert_eq!(ok(LISTEN, json!({ "source": "webhook", "target": "Deploys", "event": "called" })), "[[listen webhook \"deploys\" called]]");
         assert_eq!(ok(UNLISTEN, json!({ "source": "service", "target": "Cal.com" })), "[[unlisten service \"calcom\"]]");

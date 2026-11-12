@@ -13,7 +13,6 @@ import {
   type MediaActivity,
 } from "../core/compact";
 import { gitHubRunning, readPulse } from "../core/github";
-import { LISTEN_COLOR, activeWatches, listeningLine, onGitHub, watchColor } from "../core/listen";
 import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
 import { isCliProvider } from "../core/providers";
@@ -111,18 +110,23 @@ function agentInputs(): AgentActivityInput[] {
 
 /**
  * What the services are doing: GitHub's CI running on a PR or a default
- * branch, and what the chat listens to (core/listen.ts).
+ * branch, and what a watch heard for a chat the user has not opened since
+ * (core/heard.ts): that chat's name, then what happened, "+2" when two more
+ * chats wait. What is only being listened to says nothing here: the waves
+ * in the chat say it.
  */
 function serviceLines(): CompactLine[] {
   const gitHub = State.tasks.find((x) => x.id === "integration_github");
   const info = State.integrations["integration_github"];
   const running = gitHub && info ? gitHubRunning(readPulse(info.data)) : null;
   const lines: CompactLine[] = running ? [{ text: `${gitHub!.name} · ${running}`, color: gitHub!.color }] : [];
-  const listening = listeningLine(State.listening);
-  // On GitHub only: GitHub's line; on this PC too, Lumo's, in the one source's colour.
-  const on = activeWatches(State.listening);
-  if (listening && on.every(onGitHub)) lines.push({ text: `GitHub · ${listening}`, color: gitHub?.color ?? LISTEN_COLOR });
-  else if (listening) lines.push({ text: `Lumo · ${listening}`, color: on.length === 1 ? watchColor(on[0]) : LISTEN_COLOR });
+  const waiting = State.listenPending;
+  const newest = waiting.at(-1);
+  if (newest) {
+    const chat = `«${newest.chatTitle || t("Chat")}»`;
+    const more = waiting.length > 1 ? ` · +${waiting.length - 1}` : "";
+    lines.push({ text: `${chat} · ${newest.summary}${more}`, color: newest.color, lead: chat });
+  }
   return lines;
 }
 
