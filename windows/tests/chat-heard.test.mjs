@@ -140,6 +140,17 @@ test("a task for another chat is done there, in the background; the chat on scre
   assert.equal(State.chatId, here);
 });
 
+test("a task for another chat goes to that chat's provider and model; the picker stays on the one on screen", async () => {
+  saveChat({ ...loadChats().find((c) => c.id === "release"), provider: "openai", model: "gpt-4.1" });
+  answers.chat_send = { text: "Merged.", turns: 4 };
+  emit("listen-fired", { watch: watch(7, "release", "merge it"), met: true, summary: "#241 is ready to merge", ended: true });
+  await flush();
+  await flush();
+  assert.deepEqual(sent("chat_send").map((a) => [a.chatId, a.provider, a.model]), [["release", "openai", "gpt-4.1"]]);
+  assert.equal(State.settings.chatProvider, "anthropic");
+  assert.equal(sent("save_settings").length, 0);
+});
+
 test("a watch that goes on offers Stop listening on its line", async () => {
   const w = watch(4, State.chatId, "", { mode: "every" });
   emit("listen-changed", [w]);

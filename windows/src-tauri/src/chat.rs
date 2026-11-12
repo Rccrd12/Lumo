@@ -832,6 +832,22 @@ pub fn model_for(settings: &Settings, provider: &str) -> String {
         .unwrap_or_default()
 }
 
+/// `settings` with the provider and model a chat is on (the page keeps them
+/// by chat, chats.ts): that chat is answered by them, whatever the picker
+/// shows for another chat meanwhile. None, or empty, leaves the settings' own.
+pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>) -> Settings {
+    let Some(provider) = provider.map(str::trim).filter(|p| !p.is_empty()) else { return settings };
+    settings.chat_provider = provider.to_string();
+    if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
+        if provider == ANTHROPIC {
+            settings.model = model.to_string();
+        } else {
+            settings.chat_models.insert(provider.to_string(), model.to_string());
+        }
+    }
+    settings
+}
+
 /// A file rides along only if it is one of Lumo's own copies of a dropped
 /// file (files.rs puts them in the inbox). The page names the path, so without
 /// this any file the user can read could be sent to a chat provider.
@@ -1774,5 +1790,26 @@ mod tests {
         assert!(!is_inside(&inbox, &inbox.join("missing.txt")));
         assert!(!is_inside(&inbox, &inbox));
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_chat_is_answered_by_its_own_provider_and_model() {
+        let mut settings = Settings::default();
+        settings.chat_provider = "openai".into();
+        settings.chat_models.insert("openai".into(), "gpt-4o".into());
+        // Anthropic's model is `model`; the others' are kept by provider.
+        let a = with_pick(settings.clone(), Some("anthropic"), Some("claude-opus-5-5"));
+        assert_eq!(a.chat_provider, ANTHROPIC);
+        assert_eq!(model_for(&a, ANTHROPIC), "claude-opus-5-5");
+        let b = with_pick(settings.clone(), Some("openrouter"), Some("openrouter/auto"));
+        assert_eq!((b.chat_provider.as_str(), model_for(&b, "openrouter").as_str()), ("openrouter", "openrouter/auto"));
+        assert_eq!(model_for(&b, "openai"), "gpt-4o");
+        // No model: that provider's own.
+        let c = with_pick(settings.clone(), Some("claude-code"), None);
+        assert_eq!(c.chat_provider, "claude-code");
+        // Nothing named: the settings as they are.
+        let d = with_pick(settings.clone(), None, Some("x"));
+        assert_eq!((d.chat_provider.as_str(), model_for(&d, "openai").as_str()), ("openai", "gpt-4o"));
+        assert_eq!(with_pick(settings, Some(" "), None).chat_provider, "openai");
     }
 }

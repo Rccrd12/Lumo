@@ -20,8 +20,13 @@ export interface SavedChat {
   title: string;
   /** Epoch milliseconds of the last answer. */
   updatedAt: number;
-  /** Who answered last (a providers.ts id). */
+  /**
+   * The provider the chat is on (a providers.ts id): the last one picked in
+   * it, else the one that answered last. Reopened, the picker shows it again.
+   */
   provider: string;
+  /** Its model, with `provider`; none in chats saved before each chat kept its own. */
+  model?: string;
   /** The CLI session that answered (Claude Code, Antigravity CLI), so reopening continues it. */
   session: string | null;
   turns: SavedTurn[];
@@ -108,11 +113,51 @@ export function joinOwnAnswer(turns: { role: string; content: string; failed?: b
 /** Ticks given in a chat not saved yet (its first answer still being written), until it is. */
 const unsaved = new Map<string, ChatChecklists>();
 
+/** A chat's provider and model, as the picker shows them while it is on screen. */
+export interface ChatModel {
+  provider: string;
+  /** None for a chat saved before each chat kept its own: its provider's model then. */
+  model?: string;
+}
+
+/**
+ * What was picked in a chat while it was on screen, by chat: it wins over the
+ * provider and model of an answer asked before (still written meanwhile, it
+ * saves the chat again), and keeps a chat not saved yet's choice until it is.
+ */
+const picks = new Map<string, ChatModel>();
+
+/**
+ * The provider and model picked in chat `id`; a saved chat keeps them where it
+ * is, its place in the history does not change.
+ */
+export function setChatModel(id: string, provider: string, model: string) {
+  picks.set(id, { provider, model });
+  const list = loadChats();
+  const chat = list.find((c) => c.id === id);
+  if (!chat || (chat.provider === provider && chat.model === model)) return;
+  chat.provider = provider;
+  chat.model = model;
+  store(list);
+}
+
+/** The provider and model chat `id` is on, if it has any yet. */
+export function chatModelOf(id: string): ChatModel | null {
+  const picked = picks.get(id);
+  if (picked) return picked;
+  const chat = loadChats().find((c) => c.id === id);
+  if (!chat || typeof chat.provider !== "string" || !chat.provider) return null;
+  return typeof chat.model === "string" && chat.model ? { provider: chat.provider, model: chat.model } : { provider: chat.provider };
+}
+
 /**
  * Saves `chat` (new, or replacing the one with its id) at the top of the
- * list. Its checklists' ticks stay as they were when `chat` brings none.
+ * list. Its checklists' ticks stay as they were when `chat` brings none, and
+ * a provider and model picked in it since win over the ones it brings.
  */
 export function saveChat(chat: SavedChat): SavedChat[] {
+  const picked = picks.get(chat.id);
+  if (picked) chat = { ...chat, provider: picked.provider, model: picked.model };
   const chats = loadChats();
   const ticks = chat.checklists ?? chats.find((c) => c.id === chat.id)?.checklists ?? unsaved.get(chat.id);
   unsaved.delete(chat.id);
@@ -141,6 +186,7 @@ export function setChatChecklists(id: string, checklists: ChatChecklists) {
 
 export function deleteChat(id: string): SavedChat[] {
   unsaved.delete(id);
+  picks.delete(id);
   const list = loadChats().filter((c) => c.id !== id);
   store(list);
   setCompact(id, null);

@@ -89,12 +89,12 @@ import {
 } from "../core/bridge";
 import {
   activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps, storedPermissionMode, withPermissionMode,
-  anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
+  anyProviderReady, modelFor, onChatModel, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
+  chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
@@ -1225,8 +1225,11 @@ interface Picker {
  */
 let readyProviders: ReadonlySet<string> | null = null;
 
-/** Provider chips, then the chosen provider's models — ModelPickerView. */
-function buildPicker(onChange: () => void, openSettings: () => void): Picker {
+/**
+ * Provider chips, then the chosen provider's models — ModelPickerView.
+ * `onPicked` once a provider or a model is picked: the chat on screen keeps it.
+ */
+function buildPicker(onChange: () => void, openSettings: () => void, onPicked: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
   // Claude Code only: how hard it thinks (claude --effort), on a short slider
@@ -1390,6 +1393,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
         if (p.id === State.settings.chatProvider) return;
         State.settings = { ...State.settings, chatProvider: p.id };
         saveSettings();
+        onPicked();
         Sound.play("pop");
         drawChips();
         drawEfforts();
@@ -1478,6 +1482,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
       row.addEventListener("click", () => {
         State.settings = withModel(State.settings, p.id, m.id);
         saveSettings();
+        onPicked();
         Sound.play("blip");
         close();
         refreshCaps();
@@ -1590,6 +1595,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
       if (keep && keep !== activeModel(State.settings)) {
         State.settings = withModel(State.settings, p.id, keep);
         saveSettings();
+        onPicked();
         onChange();
       }
       // The list says what its models take: the effort slider follows.
@@ -2009,7 +2015,7 @@ export function buildPrompt(
     }
     seen(line.chatId);
     if (saved) openChat(saved);
-    else if (inFlight) openChat({ id: line.chatId, title: chatTitle(inFlight.history), updatedAt: Date.now(), provider: inFlight.provider, session: inFlight.session, turns: [] });
+    else if (inFlight) openChat({ id: line.chatId, title: chatTitle(inFlight.history), updatedAt: Date.now(), provider: inFlight.provider, model: inFlight.model, session: inFlight.session, turns: [] });
     State.notify();
   }
 
@@ -2053,7 +2059,7 @@ export function buildPrompt(
     panelChanged();
     drawModelButton();
     drawUsage();
-  }, openSettings);
+  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings)));
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
@@ -3415,8 +3421,11 @@ export function buildPrompt(
       void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
     }
     State.chatId = c.id;
+    // The picker shows the provider and model this chat is on (as it was left).
+    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model } : { provider: c.provider, model: c.model }));
     State.droppedFile = null;
     State.promptContext = null;
+    if (picker.isOpen) picker.close();
     closeScreen();
     clearScreen();
     closeHistory();
@@ -3425,6 +3434,14 @@ export function buildPrompt(
     State.notify();
     onHeightChange();
     input.focus();
+  }
+
+  /** The picker on a chat's provider and model, saved as the ones to start the next new chat with. */
+  function useChatModel(chat: { provider: string; model?: string } | null) {
+    const next = onChatModel(State.settings, chat, readyProviders);
+    if (next === State.settings) return;
+    State.settings = next;
+    saveSettings();
   }
 
   /** A new chat; an answer still being written in the one before goes on in the background. */
@@ -3586,7 +3603,7 @@ export function buildPrompt(
     void Bridge.chatRestore(State.chatId, turns, null);
     const parsed = latestDraft(State.chatHistory);
     if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
-    saveChat({ id: State.chatId, title: chatTitle(turns), updatedAt: Date.now(), provider: State.settings.chatProvider, session: null, turns });
+    saveChat({ id: State.chatId, title: chatTitle(turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), session: null, turns });
     renderedCount = -1;
     State.notify();
   }
@@ -3604,6 +3621,7 @@ export function buildPrompt(
       title: chatTitle(turns),
       updatedAt: Date.now(),
       provider: run.provider,
+      model: run.model,
       session: run.session,
       turns,
     });
@@ -4128,14 +4146,17 @@ export function buildPrompt(
         if (all && cleared && screen === cleared) screen = waiting;
       };
 
-      const activity = firstActivity(State.settings.chatProvider, context, screenContext);
+      // A chat not on screen (a watch that fired in it) is answered by its own
+      // provider and model; the one on screen by what the picker shows.
+      const own = away ? onChatModel(State.settings, chatModelOf(chatId), readyProviders) : State.settings;
+      const activity = firstActivity(own.chatProvider, context, screenContext);
       const done = new Promise<void>((resolve) => (finish = resolve));
       run = {
         chatId,
         history,
         session: away ? away.session : State.chatSession,
-        provider: State.settings.chatProvider,
-        model: activeModel(State.settings),
+        provider: own.chatProvider,
+        model: modelFor(own, own.chatProvider),
         turn,
         text: "",
         activity,
@@ -4167,7 +4188,7 @@ export function buildPrompt(
       // the next question.
       const command = !called && asked.trim().startsWith("/");
       const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
-      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext);
+      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model });
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one).
       const recorded = !reply.stopped || reply.text !== "";
@@ -4870,6 +4891,7 @@ export function buildPrompt(
             title: chatTitle(inFlight.history),
             updatedAt: Date.now(),
             provider: inFlight.provider,
+            model: inFlight.model,
             session: inFlight.session,
             turns: [],
           } : undefined);

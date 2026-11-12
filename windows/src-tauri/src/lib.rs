@@ -714,6 +714,7 @@ fn approval_decline(app: AppHandle, request_id: String) {
 /// One chat turn with the provider picked in the chat view. API keys and any
 /// file bytes stay on the Rust side.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn chat_send(
     app: AppHandle,
     shared: State<'_, Shared>,
@@ -722,6 +723,8 @@ async fn chat_send(
     query: String,
     context: Option<ChatContext>,
     screen: Option<screen::ScreenContext>,
+    provider: Option<String>,
+    model: Option<String>,
 ) -> Result<ChatReply, String> {
     // Held until the answer is done: the user can move to another chat, and
     // this one keeps being answered in the background.
@@ -729,8 +732,9 @@ async fn chat_send(
     // A chat loaded off screen (chat_load): this answer holds it from now on.
     chats.unpin(&chat_id);
     // The settings as they are now: a model, effort or permission picked
-    // while this answer is written goes with the next message.
-    let settings = shared.settings.lock().unwrap().clone();
+    // while this answer is written goes with the next message. The chat's own
+    // provider and model, when the page names them, answer it.
+    let settings = chat::with_pick(shared.settings.lock().unwrap().clone(), provider.as_deref(), model.as_deref());
     let shots: Vec<String> = screen.as_ref().map(|s| s.shots.iter().map(|r| r.path.clone()).collect()).unwrap_or_default();
     let reply = chat::send(&app, &chat, &settings, query, context, screen).await;
     // Screenshots are read once the turn is answered: they don't stay on disk.
