@@ -78,6 +78,8 @@ export interface HomeActions {
   openUrl?(url: string): void;
   /** The open PRs that wait, in one row: opens the GitHub card on its list of my PRs. */
   openGitHubPRs?(): void;
+  /** The Email tile: opens the Email view (views/mail-view.ts), every address's emails. */
+  openMail?(): void;
   makeTool(): void;
   activityData(): ActivitiesData;
   activity(a: ActivitiesAction): void;
@@ -548,6 +550,12 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
     return { el, track, fill, size: "" };
   }
 
+  /** The Email view, or the inbox in the browser where the island has no such view. */
+  function openMail() {
+    if (actions.openMail) actions.openMail();
+    else actions.activity({ kind: "inbox" });
+  }
+
   function tile(kind: "timer" | "music" | "calendar" | "mail", data: ActivitiesData): HTMLElement {
     switch (kind) {
       case "timer": {
@@ -643,14 +651,14 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
           const quiet = h("div", { class: "home-tile link" },
             h("div", { class: "tile-kick" }, svg(ICONS.envelope, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.email) })),
             h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.noUnread) }));
-          quiet.addEventListener("click", () => actions.activity({ kind: "inbox" }));
+          quiet.addEventListener("click", () => openMail());
           return quiet;
         }
         const tileEl = h("div", { class: "home-tile link" },
           h("div", { class: "tile-kick" }, dot("#f4505e", 6), h("span", { text: `${t(ACTIVITIES_TEXT.email)} · ${mail.length}` })),
           h("div", { class: "tile-title", text: mail[0].from }),
           h("div", { class: "tile-sub", text: mail[0].subject }));
-        tileEl.addEventListener("click", () => actions.activity({ kind: "inbox" }));
+        tileEl.addEventListener("click", () => openMail());
         return tileEl;
       }
     }

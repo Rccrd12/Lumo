@@ -185,6 +185,11 @@ pub struct Settings {
     /// nothing is downloaded. On by default (Settings → Security). A file from
     /// before keeps its old `webImageSites` list unread: it no longer matters.
     pub web_images: bool,
+    /// Whether an email in the island's Email view shows its images at once,
+    /// with no click on Load images (views/mail-view.ts; the tracking pixels
+    /// it recognises are never loaded). Off by default (Settings → Security),
+    /// and only with `web_images` on.
+    pub mail_images_always: bool,
     /// What the AI may do with the user's email (Settings → General →
     /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
     /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
@@ -366,6 +371,7 @@ impl Default for Settings {
             chat_web_search: false,
             chat_auto_compact: true,
             web_images: true,
+            mail_images_always: false,
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
             ai_github_access: "none".into(),
@@ -740,6 +746,7 @@ mod tests {
   "chatWebSearch": true,
   "chatAutoCompact": false,
   "webImages": false,
+  "mailImagesAlways": true,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "aiGithubAccess": "read",
@@ -1290,6 +1297,7 @@ mod tests {
                 "chatWebSearch",
                 "chatAutoCompact",
                 "webImages",
+                "mailImagesAlways",
                 "aiMailAccess",
                 "aiCalendarAccess",
                 "aiGithubAccess",

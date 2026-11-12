@@ -12,6 +12,7 @@ import type { Settings } from "./state";
 import type { MailPeek, MediaActivity } from "./compact";
 import type { ChatUsage } from "./chat-usage";
 import type { ListenPast, ListenWatch } from "./listen";
+import { readMailHtml } from "./mail-html";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
 import type { LocalCaps } from "./providers";
@@ -506,6 +507,13 @@ export const Bridge = {
   outlookStatus: () => call<OutlookStatus>("outlook_status"),
   /** The Email pill's IMAP accounts, the first (the default) first (mail.rs). */
   mailAccounts: () => call<MailAccount[]>("mail_accounts"),
+  /** The island's Email view: each account and its newest emails, only the unread ones or all the recent ones (mail.rs mail_view). */
+  mailView: (unreadOnly: boolean) => call<unknown>("mail_view", { unreadOnly }),
+  /** The HTML of an email of the Email view: "" when it has none, null when it couldn't be asked (asked again next time). */
+  mailHtml: async (id: string): Promise<string | null> => {
+    const got = await call<unknown>("mail_html", { id });
+    return got == null ? null : readMailHtml(got);
+  },
   /** The IMAP server an address is read from when none is typed. */
   mailServerFor: (address: string) => call<string>("mail_server_for", { address }),
   /** Signs in with what was typed and stores the account only if the server took it: the server read, or why not. */

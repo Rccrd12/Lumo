@@ -163,7 +163,7 @@ impl Placement {
 /// chat and a Gemini Live call share "chat", every other view has its own.
 const SIZE_SLOTS: &[&str] = &[
     "home", "chat", "tools", "settings", "overview", "approval", "question", "error", "finished", "upload",
-    "uploading", "note", "recap", "wardrobe",
+    "uploading", "note", "recap", "wardrobe", "mail",
 ];
 
 /// The slot a view's size is kept under, or `None` for a name that is not one.

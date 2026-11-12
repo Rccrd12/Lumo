@@ -310,6 +310,21 @@ pub async fn read(id: String, chars: usize) -> Result<(Found, Vec<File>), String
     .await
 }
 
+/// The HTML of email `id` for the island's Email view, through MAPI (no
+/// prompt), with the pictures its attachments hold for it (`cid:`): nothing
+/// when it has none, or MAPI can't be had (the view keeps the text).
+pub async fn html(id: String, bytes: usize, picture: usize, pictures: usize) -> Result<(Vec<u8>, crate::outlook_mapi::Pictures), String> {
+    with_outlook(STEP, move |s| {
+        let app = s.running()?;
+        let item = item_of(&app, &id)?;
+        let store = item.obj("Parent").map(|p| p.text("StoreID")).unwrap_or_default();
+        let entry = item.text("EntryID");
+        let mapi = s.mapi.get_or_insert_with(Mapi::logon).as_mut();
+        Ok(mapi.and_then(|m| m.html(&store, &entry, bytes, picture, pictures)).unwrap_or_default())
+    })
+    .await
+}
+
 /// `mail_folders`: every mail folder, what it is for, how many emails.
 pub async fn folders() -> Result<String, String> {
     with_outlook(SLOW_STEP, |s| {

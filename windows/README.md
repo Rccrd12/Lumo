@@ -424,6 +424,36 @@ it; a reply, a forward or a draft in reply goes out of the account the email
 came to. The account set up before this list became the first one, with
 nothing to type again.
 
+**The Email view**: a click on the home's Email tile opens it on the island.
+With more than one address (IMAP accounts and Outlook on this PC), a row of
+buttons at the top: **All**, then each address with its colour and how many
+emails are unread, or a red **!** when it can't be read (the list then says
+why, with **Settings**). **Unread** or **Recent** (read ones too): the newest
+20 of each address, newest first, the dot on each avatar saying which
+address an email came to. A click on an email reads it there, with ‹ and ›
+for the next ones, **Summarize** and **Draft a reply** as on its card, and
+**Open in the browser** (or in Outlook); under the emails of one address,
+**Open the inbox** opens its webmail (Gmail, Outlook.com, Microsoft 365) or
+Outlook. Each account is asked on a short connection of its own when the
+view opens, and again when the inbox changes while it is open; nothing is
+marked read.
+
+An email with HTML is shown as its sender drew it (**Original**), on a white
+page shrunk to fit, or as its text (**Text only**), the choice kept for the
+next emails. It is shown in a frame where nothing of it runs (no scripts,
+forms or plug-ins) and nothing of it is fetched from the web: its links open
+in the browser only on a click, the corner saying where each really goes, and
+the pictures it links to stay hidden, so the sender can't tell it was opened,
+until **Load images** downloads them as the chat's images are (https, public
+sites, images only; **Images from the web** off in Settings → Security keeps
+them hidden). **Always load**, or **Email images always** in Settings →
+Security, shows every email's pictures at once. Either way the tracking
+pixels Lumo recognises (2 × 2 px or less, or from a service made to
+count openings) are never downloaded, and the email says how many were left
+out. The pictures inside the email itself come with it. From
+Outlook, the HTML is read through MAPI, with no prompt; where MAPI can't be
+had (a 32-bit Office), the text is shown.
+
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
 emails in its Promotions tab; with other providers, the emails that carry an
@@ -713,8 +743,11 @@ No telemetry. The only network requests Lumo makes are to the services you
 configure yourself, and to the sites of the images in chat answers: Lumo
 downloads such an image at once (https and public addresses only, image files
 only, 8 MB at most), so its site sees your IP address and the image's full
-address, which the AI writes and could fill with words from your chat.
-**Settings → Security → Images from the web** turns it off.
+address, which the AI writes and could fill with words from your chat. The
+pictures an email links to, in the Email view, are downloaded the same way
+only after a click on **Load images** (or at once with **Email images
+always**), and the sender's site then learns that you opened it; the tracking
+pixels Lumo recognises are never downloaded. **Settings → Security → Images from the web** turns both off.
 
 ### Chat with your Claude plan (Claude Code)
 

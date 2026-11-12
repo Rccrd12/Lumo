@@ -4,8 +4,11 @@
 // (AUTO_HOSTS: Wikimedia's), and after a click on Load image from any other.
 // The address is the AI's to write: a page or an email it read could have it
 // put the user's data in one (`https://site/p.png?d=…`), and an automatic
-// download would hand that to the site. Settings → Security → Images from the
-// web turns it off, and then nothing is downloaded here either.
+// download would hand that to the site. The island's Email view asks for the
+// pictures an email links to the same way, only after a click on Load images
+// (views/mail-view.ts): the sender's site then learns the email was opened.
+// Settings → Security → Images from the web turns it off, and then nothing is
+// downloaded here either.
 //
 // The island never reaches the site itself: its CSP lets images in only from
 // the app, data: and blob:. Lumo downloads the bytes here and hands them over
@@ -373,7 +376,7 @@ fn content_type(header: &str) -> Option<&'static str> {
 }
 
 /// The image type the bytes' own signature says, when it is one shown.
-fn sniff(bytes: &[u8]) -> Option<&'static str> {
+pub(crate) fn sniff(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Some("image/png");
     }
