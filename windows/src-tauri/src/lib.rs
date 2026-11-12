@@ -1353,6 +1353,7 @@ pub fn run() {
             outlook::outlook_status,
             mail::mail_accounts,
             mail::mail_view,
+            mail::mail_html,
             mail::mail_server_for,
             mail::mail_account_add,
             mail::mail_account_remove,

@@ -239,6 +239,21 @@ function load(url: string): Promise<void> {
   return job;
 }
 
+/**
+ * An image of an email the user clicked Load images for (views/mail-view.ts):
+ * downloaded as the chat's are, through the same memory and the same turns;
+ * its blob: URL, or null when it couldn't be (or images from the web are off).
+ */
+export async function loadClickedImage(url: string): Promise<string | null> {
+  if (!webImagesOn()) return null;
+  asked.add(url);
+  const have = cached(url);
+  if (have) return have;
+  failed.delete(url);
+  await load(url);
+  return cached(url) ?? null;
+}
+
 /** Draws again every card on screen that `match` picks; forgets the cards gone. */
 function redraw(match: (live: Live) => boolean) {
   for (const ref of cards) {

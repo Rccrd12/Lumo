@@ -798,6 +798,149 @@ pub async fn mail_view(app: AppHandle, unread_only: bool) -> MailView {
     view_of(results)
 }
 
+// ── An email as its sender drew it ────────────────────────────────────────────
+//
+// The Email view shows an email's HTML when it has some (views/mail-view.ts):
+// in a frame with no scripts, its links opened in the browser by a click, and
+// nothing of it fetched from the web. The CSP of the island lets images in
+// only from the app, data: and blob:, so the images an email links to stay
+// hidden until a click on Load images, which downloads them through
+// web_image.rs. The pictures inside the email itself (`cid:`) come with it,
+// as data: URLs. Read as everything else here: EXAMINE, BODY.PEEK, nothing
+// marked read.
+
+/// The most of an email downloaded for its HTML: past it, its attachments are cut off.
+const HTML_BYTES: usize = 8 * 1024 * 1024;
+/// The most of an email's HTML kept.
+const HTML_CHARS: usize = 2 * 1024 * 1024;
+/// The pictures inside an email (`cid:`) shown: each, and all together.
+const INLINE_IMAGE_BYTES: usize = 2 * 1024 * 1024;
+const INLINE_IMAGES_BYTES: usize = 6 * 1024 * 1024;
+
+/// An email's HTML for the view: "" when it has none (the view shows its text).
+#[derive(Serialize, Clone, Debug, PartialEq, Default)]
+pub struct MailHtml {
+    pub html: String,
+}
+
+/// The HTML of the email `id` of the view ("imap:1/inbox:9", "outlook/outlook-3"):
+/// "" when it has none or the account can't give it (the view keeps the text).
+#[tauri::command(async)]
+pub async fn mail_html(app: AppHandle, id: String) -> Result<MailHtml, String> {
+    if !crate::integrations::enabled(&app, ID) {
+        return Err(PILL_OFF.into());
+    }
+    let (key, own) = id.trim().split_once('/').ok_or_else(|| bad_id(&id))?;
+    if key == OUTLOOK_KEY {
+        if !crate::outlook::on(&app) {
+            return Ok(MailHtml::default());
+        }
+        let html = crate::outlook::html(own.to_string(), HTML_BYTES).await?;
+        return Ok(MailHtml { html: html.chars().take(HTML_CHARS).collect() });
+    }
+    let slot: usize = key.strip_prefix("imap:").and_then(|n| n.parse().ok()).ok_or_else(|| bad_id(&id))?;
+    let acct = live_accounts(&app).into_iter().find(|a| a.slot == slot).ok_or_else(|| gone(&id))?;
+    let (folder, uid) = parse_id(own).ok_or_else(|| bad_id(&id))?;
+    let (mut imap, host) = open(&acct).await?;
+    let raw = timed(&host, async {
+        if folder != Folder::Inbox {
+            enter(&mut imap, &folder, false).await?;
+        }
+        imap.read = 0;
+        imap.limit = HTML_BYTES + 64 * 1024;
+        let units = imap.run(&format!("UID FETCH {uid} (UID BODY.PEEK[]<0.{HTML_BYTES}>)")).await;
+        imap.limit = MAX_READ;
+        let units = units?;
+        let unit = units.iter().find(|u| matches!(u.first(), Some(Part::Text(t)) if t.starts_with("* ") && t.contains(" FETCH ")));
+        let raw = unit.map(|u| header_and_body(u).1.to_vec()).ok_or_else(|| gone(&id))?;
+        Ok(raw)
+    })
+    .await;
+    close(imap).await;
+    Ok(MailHtml { html: html_of(&raw?) })
+}
+
+/// The HTML of a whole email (its headers and body as the server keeps them),
+/// its `cid:` pictures put in as data: URLs; "" when it has no HTML.
+pub(crate) fn html_of(raw: &[u8]) -> String {
+    let (head, body) = split_head(raw);
+    let headers = parse_headers(head);
+    let get = |n: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.clone()).unwrap_or_default();
+    let mut found = HtmlParts::default();
+    html_parts(&get("Content-Type"), &get("Content-Transfer-Encoding"), body, 0, &mut found);
+    let Some(mut html) = found.html else { return String::new() };
+    for (cid, url) in found.inline {
+        for written in [format!("cid:{cid}"), format!("CID:{cid}")] {
+            if html.contains(&written) {
+                html = html.replace(&written, &url);
+            }
+        }
+    }
+    html.chars().take(HTML_CHARS).collect()
+}
+
+#[derive(Default)]
+struct HtmlParts {
+    /// The first HTML that is not an attachment.
+    html: Option<String>,
+    /// The pictures named by a Content-ID: the id, and the picture as a data: URL.
+    inline: Vec<(String, String)>,
+    inline_bytes: usize,
+}
+
+fn html_parts(ctype: &str, encoding: &str, body: &[u8], depth: usize, found: &mut HtmlParts) {
+    let (kind, params) = content_type(ctype);
+    if kind.starts_with("multipart/") {
+        let boundary = param(&params, "boundary");
+        if boundary.is_empty() || depth >= 6 {
+            return;
+        }
+        for part in split_parts(body, boundary) {
+            let (head, content) = split_head(part);
+            let headers = parse_headers(head);
+            let get = |n: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.clone()).unwrap_or_default();
+            let (part_kind, _) = content_type(&get("Content-Type"));
+            let attached = get("Content-Disposition").to_ascii_lowercase().starts_with("attachment");
+            let cid = get("Content-ID").trim().trim_start_matches('<').trim_end_matches('>').trim().to_string();
+            if part_kind.starts_with("image/") {
+                // A picture of the email itself, as its HTML names it; the others are files attached.
+                if !cid.is_empty() {
+                    let bytes = decode_body(&get("Content-Transfer-Encoding"), content);
+                    let kind = crate::web_image::sniff(&bytes);
+                    if let Some(kind) = kind.filter(|_| bytes.len() <= INLINE_IMAGE_BYTES && found.inline_bytes + bytes.len() <= INLINE_IMAGES_BYTES) {
+                        found.inline_bytes += bytes.len();
+                        found.inline.push((cid, format!("data:{kind};base64,{}", crate::claude::base64_for(&bytes))));
+                    }
+                }
+                continue;
+            }
+            if attached && !part_kind.starts_with("multipart/") {
+                continue;
+            }
+            html_parts(&get("Content-Type"), &get("Content-Transfer-Encoding"), content, depth + 1, found);
+        }
+        return;
+    }
+    if kind == "text/html" && found.html.is_none() {
+        let bytes = decode_body(encoding, body);
+        let charset = param(&params, "charset");
+        let text = if charset.is_empty() { html_text(&bytes) } else { in_charset(&bytes, charset) };
+        if !text.trim().is_empty() {
+            found.html = Some(text);
+        }
+    }
+}
+
+/// HTML bytes as text, in the charset its `<meta>` names (else UTF-8 where
+/// they are, Windows-1252 where not, as in_charset reads them).
+pub(crate) fn html_text(bytes: &[u8]) -> String {
+    let start = String::from_utf8_lossy(&bytes[..bytes.len().min(2048)]).to_ascii_lowercase();
+    let named = start.find("charset=").map(|i| {
+        start[i + 8..].trim_start_matches(['"', '\'']).chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect::<String>()
+    });
+    in_charset(bytes, named.as_deref().unwrap_or(""))
+}
+
 // ── For the chat ──────────────────────────────────────────────────────────────
 
 /// Of each email's text, what goes to the chat with a question about email.
@@ -4328,6 +4471,49 @@ mod tests {
         assert_eq!(ids, ["outlook-1", "imap:9", "imap:8"], "09:30 UTC is after 10:00 in +01:00");
         // One source keeps its own order.
         assert_eq!(together(vec![imap]).1.len(), 2);
+    }
+
+    #[test]
+    fn an_emails_html_comes_with_its_own_pictures_and_without_its_files() {
+        // A PNG's signature, then anything: what sniff reads.
+        let png = b"\x89PNG\r\n\x1a\nrest";
+        let png64 = crate::claude::base64_for(png);
+        let raw = format!(
+            "From: Shop <shop@example.com>\r\nContent-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
+--m\r\nContent-Type: multipart/related; boundary=\"r\"\r\n\r\n\
+--r\r\nContent-Type: multipart/alternative; boundary=\"a\"\r\n\r\n\
+--a\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nPlain text\r\n\
+--a\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n<p style=3D\"color:red\">Caff=C3=A8</p><img src=3D\"cid:logo@shop\">\r\n\
+--a--\r\n\
+--r\r\nContent-Type: image/png\r\nContent-ID: <logo@shop>\r\nContent-Transfer-Encoding: base64\r\n\r\n{png64}\r\n\
+--r--\r\n\
+--m\r\nContent-Type: text/html\r\nContent-Disposition: attachment; filename=\"page.html\"\r\n\r\n<p>An attached page</p>\r\n\
+--m\r\nContent-Type: image/png\r\nContent-Disposition: attachment; filename=\"photo.png\"\r\nContent-Transfer-Encoding: base64\r\n\r\n{png64}\r\n\
+--m--\r\n"
+        );
+        let html = html_of(raw.as_bytes());
+        assert!(html.contains("<p style=\"color:red\">Caffè</p>"), "{html}");
+        assert!(html.contains(&format!("<img src=\"data:image/png;base64,{png64}\">")), "{html}");
+        assert!(!html.contains("cid:"));
+        assert!(!html.contains("An attached page"));
+    }
+
+    #[test]
+    fn an_email_with_no_html_has_none_and_a_picture_that_is_not_one_stays_out() {
+        let plain = "Content-Type: text/plain\r\n\r\nJust text\r\n";
+        assert_eq!(html_of(plain.as_bytes()), "");
+        // Only HTML: its charset from its <meta>.
+        let latin = b"Content-Type: text/html\r\n\r\n<meta charset=\"iso-8859-1\"><p>Perch\xe8</p>".to_vec();
+        assert!(html_of(&latin).contains("<p>Perchè</p>"));
+        // An "image" whose bytes are an SVG (which can carry scripts) is not put in.
+        let svg = crate::claude::base64_for(b"<svg xmlns='http://www.w3.org/2000/svg'><script>x</script></svg>");
+        let raw = format!(
+            "Content-Type: multipart/related; boundary=\"r\"\r\n\r\n\
+--r\r\nContent-Type: text/html\r\n\r\n<img src=\"cid:a\">\r\n\
+--r\r\nContent-Type: image/svg+xml\r\nContent-ID: <a>\r\nContent-Transfer-Encoding: base64\r\n\r\n{svg}\r\n--r--\r\n"
+        );
+        let html = html_of(raw.as_bytes());
+        assert!(html.contains("cid:a") && !html.contains("data:"), "{html}");
     }
 
     #[test]

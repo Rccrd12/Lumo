@@ -11,12 +11,26 @@
 // opens, when Unread/Recent changes, and again when the island's own watch
 // sees the inbox change while it is open; nothing while it is closed.
 // The sorting, labels and colours are core/mail-view.ts.
+//
+// An email with HTML is shown as its sender drew it (Original), or as its
+// text (Text only), the choice kept while Lumo runs. The HTML (mail.rs
+// mail_html) is asked when the email opens, and shown in a frame with no
+// scripts, forms or plug-ins, on a white page shrunk to fit; its links open in
+// the browser by a click, the corner saying where each goes. The images it
+// links to are hidden (the island's CSP would keep them out anyway): Load
+// images downloads them through web_image.rs, as the chat's Load image does,
+// and Settings → Security → Images from the web off leaves them hidden. The
+// rules are core/mail-html.ts.
 
 import { h, svg, dot, clear, gentleWheel } from "./dom";
 import { ICONS } from "./icons";
 import { Bridge } from "../core/bridge";
 import { State } from "../core/state";
 import { askAboutMail } from "../island/compact";
+import { loadClickedImage, webImagesOn } from "./rich/image";
+import {
+  DROPPED_TAGS, EMAIL_FRAME_STYLE, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkLabel, opensInBrowser, webImageUrl,
+} from "../core/mail-html";
 import {
   ALL, accountColor, accountLabel, avatarColor, initials, keptFilter, mailWhen, neighbours, readMailView,
   totalUnread, visibleMessages, type MailFilter, type MailViewData, type MailViewMessage,
@@ -46,7 +60,55 @@ export const MAIL_VIEW_TEXT = {
   openOutlook: N_("Open in Outlook"),
   openInbox: N_("Open the inbox"),
   noSubject: N_("(no subject)"),
+  original: N_("Original"),
+  textOnly: N_("Text only"),
+  imagesHidden: N_("Images hidden: the sender can't tell you opened it"),
+  imagesOff: N_("Images from the web are off in Settings"),
+  loadImages: N_("Load images"),
 };
+
+/** The HTML of the emails read lately, by id ("" for one with none); the oldest goes past MAX_HTML. */
+const htmlOf = new Map<string, string>();
+const MAX_HTML = 12;
+/** Text only (true) or Original, as last picked, while Lumo runs. */
+let textOnly = false;
+/** The emails whose images the user loaded, this session. */
+const imagesLoaded = new Set<string>();
+/** A 1×1 transparent GIF: what a hidden image shows in place of its own. */
+const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+/**
+ * The email's HTML as the frame shows it: what runs, loads or goes somewhere
+ * taken out, its web images hidden (their address kept in data-lumo-src),
+ * the frame's own style first. The web images' addresses, in order.
+ */
+function frameDocument(html: string): { doc: string; images: string[] } {
+  const page = new DOMParser().parseFromString(html, "text/html");
+  for (const tag of DROPPED_TAGS) for (const el of Array.from(page.getElementsByTagName(tag))) el.remove();
+  const images: string[] = [];
+  for (const el of Array.from(page.querySelectorAll("*"))) {
+    for (const a of Array.from(el.attributes)) if (droppedAttribute(a.name, a.value)) el.removeAttribute(a.name);
+    // Backgrounds from the web: never loaded (the CSP would refuse them too).
+    const bg = el.getAttribute("background");
+    if (bg && !bg.trim().startsWith("data:")) el.removeAttribute("background");
+    if (el.localName === "source") el.removeAttribute("srcset");
+  }
+  for (const img of Array.from(page.images)) {
+    const src = (img.getAttribute("src") ?? "").trim();
+    img.removeAttribute("srcset");
+    img.removeAttribute("loading");
+    if (src.startsWith("data:")) continue;
+    if (webImageUrl(src)) images.push(src);
+    img.setAttribute("data-lumo-src", src);
+    img.setAttribute("src", PIXEL);
+    const box = hiddenBox(img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("style") ?? "");
+    if (box) img.setAttribute("data-lumo-box", box);
+  }
+  const style = page.createElement("style");
+  style.textContent = EMAIL_FRAME_STYLE;
+  page.head.prepend(style);
+  return { doc: `<!doctype html>${page.documentElement.outerHTML}`, images };
+}
 
 /** How long what was listed stands before opening the view asks again. */
 const FRESH_MS = 60_000;
@@ -71,6 +133,8 @@ export function buildMailView(actions: ViewActions): ViewHost {
   /** The view was on screen at the last sync: opening it again may ask again. */
   let wasShown = false;
   let drawn = "";
+  /** What the reader shows: drawn again only when it changes, so the email's frame isn't loaded again. */
+  let readerDrawn = "";
 
   const count = h("span", { class: "mv-count" });
   const segUnread = h("button", { class: "mv-seg-btn", onclick: () => setUnreadOnly(true) });
@@ -185,6 +249,120 @@ export function buildMailView(actions: ViewActions): ViewHost {
     State.notify();
   }
 
+  /** The email's HTML, asked once; the reader is drawn again when it comes. */
+  function askHtml(id: string) {
+    if (htmlOf.has(id)) return;
+    htmlOf.set(id, "");
+    void Bridge.mailHtml(id)
+      .then((html) => {
+        htmlOf.delete(id);
+        htmlOf.set(id, html);
+        while (htmlOf.size > MAX_HTML) htmlOf.delete(htmlOf.keys().next().value as string);
+        if (openId === id && html) {
+          readerDrawn = "";
+          drawn = "";
+          State.notify();
+        }
+      })
+      .catch(() => {});
+  }
+
+  /** The email's HTML in its frame, the bar about its images above, the corner that says where a link goes. */
+  function htmlCard(m: MailViewMessage, html: string, tip: HTMLElement): HTMLElement {
+    const { doc, images } = frameDocument(html);
+    const frame = h("iframe", { class: "mv-html-frame", sandbox: "allow-same-origin", title: m.subject || t(MAIL_VIEW_TEXT.noSubject) }) as HTMLIFrameElement;
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    frame.srcdoc = doc;
+    const tipText = tip.querySelector("span")!;
+    const fit = () => {
+      const page = frame.contentDocument;
+      if (!page?.body) return;
+      page.body.style.zoom = "";
+      page.body.style.padding = "";
+      // An email drawn to its own width (most are) has its own margins: no frame's padding then.
+      if (page.documentElement.scrollWidth > frame.clientWidth + 1) page.body.style.padding = "0";
+      const zoom = fitZoom(page.documentElement.scrollWidth, frame.clientWidth);
+      if (zoom !== 1) page.body.style.zoom = String(zoom);
+      frame.style.height = `${Math.ceil(page.documentElement.scrollHeight)}px`;
+      fadeIf(reader);
+    };
+    frame.addEventListener("load", () => {
+      const page = frame.contentDocument;
+      if (!page) return;
+      fit();
+      // An image that comes (or fails) changes the height.
+      page.addEventListener("load", fit, true);
+      page.addEventListener("error", fit, true);
+      // A link opens in the browser, only on a click, and never in the frame.
+      page.addEventListener("click", (e) => {
+        const a = (e.target as Element | null)?.closest?.("a[href]");
+        e.preventDefault();
+        const href = a?.getAttribute("href") ?? "";
+        if (opensInBrowser(href)) {
+          actions.blip();
+          void Bridge.openUrl(href.trim());
+        }
+      }, true);
+      page.addEventListener("auxclick", (e) => e.preventDefault(), true);
+      page.addEventListener("submit", (e) => e.preventDefault(), true);
+      page.addEventListener("mouseover", (e) => {
+        const a = (e.target as Element | null)?.closest?.("a[href]");
+        const label = a ? linkLabel(a.getAttribute("href") ?? "") : "";
+        tipText.textContent = label;
+        tip.classList.toggle("on", label !== "");
+        reader.classList.toggle("link-tip", label !== "");
+      });
+      page.addEventListener("mouseleave", () => {
+        tip.classList.remove("on");
+        reader.classList.remove("link-tip");
+      });
+      page.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") back();
+      });
+      if (imagesLoaded.has(m.id)) void showImages(frame, m.id);
+    });
+    let bar: HTMLElement | null = null;
+    if (images.length && !imagesLoaded.has(m.id)) {
+      if (webImagesOn()) {
+        const load = h("button", { class: "mv-btn small" }, t(MAIL_VIEW_TEXT.loadImages));
+        load.addEventListener("click", () => {
+          actions.blip();
+          imagesLoaded.add(m.id);
+          bar?.remove();
+          void showImages(frame, m.id);
+        });
+        bar = h("div", { class: "mv-img-bar" },
+          svg(ICONS.shield, 13, { stroke: 1.8 }),
+          h("span", { class: "mv-img-text", text: t(MAIL_VIEW_TEXT.imagesHidden) }),
+          h("span", { class: "mv-space" }),
+          load);
+      } else {
+        bar = h("div", { class: "mv-img-bar" },
+          svg(ICONS.shield, 13, { stroke: 1.8 }),
+          h("span", { class: "mv-img-text", text: t(MAIL_VIEW_TEXT.imagesOff) }));
+      }
+    }
+    return h("div", { class: "mv-html-wrap" }, bar, h("div", { class: "mv-html" }, frame));
+  }
+
+  /** Load images: each web image of the email downloaded (web_image.rs) and shown in its place. */
+  async function showImages(frame: HTMLIFrameElement, id: string) {
+    const page = frame.contentDocument;
+    if (!page) return;
+    const hidden = Array.from(page.querySelectorAll<HTMLImageElement>("img[data-lumo-src]"));
+    const urls = imagesToLoad(hidden.map((img) => img.getAttribute("data-lumo-src") ?? ""));
+    await Promise.all(urls.map(async (url) => {
+      const blob = await loadClickedImage(url);
+      if (!blob || openId !== id || !frame.isConnected) return;
+      for (const img of hidden) {
+        if (img.getAttribute("data-lumo-src")?.trim() !== url) continue;
+        img.removeAttribute("data-lumo-src");
+        img.removeAttribute("data-lumo-box");
+        img.src = blob;
+      }
+    }));
+  }
+
   function chip(key: MailFilter, label: string, color: string | null, tail: Node | string, title?: string): HTMLElement {
     const btn = h("button", { class: key === filter ? "mv-chip on" : "mv-chip", onclick: () => pick(key) },
       color ? dot(color, 7) : null,
@@ -235,8 +413,15 @@ export function buildMailView(actions: ViewActions): ViewHost {
   }
 
   function drawReader(d: MailViewData, m: MailViewMessage) {
-    clear(reader);
     const near = neighbours(visibleMessages(d, filter), m.id);
+    askHtml(m.id);
+    const html = htmlOf.get(m.id) ?? "";
+    const showHtml = html !== "" && !textOnly;
+    const key = JSON.stringify([m.id, near, html.length, showHtml, d.accounts.length, language(), m.unread]);
+    if (key === readerDrawn) return;
+    readerDrawn = key;
+    reader.classList.remove("link-tip");
+    clear(reader);
     const account = d.accounts.find((a) => a.key === m.account);
     const step = (id: string | null, icon: string, label: string) => {
       const b = h("button", { class: "mv-step", title: t(label), "aria-label": t(label) }, svg(icon, 10, { stroke: 2.4 }));
@@ -250,10 +435,25 @@ export function buildMailView(actions: ViewActions): ViewHost {
       actions.setView("prompt");
     };
     const when = mailWhen(m.date, Date.now(), language(), t(MAIL_VIEW_TEXT.yesterday));
+    const tip = h("div", { class: "mv-link-tip" }, svg(ICONS.arrowUpRight, 11), h("span"));
+    // Original, or Text only: kept for the next emails.
+    const kindSwitch = () => {
+      const pickKind = (text: boolean) => () => {
+        if (textOnly === text) return;
+        actions.blip();
+        textOnly = text;
+        readerDrawn = "";
+        drawReader(d, m);
+      };
+      return h("span", { class: "mv-seg mv-kind" },
+        h("button", { class: textOnly ? "mv-seg-btn" : "mv-seg-btn on", onclick: pickKind(false) }, t(MAIL_VIEW_TEXT.original)),
+        h("button", { class: textOnly ? "mv-seg-btn on" : "mv-seg-btn", onclick: pickKind(true) }, t(MAIL_VIEW_TEXT.textOnly)));
+    };
     reader.append(
       h("div", { class: "mv-read-top" },
         h("button", { class: "mv-back", onclick: back }, svg(ICONS.chevronLeft, 9, { stroke: 2.6 }), h("span", { text: t(MAIL_VIEW_TEXT.back) })),
         h("span", { class: "mv-space" }),
+        html ? kindSwitch() : null,
         step(near.newer, ICONS.chevronLeft, MAIL_VIEW_TEXT.newer),
         step(near.older, ICONS.chevronRight, MAIL_VIEW_TEXT.older)),
       h("div", { class: "mv-read-head" },
@@ -267,7 +467,8 @@ export function buildMailView(actions: ViewActions): ViewHost {
               : null,
             when ? h("span", { text: when }) : null))),
       h("div", { class: "mv-read-subject", text: m.subject || t(MAIL_VIEW_TEXT.noSubject) }),
-      h("div", { class: "mv-read-body", text: (m.body || m.preview).trim() }),
+      showHtml ? htmlCard(m, html, tip) : h("div", { class: "mv-read-body", text: (m.body || m.preview).trim() }),
+      tip,
       h("div", { class: "mv-read-actions" },
         h("button", { class: "mv-btn", onclick: ask("summary") }, t(MAIL_VIEW_TEXT.summarize)),
         h("button", { class: "mv-btn", onclick: ask("reply") }, t(MAIL_VIEW_TEXT.reply)),
@@ -320,7 +521,10 @@ export function buildMailView(actions: ViewActions): ViewHost {
       return;
     }
     if (m) drawReader(d, m);
-    else drawList(d);
+    else {
+      readerDrawn = "";
+      drawList(d);
+    }
     drawFoot(d);
     // Once laid out: whether there is more below.
     requestAnimationFrame(fades);

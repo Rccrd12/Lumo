@@ -8959,3 +8959,95 @@ button.bg-row:hover {
   margin-top: 4px;
   padding-bottom: 2px;
 }
+
+/* An email with HTML, as its sender drew it: a white page in a frame. */
+.mv-kind {
+  margin-right: 4px;
+}
+
+.mv-html-wrap {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mv-img-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 5px 4px 11px;
+  border-radius: 11px;
+  background: #111214;
+  color: var(--dim-3);
+  font: 400 11.5px var(--font);
+}
+
+.mv-img-bar svg {
+  flex: none;
+  color: #34d399;
+}
+
+.mv-img-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mv-btn.small {
+  height: 24px;
+  padding: 0 10px;
+}
+
+.mv-html {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mv-html-frame {
+  display: block;
+  width: 100%;
+  height: 120px;
+  border: 0;
+  background: #fff;
+}
+
+/* Where the link under the pointer goes, at the bottom while it is there. */
+.mv-link-tip {
+  position: sticky;
+  bottom: 8px;
+  z-index: 2;
+  align-self: flex-start;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+  margin: -34px 0 8px 8px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: rgba(17, 18, 20, 0.94);
+  color: #cfd2d8;
+  font: 400 11px var(--font);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.mv-link-tip.on {
+  display: inline-flex;
+}
+
+/* The corner stays readable: no fade under it while it shows. */
+.mv-reader.more-below.link-tip {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.mv-link-tip span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

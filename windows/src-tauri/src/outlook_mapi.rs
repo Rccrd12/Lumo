@@ -47,6 +47,8 @@ const PR_SENDER_EMAIL_ADDRESS: u32 = 0x0C1F_001F;
 const PR_SENDER_SMTP_ADDRESS: u32 = 0x5D01_001F;
 const PR_BODY: u32 = 0x1000_001F;
 const PR_TRANSPORT_MESSAGE_HEADERS: u32 = 0x007D_001F;
+/// The email's HTML, as bytes in its own charset (PT_BINARY).
+const PR_HTML: u32 = 0x1013_0102;
 
 /// The headers are read only for List-Unsubscribe: their first part is enough.
 const HEADER_CHARS: usize = 32_000;
@@ -259,6 +261,20 @@ impl Mapi {
         })
     }
 
+    /// The HTML of the email `entry_id` of the store `store_id`, at most
+    /// `bytes` of it, as it is kept (in the charset its `<meta>` names); None
+    /// when it has none (a plain-text or RTF email).
+    pub fn html(&mut self, store_id: &str, entry_id: &str, bytes: usize) -> Option<Vec<u8>> {
+        let store = self.store(store_id)?;
+        let entry = hex(entry_id)?;
+        let mut kind = 0u32;
+        let mut unknown: Option<IUnknown> = None;
+        unsafe { store.OpenEntry(entry.len() as u32, entry.as_ptr().cast(), None, 0, &mut kind, &mut unknown) }.ok()?;
+        let message = unsafe { IMAPIProp::from_raw(unknown?.into_raw()) };
+        let html = stream_bytes(&message, PR_HTML, bytes);
+        (!html.is_empty()).then_some(html)
+    }
+
     /// The text properties `tags` asked at once: Some(text) when read, None
     /// when too long for that (read as a stream then), absent when missing.
     fn props(&self, message: &IMAPIProp, tags: &[u32]) -> Option<HashMap<u32, Option<String>>> {
@@ -314,6 +330,29 @@ fn stream_text(message: &IMAPIProp, tag: u32, chars: usize) -> String {
         units.extend_from_slice(&chunk[..read as usize / 2]);
     }
     String::from_utf16_lossy(&units).trim_end_matches('\0').to_string()
+}
+
+/// A binary property, read as a stream: at most `limit` bytes.
+fn stream_bytes(message: &IMAPIProp, tag: u32, limit: usize) -> Vec<u8> {
+    let mut iid = IStream::IID;
+    let mut unknown: Option<IUnknown> = None;
+    // STGM_READ, no MAPI_MODIFY: only read.
+    if unsafe { message.OpenProperty(tag, &mut iid, 0, 0, &mut unknown) }.is_err() {
+        return Vec::new();
+    }
+    let Some(stream) = unknown.and_then(|u| u.cast::<IStream>().ok()) else { return Vec::new() };
+    let mut out: Vec<u8> = Vec::new();
+    let mut chunk = vec![0u8; 64 * 1024];
+    while out.len() < limit {
+        let mut read = 0u32;
+        let asked = (limit - out.len()).min(chunk.len()) as u32;
+        let done = unsafe { stream.Read(chunk.as_mut_ptr().cast(), asked, Some(&mut read)) };
+        if done.is_err() || read == 0 {
+            break;
+        }
+        out.extend_from_slice(&chunk[..read as usize]);
+    }
+    out
 }
 
 impl Drop for Mapi {

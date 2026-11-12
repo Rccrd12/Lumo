@@ -373,7 +373,7 @@ fn content_type(header: &str) -> Option<&'static str> {
 }
 
 /// The image type the bytes' own signature says, when it is one shown.
-fn sniff(bytes: &[u8]) -> Option<&'static str> {
+pub(crate) fn sniff(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Some("image/png");
     }
