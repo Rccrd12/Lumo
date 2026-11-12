@@ -362,6 +362,10 @@ export class Island {
     const actions: ViewActions = {
       setView: (v) => this.setView(v),
       collapse: () => this.collapse(),
+      closeSettings: () => {
+        this.collapse();
+        State.settingsLeftOpen = false;
+      },
       moreMenu: (x, y) => this.openMoreMenu(x, y),
       activityData: () => this.activities.data(),
       activity: (a) => this.activities.act(a),
@@ -539,6 +543,8 @@ export class Island {
           this.setMode("hidden");
           break;
         case "petit":
+          // Settings folded away come back on the next opening (closeSettings: not after Escape).
+          if (from === "home") State.settingsLeftOpen = State.view === "settings";
           if (from === "greeting") this.greeting.interrupt();
           else if (from === "hidden") Sound.play("peek");
           this.setMode("compact");
@@ -546,7 +552,7 @@ export class Island {
           if (!this.wasInIsland) this.fsm.mouseLeft();
           break;
         case "home":
-          this.expand(State.defaultView());
+          this.expand(State.openingView());
           if (!this.wasInIsland) this.fsm.mouseLeft();
           // Hooks may have been installed in a terminal since: the idle cards
           // say so on the next open, without polling while the island is shut.
@@ -1648,7 +1654,11 @@ export class Island {
       }
       if (e.key === "Escape" && State.mode === "expanded") {
         if (State.pendingApproval) this.foldApproval();
-        else if (!State.isPinned) this.collapse();
+        else if (!State.isPinned) {
+          this.collapse();
+          // Escape is "done": Settings closed with it do not come back on the next opening.
+          State.settingsLeftOpen = false;
+        }
       }
     });
 

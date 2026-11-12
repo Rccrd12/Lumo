@@ -41,6 +41,8 @@ export interface ViewActions {
   setView(v: IslandViewName): void;
   /** "Cancel" on a dropped file: forgets it and goes back home. */
   collapse(): void;
+  /** Escape in Settings: the island closes and next opens where it usually does, not on Settings. */
+  closeSettings(): void;
   /** Folds a waiting card to the compact island without answering it. */
   foldApproval(): void;
   setFocus(id: string): void;
