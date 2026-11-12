@@ -36,6 +36,7 @@ mod mcp;
 mod normalize;
 mod reply;
 mod title;
+mod write_stat;
 
 /// Budget for getting a pipe connection. Beyond this the agent wins, always.
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
@@ -83,26 +84,29 @@ const MAX_DIFF_TOTAL: usize = 512 * 1024;
 /// command, the file, the page, the plan Claude Code asks to start (its steps).
 const TARGET_FIELDS: &[&str] = &["command", "cmd", "CommandLine", "script", "file_path", "notebook_path", "path", "url", "plan"];
 /// The tools that write a file, whose text travels on the live diff's budget:
-/// Claude Code's (their card names the file and counts the lines, hooks.ts
-/// editStat), Antigravity's, Gemini CLI's, Copilot CLI's and OpenCode's. A
-/// file of a few KB is no reason for a card with Deny alone.
+/// Claude Code's, Antigravity's (its IDE's and its CLI's `edit_file`), Gemini
+/// CLI's, Copilot CLI's and OpenCode's. Their card names the file and counts
+/// the lines (write_stat.rs), never shows the text: a text cut short changes
+/// nothing on it (`lumo_text_cut`).
 const CONTENT_TOOLS: &[&str] = &[
     "Write", "Edit", "MultiEdit", "NotebookEdit",
-    "write_to_file", "replace_file_content", "multi_replace_file_content",
+    "write_to_file", "replace_file_content", "multi_replace_file_content", "edit_file", "create_file",
     "write_file", "replace",
     "create", "edit", "write",
 ];
 /// Their `tool_input` keys holding the text written or replaced (Antigravity's
-/// `ReplacementChunks` hold Target/ReplacementContent).
+/// `ReplacementChunks` hold Target/ReplacementContent, its CLI's `edit_file`
+/// Target/Replacement).
 const CONTENT_FIELDS: &[&str] = &[
     "old_string", "new_string", "content", "new_source",
-    "CodeContent", "TargetContent", "ReplacementContent",
+    "CodeContent", "TargetContent", "ReplacementContent", "Target", "Replacement",
     "file_text", "old_str", "new_str", "oldString", "newString",
 ];
 /// Per target string of a permission request: the card shows the whole of it,
-/// so a long script reaches the island whole. Past this (or past the budget of
-/// a file's text, CONTENT_FIELDS) the request carries `lumo_input_cut`, and
-/// the island neither allows it nor remembers it.
+/// so a long script reaches the island whole. Past this the request carries
+/// `lumo_input_cut` (and `lumo_input_bytes`, its whole size): the card says it
+/// shows the beginning, and "Allow for this session" never remembers it. Allow
+/// itself stays: the user decides, and in Auto nothing waits for them.
 const MAX_TARGET_LEN: usize = 64 * 1024;
 
 mod win;
@@ -222,7 +226,7 @@ fn main() {
     // stop listening and exit: the process dying takes the pipe handle with it.
     // (No catch_unwind here — the release profile is panic = "abort", so it would
     // be dead code. `talk` is written to have nothing to panic on instead.)
-    let (tx, rx) = mpsc::channel::<Option<String>>();
+    let (tx, rx) = mpsc::channel::<Heard>();
     let line = event.line.clone();
     std::thread::spawn(move || {
         let _ = tx.send(talk(&line, waits_for_answer));
@@ -232,11 +236,20 @@ fn main() {
     // and the app sees the pipe close at once. A shell between them (Git Bash,
     // cmd) can be the one ended, leaving us orphaned: its going ends us too.
     let parent = if waits_for_answer { parent() } else { None };
-    let decision = wait(&rx, budget, || parent.as_ref().is_some_and(|p| p.gone()));
+    let heard = wait(&rx, budget, || parent.as_ref().is_some_and(|p| p.gone()));
+    let decision = match &heard {
+        Heard::Said(d) => Some(d.clone()),
+        _ => None,
+    };
     // Letting it edit freely is for a plan only: on anything else it is the allow it also is.
     let decision = decision.map(|d| if d.trim() == "edits" && !event.plan { "allow".to_string() } else { d });
     if event.island_card {
-        print(Some(reply::antigravity_island(decision.as_deref())));
+        let why = match heard {
+            Heard::NoLumo => reply::Unanswered::NotRunning,
+            Heard::TimedOut => reply::Unanswered::TimedOut,
+            _ => reply::Unanswered::Unknown,
+        };
+        print(Some(reply::antigravity_island(decision.as_deref(), why, budget.as_secs())));
     } else if event.agy_gate {
         print(Some(reply::antigravity_gate(decision.as_deref())));
     } else {
@@ -245,20 +258,33 @@ fn main() {
     std::process::exit(0);
 }
 
-/// The worker's answer, or None once `budget` runs out or `gone()` says the
-/// process that ran us has gone.
-fn wait(rx: &mpsc::Receiver<Option<String>>, budget: Duration, gone: impl Fn() -> bool) -> Option<String> {
+/// What came back from Lumo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Heard {
+    /// Its one line: the decision, or why there is none (`unanswered …`).
+    Said(String),
+    /// Nothing: no answer awaited, or none came before the pipe closed.
+    Nothing,
+    /// No Lumo to talk to: the pipe isn't there, or took nothing.
+    NoLumo,
+    /// The budget ran out first.
+    TimedOut,
+}
+
+/// The worker's answer, or nothing once `budget` runs out (TimedOut) or
+/// `gone()` says the process that ran us has gone.
+fn wait(rx: &mpsc::Receiver<Heard>, budget: Duration, gone: impl Fn() -> bool) -> Heard {
     let deadline = Instant::now() + budget;
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
-            return None;
+            return Heard::TimedOut;
         }
         match rx.recv_timeout(left.min(PARENT_POLL)) {
-            Ok(decision) => return decision,
-            Err(mpsc::RecvTimeoutError::Timeout) if gone() => return None,
+            Ok(heard) => return heard,
+            Err(mpsc::RecvTimeoutError::Timeout) if gone() => return Heard::Nothing,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Heard::Nothing,
         }
     }
 }
@@ -484,27 +510,37 @@ fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
     if event == "PermissionRequest" {
         let tool = payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let input = payload.as_object_mut().and_then(|map| map.remove("tool_input"));
-        // Only the relay says how big a Write was: never what came in.
+        // Only the relay says how big a change is: never what came in.
         if let Some(map) = payload.as_object_mut() {
-            map.remove("lumo_write_bytes");
-            map.remove("lumo_write_lines");
+            for key in ["lumo_write_bytes", "lumo_write_lines", "lumo_write_added", "lumo_write_removed", "lumo_input_bytes", "lumo_text_cut"] {
+                map.remove(key);
+            }
         }
+        let cwd = payload.get("cwd").and_then(Value::as_str).map(str::to_string)
+            .or_else(|| std::env::current_dir().ok().map(|p| p.to_string_lossy().to_string()))
+            .unwrap_or_default();
         truncate_strings(payload);
         if let Some(mut input) = input {
-            // A Write's text is cut past MAX_DIFF_FIELD_LEN (cap_content: its
-            // only text field, well within the shared budget).
-            let whole = if tool == "Write" { write_size(&input).filter(|&(bytes, _)| bytes > MAX_DIFF_FIELD_LEN) } else { None };
-            let cut_any = cap_request_strings(&mut input, &tool);
+            // What a file tool changes, read before its text is cut: the card
+            // shows these numbers, never the text, so the text's size never matters.
+            let stat = if CONTENT_TOOLS.contains(&tool.as_str()) { write_stat::of_request(&input, &cwd) } else { None };
+            let whole_size = input.to_string().len();
+            let cut = cap_request_strings(&mut input, &tool);
             if let Some(map) = payload.as_object_mut() {
                 map.insert("tool_input".into(), input);
-                if cut_any {
-                    map.insert("lumo_input_cut".into(), serde_json::Value::Bool(true));
+                if cut.input {
+                    map.insert("lumo_input_cut".into(), Value::Bool(true));
+                    map.insert("lumo_input_bytes".into(), Value::from(whole_size));
                 }
-                // The card counts what it got; when the text was cut, that is
-                // the cut's size, not the file's: the real one goes along.
-                if let Some((bytes, lines)) = whole {
-                    map.insert("lumo_write_bytes".into(), Value::from(bytes));
-                    map.insert("lumo_write_lines".into(), Value::from(lines));
+                if cut.text {
+                    map.insert("lumo_text_cut".into(), Value::Bool(true));
+                }
+                if let Some(stat) = stat {
+                    map.insert("lumo_write_added".into(), Value::from(stat.added));
+                    map.insert("lumo_write_removed".into(), Value::from(stat.removed));
+                    if let Some(bytes) = stat.bytes {
+                        map.insert("lumo_write_bytes".into(), Value::from(bytes));
+                    }
                 }
             }
         }
@@ -534,16 +570,6 @@ fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
             }
         }
     }
-}
-
-/// The size of the text a Write asks to write: its bytes (UTF-8, what the file
-/// will weigh) and its lines, counted as the island counts them (diff.ts
-/// splitLines: a last line break ends a line, it does not start one).
-fn write_size(input: &Value) -> Option<(usize, usize)> {
-    let text = input.get("content")?.as_str()?;
-    let breaks = text.bytes().filter(|&b| b == b'\n').count();
-    let lines = breaks + usize::from(!text.is_empty() && !text.ends_with('\n'));
-    Some((text.len(), lines))
 }
 
 /// `tool_input` of a diff tool: edit strings share MAX_DIFF_TOTAL, each capped at
@@ -576,13 +602,23 @@ fn cap_diff_strings(value: &mut serde_json::Value, budget: &mut usize, cut_any: 
     }
 }
 
+/// What `cap_request_strings` had to cut.
+#[derive(Debug, Default, Clone, Copy)]
+struct Cut {
+    /// Something the card shows: its command, its file, its page, any other field.
+    input: bool,
+    /// Only the text a file tool writes, which the card never shows (write_stat.rs counts it).
+    text: bool,
+}
+
 /// `tool_input` of a permission request: its target (TARGET_FIELDS, at the
 /// top, and the text Lumo's computer use types) up to MAX_TARGET_LEN, the text
 /// a file tool writes (CONTENT_TOOLS) up to the live diff's budget, any other
-/// string the ordinary cap. True when anything was cut: the island then knows
-/// the input it got is not the whole.
-fn cap_request_strings(input: &mut Value, tool: &str) -> bool {
+/// string the ordinary cap. Says what was cut: the island then knows the
+/// input it got is not the whole.
+fn cap_request_strings(input: &mut Value, tool: &str) -> Cut {
     let mut cut_any = false;
+    let mut text_cut = false;
     let writes = CONTENT_TOOLS.contains(&tool);
     // The card of a Type shows every character it will type: the text is its
     // target, never cut within what the tool accepts (5,000 characters).
@@ -594,30 +630,35 @@ fn cap_request_strings(input: &mut Value, tool: &str) -> bool {
                 Value::String(s) if TARGET_FIELDS.contains(&key.as_str()) || (types && key == "text") => {
                     cut_any |= cut(s, MAX_TARGET_LEN)
                 }
-                _ if writes => cut_any |= cap_content(v, key, &mut budget),
+                _ if writes => {
+                    let (other, text) = cap_content(v, key, &mut budget);
+                    cut_any |= other;
+                    text_cut |= text;
+                }
                 _ => cut_any |= cap_all(v),
             }
         }
     } else {
         cut_any |= cap_all(input);
     }
-    cut_any
+    Cut { input: cut_any, text: text_cut }
 }
 
 /// Part of a file tool's input (MultiEdit's `edits` included): the text it
 /// writes or replaces shares MAX_DIFF_TOTAL, each piece at most
-/// MAX_DIFF_FIELD_LEN; any other string the ordinary cap. True when anything
-/// was cut.
-fn cap_content(value: &mut Value, key: &str, budget: &mut usize) -> bool {
+/// MAX_DIFF_FIELD_LEN; any other string the ordinary cap. Says whether any
+/// other string was cut, and whether any of the text was.
+fn cap_content(value: &mut Value, key: &str, budget: &mut usize) -> (bool, bool) {
+    let either = |(a, b): (bool, bool), (c, d): (bool, bool)| (a | c, b | d);
     match value {
         Value::String(s) if CONTENT_FIELDS.contains(&key) => {
             let was_cut = cut(s, MAX_DIFF_FIELD_LEN.min(*budget));
             *budget = budget.saturating_sub(s.len());
-            was_cut
+            (false, was_cut)
         }
-        Value::Object(map) => map.iter_mut().fold(false, |any, (k, v)| cap_content(v, k, budget) | any),
-        Value::Array(items) => items.iter_mut().fold(false, |any, v| cap_content(v, key, budget) | any),
-        other => cap_all(other),
+        Value::Object(map) => map.iter_mut().fold((false, false), |any, (k, v)| either(any, cap_content(v, k, budget))),
+        Value::Array(items) => items.iter_mut().fold((false, false), |any, v| either(any, cap_content(v, key, budget))),
+        other => (cap_all(other), false),
     }
 }
 
@@ -659,16 +700,16 @@ fn cut(s: &mut String, max: usize) -> bool {
 }
 
 /// Connect, send, and — for a permission request — wait for the island's word.
-fn talk(payload: &str, waits_for_answer: bool) -> Option<String> {
-    let mut pipe = connect()?;
+fn talk(payload: &str, waits_for_answer: bool) -> Heard {
+    let Some(mut pipe) = connect() else { return Heard::NoLumo };
 
     if pipe.write_all(payload.as_bytes()).is_err() {
-        return None;
+        return Heard::NoLumo;
     }
     let _ = pipe.flush();
 
     if !waits_for_answer {
-        return None;
+        return Heard::Nothing;
     }
 
     let mut buf = Vec::new();
@@ -686,7 +727,7 @@ fn talk(payload: &str, waits_for_answer: bool) -> Option<String> {
         }
     }
     let answer = String::from_utf8_lossy(&buf).trim().to_string();
-    (!answer.is_empty()).then_some(answer)
+    if answer.is_empty() { Heard::Nothing } else { Heard::Said(answer) }
 }
 
 #[cfg(test)]
@@ -1038,23 +1079,31 @@ mod tests {
             assert!(v.get("lumo_input_cut").is_none(), "{tool}");
             assert!(v.to_string().contains(&big.replace('\n', "\\n")), "{tool} keeps its text");
         }
-        // Past the diff budget it is cut, and flagged: the island then never allows it.
-        let huge = "x".repeat(MAX_DIFF_FIELD_LEN + 10);
-        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/big.txt", "content": huge } });
+        // Past the diff budget the text is cut, which the card never shows:
+        // it says so apart (`lumo_text_cut`), and the numbers are the whole
+        // text's, read before the cut. Nothing the card shows was cut.
+        let huge = "x\n".repeat(MAX_DIFF_FIELD_LEN);
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/lumo-test-none/big.txt", "content": huge } });
         truncate_payload(&mut v, "PermissionRequest");
         assert!(v["tool_input"]["content"].as_str().unwrap().len() <= MAX_DIFF_FIELD_LEN + 4);
-        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        assert!(v.get("lumo_input_cut").is_none());
+        assert_eq!(v["lumo_text_cut"], serde_json::Value::Bool(true));
+        assert_eq!(v["lumo_write_added"], MAX_DIFF_FIELD_LEN, "a new file: every line of it");
+        assert_eq!(v["lumo_write_removed"], 0);
+        assert_eq!(v["lumo_write_bytes"], 2 * MAX_DIFF_FIELD_LEN);
         // The edits of one request together never pass the shared budget either.
         let half = "y".repeat(MAX_DIFF_FIELD_LEN - 1);
         let edits: Vec<_> = (0..4).map(|_| serde_json::json!({ "old_string": half, "new_string": half })).collect();
         let mut v = serde_json::json!({ "tool_name": "MultiEdit", "tool_input": { "file_path": "C:/p/a.ts", "edits": edits } });
         truncate_payload(&mut v, "PermissionRequest");
         assert!(v.to_string().len() < MAX_DIFF_TOTAL + 64 * 1024);
-        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        assert_eq!(v["lumo_text_cut"], serde_json::Value::Bool(true));
+        assert!(v.get("lumo_input_cut").is_none());
         // Any other field of a file tool keeps the ordinary cap, and says so.
         let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/a.ts", "content": "a", "note": "n".repeat(MAX_FIELD_LEN + 1) } });
         truncate_payload(&mut v, "PermissionRequest");
         assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        assert!(v["lumo_input_bytes"].as_u64().unwrap() > MAX_FIELD_LEN as u64, "its whole size goes along");
         // The other agents' file tools the same: Antigravity, Copilot CLI, OpenCode.
         let page = "<li>item</li>\n".repeat(250); // ~3.5 KB
         for (tool, input) in [
@@ -1065,6 +1114,8 @@ mod tests {
             ("edit", serde_json::json!({ "path": "C:/w/a.html", "old_str": page, "new_str": page })),
             ("edit", serde_json::json!({ "filePath": "C:/w/a.html", "oldString": page, "newString": page })),
             ("write_file", serde_json::json!({ "file_path": "C:/w/a.html", "content": page })),
+            // Antigravity CLI's own edit tool.
+            ("edit_file", serde_json::json!({ "Path": "C:/w/a.md", "Target": page, "Replacement": page })),
         ] {
             let mut v = serde_json::json!({ "tool_name": tool, "tool_input": input });
             truncate_payload(&mut v, "PermissionRequest");
@@ -1075,6 +1126,45 @@ mod tests {
         let mut v = serde_json::json!({ "tool_name": "mcp__x__y", "tool_input": { "content": "y".repeat(MAX_FIELD_LEN + 1) } });
         truncate_payload(&mut v, "PermissionRequest");
         assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn antigravity_clis_edit_of_a_few_pages_reaches_its_card_whole_with_its_numbers() {
+        // What Gemini sent in the island's Antigravity chat: about 21 KB of
+        // LaTeX in edit_file's Target/Replacement. Before, past 2 KB, the
+        // request was cut and so refused.
+        let target = "\\label{def:serie}\n";
+        let notes = "\\item una riga di appunti sulle serie numeriche\n".repeat(420);
+        let replacement = format!("{target}{notes}");
+        let mut v = serde_json::json!({ "tool_name": "edit_file", "tool_input": { "Path": "C:/Users/me/Downloads/Analisi2.tex", "Target": target, "Replacement": replacement } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v.get("lumo_input_cut").is_none());
+        assert!(v.get("lumo_text_cut").is_none());
+        assert_eq!(v["tool_input"]["Replacement"].as_str().unwrap(), replacement);
+        assert_eq!((v["lumo_write_added"].as_u64(), v["lumo_write_removed"].as_u64()), (Some(420), Some(0)));
+    }
+
+    #[test]
+    fn a_rewrite_of_a_big_file_counts_against_the_file_on_disk() {
+        let dir = std::env::temp_dir().join(format!("lumo-hook-rewrite-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Analisi2.tex");
+        let old: String = (0..8_700).map(|i| format!("\\par riga {i} del capitolo\n")).collect();
+        std::fs::write(&file, &old).unwrap();
+        // 400 KB and more: the text is cut on its way to the island, the numbers are not.
+        let new = format!("{old}{}", "\\item appunti nuovi\n".repeat(1_249));
+        assert!(new.len() > MAX_DIFF_FIELD_LEN);
+        let mut v = serde_json::json!({ "tool_name": "write_to_file", "cwd": dir.to_string_lossy(), "tool_input": { "TargetFile": "Analisi2.tex", "CodeContent": new } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!(v["lumo_text_cut"], serde_json::Value::Bool(true));
+        assert!(v.get("lumo_input_cut").is_none());
+        assert_eq!((v["lumo_write_added"].as_u64(), v["lumo_write_removed"].as_u64()), (Some(1_249), Some(0)));
+        assert_eq!(v["lumo_write_bytes"].as_u64(), Some(new.len() as u64));
+        // What came in is never taken as the relay's word.
+        let mut v = serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": "ls" }, "lumo_write_added": 1, "lumo_text_cut": true });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v.get("lumo_write_added").is_none() && v.get("lumo_text_cut").is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -1146,21 +1236,21 @@ mod tests {
 
     #[test]
     fn a_waiting_relay_gives_up_as_soon_as_its_parent_is_gone() {
-        let (tx, rx) = mpsc::channel::<Option<String>>();
+        let (tx, rx) = mpsc::channel::<Heard>();
         let started = Instant::now();
         let checks = std::cell::Cell::new(0);
         let gone = || {
             checks.set(checks.get() + 1);
             checks.get() >= 2
         };
-        assert_eq!(wait(&rx, Duration::from_secs(5), gone), None);
+        assert_eq!(wait(&rx, Duration::from_secs(5), gone), Heard::Nothing);
         assert!(started.elapsed() < Duration::from_secs(1), "{:?}", started.elapsed());
         // An answer still wins while the parent is there.
-        tx.send(Some("allow".into())).unwrap();
-        assert_eq!(wait(&rx, Duration::from_secs(5), || false).as_deref(), Some("allow"));
-        // And the budget still ends a wait nobody answers.
+        tx.send(Heard::Said("allow".into())).unwrap();
+        assert_eq!(wait(&rx, Duration::from_secs(5), || false), Heard::Said("allow".into()));
+        // And the budget still ends a wait nobody answers, and says so.
         let started = Instant::now();
-        assert_eq!(wait(&rx, Duration::from_millis(150), || false), None);
+        assert_eq!(wait(&rx, Duration::from_millis(150), || false), Heard::TimedOut);
         assert!(started.elapsed() >= Duration::from_millis(150));
         drop(tx);
     }
@@ -1215,7 +1305,7 @@ mod tests {
 
         // Only a click allows; anything else hands it back to Antigravity.
         assert_eq!(reply::antigravity_gate(Some("allow")), r#"{"decision":"allow"}"#);
-        assert_eq!(reply::antigravity_gate(Some("deny")), r#"{"decision":"deny","reason":"Denied from Lumo"}"#);
+        assert!(reply::antigravity_gate(Some("deny")).starts_with(r#"{"decision":"deny","reason":"The user denied this in Lumo."#));
         assert_eq!(reply::antigravity_gate(None), r#"{"decision":"ask"}"#);
         assert_eq!(reply::antigravity_gate(Some("maybe")), r#"{"decision":"ask"}"#);
         let _ = std::fs::remove_dir_all(home);
