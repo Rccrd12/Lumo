@@ -763,7 +763,7 @@ pub async fn mail_view(app: AppHandle, unread_only: bool) -> MailView {
             inbox: inbox_link(&host).map(|l| account_link(l, &acct)),
         };
         let task = tauri::async_runtime::spawn(async move {
-            newest_in(&acct, VIEW_COUNT, unread_only, None).await.map(|found| {
+            newest_in(&acct, VIEW_COUNT, unread_only, None, true).await.map(|found| {
                 found.into_iter().map(|mut f| {
                     f.message.link = f.message.link.map(|l| account_link(l, &acct));
                     f
@@ -851,35 +851,141 @@ pub async fn mail_html(app: AppHandle, id: String) -> Result<MailHtml, String> {
     let slot: usize = key.strip_prefix("imap:").and_then(|n| n.parse().ok()).ok_or_else(|| bad_id(&id))?;
     let acct = live_accounts(&app).into_iter().find(|a| a.slot == slot).ok_or_else(|| gone(&id))?;
     let (folder, uid) = parse_id(own).ok_or_else(|| bad_id(&id))?;
+    let (host, _) = acct.host();
+    // The connection the view's list or the email before left open: no new sign-in.
+    if let Some((mut imap, at)) = take_warm(&acct, &host) {
+        let mut answered = false;
+        let got = timed(&host, html_parts(&mut imap, &at, &folder, uid, &id, Some(&mut answered))).await;
+        match got {
+            Ok((html, pictures)) => {
+                park(&acct, host, imap, folder);
+                return Ok(assemble(html, pictures));
+            }
+            // It works but the email's parts didn't come (too slow, too big):
+            // a new connection would only fetch them again.
+            Err(why) if answered => {
+                drop_warm(imap);
+                return Err(why);
+            }
+            // Closed by the server, or the network changed since: a new one.
+            Err(_) => drop_warm(imap),
+        }
+    }
     let (mut imap, host) = open(&acct).await?;
-    let got = timed(&host, async {
-        if folder != Folder::Inbox {
-            enter(&mut imap, &folder, false).await?;
+    match timed(&host, html_parts(&mut imap, &Folder::Inbox, &folder, uid, &id, None)).await {
+        Ok((html, pictures)) => {
+            park(&acct, host, imap, folder);
+            Ok(assemble(html, pictures))
         }
-        let units = imap.run(&format!("UID FETCH {uid} (UID BODYSTRUCTURE)")).await?;
-        let unit = units.iter().find(|u| matches!(u.first(), Some(Part::Text(l)) if l.contains(" FETCH ") && l.to_ascii_uppercase().contains("BODYSTRUCTURE")));
-        let plan = unit.map(|u| html_plan(u)).ok_or_else(|| gone(&id))?;
-        let asked = plan.asked();
-        if asked.html.is_empty() {
-            return Ok((Vec::new(), Vec::new()));
+        Err(why) => {
+            close(imap).await;
+            Err(why)
         }
-        let mut items: Vec<String> = asked.html.iter().map(|p| format!("BODY.PEEK[{}]<0.{HTML_PART_BYTES}>", p.section)).collect();
-        items.extend(asked.images.iter().map(|p| format!("BODY.PEEK[{}]", p.section)));
-        imap.read = 0;
-        imap.limit = asked.html.len() * HTML_PART_BYTES + asked.images.iter().map(|p| p.size).sum::<usize>() + 64 * 1024;
-        let units = imap.run(&format!("UID FETCH {uid} (UID {})", items.join(" "))).await;
-        imap.limit = MAX_READ;
-        imap.read = 0;
-        let sections = sections_of(&units?);
-        let take = |p: &HtmlPiece| sections.get(&p.section).map(|b| decode_body(&p.encoding, b));
-        let html: Vec<(Vec<u8>, String)> = asked.html.iter().filter_map(|p| take(p).map(|b| (b, p.charset.clone()))).collect();
-        let pictures: Vec<(String, Vec<u8>)> = asked.images.iter().filter_map(|p| take(p).map(|b| (p.cid.clone(), b))).collect();
-        Ok((html, pictures))
-    })
-    .await;
-    close(imap).await;
-    let (html, pictures) = got?;
-    Ok(assemble(html, pictures))
+    }
+}
+
+/// The HTML parts and the pictures of email `uid` of `folder`, on a connection
+/// that has `at` open. On a connection kept open (`warm` given), the server
+/// has WARM_ANSWER to give its first answer: one that went quiet is given up
+/// fast; `warm` turns true once the email's structure came, the connection
+/// working.
+async fn html_parts(imap: &mut Imap, at: &Folder, folder: &Folder, uid: u32, id: &str, warm: Option<&mut bool>) -> Result<(Vec<(Vec<u8>, String)>, Vec<(String, Vec<u8>)>), String> {
+    imap.read = 0;
+    imap.limit = MAX_READ;
+    let first = async {
+        if folder != at {
+            enter(imap, folder, false).await?;
+        }
+        imap.run(&format!("UID FETCH {uid} (UID BODYSTRUCTURE)")).await
+    };
+    let units = if warm.is_some() {
+        tokio::time::timeout(WARM_ANSWER, first).await.unwrap_or_else(|_| Err("The kept connection went quiet.".into()))?
+    } else {
+        first.await?
+    };
+    let unit = units.iter().find(|u| matches!(u.first(), Some(Part::Text(l)) if l.contains(" FETCH ") && l.to_ascii_uppercase().contains("BODYSTRUCTURE")));
+    let plan = unit.map(|u| html_plan(u)).ok_or_else(|| gone(id))?;
+    if let Some(answered) = warm {
+        *answered = true;
+    }
+    let asked = plan.asked();
+    if asked.html.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let mut items: Vec<String> = asked.html.iter().map(|p| format!("BODY.PEEK[{}]<0.{HTML_PART_BYTES}>", p.section)).collect();
+    items.extend(asked.images.iter().map(|p| format!("BODY.PEEK[{}]", p.section)));
+    imap.read = 0;
+    imap.limit = asked.html.len() * HTML_PART_BYTES + asked.images.iter().map(|p| p.size).sum::<usize>() + 64 * 1024;
+    let units = imap.run(&format!("UID FETCH {uid} (UID {})", items.join(" "))).await;
+    imap.limit = MAX_READ;
+    imap.read = 0;
+    let sections = sections_of(&units?);
+    let take = |p: &HtmlPiece| sections.get(&p.section).map(|b| decode_body(&p.encoding, b));
+    let html: Vec<(Vec<u8>, String)> = asked.html.iter().filter_map(|p| take(p).map(|b| (b, p.charset.clone()))).collect();
+    let pictures: Vec<(String, Vec<u8>)> = asked.images.iter().filter_map(|p| take(p).map(|b| (p.cid.clone(), b))).collect();
+    Ok((html, pictures))
+}
+
+// ── A connection kept open for the next email ────────────────────────────────
+//
+// Signing in to Gmail and opening the inbox takes a second or more, most of
+// the wait for an email's HTML. So the Email view's connections are not
+// closed at once: the one that read its list, then the one that read an
+// email, stays open WARM_FOR (one per account), and the email opened next
+// uses it. Nothing runs on it meanwhile (0 % CPU): after WARM_FOR unused it
+// is closed. One that went quiet is closed and a new one opened.
+
+/// How long the Email view's connection stays open unused.
+const WARM_FOR: Duration = Duration::from_secs(60);
+/// How long a kept connection has for its first answer before a new one is opened.
+const WARM_ANSWER: Duration = Duration::from_secs(5);
+
+struct Warm {
+    address: String,
+    host: String,
+    imap: Imap,
+    /// The folder it has open.
+    folder: Folder,
+    ticket: u64,
+}
+
+static WARM: Mutex<BTreeMap<usize, Warm>> = Mutex::new(BTreeMap::new());
+static WARM_TICKET: AtomicU64 = AtomicU64::new(0);
+
+/// The connection kept open for `acct`, if it is still the same account; it is
+/// taken: the next email asked meanwhile opens its own.
+fn take_warm(acct: &Account, host: &str) -> Option<(Imap, Folder)> {
+    let warm = WARM.lock().unwrap().remove(&acct.slot)?;
+    if warm.address == acct.address && warm.host == host {
+        return Some((warm.imap, warm.folder));
+    }
+    drop_warm(warm.imap);
+    None
+}
+
+/// Keeps `imap` open WARM_FOR for the next email of `acct`, in place of the one before.
+fn park(acct: &Account, host: String, imap: Imap, folder: Folder) {
+    let ticket = WARM_TICKET.fetch_add(1, Ordering::Relaxed) + 1;
+    let slot = acct.slot;
+    let before = WARM.lock().unwrap().insert(slot, Warm { address: acct.address.clone(), host, imap, folder, ticket });
+    if let Some(before) = before {
+        drop_warm(before.imap);
+    }
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(WARM_FOR).await;
+        let unused = {
+            let mut warm = WARM.lock().unwrap();
+            if warm.get(&slot).is_some_and(|w| w.ticket == ticket) { warm.remove(&slot) } else { None }
+        };
+        if let Some(unused) = unused {
+            close(unused.imap).await;
+        }
+    });
+}
+
+/// Closes a kept connection without waiting for it.
+fn drop_warm(imap: Imap) {
+    tauri::async_runtime::spawn(close(imap));
 }
 
 /// A part of an email that its HTML is made of, as its BODYSTRUCTURE says.
@@ -1720,15 +1826,17 @@ pub async fn newest(app: &AppHandle, count: usize, unread_only: bool, folder: Op
     let folder = folder.map(str::to_string);
     let results = each_account(tool_accounts(app)?, move |a| {
         let folder = folder.clone();
-        async move { newest_in(&a, count, unread_only, folder.as_deref()).await }
+        async move { newest_in(&a, count, unread_only, folder.as_deref(), false).await }
     })
     .await;
     merged(results, count)
 }
 
-/// `newest`, of one account.
-async fn newest_in(acct: &Account, count: usize, unread_only: bool, folder: Option<&str>) -> Result<Vec<Found>, String> {
+/// `newest`, of one account. With `keep` (the Email view's), its connection
+/// stays open a little for the email the user opens next (`park`).
+async fn newest_in(acct: &Account, count: usize, unread_only: bool, folder: Option<&str>, keep: bool) -> Result<Vec<Found>, String> {
     let (mut imap, host) = open(acct).await?;
+    let mut opened = Folder::Inbox;
     let found = timed(&host, async {
         let folder = match folder {
             Some(asked) => folder_named(&mut imap, &host, asked).await?,
@@ -1736,6 +1844,7 @@ async fn newest_in(acct: &Account, count: usize, unread_only: bool, folder: Opti
         };
         if folder != Folder::Inbox {
             enter(&mut imap, &folder, false).await?;
+            opened = folder.clone();
         }
         // Every UID of a big mailbox can weigh more than MAX_READ: about 8
         // bytes each, 4 MB past half a million emails.
@@ -1750,7 +1859,11 @@ async fn newest_in(acct: &Account, count: usize, unread_only: bool, folder: Opti
         fetch(&mut imap, &host, &folder, &newest, BODY_BYTES, BODY_CHARS).await
     })
     .await;
-    close(imap).await;
+    if keep && found.is_ok() {
+        park(acct, host, imap, opened);
+    } else {
+        close(imap).await;
+    }
     found
 }
 

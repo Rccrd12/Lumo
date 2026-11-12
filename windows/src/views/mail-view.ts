@@ -70,8 +70,11 @@ export const MAIL_VIEW_TEXT = {
 /** The HTML of the emails read lately, by id ("" for one with none); the oldest goes past MAX_HTML. */
 const htmlOf = new Map<string, string>();
 const MAX_HTML = 12;
-/** The emails whose HTML is being asked for. */
-const htmlAsked = new Set<string>();
+/** The emails whose HTML is being asked for, and when it will have come. */
+const htmlAsked = new Map<string, Promise<void>>();
+/** When the HTML of an email couldn't be asked: not asked again before HTML_RETRY_MS. */
+const htmlFailed = new Map<string, number>();
+const HTML_RETRY_MS = 20_000;
 /** Text only (true) or Original, as last picked, while Lumo runs. */
 let textOnly = false;
 /** The emails whose images the user loaded, this session. */
@@ -137,6 +140,8 @@ export function buildMailView(actions: ViewActions): ViewHost {
   let drawn = "";
   /** What the reader shows: drawn again only when it changes, so the email's frame isn't loaded again. */
   let readerDrawn = "";
+  /** The email whose neighbours' HTML was asked for (askNear). */
+  let nearFor: string | null = null;
   /** The email's body in the reader (its frame, or its text) and what it shows: kept while that stays, so the frame isn't loaded again. */
   let shownBody: HTMLElement | null = null;
   let shownBodyKey = "";
@@ -263,6 +268,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
   function open(id: string) {
     actions.blip();
     openId = id;
+    nearFor = null;
     reader.scrollTop = 0;
     drawn = "";
     State.notify();
@@ -280,22 +286,50 @@ export function buildMailView(actions: ViewActions): ViewHost {
     State.notify();
   }
 
-  /** The email's HTML, asked once (again next time when it couldn't be); the reader is drawn again when it comes. */
-  function askHtml(id: string) {
-    if (htmlOf.has(id) || htmlAsked.has(id)) return;
-    htmlAsked.add(id);
-    void Bridge.mailHtml(id)
+  /** The email's HTML, asked once (again HTML_RETRY_MS later when it couldn't be); the reader is drawn again when it comes. */
+  function askHtml(id: string | null): Promise<void> {
+    if (id == null || htmlOf.has(id)) return Promise.resolve();
+    const going = htmlAsked.get(id);
+    if (going) return going;
+    if (Date.now() - (htmlFailed.get(id) ?? -Infinity) < HTML_RETRY_MS) return Promise.resolve();
+    const asking = Bridge.mailHtml(id)
       .then((html) => {
-        if (html == null) return;
+        if (html == null) {
+          htmlFailed.set(id, Date.now());
+          while (htmlFailed.size > MAX_HTML) htmlFailed.delete(htmlFailed.keys().next().value as string);
+          return;
+        }
+        htmlFailed.delete(id);
         htmlOf.set(id, html);
-        while (htmlOf.size > MAX_HTML) htmlOf.delete(htmlOf.keys().next().value as string);
+        // The oldest go, never the email open.
+        while (htmlOf.size > MAX_HTML) {
+          const old = [...htmlOf.keys()].find((k) => k !== openId);
+          if (old == null) break;
+          htmlOf.delete(old);
+        }
         if (openId === id && html) {
           readerDrawn = "";
           drawn = "";
           State.notify();
         }
+        askNear(id);
       })
       .finally(() => htmlAsked.delete(id));
+    htmlAsked.set(id, asking);
+    return asking;
+  }
+
+  /**
+   * Once the email read has its HTML, the ones its arrows lead to are asked
+   * too, the older first, then the newer: a click on them shows them at once
+   * (on the connection mail.rs keeps open, without signing in again). Once
+   * for each email opened.
+   */
+  function askNear(id: string) {
+    if (!data || openId !== id || !htmlOf.has(id) || nearFor === id) return;
+    nearFor = id;
+    const near = neighbours(visibleMessages(data, filter), id);
+    void askHtml(near.older).then(() => (openId === id ? askHtml(near.newer) : undefined));
   }
 
   /** The email's HTML in its frame, the bar about its images above it. */
@@ -458,7 +492,8 @@ export function buildMailView(actions: ViewActions): ViewHost {
 
   function drawReader(d: MailViewData, m: MailViewMessage) {
     const near = neighbours(visibleMessages(d, filter), m.id);
-    askHtml(m.id);
+    void askHtml(m.id);
+    askNear(m.id);
     const html = htmlOf.get(m.id) ?? "";
     const showHtml = html !== "" && !textOnly;
     const key = JSON.stringify([m.id, near, html.length, showHtml, d.accounts.length, language(), m.unread, webImagesOn(), m.from, m.address, m.subject, m.date, m.link, m.body]);
