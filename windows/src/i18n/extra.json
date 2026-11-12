@@ -7381,17 +7381,17 @@
    "id": "Ke bawah",
    "it": "Vai in fondo"
   },
-  "Show all": {
-   "zh-Hans": "显示全部",
-   "hi": "सब दिखाएँ",
-   "es": "Mostrar todo",
-   "ar": "عرض الكل",
-   "fr": "Tout afficher",
-   "bn": "সব দেখান",
-   "pt-BR": "Mostrar tudo",
-   "ru": "Показать всё",
-   "id": "Tampilkan semua",
-   "it": "Mostra tutto"
+  "Show more": {
+   "zh-Hans": "显示更多",
+   "hi": "और दिखाएँ",
+   "es": "Mostrar más",
+   "ar": "عرض المزيد",
+   "fr": "Afficher plus",
+   "bn": "আরও দেখান",
+   "pt-BR": "Mostrar mais",
+   "ru": "Показать ещё",
+   "id": "Tampilkan lebih banyak",
+   "it": "Mostra altro"
   },
   "Show less": {
    "zh-Hans": "收起",
@@ -7403,7 +7403,7 @@
    "pt-BR": "Mostrar menos",
    "ru": "Свернуть",
    "id": "Tampilkan lebih sedikit",
-   "it": "Nascondi"
+   "it": "Mostra meno"
   },
   "Scroll down": {
    "zh-Hans": "向下滚动",

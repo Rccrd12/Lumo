@@ -559,7 +559,7 @@ test("plain words in a question are one paragraph, as they were written", async 
   assert.equal(bubble.textContent, "fix the export button\non Safari");
 });
 
-test("a long question folds to its first lines, with Show all and Show less under it", async () => {
+test("a long question folds to its first lines, with Show more and Show less in its bubble", async () => {
   let measure = null;
   globalThis.ResizeObserver = class {
     constructor(cb) { measure = cb; }
@@ -570,31 +570,35 @@ test("a long question folds to its first lines, with Show all and Show less unde
     await ask("a short one");
     await ask("a long one\n".repeat(40));
     const [short, long] = rows().filter((r) => r.classList.contains("user"));
+    const bubbleOf = (row) => row.querySelector(".bubble");
     const fold = (row) => row.querySelector(".msg-fold");
-    short.querySelector(".bubble").scrollHeight = 30;
-    long.querySelector(".bubble").scrollHeight = 600;
-    measure([{ target: short.querySelector(".bubble") }, { target: long.querySelector(".bubble") }]);
+    bubbleOf(short).scrollHeight = 30;
+    bubbleOf(long).scrollHeight = 600;
+    measure([{ target: bubbleOf(short) }, { target: bubbleOf(long) }]);
 
-    assert.equal(fold(short).hidden, true, "a short question has no button");
-    assert.ok(!short.querySelector(".bubble").classList.contains("folded"));
-    assert.equal(fold(long).hidden, false);
-    assert.ok(long.querySelector(".bubble").classList.contains("folded"));
-    assert.equal(fold(long).textContent, "Show all");
+    assert.equal(fold(short), null, "a short question is left as it is");
+    assert.equal(bubbleOf(short).textContent, "a short one");
+    assert.equal(fold(long).parentNode, bubbleOf(long), "the button is in the bubble");
+    const body = long.querySelector(".bubble-body");
+    assert.ok(body.classList.contains("folded"));
+    assert.equal(fold(long).textContent, "Show more");
 
+    body.scrollHeight = 600;
     fold(long).fire("click");
-    assert.ok(!long.querySelector(".bubble").classList.contains("folded"));
+    assert.ok(!body.classList.contains("folded"));
     assert.equal(fold(long).textContent, "Show less");
 
     // Drawn again with the next question, it stays open.
     await ask("one more");
     const again = rows().filter((r) => r.classList.contains("user"))[1];
-    again.querySelector(".bubble").scrollHeight = 600;
-    measure([{ target: again.querySelector(".bubble") }]);
+    bubbleOf(again).scrollHeight = 600;
+    measure([{ target: bubbleOf(again) }]);
     assert.equal(fold(again).textContent, "Show less");
 
+    again.querySelector(".bubble-body").scrollHeight = 600;
     fold(again).fire("click");
-    assert.ok(again.querySelector(".bubble").classList.contains("folded"));
-    assert.equal(fold(again).textContent, "Show all");
+    assert.ok(again.querySelector(".bubble-body").classList.contains("folded"));
+    assert.equal(fold(again).textContent, "Show more");
   } finally {
     delete globalThis.ResizeObserver;
   }
