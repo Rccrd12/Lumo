@@ -28,6 +28,7 @@ import { closePlanCard, openPlanColor, planCardOpen, visiblePlanKinds } from "..
 import { buildHeader, buildViews, errorHasLastStep, finishedText, hasSessionTicker, overviewDetailFor, type ViewActions, type ViewHost } from "../views/views";
 import { toolsListRows } from "../views/tools";
 import { cardsFollowDrag } from "../views/rich/resize";
+import { DockEase } from "./dock-ease";
 import { gitHubListSection } from "../views/github";
 import { backgroundRows } from "../views/background";
 import { homeHeight, homeInProgressCount, homeLists, homeTilesInARow } from "../views/home";
@@ -179,6 +180,10 @@ export class Island {
   private onControls = false;
   /** Page pixels the island is drawn off its usual place (a floating island, island.rs shift). */
   private shift = { x: 0, y: 0 };
+  /** Let go after a move: drawn where it was, then eased to its new place in the window (dock-ease.ts). */
+  private dockEase = new DockEase();
+  /** The page's size at the last frame, to notice the window resized under a settling island. */
+  private viewport = { w: 0, h: 0 };
   /** The edge last drawn, to notice when Settings or the tray move it. */
   private lastDock: Dock | null = null;
 
@@ -1387,6 +1392,7 @@ export class Island {
     } else {
       this.islandEl.style.borderRadius = `${r}px`;
     }
+    this.followViewport();
     const at = this.islandRect();
     this.islandEl.style.left = `${at.x}px`;
     this.islandEl.style.top = `${at.y}px`;
@@ -1416,15 +1422,23 @@ export class Island {
   }
 
   /**
+   * Island rect in window coordinates, as drawn: its anchored place, and the
+   * ease of an island just let go after a move (dock-ease.ts).
+   */
+  private islandRect(): { x: number; y: number; w: number; h: number } {
+    const at = this.anchoredRect();
+    const off = this.dockEase.offset;
+    return { x: at.x + off.x, y: at.y + off.y, w: at.w, h: at.h };
+  }
+
+  /**
    * Island rect in window coordinates: a gap off its edge of the window,
    * centred along it, moved by the shift of a floating island — and kept
    * inside the window, so an island floating low still opens whole.
    */
-  private islandRect(): { x: number; y: number; w: number; h: number } {
+  private anchoredRect(vw = window.innerWidth, vh = window.innerHeight): { x: number; y: number; w: number; h: number } {
     const w = this.width.value;
     const hh = this.height.value;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
     const { x: sx, y: sy } = this.shift;
     const gap = this.gap.value;
     let x: number;
@@ -1804,6 +1818,7 @@ export class Island {
     this.lift.step(dt, nowMs);
     this.gap.step(dt, nowMs);
     this.flat.step(dt, nowMs);
+    this.dockEase.tick(nowMs);
     this.applyGeometry();
 
     if (this.dirty) {
@@ -1845,7 +1860,7 @@ export class Island {
     // spends most of its life in. Geometry still has to finish retracting.
     const settling =
       this.width.animating || this.height.animating || this.radius.animating || this.gap.animating
-      || this.flat.animating;
+      || this.flat.animating || this.dockEase.active;
     // A permission card that opened from the closed island was measured
     // before it had its room: once the island stops, it is measured again.
     if (this.wasSettling && !settling && State.mode === "expanded" && State.view === "approval") this.refit();
@@ -2169,6 +2184,8 @@ export class Island {
     if (this.moving || !this.canResize) return;
     this.clearSettleTimer();
     this.moving = true;
+    // Picked up while still settling: it stays where it is drawn.
+    this.dockEase.hold();
     this.cancelBotHover();
     this.lift.springTo(1.04, 0.3, 0.6);
     this.engine.triggerEmote("surprised");
@@ -2183,7 +2200,10 @@ export class Island {
    * there. The island re-anchors, turns upright on a side, and settles with a
    * bounce of its own.
    */
-  onDock(place: { dock: string; offset: number; float?: number; shiftX?: number; shiftY?: number }) {
+  onDock(place: { dock: string; offset: number; float?: number; shiftX?: number; shiftY?: number; startAt?: number }) {
+    // Where it is drawn now: re-anchored, it starts from there (dock-ease.ts),
+    // while Rust springs the window to its place.
+    const drawn = this.islandRect();
     State.settings = {
       ...State.settings, islandDock: place.dock, islandOffset: place.offset, islandFloat: place.float ?? 0,
     };
@@ -2191,6 +2211,10 @@ export class Island {
     this.lastDock = this.dock;
     this.clearSettleTimer();
     this.applyDock();
+    // The window starts its spring at startAt (ms since 1970): so does the island's.
+    const now = performance.now();
+    const startAt = now + (Number.isFinite(place.startAt) ? (place.startAt as number) - Date.now() : 0);
+    this.dockEase.start(drawn, this.anchoredRect(), startAt, now);
     // Turned upright (or back), the closed island morphs into its new shape.
     const { w, h, r } = this.targetSize();
     this.width.springTo(w, 0.45, 0.6);
@@ -2248,8 +2272,25 @@ export class Island {
     this.settleTimer = null;
     if (!this.moving) return;
     this.moving = false;
+    this.dockEase.resume(performance.now());
     this.lift.springTo(1, 0.45, 0.45);
     this.ensureRunning();
+  }
+
+  /**
+   * The window resized under an island being carried or settling (island.rs
+   * drag sets the new edge's size from its top-left corner): an island anchored
+   * to the bottom or a side would follow the new size at once, so it is kept
+   * where it is on screen and eased to its place instead.
+   */
+  private followViewport() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const was = this.viewport;
+    this.viewport = { w, h };
+    if (was.w === 0 || (was.w === w && was.h === h)) return;
+    if (!this.moving && !this.dockEase.active) return;
+    this.dockEase.keepPlace(this.anchoredRect(was.w, was.h), this.anchoredRect(w, h), performance.now());
   }
 
   /** The dock as classes, for the CSS that anchors the island and the wake strip. */
