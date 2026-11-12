@@ -159,7 +159,7 @@ pub async fn google_calendar_get(path: String, query: Vec<(String, String)>) -> 
         return Ok(None);
     }
     let url = api_url(&path, &query)?;
-    let client = net::client(&url, Duration::from_secs(20))?;
+    let client = net::client(&url, API_TIMEOUT)?;
     let mut response = send(&client, &url, &access_token().await?).await?;
     if response.status() == StatusCode::UNAUTHORIZED {
         // Ended early (revoked, or the clock was off): a new one, once.
@@ -175,13 +175,41 @@ pub async fn google_calendar_get(path: String, query: Vec<(String, String)>) -> 
     Err(api_error(status, &body))
 }
 
+/// Waits between tries: a request that fails right after the computer wakes,
+/// or while the network changes, mostly succeeds a few seconds later.
+const RETRY_WAITS: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(5)];
+/// A calendar's first read lists all its events (for the token at the end),
+/// which Google may take a while to answer for a calendar of many years.
+const API_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The GET, tried again after a lost connection or a timeout.
 async fn send(client: &reqwest::Client, url: &Url, token: &str) -> Result<reqwest::Response, String> {
-    client
-        .get(url.clone())
-        .bearer_auth(token)
-        .send()
-        .await
-        .map_err(|_| tf("Can't reach {server}.", &[("server", url.host_str().unwrap_or(""))]))
+    let mut waits = RETRY_WAITS.iter();
+    loop {
+        match client.get(url.clone()).bearer_auth(token).send().await {
+            Ok(response) => return Ok(response),
+            Err(err) => match waits.next() {
+                Some(wait) => tokio::time::sleep(*wait).await,
+                None => return Err(network_error(url, err)),
+            },
+        }
+    }
+}
+
+/// What went wrong on the way, with reqwest's causes (never the address,
+/// whose query may hold a sync token), in the message and in the log.
+fn network_error(url: &Url, err: reqwest::Error) -> String {
+    let host = url.host_str().unwrap_or("");
+    let err = err.without_url();
+    let mut detail = err.to_string();
+    let mut source = std::error::Error::source(&err);
+    while let Some(cause) = source {
+        detail = format!("{detail}: {cause}");
+        source = cause.source();
+    }
+    let shown = format!("{host}: {detail}");
+    log::line(format!("google calendar: {shown}"));
+    tf("Network error: {error}", &[("error", shown.as_str())])
 }
 
 /// What a refused request says. Google answers 403 with a reason when it
@@ -276,12 +304,7 @@ enum TokenError {
 async fn token_request(form: &[(&str, &str)]) -> Result<Token, TokenError> {
     let url = Url::parse(TOKEN_URL).map_err(|e| TokenError::Other(e.to_string()))?;
     let client = net::client(&url, Duration::from_secs(20)).map_err(TokenError::Other)?;
-    let response = client
-        .post(url.clone())
-        .form(form)
-        .send()
-        .await
-        .map_err(|_| TokenError::Other(tf("Can't reach {server}.", &[("server", url.host_str().unwrap_or(""))])))?;
+    let response = client.post(url.clone()).form(form).send().await.map_err(|e| TokenError::Other(network_error(&url, e)))?;
     let status = response.status();
     let body = net::read_capped(response, net::MAX_ERROR_BODY).await.map_err(TokenError::Other)?;
     let value: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
