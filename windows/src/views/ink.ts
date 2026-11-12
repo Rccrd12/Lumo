@@ -17,6 +17,8 @@
 // uncovered the frames stop (no work while the answer waits or is hidden),
 // and once the answer is complete it is drawn once more, plainly.
 
+import { blankFences, closingDollar, scan } from "./scan";
+
 /** Characters a second, at the least. */
 const MIN_PACE = 70;
 /** How far behind what arrived the pace stays, in seconds. */
@@ -67,17 +69,21 @@ export function cutPoints(text: string, complete = false): number[] {
     if (/^\s*\|/.test(line) && !lineDone) closed.push([start, n]);
     holds(text, start, end, lineDone, closed);
   }
-  // A display formula ($$ … $$, \[ … \]) may span lines.
+  // A display formula ($$ … $$, \[ … \]) may span lines, as the chat reads
+  // it: one in inline code or escaped is text, and one left open stops at a
+  // blank line, a heading or a fence, so it never holds the rest of the answer.
+  const asText = scan(blankFences(text)).filter((s) => s.kind !== "math");
+  const isText = (i: number) => asText.some((s) => s.from <= i && i < s.to);
   for (const [open, close] of [["$$", "$$"], ["\\[", "\\]"]] as const) {
     for (let i = text.indexOf(open); i >= 0; ) {
-      if (inFence(text, i)) {
+      if (inFence(text, i) || isText(i)) {
         i = text.indexOf(open, i + open.length);
         continue;
       }
-      const j = text.indexOf(close, i + open.length);
-      closed.push([i, j < 0 ? n : j + close.length]);
-      if (j < 0) break;
-      i = text.indexOf(open, j + close.length);
+      const shut = displayEnd(text, i + open.length, close);
+      if (shut.end != null) closed.push([i, shut.end]);
+      if (shut.end === n) break;
+      i = text.indexOf(open, shut.end ?? shut.next);
     }
   }
   // Each range blocks the cuts strictly inside it (and its end while still open).
@@ -98,6 +104,31 @@ export function cutPoints(text: string, complete = false): number[] {
     cuts.push(i);
   }
   return cuts;
+}
+
+/**
+ * Where a display formula opened just before `from` ends: right after its
+ * `close` (`end`), the text's end while it may still close (`end` = n), or
+ * nowhere when a finished blank line, heading or fence comes first (the
+ * opener is text; `next`: where to look for the next one).
+ */
+function displayEnd(text: string, from: number, close: string): { end: number | null; next: number } {
+  const n = text.length;
+  let at = from;
+  while (at <= n) {
+    const nl = text.indexOf("\n", at);
+    const stop = nl < 0 ? n : nl;
+    const line = text.slice(at, stop);
+    const j = line.indexOf(close);
+    if (j >= 0) return { end: at + j + close.length, next: at + j + close.length };
+    // The opener's own line never ends it; a later one only once it is finished.
+    if (at > from && nl >= 0 && (!line.trim() || /^#+(?:\s|$)/.test(line) || /^\s*(```|~~~)/.test(line))) {
+      return { end: null, next: at };
+    }
+    if (nl < 0) break;
+    at = nl + 1;
+  }
+  return { end: n, next: n };
 }
 
 /** The end of the first word after the fence line at `start`. */
@@ -160,16 +191,13 @@ function holds(text: string, start: number, end: number, lineDone: boolean, clos
         i = j >= 0 ? j + 2 : end;
         continue;
       }
-      // "$5" or "$ 5": a price, not a formula (markdown.ts reads them so too).
-      if (i + 1 < n && /[\s\d]/.test(text[i + 1])) {
-        i++;
-        continue;
-      }
-      const j = text.indexOf("$", i + 1);
-      if (j >= 0 && j < end) hold(i, j + 1), (i = j + 1);
+      // Where the chat's Markdown closes it (scan.ts: "25$, … 12$" and
+      // "$5 … $10" are prices); a $ not closed yet on a line still being
+      // written may open a formula, unless a space or a digit follows it.
+      const j = closingDollar(text, i);
+      if (j != null && j < end) hold(i, j + 1), (i = j + 1);
       else {
-        // A lone $ on a finished line is a dollar, not a formula.
-        if (!lineDone) hold(i, n);
+        if (!lineDone && !/\d/.test(text[i - 1] ?? "") && !(i + 1 < n && /[\s\d]/.test(text[i + 1]))) hold(i, n);
         i++;
       }
       continue;

@@ -55,3 +55,31 @@ test("a table row comes whole", () => {
 test("without a real page (tests, reduced motion) the answer is drawn as it comes", () => {
   assert.equal(inkWorks(), false);
 });
+
+test("prices are cut where the chat reads them as prices (scan.ts), formulas whole", () => {
+  // "25$, … 12$" is text in the chat: its words are drawn one by one.
+  assert.deepEqual(cutPoints("Prezzo 25$, pranzo 12$ ok", true), [6, 11, 18, 22, 25]);
+  assert.deepEqual(cutPoints("Costa $5 e $10 ok", true), [5, 8, 10, 14, 17]);
+  // A formula still comes whole, and one not closed yet waits.
+  assert.deepEqual(cutPoints("Sia $x_1$ ok", true), [3, 9, 12]);
+  assert.equal(drawn("Sia $x_1 e"), "Sia");
+});
+
+test("a $$ the chat reads as text never holds the rest of the answer", () => {
+  // In inline code: the words after it are drawn one by one.
+  assert.equal(drawn("Usa `$$` all'inizio e poi continua a scrivere "), "Usa `$$` all'inizio e poi continua a scrivere");
+  // Escaped.
+  assert.equal(drawn("Scrivi \\$$ e poi continua "), "Scrivi \\$$ e poi continua");
+  // While its code is still open it waits, as any inline code does.
+  assert.equal(drawn("Usa `$$ e"), "Usa");
+  // Left open, it stops at a blank line, a heading or a fence, as in the chat.
+  assert.equal(drawn("Costa $$ tanto\n\nE poi altro "), "Costa $$ tanto\n\nE poi altro");
+  assert.equal(drawn("Costa $$ tanto\n# Titolo\nE poi "), "Costa $$ tanto\n# Titolo\nE poi");
+  // Until then it may still close, so it waits.
+  assert.equal(drawn("Costa $$ tanto\nancora "), "Costa");
+  assert.equal(drawn("Costa $$ tanto\n"), "Costa");
+  // A real one across lines still comes whole.
+  assert.equal(drawn("Sia\n$$\na+b\n$$\nok "), "Sia\n$$\na+b\n$$\nok");
+  // A $$ in a code block is code.
+  assert.equal(drawn("```\n$$\n```\nE poi "), "```\n$$\n```\nE poi");
+});

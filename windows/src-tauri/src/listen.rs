@@ -62,7 +62,9 @@ const MAX_HISTORY: usize = 50;
 const MAX_WATCHES: usize = 20;
 /// A watch nobody needed for this long stops by itself, saying so.
 const MAX_AGE_MS: u64 = 7 * 24 * 3_600_000;
-/// Right after a push GitHub lists no checks yet: none counts as none only after this.
+/// Right after a push GitHub lists no checks yet: none counts as none only after
+/// this, and only when no Actions run of the commit is still queued or running
+/// (actions_of): a run GitHub has not given its jobs yet lists no checks either.
 const NO_CHECKS_GRACE_MS: u64 = 3 * 60_000;
 /// GitHub answering "not found" (or no access) this many times running ends the watch.
 const MAX_MISSES: u32 = 3;
@@ -70,8 +72,13 @@ const MAX_MISSES: u32 = 3;
 const EVERY_SIGNED_IN: Duration = Duration::from_secs(30);
 const EVERY_ANONYMOUS: Duration = Duration::from_secs(120);
 /// Without signing in GitHub answers 60 times an hour, and a look at the
-/// checks asks 3 times: each watch adds this much, so it stays under that.
-const ANONYMOUS_PER_WATCH: Duration = Duration::from_secs(240);
+/// checks asks up to 4 times (the pull request, its check runs, its statuses,
+/// its Actions runs when no check is listed): each watch adds this much, so it
+/// stays under that.
+const ANONYMOUS_PER_WATCH: Duration = Duration::from_secs(300);
+/// How many times one look at a pull request's checks asks GitHub, at most.
+#[cfg(test)]
+const ASKS_PER_LOOK: usize = 4;
 const TASK_CHARS: usize = 2000;
 /// How often the files, programs and ports are looked at.
 const LOCAL_EVERY: Duration = Duration::from_secs(5);
@@ -613,6 +620,43 @@ pub fn checks_of(runs: Option<&Value>, status: Option<&Value>) -> Checks {
     }
 }
 
+/// The commit's Actions runs (`GET /repos/{repo}/actions/runs?head_sha=…`),
+/// asked when it lists no checks: a run still queued, waiting or running whose
+/// jobs GitHub has not created yet lists no check, and must not read as none.
+/// A run that ended failing before any job (a broken workflow file, say) is a
+/// failure; one cancelled before its jobs (superseded by a newer push) is not.
+pub fn actions_of(checks: Checks, actions: Option<&Value>) -> Checks {
+    if checks != Checks::None {
+        return checks;
+    }
+    let mut pending = false;
+    let mut failed = Vec::new();
+    let mut any = false;
+    for run in actions.and_then(|a| a["workflow_runs"].as_array()).into_iter().flatten() {
+        any = true;
+        let name = run["name"].as_str().unwrap_or("workflow").to_string();
+        if run["status"].as_str() != Some("completed") {
+            pending = true;
+            continue;
+        }
+        match run["conclusion"].as_str() {
+            Some("failure" | "startup_failure" | "timed_out") => failed.push(name),
+            // Waiting for someone to approve the run: it hasn't run yet.
+            Some("action_required") => pending = true,
+            _ => {}
+        }
+    }
+    if !failed.is_empty() {
+        Checks::Failed(failed)
+    } else if pending {
+        Checks::Pending
+    } else if any {
+        Checks::Passed
+    } else {
+        Checks::None
+    }
+}
+
 /// Each reviewer's last say (`GET /repos/{repo}/pulls/{n}/reviews`, oldest first).
 pub fn review_of(reviews: Option<&Value>) -> Review {
     let mut last: HashMap<String, String> = HashMap::new();
@@ -820,6 +864,16 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
             _ => None,
         };
         pr.checks = checks_of(runs.as_ref(), status.as_ref());
+        if pr.checks == Checks::None {
+            // No check listed: maybe Actions has runs whose jobs aren't there yet.
+            let path = format!("repos/{}/actions/runs?head_sha={}&per_page=100", w.repo, pr.head_sha);
+            match ask(via, token, path).await {
+                Answer::Found(v) => pr.checks = actions_of(Checks::None, Some(&v)),
+                // Actions off, or a token that can't read it: what the checks say stands.
+                Answer::Missing => {}
+                Answer::Unknown => return Read::Unknown,
+            }
+        }
     }
     if pr.open && w.until == "approved" {
         match ask(via, token, format!("{base}/reviews?per_page=100")).await {
@@ -1286,7 +1340,7 @@ mod tests {
     fn without_signing_in_it_stays_under_githubs_hourly_limit() {
         for n in 1..=MAX_WATCHES {
             let rounds_an_hour = 3600 / anonymous_every(n).as_secs() as usize;
-            assert!(rounds_an_hour * n * 3 <= 60, "{n} watches");
+            assert!(rounds_an_hour * n * ASKS_PER_LOOK <= 60, "{n} watches");
         }
     }
 
@@ -1428,6 +1482,57 @@ mod tests {
         let status = json!({ "statuses": [{ "context": "vercel", "state": "failure" }] });
         assert_eq!(checks_of(Some(&running), Some(&status)), Checks::Failed(vec!["vercel".into()]));
         assert_eq!(checks_of(Some(&json!({ "check_runs": [] })), Some(&json!({ "statuses": [] }))), Checks::None);
+    }
+
+    #[test]
+    fn a_queued_actions_run_without_jobs_is_not_no_checks() {
+        let none = checks_of(Some(&json!({ "check_runs": [] })), Some(&json!({ "statuses": [] })));
+        // Windows CI and E2E queued, GitHub has not created their jobs yet.
+        let queued = json!({ "workflow_runs": [
+            { "name": "Windows CI", "status": "queued", "conclusion": null },
+            { "name": "Windows E2E", "status": "queued", "conclusion": null },
+        ]});
+        let checks = actions_of(none.clone(), Some(&queued));
+        assert_eq!(checks, Checks::Pending);
+        // Long after the push it still waits: not "Checks passed".
+        assert_eq!(judge(&watch("green"), &open(checks.clone()), 10 * NO_CHECKS_GRACE_MS), None);
+        assert_eq!(judge(&watch("checks"), &open(checks.clone()), 10 * NO_CHECKS_GRACE_MS), None);
+        assert_eq!(judge(&watch("ready"), &open(checks), 10 * NO_CHECKS_GRACE_MS), None);
+        for status in ["in_progress", "requested", "waiting", "pending"] {
+            let run = json!({ "workflow_runs": [{ "name": "ci", "status": status, "conclusion": null }] });
+            assert_eq!(actions_of(Checks::None, Some(&run)), Checks::Pending, "{status}");
+        }
+        let approval = json!({ "workflow_runs": [{ "name": "ci", "status": "completed", "conclusion": "action_required" }] });
+        assert_eq!(actions_of(Checks::None, Some(&approval)), Checks::Pending);
+    }
+
+    #[test]
+    fn a_repository_without_actions_runs_keeps_the_three_minutes() {
+        let none = actions_of(Checks::None, Some(&json!({ "total_count": 0, "workflow_runs": [] })));
+        assert_eq!(none, Checks::None);
+        assert_eq!(judge(&watch("green"), &open(none.clone()), 10_000), None);
+        assert_eq!(judge(&watch("green"), &open(none.clone()), NO_CHECKS_GRACE_MS).map(|j| j.0), Some(true));
+        // Actions not readable (off, or the token can't): the same.
+        assert_eq!(actions_of(Checks::None, None), Checks::None);
+    }
+
+    #[test]
+    fn actions_runs_only_speak_when_no_check_is_listed() {
+        let queued = json!({ "workflow_runs": [{ "name": "ci", "status": "queued", "conclusion": null }] });
+        assert_eq!(actions_of(Checks::Passed, Some(&queued)), Checks::Passed);
+        let failed = Checks::Failed(vec!["build".into()]);
+        assert_eq!(actions_of(failed.clone(), Some(&queued)), failed);
+        // A run that ended before any job: a broken workflow fails, a superseded one doesn't.
+        let broken = json!({ "workflow_runs": [
+            { "name": "Windows CI", "status": "completed", "conclusion": "startup_failure" },
+            { "name": "Windows E2E", "status": "completed", "conclusion": "cancelled" },
+        ]});
+        assert_eq!(actions_of(Checks::None, Some(&broken)), Checks::Failed(vec!["Windows CI".into()]));
+        let done = json!({ "workflow_runs": [
+            { "name": "Windows CI", "status": "completed", "conclusion": "success" },
+            { "name": "Windows E2E", "status": "completed", "conclusion": "cancelled" },
+        ]});
+        assert_eq!(actions_of(Checks::None, Some(&done)), Checks::Passed);
     }
 
     #[test]

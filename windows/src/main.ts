@@ -115,7 +115,7 @@ async function main() {
   // An edge of the island being dragged: island.rs sends each new size.
   await onEvent<{ width: number; height: number; slot?: string | null }>("island-resize", (size) => island.onResize(size));
   // A moved island was let go: island.rs says which edge it is heading for.
-  await onEvent<{ dock: string; offset: number; float: number; shiftX: number; shiftY: number }>(
+  await onEvent<{ dock: string; offset: number; float: number; shiftX: number; shiftY: number; startAt: number }>(
     "island-dock", (place) => island.onDock(place));
   await onEvent<IslandShift>("island-shift", (shift) => island.onShift(shift));
 

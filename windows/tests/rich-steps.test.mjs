@@ -342,3 +342,19 @@ test("renderSteps on its own, with a context of its own", () => {
   // Steps with no name: the number alone under the formula.
   assert.equal(shown(card).find(".rc-steps-label")[0].textContent, "1");
 });
+
+test("a formula in code is no step's formula, as in the chat", () => {
+  const steps = parseSteps("", [
+    "## Print it",
+    "```bash",
+    "echo $$x$$",
+    "```",
+    "## Compute",
+    "Run `$$y$$` then:",
+    "$$x^2$$",
+  ].join("\n"));
+  assert.equal(steps.steps[0].tex, null);
+  assert.equal(steps.steps[0].text, "```bash\necho $$x$$\n```");
+  assert.equal(steps.steps[1].tex, "x^2");
+  assert.equal(steps.steps[1].text, "Run `$$y$$` then:");
+});
