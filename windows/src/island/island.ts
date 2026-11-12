@@ -89,7 +89,7 @@ const SHARE_GRACE = 10;
  * the wait; leaving it then closes it as usual.
  */
 const NOTICE_GRACE = 8;
-/** How close a dragged file comes to the island before it opens for the drop (page px). */
+/** How close a dragged file comes to the island before it opens for the drop (page px; island.rs DRAG_NEAR). */
 const DRAG_NEAR = 120;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
 const HOVER_OPEN_DELAY = 350;
