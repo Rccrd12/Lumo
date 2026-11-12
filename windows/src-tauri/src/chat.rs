@@ -1794,9 +1794,11 @@ mod tests {
 
     #[test]
     fn a_chat_is_answered_by_its_own_provider_and_model() {
-        let mut settings = Settings::default();
-        settings.chat_provider = "openai".into();
-        settings.chat_models.insert("openai".into(), "gpt-4o".into());
+        let settings = Settings {
+            chat_provider: "openai".into(),
+            chat_models: [("openai".to_string(), "gpt-4o".to_string())].into_iter().collect(),
+            ..Settings::default()
+        };
         // Anthropic's model is `model`; the others' are kept by provider.
         let a = with_pick(settings.clone(), Some("anthropic"), Some("claude-opus-5-5"));
         assert_eq!(a.chat_provider, ANTHROPIC);
