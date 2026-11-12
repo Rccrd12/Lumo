@@ -466,6 +466,20 @@ test("starting to write mid-countdown stops it; emptying the field starts 10 s a
   assert.equal(fsm.state, "petit");
 });
 
+test("Settings: leaving folds the island after the auto-close delay; Windows' box up holds it until answered", () => {
+  const set = openLeaving("none");
+  fsm.mouseLeft();
+  seconds(0.3);
+  set("keep");
+  seconds(120);
+  assert.equal(fsm.state, "home", "the box is up: the island waits");
+  set("none");
+  seconds(0.5);
+  assert.equal(fsm.state, "home");
+  seconds(0.1);
+  assert.equal(fsm.state, "petit", "the whole delay again once the box is gone");
+});
+
 test("typing more keeps the hold as it is: a keystroke never restarts the countdown", () => {
   const set = openLeaving("linger");
   fsm.mouseLeft();

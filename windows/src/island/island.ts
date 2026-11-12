@@ -1,7 +1,7 @@
 // The island: DOM shell, sizing animation, Lumo placement, mouse handling.
 
 import { Tracked, Spring, clamp } from "../core/anim";
-import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
+import { Bridge, IS_TAURI, isDialogOpen, onDialogsChanged, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, questionsHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra, errorCardHeight, finishedCardHeight, chatAutoHeight, toolsViewHeight,
@@ -525,6 +525,7 @@ export class Island {
     // Typing, the chat's field taking or losing the cursor, the island losing
     // the keyboard to another app: the countdown follows.
     const changed = () => this.fsm.holdChanged();
+    onDialogsChanged(changed);
     for (const type of ["input", "focusin", "focusout"]) document.addEventListener(type, changed, true);
     window.addEventListener("focus", changed);
     window.addEventListener("blur", changed);
@@ -884,21 +885,23 @@ export class Island {
   private applyBehaviour() {
     const s = State.settings;
     const mode = parseCloseMode(s.islandClose);
-    // Settings stay open while you look something up elsewhere: they close on
-    // Escape, a click on a tab, or a click outside when set to.
-    const holding = State.view === "settings";
-    this.fsm.closeOnLeave = !holding && (mode === "timer" || mode === "leave");
+    // Every view follows the close mode, Settings included.
+    this.fsm.closeOnLeave = mode === "timer" || mode === "leave";
     this.fsm.homeToPetitDelay = mode === "leave" ? LEAVE_CLOSE_DELAY : s.autoCloseInterval;
     this.fsm.autoHide = s.islandAutoHide === true;
   }
 
   /**
    * What a mouse leave must wait for (fsm.ts LeaveHold): a message being
-   * written in the chat keeps the island open; the cursor in the chat's empty
-   * field, or the drop menu opened from its tab, give it LINGER_CLOSE_DELAY.
+   * written in the chat, or a Windows box asked from Settings, keeps the island
+   * open; the cursor in the chat's empty field, or the drop menu opened from
+   * its tab, give it LINGER_CLOSE_DELAY.
    */
   private leaveHold(): LeaveHold {
     if (State.mode !== "expanded") return "none";
+    // Windows' own box confirming a write asked from Settings (hooks, status
+    // line): the cursor is on it, and the island waits for the answer.
+    if (isDialogOpen()) return "keep";
     // Opened by a drag passing by: that one closes as the drag goes (followDrag).
     if (State.view === "upload" && !this.dragOpened) return "linger";
     const field = document.activeElement;
