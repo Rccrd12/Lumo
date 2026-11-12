@@ -33,7 +33,8 @@
 //!
 //! `--tools=plan` offers `update_plan` (Codex's own tool, which the models
 //! know): the agent's plan, step by step, for the Plan island. The call is
-//! handed to Lumo (`{"lumo_plan": {"input": …}}`, antigravity_cli.rs), and
+//! handed to Lumo (`{"lumo_plan": {"input": …, "chat": …}}`, antigravity_cli.rs),
+//! with the chat it came from (`LUMO_CHAT_ID`), and
 //! answered as done even when Lumo can't be reached: a plan not shown never
 //! stops the agent's work.
 
@@ -671,6 +672,13 @@ fn all_tools(kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>) -> Vec<Va
     all
 }
 
+/// The island chat the agent was started for (`LUMO_CHAT_ID`, set by the app),
+/// or "" when none: a `${env:…}` Cursor's mcp.json left as it was (acp_chat.rs)
+/// names no chat.
+fn chat_id() -> String {
+    std::env::var("LUMO_CHAT_ID").ok().filter(|c| !c.starts_with("${")).unwrap_or_default()
+}
+
 /// A tool's result as MCP gives it: Lumo's image first when there is one, then its words.
 fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>) -> Value {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
@@ -688,13 +696,11 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         if !input.get("plan").and_then(Value::as_array).is_some_and(|p| !p.is_empty()) {
             return failed("The plan needs at least one step.");
         }
-        let _ = lumo(&json!({ "lumo_plan": { "input": input } }));
+        let _ = lumo(&json!({ "lumo_plan": { "input": input, "chat": chat_id() } }));
         return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
     }
     if ISLAND_NAMES.contains(&name) {
-        // A `${env:…}` Cursor's mcp.json left as it was (acp_chat.rs) names no chat.
-        let chat = std::env::var("LUMO_CHAT_ID").ok().filter(|c| !c.starts_with("${")).unwrap_or_default();
-        return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat } })));
+        return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat_id() } })));
     }
     let key = if mail_tool(name) { "lumo_mail" } else { "lumo_computer" };
     answer(lumo(&json!({ key: { "tool": name, "input": input } })))
@@ -964,6 +970,8 @@ mod tests {
         let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_plan","arguments":{"plan":[{"step":"Read","status":"in_progress"}]}}}"#;
         let shown = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_plan"]["input"]["plan"][0]["step"], "Read");
+            // With the chat it came from (`LUMO_CHAT_ID`), whatever chat is on screen.
+            assert!(req["lumo_plan"]["chat"].is_string());
             Ok(json!({ "text": "Plan shown to the user." }))
         };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &shown).unwrap()).unwrap();
