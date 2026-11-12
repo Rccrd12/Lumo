@@ -23,11 +23,10 @@ function fakeGoogle() {
       "me@gmail.com": [{ status: "confirmed", summary: "Lezione Sistemi Operativi", start: { dateTime: iso(at(14)) }, end: { dateTime: iso(at(16)) } }],
       "uni@group.calendar.google.com": [{ status: "confirmed", summary: "Esame", start: { date: "2026-11-13" }, end: { date: "2026-11-14" } }],
     },
-    /** Changes waiting for the next "what changed?", by calendar. */
+    /** Each calendar's changes, with Google's time of each (deleted events too). */
     changed: {},
-    /** Calendars whose syncToken Google forgot. */
+    /** Calendars that answer "what changed?" with 410 (updatedMin too long ago). */
     gone: new Set(),
-    tokens: 0,
   };
   g.get = async (path, query) => {
     if (!g.signedIn) return null;
@@ -35,17 +34,16 @@ function fakeGoogle() {
     g.asked.push(`${path} ?${Object.keys(q).filter((k) => k !== "fields").sort().join(",")}`);
     if (path === "/users/me/calendarList") return { status: 200, body: { items: g.calendars } };
     const id = decodeURIComponent(path.slice("/calendars/".length, -"/events".length));
-    if (q.syncToken) {
+    if (q.updatedMin) {
+      assert.equal(q.showDeleted, "true");
       if (g.gone.has(id)) {
         g.gone.delete(id);
         return { status: 410, body: {} };
       }
-      const items = g.changed[id] ?? [];
-      g.changed[id] = [];
-      return { status: 200, body: { items, nextSyncToken: `t${++g.tokens}` } };
+      return { status: 200, body: { items: (g.changed[id] ?? []).filter((c) => c.updated >= q.updatedMin) } };
     }
     if (q.singleEvents) return { status: 200, body: { items: g.events[id] ?? [] } };
-    return { status: 200, body: { nextSyncToken: `t${++g.tokens}` } };
+    throw new Error(`unexpected request ${path}`);
   };
   return g;
 }
@@ -83,7 +81,7 @@ test("the same event from Google and from the iCal address shows once", () => {
   assert.deepEqual(mergeEvents([e], [{ ...e, location: "x" }, other]), [other, e]);
 });
 
-test("the first read lists the calendars, takes a token for each shown one and reads its next days", async () => {
+test("the first read lists the calendars and reads the next days of each shown one, never a calendar whole", async () => {
   const g = fakeGoogle();
   const sync = new GoogleSync(g.get);
   const events = await sync.refresh({}, NOW);
@@ -92,9 +90,9 @@ test("the first read lists the calendars, takes a token for each shown one and r
   assert.ok(!g.asked.some((a) => a.includes("holiday")));
   assert.deepEqual(g.asked, [
     "/users/me/calendarList ?maxResults",
-    "/calendars/me%40gmail.com/events ?maxResults",
+    "/calendars/me%40gmail.com/events ?maxResults,showDeleted,updatedMin",
     "/calendars/me%40gmail.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin",
-    "/calendars/uni%40group.calendar.google.com/events ?maxResults",
+    "/calendars/uni%40group.calendar.google.com/events ?maxResults,showDeleted,updatedMin",
     "/calendars/uni%40group.calendar.google.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin",
   ]);
 });
@@ -106,25 +104,54 @@ test("then each minute asks only what changed, and reads the next days again onl
   g.asked = [];
   let events = await sync.refresh({}, NOW + 60_000);
   assert.deepEqual(g.asked, [
-    "/calendars/me%40gmail.com/events ?maxResults,syncToken",
-    "/calendars/uni%40group.calendar.google.com/events ?maxResults,syncToken",
+    "/calendars/me%40gmail.com/events ?maxResults,showDeleted,updatedMin",
+    "/calendars/uni%40group.calendar.google.com/events ?maxResults,showDeleted,updatedMin",
   ]);
   assert.equal(events.length, 2);
 
   // "Call con Marco" added on the phone.
   g.events["me@gmail.com"].unshift({ status: "confirmed", summary: "Call con Marco", start: { dateTime: iso(at(11, 15)) }, end: { dateTime: iso(at(11, 45)) } });
-  g.changed["me@gmail.com"] = [{ id: "new" }];
+  g.changed["me@gmail.com"] = [{ updated: iso(NOW + 100_000) }];
   g.asked = [];
   events = await sync.refresh({}, NOW + 120_000);
   assert.deepEqual(events.map((e) => e.title), ["Call con Marco", "Lezione Sistemi Operativi", "Esame"]);
   assert.deepEqual(g.asked, [
-    "/calendars/me%40gmail.com/events ?maxResults,syncToken",
+    "/calendars/me%40gmail.com/events ?maxResults,showDeleted,updatedMin",
     "/calendars/me%40gmail.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin",
-    "/calendars/uni%40group.calendar.google.com/events ?maxResults,syncToken",
+    "/calendars/uni%40group.calendar.google.com/events ?maxResults,showDeleted,updatedMin",
   ]);
+
+  // The same change, told again in the next minutes (the margin for the clock), is not read twice.
+  g.asked = [];
+  await sync.refresh({}, NOW + 180_000);
+  assert.equal(g.asked.filter((a) => a.includes("singleEvents")).length, 0);
+
+  // A deleted event counts too (Google tells of it with showDeleted).
+  g.changed["uni@group.calendar.google.com"] = [{ status: "cancelled", updated: iso(NOW + 200_000) }];
+  g.events["uni@group.calendar.google.com"] = [];
+  g.asked = [];
+  events = await sync.refresh({}, NOW + 240_000);
+  assert.deepEqual(events.map((e) => e.title), ["Call con Marco", "Lezione Sistemi Operativi"]);
 });
 
-test("a token Google no longer knows (410) starts that calendar over", async () => {
+test("each minute looks back from the last look, with a margin for the computer's clock", async () => {
+  const g = fakeGoogle();
+  const seen = [];
+  const get = g.get;
+  g.get = async (path, query) => {
+    const q = Object.fromEntries(query);
+    if (q.updatedMin) seen.push(q.updatedMin);
+    return get(path, query);
+  };
+  const sync = new GoogleSync(g.get);
+  await sync.refresh({}, NOW);
+  await sync.refresh({}, NOW + 60_000);
+  await sync.refresh({}, NOW + 120_000);
+  // Two calendars: each look twice, from the look before less five minutes.
+  assert.deepEqual(seen, [NOW, NOW, NOW, NOW, NOW + 60_000, NOW + 60_000].map((t) => iso(t - 300_000)));
+});
+
+test("a last look too long ago for Google (410) reads that calendar's next days again", async () => {
   const g = fakeGoogle();
   const sync = new GoogleSync(g.get);
   await sync.refresh({}, NOW);
@@ -132,10 +159,13 @@ test("a token Google no longer knows (410) starts that calendar over", async () 
   g.asked = [];
   await sync.refresh({}, NOW + 60_000);
   assert.deepEqual(g.asked.slice(1), [
-    "/calendars/uni%40group.calendar.google.com/events ?maxResults,syncToken",
-    "/calendars/uni%40group.calendar.google.com/events ?maxResults",
+    "/calendars/uni%40group.calendar.google.com/events ?maxResults,showDeleted,updatedMin",
     "/calendars/uni%40group.calendar.google.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin",
   ]);
+  // And then looks from now on.
+  g.asked = [];
+  await sync.refresh({}, NOW + 120_000);
+  assert.equal(g.asked.filter((a) => a.includes("singleEvents")).length, 0);
 });
 
 test("the next days are read again after half an hour, or on a new day, even with nothing changed", async () => {

@@ -3,11 +3,12 @@
 // user keeps on, and their events of the next days. Rust signs in and adds the
 // token (google_calendar.rs); this asks through it, and works out what to ask.
 //
-// Every minute or so each calendar is asked what changed since the last look,
-// with its `syncToken`: the answer is nearly always empty, and small. Only
-// when something changed (or every half hour, or on a new day) are the events
-// of the next days read again. A 410 (the token too old) starts that calendar
-// over. Pure but for `get`, so the tests run it against a fake Google.
+// Every minute or so each calendar is asked which of its events were changed
+// in the last minutes (`updatedMin`, deleted ones included): the answer is
+// nearly always empty, and small. Only when one was (or every half hour, or on
+// a new day) are the events of the next days read again. Nothing is ever read
+// whole: a calendar of many years costs what a new one does. Pure but for
+// `get`, so the tests run it against a fake Google.
 
 import type { CalEvent } from "./calendar";
 
@@ -35,6 +36,8 @@ const LIST_EVERY_MS = 30 * 60_000;
 /** Calendars read at most: each is a request every minute. */
 export const MAX_GOOGLE_CALENDARS = 20;
 const MAX_PAGES = 50;
+/** How far back "what changed?" looks before the last look: the computer's clock may be off Google's by that much. */
+const CLOCK_MARGIN_MS = 5 * 60_000;
 
 type Json = Record<string, unknown>;
 const obj = (v: unknown): Json => (v && typeof v === "object" ? (v as Json) : {});
@@ -113,8 +116,10 @@ export function mergeEvents(...lists: CalEvent[][]): CalEvent[] {
 const dayKey = (t: number) => new Date(t).toDateString();
 
 interface CalendarState {
-  /** What to ask "what changed since?" with; null when Google gave none. */
-  token: string | null;
+  /** When it was last asked what changed (this computer's clock). */
+  askedAt: number;
+  /** The latest change Google told of (its own clock, RFC 3339 in UTC). */
+  newest: string;
   events: CalEvent[];
   windowAt: number;
   windowDay: string;
@@ -194,22 +199,10 @@ export class GoogleSync {
   private async events(id: string, now: number): Promise<CalEvent[]> {
     const path = `/calendars/${encodeURIComponent(id)}/events`;
     const known = this.state.get(id);
-    const s: CalendarState = known ?? { token: null, events: [], windowAt: 0, windowDay: "" };
-    // A calendar new to Lumo, or one whose token Google no longer knows, starts with a token of its own.
-    let restart = !known;
-    let changed = restart;
-    if (s.token) {
-      const next = await this.changes(path, s.token);
-      if (next === "gone") {
-        restart = changed = true;
-      } else {
-        changed = next.changed;
-        s.token = next.token;
-      }
-    }
-    if (restart) s.token = await this.firstToken(path);
-    // Without a token nothing tells a change: the next days are read each time.
-    if (changed || !s.token || now - s.windowAt > WINDOW_EVERY_MS || dayKey(now) !== s.windowDay) {
+    const s: CalendarState = known ?? { askedAt: now, newest: "", events: [], windowAt: 0, windowDay: "" };
+    // A calendar new to Lumo is read at once; its first look only learns how recent its last change is.
+    const changed = await this.changedSince(path, s, now);
+    if (!known || changed || now - s.windowAt > WINDOW_EVERY_MS || dayKey(now) !== s.windowDay) {
       const body = await this.ask(path, [
         ["singleEvents", "true"],
         ["orderBy", "startTime"],
@@ -227,32 +220,39 @@ export class GoogleSync {
     return s.events;
   }
 
-  /** What changed since `token`: whether anything did, and the token for next time. */
-  private async changes(path: string, token: string): Promise<{ changed: boolean; token: string | null } | "gone"> {
-    let changed = false;
+  /**
+   * Whether an event of the calendar was added, changed or deleted since the
+   * last look: the changes of the last minutes (and a margin for this
+   * computer's clock), compared by Google's own time with the latest seen.
+   */
+  private async changedSince(path: string, s: CalendarState, now: number): Promise<boolean> {
+    let newest = s.newest;
     let page = "";
+    let gone = false;
     for (let i = 0; i < MAX_PAGES; i++) {
-      const query: [string, string][] = [["syncToken", token], ["maxResults", "250"], ["fields", "items(id),nextPageToken,nextSyncToken"]];
+      const query: [string, string][] = [
+        ["updatedMin", new Date(s.askedAt - CLOCK_MARGIN_MS).toISOString()],
+        ["showDeleted", "true"],
+        ["maxResults", "250"],
+        ["fields", "items(updated),nextPageToken"],
+      ];
       if (page) query.push(["pageToken", page]);
       const body = await this.ask(path, query, true);
-      if (body.gone) return "gone";
-      if (Array.isArray(body.items) && body.items.length) changed = true;
+      // updatedMin too long ago (the computer slept for weeks): read it again.
+      if (body.gone) {
+        gone = true;
+        break;
+      }
+      for (const item of Array.isArray(body.items) ? body.items : []) {
+        const updated = str(obj(item).updated);
+        if (updated > newest) newest = updated;
+      }
       page = str(body.nextPageToken);
-      if (!page) return { changed, token: str(body.nextSyncToken) || null };
+      if (!page) break;
     }
-    return { changed: true, token: null };
-  }
-
-  /** A calendar's first `syncToken`: every page of its events, with nothing of them but the token at the end. */
-  private async firstToken(path: string): Promise<string | null> {
-    let page = "";
-    for (let i = 0; i < MAX_PAGES; i++) {
-      const query: [string, string][] = [["maxResults", "2500"], ["fields", "nextPageToken,nextSyncToken"]];
-      if (page) query.push(["pageToken", page]);
-      const body = await this.ask(path, query);
-      page = str(body.nextPageToken);
-      if (!page) return str(body.nextSyncToken) || null;
-    }
-    return null;
+    const changed = gone || newest > s.newest;
+    s.newest = newest;
+    s.askedAt = now;
+    return changed;
   }
 }

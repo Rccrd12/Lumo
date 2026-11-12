@@ -14,8 +14,8 @@
 // Lumo asks to see the events and the list of calendars, never to change them.
 //
 // The island's page does the rest (src/core/google-calendar.ts): which
-// calendars, what changed since the last look (`syncToken`), the events of the
-// next days. It asks through `google_calendar_get`, which reaches only the
+// calendars, what changed in the last minutes (`updatedMin`), the events of
+// the next days; never a calendar whole. It asks through `google_calendar_get`, which reaches only the
 // Calendar API's calendar list and events, with the token added here.
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -151,8 +151,8 @@ pub struct Answer {
 
 /// A GET to the Calendar API: `path` under /calendar/v3, only the calendar
 /// list or a calendar's events. Null when not signed in (or Lumo is paused).
-/// A 410 comes back as an answer: the `syncToken` is too old, and the page
-/// starts that calendar again.
+/// A 410 comes back as an answer: the `updatedMin` is too long ago, and the
+/// page reads that calendar's next days again.
 #[tauri::command]
 pub async fn google_calendar_get(path: String, query: Vec<(String, String)>) -> Result<Option<Answer>, String> {
     if crate::integrations::PAUSED.load(Ordering::Relaxed) || !secrets::present(REFRESH_KEY) {
@@ -197,7 +197,7 @@ async fn send(client: &reqwest::Client, url: &Url, token: &str) -> Result<reqwes
 }
 
 /// What went wrong on the way, with reqwest's causes (never the address,
-/// whose query may hold a sync token), in the message and in the log.
+/// whose path names the calendar), in the message and in the log.
 fn network_error(url: &Url, err: reqwest::Error) -> String {
     let host = url.host_str().unwrap_or("");
     let err = err.without_url();
@@ -540,9 +540,9 @@ mod tests {
 
     #[test]
     fn query_values_are_encoded() {
-        let q = vec![("syncToken".to_string(), "a+b/c=&d".to_string())];
+        let q = vec![("pageToken".to_string(), "a+b/c=&d".to_string())];
         let url = api_url("/calendars/primary/events", &q).unwrap();
-        assert_eq!(url.query(), Some("syncToken=a%2Bb%2Fc%3D%26d"));
+        assert_eq!(url.query(), Some("pageToken=a%2Bb%2Fc%3D%26d"));
     }
 
     #[test]
