@@ -344,3 +344,22 @@ test("no calendar address: no calendar tile; an empty calendar read fine says no
   assert.match(quiet.textContent, /Nothing in the next days/);
   assert.doesNotMatch(quiet.textContent, /Can't read it/);
 });
+
+test("the calendar's tile shows what is under way or coming, never yesterday's events", () => {
+  const hour = 3_600_000;
+  const now = Date.now();
+  const ev = (title, start, end) => ({ title, start, end, allDay: false, location: "" });
+  const cal = homeWith({
+    configured: true, error: null,
+    events: [
+      // Yesterday's afternoon, read with the day before (the AI's calendar access sees it).
+      ev("Algoritmi e strutture dati", now - 23 * hour, now - 21.5 * hour),
+      ev("Elettromagnetismo", now - 21.5 * hour, now - 18.5 * hour),
+      ev("Analisi matematica II", now - 2 * hour, now + hour),
+      ev("Fisica", now + 20 * hour, now + 23 * hour),
+    ],
+  }).el.find(".home-tile").find((x) => /Analisi/.test(x.textContent));
+  assert.ok(cal, "expected the event under way on the calendar's tile");
+  assert.match(cal.textContent, /Fisica/);
+  assert.doesNotMatch(cal.textContent, /Algoritmi|Elettromagnetismo/);
+});

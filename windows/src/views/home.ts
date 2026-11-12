@@ -113,6 +113,15 @@ const FIELD_H = 40;
 const GAP = 12;
 const BOTTOM = 12;
 
+/**
+ * The calendar's events not over yet: the island reads from a day back (the
+ * AI's calendar access sees yesterday), but the tile shows what is under way
+ * or coming, never yesterday's afternoon as if it were today's.
+ */
+export function comingEvents<E extends { end: number }>(events: E[], now: number): E[] {
+  return events.filter((e) => e.end > now);
+}
+
 function tilesOf(data: ActivitiesData): ("timer" | "music" | "calendar" | "mail")[] {
   const tiles: ("timer" | "music" | "calendar" | "mail")[] = [];
   // Put away with the "⋯" menu's Live Activities (on the home they are
@@ -597,8 +606,8 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
             h("span", { class: "tile-sub", text: media.artist }))));
       }
       case "calendar": {
-        const [first, second] = data.calendar.events;
         const now = Date.now();
+        const [first, second] = comingEvents(data.calendar.events, now);
         // Opens the calendar on the web, or its Settings when it has no site.
         const opens = (tileEl: HTMLElement) => {
           tileEl.addEventListener("click", () => actions.activity(data.calendar.link ? { kind: "calendarWeb" } : { kind: "settings" }));
@@ -728,7 +737,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
         // (A paused timer's endsAt moves with the clock: what is left says it.)
         ...data.timers.map((x) => `${x.id}:${x.label}:${x.pausedLeft != null ? `p${x.pausedLeft}` : x.endsAt}`),
         data.media ? `${data.media.app}:${data.media.title}:${data.media.artist}:${data.media.playing}` : "",
-        ...data.calendar.events.slice(0, 2).map((e) => `${e.title}:${e.start}`), data.calendar.error ?? "",
+        ...comingEvents(data.calendar.events, Date.now()).slice(0, 2).map((e) => `${e.title}:${e.start}`), data.calendar.error ?? "",
         ...data.mail.messages.slice(0, 1).map((m) => `${m.id}:${m.from}:${m.subject}`), data.mail.messages.length,
         ...others.map((x) => `${x.id}:${x.name}:${x.color}:${x.pillBadge ?? ""}`),
       ].join("~");
