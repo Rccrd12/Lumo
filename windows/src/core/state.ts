@@ -969,6 +969,12 @@ class AppState {
   private toolsInWorkshop = false;
   /** A tab's view was open since launch: the new look reopens there rather than on its list. */
   private tabNoted = false;
+  /**
+   * The island closed on its own (the mouse gone, a click elsewhere) on the
+   * Email view: it opens there again, on the email or the list it showed
+   * (views/mail-view.ts sets it; Escape, or another view, leaves it false).
+   */
+  mailLeftOpen = false;
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
@@ -991,6 +997,7 @@ class AppState {
     // A file dropped and not yet asked about waits in the chat, so the island
     // opens there rather than on the home.
     if (this.droppedFile && !this.droppedFile.sent) return "prompt";
+    if (this.mailLeftOpen && this.settings.activeIntegrations.includes("integration_mail")) return "mail";
     // There are no tabs: until a view of its own was open, the island opens on
     // the home (what waits for you, the sessions); then where it was left.
     if (!this.tabNoted) return this.liveActive ? "live" : this.agentsView();

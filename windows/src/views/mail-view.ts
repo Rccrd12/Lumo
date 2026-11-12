@@ -137,6 +137,13 @@ export function buildMailView(actions: ViewActions): ViewHost {
   let watchKey = "";
   /** The view was on screen at the last sync: opening it again may ask again. */
   let wasShown = false;
+  /** When Escape was pressed on the list, which closes the island: it isn't opened on it again. */
+  let escapedAt = -Infinity;
+  /** Where the list and the email were scrolled when the island closed: back there on the next opening. */
+  let keptListScroll: number | null = null;
+  let keptReaderScroll: number | null = null;
+  /** Until when the email's frame, fitting as it loads, scrolls back to keptReaderScroll. */
+  let keptReaderUntil = 0;
   let drawn = "";
   /** What the reader shows: drawn again only when it changes, so the email's frame isn't loaded again. */
   let readerDrawn = "";
@@ -211,6 +218,17 @@ export function buildMailView(actions: ViewActions): ViewHost {
   // Its sync runs only while it is on screen: leaving is seen here.
   State.subscribe(() => {
     if (State.view === "mail" && State.mode === "expanded") return;
+    if (wasShown) {
+      // The island folded on this view (not another view opened, not Escape):
+      // the next opening comes back here, scrolled where it was.
+      const folded = State.view === "mail" && Date.now() - escapedAt > 1000;
+      State.mailLeftOpen = folded;
+      keptListScroll = folded ? list.scrollTop : null;
+      keptReaderScroll = folded && openId ? reader.scrollTop : null;
+      keptReaderUntil = 0;
+    } else if (State.view !== "mail") {
+      State.mailLeftOpen = false;
+    }
     wasShown = false;
     // The email's frame goes while the view isn't on screen: nothing of it
     // (its animations, its GIFs) runs then. It comes back when the view does.
@@ -225,7 +243,12 @@ export function buildMailView(actions: ViewActions): ViewHost {
 
   // Escape goes back from an email to the list before it closes the island.
   window.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || openId == null || State.view !== "mail" || State.mode !== "expanded") return;
+    if (e.key !== "Escape" || State.view !== "mail" || State.mode !== "expanded") return;
+    // From the list, Escape closes the island (island.ts): "done", not reopened here.
+    if (openId == null) {
+      escapedAt = Date.now();
+      return;
+    }
     e.stopImmediatePropagation();
     back();
   }, true);
@@ -269,6 +292,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
     actions.blip();
     openId = id;
     nearFor = null;
+    keptReaderScroll = null;
     reader.scrollTop = 0;
     drawn = "";
     State.notify();
@@ -355,11 +379,15 @@ export function buildMailView(actions: ViewActions): ViewHost {
       if (zoom !== 1) body.style.zoom = String(zoom);
       // Its height as its content says, measured with the frame let down to nothing
       // (else it never shrinks), the reader kept where it was.
-      const keep = reader.scrollTop;
+      // Opened again where the island folded: back where it was, as the frame
+      // grows to it (its first fits may be short of it).
+      const back = keptReaderScroll != null && performance.now() < keptReaderUntil;
+      const keep = back ? keptReaderScroll! : reader.scrollTop;
       frame.style.height = "0px";
       const height = Math.ceil(page.documentElement.scrollHeight);
       frame.style.height = `${Math.max(height, 40)}px`;
       reader.scrollTop = keep;
+      if (!back || Math.abs(reader.scrollTop - keep) < 2) keptReaderScroll = null;
       fadeIf(reader);
     };
     if (typeof ResizeObserver !== "undefined") {
@@ -628,6 +656,10 @@ export function buildMailView(actions: ViewActions): ViewHost {
       const opening = shown && !wasShown;
       wasShown = shown;
       if (!shown) return;
+      if (opening) {
+        escapedAt = -Infinity;
+        keptReaderUntil = performance.now() + 3000;
+      }
       // Opened after a while, or the island's watch saw the inbox change
       // meanwhile (an email came, one was read): asked again.
       const info = State.integrations.integration_mail;
@@ -638,9 +670,20 @@ export function buildMailView(actions: ViewActions): ViewHost {
         void load();
       }
       const now = [language(), filter, unreadOnly, openId, loading, loadedAt, data?.messages.length ?? -1, webImagesOn()].join("~");
-      if (now === drawn) return;
-      drawn = now;
-      draw();
+      if (now !== drawn) {
+        drawn = now;
+        draw();
+      }
+      // Opened again where the island folded: scrolled back where it was, once
+      // what was there is drawn (an email's frame does it as it fits).
+      if (keptListScroll != null && !loading && data && openId == null) {
+        list.scrollTop = keptListScroll;
+        keptListScroll = null;
+      }
+      if (keptReaderScroll != null && shownBody?.classList.contains("mv-read-body")) {
+        reader.scrollTop = keptReaderScroll;
+        keptReaderScroll = null;
+      }
     },
   };
 }
