@@ -753,8 +753,10 @@ export function formatValue(n: number, step: number, own = true): string {
 
 const GREEK_NAMES = new Set(Object.values(GREEK));
 
-/** A name's TeX: omega as \omega, V_out as V_{out}, a longer name such as speed as \mathit{speed}. */
+/** A name's TeX: omega as \omega, V_out as V_{out}, a longer name such as speed as \mathit{speed}, x' as x'. */
 export function texName(name: string): string {
+  const primes = /'*$/.exec(name)![0];
+  if (primes) return texName(name.slice(0, -primes.length)) + primes;
   const cut = name.indexOf("_");
   const base = cut > 0 ? name.slice(0, cut) : name;
   const sub = cut > 0 ? name.slice(cut + 1) : "";

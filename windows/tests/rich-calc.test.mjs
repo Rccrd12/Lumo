@@ -301,6 +301,25 @@ test("names as TeX", () => {
   assert.equal(texName("speed"), "\\mathit{speed}");
 });
 
+test("names with primes: x' and y' as outputs", () => {
+  assert.equal(texName("x'"), "x'");
+  assert.equal(texName("omega_0''"), "\\omega_{0}''");
+  const calc = parseCalc("Rotation", [
+    "formula: x' = x\\cos\\theta - y\\sin\\theta",
+    "input: x | x | -10..10 | 3",
+    "input: y | y | -10..10 | 1",
+    "input: theta | angle | 0..360 step 1 | 90 | °",
+    "output: x' | rotated x | x*cos(theta*pi/180) - y*sin(theta*pi/180)",
+    "output: y′ | rotated y | x*sin(theta*pi/180) + y*cos(theta*pi/180)",
+    "output: d | moved | sqrt((x'-x)^2 + (y'-y)^2)",
+  ].join("\n"));
+  assert.ok(calc);
+  assert.deepEqual(calc.outputs.map((o) => o.name), ["x'", "y'", "d"]);
+  const r = evaluateCalc(calc, { x: 3, y: 1, theta: 90 });
+  assert.ok(Math.abs(r["x'"] + 1) < 1e-12 && Math.abs(r["y'"] - 3) < 1e-12);
+  assert.ok(Math.abs(r.d - Math.sqrt(20)) < 1e-12);
+});
+
 // ── The cards ─────────────────────────────────────────────────────────────────
 
 const ranges = (el) => el.find("INPUT").filter((i) => i.getAttribute("type") === "range");

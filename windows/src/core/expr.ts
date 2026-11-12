@@ -114,6 +114,8 @@ type Token =
 const isDigit = (c: string) => c >= "0" && c <= "9";
 const isLatin = (c: string) => (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c === "_";
 const NAME_REST = /[A-Za-z0-9_]/;
+/** The primes a name may end with (x', y′), all read as `'`. */
+const PRIME = new Set(["'", "’", "′", "ʹ"]);
 const SAME_AS: Record<string, string> = { "×": "*", "·": "*", "⋅": "*", "∗": "*", "÷": "/", "−": "-", "–": "-" };
 const SUPERSCRIPT: Record<string, string> = { "²": "2", "³": "3" };
 
@@ -151,6 +153,11 @@ function tokenize(source: string): Token[] {
         if (g) name += g;
         else if (NAME_REST.test(source[j])) name += source[j];
         else break;
+      }
+      // Primes end a name: x' and x'' are names of their own.
+      while (PRIME.has(source[j] ?? "")) {
+        name += "'";
+        j++;
       }
       tokens.push({ t: "name", v: name, at });
       i = j;
@@ -398,11 +405,13 @@ export function compile(source: string): Expr {
 
 /**
  * A name as the formulas read it, from the ways a model may write one:
- * `ω`, `\omega`, `$V_{out}$` give omega and V_out. Null when it is no name.
+ * `ω`, `\omega`, `$V_{out}$` give omega and V_out; `x'`, `x′` and
+ * `x^{\prime}` give x'. Null when it is no name.
  */
 export function normalizeName(text: string): string | null {
   let s = text.trim().replace(/^\$+|\$+$/g, "").trim();
+  s = s.replace(/\^\{?((?:\s*\\prime)+)\s*\}?$/, (_, p: string) => "'".repeat(p.split("\\prime").length - 1));
   s = s.replace(/^\\/, "").replace(/[{}]/g, "");
-  s = [...s].map((c) => GREEK[c] ?? c).join("");
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) ? s : null;
+  s = [...s].map((c) => (PRIME.has(c) ? "'" : (GREEK[c] ?? c))).join("");
+  return /^[A-Za-z_][A-Za-z0-9_]*'*$/.test(s) ? s : null;
 }
