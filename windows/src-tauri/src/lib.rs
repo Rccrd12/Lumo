@@ -29,6 +29,7 @@ mod file_moves;
 mod files;
 mod github;
 mod github_tools;
+mod google_calendar;
 mod hooks;
 mod i18n;
 mod identity;
@@ -88,7 +89,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
 use chat::{ChatContext, ChatReply, Chats, ModelInfo};
@@ -1172,6 +1173,10 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
     if key == listen_events::SECRETS_KEY {
         return Err("unknown key".into());
     }
+    // Google's permission comes only from a sign-in (google_calendar.rs).
+    if key == google_calendar::REFRESH_KEY {
+        return Err("unknown key".into());
+    }
     let before = (key == "github-token").then(|| secrets::get(&key));
     secrets::set(&key, &value)?;
     secret_changed(&app, &key);
@@ -1201,7 +1206,12 @@ fn secret_changed(app: &AppHandle, key: &str) {
         mail::keys_changed();
     }
     if key == calendar::URL_KEY {
+        calendar::address_changed();
         let _ = app.emit_to(island::WINDOW_LABEL, "calendar-changed", ());
+    }
+    if key == google_calendar::CLIENT_ID_KEY || key == google_calendar::CLIENT_SECRET_KEY {
+        google_calendar::client_changed();
+        let _ = app.emit_to(island::WINDOW_LABEL, google_calendar::CHANGED_EVENT, ());
     }
 }
 
@@ -1279,11 +1289,13 @@ fn settings_page_url(app: &AppHandle) -> WebviewUrl {
     WebviewUrl::App("settings.html".into())
 }
 
-/// The settings window is created hidden at launch and only ever shown and
-/// hidden afterwards. A WebView2 window created later — on the main thread or
-/// not — silently comes up blank in this app, so the window that works is the
-/// one that exists before the island's webview does.
-fn create_settings_window(app: &AppHandle) {
+/// The settings window is created the first time it is asked for ("Open in a
+/// window"), not at launch: most launches never show it, and a webview made
+/// at launch is one more process starting with Lumo and staying for nothing.
+/// Afterwards it is only ever shown and hidden. It must ask for BROWSER_ARGS,
+/// as the computer overlay (computer.rs), also made later, does: a window
+/// asking for other arguments comes up blank.
+fn create_settings_window(app: &AppHandle) -> Option<WebviewWindow> {
     let url = settings_page_url(app);
     match WebviewWindowBuilder::new(app, confirmed::SETTINGS_WINDOW, url)
         .additional_browser_args(BROWSER_ARGS)
@@ -1307,16 +1319,17 @@ fn create_settings_window(app: &AppHandle) {
                     webview_memory::set_low(&hidden, true);
                 }
             });
-            // Made hidden: small until it is first shown.
-            webview_memory::set_low(&win, true);
+            Some(win)
         }
-        Err(err) => log::line(format!("settings window failed: {err}")),
+        Err(err) => {
+            log::line(format!("settings window failed: {err}"));
+            None
+        }
     }
 }
 
 fn show_settings_window(app: &AppHandle) {
-    let Some(win) = app.get_webview_window("settings") else {
-        log::line("settings window missing");
+    let Some(win) = app.get_webview_window(confirmed::SETTINGS_WINDOW).or_else(|| create_settings_window(app)) else {
         return;
     };
     webview_memory::set_low(&win, false);
@@ -1325,8 +1338,10 @@ fn show_settings_window(app: &AppHandle) {
     let _ = win.set_focus();
 }
 
+/// Async: a window made from a command that runs on the main thread (a
+/// synchronous one) would wait on that same thread, and never come.
 #[tauri::command]
-fn open_settings_window(app: AppHandle) {
+async fn open_settings_window(app: AppHandle) {
     show_settings_window(&app);
 }
 
@@ -1372,6 +1387,8 @@ pub fn run() {
             open_url,
             outlook::outlook_status,
             mail::mail_accounts,
+            mail::mail_view,
+            mail::mail_html,
             mail::mail_server_for,
             mail::mail_account_add,
             mail::mail_account_remove,
@@ -1476,6 +1493,12 @@ pub fn run() {
             reminders::reminders_cancel,
             media::media_now,
             calendar::calendar_fetch,
+            calendar::calendar_google_id,
+            google_calendar::google_calendar_status,
+            google_calendar::google_calendar_sign_in,
+            google_calendar::google_calendar_cancel,
+            google_calendar::google_calendar_sign_out,
+            google_calendar::google_calendar_get,
             media::media_control,
             ingest_file,
             inbox_release,
@@ -1530,8 +1553,7 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
             tray::build(&handle)?;
-            // Before the island: see create_settings_window.
-            create_settings_window(&handle);
+            // The settings window is made when first asked for: see create_settings_window.
 
             if let Some(win) = island::window(&handle) {
                 platform::make_non_activating(&win);

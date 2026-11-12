@@ -5,6 +5,7 @@ use std::os::windows::io::RawHandle;
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicIsize, Ordering};
 
 use tauri::{AppHandle, Manager, WebviewWindow};
 
@@ -27,11 +28,11 @@ use ::windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetSystemMetrics, GetWindow, GetWindowLongPtrW,
-    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
+    EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindow,
+    GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
     SetWindowLongPtrW, SetWindowPos, ShowWindow, EVENT_SYSTEM_FOREGROUND, GWL_EXSTYLE, GW_OWNER, HWND_TOPMOST,
     SM_SWAPBUTTON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
-    WINEVENT_SKIPOWNPROCESS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WINEVENT_SKIPOWNPROCESS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
 
 use super::LocalTime;
@@ -663,7 +664,13 @@ pub fn set_activating(win: &WebviewWindow, activating: bool) {
 /// SetWindowPos when the flag changes, so asking again does nothing, and every
 /// other topmost window (the taskbar, another app's overlay or player) that
 /// comes to the front is put above ours.
+///
+/// Not while a screen capture is open (`capturing`): its overlay stays above
+/// the island, so the island can be captured where it is.
 pub fn raise_topmost(win: &WebviewWindow) {
+    if capturing() {
+        return;
+    }
     let Some(hwnd) = hwnd_of(win) else { return };
     unsafe {
         let _ = SetWindowPos(
@@ -680,10 +687,48 @@ pub fn raise_topmost(win: &WebviewWindow) {
 
 static FOREGROUND_APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
 
-unsafe extern "system" fn foreground_changed(_: HWINEVENTHOOK, _: u32, _: HWND, _: i32, _: i32, _: u32, _: u32) {
+/// The overlay of a screen capture tool (Win+Shift+S, ShareX…) that came to
+/// the front last, or 0.
+static CAPTURE_WINDOW: AtomicIsize = AtomicIsize::new(0);
+
+unsafe extern "system" fn foreground_changed(_: HWINEVENTHOOK, _: u32, hwnd: HWND, _: i32, _: i32, _: u32, _: u32) {
+    if let Some(tool) = unsafe { capture_overlay(hwnd) } {
+        // Climbing above it would cover the capture's toolbar and take the
+        // mouse from its selection: the island stays under it, dimmed with
+        // the rest of the screen, and can be captured where it is.
+        if CAPTURE_WINDOW.swap(hwnd.0 as isize, Ordering::Relaxed) != hwnd.0 as isize {
+            crate::log::line(format!("screen capture open ({tool}): the island stays under it"));
+        }
+        return;
+    }
+    CAPTURE_WINDOW.store(0, Ordering::Relaxed);
     if let Some(app) = FOREGROUND_APP.get() {
         crate::island::keep_on_top(app);
     }
+}
+
+/// The capture tool's name, when `hwnd` is the always-on-top window of one.
+/// Its other windows (ShareX's or Snipping Tool's own window, an editor) are
+/// ordinary ones the island is above anyway.
+unsafe fn capture_overlay(hwnd: HWND) -> Option<String> {
+    if hwnd.0.is_null() || unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0 == 0 {
+        return None;
+    }
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    if pid == 0 {
+        return None;
+    }
+    let name = crate::screen::exe_name(pid);
+    crate::island::is_capture_tool(&name).then_some(name)
+}
+
+/// A screen capture's overlay is in front now. Asked of the window in front
+/// each time rather than remembered, so a capture that ended without another
+/// app coming to the front (Lumo's own Settings did) never leaves it set.
+pub fn capturing() -> bool {
+    let overlay = CAPTURE_WINDOW.load(Ordering::Relaxed);
+    overlay != 0 && unsafe { GetForegroundWindow() }.0 as isize == overlay
 }
 
 /// Calls `island::keep_on_top` each time a window of another app comes to the

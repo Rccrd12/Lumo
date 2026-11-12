@@ -32,7 +32,7 @@ export function buildSettingsFrame(actions: ViewActions): ViewHost {
       waiting.hidden = true;
       frame.classList.add("ready");
     } else if (e.data === FRAME_CLOSE) {
-      actions.collapse();
+      actions.closeSettings();
     }
   });
 

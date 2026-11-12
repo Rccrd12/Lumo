@@ -1,8 +1,7 @@
 // Memory of a webview nobody is looking at.
 //
-// The Settings window is made hidden at launch and only ever shown and hidden
-// afterwards (a WebView2 window made later comes up blank, see
-// create_settings_window in lib.rs), so it cannot simply be closed. What
+// The Settings window, once made, is only ever shown and hidden afterwards
+// (see create_settings_window in lib.rs), so it is not simply closed. What
 // WebView2 offers instead is a memory target: at "low" it trims what a webview
 // holds while it is hidden, and takes it back when it is shown.
 

@@ -315,3 +315,59 @@ test("the list is called In progress only while every session in it is at work",
   assert.doesNotMatch(home.el.textContent, /In progress/);
   assert.match(home.el.textContent, /Tests green/);
 });
+
+function homeWith(calendar, asked = []) {
+  const home = buildHome({
+    openSession: () => {}, openGitHubPRs: () => {}, openRequest: () => {}, decide: () => {}, openChat: () => {},
+    openPlan: () => {}, openChatPlan: () => {}, openUrl: () => {}, makeTool: () => {},
+    activityData: () => ({ ...emptyActivities(), calendar }), activity: (a) => asked.push(a), blip: () => {},
+  }, () => false);
+  home.sync();
+  return home;
+}
+
+test("a calendar set up but never read stays on the home with why, and opens its Settings", () => {
+  const asked = [];
+  const home = homeWith({ configured: true, error: "The calendar address answered 404.", events: [] }, asked);
+  const tiles = home.el.find(".home-tile");
+  const cal = tiles.find((x) => /Calendar/.test(x.textContent));
+  assert.ok(cal, "expected the calendar's tile");
+  assert.match(cal.textContent, /Can't read it/);
+  assert.match(cal.textContent, /answered 404/);
+  cal.fire("click");
+  assert.deepEqual(asked, [{ kind: "settings" }]);
+});
+
+test("no calendar address: no calendar tile; an empty calendar read fine says nothing is coming", () => {
+  assert.ok(!homeWith({ configured: false, error: null, events: [] }).el.find(".home-tile").some((x) => /Calendar/.test(x.textContent)));
+  const quiet = homeWith({ configured: true, error: null, events: [] }).el.find(".home-tile").find((x) => /Calendar/.test(x.textContent));
+  assert.match(quiet.textContent, /Nothing in the next days/);
+  assert.doesNotMatch(quiet.textContent, /Can't read it/);
+});
+
+test("the calendar's tile shows what is under way or coming, never yesterday's events", () => {
+  const hour = 3_600_000;
+  const now = Date.now();
+  const ev = (title, start, end) => ({ title, start, end, allDay: false, location: "" });
+  const cal = homeWith({
+    configured: true, error: null,
+    events: [
+      // Yesterday's afternoon, read with the day before (the AI's calendar access sees it).
+      ev("Algoritmi e strutture dati", now - 23 * hour, now - 21.5 * hour),
+      ev("Elettromagnetismo", now - 21.5 * hour, now - 18.5 * hour),
+      ev("Analisi matematica II", now - 2 * hour, now + hour),
+      ev("Fisica", now + 20 * hour, now + 23 * hour),
+    ],
+  }).el.find(".home-tile").find((x) => /Analisi/.test(x.textContent));
+  assert.ok(cal, "expected the event under way on the calendar's tile");
+  assert.match(cal.textContent, /Fisica/);
+  assert.doesNotMatch(cal.textContent, /Algoritmi|Elettromagnetismo/);
+});
+
+test("an event begun on an earlier day and still under way says its day, not a bare hour", async () => {
+  const { eventWhen } = await import("../src/views/activities-view.ts");
+  const now = new Date(2026, 10, 12, 13, 35).getTime();
+  const ev = (start) => ({ title: "x", start, end: now + 3_600_000, allDay: false, location: "" });
+  assert.doesNotMatch(eventWhen(ev(new Date(2026, 10, 11, 20, 0).getTime()), now, "en"), /^\d{1,2}:\d{2}/);
+  assert.match(eventWhen(ev(new Date(2026, 10, 12, 11, 30).getTime()), now, "en"), /^11:30/);
+});

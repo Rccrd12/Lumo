@@ -78,6 +78,8 @@ export interface HomeActions {
   openUrl?(url: string): void;
   /** The open PRs that wait, in one row: opens the GitHub card on its list of my PRs. */
   openGitHubPRs?(): void;
+  /** The Email tile: opens the Email view (views/mail-view.ts), every address's emails. */
+  openMail?(): void;
   makeTool(): void;
   activityData(): ActivitiesData;
   activity(a: ActivitiesAction): void;
@@ -112,6 +114,15 @@ const CHIPS_H = 34;
 const FIELD_H = 40;
 const GAP = 12;
 const BOTTOM = 12;
+
+/**
+ * The calendar's events not over yet: the island reads from a day back (the
+ * AI's calendar access sees yesterday), but the tile shows what is under way
+ * or coming, never yesterday's afternoon as if it were today's.
+ */
+export function comingEvents<E extends { end: number }>(events: E[], now: number): E[] {
+  return events.filter((e) => e.end > now);
+}
 
 function tilesOf(data: ActivitiesData): ("timer" | "music" | "calendar" | "mail")[] {
   const tiles: ("timer" | "music" | "calendar" | "mail")[] = [];
@@ -324,6 +335,8 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
 
   let leftKey = "";
   let rightKey = "";
+  /** Draws the calendar's tile again when its first event ends, or the day changes (its "Tomorrow" becomes today). */
+  let calendarTimer: ReturnType<typeof setTimeout> | null = null;
   let usageKey = "";
   /** The room the usage was last fitted to: the line's width, what the services take. */
   let fitKey = "";
@@ -537,6 +550,12 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
     return { el, track, fill, size: "" };
   }
 
+  /** The Email view, or the inbox in the browser where the island has no such view. */
+  function openMail() {
+    if (actions.openMail) actions.openMail();
+    else actions.activity({ kind: "inbox" });
+  }
+
   function tile(kind: "timer" | "music" | "calendar" | "mail", data: ActivitiesData): HTMLElement {
     switch (kind) {
       case "timer": {
@@ -597,13 +616,23 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
             h("span", { class: "tile-sub", text: media.artist }))));
       }
       case "calendar": {
-        const [first, second] = data.calendar.events;
         const now = Date.now();
+        const [first, second] = comingEvents(data.calendar.events, now);
         // Opens the calendar on the web, or its Settings when it has no site.
         const opens = (tileEl: HTMLElement) => {
           tileEl.addEventListener("click", () => actions.activity(data.calendar.link ? { kind: "calendarWeb" } : { kind: "settings" }));
           return tileEl;
         };
+        // Never read since Lumo started (a wrong or reset address, no network):
+        // the tile stays, with why, and opens its Settings.
+        if (!first && data.calendar.error) {
+          const failed = h("div", { class: "home-tile link", title: data.calendar.error },
+            h("div", { class: "tile-kick" }, dot("#f4505e", 6), h("span", { text: t(ACTIVITIES_TEXT.calendar) })),
+            h("div", { class: "tile-title", text: t(ACTIVITIES_TEXT.calendarUnread) }),
+            h("div", { class: "tile-sub", text: data.calendar.error }));
+          failed.addEventListener("click", () => actions.activity({ kind: "settings" }));
+          return failed;
+        }
         if (!first) {
           return opens(h("div", { class: "home-tile link" },
             h("div", { class: "tile-kick" }, svg(ICONS.calendar, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.calendar) })),
@@ -622,14 +651,14 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
           const quiet = h("div", { class: "home-tile link" },
             h("div", { class: "tile-kick" }, svg(ICONS.envelope, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.email) })),
             h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.noUnread) }));
-          quiet.addEventListener("click", () => actions.activity({ kind: "inbox" }));
+          quiet.addEventListener("click", () => openMail());
           return quiet;
         }
         const tileEl = h("div", { class: "home-tile link" },
           h("div", { class: "tile-kick" }, dot("#f4505e", 6), h("span", { text: `${t(ACTIVITIES_TEXT.email)} · ${mail.length}` })),
           h("div", { class: "tile-title", text: mail[0].from }),
           h("div", { class: "tile-sub", text: mail[0].subject }));
-        tileEl.addEventListener("click", () => actions.activity({ kind: "inbox" }));
+        tileEl.addEventListener("click", () => openMail());
         return tileEl;
       }
     }
@@ -713,12 +742,28 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
 
       const tiles = tilesOf(data);
       const kinds = visiblePlanKinds();
+      const now = Date.now();
+      const coming = comingEvents(data.calendar.events, now);
+      if (calendarTimer != null) clearTimeout(calendarTimer);
+      calendarTimer = null;
+      // Only while the home is open on screen: nothing wakes for a hidden or closed island.
+      const onScreen = () => el.isConnected && State.mode === "expanded" && State.view === "home";
+      if (tiles.includes("calendar") && coming.length && onScreen()) {
+        const midnight = new Date(now).setHours(24, 0, 0, 0);
+        const at = Math.min(midnight, ...coming.slice(0, 2).map((e) => e.end));
+        calendarTimer = setTimeout(() => {
+          calendarTimer = null;
+          if (onScreen()) State.notify();
+        }, Math.max(1_000, at - now + 500));
+      }
       const rk = [
         language(), ...tiles,
         // (A paused timer's endsAt moves with the clock: what is left says it.)
         ...data.timers.map((x) => `${x.id}:${x.label}:${x.pausedLeft != null ? `p${x.pausedLeft}` : x.endsAt}`),
         data.media ? `${data.media.app}:${data.media.title}:${data.media.artist}:${data.media.playing}` : "",
-        ...data.calendar.events.slice(0, 2).map((e) => `${e.title}:${e.start}`),
+        ...coming.slice(0, 2).map((e) => `${e.title}:${e.start}:${e.end}`), data.calendar.error ?? "",
+        // The tile's click opens the calendar's page, or Settings when it has none.
+        data.calendar.link ?? "", coming.length ? new Date(now).toDateString() : "",
         ...data.mail.messages.slice(0, 1).map((m) => `${m.id}:${m.from}:${m.subject}`), data.mail.messages.length,
         ...others.map((x) => `${x.id}:${x.name}:${x.color}:${x.pillBadge ?? ""}`),
       ].join("~");

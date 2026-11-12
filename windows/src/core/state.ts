@@ -356,6 +356,8 @@ export interface Settings {
    * way to open it in the browser. From Settings → Security, on by default.
    */
   webImages: boolean;
+  /** An email's images shown at once in the Email view, with no click on Load images (its tracking pixels never). Settings → Security, off by default, only with webImages. */
+  mailImagesAlways: boolean;
   /** What the AI may do with the email, from Settings → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
@@ -405,6 +407,8 @@ export interface Settings {
   islandEdgeLight: string;
   /** The home shows the live activities (its "⋯" menu puts them away). */
   homeActivities: boolean;
+  /** Settings → Island → Google Calendar: each calendar of the account on (true) or off (false) for the island, by ID; one not here follows Google Calendar's own choice. */
+  googleCalendars: Record<string, boolean>;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
   /** Extended Thinking's level: "low", "medium" or "high". */
@@ -478,6 +482,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatWebSearch: false,
   chatAutoCompact: true,
   webImages: true,
+  mailImagesAlways: false,
   aiMailAccess: "read",
   aiCalendarAccess: "read",
   aiGithubAccess: "none",
@@ -498,6 +503,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateBeta: false,
   islandEdgeLight: "full",
   homeActivities: true,
+  googleCalendars: {},
   liveModel: "gemini-3.8-live",
   liveThinking: "medium",
   liveVoice: "",
@@ -989,6 +995,12 @@ class AppState {
   private toolsInWorkshop = false;
   /** A tab's view was open since launch: the new look reopens there rather than on its list. */
   private tabNoted = false;
+  /**
+   * The island closed on its own (the mouse gone, a click elsewhere) on the
+   * Email view: it opens there again, on the email or the list it showed
+   * (views/mail-view.ts sets it; Escape, or another view, leaves it false).
+   */
+  mailLeftOpen = false;
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
@@ -1002,6 +1014,23 @@ class AppState {
   }
 
   /**
+   * The island closed on its own (the mouse gone, a click elsewhere) while
+   * Settings were open: the next opening shows them again, where they were.
+   * Escape in Settings is "done with them", and leaves it false.
+   */
+  settingsLeftOpen = false;
+
+  /**
+   * What the opening island shows: the Settings it closed on, unless a card
+   * waits for an answer; otherwise defaultView. Asked once per opening.
+   */
+  openingView(): IslandViewName {
+    const back = this.settingsLeftOpen && !this.pendingApproval;
+    this.settingsLeftOpen = false;
+    return back ? "settings" : this.defaultView();
+  }
+
+  /**
    * What the island opens on. A card waiting for an answer comes first, so
    * reopening a folded island shows it again; otherwise the
    * tab it was left on, Chat or Agents.
@@ -1011,6 +1040,7 @@ class AppState {
     // A file dropped and not yet asked about waits in the chat, so the island
     // opens there rather than on the home.
     if (this.droppedFile && !this.droppedFile.sent) return "prompt";
+    if (this.mailLeftOpen && this.settings.activeIntegrations.includes("integration_mail")) return "mail";
     // There are no tabs: until a view of its own was open, the island opens on
     // the home (what waits for you, the sessions); then where it was left.
     if (!this.tabNoted) return this.liveActive ? "live" : this.agentsView();

@@ -20,7 +20,9 @@ export type IslandViewName =
   | "recap"
   | "wardrobe"
   | "live"
-  | "tools";
+  | "tools"
+  /** The Email view (views/mail-view.ts): every address's emails, opened from the home's Email tile. */
+  | "mail";
 
 export type BotStateName =
   | "idle"
@@ -153,6 +155,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   live: { height: 240, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   // The Tools tab (views/tools.ts): the list, Lumo where he is in the chat.
   tools: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
+  // The Email view (views/mail-view.ts): the addresses' buttons and a list, as the Tools tab.
+  mail: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
 };
 
 // The upload views above are only the fallback geometry. Once a file is actually
@@ -441,7 +445,7 @@ export function planAskExtra(steps: number): number {
   return Math.min(steps, PLAN_ASK_MAX_STEPS) * 28 + 12 - 62;
 }
 
-export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372, wardrobe: 236 };
+export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372, wardrobe: 236, mail: 440 };
 
 /**
  * The Tools tab as tall as its rows (50 px each, 5 between them) above "Add a

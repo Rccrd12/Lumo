@@ -201,7 +201,7 @@ them never opens the island, even with Open on hover.
 
 | Choice | What it does |
 |---|---|
-| **None — near real time** | Everything is asked more often: the inbox looks again every 5 s besides IMAP IDLE, GitHub's pulse every 10 s (5 s while a CI runs) and the contributions every 5 minutes, the calendar every minute, the other services six times as often (5 s at least), the music every second |
+| **None — near real time** | Everything is asked more often: the inbox looks again every 5 s besides IMAP IDLE, GitHub's pulse every 10 s (5 s while a CI runs) and the contributions every 5 minutes, the calendar every 5 minutes (Google refuses an iCal address read every minute), the other services six times as often (5 s at least), the music every second |
 | **Light** | As Lumo always was |
 | **On — save energy** | The closed island draws 15 frames a second instead of 30; with the mouse far from it Lumo dozes — eyes shut, grey, no motion at all — and with the mouse at rest for a second he stops moving; the cursor far from the island is read 10 times a second instead of 60; everything is asked half as often (the inbox every minute, GitHub every 10 minutes, the calendar every 30). A permission or a question waiting keeps him awake. Opening and closing the island stay smooth |
 | **Automatic** (the default) | On while the computer runs on its battery; plugged in, what **On mains power** says (Light, or None) |
@@ -232,6 +232,34 @@ Island → Calendar (Google Calendar: Settings → your calendar → Integrate
 calendar → Secret address in iCal format; Outlook and iCloud publish one
 too). It stays in the system keychain, and is fetched every 15 minutes, only
 read.
+
+Google's iCal file is written again only every few hours, so an event added
+on the phone may show long after. For real time, sign in to **Google
+Calendar** just above it, with your own Google account and your own OAuth
+client (free, made once in Google Cloud Console; the row walks you through
+it: a project, the Google Calendar API turned on, the consent screen
+published — in Testing Google ends the access every 7 days — and a client of
+type Desktop app, whose ID and secret you paste). Sign-in happens in your
+browser, on Google's page (which warns that Google hasn't verified the app:
+it is your own client, so choose Advanced, then go to your project), and
+comes back to Lumo on 127.0.0.1; Lumo asks
+only to see the events and the list of calendars
+(`calendar.events.readonly`, `calendar.calendarlist.readonly`). The client's
+ID and secret and Google's permission stay in the system keychain, the
+hour-long token only in memory. Every minute (every 15 while saving energy,
+and when the home shows if not asked for a minute) Lumo asks Google what
+changed since the last look, an answer nearly always empty, and reads the
+next days again when something did (and anyway every half hour and when the
+day changes; the list of calendars too every half hour): a new event shows
+within a minute. Pick which of the account's calendars go on the island (by
+default, the ones Google Calendar shows; 20 at most). With both set, the
+events of the iCal address and of Google join, each once; when the iCal
+address is one of the calendars Google sign-in reads, its copy (hours behind)
+is left out. A calendar that can't be read keeps its last events while the
+others go on; when Google ends the access, the tile says to sign in again. Disconnect tells Google to forget the access and
+removes all three from the keychain. Lumo talks only to Google
+(`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`), only
+once you signed in.
 
 Settings → Island → **Say what's going on** and **Show the music playing**
 turn them off on the closed island. While the island is hidden nothing is
@@ -396,6 +424,36 @@ it; a reply, a forward or a draft in reply goes out of the account the email
 came to. The account set up before this list became the first one, with
 nothing to type again.
 
+**The Email view**: a click on the home's Email tile opens it on the island.
+With more than one address (IMAP accounts and Outlook on this PC), a row of
+buttons at the top: **All**, then each address with its colour and how many
+emails are unread, or a red **!** when it can't be read (the list then says
+why, with **Settings**). **Unread** or **Recent** (read ones too): the newest
+20 of each address, newest first, the dot on each avatar saying which
+address an email came to. A click on an email reads it there, with ‹ and ›
+for the next ones, **Summarize** and **Draft a reply** as on its card, and
+**Open in the browser** (or in Outlook); under the emails of one address,
+**Open the inbox** opens its webmail (Gmail, Outlook.com, Microsoft 365) or
+Outlook. Each account is asked on a short connection of its own when the
+view opens, and again when the inbox changes while it is open; nothing is
+marked read.
+
+An email with HTML is shown as its sender drew it (**Original**), on a white
+page shrunk to fit, or as its text (**Text only**), the choice kept for the
+next emails. It is shown in a frame where nothing of it runs (no scripts,
+forms or plug-ins) and nothing of it is fetched from the web: its links open
+in the browser only on a click, the corner saying where each really goes, and
+the pictures it links to stay hidden, so the sender can't tell it was opened,
+until **Load images** downloads them as the chat's images are (https, public
+sites, images only; **Images from the web** off in Settings → Security keeps
+them hidden). **Always load**, or **Email images always** in Settings →
+Security, shows every email's pictures at once. Either way the tracking
+pixels Lumo recognises (2 × 2 px or less, or from a service made to
+count openings) are never downloaded, and the email says how many were left
+out. The pictures inside the email itself come with it. From
+Outlook, the HTML is read through MAPI, with no prompt; where MAPI can't be
+had (a 32-bit Office), the text is shown.
+
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
 emails in its Promotions tab; with other providers, the emails that carry an
@@ -462,8 +520,8 @@ It goes from your account over SMTP (Gmail, Outlook, iCloud, Yahoo, or the
 Gmail keeps a copy in Sent by itself; with another provider, Lumo looks in
 Sent ten seconds later and puts a copy there (IMAP `APPEND`) when the server
 didn't.
-The calendar, read from its address, stays read only: **Calendar** has Read
-only and No access.
+The calendar, read from its address or from Google, stays read only:
+**Calendar** has Read only and No access.
 
 ## Claude Code
 
@@ -685,8 +743,11 @@ No telemetry. The only network requests Lumo makes are to the services you
 configure yourself, and to the sites of the images in chat answers: Lumo
 downloads such an image at once (https and public addresses only, image files
 only, 8 MB at most), so its site sees your IP address and the image's full
-address, which the AI writes and could fill with words from your chat.
-**Settings → Security → Images from the web** turns it off.
+address, which the AI writes and could fill with words from your chat. The
+pictures an email links to, in the Email view, are downloaded the same way
+only after a click on **Load images** (or at once with **Email images
+always**), and the sender's site then learns that you opened it; the tracking
+pixels Lumo recognises are never downloaded. **Settings → Security → Images from the web** turns both off.
 
 ### Chat with your Claude plan (Claude Code)
 

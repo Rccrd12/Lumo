@@ -119,6 +119,23 @@ test("\\left and \\right make one pair of brackets as tall as what they hold", (
   assert.equal(mathText("\\big( x \\Big)"), "(x)");
 });
 
+test("a \\big bracket that carries scripts keeps its size", () => {
+  // \Big]_0^{2π} as an answer wrote it: as the scripts' base the WebView drew
+  // the bracket at the text's size, smaller and lower than its \Big[.
+  const f = renderMath("\\Big[ \\frac{a}{b} \\Big]_0^{2\\pi}", true);
+  assert.equal(f.textContent, "[ab]02π");
+  const scripts = f.find(".mx-script");
+  assert.equal(scripts.length, 1);
+  const base = scripts[0].children[0];
+  assert.equal(base.tagName, "MROW");
+  assert.equal(base.children[0].getAttribute("minsize"), "1.6em");
+  for (const tex of ["\\Big( x \\Big)^2", "\\bigg\\rangle_n", "\\big]^b_a"]) {
+    assert.equal(renderMath(tex).find(".mx-script")[0].children[0].tagName, "MROW", tex);
+  }
+  // A bracket as written, with no \big, stays as it was.
+  assert.equal(renderMath("[x]_0^1").find(".mx-script")[0].children[0].tagName, "MO");
+});
+
 test("matrices, arrays, cases and aligned rows keep their cells and columns", () => {
   const b = renderMath("\\begin{bmatrix} 1 & -1 \\\\ 0 & 1 \\end{bmatrix}");
   assert.equal(b.textContent, "[1−101]");

@@ -182,8 +182,110 @@ function sampleTools() {
   State.notify();
 }
 
+// An order's email as a shop draws it: a table 600 px wide, its pictures on its site.
+function shopHtml(it: boolean): string {
+  const img = (name: string, w: number, hh: number, style = "") => `<img src="https://img.libreria-aurora.example/${name}.png" width="${w}" height="${hh}" alt="" style="display:block;${style}">`;
+  const tr = (en: string, itText: string) => (it ? itText : en);
+  return `<table width="600" cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;color:#1f2a44;background:#fff">
+<tr><td style="padding:22px 28px">${img("logo", 180, 40)}</td></tr>
+<tr><td>${img("hero", 600, 170)}</td></tr>
+<tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.5">${tr("Hi Riccardo,<br>your parcel left our warehouse in Bologna and arrives on <b>Friday 14 November</b>.", "Ciao Riccardo,<br>il tuo pacco è partito dal nostro magazzino di Bologna e arriverà <b>venerdì 14 novembre</b>.")}</td></tr>
+<tr><td style="padding:14px 28px"><a href="https://libreria-aurora.example/ordini/48213/traccia?utm_source=email&utm_campaign=shipped" style="display:inline-block;background:#e8743b;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 26px;border-radius:8px">${tr("Track your parcel", "Segui la spedizione")}</a></td></tr>
+<tr><td style="padding:14px 28px"><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e6e8ee;border-radius:10px"><tr>
+<td width="96" style="padding:14px">${img("book", 80, 116, "border-radius:4px")}</td>
+<td style="padding:14px 14px 14px 0;font-size:14px;line-height:1.5"><b>Il nome della rosa</b><br><span style="color:#6b7385">Umberto Eco</span><br><span style="color:#6b7385">${tr("Quantity: 1", "Quantità: 1")}</span></td>
+<td align="right" style="padding:14px;font-size:15px;font-weight:700;white-space:nowrap">14,90 €</td></tr></table></td></tr>
+<tr><td style="padding:6px 28px 4px"><table width="100%" style="font-size:14px;color:#6b7385"><tr><td>${tr("Shipping", "Spedizione")}</td><td align="right">3,90 €</td></tr><tr><td style="color:#1f2a44;font-weight:700;padding-top:6px">${tr("Total", "Totale")}</td><td align="right" style="color:#1f2a44;font-weight:700;padding-top:6px">18,80 €</td></tr></table></td></tr>
+<tr><td style="padding:22px 28px;font-size:12px;color:#9aa1b0;line-height:1.5;border-top:1px solid #eef0f3">${tr("Questions?", "Hai domande?")} <a href="https://libreria-aurora.example/aiuto" style="color:#3b4f7d">${tr("Get help", "Visita l'assistenza")}</a><br>Libreria Aurora · Via dei Libri 12, Bologna</td></tr>
+</table><img src="https://track.libreria-aurora.example/open.gif?u=48213" width="1" height="1" alt="">`;
+}
+
+// The shop's pictures, drawn here as Rust's web_image would hand them over (PNG bytes).
+async function pictureFor(url: string): Promise<ArrayBuffer> {
+  const name = url.split("/").pop()?.replace(".png", "") ?? "";
+  const size: Record<string, [number, number]> = { logo: [360, 80], hero: [1200, 340], book: [160, 232] };
+  const [w, hh] = size[name] ?? [2, 2];
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = hh;
+  const g = c.getContext("2d")!;
+  if (name === "logo") {
+    g.fillStyle = "#fff"; g.fillRect(0, 0, w, hh);
+    g.fillStyle = "#e8743b"; g.beginPath(); g.arc(40, 40, 26, 0, 7); g.fill();
+    g.fillStyle = "#fff"; g.beginPath(); g.arc(40, 40, 12, 0, 7); g.fill();
+    g.fillStyle = "#1f2a44"; g.font = "40px Georgia, serif"; g.fillText("Libreria Aurora", 84, 54);
+  } else if (name === "hero") {
+    const grad = g.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, "#1f2a44"); grad.addColorStop(1, "#3b4f7d");
+    g.fillStyle = grad; g.fillRect(0, 0, w, hh);
+    g.fillStyle = "#e8743b"; g.fillRect(840, 76, 124, 188);
+    g.fillStyle = "#c8913f"; g.fillRect(992, 192, 116, 52);
+    g.fillStyle = "#fff"; g.font = "bold 56px Arial"; g.fillText(url.includes("hero") ? "Il tuo pacco è partito!" : "", 80, 156);
+    g.fillStyle = "#c9d3ea"; g.font = "30px Arial"; g.fillText("Arriva venerdì 14 novembre", 80, 220);
+  } else if (name === "book") {
+    g.fillStyle = "#7a2e2e"; g.fillRect(0, 0, w, hh);
+    g.fillStyle = "#e9c46a"; g.fillRect(16, 28, 128, 4);
+    g.fillStyle = "#f5e6c8"; g.font = "22px Georgia, serif"; g.textAlign = "center";
+    g.fillText("Il nome", 80, 104); g.fillText("della rosa", 80, 132);
+    g.fillStyle = "#e9c46a"; g.font = "16px Georgia, serif"; g.fillText("U. ECO", 80, 192);
+  }
+  const blob = await new Promise<Blob>((done) => c.toBlob((b) => done(b!), "image/png"));
+  return blob.arrayBuffer();
+}
+
+// The Email view's answer (mail.rs mail_view): three addresses, one of them
+// failing with ?mailerror, five with ?mailmany (the row then scrolls); only
+// the unread ones, or the recent ones too.
+function sampleMail() {
+  const it = lang === "it";
+  const at = (daysAgo: number, h: number, m: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    d.setHours(h, m, 0, 0);
+    return d.toString();
+  };
+  const mail = (id: string, account: string, from: string, address: string, subject: string, preview: string, date: string, unread = true) => ({
+    id: `${account}/inbox:${id}`, account, from, address, subject, preview, body: preview, date, unread,
+    link: account === "imap:1" ? "https://mail.google.com/mail/u/0/#inbox" : account === "outlook" ? "lumo-outlook:inbox" : undefined,
+  });
+  const failing = params.has("mailerror");
+  const all = [
+    mail("9", "imap:1", "Ada Lovelace", "ada@example.com", it ? "Pranzo domani?" : "Lunch tomorrow?", it ? "C'è un posto nuovo vicino all'ufficio, proviamo all'una?" : "There's a new place near the office, want to try it at 1?", at(0, 10, 42)),
+    mail("4", "imap:2", "Marco Bianchi", "marco@example.com", it ? "Preventivo sito web" : "Website quote", it ? "Ti allego il preventivo aggiornato con le modifiche." : "Here is the updated quote with the changes.", at(0, 10, 15)),
+    mail("1", "outlook", "Giulia Rossi", "giulia@example.com", it ? "Riunione di giovedì" : "Thursday's meeting", it ? "Possiamo spostarla alle 15?" : "Can we move it to 3 pm?", at(0, 9, 58)),
+    mail("8", "imap:1", "GitHub", "noreply@github.com", it ? "Lumo: nuova release 0.22.1" : "Lumo: new release 0.22.1", it ? "Una nuova release è stata pubblicata." : "A new release was published.", at(0, 9, 31)),
+    mail("7", "imap:1", "Libreria Aurora", "ordini@libreria-aurora.example", it ? "Il tuo ordine è stato spedito" : "Your order has shipped", it ? "Arriverà venerdì. Segui la spedizione: https://libreria-aurora.example/ordini/48213/traccia?utm_source=email&utm_campaign=shipped" : "It arrives on Friday. Track it: https://libreria-aurora.example/orders/48213/track?utm_source=email&utm_campaign=shipped", at(1, 18, 5)),
+    mail("2", "outlook", "Luca Verdi", "luca@example.com", it ? "Foto del weekend" : "Weekend photos", it ? "Ecco le foto della gita!" : "Here are the photos from the trip!", at(1, 12, 40)),
+    mail("3", "imap:2", "Sara Neri", "sara@example.com", it ? "Re: Bozza contratto" : "Re: Draft contract", it ? "Ho aggiunto i commenti nel documento." : "I added my comments in the document.", at(1, 9, 12), false),
+    mail("6", "imap:1", "Spotify", "no-reply@example.com", it ? "La tua playlist della settimana" : "Your weekly playlist", it ? "Nuovi brani scelti per te." : "New songs picked for you.", at(3, 8, 0), false),
+  ].filter((m) => !(failing && m.account === "imap:2"));
+  (window as unknown as { __lumoMock: Record<string, (args: { unreadOnly: boolean }) => unknown> }).__lumoMock = {
+    ...(window as unknown as { __lumoMock?: Record<string, unknown> }).__lumoMock,
+    mail_view: ({ unreadOnly }) => ({
+      accounts: [
+        { key: "imap:1", label: "personale@gmail.com", state: "ok", unread: 3, inbox: "https://mail.google.com/mail/u/0/#inbox" },
+        failing
+          ? { key: "imap:2", label: "lavoro@studio.it", state: "error", error: it ? "Il server ha rifiutato la password per le app." : "The server refused the app password.", unread: 0 }
+          : { key: "imap:2", label: "lavoro@studio.it", state: "ok", unread: 1 },
+        { key: "outlook", label: "Outlook", state: "ok", unread: 2, inbox: "lumo-outlook:inbox" },
+        ...(params.has("mailmany") ? [
+          { key: "imap:3", label: "universita@studenti.it", state: "ok", unread: 0 },
+          { key: "imap:4", label: "negozio@esempio.it", state: "ok", unread: 0 },
+          { key: "imap:5", label: "famiglia@esempio.it", state: "ok", unread: 0 },
+        ] : []),
+      ],
+      messages: all.filter((m) => !unreadOnly || m.unread),
+    }),
+    // The shop's email has HTML, its pictures on its own site (shown after Load images).
+    mail_html: ({ id }: { id: string }) => ({ html: id === "imap:1/inbox:7" ? shopHtml(it) : "" }),
+    web_image: ({ url }: { url: string }) => pictureFor(url),
+  } as unknown as Record<string, (args: { unreadOnly: boolean }) => unknown>;
+  State.settings = { ...State.settings, activeIntegrations: [...new Set([...State.settings.activeIntegrations, "integration_mail"])] };
+}
+sampleMail();
+
 const bar = document.getElementById("bar")!;
-const views: [IslandViewName, string][] = [["overview", "Sessions"], ["approval", "Permission"], ["prompt", "Chat"], ["tools", "Tools"], ["upload", "Drop"]];
+const views: [IslandViewName, string][] = [["overview", "Sessions"], ["approval", "Permission"], ["prompt", "Chat"], ["tools", "Tools"], ["mail", "Email"], ["upload", "Drop"]];
 const buttons = new Map<string, HTMLButtonElement>();
 for (const [view, label] of views) {
   const b = document.createElement("button");

@@ -26,6 +26,7 @@ import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
 import { buildLive, openVoiceSettings } from "./live";
 import { buildTools } from "./tools";
+import { buildMailView } from "./mail-view";
 import { isWorkshopChat } from "../core/tools";
 import { Live } from "../live/session";
 import { buildHome } from "./home";
@@ -41,6 +42,8 @@ export interface ViewActions {
   setView(v: IslandViewName): void;
   /** "Cancel" on a dropped file: forgets it and goes back home. */
   collapse(): void;
+  /** Escape in Settings: the island closes and next opens where it usually does, not on Settings. */
+  closeSettings(): void;
   /** Folds a waiting card to the compact island without answering it. */
   foldApproval(): void;
   setFocus(id: string): void;
@@ -1091,6 +1094,11 @@ function buildHomeView(actions: ViewActions): ViewHost {
       actions.setFocus(id);
       actions.setView("overview");
     },
+    // The Email tile: the Email view, every address's emails.
+    openMail: () => {
+      actions.blip();
+      actions.setView("mail");
+    },
     openGitHubPRs: () => {
       showGitHubSection("myPRs");
       detailOnFocus = "integration_github";
@@ -1160,6 +1168,7 @@ export function buildViews(
   map.set("wardrobe", buildWardrobe(actions));
   map.set("live", buildLive(() => openVoiceSettings(actions.setView)));
   map.set("tools", buildTools(actions));
+  map.set("mail", buildMailView(actions));
   map.set("home", buildHomeView(actions));
   return map;
 }

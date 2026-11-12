@@ -14,7 +14,7 @@ const { buildSettingsFrame, FRAME_SHOWN } = await import("../src/views/settings-
 const { State } = await import("../src/core/state.ts");
 
 test("Settings coming back after another tab tell the page to show what changed", () => {
-  const host = buildSettingsFrame({ openSettingsWindow() {}, collapse() {} });
+  const host = buildSettingsFrame({ openSettingsWindow() {}, collapse() {}, closeSettings() {} });
   State.mode = "expanded";
   State.view = "settings";
   host.sync();

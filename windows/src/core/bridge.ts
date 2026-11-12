@@ -12,6 +12,7 @@ import type { Settings } from "./state";
 import type { MailPeek, MediaActivity } from "./compact";
 import type { ChatUsage } from "./chat-usage";
 import type { ListenPast, ListenWatch } from "./listen";
+import { readMailHtml } from "./mail-html";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
 import type { LocalCaps } from "./providers";
@@ -53,10 +54,12 @@ export function lendTauri() {
   const lent: typeof invoke = async (cmd, args, options) => {
     if (!ASKS_WINDOWS.has(cmd)) return invoke(cmd, args, options);
     dialogs++;
+    dialogsChanged?.();
     try {
       return await invoke(cmd, args, options);
     } finally {
       dialogs--;
+      dialogsChanged?.();
     }
   };
   (window as unknown as { __LUMO_HOST__?: TauriHost }).__LUMO_HOST__ = { invoke: lent, listen };
@@ -148,6 +151,11 @@ export interface BootInfo {
 /** System dialogs of ours open right now (the file picker): a click in them is not "elsewhere". */
 let dialogs = 0;
 export const isDialogOpen = () => dialogs > 0;
+/** Told when one of those dialogs opens or closes (the island's leave countdown waits on it). */
+let dialogsChanged: (() => void) | null = null;
+export function onDialogsChanged(fn: () => void) {
+  dialogsChanged = fn;
+}
 
 export const Bridge = {
   boot: () => call<BootInfo>("boot"),
@@ -516,6 +524,13 @@ export const Bridge = {
   outlookStatus: () => call<OutlookStatus>("outlook_status"),
   /** The Email pill's IMAP accounts, the first (the default) first (mail.rs). */
   mailAccounts: () => call<MailAccount[]>("mail_accounts"),
+  /** The island's Email view: each account and its newest emails, only the unread ones or all the recent ones (mail.rs mail_view). */
+  mailView: (unreadOnly: boolean) => call<unknown>("mail_view", { unreadOnly }),
+  /** The HTML of an email of the Email view: "" when it has none, null when it couldn't be asked (asked again next time). */
+  mailHtml: async (id: string): Promise<string | null> => {
+    const got = await call<unknown>("mail_html", { id });
+    return got == null ? null : readMailHtml(got);
+  },
   /** The IMAP server an address is read from when none is typed. */
   mailServerFor: (address: string) => call<string>("mail_server_for", { address }),
   /** Signs in with what was typed and stores the account only if the server took it: the server read, or why not. */
@@ -610,6 +625,19 @@ export const Bridge = {
   mediaControl: (action: "toggle" | "next" | "previous") => call<boolean>("media_control", { action }),
   /** The live activities' calendar file (calendar.rs), or null when no address is set. */
   calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
+  /** The Google calendar the iCal address reads, when it is one of Google Calendar's (never the address). */
+  calendarGoogleId: () => call<string | null>("calendar_google_id"),
+  /** Google Calendar with the user's account (google_calendar.rs): what is stored, and whether a sign-in waits. */
+  googleCalendarStatus: () => call<GoogleCalendarStatus>("google_calendar_status"),
+  /** Opens Google's sign-in in the browser; resolves once Google gave its permission. */
+  googleCalendarSignIn: () => callOrThrow<void>("google_calendar_sign_in"),
+  /** Ends a sign-in still waiting for the browser. */
+  googleCalendarCancel: () => call<void>("google_calendar_cancel"),
+  /** Forgets the account: Google is told, the client and the permission leave the credential store. */
+  googleCalendarSignOut: () => callOrThrow<void>("google_calendar_sign_out"),
+  /** A GET to the Calendar API (the calendar list or a calendar's events); null when not signed in; throws "paused" while Lumo is paused. */
+  googleCalendarGet: (path: string, query: [string, string][] = []) =>
+    callOrThrow<{ status: number; body: unknown } | null>("google_calendar_get", { path, query }),
 
   // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
   /** Asks GitHub for the newest Windows release (and, with `beta`, the beta build) and compares it with this build. */
@@ -976,6 +1004,17 @@ export interface HookPreview {
 async function callOrThrow<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!IS_TAURI) throw new Error("not running inside Lumo");
   return tauriInvoke<T>(cmd, args);
+}
+
+export interface GoogleCalendarStatus {
+  /** The OAuth client's ID and secret are stored. */
+  client: boolean;
+  /** Google gave its lasting permission. */
+  signedIn: boolean;
+  /** Google refused that permission since: sign in again. */
+  needsSignIn: boolean;
+  /** A sign-in waits for the browser. */
+  signingIn: boolean;
 }
 
 export interface DragDropPayload {

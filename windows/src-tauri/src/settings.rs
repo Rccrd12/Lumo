@@ -185,6 +185,11 @@ pub struct Settings {
     /// nothing is downloaded. On by default (Settings → Security). A file from
     /// before keeps its old `webImageSites` list unread: it no longer matters.
     pub web_images: bool,
+    /// Whether an email in the island's Email view shows its images at once,
+    /// with no click on Load images (views/mail-view.ts; the tracking pixels
+    /// it recognises are never loaded). Off by default (Settings → Security),
+    /// and only with `web_images` on.
+    pub mail_images_always: bool,
     /// What the AI may do with the user's email (Settings → General →
     /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
     /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
@@ -275,6 +280,11 @@ pub struct Settings {
     /// The home shows the live activities as tiles; its "⋯" menu and the
     /// right-click menu's Live Activities put them away.
     pub home_activities: bool,
+    /// Settings → Island → Google Calendar: the calendars of the user's Google
+    /// account turned on (true) or off (false) for the island, by calendar ID.
+    /// One not in it follows what Google Calendar itself shows
+    /// (src/core/google-calendar.ts).
+    pub google_calendars: BTreeMap<String, bool>,
 }
 
 /// A little bigger than their design size, since a PC's screen sits further away.
@@ -361,6 +371,7 @@ impl Default for Settings {
             chat_web_search: false,
             chat_auto_compact: true,
             web_images: true,
+            mail_images_always: false,
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
             ai_github_access: "none".into(),
@@ -388,6 +399,7 @@ impl Default for Settings {
             update_beta: false,
             island_edge_light: "full".into(),
             home_activities: true,
+            google_calendars: BTreeMap::new(),
         }
     }
 }
@@ -734,6 +746,7 @@ mod tests {
   "chatWebSearch": true,
   "chatAutoCompact": false,
   "webImages": false,
+  "mailImagesAlways": true,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "aiGithubAccess": "read",
@@ -760,7 +773,8 @@ mod tests {
   "updateCheckOnOpen": false,
   "updateBeta": true,
   "islandEdgeLight": "soft",
-  "homeActivities": false
+  "homeActivities": false,
+  "googleCalendars": { "en.italian#holiday@group.v.calendar.google.com": false, "a@gmail.com": true }
 }"##;
 
     fn custom() -> Value {
@@ -1283,6 +1297,7 @@ mod tests {
                 "chatWebSearch",
                 "chatAutoCompact",
                 "webImages",
+                "mailImagesAlways",
                 "aiMailAccess",
                 "aiCalendarAccess",
                 "aiGithubAccess",
@@ -1310,6 +1325,7 @@ mod tests {
                 "updateBeta",
                 "islandEdgeLight",
                 "homeActivities",
+                "googleCalendars",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);
