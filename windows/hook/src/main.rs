@@ -1169,34 +1169,39 @@ mod tests {
 
     #[test]
     fn a_write_cut_short_still_tells_the_island_its_real_size() {
-        // 400 KB in 4 096 lines: the text is cut at 256 KB (Allow goes), and
-        // the card is told the file's own size, not the cut's.
+        // 400 KB in 4 096 lines, a new file: the text is cut at 256 KB, apart
+        // (lumo_text_cut, Allow stays), and the card is told the file's own
+        // numbers, not the cut's.
         let line = format!("{}\n", "x".repeat(99));
         let huge = line.repeat(4_096);
-        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/big.txt", "content": huge } });
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/lumo-test-none/big.txt", "content": huge } });
         truncate_payload(&mut v, "PermissionRequest");
-        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        assert_eq!(v["lumo_text_cut"], serde_json::Value::Bool(true));
+        assert!(v.get("lumo_input_cut").is_none());
         assert_eq!(v["lumo_write_bytes"], 400 * 1024);
-        assert_eq!(v["lumo_write_lines"], 4_096);
+        assert_eq!(v["lumo_write_added"], 4_096);
+        assert_eq!(v["lumo_write_removed"], 0);
         // Bytes, not characters; a last line with no break still counts.
         let accents = "è".repeat(MAX_DIFF_FIELD_LEN) + "\nend";
-        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/a.txt", "content": accents } });
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/lumo-test-none/a.txt", "content": accents } });
         truncate_payload(&mut v, "PermissionRequest");
         assert_eq!(v["lumo_write_bytes"], MAX_DIFF_FIELD_LEN * 2 + 4);
-        assert_eq!(v["lumo_write_lines"], 2);
-        // Whole: the card counts the text itself, nothing else goes along.
-        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/p/a.txt", "content": "a\nb\n" } });
+        assert_eq!(v["lumo_write_added"], 2);
+        // Whole: the same numbers, and nothing says "cut".
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "C:/lumo-test-none/a.txt", "content": "a\nb\n" } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert_eq!((v["lumo_write_added"].as_u64(), v["lumo_write_bytes"].as_u64()), (Some(2), Some(4)));
+        assert!(v.get("lumo_text_cut").is_none() && v.get("lumo_input_cut").is_none());
+        // Never numbers that came in with the request.
+        let mut v = serde_json::json!({ "tool_name": "Bash", "lumo_write_bytes": 1, "lumo_write_lines": 1, "tool_input": { "command": "ls" } });
         truncate_payload(&mut v, "PermissionRequest");
         assert!(v.get("lumo_write_bytes").is_none() && v.get("lumo_write_lines").is_none());
-        // Never a size that came in with the request.
-        let mut v = serde_json::json!({ "tool_name": "Write", "lumo_write_bytes": 1, "lumo_write_lines": 1, "tool_input": { "file_path": "C:/p/a.txt", "content": "a" } });
+        // An Edit cut short: counted from its whole text, which the card never shows.
+        let mut v = serde_json::json!({ "tool_name": "Edit", "tool_input": { "file_path": "C:/p/a.txt", "old_string": "a", "new_string": "x\n".repeat(MAX_DIFF_FIELD_LEN) } });
         truncate_payload(&mut v, "PermissionRequest");
-        assert!(v.get("lumo_write_bytes").is_none() && v.get("lumo_write_lines").is_none());
-        // Only a Write: another tool's cut text says nothing of a size.
-        let mut v = serde_json::json!({ "tool_name": "Edit", "tool_input": { "file_path": "C:/p/a.txt", "old_string": "a", "new_string": "x".repeat(MAX_DIFF_FIELD_LEN + 1) } });
-        truncate_payload(&mut v, "PermissionRequest");
-        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
-        assert!(v.get("lumo_write_bytes").is_none());
+        assert_eq!(v["lumo_text_cut"], serde_json::Value::Bool(true));
+        assert_eq!((v["lumo_write_added"].as_u64(), v["lumo_write_removed"].as_u64()), (Some(MAX_DIFF_FIELD_LEN as u64), Some(1)));
+        assert!(v.get("lumo_write_bytes").is_none(), "a size only for a whole-file write");
     }
 
     #[test]
