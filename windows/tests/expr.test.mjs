@@ -76,6 +76,19 @@ test("the Unicode a model writes", () => {
   assert.deepEqual(compile("ωt").vars, [normalizeName("ωt")]);
 });
 
+test("names ending with primes", () => {
+  assert.equal(normalizeName("x'"), "x'");
+  assert.equal(normalizeName("$y''$"), "y''");
+  assert.equal(normalizeName("x′"), "x'");
+  assert.equal(normalizeName("x’"), "x'");
+  assert.equal(normalizeName("x^{\\prime}"), "x'");
+  assert.equal(normalizeName("x^{\\prime\\prime}"), "x''");
+  assert.equal(normalizeName("x'y"), null);
+  assert.equal(normalizeName("'x"), null);
+  assert.deepEqual(compile("x' + 2*x'' - x′").vars.sort(), ["x'", "x''"]);
+  assert.equal(run("x' * x''", { "x'": 3, "x''": 4 }), 12);
+});
+
 test("functions and their arguments", () => {
   close(run("sin(pi / 2)"), 1);
   close(run("cos(0) + tan(0)"), 1);
