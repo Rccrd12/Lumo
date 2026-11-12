@@ -23,6 +23,9 @@
 // downloads waits for the same download. At most 4 images download at once,
 // the others wait their turn, and an answer shows its first 12 images: the
 // ones after are the one row of images turned off, with nothing downloaded.
+//
+// The Email view's Load images (views/mail-view.ts) downloads an email's
+// pictures through the same memory and turns (loadClickedImage).
 
 import { h, svg } from "../dom";
 import { ICONS } from "../icons";

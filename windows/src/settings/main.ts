@@ -797,7 +797,7 @@ const WEB_SETTINGS = {
 /** The images in the chat's answers (views/rich/image.ts, web_image.rs). */
 const WEB_IMAGES = {
   get label() { return t("Images from the web"); },
-  get hint() { return t("An image in an answer from Wikimedia is shown at once; from any other public https site, after a click on Load image, since the AI writes the address and it could carry what the AI read. Off: just its site and a button to open it in the browser."); },
+  get hint() { return t("An image in an answer from Wikimedia is shown at once; from any other public https site, after a click on Load image, since the AI writes the address and it could carry what the AI read. An email's images, after a click on Load images: its sender's site then learns it was opened. Off: just its site and a button to open it in the browser."); },
 };
 
 const COMPUTER_SETTINGS = {

@@ -807,24 +807,34 @@ pub async fn mail_view(app: AppHandle, unread_only: bool) -> MailView {
 // hidden until a click on Load images, which downloads them through
 // web_image.rs. The pictures inside the email itself (`cid:`) come with it,
 // as data: URLs. Read as everything else here: EXAMINE, BODY.PEEK, nothing
-// marked read.
+// marked read. Only the parts it needs are fetched (its BODYSTRUCTURE says
+// which): its HTML and the pictures that HTML names, never its files.
 
-/// The most of an email downloaded for its HTML: past it, its attachments are cut off.
-const HTML_BYTES: usize = 8 * 1024 * 1024;
-/// The most of an email's HTML kept.
-const HTML_CHARS: usize = 2 * 1024 * 1024;
+/// The most of one HTML part fetched (as sent: base64 is a third more).
+const HTML_PART_BYTES: usize = 4 * 1024 * 1024;
+/// The most of an email's HTML kept, its pictures aside.
+const HTML_KEPT_BYTES: usize = 2 * 1024 * 1024;
 /// The pictures inside an email (`cid:`) shown: each, and all together.
 const INLINE_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 const INLINE_IMAGES_BYTES: usize = 6 * 1024 * 1024;
+/// What the pictures may add to the HTML, every reference together: past it,
+/// a picture named again and again stays a hidden reference.
+const INLINE_URLS_BYTES: usize = 12 * 1024 * 1024;
 
-/// An email's HTML for the view: "" when it has none (the view shows its text).
+/// An email's HTML for the view. `html` when Lumo reads its charset (UTF-8,
+/// Latin-1/Windows-1252, UTF-16); otherwise its bytes, in base64, with the
+/// charset the island reads them in (TextDecoder knows them all). Both empty
+/// when it has no HTML: the view shows its text.
 #[derive(Serialize, Clone, Debug, PartialEq, Default)]
 pub struct MailHtml {
     pub html: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub charset: Option<String>,
 }
 
-/// The HTML of the email `id` of the view ("imap:1/inbox:9", "outlook/outlook-3"):
-/// "" when it has none or the account can't give it (the view keeps the text).
+/// The HTML of the email `id` of the view ("imap:1/inbox:9", "outlook/outlook-3").
 #[tauri::command(async)]
 pub async fn mail_html(app: AppHandle, id: String) -> Result<MailHtml, String> {
     if !crate::integrations::enabled(&app, ID) {
@@ -835,110 +845,275 @@ pub async fn mail_html(app: AppHandle, id: String) -> Result<MailHtml, String> {
         if !crate::outlook::on(&app) {
             return Ok(MailHtml::default());
         }
-        let html = crate::outlook::html(own.to_string(), HTML_BYTES).await?;
-        return Ok(MailHtml { html: html.chars().take(HTML_CHARS).collect() });
+        let (html, pictures) = crate::outlook::html(own.to_string(), HTML_PART_BYTES, INLINE_IMAGE_BYTES, INLINE_IMAGES_BYTES).await?;
+        return Ok(assemble(vec![(html, String::new())], pictures));
     }
     let slot: usize = key.strip_prefix("imap:").and_then(|n| n.parse().ok()).ok_or_else(|| bad_id(&id))?;
     let acct = live_accounts(&app).into_iter().find(|a| a.slot == slot).ok_or_else(|| gone(&id))?;
     let (folder, uid) = parse_id(own).ok_or_else(|| bad_id(&id))?;
     let (mut imap, host) = open(&acct).await?;
-    let raw = timed(&host, async {
+    let got = timed(&host, async {
         if folder != Folder::Inbox {
             enter(&mut imap, &folder, false).await?;
         }
+        let units = imap.run(&format!("UID FETCH {uid} (UID BODYSTRUCTURE)")).await?;
+        let unit = units.iter().find(|u| matches!(u.first(), Some(Part::Text(l)) if l.contains(" FETCH ") && l.to_ascii_uppercase().contains("BODYSTRUCTURE")));
+        let plan = unit.map(|u| html_plan(u)).ok_or_else(|| gone(&id))?;
+        let asked = plan.asked();
+        if asked.html.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        let mut items: Vec<String> = asked.html.iter().map(|p| format!("BODY.PEEK[{}]<0.{HTML_PART_BYTES}>", p.section)).collect();
+        items.extend(asked.images.iter().map(|p| format!("BODY.PEEK[{}]", p.section)));
         imap.read = 0;
-        imap.limit = HTML_BYTES + 64 * 1024;
-        let units = imap.run(&format!("UID FETCH {uid} (UID BODY.PEEK[]<0.{HTML_BYTES}>)")).await;
+        imap.limit = asked.html.len() * HTML_PART_BYTES + asked.images.iter().map(|p| p.size).sum::<usize>() + 64 * 1024;
+        let units = imap.run(&format!("UID FETCH {uid} (UID {})", items.join(" "))).await;
         imap.limit = MAX_READ;
-        let units = units?;
-        let unit = units.iter().find(|u| matches!(u.first(), Some(Part::Text(t)) if t.starts_with("* ") && t.contains(" FETCH ")));
-        let raw = unit.map(|u| header_and_body(u).1.to_vec()).ok_or_else(|| gone(&id))?;
-        Ok(raw)
+        imap.read = 0;
+        let sections = sections_of(&units?);
+        let take = |p: &HtmlPiece| sections.get(&p.section).map(|b| decode_body(&p.encoding, b));
+        let html: Vec<(Vec<u8>, String)> = asked.html.iter().filter_map(|p| take(p).map(|b| (b, p.charset.clone()))).collect();
+        let pictures: Vec<(String, Vec<u8>)> = asked.images.iter().filter_map(|p| take(p).map(|b| (p.cid.clone(), b))).collect();
+        Ok((html, pictures))
     })
     .await;
     close(imap).await;
-    Ok(MailHtml { html: html_of(&raw?) })
+    let (html, pictures) = got?;
+    Ok(assemble(html, pictures))
 }
 
-/// The HTML of a whole email (its headers and body as the server keeps them),
-/// its `cid:` pictures put in as data: URLs; "" when it has no HTML.
-pub(crate) fn html_of(raw: &[u8]) -> String {
-    let (head, body) = split_head(raw);
-    let headers = parse_headers(head);
-    let get = |n: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.clone()).unwrap_or_default();
-    let mut found = HtmlParts::default();
-    html_parts(&get("Content-Type"), &get("Content-Transfer-Encoding"), body, 0, &mut found);
-    let Some(mut html) = found.html else { return String::new() };
-    for (cid, url) in found.inline {
-        for written in [format!("cid:{cid}"), format!("CID:{cid}")] {
-            if html.contains(&written) {
-                html = html.replace(&written, &url);
+/// A part of an email that its HTML is made of, as its BODYSTRUCTURE says.
+#[derive(Clone, Debug, PartialEq, Default)]
+struct HtmlPiece {
+    /// For `BODY[…]`: "1", "1.2".
+    section: String,
+    encoding: String,
+    /// A text part's charset ("" when it names none).
+    charset: String,
+    /// A picture's Content-ID, without its `<>`.
+    cid: String,
+    /// As sent.
+    size: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+struct HtmlPlan {
+    /// The HTML parts shown, in order (Apple Mail splits an email around its pictures).
+    html: Vec<HtmlPiece>,
+    /// The pictures that have a Content-ID, which the HTML may name.
+    images: Vec<HtmlPiece>,
+}
+
+impl HtmlPlan {
+    /// What is fetched of it: the pictures that fit INLINE_IMAGE_BYTES each
+    /// and INLINE_IMAGES_BYTES together (base64 counted as the bytes it gives).
+    fn asked(&self) -> HtmlPlan {
+        let mut total = 0;
+        let mut images = Vec::new();
+        for p in &self.images {
+            let bytes = if p.encoding.eq_ignore_ascii_case("base64") { p.size / 4 * 3 } else { p.size };
+            if bytes == 0 || bytes > INLINE_IMAGE_BYTES || total + bytes > INLINE_IMAGES_BYTES {
+                continue;
             }
+            total += bytes;
+            images.push(p.clone());
         }
+        HtmlPlan { html: self.html.iter().take(8).cloned().collect(), images }
     }
-    html.chars().take(HTML_CHARS).collect()
 }
 
-#[derive(Default)]
-struct HtmlParts {
-    /// The first HTML that is not an attachment.
-    html: Option<String>,
-    /// The pictures named by a Content-ID: the id, and the picture as a data: URL.
-    inline: Vec<(String, String)>,
-    inline_bytes: usize,
+/// What the email's HTML is made of, from a FETCH answer with its BODYSTRUCTURE.
+fn html_plan(unit: &[Part]) -> HtmlPlan {
+    let toks = tokens(unit);
+    let Some(at) = toks.iter().position(|t| matches!(t, Tok::Word(w) if w.eq_ignore_ascii_case("BODYSTRUCTURE"))) else {
+        return HtmlPlan::default();
+    };
+    let mut i = at + 1;
+    node(&toks, &mut i, 0).map(|tree| plan_of(&tree, "", 0)).unwrap_or_default()
 }
 
-fn html_parts(ctype: &str, encoding: &str, body: &[u8], depth: usize, found: &mut HtmlParts) {
-    let (kind, params) = content_type(ctype);
-    if kind.starts_with("multipart/") {
-        let boundary = param(&params, "boundary");
-        if boundary.is_empty() || depth >= 6 {
-            return;
+/// Of a multipart/alternative, the richest version that has HTML (the last);
+/// of any other multipart, the HTML of each of its parts in turn; of a single
+/// part, itself when it is HTML (not attached) or a picture with a Content-ID.
+fn plan_of(part: &Node, section: &str, depth: usize) -> HtmlPlan {
+    let Node::List(items) = part else { return HtmlPlan::default() };
+    if depth > 12 {
+        return HtmlPlan::default();
+    }
+    if matches!(items.first(), Some(Node::List(_))) {
+        let children: Vec<HtmlPlan> = items
+            .iter()
+            .take_while(|c| matches!(c, Node::List(_)))
+            .enumerate()
+            .map(|(n, child)| plan_of(child, &if section.is_empty() { (n + 1).to_string() } else { format!("{section}.{}", n + 1) }, depth + 1))
+            .collect();
+        let subtype = match items.iter().find(|c| !matches!(c, Node::List(_))) {
+            Some(Node::Str(s)) => s.to_ascii_lowercase(),
+            _ => String::new(),
+        };
+        if subtype == "alternative" {
+            return children.into_iter().rev().find(|c| !c.html.is_empty()).unwrap_or_default();
         }
-        for part in split_parts(body, boundary) {
-            let (head, content) = split_head(part);
-            let headers = parse_headers(head);
-            let get = |n: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.clone()).unwrap_or_default();
-            let (part_kind, _) = content_type(&get("Content-Type"));
-            let attached = get("Content-Disposition").to_ascii_lowercase().starts_with("attachment");
-            let cid = get("Content-ID").trim().trim_start_matches('<').trim_end_matches('>').trim().to_string();
-            if part_kind.starts_with("image/") {
-                // A picture of the email itself, as its HTML names it; the others are files attached.
-                if !cid.is_empty() {
-                    let bytes = decode_body(&get("Content-Transfer-Encoding"), content);
-                    let kind = crate::web_image::sniff(&bytes);
-                    if let Some(kind) = kind.filter(|_| bytes.len() <= INLINE_IMAGE_BYTES && found.inline_bytes + bytes.len() <= INLINE_IMAGES_BYTES) {
-                        found.inline_bytes += bytes.len();
-                        found.inline.push((cid, format!("data:{kind};base64,{}", crate::claude::base64_for(&bytes))));
+        let mut out = HtmlPlan::default();
+        for c in children {
+            out.html.extend(c.html);
+            out.images.extend(c.images);
+        }
+        return out;
+    }
+    let word = |i: usize| match items.get(i) {
+        Some(Node::Str(s)) => s.clone(),
+        _ => String::new(),
+    };
+    let (kind, sub) = (word(0).to_ascii_lowercase(), word(1).to_ascii_lowercase());
+    let ext = match (kind.as_str(), sub.as_str()) {
+        ("text", _) => 8,
+        ("message", "rfc822") => 10,
+        _ => 7,
+    };
+    let attached = matches!(items.get(ext + 1), Some(Node::List(d)) if matches!(d.first(), Some(Node::Str(s)) if s.eq_ignore_ascii_case("attachment")));
+    let piece = HtmlPiece {
+        section: if section.is_empty() { "1".into() } else { section.to_string() },
+        encoding: word(5),
+        charset: param_of(items.get(2), "charset").unwrap_or_default(),
+        cid: word(3).trim().trim_start_matches('<').trim_end_matches('>').trim().to_string(),
+        size: word(6).parse().unwrap_or(0),
+    };
+    let mut out = HtmlPlan::default();
+    if kind == "text" && sub == "html" && !attached {
+        out.html.push(piece);
+    } else if kind == "image" && !piece.cid.is_empty() {
+        out.images.push(piece);
+    }
+    out
+}
+
+/// The literals of a FETCH answer by the section they are of: `BODY[1.2]<0> {n}` → "1.2".
+fn sections_of(units: &[Vec<Part>]) -> BTreeMap<String, Vec<u8>> {
+    let mut out = BTreeMap::new();
+    for unit in units {
+        let mut before = "";
+        for part in unit {
+            match part {
+                Part::Text(s) => before = s,
+                Part::Literal(bytes) => {
+                    let upper = before.to_ascii_uppercase();
+                    if let Some(at) = upper.rfind("BODY[") {
+                        if let Some(end) = before[at + 5..].find(']') {
+                            out.insert(before[at + 5..at + 5 + end].to_string(), bytes.clone());
+                        }
                     }
                 }
-                continue;
             }
-            if attached && !part_kind.starts_with("multipart/") {
-                continue;
-            }
-            html_parts(&get("Content-Type"), &get("Content-Transfer-Encoding"), content, depth + 1, found);
         }
-        return;
     }
-    if kind == "text/html" && found.html.is_none() {
-        let bytes = decode_body(encoding, body);
-        let charset = param(&params, "charset");
-        let text = if charset.is_empty() { html_text(&bytes) } else { in_charset(&bytes, charset) };
-        if !text.trim().is_empty() {
-            found.html = Some(text);
+    out
+}
+
+/// Whether Lumo reads the charset itself (in_charset): else the island does.
+fn read_here(charset: &str) -> bool {
+    let cs = charset.trim().trim_matches(['"', '\'']).to_ascii_lowercase();
+    matches!(
+        cs.as_str(),
+        "" | "utf-8" | "utf8" | "us-ascii" | "ascii" | "iso-8859-1" | "iso8859-1" | "latin1" | "l1" | "windows-1252" | "cp1252" | "iso-8859-15" | "iso8859-15" | "latin9"
+            | "utf-16" | "utf16" | "utf-16le" | "utf-16be" | "unicode" | "unicodefffe" | "ucs-2"
+    )
+}
+
+/// The charset an HTML's bytes say they are in: a byte-order mark, else its `<meta>`; "" for none.
+pub(crate) fn html_charset(bytes: &[u8]) -> String {
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        return "utf-16le".into();
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        return "utf-16be".into();
+    }
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        return "utf-8".into();
+    }
+    let start = String::from_utf8_lossy(&bytes[..bytes.len().min(2048)]).to_ascii_lowercase();
+    start
+        .find("charset=")
+        .map(|i| start[i + 8..].trim_start_matches(['"', '\'', ' ']).chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.')).collect())
+        .unwrap_or_default()
+}
+
+/// The view's HTML from the email's HTML parts (their bytes and charset, ""
+/// when the part names none) and its pictures (Content-ID, bytes): the parts
+/// one after the other, cut at HTML_KEPT_BYTES, the pictures put in for their
+/// `cid:` as data: URLs.
+pub(crate) fn assemble(parts: Vec<(Vec<u8>, String)>, pictures: Vec<(String, Vec<u8>)>) -> MailHtml {
+    let parts: Vec<(Vec<u8>, String)> = parts
+        .into_iter()
+        .filter(|(b, _)| !b.is_empty())
+        .map(|(b, cs)| {
+            let cs = if cs.trim().is_empty() { html_charset(&b) } else { cs.trim().to_string() };
+            (b, cs)
+        })
+        .collect();
+    if parts.is_empty() {
+        return MailHtml::default();
+    }
+    // Text Lumo reads becomes UTF-8; a part in another charset goes as it is,
+    // alone (the island reads one charset).
+    let (mut bytes, charset) = if parts.iter().all(|(_, cs)| read_here(cs)) {
+        let text: String = parts.iter().map(|(b, cs)| in_charset(b, cs)).collect::<Vec<_>>().join("\n");
+        let mut end = text.len().min(HTML_KEPT_BYTES);
+        while !text.is_char_boundary(end) {
+            end -= 1;
         }
+        (text.as_bytes()[..end].to_vec(), None)
+    } else {
+        let (b, cs) = parts.into_iter().find(|(_, cs)| !read_here(cs)).unwrap_or_default();
+        (b[..b.len().min(HTML_KEPT_BYTES)].to_vec(), Some(cs))
+    };
+    let mut urls: BTreeMap<String, String> = BTreeMap::new();
+    let mut total = 0;
+    for (cid, data) in pictures {
+        let Some(kind) = crate::web_image::sniff(&data) else { continue };
+        if cid.is_empty() || data.len() > INLINE_IMAGE_BYTES || total + data.len() > INLINE_IMAGES_BYTES || urls.contains_key(&cid) {
+            continue;
+        }
+        total += data.len();
+        urls.insert(cid, format!("data:{kind};base64,{}", crate::claude::base64_for(&data)));
+    }
+    if !urls.is_empty() {
+        bytes = inline_pictures(&bytes, &urls);
+    }
+    match charset {
+        None => MailHtml { html: String::from_utf8_lossy(&bytes).into_owned(), bytes: None, charset: None },
+        Some(cs) => MailHtml { html: String::new(), bytes: Some(crate::claude::base64_for(&bytes)), charset: Some(cs) },
     }
 }
 
-/// HTML bytes as text, in the charset its `<meta>` names (else UTF-8 where
-/// they are, Windows-1252 where not, as in_charset reads them).
-pub(crate) fn html_text(bytes: &[u8]) -> String {
-    let start = String::from_utf8_lossy(&bytes[..bytes.len().min(2048)]).to_ascii_lowercase();
-    let named = start.find("charset=").map(|i| {
-        start[i + 8..].trim_start_matches(['"', '\'']).chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect::<String>()
-    });
-    in_charset(bytes, named.as_deref().unwrap_or(""))
+/// Each whole `cid:<id>` reference of a picture in `urls` replaced by its data:
+/// URL, while what they add stays under INLINE_URLS_BYTES; "cid:a" never
+/// matches inside "cid:ab".
+fn inline_pictures(html: &[u8], urls: &BTreeMap<String, String>) -> Vec<u8> {
+    let ends = |c: u8| matches!(c, b'"' | b'\'' | b'(' | b')' | b'<' | b'>' | b'&' | b';' | b',') || c.is_ascii_whitespace();
+    let mut out = Vec::with_capacity(html.len());
+    let mut added = 0usize;
+    let mut i = 0;
+    while i < html.len() {
+        if html.len() - i >= 4 && html[i..i + 4].eq_ignore_ascii_case(b"cid:") {
+            let start = i + 4;
+            let end = html[start..].iter().position(|&c| ends(c)).map(|e| start + e).unwrap_or(html.len());
+            let id = String::from_utf8_lossy(&html[start..end]).into_owned();
+            let url = urls.get(&id).or_else(|| urls.get(&utf8_or_1252(&percent_decode(&id))));
+            if let Some(url) = url.filter(|u| added + u.len() <= INLINE_URLS_BYTES) {
+                added += url.len();
+                out.extend_from_slice(url.as_bytes());
+                i = end;
+                continue;
+            }
+            out.extend_from_slice(&html[i..end.max(i + 4)]);
+            i = end.max(i + 4);
+            continue;
+        }
+        out.push(html[i]);
+        i += 1;
+    }
+    out
 }
 
 // ── For the chat ──────────────────────────────────────────────────────────────
@@ -4473,47 +4648,104 @@ mod tests {
         assert_eq!(together(vec![imap]).1.len(), 2);
     }
 
-    #[test]
-    fn an_emails_html_comes_with_its_own_pictures_and_without_its_files() {
-        // A PNG's signature, then anything: what sniff reads.
-        let png = b"\x89PNG\r\n\x1a\nrest";
-        let png64 = crate::claude::base64_for(png);
-        let raw = format!(
-            "From: Shop <shop@example.com>\r\nContent-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
---m\r\nContent-Type: multipart/related; boundary=\"r\"\r\n\r\n\
---r\r\nContent-Type: multipart/alternative; boundary=\"a\"\r\n\r\n\
---a\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nPlain text\r\n\
---a\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n<p style=3D\"color:red\">Caff=C3=A8</p><img src=3D\"cid:logo@shop\">\r\n\
---a--\r\n\
---r\r\nContent-Type: image/png\r\nContent-ID: <logo@shop>\r\nContent-Transfer-Encoding: base64\r\n\r\n{png64}\r\n\
---r--\r\n\
---m\r\nContent-Type: text/html\r\nContent-Disposition: attachment; filename=\"page.html\"\r\n\r\n<p>An attached page</p>\r\n\
---m\r\nContent-Type: image/png\r\nContent-Disposition: attachment; filename=\"photo.png\"\r\nContent-Transfer-Encoding: base64\r\n\r\n{png64}\r\n\
---m--\r\n"
-        );
-        let html = html_of(raw.as_bytes());
-        assert!(html.contains("<p style=\"color:red\">Caffè</p>"), "{html}");
-        assert!(html.contains(&format!("<img src=\"data:image/png;base64,{png64}\">")), "{html}");
-        assert!(!html.contains("cid:"));
-        assert!(!html.contains("An attached page"));
+    fn structure(text: &str) -> Vec<Part> {
+        vec![Part::Text(format!("* 3 FETCH (UID 9 BODYSTRUCTURE {text})"))]
     }
 
     #[test]
-    fn an_email_with_no_html_has_none_and_a_picture_that_is_not_one_stays_out() {
-        let plain = "Content-Type: text/plain\r\n\r\nJust text\r\n";
-        assert_eq!(html_of(plain.as_bytes()), "");
-        // Only HTML: its charset from its <meta>.
-        let latin = b"Content-Type: text/html\r\n\r\n<meta charset=\"iso-8859-1\"><p>Perch\xe8</p>".to_vec();
-        assert!(html_of(&latin).contains("<p>Perchè</p>"));
-        // An "image" whose bytes are an SVG (which can carry scripts) is not put in.
-        let svg = crate::claude::base64_for(b"<svg xmlns='http://www.w3.org/2000/svg'><script>x</script></svg>");
-        let raw = format!(
-            "Content-Type: multipart/related; boundary=\"r\"\r\n\r\n\
---r\r\nContent-Type: text/html\r\n\r\n<img src=\"cid:a\">\r\n\
---r\r\nContent-Type: image/svg+xml\r\nContent-ID: <a>\r\nContent-Transfer-Encoding: base64\r\n\r\n{svg}\r\n--r--\r\n"
-        );
-        let html = html_of(raw.as_bytes());
-        assert!(html.contains("cid:a") && !html.contains("data:"), "{html}");
+    fn the_html_of_an_email_is_its_richest_version_with_its_pictures_never_its_files() {
+        // mixed { related { alternative { plain, html }, logo (cid) }, attached photo, attached page }
+        let unit = structure(concat!(
+            r#"(((("TEXT" "PLAIN" ("CHARSET" "utf-8") NIL NIL "7BIT" 10 1 NIL NIL NIL NIL)"#,
+            r#"("TEXT" "HTML" ("CHARSET" "iso-8859-1") NIL NIL "QUOTED-PRINTABLE" 200 4 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "a") NIL NIL NIL)"#,
+            r#"("IMAGE" "PNG" ("NAME" "logo.png") "<logo@shop>" NIL "BASE64" 400 NIL ("INLINE" ("FILENAME" "logo.png")) NIL NIL) "RELATED" ("BOUNDARY" "r") NIL NIL NIL)"#,
+            r#"("IMAGE" "JPEG" ("NAME" "photo.jpg") NIL NIL "BASE64" 90000 NIL ("ATTACHMENT" ("FILENAME" "photo.jpg")) NIL NIL)"#,
+            r#"("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "7BIT" 30 1 NIL ("ATTACHMENT" ("FILENAME" "page.html")) NIL NIL) "MIXED" ("BOUNDARY" "m") NIL NIL NIL))"#,
+        ));
+        let plan = html_plan(&unit);
+        assert_eq!(plan.html.len(), 1);
+        assert_eq!((plan.html[0].section.as_str(), plan.html[0].charset.as_str(), plan.html[0].encoding.as_str()), ("1.1.2", "iso-8859-1", "QUOTED-PRINTABLE"));
+        assert_eq!(plan.images.len(), 1);
+        assert_eq!((plan.images[0].section.as_str(), plan.images[0].cid.as_str()), ("1.2", "logo@shop"));
+        // A single-part email is its part 1.
+        let single = html_plan(&structure(r#"("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "BASE64" 300 5 NIL NIL NIL NIL))"#));
+        assert_eq!(single.html.iter().map(|p| p.section.as_str()).collect::<Vec<_>>(), ["1"]);
+        // Plain text only: no HTML.
+        assert!(html_plan(&structure(r#"("TEXT" "PLAIN" ("CHARSET" "utf-8") NIL NIL "7BIT" 10 1 NIL NIL NIL NIL))"#)).html.is_empty());
+        // Apple Mail: mixed { html, picture, html }: both pieces of HTML, in order.
+        let apple = html_plan(&structure(concat!(
+            r#"(("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "7BIT" 10 1 NIL NIL NIL NIL)"#,
+            r#"("IMAGE" "JPEG" ("NAME" "a.jpg") "<a1>" NIL "BASE64" 400 NIL ("INLINE" ("FILENAME" "a.jpg")) NIL NIL)"#,
+            r#"("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "7BIT" 10 1 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "m") NIL NIL NIL))"#,
+        )));
+        assert_eq!(apple.html.iter().map(|p| p.section.as_str()).collect::<Vec<_>>(), ["1", "3"]);
+        assert_eq!(apple.images[0].cid, "a1");
+    }
+
+    #[test]
+    fn pictures_too_big_are_not_fetched() {
+        let piece = |n: usize, size: usize| HtmlPiece { section: n.to_string(), encoding: "BASE64".into(), cid: format!("c{n}"), size, ..Default::default() };
+        let plan = HtmlPlan {
+            html: vec![HtmlPiece { section: "1".into(), ..Default::default() }],
+            images: vec![piece(2, 4 * 1024 * 1024), piece(3, 1000), piece(4, 0), piece(5, 2 * 1024 * 1024)],
+        };
+        let asked = plan.asked();
+        assert_eq!(asked.images.iter().map(|p| p.section.as_str()).collect::<Vec<_>>(), ["3", "5"]);
+    }
+
+    #[test]
+    fn the_parts_fetched_are_found_by_their_section() {
+        let units = vec![vec![
+            Part::Text("* 3 FETCH (UID 9 BODY[1.1.2]<0> {5}".into()),
+            Part::Literal(b"<p>A</p>".to_vec()),
+            Part::Text(" BODY[1.2] {3}".into()),
+            Part::Literal(b"PNG".to_vec()),
+            Part::Text(")".into()),
+        ]];
+        let found = sections_of(&units);
+        assert_eq!(found.get("1.1.2").map(|b| b.as_slice()), Some(&b"<p>A</p>"[..]));
+        assert_eq!(found.get("1.2").map(|b| b.as_slice()), Some(&b"PNG"[..]));
+    }
+
+    #[test]
+    fn the_html_comes_with_its_own_pictures_each_reference_whole_and_within_bounds() {
+        let png = b"\x89PNG\r\n\x1a\nrest".to_vec();
+        let url = format!("data:image/png;base64,{}", crate::claude::base64_for(&png));
+        let html = br#"<img src="cid:img1"><img src='cid:img10'><img src=CID:img1>"#.to_vec();
+        let out = assemble(vec![(html, "utf-8".into())], vec![("img1".into(), png.clone()), ("img10".into(), png.clone())]);
+        assert_eq!(out.html, format!("<img src=\"{url}\"><img src='{url}'><img src={url}>"));
+        assert_eq!(out.bytes, None);
+        // An "image" that is an SVG (it can carry scripts) is not put in.
+        let svg = b"<svg xmlns='http://www.w3.org/2000/svg'><script>x</script></svg>".to_vec();
+        let out = assemble(vec![(br#"<img src="cid:a">"#.to_vec(), String::new())], vec![("a".into(), svg)]);
+        assert_eq!(out.html, r#"<img src="cid:a">"#);
+        // A picture named a million times: only what fits INLINE_URLS_BYTES is put in.
+        let big = {
+            let mut b = b"\x89PNG\r\n\x1a\n".to_vec();
+            b.resize(1024 * 1024, 7);
+            b
+        };
+        let many = "<img src=\"cid:x\">".repeat(100_000).into_bytes();
+        let out = assemble(vec![(many, String::new())], vec![("x".into(), big)]);
+        assert!(out.html.len() < HTML_KEPT_BYTES + INLINE_URLS_BYTES + 1024, "{}", out.html.len());
+        assert!(out.html.contains("cid:x"));
+    }
+
+    #[test]
+    fn the_html_charset_is_read_here_or_left_to_the_island() {
+        // From its <meta>, as Latin-1.
+        let latin = b"<meta charset=\"iso-8859-1\"><p>Perch\xe8</p>".to_vec();
+        assert!(assemble(vec![(latin, String::new())], vec![]).html.contains("<p>Perchè</p>"));
+        // Shift_JIS: its bytes go to the island, which reads them with TextDecoder.
+        let sjis = b"<p>\x82\xa0</p>".to_vec();
+        let out = assemble(vec![(sjis.clone(), "Shift_JIS".into())], vec![]);
+        assert_eq!(out.html, "");
+        assert_eq!(out.charset.as_deref(), Some("Shift_JIS"));
+        assert_eq!(out.bytes, Some(crate::claude::base64_for(&sjis)));
+        // No HTML at all: nothing.
+        assert_eq!(assemble(vec![], vec![]), MailHtml::default());
+        assert_eq!(html_charset(b"\xff\xfe<\0"), "utf-16le");
+        assert_eq!(html_charset(b"<meta http-equiv=Content-Type content='text/html; charset=windows-1251'>"), "windows-1251");
     }
 
     #[test]

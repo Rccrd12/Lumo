@@ -410,6 +410,18 @@ Outlook. Each account is asked on a short connection of its own when the
 view opens, and again when the inbox changes while it is open; nothing is
 marked read.
 
+An email with HTML is shown as its sender drew it (**Original**), on a white
+page shrunk to fit, or as its text (**Text only**), the choice kept for the
+next emails. It is shown in a frame where nothing of it runs (no scripts,
+forms or plug-ins) and nothing of it is fetched from the web: its links open
+in the browser only on a click, the corner saying where each really goes, and
+the pictures it links to stay hidden, so the sender can't tell it was opened,
+until **Load images** downloads them as the chat's images are (https, public
+sites, images only; **Images from the web** off in Settings → Security keeps
+them hidden). The pictures inside the email itself come with it. From
+Outlook, the HTML is read through MAPI, with no prompt; where MAPI can't be
+had (a 32-bit Office), the text is shown.
+
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
 emails in its Promotions tab; with other providers, the emails that carry an
@@ -699,8 +711,10 @@ No telemetry. The only network requests Lumo makes are to the services you
 configure yourself, and to the sites of the images in chat answers: Lumo
 downloads such an image at once (https and public addresses only, image files
 only, 8 MB at most), so its site sees your IP address and the image's full
-address, which the AI writes and could fill with words from your chat.
-**Settings → Security → Images from the web** turns it off.
+address, which the AI writes and could fill with words from your chat. The
+pictures an email links to, in the Email view, are downloaded the same way
+only after a click on **Load images**, and the sender's site then learns that
+you opened it. **Settings → Security → Images from the web** turns both off.
 
 ### Chat with your Claude plan (Claude Code)
 

@@ -29,7 +29,7 @@ import { State } from "../core/state";
 import { askAboutMail } from "../island/compact";
 import { loadClickedImage, webImagesOn } from "./rich/image";
 import {
-  DROPPED_TAGS, EMAIL_FRAME_STYLE, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkLabel, opensInBrowser, webImageUrl,
+  DROPPED_TAGS, EMAIL_FRAME_STYLE, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkParts, opensInBrowser, webImageUrl,
 } from "../core/mail-html";
 import {
   ALL, accountColor, accountLabel, avatarColor, initials, keptFilter, mailWhen, neighbours, readMailView,
@@ -70,6 +70,8 @@ export const MAIL_VIEW_TEXT = {
 /** The HTML of the emails read lately, by id ("" for one with none); the oldest goes past MAX_HTML. */
 const htmlOf = new Map<string, string>();
 const MAX_HTML = 12;
+/** The emails whose HTML is being asked for. */
+const htmlAsked = new Set<string>();
 /** Text only (true) or Original, as last picked, while Lumo runs. */
 let textOnly = false;
 /** The emails whose images the user loaded, this session. */
@@ -135,6 +137,20 @@ export function buildMailView(actions: ViewActions): ViewHost {
   let drawn = "";
   /** What the reader shows: drawn again only when it changes, so the email's frame isn't loaded again. */
   let readerDrawn = "";
+  /** The email's body in the reader (its frame, or its text) and what it shows: kept while that stays, so the frame isn't loaded again. */
+  let shownBody: HTMLElement | null = null;
+  let shownBodyKey = "";
+  /** Where the link under the pointer goes, at the bottom of the reader. */
+  const tipHost = h("b");
+  const tipPath = h("span");
+  const tip = h("div", { class: "mv-link-tip" }, svg(ICONS.arrowUpRight, 11), tipHost, tipPath);
+  const showTip = (href: string | null) => {
+    const parts = href ? linkParts(href) : null;
+    tipHost.textContent = parts?.host ?? "";
+    tipPath.textContent = parts?.path ?? "";
+    tip.classList.toggle("on", parts != null);
+    reader.classList.toggle("link-tip", parts != null);
+  };
 
   const count = h("span", { class: "mv-count" });
   const segUnread = h("button", { class: "mv-seg-btn", onclick: () => setUnreadOnly(true) });
@@ -189,7 +205,17 @@ export function buildMailView(actions: ViewActions): ViewHost {
 
   // Its sync runs only while it is on screen: leaving is seen here.
   State.subscribe(() => {
-    if (State.view !== "mail" || State.mode !== "expanded") wasShown = false;
+    if (State.view === "mail" && State.mode === "expanded") return;
+    wasShown = false;
+    // The email's frame goes while the view isn't on screen: nothing of it
+    // (its animations, its GIFs) runs then. It comes back when the view does.
+    if (shownBody) {
+      clear(reader);
+      shownBody = null;
+      shownBodyKey = "";
+      readerDrawn = "";
+      drawn = "";
+    }
   });
 
   // Escape goes back from an email to the list before it closes the island.
@@ -244,18 +270,23 @@ export function buildMailView(actions: ViewActions): ViewHost {
 
   function back() {
     actions.blip();
+    // The keys go to the island again, not to the email's frame going away.
+    if (document.activeElement instanceof HTMLIFrameElement) {
+      document.activeElement.blur();
+      window.focus();
+    }
     openId = null;
     drawn = "";
     State.notify();
   }
 
-  /** The email's HTML, asked once; the reader is drawn again when it comes. */
+  /** The email's HTML, asked once (again next time when it couldn't be); the reader is drawn again when it comes. */
   function askHtml(id: string) {
-    if (htmlOf.has(id)) return;
-    htmlOf.set(id, "");
+    if (htmlOf.has(id) || htmlAsked.has(id)) return;
+    htmlAsked.add(id);
     void Bridge.mailHtml(id)
       .then((html) => {
-        htmlOf.delete(id);
+        if (html == null) return;
         htmlOf.set(id, html);
         while (htmlOf.size > MAX_HTML) htmlOf.delete(htmlOf.keys().next().value as string);
         if (openId === id && html) {
@@ -264,69 +295,82 @@ export function buildMailView(actions: ViewActions): ViewHost {
           State.notify();
         }
       })
-      .catch(() => {});
+      .finally(() => htmlAsked.delete(id));
   }
 
-  /** The email's HTML in its frame, the bar about its images above, the corner that says where a link goes. */
-  function htmlCard(m: MailViewMessage, html: string, tip: HTMLElement): HTMLElement {
+  /** The email's HTML in its frame, the bar about its images above it. */
+  function htmlCard(m: MailViewMessage, html: string): HTMLElement {
     const { doc, images } = frameDocument(html);
     const frame = h("iframe", { class: "mv-html-frame", sandbox: "allow-same-origin", title: m.subject || t(MAIL_VIEW_TEXT.noSubject) }) as HTMLIFrameElement;
     frame.setAttribute("referrerpolicy", "no-referrer");
     frame.srcdoc = doc;
-    const tipText = tip.querySelector("span")!;
+    // The frame's document is the email's: its own names can't stand for these.
+    const on = (target: EventTarget, type: string, fn: (e: Event) => void, capture = false) =>
+      EventTarget.prototype.addEventListener.call(target, type, fn as EventListener, capture);
+    let fitWidth = 0;
     const fit = () => {
       const page = frame.contentDocument;
-      if (!page?.body) return;
-      page.body.style.zoom = "";
-      page.body.style.padding = "";
+      const body = page?.body;
+      if (!page || !body || !frame.isConnected || frame.clientWidth === 0) return;
+      fitWidth = frame.clientWidth;
+      body.style.zoom = "";
+      body.style.padding = "";
       // An email drawn to its own width (most are) has its own margins: no frame's padding then.
-      if (page.documentElement.scrollWidth > frame.clientWidth + 1) page.body.style.padding = "0";
+      if (page.documentElement.scrollWidth > frame.clientWidth + 1) body.style.padding = "0";
       const zoom = fitZoom(page.documentElement.scrollWidth, frame.clientWidth);
-      if (zoom !== 1) page.body.style.zoom = String(zoom);
-      frame.style.height = `${Math.ceil(page.documentElement.scrollHeight)}px`;
+      if (zoom !== 1) body.style.zoom = String(zoom);
+      // Its height as its content says, measured with the frame let down to nothing
+      // (else it never shrinks), the reader kept where it was.
+      const keep = reader.scrollTop;
+      frame.style.height = "0px";
+      const height = Math.ceil(page.documentElement.scrollHeight);
+      frame.style.height = `${Math.max(height, 40)}px`;
+      reader.scrollTop = keep;
       fadeIf(reader);
     };
-    frame.addEventListener("load", () => {
+    if (typeof ResizeObserver !== "undefined") {
+      // Narrower (the reader's scrollbar came) or wider: fitted again.
+      new ResizeObserver(() => {
+        if (frame.clientWidth !== fitWidth) fit();
+      }).observe(frame);
+    }
+    on(frame, "load", () => {
       const page = frame.contentDocument;
       if (!page) return;
       fit();
       // An image that comes (or fails) changes the height.
-      page.addEventListener("load", fit, true);
-      page.addEventListener("error", fit, true);
+      on(page, "load", fit, true);
+      on(page, "error", fit, true);
       // A link opens in the browser, only on a click, and never in the frame.
-      page.addEventListener("click", (e) => {
-        const a = (e.target as Element | null)?.closest?.("a[href]");
+      on(page, "click", (e) => {
         e.preventDefault();
+        const a = (e.target as Element | null)?.closest?.("a[href]");
         const href = a?.getAttribute("href") ?? "";
         if (opensInBrowser(href)) {
           actions.blip();
           void Bridge.openUrl(href.trim());
         }
       }, true);
-      page.addEventListener("auxclick", (e) => e.preventDefault(), true);
-      page.addEventListener("submit", (e) => e.preventDefault(), true);
-      page.addEventListener("mouseover", (e) => {
+      on(page, "auxclick", (e) => e.preventDefault(), true);
+      on(page, "submit", (e) => e.preventDefault(), true);
+      on(page, "dragstart", (e) => e.preventDefault(), true);
+      on(page, "mouseover", (e) => {
         const a = (e.target as Element | null)?.closest?.("a[href]");
-        const label = a ? linkLabel(a.getAttribute("href") ?? "") : "";
-        tipText.textContent = label;
-        tip.classList.toggle("on", label !== "");
-        reader.classList.toggle("link-tip", label !== "");
+        showTip(a ? a.getAttribute("href") : null);
       });
-      page.addEventListener("mouseleave", () => {
-        tip.classList.remove("on");
-        reader.classList.remove("link-tip");
+      on(page, "mouseleave", () => showTip(null), true);
+      on(page, "keydown", (e) => {
+        if ((e as KeyboardEvent).key === "Escape") back();
       });
-      page.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") back();
-      });
-      if (imagesLoaded.has(m.id)) void showImages(frame, m.id);
+      if (imagesLoaded.has(m.id) && webImagesOn()) void showImages(frame, m.id);
     });
     let bar: HTMLElement | null = null;
-    if (images.length && !imagesLoaded.has(m.id)) {
+    if (images.length && (!webImagesOn() || !imagesLoaded.has(m.id))) {
       if (webImagesOn()) {
         const load = h("button", { class: "mv-btn small" }, t(MAIL_VIEW_TEXT.loadImages));
         load.addEventListener("click", () => {
           actions.blip();
+          if (!webImagesOn()) return;
           imagesLoaded.add(m.id);
           bar?.remove();
           void showImages(frame, m.id);
@@ -349,7 +393,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
   async function showImages(frame: HTMLIFrameElement, id: string) {
     const page = frame.contentDocument;
     if (!page) return;
-    const hidden = Array.from(page.querySelectorAll<HTMLImageElement>("img[data-lumo-src]"));
+    const hidden = Array.from(Document.prototype.querySelectorAll.call(page, "img[data-lumo-src]") as NodeListOf<HTMLImageElement>);
     const urls = imagesToLoad(hidden.map((img) => img.getAttribute("data-lumo-src") ?? ""));
     await Promise.all(urls.map(async (url) => {
       const blob = await loadClickedImage(url);
@@ -417,11 +461,9 @@ export function buildMailView(actions: ViewActions): ViewHost {
     askHtml(m.id);
     const html = htmlOf.get(m.id) ?? "";
     const showHtml = html !== "" && !textOnly;
-    const key = JSON.stringify([m.id, near, html.length, showHtml, d.accounts.length, language(), m.unread]);
+    const key = JSON.stringify([m.id, near, html.length, showHtml, d.accounts.length, language(), m.unread, webImagesOn(), m.from, m.address, m.subject, m.date, m.link, m.body]);
     if (key === readerDrawn) return;
     readerDrawn = key;
-    reader.classList.remove("link-tip");
-    clear(reader);
     const account = d.accounts.find((a) => a.key === m.account);
     const step = (id: string | null, icon: string, label: string) => {
       const b = h("button", { class: "mv-step", title: t(label), "aria-label": t(label) }, svg(icon, 10, { stroke: 2.4 }));
@@ -435,7 +477,6 @@ export function buildMailView(actions: ViewActions): ViewHost {
       actions.setView("prompt");
     };
     const when = mailWhen(m.date, Date.now(), language(), t(MAIL_VIEW_TEXT.yesterday));
-    const tip = h("div", { class: "mv-link-tip" }, svg(ICONS.arrowUpRight, 11), h("span"));
     // Original, or Text only: kept for the next emails.
     const kindSwitch = () => {
       const pickKind = (text: boolean) => () => {
@@ -443,13 +484,24 @@ export function buildMailView(actions: ViewActions): ViewHost {
         actions.blip();
         textOnly = text;
         readerDrawn = "";
+        showTip(null);
         drawReader(d, m);
       };
       return h("span", { class: "mv-seg mv-kind" },
         h("button", { class: textOnly ? "mv-seg-btn" : "mv-seg-btn on", onclick: pickKind(false) }, t(MAIL_VIEW_TEXT.original)),
         h("button", { class: textOnly ? "mv-seg-btn on" : "mv-seg-btn", onclick: pickKind(true) }, t(MAIL_VIEW_TEXT.textOnly)));
     };
-    reader.append(
+    // The body stays as it is (its frame not loaded again) while it shows the same.
+    const bodyKey = JSON.stringify([m.id, showHtml, showHtml ? html.length : m.body || m.preview, language(), webImagesOn()]);
+    if (bodyKey !== shownBodyKey || !shownBody || shownBody.parentElement !== reader) {
+      showTip(null);
+      shownBody = showHtml ? htmlCard(m, html) : h("div", { class: "mv-read-body", text: (m.body || m.preview).trim() });
+      shownBodyKey = bodyKey;
+      clear(reader);
+      reader.append(shownBody);
+    }
+    for (const child of Array.from(reader.children)) if (child !== shownBody) child.remove();
+    shownBody.before(
       h("div", { class: "mv-read-top" },
         h("button", { class: "mv-back", onclick: back }, svg(ICONS.chevronLeft, 9, { stroke: 2.6 }), h("span", { text: t(MAIL_VIEW_TEXT.back) })),
         h("span", { class: "mv-space" }),
@@ -466,8 +518,8 @@ export function buildMailView(actions: ViewActions): ViewHost {
               ? h("span", { class: "mv-read-acc" }, dot(accountColor(d, account.key), 6), h("span", { text: t(MAIL_VIEW_TEXT.to, { address: account.label }) }))
               : null,
             when ? h("span", { text: when }) : null))),
-      h("div", { class: "mv-read-subject", text: m.subject || t(MAIL_VIEW_TEXT.noSubject) }),
-      showHtml ? htmlCard(m, html, tip) : h("div", { class: "mv-read-body", text: (m.body || m.preview).trim() }),
+      h("div", { class: "mv-read-subject", text: m.subject || t(MAIL_VIEW_TEXT.noSubject) }));
+    shownBody.after(
       tip,
       h("div", { class: "mv-read-actions" },
         h("button", { class: "mv-btn", onclick: ask("summary") }, t(MAIL_VIEW_TEXT.summarize)),
@@ -523,6 +575,10 @@ export function buildMailView(actions: ViewActions): ViewHost {
     if (m) drawReader(d, m);
     else {
       readerDrawn = "";
+      shownBody = null;
+      shownBodyKey = "";
+      showTip(null);
+      clear(reader);
       drawList(d);
     }
     drawFoot(d);
@@ -546,7 +602,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
         watchKey = key;
         void load();
       }
-      const now = [language(), filter, unreadOnly, openId, loading, loadedAt, data?.messages.length ?? -1].join("~");
+      const now = [language(), filter, unreadOnly, openId, loading, loadedAt, data?.messages.length ?? -1, webImagesOn()].join("~");
       if (now === drawn) return;
       drawn = now;
       draw();

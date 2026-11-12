@@ -9045,8 +9045,17 @@ button.bg-row:hover {
   mask-image: none;
 }
 
+/* The site always whole; the path gives way. */
+.mv-link-tip b {
+  flex: none;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+
 .mv-link-tip span {
   min-width: 0;
+  margin-left: -6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

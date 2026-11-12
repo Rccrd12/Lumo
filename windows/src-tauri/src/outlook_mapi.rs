@@ -23,7 +23,7 @@ use std::sync::OnceLock;
 
 use ::windows::core::{w, Interface, GUID, HRESULT, HSTRING, IUnknown, PCWSTR};
 use ::windows::Win32::Foundation::HMODULE;
-use ::windows::Win32::System::AddressBook::{IMAPIProp, IMsgStore, ENTRYID, SPropTagArray, SPropValue};
+use ::windows::Win32::System::AddressBook::{IMAPIProp, IMessage, IMsgStore, ENTRYID, SPropTagArray, SPropValue, SRow, SRowSet};
 use ::windows::Win32::System::Com::IStream;
 use ::windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryExW, LOAD_WITH_ALTERED_SEARCH_PATH};
 use ::windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
@@ -49,9 +49,19 @@ const PR_BODY: u32 = 0x1000_001F;
 const PR_TRANSPORT_MESSAGE_HEADERS: u32 = 0x007D_001F;
 /// The email's HTML, as bytes in its own charset (PT_BINARY).
 const PR_HTML: u32 = 0x1013_0102;
+// Its attachments: their number, Content-ID, size and bytes.
+const PR_ATTACH_NUM: u32 = 0x0E21_0003;
+const PR_ATTACH_SIZE: u32 = 0x0E20_0003;
+const PR_ATTACH_CONTENT_ID: u32 = 0x3712_001F;
+const PR_ATTACH_DATA_BIN: u32 = 0x3701_0102;
+/// The attachments looked at, at most.
+const MOST_ATTACHMENTS: i32 = 64;
 
 /// The headers are read only for List-Unsubscribe: their first part is enough.
 const HEADER_CHARS: usize = 32_000;
+
+/// The pictures an email's attachments hold for its HTML: their Content-ID and bytes.
+pub type Pictures = Vec<(String, Vec<u8>)>;
 
 /// What Outlook guards of one email.
 #[derive(Default)]
@@ -262,17 +272,87 @@ impl Mapi {
     }
 
     /// The HTML of the email `entry_id` of the store `store_id`, at most
-    /// `bytes` of it, as it is kept (in the charset its `<meta>` names); None
-    /// when it has none (a plain-text or RTF email).
-    pub fn html(&mut self, store_id: &str, entry_id: &str, bytes: usize) -> Option<Vec<u8>> {
+    /// `bytes` of it, as it is kept (in the charset its `<meta>` names), and
+    /// the pictures its attachments hold for it (their Content-ID and bytes),
+    /// each of `picture` bytes at most, `pictures` together. None when it has
+    /// no HTML (a plain-text or RTF email).
+    pub fn html(&mut self, store_id: &str, entry_id: &str, bytes: usize, picture: usize, pictures: usize) -> Option<(Vec<u8>, Pictures)> {
         let store = self.store(store_id)?;
         let entry = hex(entry_id)?;
         let mut kind = 0u32;
         let mut unknown: Option<IUnknown> = None;
         unsafe { store.OpenEntry(entry.len() as u32, entry.as_ptr().cast(), None, 0, &mut kind, &mut unknown) }.ok()?;
-        let message = unsafe { IMAPIProp::from_raw(unknown?.into_raw()) };
+        // With no interface asked, MAPI gives the message's own (IMessage, an IMAPIProp).
+        let message = unsafe { IMessage::from_raw(unknown?.into_raw()) };
         let html = stream_bytes(&message, PR_HTML, bytes);
-        (!html.is_empty()).then_some(html)
+        if html.is_empty() {
+            return None;
+        }
+        let inline = self.pictures(&message, picture, pictures);
+        Some((html, inline))
+    }
+
+    /// The attachments of `message` that have a Content-ID, which its HTML may
+    /// show as `cid:`: each of `each` bytes at most, `all` together.
+    fn pictures(&self, message: &IMessage, each: usize, all: usize) -> Pictures {
+        let Ok(table) = (unsafe { message.GetAttachmentTable(0) }) else { return Vec::new() };
+        #[repr(C)]
+        struct Tags {
+            count: u32,
+            tags: [u32; 3],
+        }
+        let mut columns = Tags { count: 3, tags: [PR_ATTACH_NUM, PR_ATTACH_SIZE, PR_ATTACH_CONTENT_ID] };
+        if unsafe { table.SetColumns((&mut columns as *mut Tags).cast::<SPropTagArray>(), 0) }.is_err() {
+            return Vec::new();
+        }
+        let mut rows: *mut SRowSet = std::ptr::null_mut();
+        if unsafe { table.QueryRows(MOST_ATTACHMENTS, 0, &mut rows) }.is_err() || rows.is_null() {
+            return Vec::new();
+        }
+        // What the rows say, read before they are let go.
+        let mut listed: Vec<(u32, usize, String)> = Vec::new();
+        unsafe {
+            let count = (*rows).cRows as usize;
+            let first = std::ptr::addr_of!((*rows).aRow).cast::<SRow>();
+            for r in 0..count {
+                let row = &*first.add(r);
+                if row.lpProps.is_null() {
+                    continue;
+                }
+                let values = std::slice::from_raw_parts(row.lpProps, row.cValues as usize);
+                let (mut num, mut size, mut cid) = (None, 0usize, String::new());
+                for v in values {
+                    match v.ulPropTag {
+                        PR_ATTACH_NUM => num = Some(v.Value.l as u32),
+                        PR_ATTACH_SIZE => size = v.Value.l.max(0) as usize,
+                        PR_ATTACH_CONTENT_ID => cid = v.Value.lpszW.to_string().unwrap_or_default(),
+                        _ => {}
+                    }
+                }
+                if let Some(num) = num {
+                    listed.push((num, size, cid));
+                }
+                (self.api.free)(row.lpProps.cast());
+            }
+            (self.api.free)(rows.cast());
+        }
+        let mut out = Vec::new();
+        let mut total = 0;
+        for (num, size, cid) in listed {
+            let cid = cid.trim().trim_start_matches('<').trim_end_matches('>').trim().to_string();
+            // PR_ATTACH_SIZE counts the attachment's other properties too: a little more than its bytes.
+            if cid.is_empty() || size > each + 64 * 1024 || total >= all {
+                continue;
+            }
+            let Ok(attach) = (unsafe { message.OpenAttach(num, None, 0) }) else { continue };
+            let data = stream_bytes(&attach, PR_ATTACH_DATA_BIN, each + 1);
+            if data.is_empty() || data.len() > each || total + data.len() > all {
+                continue;
+            }
+            total += data.len();
+            out.push((cid, data));
+        }
+        out
     }
 
     /// The text properties `tags` asked at once: Some(text) when read, None

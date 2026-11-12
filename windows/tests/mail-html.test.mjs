@@ -1,11 +1,12 @@
 // An email as its sender drew it (src/core/mail-html.ts): which links open,
 // what the corner says, how it is shrunk to fit, which images wait for Load
-// images and what of the email is taken out. mail.rs html_of is tested there.
+// images and what of the email is taken out. What Rust sends (mail.rs
+// html_plan, assemble) is tested there.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  DROPPED_TAGS, MAX_EMAIL_IMAGES, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkLabel, opensInBrowser, webImageUrl,
+  DROPPED_TAGS, MAX_EMAIL_IMAGES, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkParts, opensInBrowser, readMailHtml, webImageUrl,
 } from "../src/core/mail-html.ts";
 
 test("only http and https links open, in the browser", () => {
@@ -17,14 +18,22 @@ test("only http and https links open, in the browser", () => {
   assert.equal(opensInBrowser("#top"), false);
 });
 
-test("the corner says where a link really goes: the site and the path, not the tracking", () => {
-  assert.equal(linkLabel("https://libreria-aurora.example/ordini/48213/traccia?utm_source=email&u=9"), "libreria-aurora.example/ordini/48213/traccia");
-  assert.equal(linkLabel("https://shop.example/"), "shop.example");
-  assert.equal(linkLabel("https://shop.example/a/"), "shop.example/a");
-  assert.equal(linkLabel("javascript:void(0)"), "");
-  assert.equal(linkLabel("https://"), "");
-  assert.ok(linkLabel(`https://x.example/${"a".repeat(200)}`).endsWith("…"));
-  assert.ok(linkLabel(`https://x.example/${"a".repeat(200)}`).length <= 80);
+test("the corner says where a link really goes: the whole site, then the path, not the tracking", () => {
+  assert.deepEqual(linkParts("https://libreria-aurora.example/ordini/48213/traccia?utm_source=email&u=9"), { host: "libreria-aurora.example", path: "/ordini/48213/traccia" });
+  assert.deepEqual(linkParts("https://shop.example/"), { host: "shop.example", path: "" });
+  assert.deepEqual(linkParts("https://shop.example/a/"), { host: "shop.example", path: "/a" });
+  assert.equal(linkParts("javascript:void(0)"), null);
+  assert.equal(linkParts("https://"), null);
+  // A long path gives way; the site never does.
+  const long = linkParts(`https://x.example/${"a".repeat(200)}`);
+  assert.equal(long.host, "x.example");
+  assert.ok(long.path.endsWith("…") && long.path.length <= 60);
+  // A name made to look like another site's keeps its end, the domain that owns it.
+  const phish = linkParts("https://www.paypal.com.account-security-verification-center-login-session-renewal.evil.example/login");
+  assert.ok(phish.host.endsWith("renewal.evil.example"), phish.host);
+  assert.ok(phish.host.startsWith("…"));
+  // A path that isn't valid percent-encoding is shown as it is.
+  assert.deepEqual(linkParts("https://shop.example/%E0%A4%A"), { host: "shop.example", path: "/%E0%A4%A" });
 });
 
 test("an email wider than the room is shrunk to fit, never below half", () => {
@@ -51,6 +60,23 @@ test("a hidden image keeps its box: its own size, 48 px tall with a width only, 
   assert.equal(hiddenBox("600", null, ""), "h");
   assert.equal(hiddenBox(null, null, "max-width:600px"), "wh");
   assert.equal(hiddenBox(null, "", "display:block"), "wh");
+  // "auto" is no size: a 1×1 stand-in with a width would be drawn as a square.
+  assert.equal(hiddenBox("600", "auto", ""), "h");
+  assert.equal(hiddenBox("600", null, "height:auto"), "h");
+  assert.equal(hiddenBox("auto", "auto", ""), "wh");
+});
+
+test("an email's HTML from Rust: its text, or its bytes read in their charset", () => {
+  assert.equal(readMailHtml({ html: "<p>Ciao</p>" }), "<p>Ciao</p>");
+  assert.equal(readMailHtml({ html: "" }), "");
+  assert.equal(readMailHtml(null), "");
+  // Shift_JIS "あ" (0x82 0xA0), as Rust hands it over.
+  assert.equal(readMailHtml({ html: "", bytes: Buffer.from([0x3c, 0x70, 0x3e, 0x82, 0xa0]).toString("base64"), charset: "Shift_JIS" }), "<p>あ");
+  // windows-1251 "Привет"
+  assert.equal(readMailHtml({ html: "", bytes: Buffer.from([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]).toString("base64"), charset: "windows-1251" }), "Привет");
+  // A charset no one knows: read as UTF-8.
+  assert.equal(readMailHtml({ html: "", bytes: Buffer.from("ok").toString("base64"), charset: "x-unknown" }), "ok");
+  assert.equal(readMailHtml({ html: "", bytes: "%%%", charset: "utf-8" }), "");
 });
 
 test("what runs, loads or goes somewhere is taken out of the email", () => {
@@ -62,4 +88,8 @@ test("what runs, loads or goes somewhere is taken out of the email", () => {
   assert.equal(droppedAttribute("src", "data:text/html,<script>"), true);
   assert.equal(droppedAttribute("href", "https://shop.example"), false);
   assert.equal(droppedAttribute("style", "color:red"), false);
+  // A shadow root declared in the HTML, and names that would stand for the frame's own methods.
+  assert.ok(DROPPED_TAGS.includes("template"));
+  assert.equal(droppedAttribute("shadowrootmode", "open"), true);
+  assert.equal(droppedAttribute("name", "addEventListener"), true);
 });

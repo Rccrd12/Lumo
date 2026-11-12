@@ -14,7 +14,7 @@ export const EMAIL_WIDTH = 600;
 const MIN_ZOOM = 0.5;
 
 /** Elements an email can't keep: they run, load or go somewhere. */
-export const DROPPED_TAGS = ["script", "noscript", "iframe", "frame", "frameset", "object", "embed", "applet", "base", "link", "meta", "form", "portal"];
+export const DROPPED_TAGS = ["script", "noscript", "iframe", "frame", "frameset", "object", "embed", "applet", "base", "link", "meta", "form", "portal", "template"];
 
 /** Whether `url` is an image on the web, which waits for Load images (https only: web_image.rs). */
 export function webImageUrl(url: string): boolean {
@@ -28,18 +28,30 @@ export function opensInBrowser(href: string): boolean {
 
 /**
  * What the corner says while the pointer is on a link: where it really goes,
- * the site and the path, without the query that tracks the click. "" for a
- * link that goes nowhere a click takes.
+ * its site always whole at its end (a long name keeps its last part, the
+ * domain that owns it: "paypal.com.login-renewal.evil.example" is evil's),
+ * then the path, without the query that tracks the click. null for a link
+ * that goes nowhere a click takes.
  */
-export function linkLabel(href: string): string {
-  if (!opensInBrowser(href)) return "";
+export function linkParts(href: string): { host: string; path: string } | null {
+  if (!opensInBrowser(href)) return null;
   try {
     const u = new URL(href.trim());
-    const path = u.pathname === "/" ? "" : decodeURI(u.pathname).replace(/\/$/, "");
-    const label = `${u.hostname}${path}`;
-    return label.length > 80 ? `${label.slice(0, 79)}…` : label;
+    if (!u.hostname) return null;
+    const host = u.hostname.length > 60 ? `…${u.hostname.slice(-59)}` : u.hostname;
+    let path = u.pathname === "/" ? "" : safeDecode(u.pathname).replace(/\/$/, "");
+    if (path.length > 60) path = `${path.slice(0, 59)}…`;
+    return { host, path };
   } catch {
-    return "";
+    return null;
+  }
+}
+
+function safeDecode(path: string): string {
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
   }
 }
 
@@ -56,21 +68,43 @@ export function imagesToLoad(urls: string[]): string[] {
 
 /**
  * The box a hidden image keeps (its stand-in is a 1×1 pixel): its own size
- * when the email gives both; with only a width, "h" (48 px tall rather than a
- * square); with neither, "wh" (48 × 48).
+ * when the email gives its height; with only a width, "h" (48 px tall rather
+ * than a square); with neither, "wh" (48 × 48). "auto" is no size.
  */
 export function hiddenBox(width: string | null, height: string | null, style: string): "" | "h" | "wh" {
-  const has = (attr: string | null, prop: string) => (attr != null && attr.trim() !== "") || new RegExp(`(^|;)\\s*${prop}\\s*:`, "i").test(style);
-  const w = has(width, "width");
-  const hh = has(height, "height");
-  if (hh) return "";
-  return w ? "h" : "wh";
+  const has = (attr: string | null, prop: string) =>
+    /^\s*\d/.test(attr ?? "") || new RegExp(`(^|;)\\s*${prop}\\s*:\\s*\\d`, "i").test(style);
+  if (has(height, "height")) return "";
+  return has(width, "width") ? "h" : "wh";
 }
 
-/** Whether an attribute of an email's element is dropped: event handlers, and links to scripts. */
+/** What an email's HTML from Rust (mail.rs MailHtml) reads as: its own text, or its bytes in their charset; "" for none. */
+export function readMailHtml(raw: unknown): string {
+  const got = (raw ?? {}) as { html?: unknown; bytes?: unknown; charset?: unknown };
+  if (typeof got.html === "string" && got.html) return got.html;
+  if (typeof got.bytes !== "string" || !got.bytes) return "";
+  let bytes: Uint8Array;
+  try {
+    bytes = Uint8Array.from(atob(got.bytes), (c) => c.charCodeAt(0));
+  } catch {
+    return "";
+  }
+  const label = typeof got.charset === "string" ? got.charset.trim() : "";
+  try {
+    return new TextDecoder(label || "utf-8").decode(bytes);
+  } catch {
+    // A charset no browser knows: read as UTF-8, what most mail is.
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+}
+
+/** Whether an attribute of an email's element is dropped: event handlers, links to scripts, and the ones below. */
 export function droppedAttribute(name: string, value: string): boolean {
   const n = name.toLowerCase();
   if (n.startsWith("on")) return true;
+  // A shadow root declared in the HTML would hold a page this cleaning never sees;
+  // a name would stand for the frame's own methods (document.addEventListener…).
+  if (n === "shadowrootmode" || n === "shadowroot" || n === "name") return true;
   if (n === "href" || n === "src" || n === "action" || n === "formaction" || n === "xlink:href") {
     return /^\s*(javascript|vbscript|data:text\/html)/i.test(value.replace(/[\u0000-\u001f]/g, ""));
   }
