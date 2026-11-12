@@ -838,7 +838,10 @@ function draw(node: Node): Element {
     case "group":
       return drawAll(node.c);
     case "sup": {
-      const base = node.base ? draw(node.base) : m("mrow");
+      // \Big]_0^{2π}: the WebView sizes a bracket only as a child of a row,
+      // and as the base of the scripts it fell back to the text's own size,
+      // smaller and lower than its \Big[. In a row of its own it keeps it.
+      const base = !node.base ? m("mrow") : node.base.t === "big" ? m("mrow", {}, draw(node.base)) : draw(node.base);
       // ∑, \lim: limits above and below on a line of its own, beside it in the text.
       if (isBigOperator(node.base)) {
         const b = node.base!;
