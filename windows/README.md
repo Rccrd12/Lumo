@@ -396,6 +396,20 @@ it; a reply, a forward or a draft in reply goes out of the account the email
 came to. The account set up before this list became the first one, with
 nothing to type again.
 
+**The Email view**: a click on the home's Email tile opens it on the island.
+With more than one address (IMAP accounts and Outlook on this PC), a row of
+buttons at the top: **All**, then each address with its colour and how many
+emails are unread, or a red **!** when it can't be read (the list then says
+why, with **Settings**). **Unread** or **Recent** (read ones too): the newest
+20 of each address, newest first, the dot on each avatar saying which
+address an email came to. A click on an email reads it there, with ‹ and ›
+for the next ones, **Summarize** and **Draft a reply** as on its card, and
+**Open in the browser** (or in Outlook); under the emails of one address,
+**Open the inbox** opens its webmail (Gmail, Outlook.com, Microsoft 365) or
+Outlook. Each account is asked on a short connection of its own when the
+view opens, and again when the inbox changes while it is open; nothing is
+marked read.
+
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
 emails in its Promotions tab; with other providers, the emails that carry an

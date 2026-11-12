@@ -182,8 +182,50 @@ function sampleTools() {
   State.notify();
 }
 
+// The Email view's answer (mail.rs mail_view): three addresses, one of them
+// failing with ?mailerror; only the unread ones, or the recent ones too.
+function sampleMail() {
+  const it = lang === "it";
+  const at = (daysAgo: number, h: number, m: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    d.setHours(h, m, 0, 0);
+    return d.toString();
+  };
+  const mail = (id: string, account: string, from: string, address: string, subject: string, preview: string, date: string, unread = true) => ({
+    id: `${account}/inbox:${id}`, account, from, address, subject, preview, body: preview, date, unread,
+    link: account === "imap:1" ? "https://mail.google.com/mail/u/0/#inbox" : account === "outlook" ? "lumo-outlook:inbox" : undefined,
+  });
+  const failing = params.has("mailerror");
+  const all = [
+    mail("9", "imap:1", "Ada Lovelace", "ada@example.com", it ? "Pranzo domani?" : "Lunch tomorrow?", it ? "C'è un posto nuovo vicino all'ufficio, proviamo all'una?" : "There's a new place near the office, want to try it at 1?", at(0, 10, 42)),
+    mail("4", "imap:2", "Marco Bianchi", "marco@example.com", it ? "Preventivo sito web" : "Website quote", it ? "Ti allego il preventivo aggiornato con le modifiche." : "Here is the updated quote with the changes.", at(0, 10, 15)),
+    mail("1", "outlook", "Giulia Rossi", "giulia@example.com", it ? "Riunione di giovedì" : "Thursday's meeting", it ? "Possiamo spostarla alle 15?" : "Can we move it to 3 pm?", at(0, 9, 58)),
+    mail("8", "imap:1", "GitHub", "noreply@github.com", it ? "Lumo: nuova release 0.22.1" : "Lumo: new release 0.22.1", it ? "Una nuova release è stata pubblicata." : "A new release was published.", at(0, 9, 31)),
+    mail("7", "imap:1", "Amazon", "ship@example.com", it ? "Il tuo ordine è stato spedito" : "Your order has shipped", it ? "Arriverà venerdì." : "It arrives on Friday.", at(1, 18, 5)),
+    mail("2", "outlook", "Luca Verdi", "luca@example.com", it ? "Foto del weekend" : "Weekend photos", it ? "Ecco le foto della gita!" : "Here are the photos from the trip!", at(1, 12, 40)),
+    mail("3", "imap:2", "Sara Neri", "sara@example.com", it ? "Re: Bozza contratto" : "Re: Draft contract", it ? "Ho aggiunto i commenti nel documento." : "I added my comments in the document.", at(1, 9, 12), false),
+    mail("6", "imap:1", "Spotify", "no-reply@example.com", it ? "La tua playlist della settimana" : "Your weekly playlist", it ? "Nuovi brani scelti per te." : "New songs picked for you.", at(3, 8, 0), false),
+  ].filter((m) => !(failing && m.account === "imap:2"));
+  (window as unknown as { __lumoMock: Record<string, (args: { unreadOnly: boolean }) => unknown> }).__lumoMock = {
+    ...(window as unknown as { __lumoMock?: Record<string, unknown> }).__lumoMock,
+    mail_view: ({ unreadOnly }) => ({
+      accounts: [
+        { key: "imap:1", label: "personale@gmail.com", state: "ok", unread: 3, inbox: "https://mail.google.com/mail/u/0/#inbox" },
+        failing
+          ? { key: "imap:2", label: "lavoro@studio.it", state: "error", error: it ? "Il server ha rifiutato la password per le app." : "The server refused the app password.", unread: 0 }
+          : { key: "imap:2", label: "lavoro@studio.it", state: "ok", unread: 1 },
+        { key: "outlook", label: "Outlook", state: "ok", unread: 2, inbox: "lumo-outlook:inbox" },
+      ],
+      messages: all.filter((m) => !unreadOnly || m.unread),
+    }),
+  };
+  State.settings = { ...State.settings, activeIntegrations: [...new Set([...State.settings.activeIntegrations, "integration_mail"])] };
+}
+sampleMail();
+
 const bar = document.getElementById("bar")!;
-const views: [IslandViewName, string][] = [["overview", "Sessions"], ["approval", "Permission"], ["prompt", "Chat"], ["tools", "Tools"], ["upload", "Drop"]];
+const views: [IslandViewName, string][] = [["overview", "Sessions"], ["approval", "Permission"], ["prompt", "Chat"], ["tools", "Tools"], ["mail", "Email"], ["upload", "Drop"]];
 const buttons = new Map<string, HTMLButtonElement>();
 for (const [view, label] of views) {
   const b = document.createElement("button");

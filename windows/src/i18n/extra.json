@@ -18178,6 +18178,90 @@
    "ru": "Файлы вместе весят больше {mb} МБ",
    "id": "Total ukuran file lebih dari {mb} MB",
    "it": "I file pesano più di {mb} MB in tutto"
+  },
+  "{n} unread": {
+   "zh-Hans": "{n} 封未读",
+   "hi": "{n} अपठित",
+   "es": "{n} sin leer",
+   "ar": "غير المقروءة: {n}",
+   "fr": "{n} non lus",
+   "bn": "{n}টি অপঠিত",
+   "pt-BR": "{n} não lidos",
+   "ru": "Непрочитанных: {n}",
+   "id": "{n} belum dibaca",
+   "it": "{n} da leggere"
+  },
+  "All": {
+   "zh-Hans": "全部",
+   "hi": "सभी",
+   "es": "Todas",
+   "ar": "الكل",
+   "fr": "Toutes",
+   "bn": "সব",
+   "pt-BR": "Todas",
+   "ru": "Все",
+   "id": "Semua",
+   "it": "Tutte"
+  },
+  "{address} can't be read": {
+   "zh-Hans": "无法读取 {address}",
+   "hi": "{address} पढ़ा नहीं जा सकता",
+   "es": "No se puede leer {address}",
+   "ar": "تعذّرت قراءة {address}",
+   "fr": "Impossible de lire {address}",
+   "bn": "{address} পড়া যাচ্ছে না",
+   "pt-BR": "Não é possível ler {address}",
+   "ru": "Не удаётся прочитать {address}",
+   "id": "{address} tidak dapat dibaca",
+   "it": "Impossibile leggere {address}"
+  },
+  "to {address}": {
+   "zh-Hans": "发至 {address}",
+   "hi": "{address} को",
+   "es": "para {address}",
+   "ar": "إلى {address}",
+   "fr": "à {address}",
+   "bn": "{address}-কে",
+   "pt-BR": "para {address}",
+   "ru": "для {address}",
+   "id": "ke {address}",
+   "it": "a {address}"
+  },
+  "Yesterday": {
+   "zh-Hans": "昨天",
+   "hi": "कल",
+   "es": "Ayer",
+   "ar": "أمس",
+   "fr": "Hier",
+   "bn": "গতকাল",
+   "pt-BR": "Ontem",
+   "ru": "Вчера",
+   "id": "Kemarin",
+   "it": "Ieri"
+  },
+  "Open in Outlook": {
+   "zh-Hans": "在 Outlook 中打开",
+   "hi": "Outlook में खोलें",
+   "es": "Abrir en Outlook",
+   "ar": "فتح في Outlook",
+   "fr": "Ouvrir dans Outlook",
+   "bn": "Outlook-এ খুলুন",
+   "pt-BR": "Abrir no Outlook",
+   "ru": "Открыть в Outlook",
+   "id": "Buka di Outlook",
+   "it": "Apri in Outlook"
+  },
+  "Open the inbox": {
+   "zh-Hans": "打开收件箱",
+   "hi": "इनबॉक्स खोलें",
+   "es": "Abrir la bandeja de entrada",
+   "ar": "فتح البريد الوارد",
+   "fr": "Ouvrir la boîte de réception",
+   "bn": "ইনবক্স খুলুন",
+   "pt-BR": "Abrir a caixa de entrada",
+   "ru": "Открыть входящие",
+   "id": "Buka kotak masuk",
+   "it": "Apri la posta in arrivo"
   }
  }
 }

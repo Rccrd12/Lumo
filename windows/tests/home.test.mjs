@@ -315,3 +315,29 @@ test("the list is called In progress only while every session in it is at work",
   assert.doesNotMatch(home.el.textContent, /In progress/);
   assert.match(home.el.textContent, /Tests green/);
 });
+
+test("the Email tile opens the Email view, or the inbox where the island has none", () => {
+  const withMail = () => ({
+    ...emptyActivities(),
+    mail: { on: true, error: null, messages: [{ id: "m1", from: "Ada Lovelace", address: "ada@example.com", subject: "Lunch?", preview: "", body: "" }], inbox: "https://mail.google.com/mail/u/0/#inbox" },
+  });
+  const opened = [];
+  const asked = [];
+  const base = {
+    openSession: () => {}, openGitHubPRs: () => {}, openRequest: () => {}, decide: () => {}, openChat: () => {},
+    openPlan: () => {}, openChatPlan: () => {}, openUrl: () => {}, makeTool: () => {},
+    activityData: withMail, activity: (a) => asked.push(a.kind), blip: () => {},
+  };
+  const mailTile = (home) => home.el.querySelectorAll(".home-tile").find((el) => /Ada Lovelace/.test(el.textContent));
+
+  const home = buildHome({ ...base, openMail: () => opened.push("mail") }, () => false);
+  home.sync();
+  mailTile(home).fire("click");
+  assert.deepEqual(opened, ["mail"]);
+  assert.deepEqual(asked, []);
+
+  const old = buildHome(base, () => false);
+  old.sync();
+  mailTile(old).fire("click");
+  assert.deepEqual(asked, ["inbox"]);
+});

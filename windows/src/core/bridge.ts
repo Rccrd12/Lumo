@@ -499,6 +499,8 @@ export const Bridge = {
   outlookStatus: () => call<OutlookStatus>("outlook_status"),
   /** The Email pill's IMAP accounts, the first (the default) first (mail.rs). */
   mailAccounts: () => call<MailAccount[]>("mail_accounts"),
+  /** The island's Email view: each account and its newest emails, only the unread ones or all the recent ones (mail.rs mail_view). */
+  mailView: (unreadOnly: boolean) => call<unknown>("mail_view", { unreadOnly }),
   /** The IMAP server an address is read from when none is typed. */
   mailServerFor: (address: string) => call<string>("mail_server_for", { address }),
   /** Signs in with what was typed and stores the account only if the server took it: the server read, or why not. */

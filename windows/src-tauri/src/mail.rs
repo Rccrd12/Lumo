@@ -662,6 +662,142 @@ fn together(read: Vec<Read>) -> (usize, Vec<Message>) {
     (unread, all)
 }
 
+// ── The island's Email view ───────────────────────────────────────────────────
+//
+// A click on the home's Email tile opens the island's Email view
+// (views/mail-view.ts): one button per address, the emails of each, an email
+// read there. It asks each account on a short connection of its own, as the
+// agents' tools do, and like them never marks anything read (EXAMINE,
+// BODY.PEEK). The island's own watch (above) goes on as it was.
+
+/// How many emails the view lists of each account.
+const VIEW_COUNT: usize = 20;
+/// The view's key of the classic Outlook on this PC; an IMAP account's is "imap:" and its number.
+const OUTLOOK_KEY: &str = "outlook";
+
+/// One of the view's buttons: an IMAP account, or Outlook on this PC.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct ViewAccount {
+    /// What the view and its emails go by: "imap:1"…, "outlook".
+    pub key: String,
+    /// The address, or "Outlook".
+    pub label: String,
+    /// "ok", or "error" with why.
+    pub state: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Unread in its inbox: as the watch last counted, else as many as were listed.
+    pub unread: usize,
+    /// Where its inbox opens: a webmail Lumo knows, Outlook, or nowhere.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inbox: Option<String>,
+}
+
+/// An email in the view, with the account it is of.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct ViewMail {
+    pub account: String,
+    #[serde(flatten)]
+    pub message: Message,
+    pub unread: bool,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct MailView {
+    pub accounts: Vec<ViewAccount>,
+    /// Every account's emails together, newest first.
+    pub messages: Vec<ViewMail>,
+}
+
+/// The accounts' answers as the view gets them: the emails with their
+/// account (ids made unique across accounts), newest first; an account that
+/// failed says why on its button and leaves the others'.
+fn view_of(results: Vec<(ViewAccount, Result<Vec<Found>, String>)>) -> MailView {
+    let mut accounts = Vec::new();
+    let mut messages = Vec::new();
+    for (mut account, result) in results {
+        match result {
+            Ok(found) => {
+                let unread_here = found.iter().filter(|f| f.unread).count();
+                account.unread = account.unread.max(unread_here);
+                messages.extend(found.into_iter().map(|f| {
+                    let mut message = f.message;
+                    message.id = format!("{}/{}", account.key, f.id);
+                    ViewMail { account: account.key.clone(), message, unread: f.unread }
+                }));
+            }
+            Err(e) => {
+                account.state = "error";
+                account.error = Some(e);
+            }
+        }
+        accounts.push(account);
+    }
+    messages.sort_by_key(|m| std::cmp::Reverse(date_key(&m.message.date)));
+    MailView { accounts, messages }
+}
+
+/// The Email view's accounts and their newest emails (only the unread ones, or
+/// all the recent ones). Paused accounts are left out; an account that can't
+/// be read now is listed with why.
+#[tauri::command(async)]
+pub async fn mail_view(app: AppHandle, unread_only: bool) -> MailView {
+    if !crate::integrations::enabled(&app, ID) {
+        return MailView { accounts: Vec::new(), messages: Vec::new() };
+    }
+    let imap: Vec<Account> = live_accounts(&app);
+    let watched: BTreeMap<usize, Result<Read, String>> = IMAP_NOW.lock().unwrap().clone();
+    let mut started = Vec::new();
+    for acct in imap {
+        let (host, _) = acct.host();
+        let unread = match watched.get(&acct.slot) {
+            Some(Ok(read)) => read.unread,
+            _ => 0,
+        };
+        let account = ViewAccount {
+            key: format!("imap:{}", acct.slot),
+            label: acct.address.trim().to_string(),
+            state: "ok",
+            error: None,
+            unread,
+            inbox: inbox_link(&host).map(|l| account_link(l, &acct)),
+        };
+        let task = tauri::async_runtime::spawn(async move {
+            newest_in(&acct, VIEW_COUNT, unread_only, None).await.map(|found| {
+                found.into_iter().map(|mut f| {
+                    f.message.link = f.message.link.map(|l| account_link(l, &acct));
+                    f
+                }).collect::<Vec<_>>()
+            })
+        });
+        started.push((account, task));
+    }
+    let outlook = crate::outlook::on(&app).then(|| {
+        let unread = match OUTLOOK_NOW.lock().unwrap().as_ref() {
+            Some(Ok(read)) => read.unread,
+            _ => 0,
+        };
+        let account = ViewAccount {
+            key: OUTLOOK_KEY.into(),
+            label: "Outlook".into(),
+            state: "ok",
+            error: None,
+            unread,
+            inbox: Some(format!("{}inbox", crate::outlook::LINK_PREFIX)),
+        };
+        account
+    });
+    let mut results = Vec::new();
+    for (account, task) in started {
+        results.push((account, task.await.unwrap_or_else(|e| Err(e.to_string()))));
+    }
+    // Outlook answers on its own thread (outlook.rs), while the servers above do.
+    if let Some(account) = outlook {
+        results.push((account, crate::outlook::newest(VIEW_COUNT, unread_only, None).await));
+    }
+    view_of(results)
+}
+
 // ── For the chat ──────────────────────────────────────────────────────────────
 
 /// Of each email's text, what goes to the chat with a question about email.
@@ -4192,6 +4328,33 @@ mod tests {
         assert_eq!(ids, ["outlook-1", "imap:9", "imap:8"], "09:30 UTC is after 10:00 in +01:00");
         // One source keeps its own order.
         assert_eq!(together(vec![imap]).1.len(), 2);
+    }
+
+    #[test]
+    fn the_email_view_lists_every_account_newest_first_and_says_which_failed() {
+        let button = |key: &str, unread: usize| ViewAccount {
+            key: key.into(), label: key.into(), state: "ok", error: None, unread, inbox: None,
+        };
+        let mail = |id: &str, date: &str, unread: bool| Found {
+            id: id.into(),
+            message: Message { id: "9".into(), date: date.into(), ..Default::default() },
+            unread,
+        };
+        let view = view_of(vec![
+            (button("imap:1", 5), Ok(vec![mail("inbox:9", "Sun, 8 Nov 2026 10:00:00 +0100", true), mail("inbox:8", "Sat, 7 Nov 2026 10:00:00 +0100", false)])),
+            (button("imap:2", 0), Err("The server refused the app password.".into())),
+            (button("outlook", 0), Ok(vec![mail("outlook-1", "Sun, 8 Nov 2026 09:30:00 +0000", true)])),
+        ]);
+        let ids: Vec<&str> = view.messages.iter().map(|m| m.message.id.as_str()).collect();
+        // The same UID in two accounts stays two emails: each id has its account.
+        assert_eq!(ids, ["outlook/outlook-1", "imap:1/inbox:9", "imap:1/inbox:8"]);
+        assert_eq!(view.messages[1].account, "imap:1");
+        assert!(view.messages[1].unread && !view.messages[2].unread);
+        // The watch's count stays when it is more than the list shows; else the list's.
+        assert_eq!(view.accounts[0].unread, 5);
+        assert_eq!(view.accounts[2].unread, 1);
+        assert_eq!((view.accounts[1].state, view.accounts[1].error.as_deref()), ("error", Some("The server refused the app password.")));
+        assert_eq!(view.accounts.len(), 3);
     }
 
     #[test]
