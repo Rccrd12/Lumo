@@ -84,6 +84,9 @@ export const Calendar = {
       this.failures = 0;
     } catch (err) {
       // fetchedAt stays: the island showing asks again (refreshIfStale).
+      // calendar.rs fails only once it has an address: the calendar is set up,
+      // and its tile stays on the home with the error instead of going away.
+      this.configured = true;
       this.failures++;
       if (showsCalendarError(this.failures, this.hasRead)) this.error = String(err).replace(/^Error:\s*/, "");
       this.schedule(calendarRetryIn(this.failures, calendarEvery()));

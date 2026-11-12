@@ -20,3 +20,23 @@ test("the error shows only when nothing was read, or after several failures", ()
   assert.equal(showsCalendarError(CALENDAR_FAILURES_SHOWN - 1, true), false);
   assert.equal(showsCalendarError(CALENDAR_FAILURES_SHOWN, true), true);
 });
+
+test("a calendar whose address is set but never read stays set up, with its error (the home keeps its tile)", async () => {
+  const { internals } = await import("./tauri.mjs");
+  const { Calendar } = await import("../src/island/activities.ts");
+  const before = internals.invoke;
+  let answer = () => { throw "The calendar address answered 404."; };
+  internals.invoke = async (cmd, args) => (cmd === "calendar_fetch" ? answer() : before(cmd, args));
+  try {
+    await Calendar.refresh();
+    assert.equal(Calendar.configured, true);
+    assert.match(Calendar.error ?? "", /404/);
+    // The address removed in Settings: Rust answers null, and the tile goes.
+    answer = () => null;
+    await Calendar.refresh();
+    assert.equal(Calendar.configured, false);
+  } finally {
+    internals.invoke = before;
+    if (Calendar.timer != null) clearTimeout(Calendar.timer);
+  }
+});

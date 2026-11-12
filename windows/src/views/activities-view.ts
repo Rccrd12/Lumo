@@ -13,6 +13,7 @@ export const ACTIVITIES_TEXT = {
   nothingPlaying: N_("Nothing playing"),
   calendar: N_("Calendar"),
   nothingSoon: N_("Nothing in the next days"),
+  calendarUnread: N_("Can't read it"),
   email: N_("Email"),
   noUnread: N_("No unread email"),
   today: N_("Today"),

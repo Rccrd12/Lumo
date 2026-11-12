@@ -315,3 +315,32 @@ test("the list is called In progress only while every session in it is at work",
   assert.doesNotMatch(home.el.textContent, /In progress/);
   assert.match(home.el.textContent, /Tests green/);
 });
+
+function homeWith(calendar, asked = []) {
+  const home = buildHome({
+    openSession: () => {}, openGitHubPRs: () => {}, openRequest: () => {}, decide: () => {}, openChat: () => {},
+    openPlan: () => {}, openChatPlan: () => {}, openUrl: () => {}, makeTool: () => {},
+    activityData: () => ({ ...emptyActivities(), calendar }), activity: (a) => asked.push(a), blip: () => {},
+  }, () => false);
+  home.sync();
+  return home;
+}
+
+test("a calendar set up but never read stays on the home with why, and opens its Settings", () => {
+  const asked = [];
+  const home = homeWith({ configured: true, error: "The calendar address answered 404.", events: [] }, asked);
+  const tiles = home.el.find(".home-tile");
+  const cal = tiles.find((x) => /Calendar/.test(x.textContent));
+  assert.ok(cal, "expected the calendar's tile");
+  assert.match(cal.textContent, /Can't read it/);
+  assert.match(cal.textContent, /answered 404/);
+  cal.fire("click");
+  assert.deepEqual(asked, [{ kind: "settings" }]);
+});
+
+test("no calendar address: no calendar tile; an empty calendar read fine says nothing is coming", () => {
+  assert.ok(!homeWith({ configured: false, error: null, events: [] }).el.find(".home-tile").some((x) => /Calendar/.test(x.textContent)));
+  const quiet = homeWith({ configured: true, error: null, events: [] }).el.find(".home-tile").find((x) => /Calendar/.test(x.textContent));
+  assert.match(quiet.textContent, /Nothing in the next days/);
+  assert.doesNotMatch(quiet.textContent, /Can't read it/);
+});

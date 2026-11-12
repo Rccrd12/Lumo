@@ -18178,6 +18178,18 @@
    "ru": "Файлы вместе весят больше {mb} МБ",
    "id": "Total ukuran file lebih dari {mb} MB",
    "it": "I file pesano più di {mb} MB in tutto"
+  },
+  "Can't read it": {
+   "zh-Hans": "无法读取",
+   "hi": "पढ़ा नहीं जा सका",
+   "es": "No se puede leer",
+   "ar": "تتعذّر قراءته",
+   "fr": "Illisible pour l'instant",
+   "bn": "পড়া যাচ্ছে না",
+   "pt-BR": "Não consigo ler",
+   "ru": "Не удаётся прочитать",
+   "id": "Tidak bisa dibaca",
+   "it": "Non riesco a leggerlo"
   }
  }
 }

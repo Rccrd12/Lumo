@@ -604,6 +604,16 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
           tileEl.addEventListener("click", () => actions.activity(data.calendar.link ? { kind: "calendarWeb" } : { kind: "settings" }));
           return tileEl;
         };
+        // Never read since Lumo started (a wrong or reset address, no network):
+        // the tile stays, with why, and opens its Settings.
+        if (!first && data.calendar.error) {
+          const failed = h("div", { class: "home-tile link", title: data.calendar.error },
+            h("div", { class: "tile-kick" }, dot("#f4505e", 6), h("span", { text: t(ACTIVITIES_TEXT.calendar) })),
+            h("div", { class: "tile-title", text: t(ACTIVITIES_TEXT.calendarUnread) }),
+            h("div", { class: "tile-sub", text: data.calendar.error }));
+          failed.addEventListener("click", () => actions.activity({ kind: "settings" }));
+          return failed;
+        }
         if (!first) {
           return opens(h("div", { class: "home-tile link" },
             h("div", { class: "tile-kick" }, svg(ICONS.calendar, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.calendar) })),
@@ -718,7 +728,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
         // (A paused timer's endsAt moves with the clock: what is left says it.)
         ...data.timers.map((x) => `${x.id}:${x.label}:${x.pausedLeft != null ? `p${x.pausedLeft}` : x.endsAt}`),
         data.media ? `${data.media.app}:${data.media.title}:${data.media.artist}:${data.media.playing}` : "",
-        ...data.calendar.events.slice(0, 2).map((e) => `${e.title}:${e.start}`),
+        ...data.calendar.events.slice(0, 2).map((e) => `${e.title}:${e.start}`), data.calendar.error ?? "",
         ...data.mail.messages.slice(0, 1).map((m) => `${m.id}:${m.from}:${m.subject}`), data.mail.messages.length,
         ...others.map((x) => `${x.id}:${x.name}:${x.color}:${x.pillBadge ?? ""}`),
       ].join("~");
