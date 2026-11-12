@@ -34,11 +34,12 @@ flow(G, "A question's multiplications keep their stars, with no italics", app, a
   await app.click(await d.visible(".send-btn", 5_000, "the send button"));
 
   // No provider is set up in a fresh profile: the answer fails, the question stays.
-  const bubble = await d.visible(".chat-row.user .bubble", 10_000, "the sent question's bubble");
+  await d.visible(".chat-row.user .bubble", 10_000, "the sent question's bubble");
   await sleep(300);
+  // Read the bubble as it is now: when the answer fails the chat draws its
+  // rows again, so the element found above may already have been replaced.
   const shown = await d.js(
-    "const b = arguments[0]; return { text: b.innerText, em: b.querySelectorAll('em, strong').length };",
-    d.ref(bubble),
+    "const b = [...document.querySelectorAll('.chat-row.user .bubble')].pop(); return { text: b.innerText, em: b.querySelectorAll('em, strong').length };",
   );
   step(`the bubble shows ${JSON.stringify(shown.text)} (${shown.em} italic or bold parts)`);
   assert.equal(shown.em, 0, "no part of the question is italic or bold");
