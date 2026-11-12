@@ -1048,12 +1048,43 @@ pub fn keep_on_top(app: &AppHandle) {
     }
 }
 
+/// Programs whose capture overlay the island stays under (platform::capturing),
+/// by executable name without `.exe`: Windows' Snipping Tool (Win+Shift+S,
+/// Print Screen; ScreenClippingHost on Windows 10) and the common ones people
+/// install.
+const CAPTURE_TOOLS: [&str; 9] = [
+    "SnippingTool",
+    "ScreenClippingHost",
+    "ShareX",
+    "Greenshot",
+    "Lightshot",
+    "SnagitCapture",
+    "Snagit32",
+    "PicPick",
+    "flameshot",
+];
+
+pub fn is_capture_tool(exe: &str) -> bool {
+    CAPTURE_TOOLS.iter().any(|tool| tool.eq_ignore_ascii_case(exe))
+}
+
 #[cfg(test)]
 mod placement_tests {
     use super::*;
 
     const FHD: (i32, i32, u32, u32) = (0, 0, 1920, 1080);
     const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, beside: 0.0, gap: EDGE_GAP, strip: STRIP_W };
+
+    #[test]
+    fn screen_capture_tools_are_known_by_their_program() {
+        for exe in ["SnippingTool", "ScreenClippingHost", "sharex", "Greenshot", "PicPick", "SnagitCapture"] {
+            assert!(is_capture_tool(exe), "{exe}");
+        }
+        // Not a video player, a game overlay, the taskbar, or a name it only contains.
+        for exe in ["vlc", "Discord", "explorer", "ShareXHelper", ""] {
+            assert!(!is_capture_tool(exe), "{exe}");
+        }
+    }
 
     #[test]
     fn the_distance_from_the_edge_is_none_medium_or_wide() {
@@ -1378,6 +1409,13 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                             let _ = app.emit_to(WINDOW_LABEL, "screen-changed", ());
                         }
                     }
+                }
+
+                // A screen capture is open over the island (platform::capturing):
+                // the mouse is the capture's, so the island neither opens under
+                // it nor hears its clicks.
+                if platform::capturing() {
+                    continue;
                 }
 
                 let Some(win) = window(&app) else { continue };
