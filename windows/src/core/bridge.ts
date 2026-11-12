@@ -53,10 +53,12 @@ export function lendTauri() {
   const lent: typeof invoke = async (cmd, args, options) => {
     if (!ASKS_WINDOWS.has(cmd)) return invoke(cmd, args, options);
     dialogs++;
+    dialogsChanged?.();
     try {
       return await invoke(cmd, args, options);
     } finally {
       dialogs--;
+      dialogsChanged?.();
     }
   };
   (window as unknown as { __LUMO_HOST__?: TauriHost }).__LUMO_HOST__ = { invoke: lent, listen };
@@ -148,6 +150,11 @@ export interface BootInfo {
 /** System dialogs of ours open right now (the file picker): a click in them is not "elsewhere". */
 let dialogs = 0;
 export const isDialogOpen = () => dialogs > 0;
+/** Told when one of those dialogs opens or closes (the island's leave countdown waits on it). */
+let dialogsChanged: (() => void) | null = null;
+export function onDialogsChanged(fn: () => void) {
+  dialogsChanged = fn;
+}
 
 export const Bridge = {
   boot: () => call<BootInfo>("boot"),

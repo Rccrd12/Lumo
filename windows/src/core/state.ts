@@ -982,6 +982,23 @@ class AppState {
   }
 
   /**
+   * The island closed on its own (the mouse gone, a click elsewhere) while
+   * Settings were open: the next opening shows them again, where they were.
+   * Escape in Settings is "done with them", and leaves it false.
+   */
+  settingsLeftOpen = false;
+
+  /**
+   * What the opening island shows: the Settings it closed on, unless a card
+   * waits for an answer; otherwise defaultView. Asked once per opening.
+   */
+  openingView(): IslandViewName {
+    const back = this.settingsLeftOpen && !this.pendingApproval;
+    this.settingsLeftOpen = false;
+    return back ? "settings" : this.defaultView();
+  }
+
+  /**
    * What the island opens on. A card waiting for an answer comes first, so
    * reopening a folded island shows it again; otherwise the
    * tab it was left on, Chat or Agents.

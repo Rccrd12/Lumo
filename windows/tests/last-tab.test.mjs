@@ -43,3 +43,48 @@ test("a card waiting for an answer still comes first", () => {
     State.noteTab("prompt");
   }
 });
+
+test("Settings the island closed on by itself come back on the next opening, once", () => {
+  State.noteTab("home");
+  State.settingsLeftOpen = true;
+  assert.equal(State.openingView(), "settings");
+  assert.equal(State.settingsLeftOpen, false, "asked once");
+  assert.equal(State.openingView(), "home", "then where it usually opens");
+});
+
+test("a card waiting for an answer comes before Settings left open", () => {
+  State.noteTab("home");
+  State.settingsLeftOpen = true;
+  State.pendingApproval = { questions: null };
+  try {
+    assert.equal(State.openingView(), "approval");
+    assert.equal(State.settingsLeftOpen, false);
+  } finally {
+    State.pendingApproval = null;
+  }
+});
+
+test("Escape in Settings closes them for good: the island opens where it usually does (settings-frame.ts)", async () => {
+  const { buildSettingsFrame, FRAME_CLOSE } = await import("../src/views/settings-frame.ts");
+  const listeners = [];
+  const add = window.addEventListener;
+  window.addEventListener = (type, fn) => { if (type === "message") listeners.push(fn); };
+  const did = [];
+  try {
+    const { installFakeDom } = await import("./fakedom.mjs");
+    installFakeDom();
+    globalThis.location ??= { origin: "http://tauri.localhost" };
+    const host = buildSettingsFrame({ openSettingsWindow() {}, collapse: () => did.push("collapse"), closeSettings: () => did.push("closeSettings") });
+    State.mode = "expanded";
+    State.view = "settings";
+    host.sync();
+    const frame = host.el.find("IFRAME")[0];
+    frame.contentWindow = {};
+    for (const fn of listeners) fn({ source: frame.contentWindow, data: FRAME_CLOSE });
+    assert.deepEqual(did, ["closeSettings"]);
+  } finally {
+    window.addEventListener = add;
+    State.mode = "hidden";
+    State.view = "home";
+  }
+});

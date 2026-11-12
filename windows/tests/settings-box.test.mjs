@@ -7,7 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { internals } from "./tauri.mjs";
 
-const { isDialogOpen, lendTauri } = await import("../src/core/bridge.ts");
+const { isDialogOpen, lendTauri, onDialogsChanged } = await import("../src/core/bridge.ts");
+const { readFileSync } = await import("node:fs");
 
 test("Windows' box asked from Settings in the island counts as a dialog of the island", async () => {
   lendTauri();
@@ -34,4 +35,37 @@ test("Windows' box asked from Settings in the island counts as a dialog of the i
   } finally {
     internals.invoke = usual;
   }
+});
+
+test("the island is told when Windows' box opens and closes, so its leave countdown waits for it", async () => {
+  lendTauri();
+  const host = window.__LUMO_HOST__;
+  const usual = internals.invoke;
+  const seen = [];
+  onDialogsChanged(() => seen.push(isDialogOpen()));
+  let answer;
+  internals.invoke = (cmd, args) => (cmd === "agent_hooks_apply" ? new Promise((r) => { answer = r; }) : usual(cmd, args));
+  try {
+    const write = host.invoke("agent_hooks_apply", {});
+    await Promise.resolve();
+    assert.deepEqual(seen, [true]);
+    answer("done");
+    await write;
+    assert.deepEqual(seen, [true, false]);
+  } finally {
+    internals.invoke = usual;
+    onDialogsChanged(() => {});
+  }
+});
+
+test("Settings in the island close on leave as every other view does (island.ts applyBehaviour)", () => {
+  // They used to stay open whatever Settings → Island said.
+  const island = readFileSync(new URL("../src/island/island.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const start = island.indexOf("private applyBehaviour()");
+  assert.ok(start >= 0);
+  const end = island.indexOf("\n  }\n", start);
+  assert.ok(end > start, "the end of applyBehaviour");
+  const body = island.slice(start, end);
+  assert.match(body, /closeOnLeave = mode === "timer" \|\| mode === "leave"/);
+  assert.doesNotMatch(body, /State\.view/, "the close mode does not depend on the view");
 });
