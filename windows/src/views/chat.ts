@@ -147,6 +147,8 @@ const STRINGS = {
   planChange: N_("Or write what to change…"),
   send: N_("Send"),
   toEnd: N_("Go to the bottom"),
+  showAll: N_("Show all"),
+  showLess: N_("Show less"),
   switchModel: N_("Switch provider or model"),
   noModel: N_("Choose a model"),
   loading: N_("Loading models…"),
@@ -387,7 +389,8 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     const onEdit = opts.onEdit;
     const edit = onEdit ? msgAction("msg-edit", STRINGS.edit, svg(ICONS.pencil, 12, { stroke: 1.8 }), () => onEdit(message)) : null;
     bar.append(...[when, retry, edit, copy].filter((x): x is HTMLElement => x != null));
-    row = h("div", { class: `chat-row user${state}` }, sentBubble(message.content), bar);
+    const sent = sentBubble(message.content);
+    row = h("div", { class: `chat-row user${state}` }, sent, foldToggle(sent, message.id), bar);
   } else {
     const reply = h("div", { class: "reply" });
     drawReply(reply, message.content, !!opts.workshop, opts.scope);
@@ -412,6 +415,52 @@ function sentBubble(text: string): HTMLElement {
   renderMarkdown(el, plainQuestion(text));
   unmark(el);
   return el;
+}
+
+/** Taller than this (page px), a question is folded to its first lines (style.css `.bubble.folded`), with Show all under it. */
+const FOLD_OVER = 240;
+/** The long questions opened with Show all, by chat and message: a redrawn log keeps them open. */
+const unfolded = new Set<string>();
+/** Each bubble's own measure, once it is laid out and whenever its width changes. */
+const foldMeasures = new WeakMap<Element, () => void>();
+let foldObserver: ResizeObserver | null = null;
+
+/**
+ * A long question, folded: its first lines, fading, and Show all under it,
+ * which turns into Show less once it is open. A short one has no button.
+ * Measured once laid out, so it never depends on how many characters it has.
+ */
+function foldToggle(bubble: HTMLElement, id: number): HTMLElement {
+  const key = `${State.chatId}:${id}`;
+  const label = h("span", { class: "msg-fold-label" });
+  const chevron = h("span", { class: "msg-fold-chevron" }, svg(ICONS.chevronUp, 10, { stroke: 2 }));
+  const btn = h("button", { class: "msg-fold", hidden: "" }, label, chevron);
+  const paint = () => {
+    const open = unfolded.has(key);
+    const long = bubble.scrollHeight > FOLD_OVER;
+    btn.hidden = !long;
+    bubble.classList.toggle("folded", long && !open);
+    btn.classList.toggle("open", open);
+    label.textContent = t(open ? STRINGS.showLess : STRINGS.showAll);
+    btn.setAttribute("aria-expanded", String(open));
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const closing = unfolded.has(key);
+    if (closing) unfolded.delete(key);
+    else unfolded.add(key);
+    paint();
+    // Folded again from far down: the question's top comes back in sight.
+    if (closing) bubble.scrollIntoView?.({ block: "nearest" });
+  });
+  if (typeof ResizeObserver !== "undefined") {
+    foldObserver ??= new ResizeObserver((entries) => {
+      for (const entry of entries) foldMeasures.get(entry.target)?.();
+    });
+    foldMeasures.set(bubble, paint);
+    foldObserver.observe(bubble);
+  }
+  return btn;
 }
 
 /** Takes plainQuestion's marks back out of the drawn text, so a selection copies what was written. */

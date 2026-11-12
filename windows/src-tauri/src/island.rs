@@ -1313,6 +1313,12 @@ fn current_screen_key(app: &AppHandle) -> Option<(i32, i32, u32, u32, u64)> {
 /// Saving energy, the cursor this far from the island (page pixels) is read
 /// every FAR_PERIOD_MS instead of at 60 Hz.
 const FAR_FROM_ISLAND: f64 = 160.0;
+/// How close a dragged file comes to the island before it opens for the drop,
+/// in page pixels: src/island/island.ts DRAG_NEAR.
+const DRAG_NEAR: f64 = 120.0;
+/// How far a press has to travel before it is a drag rather than a click
+/// (page pixels; Windows' own threshold is 4 px).
+const DRAG_START: f64 = 6.0;
 const FAR_PERIOD_MS: u64 = 100;
 
 /// Emits `cursor` (window-logical coordinates) at ~60 Hz while the island is
@@ -1320,6 +1326,9 @@ const FAR_PERIOD_MS: u64 = 100;
 pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
     std::thread::spawn(move || {
         let mut pressed_in_panel = false;
+        let mut pressed_at = (0.0, 0.0);
+        // That press, carried near the island: from then on it is a file drag.
+        let mut came_near = false;
         let mut was_down = false;
         // Remembered across wakes so a display change while hidden is noticed the
         // moment the island comes back.
@@ -1409,6 +1418,8 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // for the window under it (see `dragging`).
                 if down && !was_down {
                     pressed_in_panel = in_panel && !on_island;
+                    pressed_at = (x, y);
+                    came_near = false;
                 }
                 if down && !was_down && !acting {
                     if !on_island {
@@ -1440,7 +1451,21 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // Not for a press that began on the panel's empty part: that
                 // is a click or a drag in the window under it, and taking the
                 // mouse half way through left that window without its release.
-                let dragging = down && in_panel && !pressed_in_panel;
+                // Unless it moved and came near the island: a file picked up
+                // right under the panel (on the desktop, in a maximised File
+                // Explorer) opens the island as one picked up anywhere else.
+                // Whatever the window under it was doing holds the capture, so
+                // its release still reaches it.
+                let near = r.w > 0.0
+                    && x >= r.x - DRAG_NEAR
+                    && x <= r.x + r.w + DRAG_NEAR
+                    && y >= r.y - DRAG_NEAR
+                    && y <= r.y + r.h + DRAG_NEAR;
+                let moved = (x - pressed_at.0).hypot(y - pressed_at.1) > DRAG_START;
+                if down && pressed_in_panel && moved && near {
+                    came_near = true;
+                }
+                let dragging = down && in_panel && (!pressed_in_panel || came_near);
 
                 let accept = (on_island || dragging) && !acting;
                 if gate.ignoring.load(Ordering::Relaxed) == accept {

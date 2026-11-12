@@ -559,6 +559,47 @@ test("plain words in a question are one paragraph, as they were written", async 
   assert.equal(bubble.textContent, "fix the export button\non Safari");
 });
 
+test("a long question folds to its first lines, with Show all and Show less under it", async () => {
+  let measure = null;
+  globalThis.ResizeObserver = class {
+    constructor(cb) { measure = cb; }
+    observe() {}
+  };
+  try {
+    answers.chat_send = { text: "ok", turns: 2 };
+    await ask("a short one");
+    await ask("a long one\n".repeat(40));
+    const [short, long] = rows().filter((r) => r.classList.contains("user"));
+    const fold = (row) => row.querySelector(".msg-fold");
+    short.querySelector(".bubble").scrollHeight = 30;
+    long.querySelector(".bubble").scrollHeight = 600;
+    measure([{ target: short.querySelector(".bubble") }, { target: long.querySelector(".bubble") }]);
+
+    assert.equal(fold(short).hidden, true, "a short question has no button");
+    assert.ok(!short.querySelector(".bubble").classList.contains("folded"));
+    assert.equal(fold(long).hidden, false);
+    assert.ok(long.querySelector(".bubble").classList.contains("folded"));
+    assert.equal(fold(long).textContent, "Show all");
+
+    fold(long).fire("click");
+    assert.ok(!long.querySelector(".bubble").classList.contains("folded"));
+    assert.equal(fold(long).textContent, "Show less");
+
+    // Drawn again with the next question, it stays open.
+    await ask("one more");
+    const again = rows().filter((r) => r.classList.contains("user"))[1];
+    again.querySelector(".bubble").scrollHeight = 600;
+    measure([{ target: again.querySelector(".bubble") }]);
+    assert.equal(fold(again).textContent, "Show less");
+
+    fold(again).fire("click");
+    assert.ok(again.querySelector(".bubble").classList.contains("folded"));
+    assert.equal(fold(again).textContent, "Show all");
+  } finally {
+    delete globalThis.ResizeObserver;
+  }
+});
+
 test("Edit puts a question back; sending it replaces it and drops what followed", async () => {
   let n = 0;
   answers.chat_send = () => {
