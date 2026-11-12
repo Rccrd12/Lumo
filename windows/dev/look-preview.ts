@@ -183,7 +183,8 @@ function sampleTools() {
 }
 
 // The Email view's answer (mail.rs mail_view): three addresses, one of them
-// failing with ?mailerror; only the unread ones, or the recent ones too.
+// failing with ?mailerror, five with ?mailmany (the row then scrolls); only
+// the unread ones, or the recent ones too.
 function sampleMail() {
   const it = lang === "it";
   const at = (daysAgo: number, h: number, m: number) => {
@@ -216,6 +217,11 @@ function sampleMail() {
           ? { key: "imap:2", label: "lavoro@studio.it", state: "error", error: it ? "Il server ha rifiutato la password per le app." : "The server refused the app password.", unread: 0 }
           : { key: "imap:2", label: "lavoro@studio.it", state: "ok", unread: 1 },
         { key: "outlook", label: "Outlook", state: "ok", unread: 2, inbox: "lumo-outlook:inbox" },
+        ...(params.has("mailmany") ? [
+          { key: "imap:3", label: "universita@studenti.it", state: "ok", unread: 0 },
+          { key: "imap:4", label: "negozio@esempio.it", state: "ok", unread: 0 },
+          { key: "imap:5", label: "famiglia@esempio.it", state: "ok", unread: 0 },
+        ] : []),
       ],
       messages: all.filter((m) => !unreadOnly || m.unread),
     }),

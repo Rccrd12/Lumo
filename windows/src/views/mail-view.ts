@@ -82,6 +82,19 @@ export function buildMailView(actions: ViewActions): ViewHost {
     h("span", { class: "mv-space" }),
     h("span", { class: "mv-seg" }, segUnread, segRecent));
   const chips = h("div", { class: "mv-chips" });
+  // Addresses that don't all fit: ‹ and › on the row's ends, shown while the
+  // pointer is over it and only where some are hidden (.can-left, .can-right).
+  const slide = (dir: -1 | 1) => () => chips.scrollBy({ left: dir * Math.max(120, chips.clientWidth * 0.6), behavior: "smooth" });
+  const leftArrow = h("button", { class: "mv-chips-arrow left", title: tl(MAIL_VIEW_TEXT.newer), "aria-label": tl(MAIL_VIEW_TEXT.newer), onclick: slide(-1) },
+    svg(ICONS.chevronLeft, 10, { stroke: 2.4 }));
+  const rightArrow = h("button", { class: "mv-chips-arrow right", title: tl(MAIL_VIEW_TEXT.older), "aria-label": tl(MAIL_VIEW_TEXT.older), onclick: slide(1) },
+    svg(ICONS.chevronRight, 10, { stroke: 2.4 }));
+  const chipRow = h("div", { class: "mv-chip-row" }, chips, leftArrow, rightArrow);
+  const chipEnds = () => {
+    chipRow.classList.toggle("can-left", chips.scrollLeft > 1);
+    chipRow.classList.toggle("can-right", chips.scrollLeft + chips.clientWidth < chips.scrollWidth - 1);
+  };
+  chips.addEventListener("scroll", chipEnds, { passive: true });
   // A wheel over the buttons moves them sideways.
   chips.addEventListener("wheel", (e) => {
     if (chips.scrollWidth <= chips.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
@@ -97,15 +110,17 @@ export function buildMailView(actions: ViewActions): ViewHost {
   const fades = () => {
     fadeIf(list);
     fadeIf(reader);
+    chipEnds();
   };
   for (const box of [list, reader]) box.addEventListener("scroll", () => fadeIf(box), { passive: true });
   if (typeof ResizeObserver !== "undefined") {
     const resized = new ResizeObserver(fades);
     resized.observe(list);
     resized.observe(reader);
+    resized.observe(chips);
   }
   const foot = h("div", { class: "mv-foot" });
-  const body = h("div", { class: "mv-body" }, head, chips, list, reader, foot);
+  const body = h("div", { class: "mv-body" }, head, chipRow, list, reader, foot);
   const el = h("div", { class: "view mail-view" }, h("div", { class: "card mail-card" }, body));
 
   // Its sync runs only while it is on screen: leaving is seen here.
@@ -294,7 +309,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
         chips.append(chip(a.key, accountLabel(d, a), accountColor(d, a.key), tail, a.label));
       }
     }
-    chips.style.display = d && d.accounts.length > 1 ? "" : "none";
+    chipRow.style.display = d && d.accounts.length > 1 ? "" : "none";
 
     const m = d && openId ? d.messages.find((x) => x.id === openId) ?? null : null;
     body.classList.toggle("reading", m != null);

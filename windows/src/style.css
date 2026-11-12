@@ -8501,14 +8501,70 @@ button.bg-row:hover {
   color: var(--ink);
 }
 
+.mv-chip-row {
+  position: relative;
+  flex: none;
+  min-width: 0;
+}
+
 .mv-chips {
   display: flex;
   gap: 6px;
-  flex: none;
   overflow-x: auto;
   scrollbar-width: none;
-  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
-  padding-right: 24px;
+}
+
+/* Addresses hidden past an end: that end fades out. */
+.mv-chip-row.can-right .mv-chips {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent);
+}
+
+.mv-chip-row.can-left .mv-chips {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 44px);
+  mask-image: linear-gradient(90deg, transparent, #000 44px);
+}
+
+.mv-chip-row.can-left.can-right .mv-chips {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent);
+}
+
+/* ‹ and ›: only while the pointer is over the row, only at an end with more past it. */
+.mv-chips-arrow {
+  position: absolute;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #26282d;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+  cursor: default;
+}
+
+.mv-chips-arrow:hover {
+  background: #303238;
+}
+
+.mv-chips-arrow.left {
+  left: 0;
+}
+
+.mv-chips-arrow.right {
+  right: 0;
+}
+
+.mv-chip-row.can-left:hover .mv-chips-arrow.left,
+.mv-chip-row.can-right:hover .mv-chips-arrow.right {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .mv-chips::-webkit-scrollbar {
@@ -8575,7 +8631,7 @@ button.bg-row:hover {
 
 .mv-reader,
 .mv-body.reading .mv-list,
-.mv-body.reading .mv-chips {
+.mv-body.reading .mv-chip-row {
   display: none;
 }
 
