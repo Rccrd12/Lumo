@@ -124,3 +124,86 @@ export function windowsOnScreen(pid) {
   );
   return (out.stdout ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
+
+const PICKER = String.raw`
+param([int]$Owner, [int]$Seconds)
+Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class LumoE2ePicker {
+  public struct RECT { public int Left, Top, Right, Bottom; }
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int index);
+  public static string Class(IntPtr h) { var s = new StringBuilder(256); GetClassName(h, s, 256); return s.ToString(); }
+  public static string Title(IntPtr h) { var s = new StringBuilder(256); GetWindowText(h, s, 256); return s.ToString(); }
+  public static IntPtr Find(uint owner) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows((h, l) => {
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      if (pid == owner && IsWindowVisible(h) && Class(h) == "#32770") { found = h; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+}
+"@
+[void][LumoE2ePicker]::SetProcessDPIAware()
+$end = (Get-Date).AddSeconds($Seconds)
+$h = [IntPtr]::Zero
+while ((Get-Date) -lt $end) {
+  $h = [LumoE2ePicker]::Find([uint32]$Owner)
+  if ($h -ne [IntPtr]::Zero) { break }
+  Start-Sleep -Milliseconds 200
+}
+if ($h -eq [IntPtr]::Zero) { Write-Output '{"found":false}'; exit }
+Start-Sleep -Milliseconds 500
+$r = New-Object LumoE2ePicker+RECT
+[void][LumoE2ePicker]::GetWindowRect($h, [ref]$r)
+$owner = [LumoE2ePicker]::GetWindow($h, 4)
+$ownerPid = [uint32]0
+if ($owner -ne [IntPtr]::Zero) { [void][LumoE2ePicker]::GetWindowThreadProcessId($owner, [ref]$ownerPid) }
+$o = [ordered]@{
+  found = $true
+  hwnd = $h.ToInt64()
+  rect = @{ x = $r.Left; y = $r.Top; w = $r.Right - $r.Left; h = $r.Bottom - $r.Top }
+  title = [LumoE2ePicker]::Title($h)
+  owner = $owner.ToInt64()
+  ownerPid = $ownerPid
+  ownerTitle = $(if ($owner -ne [IntPtr]::Zero) { [LumoE2ePicker]::Title($owner) } else { "" })
+  ownerTopmost = $(if ($owner -ne [IntPtr]::Zero) { ([LumoE2ePicker]::GetWindowLong($owner, -20) -band 8) -ne 0 } else { $false })
+}
+Write-Output ($o | ConvertTo-Json -Compress)
+`;
+
+/**
+ * Waits up to `seconds` for a file or folder picker of process `pid` (Windows'
+ * own "#32770" window) and tells where it is (`rect`, screen pixels) and whose
+ * it is: its owner window, and whether that one is always on top. A window
+ * owned by another always shows over it; one of no one's opens under a window
+ * that is always on top, as the island is. (Which window a point shows can't
+ * tell it: the island lets the mouse through where it isn't.)
+ */
+export function filePicker(pid, seconds = 10) {
+  const script = join(tmpdir(), "lumo-e2e-picker.ps1");
+  writeFileSync(script, PICKER);
+  const out = spawnSync(
+    "powershell",
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-Owner", String(pid), "-Seconds", String(seconds)],
+    { encoding: "utf8", timeout: (seconds + 20) * 1000 },
+  );
+  const line = (out.stdout ?? "").trim().split(/\r?\n/).pop() ?? "";
+  try {
+    return JSON.parse(line);
+  } catch {
+    return { found: false, raw: line || out.stderr };
+  }
+}

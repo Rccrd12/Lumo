@@ -270,7 +270,13 @@ export const Bridge = {
     call<void>("approval_mail_send", { requestId, revised }),
   /** Attach on an email's card: the system's picker; each file picked, by name, size and path (mail.rs). */
   pickAttachments: async (): Promise<{ name: string; size: number; path: string }[]> => {
-    const picked = await call<unknown>("pick_attachments");
+    let picked: unknown;
+    dialogs++;
+    try {
+      picked = await call<unknown>("pick_attachments");
+    } finally {
+      dialogs--;
+    }
     if (!Array.isArray(picked)) return [];
     return picked
       .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")

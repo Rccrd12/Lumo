@@ -84,7 +84,7 @@ import { Ink, inkWorks } from "./ink";
 import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import {
-  Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
+  Bridge, isDialogOpen, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
@@ -2186,7 +2186,11 @@ export function buildPrompt(
     if (slashOpen() && !inside(slashEl)) closeSlash();
   }
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
-  void onEvent<null>("outside-press", () => closeListsBut(null));
+  // A press in a picker of ours (Choose… for a folder, the paperclip) is no
+  // press elsewhere: the panel that opened it waits for what is picked.
+  void onEvent<null>("outside-press", () => {
+    if (!isDialogOpen()) closeListsBut(null);
+  });
 
   const cardEl = h("div", { class: "card wash chat-card" }, body, forge.el, forge.guide, forge.help);
   const el = h("div", { class: "view" }, cardEl);

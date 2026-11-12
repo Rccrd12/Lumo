@@ -938,10 +938,11 @@ async fn chat_compact(shared: State<'_, Shared>, chats: State<'_, Chats>, chat_i
 
 /// "Attach a file" in the chat: the system's file picker, then the same copy
 /// into the inbox as a drop. Only a file the user picked there can be added.
+/// The picker belongs to the island (`window`), so it shows over it.
 #[tauri::command]
-async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
+async fn pick_file(app: AppHandle, window: tauri::WebviewWindow) -> Result<Option<DroppedFile>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_parent(&window).blocking_pick_file())
         .await
         .map_err(|e| e.to_string())?;
     let Some(picked) = picked else { return Ok(None) };
@@ -952,10 +953,12 @@ async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
 
 /// "Choose…" in the Listening panel's form: the system's folder picker. Only
 /// the path is handed back; nothing is read until the user starts listening.
+/// The picker belongs to the island (`window`): the island is always on top,
+/// and a window of no one's would open under it.
 #[tauri::command]
-async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
+async fn pick_folder(app: AppHandle, window: tauri::WebviewWindow) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_parent(&window).blocking_pick_folder())
         .await
         .map_err(|e| e.to_string())?;
     let Some(picked) = picked else { return Ok(None) };
