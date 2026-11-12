@@ -42,6 +42,11 @@ pub const KNOWN_KEYS: &[&str] = &[
     "mail-app-password-5",
     // The live activities' calendar (calendar.rs): its iCal address, secret by nature.
     "calendar-ics-url",
+    // Google Calendar with the user's account (google_calendar.rs): their own
+    // OAuth client's ID and secret, and the permission Google gave at sign-in.
+    "google-calendar-client-id",
+    "google-calendar-client-secret",
+    "google-calendar-refresh-token",
     // The webhooks' secrets, by watch (listen_events.rs): without it here
     // none was ever stored, and every webhook got a new one at each launch.
     "listen-webhooks",
@@ -88,6 +93,14 @@ mod tests {
             for base in [ADDRESS_KEY, SERVER_KEY, PASSWORD_KEY] {
                 assert!(super::KNOWN_KEYS.contains(&slot_key(base, slot).as_str()), "{base} {slot}");
             }
+        }
+    }
+
+    #[test]
+    fn google_calendars_keys_can_be_stored() {
+        use crate::google_calendar::{CLIENT_ID_KEY, CLIENT_SECRET_KEY, REFRESH_KEY};
+        for key in [CLIENT_ID_KEY, CLIENT_SECRET_KEY, REFRESH_KEY] {
+            assert!(super::KNOWN_KEYS.contains(&key), "{key}");
         }
     }
 

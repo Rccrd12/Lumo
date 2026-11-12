@@ -170,3 +170,45 @@ test("a monthly event on the last Friday and a yearly one on 29 February land on
   const y = parseIcs(ics, Date.UTC(2025, 0, 1), Date.UTC(2029, 0, 1)).filter((e) => e.title === "Y");
   assert.deepEqual(y.map((e) => new Date(e.start).getFullYear()), [2028]);
 });
+
+test("when the clocks go back, an hour that comes twice is the first one", () => {
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "BEGIN:VEVENT", "UID:a", "DTSTART;TZID=Europe/Rome:20261025T023000", "DTEND;TZID=Europe/Rome:20261025T033000", "SUMMARY:Twice", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:b", "DTSTART;TZID=Europe/Rome:20260329T023000", "DTEND;TZID=Europe/Rome:20260329T040000", "SUMMARY:Skipped", "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  const [twice] = parseIcs(ics, Date.UTC(2026, 9, 24), Date.UTC(2026, 9, 26));
+  // 02:30 CEST (UTC+2), not 02:30 CET an hour later.
+  assert.equal(new Date(twice.start).toISOString(), "2026-10-25T00:30:00.000Z");
+  assert.equal(new Date(twice.end).toISOString(), "2026-10-25T02:30:00.000Z");
+  // Also in a zone more than 12 hours ahead of UTC.
+  const nz = parseIcs(ics.replace("UID:a", "UID:nz").replace(/Europe\/Rome:20261025T023000/, "Pacific/Auckland:20260405T023000")
+    .replace(/Europe\/Rome:20261025T033000/, "Pacific/Auckland:20260405T033000"), Date.UTC(2026, 3, 3), Date.UTC(2026, 3, 6));
+  assert.equal(new Date(nz.find((e) => e.title === "Twice").start).toISOString(), "2026-04-04T13:30:00.000Z");
+  // An hour the clocks skip still lands on that night.
+  const [skipped] = parseIcs(ics, Date.UTC(2026, 2, 28), Date.UTC(2026, 2, 30));
+  assert.ok(skipped.start >= Date.UTC(2026, 2, 29, 0) && skipped.start <= Date.UTC(2026, 2, 29, 2), new Date(skipped.start).toISOString());
+});
+
+test("a whole-day event ends at local midnight, also on the days the clocks change", () => {
+  const tz = process.env.TZ;
+  process.env.TZ = "Europe/Rome";
+  try {
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "BEGIN:VEVENT", "UID:d", "DTSTART;VALUE=DATE:20260329", "SUMMARY:Spring", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:w", "DTSTART;VALUE=DATE:20261024", "DTEND;VALUE=DATE:20261026", "SUMMARY:Weekend", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:r", "DTSTART;VALUE=DATE:20261018", "DTEND;VALUE=DATE:20261019", "RRULE:FREQ=WEEKLY", "SUMMARY:Sundays", "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+    const events = parseIcs(ics, new Date(2026, 2, 1).getTime(), new Date(2026, 9, 31).getTime());
+    const end = (title) => events.filter((e) => e.title === title).map((e) => e.end);
+    assert.deepEqual(end("Spring"), [new Date(2026, 2, 30).getTime()]);
+    assert.deepEqual(end("Weekend"), [new Date(2026, 9, 26).getTime()]);
+    assert.deepEqual(end("Sundays"), [new Date(2026, 9, 19).getTime(), new Date(2026, 9, 26).getTime()]);
+  } finally {
+    if (tz === undefined) delete process.env.TZ;
+    else process.env.TZ = tz;
+  }
+});

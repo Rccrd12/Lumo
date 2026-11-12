@@ -275,6 +275,11 @@ pub struct Settings {
     /// The home shows the live activities as tiles; its "⋯" menu and the
     /// right-click menu's Live Activities put them away.
     pub home_activities: bool,
+    /// Settings → Island → Google Calendar: the calendars of the user's Google
+    /// account turned on (true) or off (false) for the island, by calendar ID.
+    /// One not in it follows what Google Calendar itself shows
+    /// (src/core/google-calendar.ts).
+    pub google_calendars: BTreeMap<String, bool>,
 }
 
 /// A little bigger than their design size, since a PC's screen sits further away.
@@ -388,6 +393,7 @@ impl Default for Settings {
             update_beta: false,
             island_edge_light: "full".into(),
             home_activities: true,
+            google_calendars: BTreeMap::new(),
         }
     }
 }
@@ -760,7 +766,8 @@ mod tests {
   "updateCheckOnOpen": false,
   "updateBeta": true,
   "islandEdgeLight": "soft",
-  "homeActivities": false
+  "homeActivities": false,
+  "googleCalendars": { "en.italian#holiday@group.v.calendar.google.com": false, "a@gmail.com": true }
 }"##;
 
     fn custom() -> Value {
@@ -1310,6 +1317,7 @@ mod tests {
                 "updateBeta",
                 "islandEdgeLight",
                 "homeActivities",
+                "googleCalendars",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

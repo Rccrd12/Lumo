@@ -111,7 +111,16 @@ export function zonedTime(y: number, mo: number, da: number, h: number, mi: numb
     for (const p of format.formatToParts(new Date(at))) if (p.type !== "literal") parts[p.type] = +p.value;
     return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - at;
   };
-  // Twice: the first guess may fall on the other side of a change of time.
+  // The zone's offsets a day either side (wider than any zone is from UTC): a
+  // time each, kept if the zone reads it as that wall time. When the clocks go
+  // back the hour comes twice: the first, as RFC 5545 says.
+  const day = 24 * 3_600_000;
+  const times = [...new Set([offset(wall - day), offset(wall + day)])]
+    .map((o) => wall - o)
+    .filter((at) => at + offset(at) === wall);
+  if (times.length) return Math.min(...times);
+  // A wall time the zone skips (clocks going forward): twice, the first guess
+  // may fall on the other side of the change.
   const first = wall - offset(wall);
   return wall - offset(first);
 }
@@ -398,8 +407,12 @@ export function parseIcs(text: string, from: number, to: number): CalEvent[] {
       for (const t of moved.get(get("UID")?.value ?? "") ?? []) skip.add(t);
       starts = starts.filter((t) => !skip.has(t));
     }
+    // A whole-day event lasts whole days, ending at local midnight even on the
+    // day the clocks change (23 or 25 hours long).
+    const days = Math.max(1, Math.round(duration / 86_400_000));
     for (const t of starts) {
-      const endT = t + Math.max(0, duration);
+      const d = new Date(t);
+      const endT = start.allDay ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + days).getTime() : t + Math.max(0, duration);
       if (endT <= from && !(duration === 0 && t >= from)) continue;
       if (t > to) continue;
       out.push({ title, start: t, end: endT, allDay: start.allDay, location });
