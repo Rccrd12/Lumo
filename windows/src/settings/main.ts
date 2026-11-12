@@ -13,6 +13,7 @@ import {
   recordPress, type Binding,
 } from "../core/shortcuts";
 import { DEFAULT_SETTINGS, aiReads, parseCloseMode, parseMotion, type Settings } from "../core/state";
+import { GoogleSync, isShown } from "../core/google-calendar";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -1972,8 +1973,181 @@ function behaviourRows(): HTMLElement[] {
       t("reads and commands that only look (ls, git status…) are answered from the closed island; anything else opens the full card"),
       toggle(settings.quickApprovals !== false, (v) => { settings.quickApprovals = v; void save(); })),
     group(t("Live Activities")),
+    googleCalendarRow(),
     calendarRow(),
   ];
+}
+
+const GOOGLE_CAL = {
+  get hint() {
+    return t("Sign in with your Google account: Lumo reads your calendars without changing them, and sees a new event within a minute. The client and the access stay in the {store}, and Lumo talks only to Google.", { store: KEY_STORE });
+  },
+  get guideTitle() { return t("Once only: your own Google client (free, about 10 minutes)"); },
+  get guide() {
+    return [
+      t("In Google Cloud Console, create a project, for example “Lumo”."),
+      t("APIs & Services → Library → Google Calendar API → Enable."),
+      t("OAuth consent screen: External, then Publish app under Audience (in Testing, Google ends the access every 7 days)."),
+      t("Clients → Create client → Desktop app, then paste its ID and secret here."),
+    ];
+  },
+  get openConsole() { return t("Open Google Cloud Console"); },
+  get clientId() { return t("Client ID"); },
+  get clientSecret() { return t("Client secret"); },
+  get signIn() { return t("Sign in with Google"); },
+  get signInAgain() { return t("Sign in again"); },
+  get waiting() { return t("Continue in the browser…"); },
+  get waitingHint() { return t("The browser opened: choose the account and allow Lumo to read the calendar."); },
+  get pasteFirst() { return t("Paste your Google client's ID and secret first."); },
+  get ended() { return t("Access ended: sign in again."); },
+  get pick() { return t("Calendars to show on the island"); },
+  shown: (shown: number, count: number) => t("Calendars on the island: {shown} of {count}", { shown, count }),
+};
+
+/** Where step 1 and 2 of the guide happen: the Calendar API's page, which offers to pick or create a project. */
+const GOOGLE_CONSOLE = "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com";
+
+/**
+ * Settings → Island → Google Calendar: the user's own OAuth client (a short
+ * guide to make one in Google Cloud Console, its ID and secret), the sign-in
+ * in the browser (google_calendar.rs), then the account's calendars to pick
+ * for the island (settings.googleCalendars, core/google-calendar.ts).
+ */
+function googleCalendarRow(): HTMLElement {
+  const dotEl = statusDot(false);
+  const body = h("div", { class: "mail-accounts", style: "flex:1 1 auto;min-width:0" });
+  const row = wideSetting(h("span", { class: "with-dot" }, "Google Calendar", dotEl), GOOGLE_CAL.hint, body);
+  const sync = new GoogleSync((path, query) => Bridge.googleCalendarGet(path, query));
+  let problem = "";
+
+  const problemLine = () => problem
+    ? h("div", { class: "mail-account-error" }, h("i", { class: "dot", style: "background:#f4505e" }), h("span", { text: problem }))
+    : null;
+
+  const signIn = async (button: HTMLButtonElement) => {
+    button.disabled = true;
+    problem = "";
+    // The browser opens; the row says what to do there until it comes back.
+    window.setTimeout(() => void render(), 300);
+    try {
+      await Bridge.googleCalendarSignIn();
+      sync.reset();
+    } catch (err) {
+      problem = errorText(err);
+    } finally {
+      void render();
+    }
+  };
+
+  const clientForm = (stored: boolean) => {
+    const field = (label: string, type: string, placeholder: string) => {
+      const input = h("input", { type, placeholder, autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+      return { input, row: h("div", { class: "field-row" }, h("label", { text: label }), input) };
+    };
+    const id = field(GOOGLE_CAL.clientId, "text", stored ? CHAT_STRINGS.stored : "…apps.googleusercontent.com");
+    const secret = field(GOOGLE_CAL.clientSecret, "password", stored ? CHAT_STRINGS.stored : "GOCSPX-…");
+    const go = h("button", { class: "primary", text: GOOGLE_CAL.signIn }) as HTMLButtonElement;
+    go.addEventListener("click", async () => {
+      const [idValue, secretValue] = [id.input.value.trim(), secret.input.value.trim()];
+      // Empty fields keep what is stored; a new client needs both.
+      if ((!idValue || !secretValue) && !(stored && !idValue && !secretValue)) {
+        problem = GOOGLE_CAL.pasteFirst;
+        void render();
+        return;
+      }
+      try {
+        if (idValue) await Bridge.secretSet("google-calendar-client-id", idValue);
+        if (secretValue) await Bridge.secretSet("google-calendar-client-secret", secretValue);
+      } catch (err) {
+        problem = errorText(err);
+        void render();
+        return;
+      }
+      void signIn(go);
+    });
+    const consoleBtn = h("button", { text: GOOGLE_CAL.openConsole });
+    consoleBtn.addEventListener("click", () => void Bridge.openUrl(GOOGLE_CONSOLE));
+    const guide = h("div", { class: "section-note" },
+      h("div", { class: "mail-account-form-title", text: GOOGLE_CAL.guideTitle }),
+      h("ol", { style: "margin:6px 0 8px 18px;display:flex;flex-direction:column;gap:3px" },
+        ...GOOGLE_CAL.guide.map((step) => h("li", { text: step }))),
+      consoleBtn);
+    return [guide, h("div", { class: "field-rows" }, id.row, secret.row), h("div", { class: "mail-account-actions", style: "justify-content:flex-start" }, go)];
+  };
+
+  const signOutButton = () => {
+    const out = h("button", { class: "danger", text: CHAT_STRINGS.disconnect }) as HTMLButtonElement;
+    out.addEventListener("click", async () => {
+      out.disabled = true;
+      try {
+        await Bridge.googleCalendarSignOut();
+        sync.reset();
+        problem = "";
+      } catch (err) {
+        problem = errorText(err);
+      }
+      void render();
+    });
+    return out;
+  };
+
+  const calendarsList = async (list: HTMLElement, account: HTMLElement, line: HTMLElement) => {
+    try {
+      const calendars = await sync.list();
+      const picks = () => settings.googleCalendars ?? {};
+      const count = () => line.textContent = GOOGLE_CAL.shown(calendars.filter((c) => isShown(c, picks())).length, calendars.length);
+      const primary = calendars.find((c) => c.primary);
+      if (primary) account.textContent = primary.id;
+      count();
+      list.replaceChildren(h("span", { class: "hint", text: GOOGLE_CAL.pick, style: "margin:4px 0 0 2px" }),
+        ...calendars.map((c) => h("div", { class: "mail-account", style: "grid-template-columns:auto minmax(0,1fr) auto" },
+          h("i", { class: "dot", style: `background:${c.color}` }),
+          h("div", { class: "mail-account-text" }, h("span", { class: "mail-account-address", text: c.name, title: c.name })),
+          toggle(isShown(c, picks()), (on) => {
+            settings.googleCalendars = { ...picks(), [c.id]: on };
+            count();
+            void save();
+          }))));
+    } catch (err) {
+      line.textContent = errorText(err);
+      line.classList.add("bad");
+    }
+  };
+
+  const render = async () => {
+    const status = await Bridge.googleCalendarStatus();
+    if (!status) return;
+    const parts: (HTMLElement | null)[] = [];
+    if (status.signingIn) {
+      dotEl.style.background = "#f5a524";
+      const cancel = h("button", { text: t("Cancel") });
+      cancel.addEventListener("click", () => void Bridge.googleCalendarCancel());
+      parts.push(h("div", { class: "mail-account-actions", style: "justify-content:flex-start" },
+        h("button", { text: GOOGLE_CAL.waiting, disabled: true }), cancel),
+        h("span", { class: "hint", text: GOOGLE_CAL.waitingHint }));
+    } else if (status.signedIn) {
+      const bad = status.needsSignIn;
+      dotEl.style.background = bad ? "#f4505e" : "#22c55e";
+      const account = h("span", { class: "mail-account-address", text: "Google" });
+      const line = h("span", { class: bad ? "mail-account-line bad" : "mail-account-line", text: bad ? GOOGLE_CAL.ended : "" });
+      const again = bad ? h("button", { class: "primary", text: GOOGLE_CAL.signInAgain }) as HTMLButtonElement : null;
+      again?.addEventListener("click", () => void signIn(again));
+      parts.push(h("div", { class: "mail-account", style: bad ? "" : "grid-template-columns:auto minmax(0,1fr) auto" },
+        h("i", { class: "dot", style: `background:${bad ? "#f4505e" : "#22c55e"}` }),
+        h("div", { class: "mail-account-text" }, h("div", { class: "mail-account-name" }, account), line),
+        again, signOutButton()));
+      const list = h("div", { class: "mail-account-list" });
+      parts.push(list);
+      if (!bad) void calendarsList(list, account, line);
+    } else {
+      dotEl.style.background = "#f4505e";
+      parts.push(...clientForm(status.client));
+    }
+    parts.push(problemLine());
+    body.replaceChildren(...parts.filter((p): p is HTMLElement => p != null));
+  };
+  void render();
+  return row;
 }
 
 /** The live activities' calendar: its iCal address, kept in the credential store (calendar.rs). */

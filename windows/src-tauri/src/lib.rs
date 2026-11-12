@@ -29,6 +29,7 @@ mod file_moves;
 mod files;
 mod github;
 mod github_tools;
+mod google_calendar;
 mod hooks;
 mod i18n;
 mod identity;
@@ -1152,6 +1153,10 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
     if key == listen_events::SECRETS_KEY {
         return Err("unknown key".into());
     }
+    // Google's permission comes only from a sign-in (google_calendar.rs).
+    if key == google_calendar::REFRESH_KEY {
+        return Err("unknown key".into());
+    }
     let before = (key == "github-token").then(|| secrets::get(&key));
     secrets::set(&key, &value)?;
     secret_changed(&app, &key);
@@ -1183,6 +1188,9 @@ fn secret_changed(app: &AppHandle, key: &str) {
     if key == calendar::URL_KEY {
         calendar::address_changed();
         let _ = app.emit_to(island::WINDOW_LABEL, "calendar-changed", ());
+    }
+    if key == google_calendar::CLIENT_ID_KEY || key == google_calendar::CLIENT_SECRET_KEY {
+        google_calendar::client_changed();
     }
 }
 
@@ -1456,6 +1464,11 @@ pub fn run() {
             reminders::reminders_cancel,
             media::media_now,
             calendar::calendar_fetch,
+            google_calendar::google_calendar_status,
+            google_calendar::google_calendar_sign_in,
+            google_calendar::google_calendar_cancel,
+            google_calendar::google_calendar_sign_out,
+            google_calendar::google_calendar_get,
             media::media_control,
             ingest_file,
             inbox_release,

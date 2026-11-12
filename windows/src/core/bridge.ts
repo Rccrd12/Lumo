@@ -593,6 +593,17 @@ export const Bridge = {
   mediaControl: (action: "toggle" | "next" | "previous") => call<boolean>("media_control", { action }),
   /** The live activities' calendar file (calendar.rs), or null when no address is set. */
   calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
+  /** Google Calendar with the user's account (google_calendar.rs): what is stored, and whether a sign-in waits. */
+  googleCalendarStatus: () => call<GoogleCalendarStatus>("google_calendar_status"),
+  /** Opens Google's sign-in in the browser; resolves once Google gave its permission. */
+  googleCalendarSignIn: () => callOrThrow<void>("google_calendar_sign_in"),
+  /** Ends a sign-in still waiting for the browser. */
+  googleCalendarCancel: () => call<void>("google_calendar_cancel"),
+  /** Forgets the account: Google is told, the client and the permission leave the credential store. */
+  googleCalendarSignOut: () => callOrThrow<void>("google_calendar_sign_out"),
+  /** A GET to the Calendar API (the calendar list or a calendar's events); null when not signed in. */
+  googleCalendarGet: (path: string, query: [string, string][] = []) =>
+    callOrThrow<{ status: number; body: unknown } | null>("google_calendar_get", { path, query }),
 
   // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
   /** Asks GitHub for the newest Windows release (and, with `beta`, the beta build) and compares it with this build. */
@@ -959,6 +970,17 @@ export interface HookPreview {
 async function callOrThrow<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!IS_TAURI) throw new Error("not running inside Lumo");
   return tauriInvoke<T>(cmd, args);
+}
+
+export interface GoogleCalendarStatus {
+  /** The OAuth client's ID and secret are stored. */
+  client: boolean;
+  /** Google gave its lasting permission. */
+  signedIn: boolean;
+  /** Google refused that permission since: sign in again. */
+  needsSignIn: boolean;
+  /** A sign-in waits for the browser. */
+  signingIn: boolean;
 }
 
 export interface DragDropPayload {

@@ -12,9 +12,15 @@
 // shows only when nothing was ever read, or after a few failures in a row
 // (src/core/calendar.ts). After a 429 (too many requests) calendar.rs asks
 // nothing for half an hour or what the server says.
+//
+// Google Calendar signed in with the user's account (Settings → Island →
+// Google Calendar) is asked every minute what changed (core/google-calendar.ts),
+// and when the home shows if not asked for a minute: its events join the iCal
+// address's, each once.
 
 import { Bridge, onEvent } from "../core/bridge";
 import { calendarRetryIn, calendarWebLink, parseIcs, showsCalendarError, type CalEvent } from "../core/calendar";
+import { GoogleSync, mergeEvents } from "../core/google-calendar";
 import { Feed, compactTimer } from "../core/compact";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -30,16 +36,29 @@ import { byEffort } from "../core/energy";
 const calendarEvery = () => byEffort(State.effort, 5 * 60_000, 15 * 60_000, 30 * 60_000);
 const CALENDAR_STALE_MS = 5 * 60_000;
 const DAY = 86_400_000;
+/**
+ * How often Google Calendar is asked what changed: every minute, as its
+ * answer is nearly always empty; every 15 while saving energy.
+ */
+const googleEvery = () => byEffort(State.effort, 60_000, 60_000, 15 * 60_000);
+const GOOGLE_STALE_MS = 60_000;
+const GOOGLE_CALENDAR_WEB = "https://calendar.google.com/calendar/r";
 
 
 // ── The calendar ─────────────────────────────────────────────────────────────
 
 export const Calendar = {
+  /** What the home shows: the iCal address's events and Google's, each once. */
   events: [] as CalEvent[],
   configured: false,
   /** The calendar's web page (Google Calendar, Outlook, iCloud), when Lumo knows it. */
   link: null as string | null,
   error: null as string | null,
+  /** The iCal address's own (calendar.rs). */
+  icsEvents: [] as CalEvent[],
+  icsConfigured: false,
+  icsLink: null as string | null,
+  icsError: null as string | null,
   fetchedAt: 0,
   /** When it was last asked, read or not: the island showing waits on it too. */
   triedAt: 0,
@@ -58,7 +77,12 @@ export const Calendar = {
   start() {
     void this.refresh();
     this.schedule();
-    void onEvent<null>("calendar-changed", () => void this.refresh());
+    GoogleFeed.start();
+    void onEvent<null>("calendar-changed", () => {
+      void this.refresh();
+      GoogleFeed.sync.reset();
+      void GoogleFeed.refresh();
+    });
     // A new effort takes effect at once, not after the wait it replaced.
     State.subscribe(() => {
       if (State.effort !== this.effort) this.schedule();
@@ -82,10 +106,10 @@ export const Calendar = {
     try {
       const text = await Bridge.calendarFetch();
       const now = Date.now();
-      this.configured = text != null;
-      this.events = text ? parseIcs(text, now - DAY, now + 8 * DAY) : [];
-      this.link = text ? calendarWebLink(text) : null;
-      this.error = null;
+      this.icsConfigured = text != null;
+      this.icsEvents = text ? parseIcs(text, now - DAY, now + 8 * DAY) : [];
+      this.icsLink = text ? calendarWebLink(text) : null;
+      this.icsError = null;
       this.fetchedAt = now;
       this.hasRead = text != null;
       if (this.failures > 0) this.schedule();
@@ -95,19 +119,102 @@ export const Calendar = {
       // island showing from asking again at each open (refreshIfStale).
       // calendar.rs fails only once it has an address: the calendar is set up,
       // and its tile stays on the home with the error instead of going away.
-      this.configured = true;
+      this.icsConfigured = true;
       this.failures++;
-      if (showsCalendarError(this.failures, this.hasRead)) this.error = String(err).replace(/^Error:\s*/, "");
+      if (showsCalendarError(this.failures, this.hasRead)) this.icsError = String(err).replace(/^Error:\s*/, "");
       this.schedule(calendarRetryIn(this.failures, calendarEvery()));
     } finally {
       this.busy = false;
-      Feed.events = this.events;
-      State.notify();
+      this.publish();
     }
+  },
+
+  /** Both sources into what the home and the closed island read. */
+  publish() {
+    const google = GoogleFeed;
+    this.events = mergeEvents(this.icsEvents, google.events);
+    this.configured = this.icsConfigured || google.on;
+    this.error = this.icsError ?? google.error;
+    this.link = this.icsLink ?? (google.on ? GOOGLE_CALENDAR_WEB : null);
+    Feed.events = this.events;
+    State.notify();
   },
 
   refreshIfStale() {
     if (Date.now() - Math.max(this.fetchedAt, this.triedAt) > CALENDAR_STALE_MS) void this.refresh();
+    GoogleFeed.refreshIfStale();
+  },
+};
+
+/** Google Calendar with the user's account (google_calendar.rs, core/google-calendar.ts). */
+export const GoogleFeed = {
+  sync: new GoogleSync((path, query) => Bridge.googleCalendarGet(path, query)),
+  /** Signed in: the calendar has a tile even before its first answer. */
+  on: false,
+  events: [] as CalEvent[],
+  error: null as string | null,
+  fetchedAt: 0,
+  triedAt: 0,
+  failures: 0,
+  hasRead: false,
+  busy: false,
+  timer: null as number | null,
+  effort: "" as string,
+  /** The calendars picked in Settings, as last read: a new pick reads at once. */
+  picks: "",
+
+  start() {
+    this.picks = JSON.stringify(State.settings.googleCalendars ?? {});
+    void this.refresh();
+    this.schedule();
+    State.subscribe(() => {
+      const picks = JSON.stringify(State.settings.googleCalendars ?? {});
+      if (picks !== this.picks) {
+        this.picks = picks;
+        void this.refresh();
+      }
+      if (State.effort !== this.effort) this.schedule();
+    });
+  },
+
+  schedule(wait = googleEvery()) {
+    if (this.timer != null) window.clearTimeout(this.timer);
+    this.effort = State.effort;
+    this.timer = window.setTimeout(() => {
+      this.schedule();
+      void this.refresh();
+    }, wait);
+  },
+
+  async refresh() {
+    if (this.busy || State.paused) return;
+    this.busy = true;
+    this.triedAt = Date.now();
+    try {
+      const status = await Bridge.googleCalendarStatus();
+      const events = status?.signedIn ? await this.sync.refresh(State.settings.googleCalendars) : null;
+      if (events == null) this.sync.reset();
+      this.on = events != null;
+      this.events = events ?? [];
+      this.error = null;
+      this.fetchedAt = Date.now();
+      this.hasRead = events != null;
+      if (this.failures > 0) this.schedule();
+      this.failures = 0;
+    } catch (err) {
+      // Signed in (Rust answered): the tile stays, with why.
+      this.on = true;
+      this.failures++;
+      if (showsCalendarError(this.failures, this.hasRead)) this.error = String(err).replace(/^Error:\s*/, "");
+      this.schedule(calendarRetryIn(this.failures, googleEvery()));
+    } finally {
+      this.busy = false;
+      Calendar.publish();
+    }
+  },
+
+  refreshIfStale() {
+    if (Date.now() - Math.max(this.fetchedAt, this.triedAt) > GOOGLE_STALE_MS) void this.refresh();
   },
 };
 

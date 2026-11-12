@@ -233,6 +233,28 @@ calendar → Secret address in iCal format; Outlook and iCloud publish one
 too). It stays in the system keychain, and is fetched every 15 minutes, only
 read.
 
+Google's iCal file is written again only every few hours, so an event added
+on the phone may show long after. For real time, sign in to **Google
+Calendar** just above it, with your own Google account and your own OAuth
+client (free, made once in Google Cloud Console; the row walks you through
+it: a project, the Google Calendar API turned on, the consent screen
+published — in Testing Google ends the access every 7 days — and a client of
+type Desktop app, whose ID and secret you paste). Sign-in happens in your
+browser, on Google's page, and comes back to Lumo on 127.0.0.1; Lumo asks
+only to see the events and the list of calendars
+(`calendar.events.readonly`, `calendar.calendarlist.readonly`). The client's
+ID and secret and Google's permission stay in the system keychain, the
+hour-long token only in memory. Every minute (every 15 while saving energy,
+and when the home shows if not asked for a minute) Lumo asks Google what
+changed since the last look, an answer nearly always empty, and reads the
+next days again only when something did: a new event shows within a minute.
+Pick which of the account's calendars go on the island (by default, the ones
+Google Calendar shows). With both set, the events of the iCal address and of
+Google join, each once. Disconnect tells Google to forget the access and
+removes all three from the keychain. Lumo talks only to Google
+(`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`), only
+once you signed in.
+
 Settings → Island → **Say what's going on** and **Show the music playing**
 turn them off on the closed island. While the island is hidden nothing is
 asked or counted: the music is only asked about while the closed island is on
@@ -462,8 +484,8 @@ It goes from your account over SMTP (Gmail, Outlook, iCloud, Yahoo, or the
 Gmail keeps a copy in Sent by itself; with another provider, Lumo looks in
 Sent ten seconds later and puts a copy there (IMAP `APPEND`) when the server
 didn't.
-The calendar, read from its address, stays read only: **Calendar** has Read
-only and No access.
+The calendar, read from its address or from Google, stays read only:
+**Calendar** has Read only and No access.
 
 ## Claude Code
 
