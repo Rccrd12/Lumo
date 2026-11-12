@@ -19,6 +19,7 @@ installFakeDom();
 const { buildPrompt } = await import("../src/views/chat.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { loadChats, saveChat } = await import("../src/core/chats.ts");
+const { setCompactNewsHandler } = await import("../src/core/compact.ts");
 
 let answers;
 const plainInvoke = internals.invoke;
@@ -101,6 +102,25 @@ test("heard for another chat: the bar names it, the waves and the clock light, C
   assert.deepEqual(State.listenPending, []);
   assert.ok(!$(".listen-btn").classList.contains("listening"), "nothing else waits, nothing listens here");
   assert.equal($(".history-badge").textContent, "");
+});
+
+test("heard while the island is hidden: the closed island comes out to say it", async () => {
+  let news = 0;
+  setCompactNewsHandler(() => news++);
+  try {
+    // The chat on screen, open: seen at once, nothing to come out for.
+    emit("listen-fired", { watch: watch(1, State.chatId), met: true, summary: "New email from Marco: Quote", ended: true });
+    await flush();
+    assert.equal(news, 0);
+    // Hidden: what another chat heard waits, and the island comes out for it.
+    State.mode = "hidden";
+    emit("listen-fired", { watch: watch(2, "release"), met: true, summary: "#241 is ready to merge", ended: true });
+    await flush();
+    assert.equal(State.listenPending.length, 1);
+    assert.equal(news, 1);
+  } finally {
+    setCompactNewsHandler(null);
+  }
 });
 
 test("Open that chat brings it on screen, with its line", async () => {
