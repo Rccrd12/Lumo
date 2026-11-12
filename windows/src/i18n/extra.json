@@ -18190,6 +18190,18 @@
    "ru": "Не удаётся прочитать",
    "id": "Tidak bisa dibaca",
    "it": "Non riesco a leggerlo"
+  },
+  "Too many requests: the calendar's server asks Lumo to wait. He tries again later.": {
+   "zh-Hans": "请求过多：日历服务器要求 Lumo 稍等，他稍后会再试。",
+   "hi": "बहुत सारे अनुरोध: कैलेंडर का सर्वर Lumo से रुकने को कहता है। वह बाद में फिर कोशिश करेगा।",
+   "es": "Demasiadas solicitudes: el servidor del calendario pide a Lumo que espere. Lo intentará más tarde.",
+   "ar": "طلبات كثيرة جدًا: خادم التقويم يطلب من Lumo الانتظار. سيحاول مجددًا لاحقًا.",
+   "fr": "Trop de requêtes : le serveur du calendrier demande à Lumo d'attendre. Il réessaiera plus tard.",
+   "bn": "অনেক বেশি অনুরোধ: ক্যালেন্ডারের সার্ভার Lumo-কে অপেক্ষা করতে বলছে। সে পরে আবার চেষ্টা করবে।",
+   "pt-BR": "Solicitações demais: o servidor do calendário pede que o Lumo espere. Ele tenta de novo mais tarde.",
+   "ru": "Слишком много запросов: сервер календаря просит Lumo подождать. Он попробует позже.",
+   "id": "Terlalu banyak permintaan: server kalender meminta Lumo menunggu. Ia akan mencoba lagi nanti.",
+   "it": "Troppe richieste: il server del calendario chiede a Lumo di aspettare. Riproverà più tardi."
   }
  }
 }

@@ -6,11 +6,12 @@
 // taken off into a window of its own. Both are gone.)
 //
 // The calendar is fetched every 15 minutes from the address in Settings →
-// Island, and when the home shows if older than 5. A failed fetch (the
+// Island, and when the home shows if not asked for 5. A failed fetch (the
 // network not back yet after sleep, a dropped connection) is tried again
 // within the minute, and the events already read stay on screen: the error
 // shows only when nothing was ever read, or after a few failures in a row
-// (src/core/calendar.ts).
+// (src/core/calendar.ts). After a 429 (too many requests) calendar.rs asks
+// nothing for half an hour or what the server says.
 
 import { Bridge, onEvent } from "../core/bridge";
 import { calendarRetryIn, calendarWebLink, parseIcs, showsCalendarError, type CalEvent } from "../core/calendar";
@@ -21,8 +22,12 @@ import type { ActivitiesAction, ActivitiesData, MailRow } from "../views/activit
 import { language } from "../i18n/i18n";
 import { byEffort } from "../core/energy";
 
-/** How often the calendar is asked: Settings → General → Energy sets it. */
-const calendarEvery = () => byEffort(State.effort, 60_000, 15 * 60_000, 30 * 60_000);
+/**
+ * How often the calendar is asked: Settings → General → Energy sets it. Never
+ * under 5 minutes: Google answers 429 (too many requests) to an iCal address
+ * read every minute, and its file changes far less often anyway.
+ */
+const calendarEvery = () => byEffort(State.effort, 5 * 60_000, 15 * 60_000, 30 * 60_000);
 const CALENDAR_STALE_MS = 5 * 60_000;
 const DAY = 86_400_000;
 
@@ -36,6 +41,8 @@ export const Calendar = {
   link: null as string | null,
   error: null as string | null,
   fetchedAt: 0,
+  /** When it was last asked, read or not: the island showing waits on it too. */
+  triedAt: 0,
   /** Failed fetches in a row; a good one sets it back to 0. */
   failures: 0,
   /** The file was read at least once since Lumo started. */
@@ -71,6 +78,7 @@ export const Calendar = {
   async refresh() {
     if (this.busy || State.paused) return;
     this.busy = true;
+    this.triedAt = Date.now();
     try {
       const text = await Bridge.calendarFetch();
       const now = Date.now();
@@ -83,7 +91,8 @@ export const Calendar = {
       if (this.failures > 0) this.schedule();
       this.failures = 0;
     } catch (err) {
-      // fetchedAt stays: the island showing asks again (refreshIfStale).
+      // fetchedAt stays (the events read are that old); triedAt keeps the
+      // island showing from asking again at each open (refreshIfStale).
       // calendar.rs fails only once it has an address: the calendar is set up,
       // and its tile stays on the home with the error instead of going away.
       this.configured = true;
@@ -98,7 +107,7 @@ export const Calendar = {
   },
 
   refreshIfStale() {
-    if (Date.now() - this.fetchedAt > CALENDAR_STALE_MS) void this.refresh();
+    if (Date.now() - Math.max(this.fetchedAt, this.triedAt) > CALENDAR_STALE_MS) void this.refresh();
   },
 };
 

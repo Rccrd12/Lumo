@@ -40,3 +40,31 @@ test("a calendar whose address is set but never read stays set up, with its erro
     if (Calendar.timer != null) clearTimeout(Calendar.timer);
   }
 });
+
+test("after a failed fetch, opening the island does not ask the calendar again for 5 minutes", async () => {
+  const { internals } = await import("./tauri.mjs");
+  const { Calendar } = await import("../src/island/activities.ts");
+  const before = internals.invoke;
+  let asked = 0;
+  internals.invoke = async (cmd, args) => {
+    if (cmd !== "calendar_fetch") return before(cmd, args);
+    asked++;
+    throw "Too many requests";
+  };
+  try {
+    Calendar.fetchedAt = 0;
+    await Calendar.refresh();
+    assert.equal(asked, 1);
+    Calendar.refreshIfStale();
+    Calendar.refreshIfStale();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(asked, 1);
+    Calendar.triedAt -= 6 * 60_000;
+    Calendar.refreshIfStale();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(asked, 2);
+  } finally {
+    internals.invoke = before;
+    if (Calendar.timer != null) clearTimeout(Calendar.timer);
+  }
+});

@@ -1181,6 +1181,7 @@ fn secret_changed(app: &AppHandle, key: &str) {
         mail::keys_changed();
     }
     if key == calendar::URL_KEY {
+        calendar::address_changed();
         let _ = app.emit_to(island::WINDOW_LABEL, "calendar-changed", ());
     }
 }
