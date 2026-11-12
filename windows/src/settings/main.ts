@@ -800,6 +800,11 @@ const WEB_IMAGES = {
   get hint() { return t("An image in an answer from Wikimedia is shown at once; from any other public https site, after a click on Load image, since the AI writes the address and it could carry what the AI read. An email's images, after a click on Load images: its sender's site then learns it was opened. Off: just its site and a button to open it in the browser."); },
 };
 
+const MAIL_IMAGES = {
+  get label() { return t("Email images always"); },
+  get hint() { return t("An email in the island's Email view shows its images at once, with no click on Load images: its sender's site then learns it was opened. The tracking pixels Lumo recognises are never loaded."); },
+};
+
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
   get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
@@ -833,6 +838,11 @@ function securitySection(): HTMLElement {
   const githubAccess = access(settings.aiGithubAccess === "read" ? "read" : "none", (v) => { settings.aiGithubAccess = v; void save(); });
   // The section's menus, one width, one under the other.
   for (const menu of [permissions, mailAccess, calendarAccess, githubAccess]) menu.classList.add("security-select");
+  // An email's images at once: only with the images from the web on.
+  const mailImages = setting(MAIL_IMAGES.label, MAIL_IMAGES.hint,
+    toggle(settings.mailImagesAlways === true, (on) => { settings.mailImagesAlways = on; void save(); }),
+  );
+  mailImages.hidden = settings.webImages === false;
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
     note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
@@ -856,8 +866,13 @@ function securitySection(): HTMLElement {
       toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
     ),
     setting(WEB_IMAGES.label, WEB_IMAGES.hint,
-      toggle(settings.webImages !== false, (on) => { settings.webImages = on; void save(); }),
+      toggle(settings.webImages !== false, (on) => {
+        settings.webImages = on;
+        mailImages.hidden = !on;
+        void save();
+      }),
     ),
+    mailImages,
     group(SECURITY.sees),
     h("p", { class: "hint group-hint", text: SECURITY.seesHint }),
     setting(SECURITY.windows, SECURITY.windowsHint,

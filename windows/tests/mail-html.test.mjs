@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  DROPPED_TAGS, MAX_EMAIL_IMAGES, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkParts, opensInBrowser, readMailHtml, webImageUrl,
+  DROPPED_TAGS, MAX_EMAIL_IMAGES, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkParts, opensInBrowser, readMailHtml, trackingPixel, webImageUrl,
 } from "../src/core/mail-html.ts";
 
 test("only http and https links open, in the browser", () => {
@@ -92,4 +92,34 @@ test("what runs, loads or goes somewhere is taken out of the email", () => {
   assert.ok(DROPPED_TAGS.includes("template"));
   assert.equal(droppedAttribute("shadowrootmode", "open"), true);
   assert.equal(droppedAttribute("name", "addEventListener"), true);
+});
+
+test("a tracking pixel is never loaded: 2 × 2 px or less, or from a service made for it", () => {
+  // 2 × 2 px or less, by its attributes or its style; 0 wide or tall.
+  assert.equal(trackingPixel("https://www.amazon.it/gp/r.html?C=1&T=O", "1", "1", ""), true);
+  assert.equal(trackingPixel("https://shop.example/a.gif", null, null, "width:1px;height:1px"), true);
+  assert.equal(trackingPixel("https://shop.example/a.gif", "0", null, ""), true);
+  assert.equal(trackingPixel("https://shop.example/a.gif", "1", null, "height: 0 !important"), true);
+  // The services and paths that count openings.
+  assert.equal(trackingPixel("https://us5.list-manage.com/track/open.php?u=1", null, null, ""), true);
+  assert.equal(trackingPixel("https://mandrillapp.com/track/open.php?u=1", null, null, ""), true);
+  assert.equal(trackingPixel("https://u123.ct.sendgrid.net/wf/open?upn=x", null, null, ""), true);
+  assert.equal(trackingPixel("https://e.customeriomail.com/e/o/abc", null, null, ""), true);
+  assert.equal(trackingPixel("https://news.example/pixel.gif?id=9", null, null, ""), true);
+  // An image like any other stays one: its size, one thin side (a line, a spacer), a path that only looks alike.
+  assert.equal(trackingPixel("https://img.shop.example/hero.png", "600", "170", ""), false);
+  assert.equal(trackingPixel("https://img.shop.example/icon.png", "20", "20", "width:20px"), false);
+  assert.equal(trackingPixel("https://img.shop.example/line.gif", "600", "1", ""), false);
+  assert.equal(trackingPixel("https://img.shop.example/spacer.gif", "1", "24", ""), false);
+  assert.equal(trackingPixel("https://img.shop.example/logo.png", null, null, "max-width:1px"), false);
+  assert.equal(trackingPixel("https://img.shop.example/opening-hours.png", null, null, ""), false);
+  assert.equal(trackingPixel("https://cdn.example/pixel/hero-600.jpg", "600", null, ""), false);
+  assert.equal(trackingPixel("https://cdn.example/img/beacon.jpg", null, null, ""), false);
+  assert.equal(trackingPixel("not a url", "300", "100", ""), false);
+  // Hidden by its style only: a phone picture the email's own CSS shows.
+  assert.equal(trackingPixel("https://cdn.example/hero-mobile.jpg", null, null, "display:none;width:0;max-height:0;overflow:hidden;mso-hide:all"), false);
+  assert.equal(trackingPixel("https://cdn.example/hero.jpg", "320", "180", "visibility:hidden"), false);
+  // Lumo's own marks are never taken from the email.
+  assert.equal(droppedAttribute("data-lumo-src", "https://t.example/o.gif"), true);
+  assert.equal(droppedAttribute("data-lumo-tracker", ""), true);
 });

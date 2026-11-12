@@ -29,7 +29,7 @@ import { State } from "../core/state";
 import { askAboutMail } from "../island/compact";
 import { loadClickedImage, webImagesOn } from "./rich/image";
 import {
-  DROPPED_TAGS, EMAIL_FRAME_STYLE, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkParts, opensInBrowser, webImageUrl,
+  DROPPED_TAGS, EMAIL_FRAME_STYLE, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkParts, opensInBrowser, trackingPixel, webImageUrl,
 } from "../core/mail-html";
 import {
   ALL, accountColor, accountLabel, avatarColor, initials, keptFilter, mailWhen, neighbours, readMailView,
@@ -65,6 +65,9 @@ export const MAIL_VIEW_TEXT = {
   imagesHidden: N_("Images hidden: the sender can't tell you opened it"),
   imagesOff: N_("Images from the web are off in Settings"),
   loadImages: N_("Load images"),
+  loadAlways: N_("Always load"),
+  trackerBlocked: N_("1 tracking pixel blocked"),
+  trackersBlocked: N_("{n} tracking pixels blocked"),
 };
 
 /** The HTML of the emails read lately, by id ("" for one with none); the oldest goes past MAX_HTML. */
@@ -87,7 +90,7 @@ const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAA
  * taken out, its web images hidden (their address kept in data-lumo-src),
  * the frame's own style first. The web images' addresses, in order.
  */
-function frameDocument(html: string): { doc: string; images: string[] } {
+function frameDocument(html: string): { doc: string; images: string[]; trackers: number } {
   const page = new DOMParser().parseFromString(html, "text/html");
   for (const tag of DROPPED_TAGS) for (const el of Array.from(page.getElementsByTagName(tag))) el.remove();
   const images: string[] = [];
@@ -98,11 +101,19 @@ function frameDocument(html: string): { doc: string; images: string[] } {
     if (bg && !bg.trim().startsWith("data:")) el.removeAttribute("background");
     if (el.localName === "source") el.removeAttribute("srcset");
   }
+  let trackers = 0;
   for (const img of Array.from(page.images)) {
     const src = (img.getAttribute("src") ?? "").trim();
     img.removeAttribute("srcset");
     img.removeAttribute("loading");
     if (src.startsWith("data:")) continue;
+    // A tracking pixel: never loaded, not even after Load images; its place stays empty.
+    if (trackingPixel(src, img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("style") ?? "")) {
+      if (webImageUrl(src)) trackers++;
+      img.setAttribute("src", PIXEL);
+      img.setAttribute("data-lumo-tracker", "");
+      continue;
+    }
     if (webImageUrl(src)) images.push(src);
     img.setAttribute("data-lumo-src", src);
     img.setAttribute("src", PIXEL);
@@ -112,7 +123,7 @@ function frameDocument(html: string): { doc: string; images: string[] } {
   const style = page.createElement("style");
   style.textContent = EMAIL_FRAME_STYLE;
   page.head.prepend(style);
-  return { doc: `<!doctype html>${page.documentElement.outerHTML}`, images };
+  return { doc: `<!doctype html>${page.documentElement.outerHTML}`, images, trackers };
 }
 
 /** How long what was listed stands before opening the view asks again. */
@@ -358,7 +369,9 @@ export function buildMailView(actions: ViewActions): ViewHost {
 
   /** The email's HTML in its frame, the bar about its images above it. */
   function htmlCard(m: MailViewMessage, html: string): HTMLElement {
-    const { doc, images } = frameDocument(html);
+    const { doc, images, trackers } = frameDocument(html);
+    // Settings → Security → Email images always: loaded with no click.
+    const loaded = () => webImagesOn() && (imagesLoaded.has(m.id) || State.settings.mailImagesAlways === true);
     const frame = h("iframe", { class: "mv-html-frame", sandbox: "allow-same-origin", title: m.subject || t(MAIL_VIEW_TEXT.noSubject) }) as HTMLIFrameElement;
     frame.setAttribute("referrerpolicy", "no-referrer");
     frame.srcdoc = doc;
@@ -424,29 +437,45 @@ export function buildMailView(actions: ViewActions): ViewHost {
       on(page, "keydown", (e) => {
         if ((e as KeyboardEvent).key === "Escape") back();
       });
-      if (imagesLoaded.has(m.id) && webImagesOn()) void showImages(frame, m.id);
+      if (loaded()) void showImages(frame, m.id);
     });
+    // The tracking pixels left out, said once the images are there.
+    const blocked = () => h("div", { class: "mv-img-bar note" },
+      svg(ICONS.shield, 13, { stroke: 1.8 }),
+      h("span", { class: "mv-img-text", text: trackers === 1 ? t(MAIL_VIEW_TEXT.trackerBlocked) : t(MAIL_VIEW_TEXT.trackersBlocked, { n: trackers }) }));
     let bar: HTMLElement | null = null;
-    if (images.length && (!webImagesOn() || !imagesLoaded.has(m.id))) {
+    if (images.length && !loaded()) {
       if (webImagesOn()) {
-        const load = h("button", { class: "mv-btn small" }, t(MAIL_VIEW_TEXT.loadImages));
-        load.addEventListener("click", () => {
+        const show = (always: boolean) => () => {
           actions.blip();
           if (!webImagesOn()) return;
+          if (always) {
+            State.settings = { ...State.settings, mailImagesAlways: true };
+            void Bridge.saveSettings(State.settings);
+          }
           imagesLoaded.add(m.id);
-          bar?.remove();
+          const note = trackers ? blocked() : null;
+          if (note) bar?.replaceWith(note);
+          else bar?.remove();
           void showImages(frame, m.id);
-        });
+        };
+        const always = h("button", { class: "mv-btn small ghost" }, t(MAIL_VIEW_TEXT.loadAlways));
+        always.addEventListener("click", show(true));
+        const load = h("button", { class: "mv-btn small" }, t(MAIL_VIEW_TEXT.loadImages));
+        load.addEventListener("click", show(false));
         bar = h("div", { class: "mv-img-bar" },
           svg(ICONS.shield, 13, { stroke: 1.8 }),
           h("span", { class: "mv-img-text", text: t(MAIL_VIEW_TEXT.imagesHidden) }),
           h("span", { class: "mv-space" }),
+          always,
           load);
       } else {
         bar = h("div", { class: "mv-img-bar" },
           svg(ICONS.shield, 13, { stroke: 1.8 }),
           h("span", { class: "mv-img-text", text: t(MAIL_VIEW_TEXT.imagesOff) }));
       }
+    } else if (trackers && (loaded() || !images.length)) {
+      bar = blocked();
     }
     return h("div", { class: "mv-html-wrap" }, bar, h("div", { class: "mv-html" }, frame));
   }
@@ -455,7 +484,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
   async function showImages(frame: HTMLIFrameElement, id: string) {
     const page = frame.contentDocument;
     if (!page) return;
-    const hidden = Array.from(Document.prototype.querySelectorAll.call(page, "img[data-lumo-src]") as NodeListOf<HTMLImageElement>);
+    const hidden = Array.from(Document.prototype.querySelectorAll.call(page, "img[data-lumo-src]:not([data-lumo-tracker])") as NodeListOf<HTMLImageElement>);
     const urls = imagesToLoad(hidden.map((img) => img.getAttribute("data-lumo-src") ?? ""));
     await Promise.all(urls.map(async (url) => {
       const blob = await loadClickedImage(url);
@@ -524,7 +553,9 @@ export function buildMailView(actions: ViewActions): ViewHost {
     askNear(m.id);
     const html = htmlOf.get(m.id) ?? "";
     const showHtml = html !== "" && !textOnly;
-    const key = JSON.stringify([m.id, near, html.length, showHtml, d.accounts.length, language(), m.unread, webImagesOn(), m.from, m.address, m.subject, m.date, m.link, m.body]);
+    // Email images always, turned on in Settings: an email not yet loaded is drawn again, with them.
+    const always = State.settings.mailImagesAlways === true && !imagesLoaded.has(m.id);
+    const key = JSON.stringify([m.id, near, html.length, showHtml, d.accounts.length, language(), m.unread, webImagesOn(), always, m.from, m.address, m.subject, m.date, m.link, m.body]);
     if (key === readerDrawn) return;
     readerDrawn = key;
     const account = d.accounts.find((a) => a.key === m.account);
@@ -555,7 +586,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
         h("button", { class: textOnly ? "mv-seg-btn on" : "mv-seg-btn", onclick: pickKind(true) }, t(MAIL_VIEW_TEXT.textOnly)));
     };
     // The body stays as it is (its frame not loaded again) while it shows the same.
-    const bodyKey = JSON.stringify([m.id, showHtml, showHtml ? html.length : m.body || m.preview, language(), webImagesOn()]);
+    const bodyKey = JSON.stringify([m.id, showHtml, showHtml ? html.length : m.body || m.preview, language(), webImagesOn(), always]);
     if (bodyKey !== shownBodyKey || !shownBody || shownBody.parentElement !== reader) {
       showTip(null);
       shownBody = showHtml ? htmlCard(m, html) : h("div", { class: "mv-read-body", text: (m.body || m.preview).trim() });
@@ -669,7 +700,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
         watchKey = key;
         void load();
       }
-      const now = [language(), filter, unreadOnly, openId, loading, loadedAt, data?.messages.length ?? -1, webImagesOn()].join("~");
+      const now = [language(), filter, unreadOnly, openId, loading, loadedAt, data?.messages.length ?? -1, webImagesOn(), State.settings.mailImagesAlways === true].join("~");
       if (now !== drawn) {
         drawn = now;
         draw();

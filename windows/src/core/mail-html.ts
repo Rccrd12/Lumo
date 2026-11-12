@@ -78,6 +78,35 @@ export function hiddenBox(width: string | null, height: string | null, style: st
   return has(width, "width") ? "h" : "wh";
 }
 
+/**
+ * The services that count an email's opening with a picture of their own,
+ * and the paths those pictures go by: never loaded, even after Load images.
+ */
+const TRACKER_HOSTS = /(^|\.)(list-manage\.com|mailtrack\.io|mailstat\.us|sidekickopen\d*\.com|getnotify\.com|bananatag\.com|yesware\.com|mixmax\.com|mailfoogae\.appspot\.com)$/i;
+const TRACKER_PATHS = /\/(track\/open(\.php)?|wf\/open|e\/o\/[^/]+|tr\/op\/[^/]+|trk\/open|open\.php|o\.gif|open\.gif|open\.png|pixel(\.gif|\.png)?|beacon(\.gif|\.png)?)\/?$/i;
+
+/**
+ * Whether an image of an email is there to tell its sender it was opened:
+ * a picture of 2 × 2 px or less (or 0 wide or tall by its attributes), or
+ * one from a service or a path made for that (TRACKER_HOSTS, TRACKER_PATHS).
+ * Never loaded. One only hidden by its style is not one: newsletters hide
+ * their phone pictures that way and show them from their own CSS. An image
+ * like any other can still carry who it was sent to in its address: only not
+ * loading it keeps the opening quiet.
+ */
+export function trackingPixel(src: string, width: string | null, height: string | null, style: string): boolean {
+  const tiny = (attr: string | null, prop: string) =>
+    /^\s*[0-2](\.\d+)?\s*(px)?\s*$/i.test(attr ?? "") || new RegExp(`(^|;)\\s*${prop}\\s*:\\s*[0-2](\\.\\d+)?(px)?\\s*(!important)?\\s*(;|$)`, "i").test(style);
+  const zero = (attr: string | null) => /^\s*0+(\.0+)?\s*(px)?\s*$/i.test(attr ?? "");
+  if ((tiny(width, "width") && tiny(height, "height")) || zero(width) || zero(height)) return true;
+  try {
+    const u = new URL(src.trim());
+    return TRACKER_HOSTS.test(u.hostname) || TRACKER_PATHS.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** What an email's HTML from Rust (mail.rs MailHtml) reads as: its own text, or its bytes in their charset; "" for none. */
 export function readMailHtml(raw: unknown): string {
   const got = (raw ?? {}) as { html?: unknown; bytes?: unknown; charset?: unknown };
@@ -105,6 +134,8 @@ export function droppedAttribute(name: string, value: string): boolean {
   // A shadow root declared in the HTML would hold a page this cleaning never sees;
   // a name would stand for the frame's own methods (document.addEventListener…).
   if (n === "shadowrootmode" || n === "shadowroot" || n === "name") return true;
+  // Lumo's own marks (data-lumo-src: an image to load): never the email's.
+  if (n.startsWith("data-lumo-")) return true;
   if (n === "href" || n === "src" || n === "action" || n === "formaction" || n === "xlink:href") {
     return /^\s*(javascript|vbscript|data:text\/html)/i.test(value.replace(/[\u0000-\u001f]/g, ""));
   }

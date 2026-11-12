@@ -355,6 +355,8 @@ export interface Settings {
    * way to open it in the browser. From Settings → Security, on by default.
    */
   webImages: boolean;
+  /** An email's images shown at once in the Email view, with no click on Load images (its tracking pixels never). Settings → Security, off by default, only with webImages. */
+  mailImagesAlways: boolean;
   /** What the AI may do with the email, from Settings → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
@@ -477,6 +479,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatWebSearch: false,
   chatAutoCompact: true,
   webImages: true,
+  mailImagesAlways: false,
   aiMailAccess: "read",
   aiCalendarAccess: "read",
   aiGithubAccess: "none",

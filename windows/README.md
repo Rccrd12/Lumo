@@ -418,7 +418,11 @@ in the browser only on a click, the corner saying where each really goes, and
 the pictures it links to stay hidden, so the sender can't tell it was opened,
 until **Load images** downloads them as the chat's images are (https, public
 sites, images only; **Images from the web** off in Settings → Security keeps
-them hidden). The pictures inside the email itself come with it. From
+them hidden). **Always load**, or **Email images always** in Settings →
+Security, shows every email's pictures at once. Either way the tracking
+pixels Lumo recognises (2 × 2 px or less, or from a service made to
+count openings) are never downloaded, and the email says how many were left
+out. The pictures inside the email itself come with it. From
 Outlook, the HTML is read through MAPI, with no prompt; where MAPI can't be
 had (a 32-bit Office), the text is shown.
 
@@ -713,8 +717,9 @@ downloads such an image at once (https and public addresses only, image files
 only, 8 MB at most), so its site sees your IP address and the image's full
 address, which the AI writes and could fill with words from your chat. The
 pictures an email links to, in the Email view, are downloaded the same way
-only after a click on **Load images**, and the sender's site then learns that
-you opened it. **Settings → Security → Images from the web** turns both off.
+only after a click on **Load images** (or at once with **Email images
+always**), and the sender's site then learns that you opened it; the tracking
+pixels Lumo recognises are never downloaded. **Settings → Security → Images from the web** turns both off.
 
 ### Chat with your Claude plan (Claude Code)
 

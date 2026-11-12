@@ -9001,6 +9001,11 @@ button.bg-row:hover {
   padding: 0 10px;
 }
 
+.mv-img-bar.note {
+  min-height: 28px;
+  padding: 3px 11px;
+}
+
 .mv-html {
   border-radius: 12px;
   overflow: hidden;

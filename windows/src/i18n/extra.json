@@ -35,7 +35,7 @@
    "pt-BR": "Imagens ocultas: quem enviou não sabe que você abriu",
    "ru": "Изображения скрыты: отправитель не узнает, что вы открыли письмо",
    "id": "Gambar disembunyikan: pengirim tidak tahu Anda membukanya",
-   "it": "Immagini nascoste: chi ha scritto non sa che l'hai aperta"
+   "it": "Immagini nascoste: il mittente non sa che l'hai aperta"
   },
   "Images from the web are off in Settings": {
    "zh-Hans": "设置中已关闭网络图片",
@@ -60,6 +60,66 @@
    "ru": "Загрузить изображения",
    "id": "Muat gambar",
    "it": "Carica immagini"
+  },
+  "Always load": {
+   "zh-Hans": "始终加载",
+   "hi": "हमेशा लोड करें",
+   "es": "Cargar siempre",
+   "ar": "التحميل دائمًا",
+   "fr": "Toujours charger",
+   "bn": "সবসময় লোড করুন",
+   "pt-BR": "Carregar sempre",
+   "ru": "Загружать всегда",
+   "id": "Selalu muat",
+   "it": "Carica sempre"
+  },
+  "1 tracking pixel blocked": {
+   "zh-Hans": "已拦截 1 个跟踪像素",
+   "hi": "1 ट्रैकिंग पिक्सेल रोका गया",
+   "es": "1 píxel de seguimiento bloqueado",
+   "ar": "تم حظر بكسل تتبع واحد",
+   "fr": "1 pixel de suivi bloqué",
+   "bn": "১টি ট্র্যাকিং পিক্সেল আটকানো হয়েছে",
+   "pt-BR": "1 pixel de rastreamento bloqueado",
+   "ru": "Заблокирован 1 пиксель отслеживания",
+   "id": "1 piksel pelacak diblokir",
+   "it": "1 pixel di tracciamento bloccato"
+  },
+  "{n} tracking pixels blocked": {
+   "zh-Hans": "已拦截 {n} 个跟踪像素",
+   "hi": "{n} ट्रैकिंग पिक्सेल रोके गए",
+   "es": "{n} píxeles de seguimiento bloqueados",
+   "ar": "تم حظر {n} من بكسلات التتبع",
+   "fr": "{n} pixels de suivi bloqués",
+   "bn": "{n}টি ট্র্যাকিং পিক্সেল আটকানো হয়েছে",
+   "pt-BR": "{n} pixels de rastreamento bloqueados",
+   "ru": "Заблокировано пикселей отслеживания: {n}",
+   "id": "{n} piksel pelacak diblokir",
+   "it": "{n} pixel di tracciamento bloccati"
+  },
+  "Email images always": {
+   "zh-Hans": "始终显示邮件图片",
+   "hi": "ईमेल की छवियाँ हमेशा",
+   "es": "Imágenes de los correos siempre",
+   "ar": "صور الرسائل دائمًا",
+   "fr": "Images des e-mails toujours",
+   "bn": "ইমেইলের ছবি সবসময়",
+   "pt-BR": "Imagens dos e-mails sempre",
+   "ru": "Изображения в письмах всегда",
+   "id": "Gambar email selalu",
+   "it": "Immagini delle email sempre"
+  },
+  "An email in the island's Email view shows its images at once, with no click on Load images: its sender's site then learns it was opened. The tracking pixels Lumo recognises are never loaded.": {
+   "zh-Hans": "岛上“邮件”视图中的邮件会立即显示图片，无需点击“加载图片”：发件人的网站因此会知道邮件已被打开。Lumo 识别出的跟踪像素永远不会加载。",
+   "hi": "आइलैंड के ईमेल व्यू में ईमेल अपनी छवियाँ तुरंत दिखाता है, छवियाँ लोड करें पर क्लिक किए बिना: तब भेजने वाले की साइट जान जाती है कि उसे खोला गया। Lumo जिन ट्रैकिंग पिक्सेल को पहचानता है, वे कभी लोड नहीं होते।",
+   "es": "Un correo en la vista Correo de la isla muestra sus imágenes enseguida, sin hacer clic en Cargar imágenes: el sitio del remitente sabrá entonces que se abrió. Los píxeles de seguimiento que Lumo reconoce nunca se cargan.",
+   "ar": "تعرض الرسالة في عرض البريد على الجزيرة صورها فورًا، دون النقر على تحميل الصور: فيعرف موقع المرسل حينها أنها فُتحت. لا تُحمَّل أبدًا بكسلات التتبع التي يتعرّف عليها Lumo.",
+   "fr": "Un e-mail de la vue E-mail de l'îlot affiche ses images tout de suite, sans clic sur Charger les images : le site de l'expéditeur apprend alors qu'il a été ouvert. Les pixels de suivi que Lumo reconnaît ne sont jamais chargés.",
+   "bn": "আইল্যান্ডের ইমেইল ভিউতে একটি ইমেইল সঙ্গে সঙ্গে তার ছবি দেখায়, ছবি লোড করুন-এ ক্লিক ছাড়াই: তখন প্রেরকের সাইট জেনে যায় যে এটি খোলা হয়েছে। Lumo যেসব ট্র্যাকিং পিক্সেল চেনে, সেগুলো কখনো লোড হয় না।",
+   "pt-BR": "Um e-mail na visualização E-mail da ilha mostra as imagens na hora, sem clicar em Carregar imagens: o site do remetente fica sabendo que ele foi aberto. Os pixels de rastreamento que o Lumo reconhece nunca são carregados.",
+   "ru": "Письмо в разделе «Почта» на острове сразу показывает свои изображения, без нажатия «Загрузить изображения»: сайт отправителя тогда узнаёт, что письмо открыто. Пиксели отслеживания, которые Lumo распознаёт, никогда не загружаются.",
+   "id": "Email di tampilan Email pada pulau langsung menampilkan gambarnya, tanpa klik Muat gambar: situs pengirim jadi tahu email itu dibuka. Piksel pelacak yang dikenali Lumo tidak pernah dimuat.",
+   "it": "Un'email nella vista Email dell'isola mostra subito le sue immagini, senza clic su Carica immagini: il sito di chi l'ha mandata saprà che l'hai aperta. I pixel di tracciamento che Lumo riconosce non vengono mai caricati."
   },
   "{n} unread": {
    "zh-Hans": "{n} 封未读",
