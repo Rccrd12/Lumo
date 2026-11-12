@@ -1998,6 +1998,7 @@ const GOOGLE_CAL = {
   get signInAgain() { return t("Sign in again"); },
   get waiting() { return t("Continue in the browser…"); },
   get waitingHint() { return t("The browser opened: choose the account and allow Lumo to read the calendar."); },
+  get mismatch() { return t("Google says redirect_uri_mismatch? The client is not a Desktop app: create one of that type, paste its ID and secret, and sign in again."); },
   get pasteFirst() { return t("Paste your Google client's ID and secret first."); },
   get ended() { return t("Access ended: sign in again."); },
   get pick() { return t("Calendars to show on the island"); },
@@ -2124,7 +2125,8 @@ function googleCalendarRow(): HTMLElement {
       cancel.addEventListener("click", () => void Bridge.googleCalendarCancel());
       parts.push(h("div", { class: "mail-account-actions", style: "justify-content:flex-start" },
         h("button", { text: GOOGLE_CAL.waiting, disabled: true }), cancel),
-        h("span", { class: "hint", text: GOOGLE_CAL.waitingHint }));
+        h("span", { class: "hint", text: GOOGLE_CAL.waitingHint }),
+        h("span", { class: "hint", text: GOOGLE_CAL.mismatch }));
     } else if (status.signedIn) {
       const bad = status.needsSignIn;
       dotEl.style.background = bad ? "#f4505e" : "#22c55e";

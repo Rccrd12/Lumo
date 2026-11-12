@@ -18586,6 +18586,18 @@
    "ru": "Календари на острове: {shown} из {count}",
    "id": "Kalender di pulau: {shown} dari {count}",
    "it": "Calendari sull'isola: {shown} su {count}"
+  },
+  "Google says redirect_uri_mismatch? The client is not a Desktop app: create one of that type, paste its ID and secret, and sign in again.": {
+   "zh-Hans": "Google 显示 redirect_uri_mismatch？说明该客户端不是“桌面应用”类型：请创建一个该类型的客户端，粘贴其 ID 和密钥，然后重新登录。",
+   "hi": "Google redirect_uri_mismatch दिखा रहा है? क्लाइंट Desktop app नहीं है: उसी प्रकार का क्लाइंट बनाएँ, उसकी ID और सीक्रेट पेस्ट करें, और फिर से साइन इन करें।",
+   "es": "¿Google dice redirect_uri_mismatch? El cliente no es una app de escritorio: crea uno de ese tipo, pega su ID y su secreto y vuelve a iniciar sesión.",
+   "ar": "هل تعرض Google الخطأ redirect_uri_mismatch؟ العميل ليس من نوع تطبيق سطح المكتب: أنشئ عميلًا من هذا النوع، والصق معرّفه وسرّه، وسجّل الدخول مجددًا.",
+   "fr": "Google affiche redirect_uri_mismatch ? Le client n'est pas une application de bureau : créez-en un de ce type, collez son ID et son secret, puis reconnectez-vous.",
+   "bn": "Google redirect_uri_mismatch দেখাচ্ছে? ক্লায়েন্টটি Desktop app নয়: ওই ধরনের একটি ক্লায়েন্ট তৈরি করুন, এর ID ও সিক্রেট পেস্ট করুন, আর আবার সাইন ইন করুন।",
+   "pt-BR": "O Google diz redirect_uri_mismatch? O cliente não é um app para computador: crie um desse tipo, cole o ID e a chave secreta e entre de novo.",
+   "ru": "Google пишет redirect_uri_mismatch? Клиент не типа «Приложение для ПК»: создайте клиент этого типа, вставьте его ID и секрет и войдите снова.",
+   "id": "Google menampilkan redirect_uri_mismatch? Kliennya bukan Aplikasi desktop: buat klien jenis itu, tempel ID dan rahasianya, lalu masuk lagi.",
+   "it": "Google dice redirect_uri_mismatch? Il client non è un'App desktop: creane uno di quel tipo, incolla ID e segreto e accedi di nuovo."
   }
  }
 }
