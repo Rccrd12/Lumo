@@ -91,8 +91,9 @@ export class Lumo {
     // The island's page may still be loading when DevTools opens.
     for (let i = 0; ; i++) {
       this.handles = await this.d.windows();
-      if (this.handles.island && this.handles.settings) break;
-      if (i > 50) throw new Error(`Lumo's windows did not all come up: ${Object.keys(this.handles).join(", ")}`);
+      // The Settings window is made only when first opened (lib.rs create_settings_window).
+      if (this.handles.island) break;
+      if (i > 50) throw new Error(`Lumo's island did not come up: ${Object.keys(this.handles).join(", ")}`);
       await sleep(200);
     }
     await this.d.switchTo(this.handles.island);

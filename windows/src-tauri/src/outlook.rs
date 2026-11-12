@@ -7,8 +7,8 @@
 // Lumo attaches to the Outlook already running (GetActiveObject) and never
 // starts it, but for one case: Settings → Security → "Open Outlook if it's
 // closed", where it starts Outlook once, in the background with no window,
-// when Lumo starts (or when the switch is turned on). If the user then closes
-// Outlook, Lumo doesn't start it again until it next starts.
+// a minute after Lumo starts (or when the switch is turned on). If the user
+// then closes Outlook, Lumo doesn't start it again until it next starts.
 //
 // It reads as the IMAP side does (mail.rs): the newest unread emails of each
 // account's inbox for the island, and for the agents the newest emails of a
@@ -106,6 +106,16 @@ fn may_start(app: &AppHandle) -> bool {
 static WAKE: Notify = Notify::const_new();
 /// Lumo started Outlook already (or tried to) since it started: never again.
 static STARTED: AtomicBool = AtomicBool::new(false);
+/// "Open Outlook if it's closed" waits this long after Lumo starts: classic
+/// Outlook takes the disk and the processor for a while as it opens, and Lumo's
+/// own start (its webviews, the greeting) should not have to share them.
+/// An Outlook already running is read at once, as before.
+const START_AFTER: Duration = Duration::from_secs(60);
+
+/// How long is still left of START_AFTER, `since` Lumo started.
+fn start_wait(since: Duration) -> Option<Duration> {
+    START_AFTER.checked_sub(since).filter(|left| !left.is_zero())
+}
 
 /// Look again now (Refresh, a change of settings).
 pub fn wake() {
@@ -117,6 +127,7 @@ pub fn wake() {
 /// (mail.rs, idle_for). Outlook closed is not an error: the island says so,
 /// and the emails come back as soon as it opens.
 pub async fn run(app: AppHandle) {
+    let launched = Instant::now();
     tokio::time::sleep(Duration::from_secs(4)).await;
     let mut seen: Option<f64> = None;
     let mut cache: HashMap<String, (Message, f64)> = HashMap::new();
@@ -140,6 +151,16 @@ pub async fn run(app: AppHandle) {
             continue;
         }
         was_on = true;
+        if may_start(&app) && !STARTED.load(Ordering::SeqCst) {
+            if let Some(left) = start_wait(launched.elapsed()) {
+                let running = with_outlook(STEP, |s| Ok(s.app()?.is_some())).await.unwrap_or(false);
+                if !running {
+                    // Then round again: the switches may have changed meanwhile.
+                    tokio::time::sleep(left).await;
+                    continue;
+                }
+            }
+        }
         if may_start(&app) && !STARTED.swap(true, Ordering::SeqCst) {
             match with_outlook(SLOW_STEP, |s| s.start()).await {
                 Ok(true) => log::line("[outlook] started in the background"),
@@ -1662,6 +1683,13 @@ fn match_path(paths: &[String], asked: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outlook_is_started_a_minute_after_lumo() {
+        assert_eq!(start_wait(Duration::from_secs(4)), Some(START_AFTER - Duration::from_secs(4)));
+        assert_eq!(start_wait(START_AFTER), None);
+        assert_eq!(start_wait(START_AFTER + Duration::from_secs(30)), None);
+    }
 
     #[test]
     fn outlook_dates_become_header_dates() {
