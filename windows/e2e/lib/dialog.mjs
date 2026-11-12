@@ -168,18 +168,19 @@ if ($h -eq [IntPtr]::Zero) { Write-Output '{"found":false}'; exit }
 Start-Sleep -Milliseconds 500
 $r = New-Object LumoE2ePicker+RECT
 [void][LumoE2ePicker]::GetWindowRect($h, [ref]$r)
-$owner = [LumoE2ePicker]::GetWindow($h, 4)
-$ownerPid = [uint32]0
-if ($owner -ne [IntPtr]::Zero) { [void][LumoE2ePicker]::GetWindowThreadProcessId($owner, [ref]$ownerPid) }
+# Not $owner: PowerShell names are case-blind, and $Owner is the [int] pid.
+$ownedBy = [LumoE2ePicker]::GetWindow($h, 4)
+$ownedByPid = [uint32]0
+if ($ownedBy -ne [IntPtr]::Zero) { [void][LumoE2ePicker]::GetWindowThreadProcessId($ownedBy, [ref]$ownedByPid) }
 $o = [ordered]@{
   found = $true
   hwnd = $h.ToInt64()
   rect = @{ x = $r.Left; y = $r.Top; w = $r.Right - $r.Left; h = $r.Bottom - $r.Top }
   title = [LumoE2ePicker]::Title($h)
-  owner = $owner.ToInt64()
-  ownerPid = $ownerPid
-  ownerTitle = $(if ($owner -ne [IntPtr]::Zero) { [LumoE2ePicker]::Title($owner) } else { "" })
-  ownerTopmost = $(if ($owner -ne [IntPtr]::Zero) { ([LumoE2ePicker]::GetWindowLong($owner, -20) -band 8) -ne 0 } else { $false })
+  owner = $ownedBy.ToInt64()
+  ownerPid = $ownedByPid
+  ownerTitle = $(if ($ownedBy -ne [IntPtr]::Zero) { [LumoE2ePicker]::Title($ownedBy) } else { "" })
+  ownerTopmost = $(if ($ownedBy -ne [IntPtr]::Zero) { ([LumoE2ePicker]::GetWindowLong($ownedBy, -20) -band 8) -ne 0 } else { $false })
 }
 Write-Output ($o | ConvertTo-Json -Compress)
 `;
