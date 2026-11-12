@@ -36,6 +36,9 @@ pub const CLIENT_ID_KEY: &str = "google-calendar-client-id";
 pub const CLIENT_SECRET_KEY: &str = "google-calendar-client-secret";
 /// Google's lasting permission: written only by a sign-in, never by the front end.
 pub const REFRESH_KEY: &str = "google-calendar-refresh-token";
+/// Told to the island on a sign-in, a sign-out or a new client: it reads Google from scratch
+/// (the iCal address has its own "calendar-changed").
+pub const CHANGED_EVENT: &str = "google-calendar-changed";
 
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
@@ -133,7 +136,7 @@ pub async fn google_calendar_sign_in(app: AppHandle) -> Result<(), String> {
     if result.is_ok() {
         NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
         *lock(&NOT_BEFORE) = None;
-        let _ = app.emit_to(crate::island::WINDOW_LABEL, "calendar-changed", ());
+        let _ = app.emit_to(crate::island::WINDOW_LABEL, CHANGED_EVENT, ());
     }
     result
 }
@@ -163,7 +166,7 @@ pub async fn google_calendar_sign_out(app: AppHandle) -> Result<(), String> {
     for key in [REFRESH_KEY, CLIENT_ID_KEY, CLIENT_SECRET_KEY] {
         secrets::clear(key)?;
     }
-    let _ = app.emit_to(crate::island::WINDOW_LABEL, "calendar-changed", ());
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, CHANGED_EVENT, ());
     Ok(())
 }
 
@@ -325,7 +328,7 @@ async fn access_token() -> Result<String, String> {
         ("client_secret", client_secret.trim()),
         ("refresh_token", refresh.as_str()),
         ("grant_type", "refresh_token"),
-    ])
+    ], true)
     .await;
     match answer {
         Ok(token) => {
@@ -359,12 +362,15 @@ enum TokenError {
     Other(String),
 }
 
-async fn token_request(form: &[(&str, &str)]) -> Result<Token, TokenError> {
+/// A POST to Google's token endpoint. With `retry` (the refresh grant) it is
+/// tried again like the API's GETs: it is the first request after Lumo starts
+/// or the computer wakes, and a refresh sent twice changes nothing at Google.
+/// A sign-in's code is sent once: Google may have used it already, and would
+/// refuse it the second time.
+async fn token_request(form: &[(&str, &str)], retry: bool) -> Result<Token, TokenError> {
     let url = Url::parse(TOKEN_URL).map_err(|e| TokenError::Other(e.to_string()))?;
     let client = net::client(&url, Duration::from_secs(20)).map_err(TokenError::Other)?;
-    // Tried again like the API's GETs: it is the first request after Lumo
-    // starts or the computer wakes. A lost request changes nothing at Google.
-    let mut waits = RETRY_WAITS.iter();
+    let mut waits = RETRY_WAITS.iter().filter(|_| retry);
     let response = loop {
         match client.post(url.clone()).form(form).send().await {
             Ok(response) => break response,
@@ -375,6 +381,7 @@ async fn token_request(form: &[(&str, &str)]) -> Result<Token, TokenError> {
         }
     };
     let status = response.status();
+    let retry_after = response.headers().get(reqwest::header::RETRY_AFTER).and_then(|v| v.to_str().ok()).map(str::to_owned);
     let body = net::read_capped(response, net::MAX_ERROR_BODY).await.map_err(TokenError::Other)?;
     let value: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
     if !status.is_success() {
@@ -384,6 +391,7 @@ async fn token_request(form: &[(&str, &str)]) -> Result<Token, TokenError> {
         }
         // Google busy or limiting: nothing to do with the permission.
         if status == StatusCode::TOO_MANY_REQUESTS {
+            *lock(&NOT_BEFORE) = Some(Instant::now() + limited_wait(retry_after.as_deref()));
             return Err(TokenError::Other(limited()));
         }
         if status.is_server_error() {
@@ -439,7 +447,7 @@ async fn exchange(client_id: &str, client_secret: &str, code: &str, verifier: &s
         ("code_verifier", verifier),
         ("redirect_uri", redirect),
         ("grant_type", "authorization_code"),
-    ])
+    ], false)
     .await
     .map_err(|e| match e {
         TokenError::Refused => t("Google refused the client: check its ID and secret."),

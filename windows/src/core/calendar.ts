@@ -111,11 +111,11 @@ export function zonedTime(y: number, mo: number, da: number, h: number, mi: numb
     for (const p of format.formatToParts(new Date(at))) if (p.type !== "literal") parts[p.type] = +p.value;
     return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - at;
   };
-  // The zone's offsets half a day either side: a time each, kept if the zone
-  // reads it as that wall time. When the clocks go back the hour comes twice:
-  // the first, as RFC 5545 says.
-  const hours12 = 12 * 3_600_000;
-  const times = [...new Set([offset(wall - hours12), offset(wall + hours12)])]
+  // The zone's offsets a day either side (wider than any zone is from UTC): a
+  // time each, kept if the zone reads it as that wall time. When the clocks go
+  // back the hour comes twice: the first, as RFC 5545 says.
+  const day = 24 * 3_600_000;
+  const times = [...new Set([offset(wall - day), offset(wall + day)])]
     .map((o) => wall - o)
     .filter((at) => at + offset(at) === wall);
   if (times.length) return Math.min(...times);

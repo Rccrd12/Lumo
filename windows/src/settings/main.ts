@@ -4,7 +4,7 @@
 
 import "../core/legacy";
 import "./settings.css";
-import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport, type UnslothStudio } from "../core/bridge";
+import { Bridge, EMBEDDED, onEvent, type GoogleCalendarStatus, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport, type UnslothStudio } from "../core/bridge";
 import {
   CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, isHidden, providerDef, urlExposure, visibleProviders,
 } from "../core/providers";
@@ -2024,6 +2024,8 @@ function googleCalendarRow(): HTMLElement {
   let problem = "";
   /** While a sign-in waits for the browser: asks each second whether it ended (here or in another Settings), then draws the row again. */
   let waitTimer: number | null = null;
+  /** The status the row was last drawn with. */
+  let drawn: GoogleCalendarStatus | null = null;
 
   const problemLine = () => problem
     ? h("div", { class: "mail-account-error" }, h("i", { class: "dot", style: "background:#f4505e" }), h("span", { text: problem }))
@@ -2122,6 +2124,8 @@ function googleCalendarRow(): HTMLElement {
             void save();
           }))));
     } catch (err) {
+      // Lumo is paused: nothing is read until it resumes, and nothing failed.
+      if (errorText(err) === "paused") return;
       // Google may have refused the permission on this very ask: then the row offers Sign in again.
       if ((await Bridge.googleCalendarStatus())?.needsSignIn) {
         void render();
@@ -2135,6 +2139,7 @@ function googleCalendarRow(): HTMLElement {
   const render = async () => {
     const status = await Bridge.googleCalendarStatus();
     if (!status) return;
+    drawn = status;
     if (waitTimer != null) window.clearInterval(waitTimer);
     waitTimer = null;
     const parts: (HTMLElement | null)[] = [];
@@ -2180,6 +2185,21 @@ function googleCalendarRow(): HTMLElement {
     body.replaceChildren(...parts.filter((p): p is HTMLElement => p != null));
   };
   void render();
+  // Back on screen: the island may have learned meanwhile that Google ended the access (or a sign-in in the other window).
+  const recheck = async () => {
+    if (waitTimer != null || !row.isConnected) return;
+    const status = await Bridge.googleCalendarStatus();
+    if (status && (status.signedIn !== drawn?.signedIn || status.needsSignIn !== drawn?.needsSignIn)) void render();
+  };
+  const onMessage = (e: MessageEvent) => {
+    if (!row.isConnected) {
+      window.removeEventListener("message", onMessage);
+      return;
+    }
+    if (e.source === window.parent && e.origin === location.origin && e.data === FRAME_SHOWN) void recheck();
+  };
+  window.addEventListener("message", onMessage);
+  whileShown(row, "focus", () => void recheck());
   return row;
 }
 

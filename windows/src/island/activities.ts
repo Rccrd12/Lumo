@@ -88,10 +88,10 @@ export const Calendar = {
     void this.refresh();
     this.schedule();
     GoogleFeed.start();
-    void onEvent<null>("calendar-changed", () => {
-      this.changed();
-      GoogleFeed.changed();
-    });
+    // A new iCal address (calendar.rs), or a Google sign-in, sign-out or new client (google_calendar.rs):
+    // each source starts over on its own, the other keeps what it read.
+    void onEvent<null>("calendar-changed", () => this.changed());
+    void onEvent<null>("google-calendar-changed", () => GoogleFeed.changed());
     // A new effort takes effect at once, not after the wait it replaced.
     State.subscribe(() => {
       if (State.effort !== this.effort) this.schedule();

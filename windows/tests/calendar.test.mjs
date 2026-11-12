@@ -182,6 +182,10 @@ test("when the clocks go back, an hour that comes twice is the first one", () =>
   // 02:30 CEST (UTC+2), not 02:30 CET an hour later.
   assert.equal(new Date(twice.start).toISOString(), "2026-10-25T00:30:00.000Z");
   assert.equal(new Date(twice.end).toISOString(), "2026-10-25T02:30:00.000Z");
+  // Also in a zone more than 12 hours ahead of UTC.
+  const nz = parseIcs(ics.replace("UID:a", "UID:nz").replace(/Europe\/Rome:20261025T023000/, "Pacific/Auckland:20260405T023000")
+    .replace(/Europe\/Rome:20261025T033000/, "Pacific/Auckland:20260405T033000"), Date.UTC(2026, 3, 3), Date.UTC(2026, 3, 6));
+  assert.equal(new Date(nz.find((e) => e.title === "Twice").start).toISOString(), "2026-04-04T13:30:00.000Z");
   // An hour the clocks skip still lands on that night.
   const [skipped] = parseIcs(ics, Date.UTC(2026, 2, 28), Date.UTC(2026, 2, 30));
   assert.ok(skipped.start >= Date.UTC(2026, 2, 29, 0) && skipped.start <= Date.UTC(2026, 2, 29, 2), new Date(skipped.start).toISOString());

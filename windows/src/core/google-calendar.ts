@@ -10,7 +10,7 @@
 // whole: a calendar of many years costs what a new one does. Pure but for
 // `get`, so the tests run it against a fake Google.
 
-import type { CalEvent } from "./calendar";
+import { CALENDAR_FAILURES_SHOWN, type CalEvent } from "./calendar";
 import { t } from "../i18n/i18n";
 
 /** A GET to the Calendar API under /calendar/v3; null when not signed in. */
@@ -147,6 +147,8 @@ export class GoogleSync {
   partialError: string | null = null;
   private listedAt = 0;
   private state = new Map<string, CalendarState>();
+  /** Failed reads in a row, by calendar. */
+  private failing = new Map<string, number>();
   private generation = 0;
   private readonly get: GoogleGet;
 
@@ -162,6 +164,7 @@ export class GoogleSync {
     this.partialError = null;
     this.listedAt = 0;
     this.state.clear();
+    this.failing.clear();
   }
 
   /**
@@ -181,23 +184,32 @@ export class GoogleSync {
       }
       const shown = this.calendars.filter((c) => isShown(c, picks)).slice(0, MAX_GOOGLE_CALENDARS);
       for (const id of [...this.state.keys()]) if (!shown.some((c) => c.id === id)) this.state.delete(id);
+      for (const id of [...this.failing.keys()]) if (!shown.some((c) => c.id === id)) this.failing.delete(id);
       const all: CalEvent[][] = [];
+      const read: string[] = [];
       let failed: unknown = null;
       let failures = 0;
       for (const cal of shown) {
         try {
           all.push(await this.events(cal.id, now, generation));
+          this.failing.delete(cal.id);
+          read.push(cal.id);
         } catch (err) {
           if (err instanceof NotSignedIn || err instanceof Superseded) throw err;
           // A calendar removed meanwhile answers 404: the list is read again next time.
           this.listedAt = 0;
           failed ??= err;
           failures++;
-          all.push(this.state.get(cal.id)?.events ?? []);
+          // Its last events stay for a passing failure; once it keeps failing they go, rather than show stale.
+          const inARow = (this.failing.get(cal.id) ?? 0) + 1;
+          this.failing.set(cal.id, inARow);
+          const kept = inARow < CALENDAR_FAILURES_SHOWN ? this.state.get(cal.id)?.events : undefined;
+          all.push(kept ?? []);
+          if (kept) read.push(cal.id);
         }
       }
       if (failures > 0 && failures === shown.length) throw failed;
-      this.readIds = shown.map((c) => c.id);
+      this.readIds = read;
       this.partialError = failed == null ? null : String(failed).replace(/^Error:\s*/, "");
       return mergeEvents(...all);
     } catch (err) {

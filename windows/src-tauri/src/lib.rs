@@ -1191,6 +1191,7 @@ fn secret_changed(app: &AppHandle, key: &str) {
     }
     if key == google_calendar::CLIENT_ID_KEY || key == google_calendar::CLIENT_SECRET_KEY {
         google_calendar::client_changed();
+        let _ = app.emit_to(island::WINDOW_LABEL, google_calendar::CHANGED_EVENT, ());
     }
 }
 

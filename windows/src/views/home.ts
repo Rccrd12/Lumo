@@ -738,13 +738,14 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       const coming = comingEvents(data.calendar.events, now);
       if (calendarTimer != null) clearTimeout(calendarTimer);
       calendarTimer = null;
-      // Only while the home is on the page: nothing wakes for a hidden island.
-      if (tiles.includes("calendar") && coming.length && el.isConnected) {
+      // Only while the home is open on screen: nothing wakes for a hidden or closed island.
+      const onScreen = () => el.isConnected && State.mode === "expanded" && State.view === "home";
+      if (tiles.includes("calendar") && coming.length && onScreen()) {
         const midnight = new Date(now).setHours(24, 0, 0, 0);
         const at = Math.min(midnight, ...coming.slice(0, 2).map((e) => e.end));
         calendarTimer = setTimeout(() => {
           calendarTimer = null;
-          if (el.isConnected) State.notify();
+          if (onScreen()) State.notify();
         }, Math.max(1_000, at - now + 500));
       }
       const rk = [

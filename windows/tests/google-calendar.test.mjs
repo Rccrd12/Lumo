@@ -208,6 +208,7 @@ test("one calendar that fails keeps its last events and lets the others go on; a
   const events = await sync.refresh({}, NOW + 60_000);
   assert.deepEqual(events.map((e) => e.title), ["Lezione spostata", "Esame"]);
   assert.match(sync.partialError, /500/);
+  assert.ok(sync.readIds.includes("uni@group.calendar.google.com"));
   // Once it answers again, the change it missed is read then.
   g.failing.clear();
   g.asked = [];
@@ -219,6 +220,19 @@ test("one calendar that fails keeps its last events and lets the others go on; a
   g.changed["me@gmail.com"].push({ updated: iso(NOW + 150_000) });
   g.changed["uni@group.calendar.google.com"].push({ updated: iso(NOW + 150_000) });
   await assert.rejects(sync.refresh({}, NOW + 180_000), /500/);
+});
+
+test("a calendar that keeps failing drops its stale events, and no longer counts as read", async () => {
+  const g = fakeGoogle();
+  const sync = new GoogleSync(g.get);
+  await sync.refresh({}, NOW);
+  g.failing.add("uni@group.calendar.google.com");
+  for (let i = 1; i <= 3; i++) {
+    g.changed["uni@group.calendar.google.com"] = [{ updated: iso(NOW + i * 60_000 - 1_000) }];
+    const events = await sync.refresh({}, NOW + i * 60_000);
+    assert.equal(events.some((e) => e.title === "Esame"), i < 3, `refresh ${i}`);
+  }
+  assert.deepEqual(sync.readIds, ["me@gmail.com"]);
 });
 
 test("a change whose next-days read failed is read at the next look, not half an hour later", async () => {
