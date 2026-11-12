@@ -46,7 +46,7 @@ pub fn available(app: &AppHandle, source: &str, target: &str) -> Result<(), Stri
     match source {
         "email" => pill_on("integration_mail"),
         "service" if target == "calendar" => {
-            if secrets::present(crate::calendar::URL_KEY) {
+            if secrets::present(crate::calendar::URL_KEY) || secrets::present(crate::google_calendar::REFRESH_KEY) {
                 Ok(())
             } else {
                 Err("needs:calendar".into())

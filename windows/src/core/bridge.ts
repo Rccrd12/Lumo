@@ -593,6 +593,8 @@ export const Bridge = {
   mediaControl: (action: "toggle" | "next" | "previous") => call<boolean>("media_control", { action }),
   /** The live activities' calendar file (calendar.rs), or null when no address is set. */
   calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
+  /** The Google calendar the iCal address reads, when it is one of Google Calendar's (never the address). */
+  calendarGoogleId: () => call<string | null>("calendar_google_id"),
   /** Google Calendar with the user's account (google_calendar.rs): what is stored, and whether a sign-in waits. */
   googleCalendarStatus: () => call<GoogleCalendarStatus>("google_calendar_status"),
   /** Opens Google's sign-in in the browser; resolves once Google gave its permission. */
@@ -601,7 +603,7 @@ export const Bridge = {
   googleCalendarCancel: () => call<void>("google_calendar_cancel"),
   /** Forgets the account: Google is told, the client and the permission leave the credential store. */
   googleCalendarSignOut: () => callOrThrow<void>("google_calendar_sign_out"),
-  /** A GET to the Calendar API (the calendar list or a calendar's events); null when not signed in. */
+  /** A GET to the Calendar API (the calendar list or a calendar's events); null when not signed in; throws "paused" while Lumo is paused. */
   googleCalendarGet: (path: string, query: [string, string][] = []) =>
     callOrThrow<{ status: number; body: unknown } | null>("google_calendar_get", { path, query }),
 

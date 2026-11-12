@@ -58,6 +58,14 @@ static NEEDS_SIGN_IN: AtomicBool = AtomicBool::new(false);
 /// A sign-in waiting for the browser, and the Cancel that ends it.
 static SIGNING_IN: AtomicBool = AtomicBool::new(false);
 static CANCEL: AtomicBool = AtomicBool::new(false);
+/// Google asked to wait (429, or a rate limit's 403): nothing is asked before then.
+static NOT_BEFORE: Mutex<Option<Instant>> = Mutex::new(None);
+/// How long Lumo waits after Google limits the requests, unless it says how long.
+const LIMITED_WAIT: Duration = Duration::from_secs(5 * 60);
+const LIMITED_WAIT_MAX: Duration = Duration::from_secs(60 * 60);
+/// What `google_calendar_get` answers while Lumo is paused: not an error to
+/// show, nor "signed out" (which would forget what was read).
+const PAUSED_ANSWER: &str = "paused";
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -67,9 +75,23 @@ fn sign_in_again() -> String {
     t("Google closed Lumo's access: sign in again in Settings → Island.")
 }
 
-/// The client's ID or secret changed in Settings: the token they gave goes.
+/// The client's ID or secret changed in Settings: the token they gave goes,
+/// and the new client is tried (a refused one may have been the cause).
 pub fn client_changed() {
     *lock(&ACCESS) = None;
+    NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
+    *lock(&NOT_BEFORE) = None;
+}
+
+fn limited() -> String {
+    t("Too many requests: Google asks Lumo to wait. He tries again later.")
+}
+
+/// Google limits the requests: wait what it says (Retry-After, in seconds), else five minutes.
+fn limited_wait(header: Option<&str>) -> Duration {
+    header
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map_or(LIMITED_WAIT, |s| Duration::from_secs(s).clamp(LIMITED_WAIT, LIMITED_WAIT_MAX))
 }
 
 #[derive(Serialize)]
@@ -110,6 +132,7 @@ pub async fn google_calendar_sign_in(app: AppHandle) -> Result<(), String> {
     SIGNING_IN.store(false, Ordering::SeqCst);
     if result.is_ok() {
         NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
+        *lock(&NOT_BEFORE) = None;
         let _ = app.emit_to(crate::island::WINDOW_LABEL, "calendar-changed", ());
     }
     result
@@ -136,6 +159,7 @@ pub async fn google_calendar_sign_out(app: AppHandle) -> Result<(), String> {
     }
     *lock(&ACCESS) = None;
     NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
+    *lock(&NOT_BEFORE) = None;
     for key in [REFRESH_KEY, CLIENT_ID_KEY, CLIENT_SECRET_KEY] {
         secrets::clear(key)?;
     }
@@ -150,13 +174,19 @@ pub struct Answer {
 }
 
 /// A GET to the Calendar API: `path` under /calendar/v3, only the calendar
-/// list or a calendar's events. Null when not signed in (or Lumo is paused).
-/// A 410 comes back as an answer: the `updatedMin` is too long ago, and the
-/// page reads that calendar's next days again.
+/// list or a calendar's events. Null when not signed in; the error "paused"
+/// while Lumo is paused. A 410 comes back as an answer: the `updatedMin` is
+/// too long ago, and the page reads that calendar's next days again.
 #[tauri::command]
 pub async fn google_calendar_get(path: String, query: Vec<(String, String)>) -> Result<Option<Answer>, String> {
-    if crate::integrations::PAUSED.load(Ordering::Relaxed) || !secrets::present(REFRESH_KEY) {
+    if crate::integrations::PAUSED.load(Ordering::Relaxed) {
+        return Err(PAUSED_ANSWER.to_string());
+    }
+    if !secrets::present(REFRESH_KEY) {
         return Ok(None);
+    }
+    if lock(&NOT_BEFORE).is_some_and(|at| Instant::now() < at) {
+        return Err(limited());
     }
     let url = api_url(&path, &query)?;
     let client = net::client(&url, API_TIMEOUT)?;
@@ -167,10 +197,16 @@ pub async fn google_calendar_get(path: String, query: Vec<(String, String)>) -> 
         response = send(&client, &url, &access_token().await?).await?;
     }
     let status = response.status();
+    let retry_after = response.headers().get(reqwest::header::RETRY_AFTER).and_then(|v| v.to_str().ok()).map(str::to_owned);
     let body = net::read_capped(response, net::MAX_BODY).await?;
     if status.is_success() || status == StatusCode::GONE {
+        // Google answered with this token: whatever refused one before no longer holds.
+        NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
         let body = serde_json::from_slice(&body).unwrap_or(Value::Null);
         return Ok(Some(Answer { status: status.as_u16(), body }));
+    }
+    if rate_limited(status, &error_reason(&body)) {
+        *lock(&NOT_BEFORE) = Some(Instant::now() + limited_wait(retry_after.as_deref()));
     }
     Err(api_error(status, &body))
 }
@@ -178,8 +214,7 @@ pub async fn google_calendar_get(path: String, query: Vec<(String, String)>) -> 
 /// Waits between tries: a request that fails right after the computer wakes,
 /// or while the network changes, mostly succeeds a few seconds later.
 const RETRY_WAITS: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(5)];
-/// A calendar's first read lists all its events (for the token at the end),
-/// which Google may take a while to answer for a calendar of many years.
+/// Google may take a while to answer for a calendar with many events in its next days.
 const API_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// The GET, tried again after a lost connection or a timeout.
@@ -212,15 +247,30 @@ fn network_error(url: &Url, err: reqwest::Error) -> String {
     tf("Network error: {error}", &[("error", shown.as_str())])
 }
 
+/// Google's reason for a refused request ("rateLimitExceeded", "accessNotConfigured"…).
+fn error_reason(body: &[u8]) -> String {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|v| v.pointer("/error/errors/0/reason").and_then(Value::as_str).map(str::to_owned))
+        .unwrap_or_default()
+}
+
+/// Google limits the requests: 429, or a 403 with one of its limit reasons
+/// (rateLimitExceeded, userRateLimitExceeded, dailyLimitExceeded, quotaExceeded).
+fn rate_limited(status: StatusCode, reason: &str) -> bool {
+    let reason = reason.to_ascii_lowercase();
+    status == StatusCode::TOO_MANY_REQUESTS
+        || reason.contains("ratelimitexceeded")
+        || reason == "dailylimitexceeded"
+        || reason == "quotaexceeded"
+}
+
 /// What a refused request says. Google answers 403 with a reason when it
 /// limits the requests, and when the Calendar API is off in the user's project.
 fn api_error(status: StatusCode, body: &[u8]) -> String {
-    let reason = serde_json::from_slice::<Value>(body)
-        .ok()
-        .and_then(|v| v.pointer("/error/errors/0/reason").and_then(Value::as_str).map(str::to_owned))
-        .unwrap_or_default();
-    if status == StatusCode::TOO_MANY_REQUESTS || reason.contains("RateLimitExceeded") || reason == "quotaExceeded" {
-        return t("Too many requests: Google asks Lumo to wait. He tries again later.");
+    let reason = error_reason(body);
+    if rate_limited(status, &reason) {
+        return limited();
     }
     if reason == "accessNotConfigured" {
         return t("The Google Calendar API is off in your Google Cloud project: turn it on there.");
@@ -254,12 +304,16 @@ fn api_url(path: &str, query: &[(String, String)]) -> Result<Url, String> {
 }
 
 /// A token for the API: the one in memory while it lasts, else a new one
-/// from the refresh token.
+/// from the refresh token. Once Google refused that, it is not sent again:
+/// only a sign-in (or a new client) helps.
 async fn access_token() -> Result<String, String> {
     if let Some((token, until)) = lock(&ACCESS).as_ref() {
         if Instant::now() + TOKEN_MARGIN < *until {
             return Ok(token.clone());
         }
+    }
+    if NEEDS_SIGN_IN.load(Ordering::SeqCst) {
+        return Err(sign_in_again());
     }
     let (Some(refresh), Some(client_id), Some(client_secret)) =
         (secrets::get(REFRESH_KEY), secrets::get(CLIENT_ID_KEY), secrets::get(CLIENT_SECRET_KEY))
@@ -281,7 +335,11 @@ async fn access_token() -> Result<String, String> {
             Ok(value)
         }
         Err(TokenError::Refused) => {
-            NEEDS_SIGN_IN.store(true, Ordering::SeqCst);
+            // Only if it is still the permission that was sent: a sign-in may
+            // have stored a new one while this request was on its way.
+            if secrets::get(REFRESH_KEY).as_deref() == Some(refresh.as_str()) {
+                NEEDS_SIGN_IN.store(true, Ordering::SeqCst);
+            }
             Err(sign_in_again())
         }
         Err(TokenError::Other(message)) => Err(message),
@@ -304,7 +362,18 @@ enum TokenError {
 async fn token_request(form: &[(&str, &str)]) -> Result<Token, TokenError> {
     let url = Url::parse(TOKEN_URL).map_err(|e| TokenError::Other(e.to_string()))?;
     let client = net::client(&url, Duration::from_secs(20)).map_err(TokenError::Other)?;
-    let response = client.post(url.clone()).form(form).send().await.map_err(|e| TokenError::Other(network_error(&url, e)))?;
+    // Tried again like the API's GETs: it is the first request after Lumo
+    // starts or the computer wakes. A lost request changes nothing at Google.
+    let mut waits = RETRY_WAITS.iter();
+    let response = loop {
+        match client.post(url.clone()).form(form).send().await {
+            Ok(response) => break response,
+            Err(err) => match waits.next() {
+                Some(wait) => tokio::time::sleep(*wait).await,
+                None => return Err(TokenError::Other(network_error(&url, err))),
+            },
+        }
+    };
     let status = response.status();
     let body = net::read_capped(response, net::MAX_ERROR_BODY).await.map_err(TokenError::Other)?;
     let value: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
@@ -312,6 +381,13 @@ async fn token_request(form: &[(&str, &str)]) -> Result<Token, TokenError> {
         let code = value.get("error").and_then(Value::as_str).unwrap_or("");
         if matches!(code, "invalid_grant" | "invalid_client" | "unauthorized_client") {
             return Err(TokenError::Refused);
+        }
+        // Google busy or limiting: nothing to do with the permission.
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            return Err(TokenError::Other(limited()));
+        }
+        if status.is_server_error() {
+            return Err(TokenError::Other(tf("Google Calendar answered {code}.", &[("code", status.as_str())])));
         }
         return Err(TokenError::Other(tf("Google refused the sign-in ({code}).", &[("code", status.as_str())])));
     }
@@ -341,15 +417,27 @@ async fn sign_in(client_id: &str, client_secret: &str) -> Result<(), String> {
     let auth = auth_url(client_id, &redirect, &challenge(&verifier), &state);
     crate::platform::open_url(auth.as_str());
 
-    let code = wait_for_code(&listener, &state).await?;
+    let (code, mut stream) = wait_for_code(&listener, &state).await?;
     drop(listener);
 
+    // The browser waits for the page until the exchange is done, so that it
+    // says what really happened.
+    let result = exchange(client_id, client_secret, &code, &verifier, &redirect).await;
+    match &result {
+        Ok(()) => answer(&mut stream, "200 OK", &t("Done: Lumo can read your calendar."), &t("You can close this tab.")).await,
+        Err(message) => answer(&mut stream, "200 OK", &t("Lumo did not get access to the calendar."), message).await,
+    }
+    result
+}
+
+/// The code for the permission, kept once both scopes and a lasting permission came with it.
+async fn exchange(client_id: &str, client_secret: &str, code: &str, verifier: &str, redirect: &str) -> Result<(), String> {
     let token = token_request(&[
         ("client_id", client_id),
         ("client_secret", client_secret),
-        ("code", code.as_str()),
-        ("code_verifier", verifier.as_str()),
-        ("redirect_uri", redirect.as_str()),
+        ("code", code),
+        ("code_verifier", verifier),
+        ("redirect_uri", redirect),
         ("grant_type", "authorization_code"),
     ])
     .await
@@ -441,7 +529,8 @@ fn request_target(head: &str) -> Option<&str> {
     parts.next()
 }
 
-async fn wait_for_code(listener: &TcpListener, state: &str) -> Result<String, String> {
+/// The code, and the browser's connection, answered once the code is exchanged.
+async fn wait_for_code(listener: &TcpListener, state: &str) -> Result<(String, TcpStream), String> {
     let deadline = Instant::now() + SIGN_IN_WAIT;
     loop {
         if CANCEL.load(Ordering::SeqCst) {
@@ -456,10 +545,7 @@ async fn wait_for_code(listener: &TcpListener, state: &str) -> Result<String, St
         };
         let head = read_head(&mut stream).await.unwrap_or_default();
         match request_target(&head).map(|target| read_callback(target, state)) {
-            Some(Callback::Code(code)) => {
-                answer(&mut stream, "200 OK", &t("Done: Lumo can read your calendar."), &t("You can close this tab.")).await;
-                return Ok(code);
-            }
+            Some(Callback::Code(code)) => return Ok((code, stream)),
             Some(Callback::Refused(error)) => {
                 answer(&mut stream, "200 OK", &t("Lumo did not get access to the calendar."), &t("You can close this tab.")).await;
                 return Err(if error == "access_denied" {
@@ -515,6 +601,27 @@ h1{{font-size:19px;font-weight:600;margin:0 0 6px}}p{{color:#9398a1;margin:0}}</
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_rate_limit_is_a_wait_not_a_sign_in() {
+        for reason in ["rateLimitExceeded", "userRateLimitExceeded", "dailyLimitExceeded", "quotaExceeded"] {
+            assert!(rate_limited(StatusCode::FORBIDDEN, reason), "{reason}");
+            let body = format!(r#"{{"error":{{"errors":[{{"reason":"{reason}"}}]}}}}"#);
+            assert_eq!(api_error(StatusCode::FORBIDDEN, body.as_bytes()), limited());
+        }
+        assert!(rate_limited(StatusCode::TOO_MANY_REQUESTS, ""));
+        assert!(!rate_limited(StatusCode::FORBIDDEN, "forbidden"));
+        assert_eq!(api_error(StatusCode::FORBIDDEN, b"{}"), sign_in_again());
+    }
+
+    #[test]
+    fn a_limit_waits_what_google_says_within_bounds() {
+        assert_eq!(limited_wait(None), LIMITED_WAIT);
+        assert_eq!(limited_wait(Some("nonsense")), LIMITED_WAIT);
+        assert_eq!(limited_wait(Some("10")), LIMITED_WAIT);
+        assert_eq!(limited_wait(Some("900")), Duration::from_secs(900));
+        assert_eq!(limited_wait(Some("999999")), LIMITED_WAIT_MAX);
+    }
 
     #[test]
     fn only_the_calendar_list_and_events_can_be_asked() {

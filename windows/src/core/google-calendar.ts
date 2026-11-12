@@ -11,6 +11,7 @@
 // `get`, so the tests run it against a fake Google.
 
 import type { CalEvent } from "./calendar";
+import { t } from "../i18n/i18n";
 
 /** A GET to the Calendar API under /calendar/v3; null when not signed in. */
 export type GoogleGet = (path: string, query: [string, string][]) => Promise<{ status: number; body: unknown } | null>;
@@ -88,6 +89,8 @@ function when(v: unknown): { time: number; allDay: boolean } | null {
 export function googleEvent(raw: unknown): CalEvent | null {
   const e = obj(raw);
   if (e.status === "cancelled") return null;
+  // Where the user works today ("Home", "Office"): a mark on the day in Google Calendar, not an event.
+  if (e.eventType === "workingLocation") return null;
   const start = when(e.start);
   if (!start) return null;
   const end = when(e.end)?.time ?? start.time + (start.allDay ? DAY : 0);
@@ -100,12 +103,16 @@ export function googleEvent(raw: unknown): CalEvent | null {
   };
 }
 
-/** The events of every source, soonest first, each once (the same calendar may come both from Google and from its iCal address). */
+/**
+ * The events of every source, soonest first, each once: the same invitation
+ * in two calendars, or one calendar from Google and from its iCal address.
+ * Two events alike in all the island shows are one.
+ */
 export function mergeEvents(...lists: CalEvent[][]): CalEvent[] {
   const seen = new Set<string>();
   const out: CalEvent[] = [];
   for (const e of lists.flat()) {
-    const key = `${e.start}\u0000${e.allDay}\u0000${e.title}`;
+    const key = [e.start, e.end, e.allDay, e.title, e.location].join("\u0000");
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(e);
@@ -123,51 +130,86 @@ interface CalendarState {
   events: CalEvent[];
   windowAt: number;
   windowDay: string;
+  /** A change was seen but the next days were not read since (that read failed): read them next time. */
+  dirty: boolean;
 }
 
 /** Signed out, or Google answered null: nothing to read. */
 class NotSignedIn extends Error {}
+/** reset() came while a refresh was on its way: what it read is the old account's. */
+class Superseded extends Error {}
 
 export class GoogleSync {
   calendars: GoogleCalendarInfo[] = [];
+  /** The calendars the last refresh read (the island leaves their iCal copy out). */
+  readIds: string[] = [];
+  /** Why some calendars could not be read in the last refresh, while others were (their last events stay). */
+  partialError: string | null = null;
   private listedAt = 0;
   private state = new Map<string, CalendarState>();
+  private generation = 0;
   private readonly get: GoogleGet;
 
   constructor(get: GoogleGet) {
     this.get = get;
   }
 
-  /** A new account, or signed out: everything is read again. */
+  /** A new account, or signed out: everything is read again, and a refresh on its way is not kept. */
   reset() {
+    this.generation++;
     this.calendars = [];
+    this.readIds = [];
+    this.partialError = null;
     this.listedAt = 0;
     this.state.clear();
   }
 
-  /** The shown calendars' events from a day ago to 8 days ahead; null when not signed in. */
+  /**
+   * The shown calendars' events from a day ago to 8 days ahead; null when not
+   * signed in, or when reset() came meanwhile. A calendar that fails keeps
+   * its last events (and says why in `partialError`); only when all fail
+   * does it throw.
+   */
   async refresh(picks: Record<string, boolean> | undefined, now = Date.now()): Promise<CalEvent[] | null> {
+    const generation = this.generation;
     try {
       if (!this.calendars.length || now - this.listedAt > LIST_EVERY_MS) {
-        this.calendars = await this.list();
+        const calendars = await this.list();
+        this.check(generation);
+        this.calendars = calendars;
         this.listedAt = now;
       }
       const shown = this.calendars.filter((c) => isShown(c, picks)).slice(0, MAX_GOOGLE_CALENDARS);
       for (const id of [...this.state.keys()]) if (!shown.some((c) => c.id === id)) this.state.delete(id);
       const all: CalEvent[][] = [];
-      for (const cal of shown) all.push(await this.events(cal.id, now));
+      let failed: unknown = null;
+      let failures = 0;
+      for (const cal of shown) {
+        try {
+          all.push(await this.events(cal.id, now, generation));
+        } catch (err) {
+          if (err instanceof NotSignedIn || err instanceof Superseded) throw err;
+          // A calendar removed meanwhile answers 404: the list is read again next time.
+          this.listedAt = 0;
+          failed ??= err;
+          failures++;
+          all.push(this.state.get(cal.id)?.events ?? []);
+        }
+      }
+      if (failures > 0 && failures === shown.length) throw failed;
+      this.readIds = shown.map((c) => c.id);
+      this.partialError = failed == null ? null : String(failed).replace(/^Error:\s*/, "");
       return mergeEvents(...all);
     } catch (err) {
+      if (err instanceof Superseded) return null;
       if (err instanceof NotSignedIn) {
-        this.reset();
+        if (generation === this.generation) this.reset();
         return null;
       }
-      // A calendar removed meanwhile answers 404: the list is read again next time.
       this.listedAt = 0;
       throw err;
     }
   }
-
   /** The account's calendars (Settings lists them to pick from). */
   async list(): Promise<GoogleCalendarInfo[]> {
     const items: unknown[] = [];
@@ -186,35 +228,56 @@ export class GoogleSync {
     return readCalendarList(items);
   }
 
+  /** Throws when reset() came since `generation`: nothing read before it is kept. */
+  private check(generation: number) {
+    if (generation !== this.generation) throw new Superseded();
+  }
+
   private async ask(path: string, query: [string, string][], allowGone = false): Promise<Json & { gone?: true }> {
     const answer = await this.get(path, query);
     if (answer == null) throw new NotSignedIn();
     if (answer.status === 410) {
       if (allowGone) return { gone: true };
-      throw new Error("Google Calendar answered 410.");
+      throw new Error(t("Google Calendar answered {code}.", { code: "410" }));
     }
     return obj(answer.body);
   }
 
-  private async events(id: string, now: number): Promise<CalEvent[]> {
+  private async events(id: string, now: number, generation: number): Promise<CalEvent[]> {
     const path = `/calendars/${encodeURIComponent(id)}/events`;
     const known = this.state.get(id);
-    const s: CalendarState = known ?? { askedAt: now, newest: "", events: [], windowAt: 0, windowDay: "" };
+    // A copy: kept only once all of it was read (a failure part-way leaves the last good one).
+    const s: CalendarState = known
+      ? { ...known }
+      : { askedAt: now, newest: "", events: [], windowAt: 0, windowDay: "", dirty: true };
     // A calendar new to Lumo is read at once; its first look only learns how recent its last change is.
     const changed = await this.changedSince(path, s, now);
-    if (!known || changed || now - s.windowAt > WINDOW_EVERY_MS || dayKey(now) !== s.windowDay) {
-      const body = await this.ask(path, [
-        ["singleEvents", "true"],
-        ["orderBy", "startTime"],
-        ["timeMin", new Date(now - DAY).toISOString()],
-        ["timeMax", new Date(now + 8 * DAY).toISOString()],
-        ["maxResults", "250"],
-        ["fields", "items(status,summary,location,start,end)"],
-      ]);
-      const items = Array.isArray(body.items) ? body.items : [];
+    this.check(generation);
+    if (changed) s.dirty = true;
+    if (s.dirty || now - s.windowAt > WINDOW_EVERY_MS || dayKey(now) !== s.windowDay) {
+      const items: unknown[] = [];
+      let page = "";
+      for (let i = 0; i < MAX_PAGES; i++) {
+        const query: [string, string][] = [
+          ["singleEvents", "true"],
+          ["orderBy", "startTime"],
+          ["timeMin", new Date(now - DAY).toISOString()],
+          ["timeMax", new Date(now + 8 * DAY).toISOString()],
+          ["maxResults", "250"],
+          ["fields", "items(status,eventType,summary,location,start,end),nextPageToken"],
+        ];
+        if (page) query.push(["pageToken", page]);
+        const body = await this.ask(path, query);
+        this.check(generation);
+        items.push(...(Array.isArray(body.items) ? body.items : []));
+        // Google may answer fewer than asked, or none, and still have more.
+        page = str(body.nextPageToken);
+        if (!page) break;
+      }
       s.events = items.map(googleEvent).filter((e): e is CalEvent => e != null && e.end > now - DAY);
       s.windowAt = now;
       s.windowDay = dayKey(now);
+      s.dirty = false;
     }
     this.state.set(id, s);
     return s.events;

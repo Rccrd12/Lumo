@@ -18395,17 +18395,17 @@
    "id": "Lumo tidak mendapat akses ke kalender.",
    "it": "Lumo non ha ottenuto l'accesso al calendario."
   },
-  "Sign in with your Google account: Lumo reads your calendars without changing them, and sees a new event within a minute. The client and the access stay in the {store}, and Lumo talks only to Google.": {
-   "zh-Hans": "使用你的 Google 账号登录：Lumo 只读取你的日历而不做更改，一分钟内就能看到新活动。客户端和访问权限保存在 {store} 中，Lumo 只与 Google 通信。",
-   "hi": "अपने Google खाते से साइन इन करें: Lumo आपके कैलेंडर बिना बदले पढ़ता है, और नया इवेंट एक मिनट के भीतर देख लेता है। क्लाइंट और पहुँच {store} में रहते हैं, और Lumo सिर्फ़ Google से बात करता है।",
-   "es": "Inicia sesión con tu cuenta de Google: Lumo lee tus calendarios sin cambiarlos y ve un evento nuevo en menos de un minuto. El cliente y el acceso se quedan en {store}, y Lumo solo habla con Google.",
-   "ar": "سجّل الدخول بحساب Google: يقرأ Lumo تقاويمك دون تغييرها، ويرى أي حدث جديد خلال دقيقة. يبقى العميل والوصول في {store}، ولا يتواصل Lumo إلا مع Google.",
-   "fr": "Connectez-vous avec votre compte Google : Lumo lit vos calendriers sans les modifier et voit un nouvel événement en moins d'une minute. Le client et l'accès restent dans {store}, et Lumo ne parle qu'à Google.",
-   "bn": "আপনার Google অ্যাকাউন্ট দিয়ে সাইন ইন করুন: Lumo আপনার ক্যালেন্ডার না বদলে পড়ে, আর নতুন ইভেন্ট এক মিনিটের মধ্যে দেখে। ক্লায়েন্ট ও অ্যাক্সেস {store}-এ থাকে, আর Lumo শুধু Google-এর সঙ্গে কথা বলে।",
-   "pt-BR": "Entre com sua conta Google: o Lumo lê suas agendas sem alterá-las e vê um evento novo em até um minuto. O cliente e o acesso ficam no {store}, e o Lumo só fala com o Google.",
-   "ru": "Войдите с аккаунтом Google: Lumo читает ваши календари, ничего не меняя, и видит новое событие в течение минуты. Клиент и доступ хранятся в {store}, и Lumo общается только с Google.",
-   "id": "Masuk dengan akun Google Anda: Lumo membaca kalender Anda tanpa mengubahnya, dan melihat acara baru dalam satu menit. Klien dan aksesnya disimpan di {store}, dan Lumo hanya berbicara dengan Google.",
-   "it": "Accedi con il tuo account Google: Lumo legge i tuoi calendari senza cambiarli e vede un evento nuovo entro un minuto. Il client e l'accesso restano in {store}, e Lumo parla solo con Google."
+  "Sign in with your Google account: Lumo reads your calendars without changing them, and sees a new event within a minute (within 15 while saving energy). The client and the access stay in the {store}, and Lumo talks only to Google.": {
+   "zh-Hans": "使用你的 Google 账号登录：Lumo 只读取你的日历而不做更改，一分钟内就能看到新活动（节能时为 15 分钟内）。客户端和访问权限保存在 {store} 中，Lumo 只与 Google 通信。",
+   "hi": "अपने Google खाते से साइन इन करें: Lumo आपके कैलेंडर बिना बदले पढ़ता है, और नया इवेंट एक मिनट के भीतर देख लेता है (ऊर्जा बचत में 15 मिनट के भीतर)। क्लाइंट और पहुँच {store} में रहते हैं, और Lumo सिर्फ़ Google से बात करता है।",
+   "es": "Inicia sesión con tu cuenta de Google: Lumo lee tus calendarios sin cambiarlos y ve un evento nuevo en menos de un minuto (en menos de 15 al ahorrar energía). El cliente y el acceso se quedan en {store}, y Lumo solo habla con Google.",
+   "ar": "سجّل الدخول بحساب Google: يقرأ Lumo تقاويمك دون تغييرها، ويرى أي حدث جديد خلال دقيقة (خلال 15 دقيقة عند توفير الطاقة). يبقى العميل والوصول في {store}، ولا يتواصل Lumo إلا مع Google.",
+   "fr": "Connectez-vous avec votre compte Google : Lumo lit vos calendriers sans les modifier et voit un nouvel événement en moins d'une minute (en moins de 15 en économie d'énergie). Le client et l'accès restent dans {store}, et Lumo ne parle qu'à Google.",
+   "bn": "আপনার Google অ্যাকাউন্ট দিয়ে সাইন ইন করুন: Lumo আপনার ক্যালেন্ডার না বদলে পড়ে, আর নতুন ইভেন্ট এক মিনিটের মধ্যে দেখে (শক্তি সাশ্রয়ে ১৫ মিনিটের মধ্যে)। ক্লায়েন্ট ও অ্যাক্সেস {store}-এ থাকে, আর Lumo শুধু Google-এর সঙ্গে কথা বলে।",
+   "pt-BR": "Entre com sua conta Google: o Lumo lê suas agendas sem alterá-las e vê um evento novo em até um minuto (em até 15 ao economizar energia). O cliente e o acesso ficam no {store}, e o Lumo só fala com o Google.",
+   "ru": "Войдите с аккаунтом Google: Lumo читает ваши календари, ничего не меняя, и видит новое событие в течение минуты (в течение 15 в режиме экономии энергии). Клиент и доступ хранятся в {store}, и Lumo общается только с Google.",
+   "id": "Masuk dengan akun Google Anda: Lumo membaca kalender Anda tanpa mengubahnya, dan melihat acara baru dalam satu menit (dalam 15 menit saat hemat energi). Klien dan aksesnya disimpan di {store}, dan Lumo hanya berbicara dengan Google.",
+   "it": "Accedi con il tuo account Google: Lumo legge i tuoi calendari senza cambiarli e vede un evento nuovo entro un minuto (entro 15 in risparmio energetico). Il client e l'accesso restano in {store}, e Lumo parla solo con Google."
   },
   "Once only: your own Google client (free, about 10 minutes)": {
    "zh-Hans": "只需一次：你自己的 Google 客户端（免费，约 10 分钟）",
@@ -18598,6 +18598,30 @@
    "ru": "Google пишет redirect_uri_mismatch? Клиент не типа «Приложение для ПК»: создайте клиент этого типа, вставьте его ID и секрет и войдите снова.",
    "id": "Google menampilkan redirect_uri_mismatch? Kliennya bukan Aplikasi desktop: buat klien jenis itu, tempel ID dan rahasianya, lalu masuk lagi.",
    "it": "Google dice redirect_uri_mismatch? Il client non è un'App desktop: creane uno di quel tipo, incolla ID e segreto e accedi di nuovo."
+  },
+  "Google says it hasn't verified the app? It is your own client: choose Advanced, then go to your project.": {
+   "zh-Hans": "Google 提示它尚未验证此应用？这是你自己的客户端：选择“高级”，然后前往你的项目。",
+   "hi": "Google कह रहा है कि उसने ऐप सत्यापित नहीं किया? यह आपका अपना क्लाइंट है: Advanced चुनें, फिर अपने प्रोजेक्ट पर जाएँ।",
+   "es": "¿Google dice que no ha verificado la aplicación? Es tu propio cliente: elige Configuración avanzada y luego ve a tu proyecto.",
+   "ar": "هل تقول Google إنها لم تتحقق من التطبيق؟ إنه عميلك الخاص: اختر «متقدم»، ثم انتقل إلى مشروعك.",
+   "fr": "Google dit ne pas avoir validé l'application ? C'est votre propre client : choisissez Paramètres avancés, puis accédez à votre projet.",
+   "bn": "Google বলছে অ্যাপটি যাচাই করা হয়নি? এটি আপনার নিজের ক্লায়েন্ট: Advanced বেছে নিন, তারপর আপনার প্রজেক্টে যান।",
+   "pt-BR": "O Google diz que não verificou o app? É o seu próprio cliente: escolha Avançado e depois acesse o seu projeto.",
+   "ru": "Google сообщает, что не проверял приложение? Это ваш собственный клиент: нажмите «Дополнительные настройки», затем перейдите к своему проекту.",
+   "id": "Google bilang belum memverifikasi aplikasinya? Itu klien Anda sendiri: pilih Lanjutan, lalu buka proyek Anda.",
+   "it": "Google dice di non aver verificato l'app? È il tuo client: scegli Avanzate, poi vai al tuo progetto."
+  },
+  "The island reads at most {max} calendars: turn off the ones you don't need.": {
+   "zh-Hans": "岛最多读取 {max} 个日历：请关闭不需要的日历。",
+   "hi": "आइलैंड ज़्यादा से ज़्यादा {max} कैलेंडर पढ़ता है: जिनकी ज़रूरत नहीं, उन्हें बंद करें।",
+   "es": "La isla lee como máximo {max} calendarios: desactiva los que no necesites.",
+   "ar": "يقرأ الشريط {max} تقويمًا على الأكثر: أوقف ما لا تحتاج إليه.",
+   "fr": "L'île lit au plus {max} calendriers : désactivez ceux dont vous n'avez pas besoin.",
+   "bn": "আইল্যান্ড সর্বোচ্চ {max}টি ক্যালেন্ডার পড়ে: যেগুলো লাগবে না সেগুলো বন্ধ করুন।",
+   "pt-BR": "A ilha lê no máximo {max} agendas: desative as que você não precisa.",
+   "ru": "Остров читает не больше {max} календарей: отключите ненужные.",
+   "id": "Pulau membaca paling banyak {max} kalender: matikan yang tidak Anda perlukan.",
+   "it": "L'isola legge al massimo {max} calendari: spegni quelli che non ti servono."
   }
  }
 }

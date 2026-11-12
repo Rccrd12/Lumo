@@ -240,17 +240,23 @@ client (free, made once in Google Cloud Console; the row walks you through
 it: a project, the Google Calendar API turned on, the consent screen
 published — in Testing Google ends the access every 7 days — and a client of
 type Desktop app, whose ID and secret you paste). Sign-in happens in your
-browser, on Google's page, and comes back to Lumo on 127.0.0.1; Lumo asks
+browser, on Google's page (which warns that Google hasn't verified the app:
+it is your own client, so choose Advanced, then go to your project), and
+comes back to Lumo on 127.0.0.1; Lumo asks
 only to see the events and the list of calendars
 (`calendar.events.readonly`, `calendar.calendarlist.readonly`). The client's
 ID and secret and Google's permission stay in the system keychain, the
 hour-long token only in memory. Every minute (every 15 while saving energy,
 and when the home shows if not asked for a minute) Lumo asks Google what
 changed since the last look, an answer nearly always empty, and reads the
-next days again only when something did: a new event shows within a minute.
-Pick which of the account's calendars go on the island (by default, the ones
-Google Calendar shows). With both set, the events of the iCal address and of
-Google join, each once. Disconnect tells Google to forget the access and
+next days again when something did (and anyway every half hour and when the
+day changes; the list of calendars too every half hour): a new event shows
+within a minute. Pick which of the account's calendars go on the island (by
+default, the ones Google Calendar shows; 20 at most). With both set, the
+events of the iCal address and of Google join, each once; when the iCal
+address is one of the calendars Google sign-in reads, its copy (hours behind)
+is left out. A calendar that can't be read keeps its last events while the
+others go on; when Google ends the access, the tile says to sign in again. Disconnect tells Google to forget the access and
 removes all three from the keychain. Lumo talks only to Google
 (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`), only
 once you signed in.

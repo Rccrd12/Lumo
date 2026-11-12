@@ -1464,6 +1464,7 @@ pub fn run() {
             reminders::reminders_cancel,
             media::media_now,
             calendar::calendar_fetch,
+            calendar::calendar_google_id,
             google_calendar::google_calendar_status,
             google_calendar::google_calendar_sign_in,
             google_calendar::google_calendar_cancel,

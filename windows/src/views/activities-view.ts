@@ -50,14 +50,18 @@ export type ActivitiesAction =
   | { kind: "calendarWeb" }
   | { kind: "settings" };
 
-/** "14:00", "Tomorrow 9:30", "Mon 12 Oct" (a whole-day event says "All day" instead). */
+/**
+ * "14:00", "Tomorrow 9:30", "Mon 12 Oct" (a whole-day event says "All day"
+ * instead). One begun on an earlier day and still under way says its day too,
+ * never a bare hour that reads as today's.
+ */
 export function eventWhen(e: CalEvent, now: number, lang = language()): string {
   const d = new Date(e.start);
   const today = new Date(now);
   const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
     - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / DAY);
   const time = d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
-  const day = days <= 0 ? t(ACTIVITIES_TEXT.today) : days === 1 ? t(ACTIVITIES_TEXT.tomorrow)
+  const day = days === 0 ? t(ACTIVITIES_TEXT.today) : days === 1 ? t(ACTIVITIES_TEXT.tomorrow)
     : d.toLocaleDateString(lang, { weekday: "short", day: "numeric", month: "short" });
-  return days <= 0 ? time : `${day} ${time}`;
+  return days === 0 ? time : `${day} ${time}`;
 }

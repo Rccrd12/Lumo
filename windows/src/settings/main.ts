@@ -13,7 +13,7 @@ import {
   recordPress, type Binding,
 } from "../core/shortcuts";
 import { DEFAULT_SETTINGS, aiReads, parseCloseMode, parseMotion, type Settings } from "../core/state";
-import { GoogleSync, isShown } from "../core/google-calendar";
+import { GoogleSync, MAX_GOOGLE_CALENDARS, isShown } from "../core/google-calendar";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -1980,7 +1980,7 @@ function behaviourRows(): HTMLElement[] {
 
 const GOOGLE_CAL = {
   get hint() {
-    return t("Sign in with your Google account: Lumo reads your calendars without changing them, and sees a new event within a minute. The client and the access stay in the {store}, and Lumo talks only to Google.", { store: KEY_STORE });
+    return t("Sign in with your Google account: Lumo reads your calendars without changing them, and sees a new event within a minute (within 15 while saving energy). The client and the access stay in the {store}, and Lumo talks only to Google.", { store: KEY_STORE });
   },
   get guideTitle() { return t("Once only: your own Google client (free, about 10 minutes)"); },
   get guide() {
@@ -1999,6 +1999,8 @@ const GOOGLE_CAL = {
   get waiting() { return t("Continue in the browser…"); },
   get waitingHint() { return t("The browser opened: choose the account and allow Lumo to read the calendar."); },
   get mismatch() { return t("Google says redirect_uri_mismatch? The client is not a Desktop app: create one of that type, paste its ID and secret, and sign in again."); },
+  get unverified() { return t("Google says it hasn't verified the app? It is your own client: choose Advanced, then go to your project."); },
+  get tooMany() { return t("The island reads at most {max} calendars: turn off the ones you don't need.", { max: MAX_GOOGLE_CALENDARS }); },
   get pasteFirst() { return t("Paste your Google client's ID and secret first."); },
   get ended() { return t("Access ended: sign in again."); },
   get pick() { return t("Calendars to show on the island"); },
@@ -2020,6 +2022,8 @@ function googleCalendarRow(): HTMLElement {
   const row = wideSetting(h("span", { class: "with-dot" }, "Google Calendar", dotEl), GOOGLE_CAL.hint, body);
   const sync = new GoogleSync((path, query) => Bridge.googleCalendarGet(path, query));
   let problem = "";
+  /** While a sign-in waits for the browser: asks each second whether it ended (here or in another Settings), then draws the row again. */
+  let waitTimer: number | null = null;
 
   const problemLine = () => problem
     ? h("div", { class: "mail-account-error" }, h("i", { class: "dot", style: "background:#f4505e" }), h("span", { text: problem }))
@@ -2096,11 +2100,19 @@ function googleCalendarRow(): HTMLElement {
     try {
       const calendars = await sync.list();
       const picks = () => settings.googleCalendars ?? {};
-      const count = () => line.textContent = GOOGLE_CAL.shown(calendars.filter((c) => isShown(c, picks())).length, calendars.length);
+      // The island reads the first MAX_GOOGLE_CALENDARS shown (core/google-calendar.ts): the count says so.
+      const count = () => {
+        const shown = calendars.filter((c) => isShown(c, picks())).length;
+        line.textContent = GOOGLE_CAL.shown(Math.min(shown, MAX_GOOGLE_CALENDARS), calendars.length);
+        line.classList.toggle("bad", shown > MAX_GOOGLE_CALENDARS);
+        line.title = shown > MAX_GOOGLE_CALENDARS ? GOOGLE_CAL.tooMany : "";
+        tooMany.style.display = shown > MAX_GOOGLE_CALENDARS ? "" : "none";
+      };
+      const tooMany = h("span", { class: "hint", text: GOOGLE_CAL.tooMany, style: "margin:4px 0 0 2px" });
       const primary = calendars.find((c) => c.primary);
       if (primary) account.textContent = primary.id;
       count();
-      list.replaceChildren(h("span", { class: "hint", text: GOOGLE_CAL.pick, style: "margin:4px 0 0 2px" }),
+      list.replaceChildren(h("span", { class: "hint", text: GOOGLE_CAL.pick, style: "margin:4px 0 0 2px" }), tooMany,
         ...calendars.map((c) => h("div", { class: "mail-account", style: "grid-template-columns:auto minmax(0,1fr) auto" },
           h("i", { class: "dot", style: `background:${c.color}` }),
           h("div", { class: "mail-account-text" }, h("span", { class: "mail-account-address", text: c.name, title: c.name })),
@@ -2110,6 +2122,11 @@ function googleCalendarRow(): HTMLElement {
             void save();
           }))));
     } catch (err) {
+      // Google may have refused the permission on this very ask: then the row offers Sign in again.
+      if ((await Bridge.googleCalendarStatus())?.needsSignIn) {
+        void render();
+        return;
+      }
       line.textContent = errorText(err);
       line.classList.add("bad");
     }
@@ -2118,15 +2135,29 @@ function googleCalendarRow(): HTMLElement {
   const render = async () => {
     const status = await Bridge.googleCalendarStatus();
     if (!status) return;
+    if (waitTimer != null) window.clearInterval(waitTimer);
+    waitTimer = null;
     const parts: (HTMLElement | null)[] = [];
     if (status.signingIn) {
       dotEl.style.background = "#f5a524";
-      const cancel = h("button", { text: t("Cancel") });
-      cancel.addEventListener("click", () => void Bridge.googleCalendarCancel());
+      const cancel = h("button", { text: t("Cancel") }) as HTMLButtonElement;
+      cancel.addEventListener("click", () => {
+        cancel.disabled = true;
+        void Bridge.googleCalendarCancel();
+      });
       parts.push(h("div", { class: "mail-account-actions", style: "justify-content:flex-start" },
         h("button", { text: GOOGLE_CAL.waiting, disabled: true }), cancel),
         h("span", { class: "hint", text: GOOGLE_CAL.waitingHint }),
+        h("span", { class: "hint", text: GOOGLE_CAL.unverified }),
         h("span", { class: "hint", text: GOOGLE_CAL.mismatch }));
+      waitTimer = window.setInterval(async () => {
+        if (!row.isConnected) {
+          if (waitTimer != null) window.clearInterval(waitTimer);
+          waitTimer = null;
+          return;
+        }
+        if (!(await Bridge.googleCalendarStatus())?.signingIn) void render();
+      }, 1_000);
     } else if (status.signedIn) {
       const bad = status.needsSignIn;
       dotEl.style.background = bad ? "#f4505e" : "#22c55e";

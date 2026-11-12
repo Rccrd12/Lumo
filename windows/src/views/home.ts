@@ -333,6 +333,8 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
 
   let leftKey = "";
   let rightKey = "";
+  /** Draws the calendar's tile again when its first event ends, or the day changes (its "Tomorrow" becomes today). */
+  let calendarTimer: ReturnType<typeof setTimeout> | null = null;
   let usageKey = "";
   /** The room the usage was last fitted to: the line's width, what the services take. */
   let fitKey = "";
@@ -732,12 +734,27 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
 
       const tiles = tilesOf(data);
       const kinds = visiblePlanKinds();
+      const now = Date.now();
+      const coming = comingEvents(data.calendar.events, now);
+      if (calendarTimer != null) clearTimeout(calendarTimer);
+      calendarTimer = null;
+      // Only while the home is on the page: nothing wakes for a hidden island.
+      if (tiles.includes("calendar") && coming.length && el.isConnected) {
+        const midnight = new Date(now).setHours(24, 0, 0, 0);
+        const at = Math.min(midnight, ...coming.slice(0, 2).map((e) => e.end));
+        calendarTimer = setTimeout(() => {
+          calendarTimer = null;
+          if (el.isConnected) State.notify();
+        }, Math.max(1_000, at - now + 500));
+      }
       const rk = [
         language(), ...tiles,
         // (A paused timer's endsAt moves with the clock: what is left says it.)
         ...data.timers.map((x) => `${x.id}:${x.label}:${x.pausedLeft != null ? `p${x.pausedLeft}` : x.endsAt}`),
         data.media ? `${data.media.app}:${data.media.title}:${data.media.artist}:${data.media.playing}` : "",
-        ...comingEvents(data.calendar.events, Date.now()).slice(0, 2).map((e) => `${e.title}:${e.start}`), data.calendar.error ?? "",
+        ...coming.slice(0, 2).map((e) => `${e.title}:${e.start}:${e.end}`), data.calendar.error ?? "",
+        // The tile's click opens the calendar's page, or Settings when it has none.
+        data.calendar.link ?? "", coming.length ? new Date(now).toDateString() : "",
         ...data.mail.messages.slice(0, 1).map((m) => `${m.id}:${m.from}:${m.subject}`), data.mail.messages.length,
         ...others.map((x) => `${x.id}:${x.name}:${x.color}:${x.pillBadge ?? ""}`),
       ].join("~");

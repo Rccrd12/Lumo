@@ -363,3 +363,11 @@ test("the calendar's tile shows what is under way or coming, never yesterday's e
   assert.match(cal.textContent, /Fisica/);
   assert.doesNotMatch(cal.textContent, /Algoritmi|Elettromagnetismo/);
 });
+
+test("an event begun on an earlier day and still under way says its day, not a bare hour", async () => {
+  const { eventWhen } = await import("../src/views/activities-view.ts");
+  const now = new Date(2026, 10, 12, 13, 35).getTime();
+  const ev = (start) => ({ title: "x", start, end: now + 3_600_000, allDay: false, location: "" });
+  assert.doesNotMatch(eventWhen(ev(new Date(2026, 10, 11, 20, 0).getTime()), now, "en"), /^\d{1,2}:\d{2}/);
+  assert.match(eventWhen(ev(new Date(2026, 10, 12, 11, 30).getTime()), now, "en"), /^11:30/);
+});
