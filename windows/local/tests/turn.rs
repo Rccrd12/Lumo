@@ -743,3 +743,38 @@ fn endless_call_arguments_are_too_large() {
     assert_eq!(outcome.unwrap_err(), Failure::TooLarge);
     assert!(island.ran.is_empty());
 }
+
+#[test]
+fn every_piece_of_the_stream_is_a_sign_of_life() {
+    // A model that reasons for long shows nothing, yet each piece that comes
+    // says it is at work: the island never takes it for stuck.
+    let mut island = Island::default();
+    let mut events: Vec<String> = (0..4).map(|_| reasoning("hmm")).collect();
+    events.extend([text("Fa 4."), finish("stop"), DONE.into()]);
+    let (outcome, _) = turn(vec![Reply::Paced(events, Duration::from_millis(50))], &mut question("2+2?", &[]), &rules("signal-chunks", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fa 4.");
+    // Before any text showed: the request, and at least one piece of
+    // reasoning on its own. The network may join pieces that come 50 ms
+    // apart, but not the reasoning with the text, 200 ms later. The answer
+    // is one more sign after the text.
+    let before_text = island.signals_before_text.unwrap();
+    assert!(before_text >= 1 + 2, "{before_text}");
+    assert!(island.signals > before_text, "{}", island.signals);
+
+    // A tool starting and ending is one too, and so is the whole answer of a
+    // model that streams no more.
+    let mut island = Island::default();
+    let replies = vec![calls("c1", "set_timer", "{\"minutes\":5}"), answer("Fatto.")];
+    let (outcome, _) = turn(replies, &mut question("Timer di 5 minuti", &["set_timer"]), &rules("signal-tools", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fatto.");
+    let before = island.signals_at_call[0];
+    // Request, at least one piece, answer, then the call starting.
+    assert!(before >= 4, "{before}");
+    // The call ending, the next request, its piece and its answer.
+    assert!(island.signals >= before + 4, "{}", island.signals);
+    lumo_local::turn::hung("signal-whole", true);
+    let mut island = Island::default();
+    let (outcome, _) = turn(vec![whole("Ciao.", &[])], &mut question("Ciao", &[]), &rules("signal-whole", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Ciao.");
+    assert_eq!(island.signals, 2, "the request and the whole answer");
+}

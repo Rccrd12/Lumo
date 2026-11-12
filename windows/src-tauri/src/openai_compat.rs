@@ -379,6 +379,8 @@ pub async fn send(
         let mut streaming = true;
         let mut retried = false;
         loop {
+            // Each request is news (the first, a retry, the round after the tools).
+            events.signal(app);
             let before = said.join("\n\n");
             let show = |text: &str| {
                 let text = text.trim_start();
@@ -388,7 +390,9 @@ pub async fn send(
                 }
                 *shown.lock().unwrap_or_else(|p| p.into_inner()) = all;
             };
-            let sent = if streaming { stream_post(p, &endpoint, &key, &body, usage, show).await } else { post(p, &endpoint, &key, &body, usage).await };
+            let sent = if streaming { stream_post(p, &endpoint, &key, &body, usage, show, || events.signal(app)).await } else { post(p, &endpoint, &key, &body, usage).await };
+            // A whole answer, or a refusal, is news too.
+            events.signal(app);
             let mut json = match sent {
                 // A model this account may not stream (OpenAI asks some
                 // organisations to be verified first): the whole answer, at once.
@@ -543,7 +547,7 @@ pub async fn summarize(p: &'static Provider, model: &str, system: &str, prompt: 
     let mut streaming = true;
     let mut retried = false;
     let json = loop {
-        let sent = if streaming { stream_post(p, &endpoint, &key, &body, &mut None, |_| {}).await } else { post(p, &endpoint, &key, &body, &mut None).await };
+        let sent = if streaming { stream_post(p, &endpoint, &key, &body, &mut None, |_| {}, || {}).await } else { post(p, &endpoint, &key, &body, &mut None).await };
         match sent {
             Ok(json) => break json,
             Err((400, e)) if streaming && mentions_streaming(&e) => streaming = false,
@@ -650,7 +654,10 @@ fn request_shape(body: &Value) -> String {
 /// `finish_reason`, `usage`), with what the provider adds kept as it came:
 /// Gemini's thought signatures on the tool calls, OpenRouter's reasoning
 /// details, which the next request must send back unchanged. `on_text` gets
-/// the answer's text so far, at most 15 times a second and once more at the end.
+/// the answer's text so far, at most 15 times a second and once more at the
+/// end; `on_chunk`, every piece of the stream that comes, even one that adds
+/// nothing to the text (reasoning, a tool call's arguments): the chat's sign
+/// of life (chat_agents.rs), so a model that thinks for long isn't taken for stuck.
 async fn stream_post(
     p: &Provider,
     endpoint: &Url,
@@ -658,6 +665,7 @@ async fn stream_post(
     body: &Value,
     usage: &mut Option<ChatUsage>,
     mut on_text: impl FnMut(&str),
+    on_chunk: impl Fn(),
 ) -> Result<Value, (u16, String)> {
     let mut body = body.clone();
     body["stream"] = json!(true);
@@ -703,6 +711,7 @@ async fn stream_post(
             Err(e) if e.is_timeout() => return Err((0, silent())),
             Err(e) => return Err((0, tf("Network error: {error}", &[("error", &e.to_string())]))),
         };
+        on_chunk();
         total += chunk.len();
         if total > MAX_STREAM {
             return Err((0, t("The server's answer is too large.")));
@@ -1162,7 +1171,7 @@ mod tests {
         let ask = |body: &str| {
             let u = serve_once("200 OK", "Content-Type: text/event-stream\r\n", body.as_bytes().to_vec());
             let endpoint = Url::parse(&u).unwrap();
-            rt.block_on(stream_post(p("openai"), &endpoint, "k", &json!({ "model": "m" }), &mut None, |_| {}))
+            rt.block_on(stream_post(p("openai"), &endpoint, "k", &json!({ "model": "m" }), &mut None, |_| {}, || {}))
         };
         // Whole: a finish_reason, or [DONE].
         let whole = ask("data: {\"choices\":[{\"delta\":{\"content\":\"Hi.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n").unwrap();
@@ -1174,6 +1183,22 @@ mod tests {
         // A tool call cut short: an error, nothing runs.
         let call = ask("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"workspace_write\",\"arguments\":\"{\\\"pa\"}}]}}]}\n\n");
         assert!(call.is_err());
+    }
+
+    #[test]
+    fn a_stream_of_reasoning_alone_is_still_a_sign_of_life() {
+        // No text shows while the model reasons: each piece that comes says it is at work all the same.
+        use crate::net::tests::serve_once;
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let body = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"hmm\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+        let u = serve_once("200 OK", "Content-Type: text/event-stream\r\n", body.as_bytes().to_vec());
+        let endpoint = Url::parse(&u).unwrap();
+        let signals = std::cell::Cell::new(0);
+        let mut shown = String::new();
+        let answer = rt.block_on(stream_post(p("openai"), &endpoint, "k", &json!({ "model": "m" }), &mut None, |t| shown = t.to_string(), || signals.set(signals.get() + 1)));
+        assert!(answer.is_ok());
+        assert_eq!(shown, "", "no text ever showed");
+        assert!(signals.get() >= 1);
     }
 
     #[test]

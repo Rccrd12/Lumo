@@ -13,6 +13,7 @@ import {
   type MediaActivity,
 } from "../core/compact";
 import { gitHubRunning, readPulse } from "../core/github";
+import { islandAgents } from "../core/chat-agents";
 import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
 import { isCliProvider } from "../core/providers";
@@ -286,7 +287,8 @@ export class CompactStrip {
     // Who answers comes with the answer: picking another model while it is
     // written changes the next one, not this one's name.
     const chat = State.chatActivity;
-    const chatInput = chat ? { who: chat.who, label: chat.label, color: chat.color } : null;
+    // A chat whose answer is done while its agents work: their segments too (core/chat-agents.ts).
+    const chatInput = chat ? { who: chat.who, label: chat.label, color: chat.color, agents: islandAgents() } : null;
     const liveInput = Live.active
       ? { phase: Live.phase, doing: Live.doingDone ? null : Live.doing, muted: Live.muted, color: LIVE_COLOR }
       : null;
@@ -344,11 +346,17 @@ export class CompactStrip {
       case "line": {
         const { text, lead } = item.line;
         const dot = h("i", { class: item.notice ? "cp-dot notice" : "cp-dot", style: `background:${item.line.color}` });
+        const agents = item.line.agents;
         // Who, then what: a long name is cut first, what it is doing stays readable (style.css .cp-lead).
         if (lead && text.startsWith(`${lead} · `)) {
-          return [dot, h("span", { class: "cp-line", title: text },
+          const line = h("span", { class: "cp-line", title: text },
             h("span", { class: "cp-text cp-lead", text: lead }),
-            h("span", { class: "cp-text cp-rest", text: text.slice(lead.length) }))];
+            h("span", { class: agents?.stalled ? "cp-text cp-rest cp-stalled" : "cp-text cp-rest", text: text.slice(lead.length) }));
+          if (!agents || compact) return [dot, line];
+          // Its agents, a segment each, as in the chat (concept: sotto-agenti, image 5).
+          return [dot, line, h("span", { class: "cp-agents" },
+            h("span", { class: "agents-segs" }, ...agents.looks.map((l) => h("i", { class: l }))),
+            agents.stalled ? h("span", { class: "cp-time", text: `${agents.done}/${agents.total}` }) : null)];
         }
         return [dot, h("span", { class: "cp-text", text, title: text })];
       }
@@ -600,7 +608,7 @@ function itemKey(item: CompactItem, now: number): string {
     case "upload":
       return `upload:${item.upload.name}`;
     case "line":
-      return `line:${item.line.text}:${item.line.color}:${item.notice}`;
+      return `line:${item.line.text}:${item.line.color}:${item.notice}:${item.line.agents?.looks.join(",") ?? ""}`;
     case "timer":
       return `timer:${item.timer.id}:${timerLeft(item.timer.endsAt - now)}:${item.timer.label}`;
     case "media":

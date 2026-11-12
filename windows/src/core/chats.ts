@@ -12,6 +12,23 @@ export interface SavedTurn {
   at?: number;
   /** What the conversation holds for it, when not `content` (ChatMessage.kept). */
   kept?: string;
+  /** An answer's: the agents it started that ended, in short (core/chat-agents.ts savedAgents). */
+  agents?: SavedAgent[];
+  /** An answer's: what its CLI wrote by itself while those agents worked, folded under them. */
+  updates?: string[];
+}
+
+/** One agent an answer started, as the chat keeps it once it ended (bridge.ts ChatAgent, in short). */
+export interface SavedAgent {
+  id: string;
+  title: string;
+  state: "done" | "failed" | "stopped";
+  summary?: string;
+  error?: string;
+  steps: number;
+  tokens?: number;
+  startedAt: number;
+  endedAt?: number;
 }
 
 export interface SavedChat {
@@ -105,6 +122,24 @@ export function joinOwnAnswer(turns: { role: string; content: string; failed?: b
   return false;
 }
 
+/**
+ * The same answer, as a progress update while the chat's agents work
+ * (core/chat-agents.ts foldsOwnAnswer): it shows folded under the agents, not
+ * in the answer's text, but Rust's conversation joined it all the same, so
+ * what the chat gives back to Rust (`kept`, chat_restore) holds it too.
+ * False with no answer to join.
+ */
+export function foldOwnAnswer(turns: { role: string; content: string; kept?: string; failed?: boolean }[], text: string): boolean {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i];
+    if (turn.role !== "assistant" || turn.failed) continue;
+    const before = turn.kept ?? turn.content;
+    turn.kept = before.trim() ? `${before}\n\n${text}` : text;
+    return true;
+  }
+  return false;
+}
+
 /** Ticks given in a chat not saved yet (its first answer still being written), until it is. */
 const unsaved = new Map<string, ChatChecklists>();
 
@@ -137,6 +172,19 @@ export function setChatChecklists(id: string, checklists: ChatChecklists) {
   }
   chat.checklists = checklists;
   store(list);
+}
+
+/**
+ * Changes a saved chat's turns where it is (its agents ended, an update came
+ * in): its place in the history does not change. False when it is not saved.
+ */
+export function updateChatTurns(id: string, change: (turns: SavedTurn[]) => SavedTurn[]): boolean {
+  const list = loadChats();
+  const chat = list.find((c) => c.id === id);
+  if (!chat) return false;
+  chat.turns = change(chat.turns);
+  store(list);
+  return true;
 }
 
 export function deleteChat(id: string): SavedChat[] {

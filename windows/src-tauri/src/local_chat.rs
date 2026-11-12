@@ -79,6 +79,9 @@ const FILE_SHARE_PCT: u64 = 60;
 /// The least and the most of a file's text sent, whatever the context.
 const MIN_FILE_CHARS: usize = 4_000;
 const MAX_FILE_CHARS: usize = 1_000_000;
+/// How often a model's load still says the chat is alive when its server
+/// tells nothing until the model is in (Ollama's load is one request).
+const LOAD_HEARTBEAT: Duration = Duration::from_secs(10);
 
 /// How many characters of a dropped file's text go to a model with `context`
 /// tokens (0: not known), `taken` of them by the instructions, the tools and
@@ -504,6 +507,7 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
     }
 
     fn doing(&mut self, doing: Doing) {
+        self.events.signal(self.app);
         self.events.activity(self.app, match doing {
             Doing::Prompt => Activity::new("prompt", ""),
             Doing::Thinking => Activity::thinking(),
@@ -552,6 +556,11 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
 
     fn hush(&mut self, on: bool) {
         self.hushed = on;
+    }
+
+    /// The island's sign of life (chat_agents.rs): once a second at most, so every piece of the stream may call it.
+    fn signal(&mut self) {
+        self.events.signal(self.app);
     }
 
     fn call(&mut self, name: &str, input: Value) -> impl std::future::Future<Output = (String, bool)> + Send {
@@ -615,6 +624,20 @@ fn log_turn(server: &Server, model: &str, prompt: usize, tools: usize, outcome: 
         Err(f) => format!("failed: {f:?}"),
     };
     crate::log::line(format!("[local] {} {model}: ~{prompt} tokens of prompt, {tools} tools; {how}", server.id));
+}
+
+/// `work` (a model's load), with a sign of life for the chat every
+/// LOAD_HEARTBEAT while it runs: Ollama's load answers nothing until the model
+/// is in, which can take minutes, and the island would take it for stuck. The
+/// timer lives only as long as the load (no CPU while the island is idle).
+async fn alive_while<T>(app: &AppHandle, events: &chat::ChatEvents, work: impl std::future::Future<Output = T>) -> T {
+    let mut work = std::pin::pin!(work);
+    loop {
+        match tokio::time::timeout(LOAD_HEARTBEAT, work.as_mut()).await {
+            Ok(done) => return done,
+            Err(_) => events.signal(app),
+        }
+    }
 }
 
 /// One chat turn with a model server.
@@ -709,20 +732,26 @@ pub async fn send(
         // The picker is loading this model already: that load is waited for,
         // with its percent, rather than taken for a model in memory.
         let mut caps = caps.clone();
+        // Each step of the load is a sign of life: a big model takes minutes,
+        // and one whose server tells no percent still gives one now and then.
         if let Some(load) = crate::local_models::picker_load(server, model) {
+            events.signal(app);
             events.activity(app, Activity::new("loading", ""));
-            crate::local_models::wait_for_picker(load, |percent| {
+            let waited = crate::local_models::wait_for_picker(load, |percent| {
+                events.signal(app);
                 events.activity(app, Activity::new("loading", percent.to_string()));
-            })
-            .await;
+            });
+            alive_while(app, &events, waited).await;
             caps = crate::local_models::caps(server, model).await;
         }
         if caps.loaded == Some(false) {
+            events.signal(app);
             events.activity(app, Activity::new("loading", ""));
-            let loaded = crate::local_models::load(server, model, |percent| {
+            let loading = crate::local_models::load(server, model, |percent| {
+                events.signal(app);
                 events.activity(app, Activity::new("loading", percent.to_string()));
-            })
-            .await;
+            });
+            let loaded = alive_while(app, &events, loading).await;
             if let Err(e) = loaded {
                 crate::log::line(format!("[local] loading {model}: {e}"));
                 // Unsloth Studio answers nothing until a model is in: its reason, said.

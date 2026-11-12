@@ -18,6 +18,18 @@ export interface CompactLine {
    * shortens it first, so what is going on stays readable (island/compact.ts).
    */
   lead?: string;
+  /** A chat whose agents work after its answer: a segment each after the words (concept: sotto-agenti). */
+  agents?: AgentsPeek;
+}
+
+/** A chat's agents at a glance on the closed island (core/chat-agents.ts looksOf). */
+export interface AgentsPeek {
+  /** Each agent's look, in their order: done, working, stalled, waiting, failed. */
+  looks: string[];
+  done: number;
+  total: number;
+  /** One gives no sign of life: the words are amber. */
+  stalled: boolean;
 }
 
 /** An email that came in (mail.rs). */
@@ -207,6 +219,8 @@ export interface ChatActivityInput {
   /** What it is doing, already in words ("Reading main.ts"); null once text streams. */
   label: string | null;
   color: string;
+  /** Its answer is done while its agents still work: their segments. */
+  agents?: AgentsPeek | null;
 }
 
 export interface LiveActivityInput {
@@ -233,7 +247,9 @@ export function activityLine(
   agent: AgentActivityInput | null,
 ): CompactLine | null {
   if (chat) {
-    return { text: `${chat.who} · ${chat.label ?? t(COMPACT_TEXT.writing)}`, color: chat.color, lead: chat.who };
+    const line: CompactLine = { text: `${chat.who} · ${chat.label ?? t(COMPACT_TEXT.writing)}`, color: chat.color, lead: chat.who };
+    if (chat.agents) line.agents = chat.agents;
+    return line;
   }
   if (live && live.phase !== "off") {
     const what = live.doing ?? (live.muted && live.phase === "listening" ? t(COMPACT_TEXT.muted) : liveWords(live.phase));

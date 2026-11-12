@@ -81,6 +81,10 @@ pub trait Hooks {
     /// While on, the tools called say nothing on the island: the model is
     /// putting its plan right after its answer, which stays as it was.
     fn hush(&mut self, _on: bool) {}
+    /// The answer moved just now: a piece of the stream came (even one with
+    /// nothing to show), a request went, a tool started or ended. Called
+    /// often: the app keeps it cheap (the island's sign of life).
+    fn signal(&mut self) {}
 }
 
 /// What a turn goes by.
@@ -206,6 +210,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         // the island as it was, with nothing said about it.
         let hushed = plan.checking.is_some();
         let doing = next.take().unwrap_or(if whole { Doing::Thinking } else { Doing::Prompt });
+        // Each request is news, hushed or not (a retry, a model sent back, the round after the tools).
+        hooks.signal();
         if !hushed {
             hooks.doing(doing);
         }
@@ -221,6 +227,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             answer
         } else {
             stream(to, body, |seen| match seen {
+                // Still moving, even while nothing shows.
+                Seen::Chunk => hooks.signal(),
                 // Nothing new yet in this round: the text so far isn't sent
                 // again, or the island would drop the dots that say what the
                 // answer is doing.
@@ -232,6 +240,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             })
             .await
         };
+        // The answer came (a whole one, at once), or the server said no: news too.
+        hooks.signal();
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
         }
@@ -477,7 +487,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 continue;
             }
             let given = (name == plan::TOOL).then(|| Plan::from_input(&input)).flatten();
+            hooks.signal();
             let (text, failed) = hooks.call(name, input).await;
+            hooks.signal();
             if name == plan::TOOL {
                 if let Some(p) = given.filter(|_| !failed) {
                     plan.shown = Some(p);

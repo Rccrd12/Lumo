@@ -21,6 +21,11 @@
 // - Stop asks Codex to end the turn (`turn/interrupt`); one that does not end
 //   in time is ended with everything it started.
 //
+// The agents Codex's thread starts (its collaborators, `spawnAgent`) are
+// threads of their own in the same server: their news is told as the chat's
+// agents (`Subagents`, chat_agents.rs), and their requests are answered as
+// before.
+//
 // Permissions are Codex's own: what it would ask in a terminal comes to Lumo
 // as a request of the server (`item/commandExecution/requestApproval`,
 // `item/fileChange/requestApproval`), and Lumo shows Codex's own card in the
@@ -43,6 +48,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
+use crate::chat_agents::{self, AgentRow, AgentState, Agents, Tell};
 use crate::claude_code::{self, cli_command, file_name, is_screenshot, kill_tree, pretty_tool, safe_session, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
@@ -486,6 +492,158 @@ impl Run {
     }
 }
 
+// ── The agents it starts ──────────────────────────────────────────────────────
+
+/// An agent writing on and on is said to be alive this often (epoch ms), not
+/// on every piece of its text.
+const AGENT_ALIVE_EVERY: u64 = 5_000;
+
+/// The agents of a chat's Codex: the threads its own thread (or one of
+/// them) started, by thread id, kept for as long as the server lives.
+#[derive(Default, Debug)]
+struct Subagents {
+    agents: Agents,
+}
+
+/// A field's text, when there is some.
+fn text_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
+    v[key].as_str().map(str::trim).filter(|s| !s.is_empty())
+}
+
+impl Subagents {
+    /// One notification (or request) of the server: `main` is the chat's thread.
+    fn feed(&mut self, main: &str, method: &str, params: &Value) {
+        let item = &params["item"];
+        if matches!(method, "item/started" | "item/completed") {
+            match item["type"].as_str() {
+                Some("collabAgentToolCall") => self.collab(item),
+                Some("subAgentActivity") => self.activity(item),
+                _ => {}
+            }
+        }
+        if let Some(thread) = params["threadId"].as_str().filter(|t| !t.is_empty() && *t != main) {
+            self.of_thread(thread, method, params);
+        }
+    }
+
+    /// The agent `id`, while it is at work, marked changed: one that ended never changes.
+    fn open_row(&mut self, id: &str) -> Option<&mut AgentRow> {
+        if self.agents.get(id)?.state.is_final() {
+            return None;
+        }
+        self.agents.touch(id)
+    }
+
+    /// A collaboration tool call: a new agent (`spawnAgent`, its prompt the
+    /// title), and what any call says of the agents it names.
+    fn collab(&mut self, item: &Value) {
+        let prompt = text_of(item, "prompt");
+        if item["tool"].as_str() == Some("spawnAgent") {
+            for id in item["receiverThreadIds"].as_array().into_iter().flatten().filter_map(Value::as_str).filter(|t| !t.is_empty()) {
+                let title = prompt.map(str::to_string).unwrap_or_else(|| t("Agent"));
+                let row = self.agents.upsert(id, || AgentRow::new(id, PROVIDER, &title));
+                // First heard of on its own thread, with no title yet.
+                if let (Some(prompt), false) = (prompt, row.state.is_final()) {
+                    row.title = short(prompt);
+                }
+            }
+        }
+        for (id, state) in item["agentsStates"].as_object().into_iter().flatten() {
+            let message = text_of(state, "message").map(str::to_string);
+            let Some(row) = self.open_row(id) else { continue };
+            match state["status"].as_str().unwrap_or("") {
+                "completed" => {
+                    if let Some(message) = &message {
+                        row.summary = Some(chat_agents::summary_of(message));
+                    }
+                    row.end(AgentState::Done, None);
+                }
+                "errored" => row.end(AgentState::Failed, message),
+                "interrupted" | "shutdown" | "notFound" => row.end(AgentState::Stopped, None),
+                _ => {}
+            }
+        }
+    }
+
+    /// Codex's own word on a subagent: started, done, interrupted.
+    fn activity(&mut self, item: &Value) {
+        let Some(id) = text_of(item, "agentThreadId") else { return };
+        match item["kind"].as_str().unwrap_or("") {
+            "started" => {
+                // Its name, as Codex calls it ("explorer"), until a prompt says more.
+                let title = text_of(item, "agentPath")
+                    .map(|p| p.trim_end_matches('/').rsplit('/').next().unwrap_or(p).to_string())
+                    .filter(|p| !p.is_empty())
+                    .unwrap_or_else(|| t("Agent"));
+                self.agents.upsert(id, || AgentRow::new(id, PROVIDER, &title));
+            }
+            "completed" => {
+                if let Some(row) = self.open_row(id) {
+                    row.end(AgentState::Done, None);
+                }
+            }
+            "interrupted" => {
+                if let Some(row) = self.open_row(id) {
+                    row.end(AgentState::Stopped, None);
+                }
+            }
+            _ => {
+                self.open_row(id);
+            }
+        }
+    }
+
+    /// A notification of a subagent's own thread.
+    fn of_thread(&mut self, thread: &str, method: &str, params: &Value) {
+        if self.agents.get(thread).is_some_and(|r| r.state.is_final()) {
+            return;
+        }
+        let item = &params["item"];
+        match method {
+            "item/started" => {
+                let row = self.agents.upsert(thread, || AgentRow::new(thread, PROVIDER, &t("Agent")));
+                if let Some(now) = activity_for(item) {
+                    if now.kind != "thinking" {
+                        row.steps += 1;
+                    }
+                    row.now = Some(now);
+                }
+            }
+            "item/completed" if item["type"] == "agentMessage" => {
+                if let (Some(text), Some(row)) = (text_of(item, "text"), self.agents.touch(thread)) {
+                    row.summary = Some(chat_agents::summary_of(text));
+                }
+            }
+            "turn/completed" => {
+                let turn = &params["turn"];
+                let Some(row) = self.agents.touch(thread) else { return };
+                match turn["status"].as_str() {
+                    Some("failed") => row.end(AgentState::Failed, text_of(&turn["error"], "message").map(str::to_string)),
+                    Some("interrupted") => row.end(AgentState::Stopped, None),
+                    _ => row.end(AgentState::Done, None),
+                }
+            }
+            "thread/closed" => {
+                if let Some(row) = self.agents.touch(thread) {
+                    row.end(AgentState::Done, None);
+                }
+            }
+            "thread/status/changed" if params["status"]["type"] == "systemError" => {
+                if let Some(row) = self.agents.touch(thread) {
+                    row.end(AgentState::Failed, None);
+                }
+            }
+            // Anything else it writes is a sign it is alive, now and then.
+            _ => {
+                let due = self.agents.get(thread).is_some_and(|r| chat_agents::now_ms().saturating_sub(r.last_signal_at) >= AGENT_ALIVE_EVERY);
+                if due {
+                    self.agents.touch(thread);
+                }
+            }
+        }
+    }
+}
+
 // ── One Codex per chat ────────────────────────────────────────────────────────
 
 /// A line for Codex's server, written whole.
@@ -508,6 +666,9 @@ struct Live {
     thread: Option<String>,
     next_id: u64,
     used: Instant,
+    /// The agents its thread started, over all its turns, and who hears of them.
+    agents: Subagents,
+    tell: Tell,
 }
 
 impl Drop for Live {
@@ -515,6 +676,11 @@ impl Drop for Live {
         if matches!(self.child.try_wait(), Ok(None)) {
             kill_tree(&mut self.child);
         }
+        // Its agents end with it.
+        if self.agents.agents.open() > 0 {
+            self.agents.agents.end_open(AgentState::Failed, &tf("{agent} ended", &[("agent", "Codex")]));
+        }
+        (self.tell)(&mut self.agents.agents, false);
     }
 }
 
@@ -532,7 +698,18 @@ impl Live {
         let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("no stdin")?));
         let stderr = claude_code::read_stderr(&mut child);
         let rx = claude_code::read_lines(&mut child, usize::MAX)?;
-        let mut live = Live { child, stdin, rx, stderr, key: key.to_string(), thread: None, next_id: 1, used: Instant::now() };
+        let mut live = Live {
+            child,
+            stdin,
+            rx,
+            stderr,
+            key: key.to_string(),
+            thread: None,
+            next_id: 1,
+            used: Instant::now(),
+            agents: Subagents::default(),
+            tell: chat_agents::silent(),
+        };
         live.call("initialize", json!({ "clientInfo": { "name": "lumo", "title": "Lumo", "version": env!("CARGO_PKG_VERSION") } }))?;
         write_line(&live.stdin, &json!({ "method": "initialized" }));
         Ok(live)
@@ -671,11 +848,18 @@ fn reap_idle() {
 fn live_for(chat_id: &str, key: &str, exe: &Path, dir: &Path) -> Result<Live, String> {
     if let Some(mut live) = lives(|all| all.remove(chat_id)) {
         let alive = matches!(live.child.try_wait(), Ok(None));
-        // Lines left from the turn before (after an interrupt) are not this turn's.
+        // Lines left from the turn before (after an interrupt) are not this
+        // turn's, but what they say of its agents (one that ended meanwhile) is.
         let mut open = true;
+        let main = live.thread.clone().unwrap_or_default();
         loop {
             match live.rx.try_recv() {
-                Ok(_) => continue,
+                Ok(line) => {
+                    if let Ok(message) = serde_json::from_slice::<Value>(&line) {
+                        live.agents.feed(&main, message["method"].as_str().unwrap_or(""), &message["params"]);
+                    }
+                    continue;
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
                     open = false;
@@ -724,7 +908,8 @@ enum Ended {
 /// One turn of the chat through its own Codex (started, or started again, as
 /// needed), blocking. `text(fresh)` is the question: `fresh` when the thread
 /// is new and has not seen the chat's turns. `ask` puts a card up and calls
-/// back with the click (true: allowed). The thread is returned with the run.
+/// back with the click (true: allowed). `tell` hears of every line (a sign of
+/// life) and of the agents Codex starts. The thread is returned with the run.
 #[allow(clippy::too_many_arguments)]
 fn live_turn(
     spec: TurnSpec,
@@ -735,6 +920,7 @@ fn live_turn(
     mut on_activity: impl FnMut(&Activity),
     mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&Value),
+    tell: Tell,
 ) -> Result<(Run, Option<String>), String> {
     let key = format!("{}\n{}", spec.exe.to_string_lossy(), spec.config);
     let mut live = live_for(&spec.chat_id, &key, &spec.exe, &spec.dir)?;
@@ -748,6 +934,9 @@ fn live_turn(
         }
         Err(e) => return Err(e),
     };
+    live.tell = tell;
+    // What came between two turns, told now.
+    (live.tell)(&mut live.agents.agents, false);
     let thread = live.thread.clone().unwrap_or_default();
     let plan_only = claude_code::permission_mode(&spec.mode) == "plan";
     let question = if plan_only { format!("{PLAN_ONLY}{}", text(fresh)) } else { text(fresh) };
@@ -807,6 +996,9 @@ fn live_turn(
         let Ok(message) = serde_json::from_slice::<Value>(&line) else { continue };
         let method = message["method"].as_str().unwrap_or("");
         let params = &message["params"];
+        // Every line is a sign of life; a subagent's tells its row too.
+        live.agents.feed(&thread, method, params);
+        (live.tell)(&mut live.agents.agents, true);
         // An answer to Lumo: the turn's id, or why it could not start.
         if method.is_empty() {
             if message["id"].as_u64() == Some(start_id) {
@@ -994,6 +1186,8 @@ pub async fn send(
     let app3 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
+    // The agents Codex starts, and the turn's sign of life.
+    let tell = chat_agents::teller(app, chat.id());
     let (state, thread) = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             spec,
@@ -1013,6 +1207,7 @@ pub async fn send(
             |plan| {
                 let _ = app2.emit_to(crate::island::WINDOW_LABEL, "chat-plan", json!({ "tool": "update_plan", "input": plan, "agent": "Codex", "color": COLOR }));
             },
+            tell,
         )
     })
     .await
@@ -1069,7 +1264,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {});
+    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
     close(REVIEW);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {
@@ -1257,5 +1452,96 @@ mod tests {
             { "id": "x", "model": "bad model!", "displayName": "Bad" },
         ] });
         assert_eq!(parse_models(&listed), [("gpt-6.1-sol".to_string(), "GPT-6.1-Sol".to_string())]);
+    }
+
+    /// Feeds notifications, the chat's thread being THREAD.
+    fn feed_agents(sub: &mut Subagents, lines: &[&str]) {
+        for l in lines {
+            let v: Value = serde_json::from_str(l).unwrap();
+            sub.feed(THREAD, v["method"].as_str().unwrap_or(""), &v["params"]);
+        }
+    }
+
+    const SUB: &str = "02b27513-92cb-8903-bdbb-0390a3b2a4ff";
+
+    #[test]
+    fn the_agents_codex_spawns_are_rows_of_their_own_threads() {
+        let mut sub = Subagents::default();
+        let spawn = format!(
+            r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"call1","tool":"spawnAgent","status":"completed","senderThreadId":"{THREAD}","receiverThreadIds":["{SUB}"],"prompt":"Find where the parser\nfails","model":null,"reasoningEffort":null,"agentsStates":{{"{SUB}":{{"status":"pendingInit","message":null}}}}}}}}}}"#
+        );
+        // Spawning, the call has no thread yet: no row.
+        feed_agents(&mut sub, &[r#"{"method":"item/started","params":{"threadId":"T","item":{"type":"collabAgentToolCall","id":"call1","tool":"spawnAgent","status":"inProgress","receiverThreadIds":[],"agentsStates":{}}}}"#.replace("\"T\"", &format!("\"{THREAD}\"")).as_str()]);
+        assert!(sub.agents.changed().is_empty());
+        feed_agents(&mut sub, &[&spawn]);
+        let rows = sub.agents.changed();
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].id.as_str(), rows[0].source.as_str(), rows[0].title.as_str()), (SUB, PROVIDER, "Find where the parser fails"));
+        assert_eq!(rows[0].state, AgentState::Working);
+        assert!(!rows[0].can_stop);
+
+        // Its own thread: what it does, how many steps, its last message.
+        let on_sub = |method: &str, params: &str| format!(r#"{{"method":"{method}","params":{{"threadId":"{SUB}",{params}}}}}"#);
+        feed_agents(
+            &mut sub,
+            &[
+                &on_sub("item/started", r#""item":{"type":"reasoning","id":"r1"}"#),
+                &on_sub("item/started", r#""item":{"type":"commandExecution","id":"c1","commandActions":[{"type":"search","query":"parse_expr","command":"rg parse_expr"}]}"#),
+                &on_sub("item/started", r#""item":{"type":"fileChange","id":"f1","changes":[{"path":"C:\\p\\parser.rs","kind":"update"}]}"#),
+                &on_sub("item/completed", r#""item":{"type":"agentMessage","id":"m1","text":"The parser fails on empty input."}"#),
+            ],
+        );
+        let a = sub.agents.get(SUB).unwrap();
+        assert_eq!(a.now, Some(Activity::new("edit", "parser.rs")));
+        assert_eq!(a.steps, 2, "thinking is no step");
+        assert_eq!(a.summary.as_deref(), Some("The parser fails on empty input."));
+        feed_agents(&mut sub, &[&on_sub("turn/completed", r#""turn":{"id":"t9","status":"completed","items":[]}"#)]);
+        assert_eq!(sub.agents.get(SUB).unwrap().state, AgentState::Done);
+        // Ended: what comes after changes nothing.
+        feed_agents(&mut sub, &[&on_sub("item/started", r#""item":{"type":"webSearch","id":"w1"}"#)]);
+        assert_eq!(sub.agents.get(SUB).unwrap().steps, 2);
+        // The chat's own thread is no agent.
+        sub.agents.changed();
+        feed_agents(&mut sub, &[&format!(r#"{{"method":"item/started","params":{{"threadId":"{THREAD}","item":{{"type":"webSearch","id":"w2"}}}}}}"#)]);
+        assert!(sub.agents.changed().is_empty());
+    }
+
+    #[test]
+    fn what_codex_says_of_its_agents_ends_them_as_it_says() {
+        let mut sub = Subagents::default();
+        // Heard of first on its own thread: a row with a title of its own, until the spawn names it.
+        feed_agents(&mut sub, &[r#"{"method":"item/started","params":{"threadId":"a1","item":{"type":"commandExecution","id":"c1","commandActions":[]}}}"#]);
+        assert_eq!(sub.agents.get("a1").unwrap().title, "Agent");
+        let states = |states: &str| {
+            format!(r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"w","tool":"wait","status":"completed","receiverThreadIds":[],"agentsStates":{states}}}}}}}"#)
+        };
+        feed_agents(
+            &mut sub,
+            &[
+                r#"{"method":"item/completed","params":{"item":{"type":"collabAgentToolCall","id":"s","tool":"spawnAgent","receiverThreadIds":["a1","a2","a3"],"prompt":"Check the tests","agentsStates":{}}}}"#,
+                r#"{"method":"item/started","params":{"item":{"type":"subAgentActivity","id":"x","kind":"started","agentThreadId":"a4","agentPath":"root/explorer"}}}"#,
+            ],
+        );
+        assert_eq!(sub.agents.get("a1").unwrap().title, "Check the tests");
+        assert_eq!(sub.agents.get("a4").unwrap().title, "explorer");
+        feed_agents(
+            &mut sub,
+            &[&states(r#"{"a1":{"status":"completed","message":"All 40 pass."},"a2":{"status":"errored","message":"Out of context"},"a3":{"status":"running"},"zz":{"status":"completed"}}"#)],
+        );
+        let (a1, a2, a3) = (sub.agents.get("a1").unwrap(), sub.agents.get("a2").unwrap(), sub.agents.get("a3").unwrap());
+        assert_eq!((a1.state, a1.summary.as_deref()), (AgentState::Done, Some("All 40 pass.")));
+        assert_eq!((a2.state, a2.error.as_deref()), (AgentState::Failed, Some("Out of context")));
+        assert_eq!(a3.state, AgentState::Working);
+        assert!(sub.agents.get("zz").is_none(), "a state of an agent never seen makes no row");
+        feed_agents(
+            &mut sub,
+            &[
+                r#"{"method":"turn/completed","params":{"threadId":"a3","turn":{"status":"failed","error":{"message":"Rate limited"}}}}"#,
+                r#"{"method":"item/completed","params":{"item":{"type":"subAgentActivity","id":"y","kind":"interrupted","agentThreadId":"a4","agentPath":"root/explorer"}}}"#,
+            ],
+        );
+        assert_eq!(sub.agents.get("a3").unwrap().error.as_deref(), Some("Rate limited"));
+        assert_eq!(sub.agents.get("a4").unwrap().state, AgentState::Stopped);
+        assert_eq!(sub.agents.open(), 0);
     }
 }

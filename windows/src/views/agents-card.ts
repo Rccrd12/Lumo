@@ -1,0 +1,419 @@
+// The Agents card: under the answer that started them, one row per agent a
+// chat's CLI runs (concept: concepts/sotto-agenti, images 1 to 4).
+//
+// The header says how many are done, with one segment per agent in its
+// colour (green done, blue at work, amber with no sign of life, purple
+// waiting for the user, red failed or stopped), how long they have been at
+// it, and a chevron that folds the rows. Each row says what its agent does
+// now and when it was last heard of; a click opens it on the CLI's summary,
+// its last steps and its numbers, with Stop this agent. An agent with no sign
+// for minutes asks Wait or Stop; one waiting for a permission offers See
+// request. Under the card, what the CLI wrote by itself meanwhile folds into
+// one line, and while any agent works a line of dots says how many and when
+// the last sign came. Once all are over the card folds into one line that
+// stays in the chat, and opens again with a click; if the CLI ended under
+// them, a red line says so and offers Resume, which sends a message only on
+// that click.
+//
+// Drawn from the store (core/chat-agents.ts) every time something changes:
+// only the card is drawn again, never the chat around it. What the user
+// opened or folded is kept per card.
+
+import { h, svg, clear } from "./dom";
+import { ICONS } from "./icons";
+import type { ChatActivity } from "../core/bridge";
+import {
+  AGENT_TEXT, agentStall, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, worstStall,
+  type AgentBatch, type AgentEntry, type AgentLook, type ChatAgents,
+} from "../core/chat-agents";
+import { providerDef } from "../core/providers";
+import { N_, t, tn } from "../i18n/i18n";
+
+export const AGENTS_CARD_TEXT = {
+  title: N_("Agents"),
+  doneOf: N_("{done} of {total} done"),
+  noSignalCount: N_("{count} with no signal"),
+  doneSummary: N_("Done: {summary}"),
+  noSignal: N_("No signal for {time}"),
+  noSignalStep: N_("No signal for {time} · last step: {step}"),
+  permission: N_("Waiting for your permission"),
+  rateLimit: N_("Waiting for the rate limit"),
+  working: N_("Working…"),
+  failed: N_("Failed"),
+  stopped: N_("Stopped"),
+  doneIn: N_("done in {time}"),
+  ago: N_("{time} ago"),
+  wait: N_("agents|Wait"),
+  stop: N_("agents|Stop"),
+  seeRequest: N_("See request"),
+  ended: N_("{name} ended: {count} agents stopped halfway"),
+  /** What Rust says of an agent whose CLI ended under it (chat_agents.rs end_open). */
+  cliEnded: N_("{agent} ended"),
+  resume: N_("Resume"),
+  resumeAsk: N_("{name} ended while these agents were still working. Please resume their tasks where they stopped:"),
+  finished: N_("{count} agents finished"),
+  inTime: N_("in {time}"),
+  lastSignal: N_("last signal {time} ago"),
+  noSign: N_("{count} agents have given no sign for {time}"),
+  others: N_("the others are working"),
+  updates: N_("{count} updates from {who}"),
+  latest: N_("latest: «{text}»"),
+  steps: N_("{count} steps"),
+  tokens: N_("{tokens} tokens"),
+  stopThis: N_("Stop this agent"),
+  close: N_("Close"),
+  show: N_("Show the agents"),
+  hide: N_("Hide the agents"),
+};
+
+/** A key with its context ("agents|Wait"): its translation, else its English after the "|". */
+function tc(key: string): string {
+  const text = t(key);
+  return text === key ? key.slice(key.indexOf("|") + 1) : text;
+}
+
+/** What the card needs from the chat around it. */
+export interface AgentsCardHost {
+  /** The words for what an agent is doing, as the typing line says them (chat.ts activityLabel). */
+  label(activity: ChatActivity): string;
+  /** Stops one agent alone (`chat_stop_agent`). */
+  stop(agentId: string): void;
+  /** Sends a message to the chat, as if typed: Resume. */
+  send(text: string): void;
+  /** Brings up the permission card an agent waits on; null when there is no way to. */
+  seeRequest: ((agentId: string) => void) | null;
+  /** The card changed: its height, or its state worth saving. */
+  changed(): void;
+}
+
+/** What one card draws. */
+export interface AgentsCardInput {
+  chatId: string;
+  chat: ChatAgents;
+  batch: AgentBatch;
+  /** Who wrote the progress updates ("Claude Code"). */
+  who: string;
+  /** The agents a permission card waits on (core/chat-agents.ts permissionMatch). */
+  permission?: ReadonlySet<string>;
+  now?: number;
+}
+
+/** What the user opened or folded in one card, kept across its redraws. */
+interface CardUi {
+  /** Rows folded away (the chevron), while agents work. */
+  collapsed: boolean;
+  /** Opened again after it folded into one line. */
+  unfolded: boolean;
+  /** The rows opened on their details. */
+  open: Set<string>;
+  updatesOpen: boolean;
+}
+
+const uis = new Map<string, CardUi>();
+
+function uiOf(key: string): CardUi {
+  let ui = uis.get(key);
+  if (!ui) {
+    ui = { collapsed: false, unfolded: false, open: new Set(), updatesOpen: false };
+    uis.set(key, ui);
+    // The island lives for days: the oldest cards' state goes.
+    if (uis.size > 200) uis.delete(uis.keys().next().value!);
+  }
+  return ui;
+}
+
+/** The card's key: its chat and the answer it is under. */
+export function agentsCardKey(chatId: string, batch: AgentBatch): string {
+  return `${chatId}:${batch.anchor}`;
+}
+
+/** A new card, drawn. Draw it again with `fillAgentsCard` when its agents change. */
+export function agentsCard(input: AgentsCardInput, host: AgentsCardHost): HTMLElement {
+  const el = h("div", { class: "agents" });
+  fillAgentsCard(el, input, host);
+  return el;
+}
+
+/** One segment per agent, in its colour. */
+function segments(looks: AgentLook[]): HTMLElement {
+  return h("span", { class: "agents-segs" }, ...looks.map((l) => h("i", { class: l })));
+}
+
+/** A small button of the card; its click goes no further (the row would open). */
+function cardButton(cls: string, text: string, run: () => void): HTMLElement {
+  return h("button", {
+    class: `agents-btn ${cls}`,
+    text,
+    onclick: (e: Event) => {
+      e.stopPropagation();
+      run();
+    },
+  });
+}
+
+function chevron(down: boolean, title: string): HTMLElement {
+  return h("span", { class: down ? "agents-chev down" : "agents-chev", title, "aria-label": title }, svg(ICONS.chevronUp, 12, { stroke: 1.8 }));
+}
+
+/** Whether an agent failed because its CLI ended under it: Rust says "{agent} ended", in the user's language or in English. */
+function cliEnded(e: AgentEntry): boolean {
+  if (e.row.state !== "failed" || !e.row.error || !e.row.source) return false;
+  const agent = providerDef(e.row.source).name;
+  return e.row.error === t(AGENTS_CARD_TEXT.cliEnded, { agent }) || e.row.error === `${agent} ended`;
+}
+
+/** The agents their CLI ended under ("Claude Code ended"), with that CLI's name. */
+function endedByCli(entries: AgentEntry[]): { name: string; entries: AgentEntry[] } | null {
+  const ended = entries.filter(cliEnded);
+  if (!ended.length) return null;
+  return { name: t(providerDef(ended[0].row.source).name), entries: ended };
+}
+
+/** Draws the card in `el`, from what the store holds now. */
+export function fillAgentsCard(el: HTMLElement, input: AgentsCardInput, host: AgentsCardHost) {
+  const now = input.now ?? Date.now();
+  const key = agentsCardKey(input.chatId, input.batch);
+  const ui = uiOf(key);
+  const entries = batchEntries(input.chat, input.batch);
+  const counts = countAgents(entries, now, input.permission);
+  const allOver = counts.open === 0;
+  const redraw = () => {
+    fillAgentsCard(el, input, host);
+    host.changed();
+  };
+  clear(el);
+  if (entries.length === 0 && input.batch.updates.length === 0) return;
+
+  const ended = allOver ? endedByCli(entries) : null;
+  if (entries.length === 0) {
+    // Only updates kept (an old chat): their line alone.
+  } else if (ended && !input.batch.resumed) {
+    el.append(endedBanner(ended, input, host, ui, redraw));
+    if (ui.unfolded) el.append(h("div", { class: "agents-card" }, rows(entries, input, host, ui, now, redraw)));
+  } else if (allOver && !ui.unfolded) {
+    el.append(foldedLine(entries, now, input.permission, () => {
+      ui.unfolded = true;
+      redraw();
+    }));
+  } else {
+    el.append(fullCard(entries, input, host, ui, now, redraw));
+  }
+  if (input.batch.updates.length) el.append(updatesLine(input, ui, redraw));
+  if (!allOver) el.append(liveLine(entries, now, input.permission));
+}
+
+/** The header and the rows. */
+function fullCard(entries: AgentEntry[], input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void): HTMLElement {
+  const counts = countAgents(entries, now, input.permission);
+  const allOver = counts.open === 0;
+  const started = Math.min(...entries.map((e) => e.row.startedAt || now));
+  const ended = allOver ? Math.max(...entries.map((e) => e.row.endedAt ?? e.row.lastSignalAt ?? now)) : now;
+  const status = counts.stalled
+    ? `${t(AGENTS_CARD_TEXT.doneOf, { done: counts.done, total: counts.total })} · ${tn("{count} with no signal", AGENTS_CARD_TEXT.noSignalCount, counts.stalled)}`
+    : t(AGENTS_CARD_TEXT.doneOf, { done: counts.done, total: counts.total });
+  // Folded rows show again with the chevron; once all are over it folds the card into one line.
+  const folded = !allOver && ui.collapsed;
+  const head = h("div", { class: "agents-head" },
+    h("span", { class: "agents-title", text: t(AGENTS_CARD_TEXT.title) }),
+    h("span", { class: "agents-status", text: status }),
+    segments(looksOf(entries, now, input.permission)),
+    h("span", { class: "agents-gap" }),
+    h("span", { class: "agents-time", text: durationText(ended - started) }),
+    chevron(folded, t(folded ? AGENTS_CARD_TEXT.show : AGENTS_CARD_TEXT.hide)));
+  head.addEventListener("click", () => {
+    if (allOver) ui.unfolded = false;
+    else ui.collapsed = !ui.collapsed;
+    redraw();
+  });
+  const card = h("div", { class: "agents-card" }, head);
+  if (!folded) card.append(rows(entries, input, host, ui, now, redraw));
+  return card;
+}
+
+function rows(entries: AgentEntry[], input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void): HTMLElement {
+  return h("div", { class: "agents-rows" }, ...entries.map((e) => row(e, input, host, ui, now, redraw)));
+}
+
+/** What a row says next to its title. */
+function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: number): string {
+  const r = e.row;
+  switch (look) {
+    case "done":
+      return r.summary ? t(AGENTS_CARD_TEXT.doneSummary, { summary: r.summary }) : t("Done");
+    case "failed":
+      return r.error || t(r.state === "stopped" ? AGENTS_CARD_TEXT.stopped : AGENTS_CARD_TEXT.failed);
+    case "waiting":
+      return t(r.waitingFor === "rate_limit" ? AGENTS_CARD_TEXT.rateLimit : AGENTS_CARD_TEXT.permission);
+    case "stalled": {
+      const time = durationText((agentStall(e, now)?.seconds ?? 0) * 1000);
+      const last = e.steps[0]?.now ?? r.now;
+      return last ? t(AGENTS_CARD_TEXT.noSignalStep, { time, step: host.label(last) }) : t(AGENTS_CARD_TEXT.noSignal, { time });
+    }
+    default:
+      return r.now ? host.label(r.now) : r.summary || t(AGENTS_CARD_TEXT.working);
+  }
+}
+
+/** One agent: its marker, its task, what it does, and its time or what can be done about it. */
+function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void): HTMLElement {
+  const r = e.row;
+  const look = lookOf(e, now, input.permission);
+  const marker = look === "done"
+    ? h("span", { class: "agents-mark done" }, svg(ICONS.check, 12, { stroke: 2.2 }))
+    : h("span", { class: `agents-mark ${look}` }, h("i"));
+  const line = rowLine(e, look, host, now);
+  const side = h("span", { class: "agents-side" });
+  if (look === "stalled") {
+    side.append(cardButton("wait", tc(AGENTS_CARD_TEXT.wait), () => {
+      snooze(e, now);
+      redraw();
+    }));
+    if (r.canStop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), () => host.stop(r.id)));
+  } else if (look === "waiting") {
+    const see = host.seeRequest;
+    if (see && r.waitingFor !== "rate_limit") side.append(cardButton("see", t(AGENTS_CARD_TEXT.seeRequest), () => see(r.id)));
+  } else if (look === "done") {
+    side.append(h("span", { class: "agents-time", text: t(AGENTS_CARD_TEXT.doneIn, { time: durationText((r.endedAt ?? now) - r.startedAt) }) }));
+  } else if (look === "failed") {
+    if (r.endedAt) side.append(h("span", { class: "agents-time", text: durationText(r.endedAt - r.startedAt) }));
+  } else {
+    side.append(h("span", { class: "agents-time", text: `${durationText(now - r.startedAt)} · ${t(AGENTS_CARD_TEXT.ago, { time: durationText(now - r.lastSignalAt) })}` }));
+  }
+  const open = ui.open.has(r.id);
+  const head = h("div", { class: "agents-row-head" },
+    marker,
+    h("span", { class: "agents-name", text: r.title, title: r.title }),
+    h("span", { class: "agents-line", text: line, title: line }),
+    side);
+  const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}` }, head);
+  head.addEventListener("click", () => {
+    if (open) ui.open.delete(r.id);
+    else ui.open.add(r.id);
+    redraw();
+  });
+  if (open) el.append(rowDetail(e, host, ui, now, redraw));
+  return el;
+}
+
+/** An opened row: the CLI's summary, the last steps, the numbers, and Stop this agent. */
+function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void): HTMLElement {
+  const r = e.row;
+  const box = h("div", { class: "agents-detail" });
+  if (r.summary) box.append(h("div", { class: "agents-summary", text: r.summary }));
+  if (r.error && r.error !== r.summary) box.append(h("div", { class: "agents-summary failed", text: r.error }));
+  if (e.steps.length) {
+    box.append(h("div", { class: "agents-steps" }, ...e.steps.map((s) =>
+      h("div", { class: "agents-step" },
+        h("span", { class: "agents-step-what", text: host.label(s.now) }),
+        h("span", { class: "agents-time", text: t(AGENTS_CARD_TEXT.ago, { time: durationText(now - s.at) }) })))));
+  }
+  const numbers = [
+    tn("{count} step", AGENTS_CARD_TEXT.steps, r.steps),
+    r.tokens != null ? t(AGENTS_CARD_TEXT.tokens, { tokens: compactNumber(r.tokens) }) : null,
+    durationText((isFinal(r.state) ? r.endedAt ?? now : now) - r.startedAt),
+  ].filter((x): x is string => !!x);
+  box.append(h("div", { class: "agents-numbers", text: numbers.join(" · ") }));
+  const actions = h("div", { class: "agents-actions" });
+  if (r.canStop && !isFinal(r.state)) actions.append(cardButton("stop", t(AGENTS_CARD_TEXT.stopThis), () => host.stop(r.id)));
+  actions.append(cardButton("close", t(AGENTS_CARD_TEXT.close), () => {
+    ui.open.delete(r.id);
+    redraw();
+  }));
+  box.append(actions);
+  return box;
+}
+
+/** 212000 → "212K" in English, as the language writes it. */
+function compactNumber(n: number): string {
+  try {
+    return new Intl.NumberFormat(document.documentElement?.lang || undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  } catch {
+    return String(n);
+  }
+}
+
+/** All over: one line that stays in the chat (concept 4); a click opens the card again. */
+function foldedLine(entries: AgentEntry[], now: number, permission: ReadonlySet<string> | undefined, open: () => void): HTMLElement {
+  const started = Math.min(...entries.map((e) => e.row.startedAt || now));
+  const ended = Math.max(...entries.map((e) => e.row.endedAt ?? e.row.lastSignalAt ?? now));
+  const done = entries.every((e) => e.row.state === "done");
+  const el = h("div", { class: "agents-card agents-folded" },
+    done ? h("span", { class: "agents-mark done" }, svg(ICONS.check, 12, { stroke: 2.2 })) : h("span", { class: "agents-mark failed" }, h("i")),
+    h("span", { class: "agents-title", text: tn("{count} agent finished", AGENTS_CARD_TEXT.finished, entries.length) }),
+    h("span", { class: "agents-status", text: t(AGENTS_CARD_TEXT.inTime, { time: durationText(ended - started) }) }),
+    h("span", { class: "agents-gap" }),
+    segments(looksOf(entries, now, permission)),
+    chevron(true, t(AGENTS_CARD_TEXT.show)));
+  el.addEventListener("click", open);
+  return el;
+}
+
+/** The CLI ended under its agents: a red line, and Resume. */
+function endedBanner(ended: { name: string; entries: AgentEntry[] }, input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, redraw: () => void): HTMLElement {
+  const resume = cardButton("resume", t(AGENTS_CARD_TEXT.resume), () => {
+    const tasks = ended.entries.map((e) => `- ${e.row.title}`).join("\n");
+    host.send(`${t(AGENTS_CARD_TEXT.resumeAsk, { name: ended.name })}\n${tasks}`);
+    input.batch.resumed = true;
+    redraw();
+  });
+  const el = h("div", { class: "agents-card agents-ended" },
+    h("span", { class: "agents-title", text: t(AGENTS_CARD_TEXT.title) }),
+    h("span", { class: "agents-ended-text", text: tn("{name} ended: {count} agent stopped halfway", AGENTS_CARD_TEXT.ended, ended.entries.length, { name: ended.name }) }),
+    h("span", { class: "agents-gap" }),
+    resume);
+  el.addEventListener("click", () => {
+    ui.unfolded = !ui.unfolded;
+    redraw();
+  });
+  return el;
+}
+
+/** What the CLI wrote by itself while its agents worked: one line, the list under it once opened. */
+function updatesLine(input: AgentsCardInput, ui: CardUi, redraw: () => void): HTMLElement {
+  const updates = input.batch.updates;
+  const latest = oneLine(updates[updates.length - 1]);
+  const text = `${tn("{count} update from {who}", AGENTS_CARD_TEXT.updates, updates.length, { who: input.who })} · ${t(AGENTS_CARD_TEXT.latest, { text: latest })}`;
+  const head = h("div", { class: "agents-updates-head" },
+    h("span", { class: ui.updatesOpen ? "agents-chev open" : "agents-chev right" }, svg(ICONS.chevronRight, 11, { stroke: 1.8 })),
+    h("span", { class: "agents-updates-text", text, title: text }));
+  head.addEventListener("click", () => {
+    ui.updatesOpen = !ui.updatesOpen;
+    redraw();
+  });
+  const el = h("div", { class: "agents-updates" }, head);
+  if (ui.updatesOpen) el.append(h("div", { class: "agents-updates-list" }, ...updates.map((u) => h("div", { class: "agents-update", text: u }))));
+  return el;
+}
+
+/** An update on one line, cut short. */
+function oneLine(text: string | undefined): string {
+  const line = (text ?? "").replace(/\s+/g, " ").trim();
+  return line.length > 90 ? `${line.slice(0, 89)}…` : line;
+}
+
+/**
+ * Under the card while agents work: the dots, how many work, and when the last
+ * sign came, so a number that stays small says they are alive (concept 1).
+ * The dots take the colour of the worst case (concept 3).
+ */
+function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<string>): HTMLElement {
+  const counts = countAgents(entries, now, permission);
+  const worst = counts.stalled ? worstStall(entries, now) : null;
+  let tone: string;
+  let text: string;
+  if (worst) {
+    tone = "stalled";
+    text = tn("{count} agent has given no sign for {time}", AGENTS_CARD_TEXT.noSign, counts.stalled, { time: durationText(worst.seconds * 1000) });
+    if (counts.working + counts.waiting > 0) text += ` · ${t(AGENTS_CARD_TEXT.others)}`;
+  } else if (counts.waiting && !counts.working) {
+    tone = "waiting";
+    text = t(AGENTS_CARD_TEXT.permission);
+  } else {
+    tone = counts.waiting ? "waiting" : "working";
+    const last = Math.max(...entries.filter((e) => !isFinal(e.row.state)).map((e) => e.row.lastSignalAt || 0));
+    text = `${tn("{count} agent working", AGENT_TEXT.islandWorking, counts.open)} · ${t(AGENTS_CARD_TEXT.lastSignal, { time: durationText(now - last) })}`;
+  }
+  return h("div", { class: `agents-live ${tone}` },
+    h("span", { class: "agents-dots" }, h("i"), h("i"), h("i")),
+    h("span", { class: "agents-live-text", text }));
+}

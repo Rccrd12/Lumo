@@ -18,7 +18,7 @@
 // the island is hidden).
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -142,6 +142,20 @@ impl AgentRow {
     }
 }
 
+/// The longest a summary goes to the island: an agent's last message can be
+/// pages long, and the card shows a line or two of it.
+const MAX_SUMMARY: usize = 240;
+
+/// `text` as an agent's summary: on one line, cut short.
+pub fn summary_of(text: &str) -> String {
+    let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.chars().count() <= MAX_SUMMARY {
+        return line;
+    }
+    let cut: String = line.chars().take(MAX_SUMMARY - 1).collect();
+    format!("{}…", cut.trim_end())
+}
+
 /// The agents of one chat's CLI, by id, in the order they started: what each
 /// provider keeps while it reads its CLI's output. `changed` hands back the
 /// rows that changed since it was last asked, to be sent.
@@ -222,6 +236,33 @@ pub fn emit_changed(app: &AppHandle, chat: &str, agents: &mut Agents) {
     }
 }
 
+/// What a provider reading its CLI calls after each line it read, on
+/// whichever thread reads it: the agents that changed go to the island, and,
+/// with `true`, a sign of life. A provider keeps its `Agents` where its CLI
+/// lives, and a `Tell` with them for when the CLI ends on another thread.
+pub type Tell = Arc<dyn Fn(&mut Agents, bool) + Send + Sync>;
+
+/// The `Tell` of the chat `chat`.
+pub fn teller(app: &AppHandle, chat: &str) -> Tell {
+    let app = app.clone();
+    let events = crate::chat::ChatEvents::new(chat);
+    Arc::new(move |agents: &mut Agents, alive: bool| {
+        if alive {
+            events.signal(&app);
+        }
+        events.agents(&app, agents);
+    })
+}
+
+/// A `Tell` that tells nobody: a run with no chat (Lumo's supervisor, a
+/// task from Gemini Live), or a test. What changed is still taken, so it
+/// never piles up.
+pub fn silent() -> Tell {
+    Arc::new(|agents: &mut Agents, _| {
+        agents.changed();
+    })
+}
+
 /// The sign of life goes at most this often per chat.
 const SIGNAL_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -271,15 +312,22 @@ pub fn signal_waiting(app: &AppHandle, chat: &str, waiting: Option<&str>) {
 /// runs, and takes it away when the CLI ends.
 pub type StopAgent = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
-static STOPPERS: Mutex<Option<HashMap<String, StopAgent>>> = Mutex::new(None);
+/// Each chat's stopper, with the number it was registered under.
+static STOPPERS: Mutex<Option<HashMap<String, (u64, StopAgent)>>> = Mutex::new(None);
+static NEXT_STOPPER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// The chat `chat`'s CLI can stop one of its agents with `stop` from now on.
-pub fn register_stopper(chat: &str, stop: StopAgent) {
+/// The number it gives is for `forget_stopper_of`.
+pub fn register_stopper(chat: &str, stop: StopAgent) -> u64 {
+    let n = NEXT_STOPPER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let mut all = STOPPERS.lock().unwrap_or_else(|e| e.into_inner());
-    all.get_or_insert_with(HashMap::new).insert(chat.to_string(), stop);
+    all.get_or_insert_with(HashMap::new).insert(chat.to_string(), (n, stop));
+    n
 }
 
 /// The chat `chat`'s CLI ended: none of its agents can be stopped any more.
+/// (The CLIs that stop agents today use `forget_stopper_of`.)
+#[allow(dead_code)]
 pub fn forget_stopper(chat: &str) {
     let mut all = STOPPERS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(all) = all.as_mut() {
@@ -287,11 +335,23 @@ pub fn forget_stopper(chat: &str) {
     }
 }
 
+/// `forget_stopper`, only while the chat's stopper is still the one
+/// registered as `n`: a CLI ended on another thread after the chat started a
+/// new one never takes the new one's away.
+pub fn forget_stopper_of(chat: &str, n: u64) {
+    let mut all = STOPPERS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(all) = all.as_mut() {
+        if all.get(chat).is_some_and(|(have, _)| *have == n) {
+            all.remove(chat);
+        }
+    }
+}
+
 /// Stops the agent `agent` of the chat `chat`, if its CLI can.
 pub fn stop(chat: &str, agent: &str) -> Result<(), String> {
     let all = STOPPERS.lock().unwrap_or_else(|e| e.into_inner());
     match all.as_ref().and_then(|all| all.get(chat)) {
-        Some(stop) => stop(agent),
+        Some((_, stop)) => stop(agent),
         None => Err("This agent can't be stopped on its own.".into()),
     }
 }
@@ -356,5 +416,29 @@ mod tests {
         assert!(stop("chat-stop-test", "a2").is_err());
         forget_stopper("chat-stop-test");
         assert!(stop("chat-stop-test", "a1").is_err());
+
+        // A CLI that ended late never takes away the stopper of the one after it.
+        let old = register_stopper("chat-stop-test-2", Box::new(|_| Err("old".into())));
+        let new = register_stopper("chat-stop-test-2", Box::new(|_| Ok(())));
+        forget_stopper_of("chat-stop-test-2", old);
+        assert!(stop("chat-stop-test-2", "a1").is_ok());
+        forget_stopper_of("chat-stop-test-2", new);
+        assert!(stop("chat-stop-test-2", "a1").is_err());
+    }
+
+    #[test]
+    fn a_summary_is_one_short_line() {
+        assert_eq!(summary_of("  Done:\n 52 pages   transcribed. "), "Done: 52 pages transcribed.");
+        let long = summary_of(&"word ".repeat(200));
+        assert_eq!(long.chars().count(), MAX_SUMMARY);
+        assert!(long.ends_with('…'));
+    }
+
+    #[test]
+    fn a_silent_tell_takes_what_changed_all_the_same() {
+        let mut agents = Agents::default();
+        agents.upsert("a1", || AgentRow::new("a1", "codex", "x"));
+        silent()(&mut agents, true);
+        assert!(agents.changed().is_empty());
     }
 }

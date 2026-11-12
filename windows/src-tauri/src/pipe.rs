@@ -69,6 +69,14 @@ pub struct Pending(pub Mutex<HashMap<String, mpsc::Sender<Reply>>>);
 
 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
+tokio::task_local! {
+    /// The island chat whose tool call is running (tools.rs `call_for_chat`
+    /// sets it for the call): a card raised during the call (`ask`: a tool's
+    /// Allow / Deny, a web search, an email to send) puts that chat in
+    /// "waiting for your permission" while it is up, not "no signal".
+    pub static CHAT: String;
+}
+
 /// Requests of the island chat's own Antigravity CLI run: the only ones Auto
 /// may allow without a click (src/island/hooks.ts). Kept here so a
 /// mistake in the page can never allow a Claude Code or Codex request.
@@ -401,15 +409,22 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
         with_mail_cards(|set| set.insert(id.clone()));
     }
     log::line(format!("tool card id={id}"));
+    // "" outside a chat's tool call: signal_waiting then says nothing.
+    let chat = CHAT.try_with(String::clone).unwrap_or_default();
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
     let decision = with_card(
         // While Claude uses the computer, the hand gets its mouse back to
-        // answer, as for an agent's card.
-        || crate::computer::card_up(app),
+        // answer, as for an agent's card. The chat that asked (if any) is
+        // waiting for the user, not stuck (chat_agents.rs).
+        || {
+            crate::computer::card_up(app);
+            crate::chat_agents::signal_waiting(app, &chat, Some("permission"));
+        },
         // Also when Stop drops the turn that asked, mid-wait: else the count
         // stayed up and Claude never had the mouse again until Lumo restarted.
         |answered| {
             crate::computer::card_down(app);
+            crate::chat_agents::signal_waiting(app, &chat, None);
             app.state::<Pending>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
             with_mail_cards(|set| set.remove(&id));
             // Nobody answers it any more: it leaves the island.

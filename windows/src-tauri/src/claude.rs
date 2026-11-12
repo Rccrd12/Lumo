@@ -293,6 +293,8 @@ pub async fn send(
         let mut smaller = false;
         let mut retried = false;
         loop {
+            // Each request is news (the first, a retry, the round after the tools).
+            events.signal(app);
             let before = said.join("\n\n");
             let show = |text: &str| {
                 let text = text.trim_start();
@@ -302,7 +304,7 @@ pub async fn send(
                 }
                 *shown.lock().unwrap_or_else(|p| p.into_inner()) = all;
             };
-            let response = match stream_call(&endpoint, &key, &body, usage, show).await {
+            let response = match stream_call(&endpoint, &key, &body, usage, show, || events.signal(app)).await {
                 Ok(response) => response,
                 // A model with a smaller ceiling than its list said (or a gateway's).
                 Err(Failed::Status(400, e)) if !smaller && e.contains("max_tokens") => {
@@ -415,7 +417,7 @@ pub async fn summarize(model: &str, system: &str, prompt: &str) -> Result<String
     let mut smaller = false;
     let mut retried = false;
     let response = loop {
-        match stream_call(&endpoint, &key, &body, &mut None, |_| {}).await {
+        match stream_call(&endpoint, &key, &body, &mut None, |_| {}, || {}).await {
             Ok(response) => break response,
             Err(Failed::Status(400, e)) if !smaller && e.contains("max_tokens") => {
                 smaller = true;
@@ -501,13 +503,17 @@ fn silent() -> String {
 
 /// One request, its answer read as it streams in (`stream: true`), put back
 /// together as the Messages API gives it whole. `on_text` gets the answer's
-/// text so far, at most 15 times a second and once more at the end.
+/// text so far, at most 15 times a second and once more at the end;
+/// `on_chunk`, every piece of the stream that comes, even one that adds
+/// nothing to the text (reasoning, a tool call's input): the chat's sign of
+/// life (chat_agents.rs), so a model that thinks for long isn't taken for stuck.
 async fn stream_call(
     endpoint: &Url,
     key: &str,
     body: &Value,
     usage: &mut Option<ChatUsage>,
     mut on_text: impl FnMut(&str),
+    on_chunk: impl Fn(),
 ) -> Result<Value, Failed> {
     let mut body = body.clone();
     body["stream"] = json!(true);
@@ -543,6 +549,7 @@ async fn stream_call(
             Err(e) if e.is_timeout() => return Err(Failed::Other(silent())),
             Err(e) => return Err(Failed::Other(tf("Network error: {error}", &[("error", &e.to_string())]))),
         };
+        on_chunk();
         total += chunk.len();
         if total > MAX_STREAM {
             return Err(Failed::Other(t("The server's answer is too large.")));
@@ -1069,6 +1076,30 @@ mod tests {
         let mut a = Assembly::default();
         let e = a.line(r#"data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#).unwrap_err();
         assert_eq!(e, "Claude API: Overloaded");
+    }
+
+    #[test]
+    fn a_stream_of_thinking_alone_is_still_a_sign_of_life() {
+        // No text shows while the model thinks: each piece that comes says it is at work all the same.
+        use crate::net::tests::serve_once;
+        let body = [
+            r#"data: {"type":"message_start","message":{"content":[]}}"#,
+            r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}"#,
+            r#"data: {"type":"content_block_stop","index":0}"#,
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#,
+            r#"data: {"type":"message_stop"}"#,
+        ]
+        .iter()
+        .map(|l| format!("{l}\n\n"))
+        .collect::<String>();
+        let u = serve_once("200 OK", "Content-Type: text/event-stream\r\n", body.into_bytes());
+        let endpoint = Url::parse(&u).unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let signals = std::cell::Cell::new(0);
+        let answer = rt.block_on(stream_call(&endpoint, "k", &json!({ "model": "m" }), &mut None, |_| {}, || signals.set(signals.get() + 1)));
+        assert!(answer.is_ok());
+        assert!(signals.get() >= 1);
     }
 
     #[test]

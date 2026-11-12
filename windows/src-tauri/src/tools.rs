@@ -1440,7 +1440,19 @@ pub fn not_offered(name: &str) -> String {
 /// it failed. `asking`: when one of the user's tools needs a card (a local
 /// model's chat asks as its permission mode says); `sandbox_high`: they run
 /// in the Windows sandbox when they can (the local chat's Sandbox High).
+/// The call starting and ending are the chat's sign of life, and a card it
+/// raises puts the chat in "waiting for your permission" (pipe.rs `CHAT`,
+/// chat_agents.rs).
 pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
+    crate::chat_agents::signal(app, chat_id);
+    let call = call_in_chat(app, chat_id, id, input, asking, sandbox_high);
+    let answer = crate::pipe::CHAT.scope(chat_id.to_string(), call).await;
+    crate::chat_agents::signal(app, chat_id);
+    answer
+}
+
+/// `call_for_chat`'s call itself.
+async fn call_in_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
     }
