@@ -534,6 +534,21 @@ impl ChatEvents {
         let _ = app.emit_to(WINDOW_LABEL, "chat-activity", json!({ "chat": self.chat, "activity": activity }));
     }
 
+    /// The answer moved just now: its sign of life (chat_agents.rs), once a second at most.
+    pub fn signal(&self, app: &AppHandle) {
+        crate::chat_agents::signal(app, &self.chat);
+    }
+
+    /// Every agent of the answer's CLI that changed (chat_agents.rs).
+    pub fn agents(&self, app: &AppHandle, agents: &mut crate::chat_agents::Agents) {
+        crate::chat_agents::emit_changed(app, &self.chat, agents);
+    }
+
+    /// The chat these events are for.
+    pub fn chat_id(&self) -> &str {
+        &self.chat
+    }
+
     /// A file the answer read, edited or created (claude_code.rs FileTouch):
     /// the chat lists it, and may open it from now on (chat_files.rs).
     pub fn file(&self, app: &AppHandle, file: &claude_code::FileTouch) {

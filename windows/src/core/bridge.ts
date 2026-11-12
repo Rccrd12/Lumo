@@ -758,6 +758,58 @@ export interface ChatActivity {
   detail: string;
 }
 
+/** Where an agent a chat's CLI started stands (chat_agents.rs AgentState); the last three are final. */
+export type ChatAgentState = "working" | "waiting" | "done" | "failed" | "stopped";
+
+/**
+ * One agent a chat's answer started (chat_agents.rs AgentRow), always whole:
+ * the payload of the `chat-agent` event, `{ chat, agent }`.
+ */
+export interface ChatAgent {
+  /** Its id in its CLI, unique in the chat (Claude Code's task id, Codex's thread id…). */
+  id: string;
+  /** The provider that runs it (a providers.ts id). */
+  source: string;
+  /** Its task, as the CLI described it. */
+  title: string;
+  state: ChatAgentState;
+  /** With "waiting": what it waits for. */
+  waitingFor?: "permission" | "rate_limit";
+  /** What it is doing now, worded as the typing line is (activityLabel). */
+  now?: ChatActivity;
+  /** The CLI's own one-line account of its progress. */
+  summary?: string;
+  /** Tool calls so far. */
+  steps: number;
+  tokens?: number;
+  /** Epoch ms. */
+  startedAt: number;
+  lastSignalAt: number;
+  endedAt?: number;
+  error?: string;
+  /** It goes on after the turn that started it. */
+  background: boolean;
+  /** `chat_stop_agent` can stop it alone. */
+  canStop: boolean;
+}
+
+/** The `chat-agent` event. */
+export interface ChatAgentEvent {
+  chat: string;
+  agent: ChatAgent;
+}
+
+/**
+ * The `chat-signal` event: the chat's answer moved at `at` (epoch ms), sent
+ * once a second at most. With `waiting` present, the answer starts ("permission":
+ * a card is up for the user) or stops (null) waiting for the user; those are always sent.
+ */
+export interface ChatSignalEvent {
+  chat: string;
+  at: number;
+  waiting?: "permission" | null;
+}
+
 /**
  * Unsloth Studio as Lumo starts and stops it (unsloth_studio.rs Status), also
  * the payload of the `unsloth-studio` event.

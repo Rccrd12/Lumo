@@ -11,6 +11,7 @@ mod antigravity_plan;
 mod autostart;
 mod calendar;
 mod chat;
+mod chat_agents;
 mod chat_files;
 mod chat_usage;
 mod claude;
@@ -867,6 +868,13 @@ fn chat_stop(chats: State<Chats>, chat_id: String) {
     chats.stop(&chat_id);
 }
 
+/// "Stop this agent" on the chat's Agents card: stops that one agent the
+/// chat's CLI started (Claude Code's `stop_task`), the others go on.
+#[tauri::command]
+fn chat_stop_agent(chat_id: String, agent_id: String) -> Result<(), String> {
+    chat_agents::stop(&chat_id, &agent_id)
+}
+
 /// An edited message: the conversation goes back to its first `keep` turns
 /// (as `chat_send` counted them) before the edited one is sent.
 #[tauri::command]
@@ -1438,6 +1446,7 @@ pub fn run() {
             chat_compact,
             chat_commands,
             chat_stop,
+            chat_stop_agent,
             chat_rewind,
             chat_forget_file,
             island_drag,
