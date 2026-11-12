@@ -278,7 +278,13 @@ export const Bridge = {
     call<void>("approval_mail_send", { requestId, revised }),
   /** Attach on an email's card: the system's picker; each file picked, by name, size and path (mail.rs). */
   pickAttachments: async (): Promise<{ name: string; size: number; path: string }[]> => {
-    const picked = await call<unknown>("pick_attachments");
+    let picked: unknown;
+    dialogs++;
+    try {
+      picked = await call<unknown>("pick_attachments");
+    } finally {
+      dialogs--;
+    }
     if (!Array.isArray(picked)) return [];
     return picked
       .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
@@ -299,8 +305,9 @@ export const Bridge = {
   /** A new chat on screen; an answer still written in another one goes on. */
   chatReset: (chatId: string) => call<void>("chat_reset", { chatId }),
   /** Listens to a pull request for the chat `chatId` (listen.rs); `mode` "every": once for each new commit. */
-  listenAdd: (repo: string, number: number, until: string, task: string, chatId: string, mode = "once") =>
-    call<ListenWatch>("listen_add", { repo, number, until, mode, task, chatId }),
+  /** `replace`: the watch this one changes, which keeps its id (a webhook its address). */
+  listenAdd: (repo: string, number: number, until: string, task: string, chatId: string, mode = "once", replace: number | null = null) =>
+    call<ListenWatch>("listen_add", { repo, number, until, mode, task, chatId, replace }),
   /** Stops listening to a pull request (`until` null: to everything on it). */
   listenCancel: (repo: string, number: number, until: string | null = null) =>
     call<number>("listen_cancel", { repo, number, until }),
@@ -308,17 +315,20 @@ export const Bridge = {
   listenAddLocal: async (source: string, target: string, until: string, text: string, task: string, chatId: string, mode = "once", amount = 0) =>
     (await Bridge.listenTryLocal(source, target, until, text, task, chatId, mode, amount)).watch ?? null,
   /** The same, with why it could not: `needs:…` names what to turn on first (listen_events.rs available). */
-  listenTryLocal: async (source: string, target: string, until: string, text: string, task: string, chatId: string, mode = "once", amount = 0): Promise<{ watch?: ListenWatch; error?: string }> => {
+  listenTryLocal: async (source: string, target: string, until: string, text: string, task: string, chatId: string, mode = "once", amount = 0, replace: number | null = null): Promise<{ watch?: ListenWatch; error?: string }> => {
     if (!IS_TAURI) return {};
     try {
-      return { watch: await tauriInvoke<ListenWatch>("listen_add_local", { source, target, until, mode, text, amount, task, chatId }) };
+      return { watch: await tauriInvoke<ListenWatch>("listen_add_local", { source, target, until, mode, text, amount, task, chatId, replace }) };
     } catch (err) {
       console.error("[lumo] listen_add_local failed", err);
       return { error: String(err) };
     }
   },
-  /** An event on the calendar coming up, for a watch on it (`at`: its start). */
-  listenFire: (id: number, summary: string, at: number) => call<boolean>("listen_fire", { id, summary, at }),
+  /**
+   * An event on the calendar coming up, for a watch on it (`at`: its start;
+   * `key`: its name, so two events starting at the same time are both told).
+   */
+  listenFire: (id: number, summary: string, at: number, key: string) => call<boolean>("listen_fire", { id, summary, at, key }),
   /** A webhook's address, on this PC. */
   listenWebhookUrl: (id: number) => call<string | null>("listen_webhook_url", { id }),
   /** Stops listening to a target on this PC, for every event. */
@@ -379,6 +389,13 @@ export const Bridge = {
   /** Reopens a chat from the history, and the Claude Code session that answered it. */
   chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
     call<void>("chat_restore", { chatId, turns, session, compact }),
+  /**
+   * The same for a chat that is not on screen (a watch's task answered in its
+   * own chat): Rust keeps the conversation on screen too, which chat_restore
+   * would let go.
+   */
+  chatLoad: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
+    call<void>("chat_load", { chatId, turns, session, compact }),
   /** /compact with a provider called by its API: the summary that now stands for the chat's turns; null with nothing new. */
   /** The summary, and the history sent to the model before and after it (characters). */
   chatCompact: (chatId: string) => callOrThrow<(ChatCompact & { before: number; after: number }) | null>("chat_compact", { chatId }),

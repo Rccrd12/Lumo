@@ -1,6 +1,7 @@
 // App state: what the island shows and remembers.
 
 import type { ListenWatch } from "./listen";
+import type { HeardLine } from "./heard";
 import { newChatId } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../character/engine";
@@ -556,6 +557,12 @@ class AppState {
   chatAsk: string | null = null;
   /** The pull requests Lumo listens to for the chat (core/listen.ts, listen.rs). */
   listening: ListenWatch[] = [];
+  /**
+   * What a watch heard for a chat the user has not seen since, a line per
+   * chat, newest last (core/heard.ts): the closed island, the waves and Past
+   * chats say so until that chat is opened. Not kept across a restart.
+   */
+  listenPending: HeardLine[] = [];
   /** The plan icon shows in the chat: there are plans to look at (island/plan.ts). */
   planIcon = false;
   /** The plan is open, not folded into its icon (the icon looks pressed). */
@@ -736,6 +743,19 @@ class AppState {
     this.startChat();
     this.droppedFile = null;
     this.promptContext = null;
+  }
+
+  /**
+   * The chat put aside by the other slot (its chat on screen comes back as
+   * it was left): what Lumo writes to it waits until it is back (chat.ts runHeard).
+   */
+  parkedChatId(): string | null {
+    return this.parkedChat()?.chatId ?? null;
+  }
+
+  /** That chat, with its messages as they were left. */
+  parkedChat(): { chatId: string; chatHistory: ChatMessage[] } | null {
+    return this.parkedChats[this.chatSlot === "chat" ? "forge" : "chat"] ?? null;
   }
 
   /** The workshop's chat, on screen or put aside; null before it was ever opened. */

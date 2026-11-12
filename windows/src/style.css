@@ -2940,6 +2940,154 @@ math.mx .mx-cancel.mx-sout {
   color: #04121b;
 }
 
+/* The clock's badge (Past chats): the other chats that heard something,
+   as the waves' badge. */
+.history-btn {
+  position: relative;
+}
+
+.history-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: #7dd3fc;
+  color: #04121b;
+  font: 600 9px/14px var(--font);
+  text-align: center;
+  pointer-events: none;
+}
+
+.history-badge:empty {
+  display: none;
+}
+
+/* What Lumo heard for another chat, over the field (chat.ts drawHeardBar):
+   the source's tile, what and where, Open that chat over Close. */
+.heard-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid color-mix(in srgb, var(--watch, #7dd3fc) 30%, transparent);
+  font: 500 12.5px/1.35 var(--font);
+  color: #e6e8ec;
+}
+
+/* Hidden under the panels, as the queued question is: the lists keep their room. */
+.heard-bar[hidden],
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .heard-bar {
+  display: none;
+}
+
+.heard-bar-tile {
+  flex: none;
+  display: flex;
+}
+
+.heard-bar .listen-tile {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 7px;
+}
+
+.heard-bar-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.heard-bar-what {
+  overflow-wrap: anywhere;
+}
+
+.heard-bar-where {
+  color: #8b9099;
+  overflow-wrap: anywhere;
+}
+
+.heard-bar-btns {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.heard-bar-btns .listen-head-btn {
+  justify-content: center;
+  text-align: center;
+}
+
+/* A line Lumo heard, between the chat's messages (chat.ts heardRow). */
+.chat-row.heard-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 4px;
+}
+
+.heard-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 92%;
+  padding: 5px 12px 5px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  font: 500 12.5px/1.3 var(--font);
+  color: #d9dde3;
+}
+
+.heard-pill .listen-tile {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 7px;
+}
+
+.heard-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.heard-title {
+  color: #8b9099;
+}
+
+.heard-pill.not-met .heard-summary {
+  color: #fda4af;
+}
+
+.heard-dot,
+.heard-time {
+  color: #6b7079;
+  font-variant-numeric: tabular-nums;
+}
+
+.heard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Past chats: a chat that heard something not seen yet. */
+.history-heard {
+  flex: none;
+  display: inline-flex;
+  color: #7dd3fc;
+}
+
 /* The Listening panel: like the folder's, what listens now and what it heard. */
 .chat-body .listen-panel,
 .chat-body.picking .listen-panel {
@@ -3170,6 +3318,40 @@ math.mx .mx-cancel.mx-sout {
 .listen-pill.not-met {
   background: rgba(244, 80, 94, 0.18);
   color: #fda4af;
+}
+
+/* What went wrong with a watch, on it (listening.ts warningLine). */
+.listen-warn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font: 500 11px/1.35 var(--font);
+}
+
+.listen-warn.token {
+  --warn: #fbbf24;
+  color: #fbbf24;
+}
+
+.listen-warn.too-often {
+  --warn: #fda4af;
+  color: #fda4af;
+}
+
+.listen-warn-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 6px 1px 0;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.listen-head-btn.listen-warn-btn {
+  height: 20px;
+  padding: 0 8px;
+  font-size: 10.5px;
 }
 
 .listen-status {

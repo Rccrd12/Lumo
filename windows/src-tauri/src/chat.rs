@@ -550,6 +550,9 @@ impl ChatEvents {
 #[derive(Default)]
 pub struct Chats {
     map: Mutex<HashMap<String, Arc<Chat>>>,
+    /// Chats loaded to be answered off screen (load), held until their
+    /// message goes (unpin): another chat's focus meanwhile keeps them.
+    pinned: Mutex<HashMap<String, Arc<Chat>>>,
 }
 
 impl Chats {
@@ -568,9 +571,32 @@ impl Chats {
     /// answer holds them (an answer being written keeps its chat alive, and
     /// commits to it, until it is done).
     pub fn focus(&self, id: &str) -> Arc<Chat> {
+        // On screen now: no longer only held for a message off screen.
+        self.unpin(id);
         let mut map = self.map.lock().unwrap();
         map.retain(|k, chat| k == id || Arc::strong_count(chat) > 1);
         map.entry(id.to_string()).or_insert_with(|| Arc::new(Chat::new(id))).clone()
+    }
+
+    /// The chat with this id, made when Rust has none, without forgetting the
+    /// others as focus does: a chat loaded to be answered off screen. Whether
+    /// it was just made (Rust held no conversation for it).
+    pub fn load(&self, id: &str) -> (Arc<Chat>, bool) {
+        let (chat, made) = {
+            let mut map = self.map.lock().unwrap();
+            match map.entry(id.to_string()) {
+                std::collections::hash_map::Entry::Occupied(held) => (held.get().clone(), false),
+                std::collections::hash_map::Entry::Vacant(none) => (none.insert(Arc::new(Chat::new(id))).clone(), true),
+            }
+        };
+        // Held until its message goes, so a focus in between does not forget it.
+        self.pinned.lock().unwrap().insert(id.to_string(), chat.clone());
+        (chat, made)
+    }
+
+    /// The message of a chat loaded off screen went (its answer holds it now).
+    pub fn unpin(&self, id: &str) {
+        self.pinned.lock().unwrap().remove(id);
     }
 
     /// The Stop button of one chat; the others keep being answered.
@@ -609,7 +635,7 @@ pub(crate) use timer_tool_note;
 /// (src/core/listen.ts). Plain words only: it goes on the command line.
 macro_rules! listen_tool_note {
     () => {
-        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: call Lumo's listen tool with source github.pr, the real owner/repository#number as target, the event, and what to do then (left out when they only want to be told); with mode every for checks or green it fires again for each new commit, until the pull request is merged or closed; say in a few words that Lumo will listen once the user confirms (they click Listen), and end your answer. The same goes for this PC: source fs with a file or folder's full path as target (created, changed, deleted, or download for a finished download in it), source process with a program's executable name (started, exited) or a port number (port_open, port_closed), source web with a public https link (changed, up, down, or contains with the text to wait for); any of them can use mode every. Lumo can also listen to the inbox (source email: new, from, subject), the user's services and calendar (source service), Windows itself (notifications, battery, network, USB drives, the user coming back), coding agents (source agent: finished, permission, failed), a webhook on this PC and the user's own tools: the listen tool says how. Lumo watches and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: (Lumo: for this PC) that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To merge once it is ready, listen for ready with the merge as what to do then; a merge you start yourself is done at once, so tell the user right away. Never run a command that waits, such as gh pr checks --watch, gh run watch or a sleep loop: Lumo stops it. To stop listening, call stop_listening; list_listening says what Lumo listens to. If those tools are missing or fail, write instead, as plain text on a line of its own at the end of your answer, [[listen owner/repo#123 event: what to do then]] (or [[listen owner/repo#123 every checks: what to do then]]) or [[unlisten owner/repo#123]]; on this PC, [[listen fs C:\\Users\\name\\Downloads every download: what to do then]], [[listen process node.exe exited]] or [[unlisten web https://example.com/page]], with a target that has spaces in double quotes, and after contains the text in double quotes."
+        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: call Lumo's listen tool with source github.pr, the real owner/repository#number as target, the event, and what to do then (left out when they only want to be told); with mode every for checks or green it fires again for each new commit, until the pull request is merged or closed; say in a few words that Lumo will listen once the user confirms (they click Listen), and end your answer. The same goes for this PC: source fs with a file or folder's full path as target (created, changed, deleted, or download for a finished download in it), source process with a program's executable name (started, exited) or a port number (port_open, port_closed), source web with a public https link (changed, up, down, contains with the text to wait for, or gone with the text that must go); any of them can use mode every. Lumo can also listen to the inbox (source email: new, from, subject), the user's services and calendar (source service), Windows itself (notifications, battery, network, USB drives, the user coming back), coding agents (source agent: finished, permission, failed), a webhook on this PC and the user's own tools: the listen tool says how. Lumo watches and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: (Lumo: for this PC) that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To merge once it is ready, listen for ready with the merge as what to do then; a merge you start yourself is done at once, so tell the user right away. Never run a command that waits, such as gh pr checks --watch, gh run watch or a sleep loop: Lumo stops it. To stop listening, call stop_listening; list_listening says what Lumo listens to. If those tools are missing or fail, write instead, as plain text on a line of its own at the end of your answer, [[listen owner/repo#123 event: what to do then]] (or [[listen owner/repo#123 every checks: what to do then]]) or [[unlisten owner/repo#123]]; on this PC, [[listen fs C:\\Users\\name\\Downloads every download: what to do then]], [[listen process node.exe exited]] or [[unlisten web https://example.com/page]], with a target that has spaces in double quotes, and after contains or gone the text in double quotes."
     };
 }
 pub(crate) use listen_tool_note;
@@ -1490,6 +1516,26 @@ mod tests {
         assert_eq!(t.history.len(), 4);
         assert_eq!(t.history[3], json!({"role":"assistant","content":"Sure."}));
         assert!(!serde_json::to_string(&t.history).unwrap().contains("web_search"));
+    }
+
+    #[test]
+    fn a_chat_loaded_off_screen_is_kept_until_its_message_goes() {
+        let chats = Chats::default();
+        let (loaded, made) = chats.load("away");
+        assert!(made);
+        loaded.restore(vec![("user".into(), "q".into()), ("assistant".into(), "a".into())], None, None);
+        drop(loaded);
+        // Another chat comes on screen before the message goes: "away" stays.
+        chats.focus("here");
+        assert_eq!(chats.get("away").turns(), 2);
+        let (_, made) = chats.load("away");
+        assert!(!made, "held already: not restored again");
+        // Its message went: once answered and off screen, it can go.
+        let answering = chats.get("away");
+        chats.unpin("away");
+        drop(answering);
+        chats.focus("here");
+        assert!(chats.find("away").is_none());
     }
 
     #[test]

@@ -91,6 +91,12 @@ const BACK_MS: u64 = 10_000;
 /// A watch listening every time that fires this often in an hour is paused.
 const MAX_FIRES_PER_HOUR: usize = 12;
 const HOUR_MS: u64 = 3_600_000;
+/// A page is down only once it failed to answer this many looks running (a
+/// minute apart): one slow answer or a hiccup on the way is not an outage.
+const WEB_DOWN_AFTER: u32 = 3;
+/// Watch::warning.
+const TOKEN: &str = "token";
+const TOO_OFTEN: &str = "too_often";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -132,6 +138,12 @@ pub struct Watch {
     /// the minutes between two runs of a tool (listen_local::amount_of); 0 for the rest.
     #[serde(default)]
     pub amount: u32,
+    /// Why the Listening panel warns about it: "" none, "token" (GitHub turns
+    /// the GitHub pill's token down: the watch waits, it is not ended), or
+    /// "too_often" (paused for firing MAX_FIRES_PER_HOUR times in an hour,
+    /// until it is resumed).
+    #[serde(default)]
+    pub warning: String,
 }
 
 fn pull_requests() -> String {
@@ -224,6 +236,13 @@ struct Seen {
     asked: u64,
     /// The newest notification seen (Unix seconds).
     mark: i64,
+    /// A web page's looks running that got no answer (or an error), while the
+    /// PC itself was online.
+    fails: u32,
+    /// The words the page showed at the last look (a watch on what it shows):
+    /// what changed is told from them. Only in memory: after a restart the
+    /// first change is told without them.
+    text: Option<String>,
 }
 
 static STORE: LazyLock<Mutex<Store>> = LazyLock::new(|| Mutex::new(Store::default()));
@@ -245,6 +264,19 @@ fn history_file() -> PathBuf {
     platform::local_dir().join("listening-history.json")
 }
 
+/// The next watch id, kept so an id is never given twice, even after its
+/// watch went (the chat's lines of what was heard name their watch by id).
+fn next_id_file() -> PathBuf {
+    platform::local_dir().join("listening-next-id.json")
+}
+
+/// The first id no watch had: past the saved watches, the past ones and the
+/// kept high-water mark.
+fn first_free_id(saved: &[Watch], history: &[Past], kept: u64) -> u64 {
+    let most = saved.iter().map(|w| w.id).chain(history.iter().map(|p| p.watch.id)).max().unwrap_or(0);
+    (most + 1).max(kept)
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -260,13 +292,14 @@ fn with_store<R>(f: impl FnOnce(&mut Store) -> R) -> R {
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
-        s.next_id = saved.iter().map(|w| w.id).max().unwrap_or(0) + 1;
-        let (keep, gone): (Vec<Watch>, Vec<Watch>) = saved.into_iter().partition(kept);
-        s.watches = keep;
         s.history = std::fs::read_to_string(history_file())
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
+        let mark: u64 = std::fs::read_to_string(next_id_file()).ok().and_then(|text| text.trim().parse().ok()).unwrap_or(0);
+        s.next_id = first_free_id(&saved, &s.history, mark);
+        let (keep, gone): (Vec<Watch>, Vec<Watch>) = saved.into_iter().partition(kept);
+        s.watches = keep;
         // A page watched before only public https pages could be (plain http,
         // this PC, the local network) is no longer watched: it goes to the
         // past ones, saying why, rather than vanishing.
@@ -316,7 +349,8 @@ pub fn valid(repo: &str, number: u64, until: &str) -> bool {
 }
 
 /// Adds a watch (the same pull request and event again replaces the old one).
-pub fn add(repo: &str, number: u64, until: &str, mode: &str, task: &str, chat_id: &str) -> Result<Watch, String> {
+/// `replace`: the watch this one is an edit of (push).
+pub fn add(repo: &str, number: u64, until: &str, mode: &str, task: &str, chat_id: &str, replace: Option<u64>) -> Result<Watch, String> {
     let repo = repo.trim();
     let until = until.trim().to_ascii_lowercase();
     if !valid(repo, number, &until) {
@@ -345,14 +379,16 @@ pub fn add(repo: &str, number: u64, until: &str, mode: &str, task: &str, chat_id
         target: String::new(),
         text: String::new(),
         amount: 0,
+        warning: String::new(),
     };
-    Ok(push(watch))
+    Ok(push(watch, replace))
 }
 
 /// Adds a watch on this PC: a file or a folder (`fs`), a program or a port
 /// (`process`), a web page (`web`). The same target and event again replaces the old one.
+/// `replace`: the watch this one is an edit of (push).
 #[allow(clippy::too_many_arguments)]
-pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str, amount: u32, task: &str, chat_id: &str) -> Result<Watch, String> {
+pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str, amount: u32, task: &str, chat_id: &str, replace: Option<u64>) -> Result<Watch, String> {
     let source = source.trim().to_ascii_lowercase();
     let until = until.trim().to_ascii_lowercase();
     let text: String = text.trim().chars().take(200).collect();
@@ -369,7 +405,7 @@ pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str
         repo: String::new(),
         number: 0,
         // `soon`: the words an event's title has, when it names some.
-        text: if until == "contains" || until == "soon" { text } else { String::new() },
+        text: if matches!(until.as_str(), "contains" | "soon" | "gone") { text } else { String::new() },
         amount: listen_local::amount_of(&source, &until, amount),
         until,
         task: task.to_string(),
@@ -381,8 +417,9 @@ pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str
         fired: 0,
         last_sha: String::new(),
         target,
+        warning: String::new(),
     };
-    Ok(push(watch))
+    Ok(push(watch, replace))
 }
 
 /// Whether two watches listen to the same thing for the same event.
@@ -392,25 +429,85 @@ fn same(a: &Watch, b: &Watch) -> bool {
         && if a.github() { a.repo.eq_ignore_ascii_case(&b.repo) && a.number == b.number } else { a.target.eq_ignore_ascii_case(&b.target) }
 }
 
+/// Whether an edit still listens to the same thing for the same event: what
+/// it saw before still stands (the commit it fired on, the last look).
+fn same_listening(a: &Watch, b: &Watch) -> bool {
+    a.source == b.source && a.until == b.until && a.target == b.target && a.repo == b.repo && a.number == b.number
+}
+
 /// Keeps a new watch, with its id and start; the same one before goes.
-fn push(mut watch: Watch) -> Watch {
+///
+/// `replace`: the watch it is an edit of (the Listening panel's Edit). The
+/// edit takes its place and its id, so a webhook keeps its address and the
+/// island keeps what it knows of it, and stays paused if it was. What was seen
+/// is kept only when it still listens to the same thing for the same event.
+/// It takes no room of its own: no other watch goes for it.
+fn push(mut watch: Watch, replace: Option<u64>) -> Watch {
     watch.task = watch.task.trim().chars().take(TASK_CHARS).collect();
     watch.chat_id = watch.chat_id.chars().take(64).collect();
     watch.started_at = now_ms();
     let watch = with_store(|s| {
-        s.watches.retain(|w| !same(w, &watch));
-        while s.watches.len() >= MAX_WATCHES {
-            s.watches.remove(0);
+        let (watch, made_room) = place(s, watch, replace);
+        // The oldest that went for it is in the history, saying so, rather than vanishing.
+        let count = MAX_WATCHES.to_string();
+        for gone in &made_room {
+            let summary = tf("Stopped listening to {what} to make room: at most {count} at once", &[("what", &gone.label()), ("count", &count)]);
+            remember(s, gone, false, &summary);
         }
-        watch.id = s.next_id;
-        s.next_id += 1;
-        s.watches.push(watch.clone());
-        s.forget_gone();
         save(&s.watches);
+        write(next_id_file(), &s.next_id);
         watch
     });
     wake();
     watch
+}
+
+/// push's work on the store, the files aside: the watch as kept, and the
+/// oldest watches that went to make room for it.
+fn place(s: &mut Store, mut watch: Watch, replace: Option<u64>) -> (Watch, Vec<Watch>) {
+    let mut made_room = Vec::new();
+    if let Some(i) = replace.and_then(|id| s.watches.iter().position(|w| w.id == id)) {
+        let before = s.watches[i].clone();
+        watch.id = before.id;
+        // Always a later start than the watch it edits: a look still going on
+        // with the copy from before the edit is told apart by it (current).
+        watch.started_at = watch.started_at.max(before.started_at + 1);
+        watch.paused = before.paused;
+        watch.fired = before.fired;
+        // A pause for firing too often still says why while it lasts.
+        watch.warning = if before.paused && before.warning == TOO_OFTEN { before.warning.clone() } else { String::new() };
+        if same_listening(&before, &watch) {
+            watch.last_sha = before.last_sha.clone();
+            // Other words to wait for, or another threshold: whether the state
+            // held was about the old ones. Unknown again, as for a new watch,
+            // so listening every time doesn't fire for a change that never
+            // happened. What was told (a calendar's events) stays.
+            if before.text != watch.text || before.amount != watch.amount {
+                if let Some(seen) = s.seen.get_mut(&watch.id) {
+                    seen.on = None;
+                }
+            }
+        } else {
+            s.misses.remove(&watch.id);
+            s.seen.remove(&watch.id);
+            s.fires.remove(&watch.id);
+            s.heads.remove(&watch.id);
+        }
+        // In its place: the watch is never missing from the list, so the
+        // webhook's secret (listen_events::prune) is never let go meanwhile.
+        s.watches[i] = watch.clone();
+        s.watches.retain(|w| w.id == watch.id || !same(w, &watch));
+    } else {
+        s.watches.retain(|w| !same(w, &watch));
+        while s.watches.len() >= MAX_WATCHES {
+            made_room.push(s.watches.remove(0));
+        }
+        watch.id = s.next_id;
+        s.next_id += 1;
+        s.watches.push(watch.clone());
+    }
+    s.forget_gone();
+    (watch, made_room)
 }
 
 /// Stops listening to a pull request (`until` None: to every event on it).
@@ -449,6 +546,7 @@ pub fn stop(id: u64) -> bool {
         s.watches.retain(|w| w.id != id);
         s.misses.remove(&id);
         s.seen.remove(&id);
+        s.fires.remove(&id);
         s.heads.remove(&id);
         save(&s.watches);
         before != s.watches.len()
@@ -456,12 +554,18 @@ pub fn stop(id: u64) -> bool {
 }
 
 /// Pauses or resumes one watch (`id` None: every one). How many changed.
+/// Resuming one paused for firing too often takes that warning away.
 pub fn pause(id: Option<u64>, paused: bool) -> usize {
     let n = with_store(|s| {
         let mut n = 0;
-        for w in s.watches.iter_mut().filter(|w| id.is_none_or(|id| w.id == id) && w.paused != paused) {
-            w.paused = paused;
-            n += 1;
+        for w in s.watches.iter_mut().filter(|w| id.is_none_or(|id| w.id == id)) {
+            if !paused && w.warning == TOO_OFTEN {
+                w.warning.clear();
+            }
+            if w.paused != paused {
+                w.paused = paused;
+                n += 1;
+            }
         }
         save(&s.watches);
         n
@@ -494,44 +598,78 @@ fn remember(s: &mut Store, watch: &Watch, met: bool, summary: &str) {
     write(history_file(), &s.history);
 }
 
-/// The watch fired: taken out, or (listening every time, and it can happen
-/// again) kept, waiting for the next time. The watch as it fired, whether it
-/// ended, and whether it was paused for firing too often.
-fn take(id: u64, met: bool, summary: &str, again_on: Option<&str>) -> Option<(Watch, bool, bool)> {
-    let now = now_ms();
+/// Where the watch a look worked from (`w`, a copy from list()) is kept, if it
+/// still is that watch: None once it was stopped, or edited while the look
+/// went on. An edit keeps the id (place) but starts later, so what a look at
+/// the watch before the edit found (another pull request, another page) is
+/// never taken for the edit's: it fires nothing and is not kept as seen.
+fn current(s: &Store, w: &Watch) -> Option<usize> {
+    s.watches.iter().position(|k| k.id == w.id && k.started_at == w.started_at)
+}
+
+/// What the last look at `w` saw, made when there is none; None when `w` is
+/// no longer the watch kept (current).
+fn seen_mut<'a>(s: &'a mut Store, w: &Watch) -> Option<&'a mut Seen> {
+    current(s, w)?;
+    Some(s.seen.entry(w.id).or_default())
+}
+
+/// Keeps what a watch on what something says last said (`print`), when there
+/// was nothing yet: the next change is told against it.
+fn first_print(w: &Watch, print: String) {
     with_store(|s| {
-        let i = s.watches.iter().position(|w| w.id == id)?;
-        s.misses.remove(&id);
-        let ended = s.watches[i].mode != "every" || again_on.is_none();
-        let mut too_often = false;
-        let watch = if ended {
-            s.seen.remove(&id);
-            s.fires.remove(&id);
-            s.heads.remove(&id);
-            s.watches.remove(i)
-        } else {
-            let fires = s.fires.entry(id).or_default();
-            fires.retain(|at| now.saturating_sub(*at) < HOUR_MS);
-            fires.push(now);
-            too_often = fires.len() >= MAX_FIRES_PER_HOUR;
-            let w = &mut s.watches[i];
-            w.fired += 1;
-            w.last_sha = again_on.unwrap_or("").to_string();
-            if too_often {
-                w.paused = true;
-                s.fires.remove(&id);
-            }
-            s.watches[i].clone()
-        };
-        remember(s, &watch, met, summary);
-        if too_often {
-            let count = MAX_FIRES_PER_HOUR.to_string();
-            let paused = tf("Paused {what}: it happened {count} times in an hour", &[("what", &watch.label()), ("count", &count)]);
-            remember(s, &watch, false, &paused);
+        if let Some(i) = current(s, w) {
+            s.watches[i].last_sha = print;
+            save(&s.watches);
         }
-        save(&s.watches);
-        Some((watch, ended, too_often))
+    });
+}
+
+/// The watch a look worked from (`w`) fired, if it is still that one (current).
+fn take(w: &Watch, met: bool, summary: &str, again_on: Option<&str>) -> Option<(Watch, bool, bool)> {
+    with_store(|s| {
+        let i = current(s, w)?;
+        Some(taken(s, i, met, summary, again_on))
     })
+}
+
+/// The watch at `i` fired: taken out, or (listening every time, and it can
+/// happen again) kept, waiting for the next time. The watch as it fired,
+/// whether it ended, and whether it was paused for firing too often.
+fn taken(s: &mut Store, i: usize, met: bool, summary: &str, again_on: Option<&str>) -> (Watch, bool, bool) {
+    let now = now_ms();
+    let id = s.watches[i].id;
+    s.misses.remove(&id);
+    let ended = s.watches[i].mode != "every" || again_on.is_none();
+    let mut too_often = false;
+    let watch = if ended {
+        s.seen.remove(&id);
+        s.fires.remove(&id);
+        s.heads.remove(&id);
+        s.watches.remove(i)
+    } else {
+        let fires = s.fires.entry(id).or_default();
+        fires.retain(|at| now.saturating_sub(*at) < HOUR_MS);
+        fires.push(now);
+        too_often = fires.len() >= MAX_FIRES_PER_HOUR;
+        let w = &mut s.watches[i];
+        w.fired += 1;
+        w.last_sha = again_on.unwrap_or("").to_string();
+        if too_often {
+            w.paused = true;
+            w.warning = TOO_OFTEN.to_string();
+            s.fires.remove(&id);
+        }
+        s.watches[i].clone()
+    };
+    remember(s, &watch, met, summary);
+    if too_often {
+        let count = MAX_FIRES_PER_HOUR.to_string();
+        let paused = tf("Paused {what}: it happened {count} times in an hour", &[("what", &watch.label()), ("count", &count)]);
+        remember(s, &watch, false, &paused);
+    }
+    save(&s.watches);
+    (watch, ended, too_often)
 }
 
 // ── What GitHub says about a pull request ─────────────────────────────────────
@@ -753,8 +891,35 @@ enum Answer {
     Found(Value),
     /// 404, or 401/403 for a repository it can't see.
     Missing,
+    /// GitHub turns the token down (401): expired or revoked. That says
+    /// nothing about the pull request, so it must not end the watch.
+    Unauthorized,
     /// No connection, rate limit, `gh` not there…: ask again later.
     Unknown,
+}
+
+/// What an answer from GitHub's REST API is, from its status alone.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Kind {
+    Found,
+    Missing,
+    Unauthorized,
+    Unknown,
+}
+
+/// What GitHub's answer means: `remaining` is its x-ratelimit-remaining header,
+/// `retry_after` whether it sent a retry-after one, `token_sent` whether the
+/// question carried the GitHub pill's token. A rate limit (the hourly one, or
+/// the secondary one that only sends retry-after) is asked again later; a 401
+/// with a token is the token's fault, not the pull request's.
+fn kind_of(status: u16, remaining: Option<&str>, retry_after: bool, token_sent: bool) -> Kind {
+    match status {
+        200..=299 => Kind::Found,
+        403 | 429 if remaining == Some("0") || retry_after => Kind::Unknown,
+        401 if token_sent => Kind::Unauthorized,
+        401 | 403 | 404 => Kind::Missing,
+        _ => Kind::Unknown,
+    }
 }
 
 /// Shared by every watch, like integrations.rs's: one set of TLS roots, one pool.
@@ -773,12 +938,13 @@ async fn rest(token: Option<&str>, path: &str) -> Answer {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
     let Ok(response) = req.send().await else { return Answer::Unknown };
-    match response.status().as_u16() {
-        200..=299 => response.json().await.map(Answer::Found).unwrap_or(Answer::Unknown),
-        // Rate limited: a 403 with nothing left.
-        403 if response.headers().get("x-ratelimit-remaining").and_then(|v| v.to_str().ok()) == Some("0") => Answer::Unknown,
-        401 | 403 | 404 => Answer::Missing,
-        _ => Answer::Unknown,
+    let headers = response.headers();
+    let remaining = headers.get("x-ratelimit-remaining").and_then(|v| v.to_str().ok());
+    match kind_of(response.status().as_u16(), remaining, headers.contains_key("retry-after"), token.is_some()) {
+        Kind::Found => response.json().await.map(Answer::Found).unwrap_or(Answer::Unknown),
+        Kind::Missing => Answer::Missing,
+        Kind::Unauthorized => Answer::Unauthorized,
+        Kind::Unknown => Answer::Unknown,
     }
 }
 
@@ -841,6 +1007,8 @@ async fn ask(via: Via, token: Option<&str>, path: String) -> Answer {
 enum Read {
     State(PrState),
     Missing,
+    /// The GitHub pill's token was turned down (Answer::Unauthorized).
+    Unauthorized,
     Unknown,
 }
 
@@ -850,6 +1018,7 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
     let pull = match ask(via, token, base.clone()).await {
         Answer::Found(v) => v,
         Answer::Missing => return Read::Missing,
+        Answer::Unauthorized => return Read::Unauthorized,
         Answer::Unknown => return Read::Unknown,
     };
     let Some(mut pr) = PrState::from_pull(&pull) else { return Read::Unknown };
@@ -857,6 +1026,7 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
         let commit = format!("repos/{}/commits/{}", w.repo, pr.head_sha);
         let runs = match ask(via, token, format!("{commit}/check-runs?per_page=100")).await {
             Answer::Found(v) => Some(v),
+            Answer::Unauthorized => return Read::Unauthorized,
             _ => return Read::Unknown,
         };
         let status = match ask(via, token, format!("{commit}/status")).await {
@@ -871,6 +1041,7 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
                 Answer::Found(v) => pr.checks = actions_of(Checks::None, Some(&v)),
                 // Actions off, or a token that can't read it: what the checks say stands.
                 Answer::Missing => {}
+                Answer::Unauthorized => return Read::Unauthorized,
                 Answer::Unknown => return Read::Unknown,
             }
         }
@@ -878,6 +1049,7 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
     if pr.open && w.until == "approved" {
         match ask(via, token, format!("{base}/reviews?per_page=100")).await {
             Answer::Found(v) => pr.review = review_of(Some(&v)),
+            Answer::Unauthorized => return Read::Unauthorized,
             _ => return Read::Unknown,
         }
     }
@@ -886,8 +1058,31 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
 
 /// `again_on`: the commit it fired on, when the pull request is still open
 /// (a watch that listens every time goes on, waiting for the next one).
-pub(crate) fn fire(app: &AppHandle, id: u64, met: bool, summary: String, again_on: Option<&str>) {
-    if let Some((watch, ended, too_often)) = take(id, met, &summary, again_on) {
+/// `w`: the watch as the look that saw it happen had it (take).
+pub(crate) fn fire(app: &AppHandle, w: &Watch, met: bool, summary: String, again_on: Option<&str>) {
+    let fired = take(w, met, &summary, again_on);
+    tell(app, fired, met, summary);
+}
+
+/// An event on the calendar coming up (`at`: its start, `key`: its title),
+/// for the calendar watch `id`: it fires unless that event was told already
+/// (listen_local::calendar_next). What was told is read and written under the
+/// same lock, so two events at the same start heard at once both stay told.
+/// Whether it fired.
+pub(crate) fn fire_calendar(app: &AppHandle, id: u64, summary: String, at: u64, key: &str) -> bool {
+    let fired = with_store(|s| {
+        let i = s.watches.iter().position(|w| w.id == id && w.source == "service" && w.target == "calendar" && !w.paused)?;
+        let told = listen_local::calendar_next(&s.watches[i].last_sha, at, key)?;
+        Some(taken(s, i, true, &summary, Some(&told)))
+    });
+    let any = fired.is_some();
+    tell(app, fired, true, summary);
+    any
+}
+
+/// The island is told what fired (take, taken).
+fn tell(app: &AppHandle, fired: Option<(Watch, bool, bool)>, met: bool, summary: String) {
+    if let Some((watch, ended, too_often)) = fired {
         let how = if met { "met" } else { "not met" };
         log::line(format!("listen: {} {} {} ({how})", watch.label(), watch.until, if ended { "ended" } else { "fired" }));
         if too_often {
@@ -896,6 +1091,20 @@ pub(crate) fn fire(app: &AppHandle, id: u64, met: bool, summary: String, again_o
         let _ = app.emit_to(WINDOW_LABEL, "listen-fired", Fired { watch, met, summary, ended });
         changed(app);
     }
+}
+
+/// Sets a watch's warning to `to` when it is `from` (None: whatever it is).
+/// Whether it changed; then it is saved.
+fn warn(id: u64, from: Option<&str>, to: &str) -> bool {
+    with_store(|s| {
+        let Some(w) = s.watches.iter_mut().find(|w| w.id == id) else { return false };
+        if w.warning == to || from.is_some_and(|from| w.warning != from) {
+            return false;
+        }
+        w.warning = to.to_string();
+        save(&s.watches);
+        true
+    })
 }
 
 pub fn changed(app: &AppHandle) {
@@ -911,7 +1120,7 @@ async fn round(app: &AppHandle) -> Via {
     for w in list().into_iter().filter(|w| w.github()) {
         let age = now.saturating_sub(w.started_at);
         if age >= MAX_AGE_MS {
-            fire(app, w.id, false, tf("Stopped listening to {pr} after a week", &[("pr", &w.label())]), None);
+            fire(app, &w, false, tf("Stopped listening to {pr} after a week", &[("pr", &w.label())]), None);
             continue;
         }
         if w.paused {
@@ -919,23 +1128,41 @@ async fn round(app: &AppHandle) -> Via {
         }
         match fetch(via, token.as_deref(), &w).await {
             Read::State(pr) => {
-                let since_push = with_store(|s| {
+                // Edited or stopped while GitHub was asked: this answer was about the watch before.
+                let Some(since_push) = with_store(|s| {
+                    current(s, &w)?;
                     s.misses.remove(&w.id);
-                    head_age(&mut s.heads, w.id, &pr.head_sha, now)
-                });
+                    Some(head_age(&mut s.heads, w.id, &pr.head_sha, now))
+                }) else {
+                    continue;
+                };
+                // GitHub answers again: the token is fine (again).
+                if warn(w.id, Some(TOKEN), "") {
+                    changed(app);
+                }
                 if let Some((met, summary)) = judge(&w, &pr, since_push) {
                     let again_on = (pr.open && !pr.head_sha.is_empty()).then_some(pr.head_sha.as_str());
-                    fire(app, w.id, met, summary, again_on);
+                    fire(app, &w, met, summary, again_on);
                 }
             }
             Read::Missing => {
                 let misses = with_store(|s| {
+                    current(s, &w)?;
                     let n = s.misses.entry(w.id).or_insert(0);
                     *n += 1;
-                    *n
-                });
+                    Some(*n)
+                })
+                .unwrap_or(0);
                 if misses >= MAX_MISSES {
-                    fire(app, w.id, false, tf("Lumo can't read {pr} on GitHub", &[("pr", &w.label())]), None);
+                    fire(app, &w, false, tf("Lumo can't read {pr} on GitHub", &[("pr", &w.label())]), None);
+                }
+            }
+            // An expired or revoked token ends no watch: the Listening panel
+            // says so, and the watch goes on once GitHub takes the token again.
+            Read::Unauthorized => {
+                if warn(w.id, None, TOKEN) {
+                    log::line(format!("listen: {}: GitHub turned the token down", w.label()));
+                    changed(app);
                 }
             }
             Read::Unknown => {}
@@ -998,6 +1225,7 @@ fn state_summary(w: &Watch) -> String {
         ("process", "port_closed") => tf("Port {port} closed", &[("port", &w.target)]),
         ("web", "up") => tf("{what} is up", &[("what", what)]),
         ("web", "down") => tf("{what} is down", &[("what", what)]),
+        ("web", "gone") => tf("{what} no longer shows “{text}”", &[("what", what), ("text", &w.text)]),
         ("windows", "plugged") => t("The PC is plugged in"),
         ("windows", "unplugged") => t("The PC runs on its battery"),
         ("windows", "offline") => t("The PC is offline"),
@@ -1010,10 +1238,24 @@ fn state_summary(w: &Watch) -> String {
 /// A state the watch waits for held (`holds`) at this look: it fires when it
 /// became true, and listening once also when it already was at the first look.
 fn state(app: &AppHandle, w: &Watch, holds: bool) {
-    let before = with_store(|s| s.seen.entry(w.id).or_default().on.replace(holds));
+    let Some(before) = with_store(|s| seen_mut(s, w).map(|seen| seen.on.replace(holds))) else { return };
     let fires = holds && if w.mode == "every" { before == Some(false) } else { true };
     if fires {
-        fire(app, w.id, true, state_summary(w), Some(w.last_sha.as_str()));
+        fire(app, w, true, state_summary(w), Some(w.last_sha.as_str()));
+    }
+}
+
+/// A page changed: what is told, with the words that went and came when the
+/// last look's words are known (`before`).
+fn page_changed(w: &Watch, before: Option<&str>, after: &str) -> String {
+    let what = w.label();
+    match before.and_then(|before| listen_local::change_excerpt(before, after)) {
+        Some((gone, came)) => {
+            let or_dash = |s: &str| if s.is_empty() { "—".to_string() } else { s.to_string() };
+            let (gone, came) = (or_dash(&gone), or_dash(&came));
+            tf("{what} changed: “{before}” → “{after}”", &[("what", &what), ("before", &gone), ("after", &came)])
+        }
+        None => tf("{what} changed", &[("what", &what)]),
     }
 }
 
@@ -1041,26 +1283,23 @@ async fn local_round(app: &AppHandle) {
     };
     for w in watches {
         if w.mode != "every" && now.saturating_sub(w.started_at) >= MAX_AGE_MS {
-            fire(app, w.id, false, tf("Stopped listening to {pr} after a week", &[("pr", &w.label())]), None);
+            fire(app, &w, false, tf("Stopped listening to {pr} after a week", &[("pr", &w.label())]), None);
             continue;
         }
         match w.source.as_str() {
             "fs" => {
                 let path = PathBuf::from(&w.target);
                 let Ok(Some(after)) = tauri::async_runtime::spawn_blocking(move || listen_local::listing(&path)).await else { continue };
-                let before = with_store(|s| s.seen.entry(w.id).or_default().files.take());
+                // Edited or stopped while the folder was read: the listing is another folder's.
+                let Some(before) = with_store(|s| seen_mut(s, &w).map(|seen| seen.files.take())) else { continue };
                 let Some(before) = before else {
-                    with_store(|s| s.seen.entry(w.id).or_default().files = Some(after));
+                    with_store(|s| seen_mut(s, &w).map(|seen| seen.files = Some(after)));
                     continue;
                 };
                 let (names, keep) = listen_local::judge_files(&w.until, &before, after, now_ms());
-                with_store(|s| {
-                    if let Some(seen) = s.seen.get_mut(&w.id) {
-                        seen.files = Some(keep);
-                    }
-                });
+                with_store(|s| seen_mut(s, &w).map(|seen| seen.files = Some(keep)));
                 if !names.is_empty() {
-                    fire(app, w.id, true, files_summary(&w, &names), Some(""));
+                    fire(app, &w, true, files_summary(&w, &names), Some(""));
                 }
             }
             "process" => {
@@ -1084,26 +1323,49 @@ async fn local_round(app: &AppHandle) {
                 if crate::web_image::public_url(&w.target).is_err() {
                     continue;
                 }
+                // The PC itself offline: no page would answer, and that says
+                // nothing about this one. No look, and the failures running stay as they were.
+                if !tauri::async_runtime::spawn_blocking(listen_local::online).await.unwrap_or(true) {
+                    continue;
+                }
                 let page = listen_local::page(&w.target).await;
+                let up = page.up();
+                // Edited or stopped while the page was asked for: the answer is the old page's.
+                let Some(fails) = with_store(|s| {
+                    let seen = seen_mut(s, &w)?;
+                    seen.fails = if up { 0 } else { seen.fails.saturating_add(1) };
+                    Some(seen.fails)
+                }) else {
+                    continue;
+                };
+                // A page that doesn't answer neither shows a text nor stops
+                // showing it, nor changed: only up and down are about that.
+                if !up && !matches!(w.until.as_str(), "up" | "down") {
+                    continue;
+                }
                 match w.until.as_str() {
                     "changed" => {
-                        if !page.up() {
-                            continue;
-                        }
                         let print = listen_local::fingerprint(&page.text);
+                        let Some(before) = with_store(|s| seen_mut(s, &w).map(|seen| seen.text.replace(page.text.clone()))) else { continue };
                         if w.last_sha.is_empty() {
-                            with_store(|s| {
-                                if let Some(kept) = s.watches.iter_mut().find(|k| k.id == w.id) {
-                                    kept.last_sha = print;
-                                }
-                                save(&s.watches);
-                            });
+                            first_print(&w, print);
                         } else if print != w.last_sha {
-                            fire(app, w.id, true, tf("{what} changed", &[("what", &w.label())]), Some(print.as_str()));
+                            fire(app, &w, true, page_changed(&w, before.as_deref(), &page.text), Some(print.as_str()));
                         }
                     }
-                    "up" => state(app, &w, page.up()),
-                    "down" => state(app, &w, !page.up()),
+                    "up" => state(app, &w, up),
+                    // Down only after a few looks running without an answer.
+                    // The looks before that say neither (the page may be
+                    // coming back), so a page already down when Lumo starts
+                    // isn't told as newly down at the third look.
+                    "down" => {
+                        if up {
+                            state(app, &w, false);
+                        } else if fails >= WEB_DOWN_AFTER {
+                            state(app, &w, true);
+                        }
+                    }
+                    "gone" => state(app, &w, !listen_local::contains(&page, &w.text)),
                     _ => state(app, &w, listen_local::contains(&page, &w.text)),
                 }
             }
@@ -1139,7 +1401,7 @@ async fn windows(app: &AppHandle, w: &Watch, now: u64) {
                 Ok(Ok(list)) => list,
                 Ok(Err(why)) => {
                     log::line(format!("listen: notifications: {why}"));
-                    fire(app, w.id, false, t("Windows doesn't let Lumo read the notifications"), None);
+                    fire(app, w, false, t("Windows doesn't let Lumo read the notifications"), None);
                     return;
                 }
                 Err(_) => return,
@@ -1147,7 +1409,7 @@ async fn windows(app: &AppHandle, w: &Watch, now: u64) {
             let newest = list.iter().map(|n| n.at).max().unwrap_or(0);
             // None: the first look, which only takes note of what is there.
             let before = with_store(|s| {
-                let seen = s.seen.entry(w.id).or_default();
+                let seen = seen_mut(s, w)?;
                 let before = seen.on.is_some().then_some(seen.mark);
                 seen.on = Some(true);
                 seen.mark = seen.mark.max(newest);
@@ -1157,7 +1419,7 @@ async fn windows(app: &AppHandle, w: &Watch, now: u64) {
             let fresh: Vec<_> = list.iter().filter(|n| n.at > before && listen_local::notification_matches(&w.target, &n.app)).collect();
             if let Some(n) = fresh.first() {
                 let text = listen_local::excerpt(&n.text, 200);
-                fire(app, w.id, true, tf("{app}: {text}", &[("app", &n.app), ("text", &text)]), Some(""));
+                fire(app, w, true, tf("{app}: {text}", &[("app", &n.app), ("text", &text)]), Some(""));
             }
         }
         "usb" => {
@@ -1167,27 +1429,29 @@ async fn windows(app: &AppHandle, w: &Watch, now: u64) {
                 .into_iter()
                 .map(|d| (d, (0, 0)))
                 .collect();
-            let before = with_store(|s| s.seen.entry(w.id).or_default().files.replace(drives.clone()));
+            let before = with_store(|s| seen_mut(s, w).and_then(|seen| seen.files.replace(drives.clone())));
             let Some(before) = before else { return };
             let added: Vec<String> = drives.keys().filter(|d| !before.contains_key(*d)).cloned().collect();
             if !added.is_empty() {
-                fire(app, w.id, true, tf("A USB drive was connected: {drives}", &[("drives", &listen_local::names_text(&added))]), Some(""));
+                fire(app, w, true, tf("A USB drive was connected: {drives}", &[("drives", &listen_local::names_text(&added))]), Some(""));
             }
         }
         "back" => {
             let idle = tauri::async_runtime::spawn_blocking(platform::idle_ms).await.unwrap_or(0);
             let away = idle >= w.amount as u64 * 60_000;
-            let before = with_store(|s| {
-                let seen = s.seen.entry(w.id).or_default();
+            let Some(before) = with_store(|s| {
+                let seen = seen_mut(s, w)?;
                 let before = seen.on;
                 // Away until the input comes back, whatever the look in between.
                 if away || idle < BACK_MS {
                     seen.on = Some(away);
                 }
-                before
-            });
+                Some(before)
+            }) else {
+                return;
+            };
             if before == Some(true) && idle < BACK_MS {
-                fire(app, w.id, true, state_summary(w), Some(""));
+                fire(app, w, true, state_summary(w), Some(""));
             }
         }
         "battery_low" | "plugged" | "unplugged" => {
@@ -1198,10 +1462,10 @@ async fn windows(app: &AppHandle, w: &Watch, now: u64) {
                 _ => {
                     let Some(percent) = power.percent else { return };
                     let low = !power.plugged && percent <= w.amount;
-                    let before = with_store(|s| s.seen.entry(w.id).or_default().on.replace(low));
+                    let Some(before) = with_store(|s| seen_mut(s, w).map(|seen| seen.on.replace(low))) else { return };
                     if low && (w.mode != "every" || before == Some(false)) {
                         let percent = percent.to_string();
-                        fire(app, w.id, true, tf("The battery is at {percent}%", &[("percent", &percent)]), Some(""));
+                        fire(app, w, true, tf("The battery is at {percent}%", &[("percent", &percent)]), Some(""));
                     }
                 }
             }
@@ -1223,7 +1487,7 @@ async fn tool(app: &AppHandle, w: &Watch, now: u64) {
     let run = match run {
         Ok(run) => run,
         Err(why) => {
-            fire(app, w.id, false, tf("Lumo can no longer run {tool}: {why}", &[("tool", &w.target), ("why", &why)]), None);
+            fire(app, w, false, tf("Lumo can no longer run {tool}: {why}", &[("tool", &w.target), ("why", &why)]), None);
             return;
         }
     };
@@ -1236,23 +1500,29 @@ async fn tool(app: &AppHandle, w: &Watch, now: u64) {
         _ => {
             let print = listen_local::fingerprint(run.output.trim());
             if w.last_sha.is_empty() {
-                with_store(|s| {
-                    if let Some(kept) = s.watches.iter_mut().find(|k| k.id == w.id) {
-                        kept.last_sha = print;
-                    }
-                    save(&s.watches);
-                });
+                first_print(w, print);
             } else if print != w.last_sha {
                 let said = listen_local::excerpt(&run.output, 200);
-                fire(app, w.id, true, tf("{tool} says: {output}", &[("tool", &w.target), ("output", &said)]), Some(print.as_str()));
+                fire(app, w, true, tf("{tool} says: {output}", &[("tool", &w.target), ("output", &said)]), Some(print.as_str()));
             }
         }
     }
 }
 
+/// `replace`: the watch this is an edit of, which it takes the place and the id of (push).
 #[tauri::command(async)]
-pub fn listen_add(app: AppHandle, repo: String, number: u64, until: String, mode: Option<String>, task: String, chat_id: String) -> Result<Watch, String> {
-    let watch = add(&repo, number, &until, mode.as_deref().unwrap_or(""), &task, &chat_id)?;
+#[allow(clippy::too_many_arguments)]
+pub fn listen_add(
+    app: AppHandle,
+    repo: String,
+    number: u64,
+    until: String,
+    mode: Option<String>,
+    task: String,
+    chat_id: String,
+    replace: Option<u64>,
+) -> Result<Watch, String> {
+    let watch = add(&repo, number, &until, mode.as_deref().unwrap_or(""), &task, &chat_id, replace)?;
     log::line(format!("listen: {} {} {}", watch.label(), watch.until, watch.mode));
     changed(&app);
     Ok(watch)
@@ -1260,6 +1530,7 @@ pub fn listen_add(app: AppHandle, repo: String, number: u64, until: String, mode
 
 /// A watch on this PC, or on what Lumo hears (add_local). An error starting
 /// with `needs:` names what to turn on first (listen_events::available).
+/// `replace`: the watch this is an edit of (push).
 #[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 pub fn listen_add_local(
@@ -1272,14 +1543,17 @@ pub fn listen_add_local(
     amount: Option<u32>,
     task: String,
     chat_id: String,
+    replace: Option<u64>,
 ) -> Result<Watch, String> {
     let kind = source.trim().to_ascii_lowercase();
     let text = text.unwrap_or_default();
     let named = listen_local::target(&kind, until.trim().to_ascii_lowercase().as_str(), &target, text.trim(), &platform::home_dir())?;
     crate::listen_events::available(&app, &kind, &named)?;
-    let watch = add_local(&source, &target, &until, mode.as_deref().unwrap_or(""), &text, amount.unwrap_or(0), &task, &chat_id)?;
+    let watch = add_local(&source, &target, &until, mode.as_deref().unwrap_or(""), &text, amount.unwrap_or(0), &task, &chat_id, replace)?;
     if watch.source == "webhook" {
         crate::listen_events::ensure_server(&app);
+        // An edit kept the webhook's id, and with it its secret: the address
+        // the programs were given still works. A new one gets its own.
         crate::listen_events::token_for(watch.id);
     }
     log::line(format!("listen: {} {} {} {}", watch.source, watch.label(), watch.until, watch.mode));
@@ -1333,6 +1607,18 @@ pub fn listen_list() -> Vec<Watch> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_watch_id_is_never_given_twice_after_a_restart() {
+        let w = |id| Watch { id, ..watch("checks") };
+        let past = |id| Past { watch: w(id), met: true, summary: String::new(), at: 0 };
+        assert_eq!(first_free_id(&[], &[], 0), 1);
+        assert_eq!(first_free_id(&[w(3), w(7)], &[], 0), 8);
+        // A watch that went is still in the past ones, or only in the mark.
+        assert_eq!(first_free_id(&[w(3)], &[past(9)], 0), 10);
+        assert_eq!(first_free_id(&[w(3)], &[], 12), 12);
+    }
+
     use super::*;
     use serde_json::json;
 
@@ -1361,7 +1647,155 @@ mod tests {
             target: String::new(),
             text: String::new(),
             amount: 0,
+            warning: String::new(),
         }
+    }
+
+    /// A store already read from its file, holding these watches.
+    fn store(watches: Vec<Watch>) -> Store {
+        Store { next_id: watches.iter().map(|w| w.id).max().unwrap_or(0) + 1, watches, loaded: true, ..Default::default() }
+    }
+
+    #[test]
+    fn a_token_github_turns_down_or_a_rate_limit_ends_no_watch() {
+        assert_eq!(kind_of(200, Some("4999"), false, true), Kind::Found);
+        // The token expired or was revoked: the token's fault, not the pull request's.
+        assert_eq!(kind_of(401, None, false, true), Kind::Unauthorized);
+        assert_eq!(kind_of(401, None, false, false), Kind::Missing);
+        // The hourly limit, and the secondary one that only says when to come back.
+        assert_eq!(kind_of(403, Some("0"), false, true), Kind::Unknown);
+        assert_eq!(kind_of(403, Some("4000"), true, true), Kind::Unknown);
+        assert_eq!(kind_of(429, None, true, false), Kind::Unknown);
+        assert_eq!(kind_of(429, Some("0"), false, false), Kind::Unknown);
+        assert_eq!(kind_of(429, None, false, false), Kind::Unknown);
+        // A repository it can't see, or none.
+        assert_eq!(kind_of(403, Some("4000"), false, true), Kind::Missing);
+        assert_eq!(kind_of(403, None, false, false), Kind::Missing);
+        assert_eq!(kind_of(404, None, false, true), Kind::Missing);
+        assert_eq!(kind_of(502, None, false, true), Kind::Unknown);
+    }
+
+    #[test]
+    fn a_look_at_the_watch_before_an_edit_lands_on_nothing() {
+        let page = Watch { id: 5, source: "web".into(), until: "changed".into(), target: "https://a.example/".into(), started_at: 100, ..watch("checks") };
+        let mut s = store(vec![page.clone()]);
+        assert_eq!(current(&s, &page), Some(0));
+        assert!(seen_mut(&mut s, &page).is_some());
+        // Edited (another page) while a look at the old one went on.
+        let (kept, _) = place(&mut s, Watch { id: 0, target: "https://b.example/".into(), started_at: 100, ..page.clone() }, Some(5));
+        assert_eq!(kept.id, 5);
+        assert!(kept.started_at > page.started_at, "an edit always starts later, even in the same millisecond");
+        assert_eq!(current(&s, &page), None, "the old copy is no longer the watch");
+        assert!(seen_mut(&mut s, &page).is_none());
+        assert!(!s.seen.contains_key(&5), "nothing seen of the old page comes back");
+        assert_eq!(current(&s, &kept), Some(0));
+        // Stopped: nothing either.
+        s.watches.clear();
+        assert_eq!(current(&s, &kept), None);
+    }
+
+    #[test]
+    fn other_words_to_wait_for_are_not_known_to_hold_yet() {
+        let shop = Watch { id: 5, source: "web".into(), until: "contains".into(), target: "https://shop.example/x".into(), text: "Sold out".into(), mode: "every".into(), last_sha: "told".into(), ..watch("checks") };
+        let mut s = store(vec![shop.clone()]);
+        s.seen.insert(5, Seen { on: Some(false), fails: 1, ..Default::default() });
+        let (kept, _) = place(&mut s, Watch { id: 0, text: "Add to cart".into(), last_sha: String::new(), ..shop.clone() }, Some(5));
+        assert_eq!(kept.last_sha, "told");
+        let seen = &s.seen[&5];
+        assert_eq!((seen.on, seen.fails), (None, 1), "whether it held was about the old words");
+        // Only what to do then changes: what held still does.
+        s.seen.get_mut(&5).unwrap().on = Some(true);
+        place(&mut s, Watch { id: 0, task: "buy it".into(), ..kept.clone() }, Some(5));
+        assert_eq!(s.seen[&5].on, Some(true));
+        // Another threshold, the same.
+        let low = Watch { id: 6, source: "windows".into(), until: "battery_low".into(), amount: 20, mode: "every".into(), ..watch("checks") };
+        s.watches.push(low.clone());
+        s.seen.insert(6, Seen { on: Some(false), ..Default::default() });
+        place(&mut s, Watch { id: 0, amount: 50, ..low }, Some(6));
+        assert_eq!(s.seen[&6].on, None);
+    }
+
+    #[test]
+    fn an_edit_keeps_the_watch_its_id_and_what_still_stands() {
+        let hook = Watch {
+            id: 5,
+            source: "webhook".into(),
+            until: "called".into(),
+            target: "deploys".into(),
+            repo: String::new(),
+            number: 0,
+            mode: "every".into(),
+            paused: true,
+            fired: 3,
+            last_sha: "seen".into(),
+            warning: TOO_OFTEN.into(),
+            ..watch("checks")
+        };
+        let other = Watch { id: 6, ..watch("merged") };
+        let mut s = store(vec![hook.clone(), other]);
+        s.seen.insert(5, Seen::default());
+        s.fires.insert(5, vec![1]);
+        s.misses.insert(5, 1);
+        s.heads.insert(5, ("abc".into(), 1));
+        // What to do then changes: the same webhook, the same event.
+        let edit = Watch { id: 0, task: "deploy it".into(), paused: false, fired: 0, last_sha: String::new(), warning: String::new(), ..hook.clone() };
+        let (kept, made_room) = place(&mut s, edit, Some(5));
+        assert!(made_room.is_empty());
+        assert_eq!((kept.id, kept.paused, kept.fired, kept.last_sha.as_str(), kept.task.as_str()), (5, true, 3, "seen", "deploy it"));
+        assert_eq!(kept.warning, TOO_OFTEN, "still paused for firing too often");
+        assert_eq!(s.watches.iter().map(|w| w.id).collect::<Vec<_>>(), [5, 6], "in its place, no new id");
+        assert_eq!(s.next_id, 7);
+        assert!(s.seen.contains_key(&5) && s.fires.contains_key(&5) && s.misses.contains_key(&5) && s.heads.contains_key(&5));
+        // Another name: the same id (so the same address), but what was seen goes.
+        let renamed = Watch { target: "releases".into(), last_sha: String::new(), ..kept.clone() };
+        let (kept, _) = place(&mut s, renamed, Some(5));
+        assert_eq!(kept.id, 5);
+        assert!(kept.last_sha.is_empty());
+        assert!(!s.seen.contains_key(&5) && !s.fires.contains_key(&5) && !s.misses.contains_key(&5) && !s.heads.contains_key(&5));
+        // A token warning goes with the edit: the next look says it again if it must.
+        s.watches[1].warning = TOKEN.into();
+        let (kept, _) = place(&mut s, Watch { id: 0, task: "x".into(), ..watch("merged") }, Some(6));
+        assert_eq!((kept.id, kept.warning.as_str()), (6, ""));
+        // A watch it no longer names makes a new one.
+        let (kept, _) = place(&mut s, Watch { id: 0, number: 77, ..watch("merged") }, Some(404));
+        assert_eq!(kept.id, 7);
+    }
+
+    #[test]
+    fn the_watch_after_the_last_makes_room_and_an_edit_takes_none() {
+        let full: Vec<Watch> = (1..=MAX_WATCHES as u64).map(|id| Watch { id, number: id, ..watch("merged") }).collect();
+        let mut s = store(full);
+        let edit = Watch { id: 0, task: "merge it".into(), number: 3, ..watch("merged") };
+        let (kept, made_room) = place(&mut s, edit, Some(3));
+        assert!(made_room.is_empty());
+        assert_eq!(kept.id, 3);
+        assert_eq!(s.watches.len(), MAX_WATCHES);
+        // An edit that now names what another listens to: that one goes.
+        let (kept, made_room) = place(&mut s, Watch { id: 0, number: 4, ..watch("merged") }, Some(3));
+        assert!(made_room.is_empty());
+        assert_eq!(kept.id, 3);
+        assert!(!s.watches.iter().any(|w| w.id == 4));
+        assert_eq!(s.watches.len(), MAX_WATCHES - 1);
+        place(&mut s, Watch { id: 0, number: 98, ..watch("merged") }, None);
+        // Full again: a new one makes the oldest go, handed back to be told.
+        let (kept, made_room) = place(&mut s, Watch { id: 0, number: 99, ..watch("merged") }, None);
+        assert_eq!(made_room.iter().map(|w| w.id).collect::<Vec<_>>(), [1]);
+        assert_eq!(kept.id, MAX_WATCHES as u64 + 2);
+        assert_eq!(s.watches.len(), MAX_WATCHES);
+    }
+
+    #[test]
+    fn a_page_says_what_changed_and_what_it_no_longer_shows() {
+        let page = Watch { source: "web".into(), until: "changed".into(), target: "https://example.com/p".into(), repo: String::new(), number: 0, ..watch("checks") };
+        let told = page_changed(&page, Some("Price 10 euro today"), "Price 12 euro today");
+        assert!(told.contains("example.com/p") && told.contains("10") && told.contains("12"), "{told}");
+        let added = page_changed(&page, Some("In stock"), "In stock now");
+        assert!(added.contains("—") && added.contains("now"), "{added}");
+        // The words before unknown (a restart): only that it changed.
+        assert!(!page_changed(&page, None, "x").contains("—"));
+        let gone = Watch { until: "gone".into(), text: "Sold out".into(), ..page };
+        let told = state_summary(&gone);
+        assert!(told.contains("example.com/p") && told.contains("Sold out"), "{told}");
     }
 
     fn open(checks: Checks) -> PrState {

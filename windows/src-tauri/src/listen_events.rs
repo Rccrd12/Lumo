@@ -79,7 +79,7 @@ pub fn heard_mail(app: &AppHandle, fresh: &[crate::mail::Message]) {
         } else {
             tf("New email from {from}: {subject}", &[("from", from), ("subject", &subject)])
         };
-        listen::fire(app, w.id, true, summary, Some(""));
+        listen::fire(app, &w, true, summary, Some(""));
     }
 }
 
@@ -120,7 +120,7 @@ pub fn heard_service(app: &AppHandle, pill: &str, data: &Value, failed: bool, ev
     let news = listen_local::service_news(service, before.as_ref(), data, event);
     for w in watches {
         if let Some(n) = news.iter().find(|n| listen_local::news_matches(&w.until, n)) {
-            listen::fire(app, w.id, true, news_summary(service, name, n), Some(""));
+            listen::fire(app, &w, true, news_summary(service, name, n), Some(""));
         }
     }
 }
@@ -156,24 +156,20 @@ pub fn heard_hook(app: &AppHandle, event: &str, payload: &Value) {
             (_, false) => tf("{agent} failed in {project}", &vars),
             (_, true) => tf("{agent} failed", &vars),
         };
-        listen::fire(app, w.id, true, summary, Some(""));
+        listen::fire(app, &w, true, summary, Some(""));
     }
 }
 
 // ── The calendar ──────────────────────────────────────────────────────────────
 
 /// The island saw an event on the calendar coming up (`at`: its start, Unix
-/// ms) for a watch on it. Each event fires a watch once.
+/// ms; `key`: its title) for a watch on it. Each event fires a watch once, and
+/// two events that start at the same time each fire it (calendar_next).
 #[tauri::command(async)]
-pub fn listen_fire(app: AppHandle, id: u64, summary: String, at: u64) -> bool {
-    let Some(w) = listen::list().into_iter().find(|w| w.id == id && w.source == "service" && w.target == "calendar" && !w.paused) else {
-        return false;
-    };
-    if w.last_sha.parse::<u64>().is_ok_and(|last| at <= last) {
-        return false;
-    }
-    listen::fire(&app, id, true, listen_local::excerpt(&summary, BODY_CHARS), Some(&at.to_string()));
-    true
+pub fn listen_fire(app: AppHandle, id: u64, summary: String, at: u64, key: Option<String>) -> bool {
+    // Checked and kept in one go (fire_calendar): the island may send two
+    // events starting together at once, and each must stay told.
+    listen::fire_calendar(&app, id, listen_local::excerpt(&summary, BODY_CHARS), at, key.as_deref().unwrap_or(""))
 }
 
 // ── Webhooks ──────────────────────────────────────────────────────────────────
@@ -339,7 +335,7 @@ async fn answer(app: &AppHandle, mut stream: tokio::net::TcpStream) {
     } else {
         tf("{name} was called: {body}", &[("name", &w.target), ("body", &sent)])
     };
-    listen::fire(app, w.id, true, summary, Some(""));
+    listen::fire(app, &w, true, summary, Some(""));
 }
 
 #[cfg(test)]

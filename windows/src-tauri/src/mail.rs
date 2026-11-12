@@ -3114,10 +3114,11 @@ static PICKED: Mutex<Vec<(std::path::PathBuf, std::time::Instant)>> = Mutex::new
 
 /// Attach on an email's card: the system's picker, then each file's name,
 /// size and path for the card. Only what the user picked there can be added.
+/// The picker belongs to the island (`window`), so it shows over it.
 #[tauri::command]
-pub async fn pick_attachments(app: AppHandle) -> Result<Vec<serde_json::Value>, String> {
+pub async fn pick_attachments(app: AppHandle, window: tauri::WebviewWindow) -> Result<Vec<serde_json::Value>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_files())
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_parent(&window).blocking_pick_files())
         .await
         .map_err(|e| e.to_string())?
         .unwrap_or_default();

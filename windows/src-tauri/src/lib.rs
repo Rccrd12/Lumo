@@ -726,6 +726,8 @@ async fn chat_send(
     // Held until the answer is done: the user can move to another chat, and
     // this one keeps being answered in the background.
     let chat = chats.get(&chat_id);
+    // A chat loaded off screen (chat_load): this answer holds it from now on.
+    chats.unpin(&chat_id);
     // The settings as they are now: a model, effort or permission picked
     // while this answer is written goes with the next message.
     let settings = shared.settings.lock().unwrap().clone();
@@ -903,6 +905,21 @@ fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, ses
     chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
 }
 
+/// chat_restore for a chat that is not on screen: the Listening events use it
+/// to answer in the chat that asked while the user is in another one. Unlike
+/// chat_restore it leaves the chat on screen alone (focus would forget its
+/// conversation, which Rust holds, once it is idle). The saved turns are only
+/// taken when Rust holds no conversation for the chat: when it does (the
+/// chat on screen, or an answer to an earlier event still being written) its
+/// own is the newer one, and restoring would drop that answer.
+#[tauri::command]
+fn chat_load(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
+    let (chat, fresh) = chats.load(&chat_id);
+    if fresh {
+        chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+    }
+}
+
 /// A chat's /compact, as its saved file keeps it: the summary of its first `upto` turns.
 #[derive(serde::Deserialize, serde::Serialize)]
 struct SavedCompact {
@@ -922,10 +939,11 @@ async fn chat_compact(shared: State<'_, Shared>, chats: State<'_, Chats>, chat_i
 
 /// "Attach a file" in the chat: the system's file picker, then the same copy
 /// into the inbox as a drop. Only a file the user picked there can be added.
+/// The picker belongs to the island (`window`), so it shows over it.
 #[tauri::command]
-async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
+async fn pick_file(app: AppHandle, window: tauri::WebviewWindow) -> Result<Option<DroppedFile>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_parent(&window).blocking_pick_file())
         .await
         .map_err(|e| e.to_string())?;
     let Some(picked) = picked else { return Ok(None) };
@@ -936,10 +954,12 @@ async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
 
 /// "Choose…" in the Listening panel's form: the system's folder picker. Only
 /// the path is handed back; nothing is read until the user starts listening.
+/// The picker belongs to the island (`window`): the island is always on top,
+/// and a window of no one's would open under it.
 #[tauri::command]
-async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
+async fn pick_folder(app: AppHandle, window: tauri::WebviewWindow) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_parent(&window).blocking_pick_folder())
         .await
         .map_err(|e| e.to_string())?;
     let Some(picked) = picked else { return Ok(None) };
@@ -1414,6 +1434,7 @@ pub fn run() {
             unsloth_studio_stop,
             chat_reset,
             chat_restore,
+            chat_load,
             chat_compact,
             chat_commands,
             chat_stop,

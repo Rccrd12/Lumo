@@ -27,6 +27,7 @@ touches `windows/` (`.github/workflows/windows-e2e.yml`, on `windows-latest`).
 | `permission.test.mjs` | Allow and Deny reach Claude Code (closed island and full card), the 600 ms click guard, a small and a 400 KB Write, a long plan, a question, two requests in line |
 | `never-block.test.mjs` | The relay answers at once when Lumo is closed, events nobody waits on, Lumo quitting while a card waits |
 | `island-size.test.mjs` | The chat's size across a restart, and resizing the chat leaves the home's size alone |
+| `pickers.test.mjs` | Choose… in the Listening form: Windows' folder picker belongs to the island, so it shows over it, and a click in it keeps the form open |
 | `settings-island.test.mjs` | Settings inside the island: the relay installed from there after Windows' own Yes (Cancel writes nothing), the Settings window staying shut, no write without its preview, and the separate Settings window made only when first opened, showing its page |
 
 A new flow is a `flow(group, name, app, async () => { … })` in a

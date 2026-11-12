@@ -84,7 +84,7 @@ import { Ink, inkWorks } from "./ink";
 import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import {
-  Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
+  Bridge, isDialogOpen, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
@@ -94,7 +94,7 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
+  chatChecklists, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
@@ -119,8 +119,9 @@ import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
-import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, takeListens, untilText, watchColor, watchLabel, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
-import { buildListeningPanel, listeningButtonTitle } from "./listening";
+import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, listeningLine, takeListens, untilText, watchColor, watchLabel, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
+import { LISTENING_STRINGS, buildListeningPanel, listeningButtonTitle, neededText, watchTile } from "./listening";
+import { addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, placeHeard, seenChat, waitingElsewhere, wavesLit, type HeardLine } from "../core/heard";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
@@ -144,6 +145,13 @@ const STRINGS = {
   listenThen: N_("then: {task}"),
   listenNo: N_("Not now"),
   listenYes: N_("Listen"),
+  listenDoesOnce: N_("{helper} will do it by itself when it happens, without asking you again."),
+  listenDoesEvery: N_("{helper} will do it by itself each time it happens, without asking you again."),
+  heardAsk: N_("Ask {helper}"),
+  heardOpen: N_("Open that chat"),
+  heardClose: N_("Close"),
+  heardIn: N_("Heard in the chat «{chat}»"),
+  heardDoing: N_("{helper} takes care of it in its chat, «{chat}»"),
   planChange: N_("Or write what to change…"),
   send: N_("Send"),
   toEnd: N_("Go to the bottom"),
@@ -324,7 +332,7 @@ interface BubbleOptions {
 }
 
 /** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
-let sendFromCard: ((text: string) => void) | undefined;
+let sendFromCard: ((text: string) => boolean) | undefined;
 
 /** The "2 min ago" under the messages on screen, kept fresh as the chat is drawn and hovered. */
 let sentTimes: { el: HTMLElement; at: number }[] = [];
@@ -1828,7 +1836,9 @@ export function buildPrompt(
     svg(ICONS.chevronUpDown, 9, { stroke: 2 }),
   );
   const newBtn = h("button", { class: "tool-btn", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
-  const historyBtn = h("button", { class: "tool-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
+  // Its badge: how many other chats heard something not seen yet (Past chats marks them).
+  const historyBadge = h("span", { class: "history-badge" });
+  const historyBtn = h("button", { class: "tool-btn history-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }), historyBadge);
   // Everything attached to the next question, in a list of its own, so the
   // chat keeps its whole height; the badge says how many.
   const filesBadge = h("span", { class: "tool-badge" });
@@ -1934,14 +1944,95 @@ export function buildPrompt(
     clear(listenAskList);
     for (const ask of asks) {
       const w = { ...ask, id: 0, chatId: State.chatId, startedAt: 0 } as ListenWatch;
+      const label = watchLabel(w);
+      // A path or a page shortened in its label is read whole before Listen.
+      const whole = ask.source !== "github.pr" && ask.target && !label.includes(ask.target) ? ask.target : "";
+      const every = ask.mode === "every";
       listenAskList.append(h("div", { class: "listen-ask-row", style: `--watch:${watchColor(w)}` },
         h("span", { class: "listen-ask-dot" }),
         h("span", { class: "listen-ask-text" },
-          h("span", { class: "listen-ask-what", text: `${watchLabel(w)} · ${untilText(w)}${w.text ? ` "${w.text}"` : ""}` }),
-          ask.task ? h("span", { class: "listen-ask-then", text: t(STRINGS.listenThen, { task: ask.task }) }) : null)));
+          h("span", { class: "listen-ask-what" },
+            h("span", { text: `${label} · ${untilText(w)}${w.text ? ` "${w.text}"` : ""}` }),
+            every ? h("span", { class: "listen-pill every", text: t(LISTENING_STRINGS.every) }) : null),
+          whole ? h("span", { class: "listen-ask-target", text: whole }) : null,
+          ask.task ? h("span", { class: "listen-ask-then", text: t(STRINGS.listenThen, { task: ask.task }) }) : null,
+          // What it will do comes without asking again: said before Listen.
+          ask.task ? h("span", { class: "listen-ask-warn", text: t(every ? STRINGS.listenDoesEvery : STRINGS.listenDoesOnce, { helper: chatSpeaker().who }) }) : null)));
     }
     onHeightChange();
   }
+  // What Lumo heard for another chat, not seen yet: over the field, until
+  // that chat is opened or Close is pressed (concept: barra-apri-chiudi).
+  const heardBarTile = h("span", { class: "heard-bar-tile" });
+  const heardBarWhat = h("span", { class: "heard-bar-what" });
+  const heardBarWhere = h("span", { class: "heard-bar-where" });
+  const heardBar = h("div", { class: "heard-bar" },
+    heardBarTile,
+    h("span", { class: "heard-bar-text" }, heardBarWhat, heardBarWhere),
+    h("span", { class: "heard-bar-btns" },
+      h("button", { class: "listen-head-btn", type: "button", onclick: () => openHeard() }, h("span", { text: tl(STRINGS.heardOpen) })),
+      h("button", { class: "listen-head-btn", type: "button", onclick: () => closeHeard() }, h("span", { text: tl(STRINGS.heardClose) }))));
+  heardBar.hidden = true;
+  let heardBarFor = "";
+  /** The line the bar shows, while it shows one. */
+  let heardBarLine: HeardLine | null = null;
+
+  function drawHeardBar() {
+    const waiting = State.chatSlot === "chat" ? waitingElsewhere(State.listenPending, State.chatId) : null;
+    const key = waiting ? `${waiting.line.id}\t${waiting.more}` : "";
+    if (key === heardBarFor) return;
+    heardBarFor = key;
+    heardBarLine = waiting?.line ?? null;
+    heardBar.hidden = !waiting;
+    if (waiting) {
+      const { line, more } = waiting;
+      heardBarTile.replaceChildren(watchTile(line.watch));
+      heardBar.style.setProperty("--watch", line.color);
+      heardBarWhat.textContent = `${line.title} · ${line.summary}`;
+      const chat = line.chatTitle || t("Chat");
+      const where = line.asked && line.watch.task.trim() ? t(STRINGS.heardDoing, { helper: chatSpeaker().who, chat }) : t(STRINGS.heardIn, { chat });
+      heardBarWhere.textContent = more > 0 ? `${where} · +${more}` : where;
+    }
+    onHeightChange();
+  }
+
+  /** Open that chat: the one the bar names comes on screen (and is seen). */
+  function openHeard() {
+    const line = heardBarLine;
+    if (!line) return;
+    const saved = loadChats().find((c) => c.id === line.chatId);
+    const inFlight = !saved ? runs.get(line.chatId) : undefined;
+    // A new chat for a task (its chat was deleted) not started yet: the bar stays until it is.
+    if (!saved && !inFlight && (loadingAway.has(line.chatId) || heard.some((x) => x.chatId === line.chatId))) {
+      Sound.play("error");
+      return;
+    }
+    seen(line.chatId);
+    if (saved) openChat(saved);
+    else if (inFlight) openChat({ id: line.chatId, title: chatTitle(inFlight.history), updatedAt: Date.now(), provider: inFlight.provider, session: inFlight.session, turns: [] });
+    State.notify();
+  }
+
+  /** Close: as if that chat had been opened, the bar and its light go. */
+  function closeHeard() {
+    const line = heardBarLine;
+    if (!line) return;
+    seen(line.chatId);
+    Sound.play("pop");
+    State.notify();
+  }
+
+  /** `chatId` was seen: what it heard no longer waits (the island, the waves, Past chats). */
+  function seen(chatId: string) {
+    const next = seenChat(State.listenPending, chatId);
+    if (next === State.listenPending) return;
+    State.listenPending = next;
+    drawHeardBar();
+    drawListening();
+    drawHistoryBadge();
+    if (body.classList.contains("browsing")) drawHistory();
+  }
+
   // The ring sits right before the model it measures.
   const modelRow = h("div", { class: "model-row" },
     planStrip.el,
@@ -2023,6 +2114,15 @@ export function buildPrompt(
       openChat(saved);
     },
     close: () => closeListening(),
+    openPills: () => {
+      try {
+        window.localStorage.setItem("lumo.settings.page", "pills");
+      } catch {
+        // Settings open on the page they were on.
+      }
+      closeListening();
+      openSettings();
+    },
     // Make a source: a tool of one's own, in the workshop.
     openWorkshop: () => {
       closeListening();
@@ -2043,7 +2143,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, listenAsk, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -2086,7 +2186,11 @@ export function buildPrompt(
     if (slashOpen() && !inside(slashEl)) closeSlash();
   }
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
-  void onEvent<null>("outside-press", () => closeListsBut(null));
+  // A press in a picker of ours (Choose… for a folder, the paperclip) is no
+  // press elsewhere: the panel that opened it waits for what is picked.
+  void onEvent<null>("outside-press", () => {
+    if (!isDialogOpen()) closeListsBut(null);
+  });
 
   const cardEl = h("div", { class: "card wash chat-card" }, body, forge.el, forge.guide, forge.help);
   const el = h("div", { class: "view" }, cardEl);
@@ -2725,15 +2829,26 @@ export function buildPrompt(
   /** What the waves were last drawn for. */
   let listenKey = "";
 
-  /** The waves: lit, with how many, while something listens; the panel redrawn. */
+  /** The waves: lit, with how many in this chat, while it listens or another chat waits; the panel redrawn. */
   function drawListening() {
-    const on = activeWatches(State.listening).length;
-    listenBtn.classList.toggle("listening", on > 0);
+    // Lit while something listens for the chat on screen, or another chat
+    // heard something not seen yet; the count is this chat's.
+    const here = State.chatSlot === "chat" ? State.chatId : "";
+    const on = activeWatches(State.listening).filter((w) => w.chatId === here).length;
+    listenBtn.classList.toggle("listening", wavesLit(State.listening, State.listenPending, here));
     listenBadge.textContent = on > 0 ? String(on) : "";
-    const title = listeningButtonTitle(State.listening);
+    // Under the mouse: what this chat waits for ("Waits for the merge #7"), else how many listen.
+    const mine = listeningLine(State.listening.filter((w) => w.chatId === here));
+    const title = mine ? `${t("Listening")} · ${mine}` : listeningButtonTitle(State.listening);
     listenBtn.title = title;
     listenBtn.setAttribute("aria-label", title);
     if (body.classList.contains("hearing")) listening.draw();
+  }
+
+  /** The clock's badge: the other chats that heard something not seen yet. */
+  function drawHistoryBadge() {
+    const others = State.chatSlot === "chat" ? State.listenPending.filter((p) => p.chatId !== State.chatId).length : 0;
+    historyBadge.textContent = others > 0 ? String(others) : "";
   }
 
   // ── Screen button ─────────────────────────────────────────────────────────
@@ -3212,6 +3327,9 @@ export function buildPrompt(
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
         deleteChat(c.id);
+        // What it heard goes with it, and no longer waits to be seen.
+        dropHeard(c.id);
+        seen(c.id);
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
         // Its copies in the inbox too, but for those another chat or the field still has.
@@ -3238,10 +3356,15 @@ export function buildPrompt(
         drawHistory();
       });
       const name = h("span", { class: "picker-model-name", text: c.title || "…" });
+      // It heard something not seen yet: what, in its colour, and the waves.
+      const heard = State.chatSlot === "chat" ? State.listenPending.find((p) => p.chatId === c.id) : undefined;
+      const heardText = heard && !snippet ? h("span", { class: "history-snippet history-heard-line", style: `color:${heard.color}`, text: `${heard.title} · ${heard.summary}` }) : null;
+      const under = snippet ?? heardText;
       const row = h(
         "div",
         { class: c.id === State.chatId ? "picker-model history-row on" : "picker-model history-row", title: c.title },
-        snippet ? h("span", { class: "history-text" }, name, snippet) : name,
+        under ? h("span", { class: "history-text" }, name, under) : name,
+        heard ? h("span", { class: "history-heard" }, svg(ICONS.waves, 13, { stroke: 1.8 })) : null,
         h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
         remove,
       );
@@ -3404,7 +3527,12 @@ export function buildPrompt(
     setInput(back?.text ?? "");
     shownSlot = State.chatSlot;
     // Rust lets a chat go once another is on screen: it gets this one back as it is.
-    if (!runs.has(State.chatId) && State.chatHistory.length > 0) {
+    const going = runs.get(State.chatId);
+    if (going) {
+      // Still being answered: it comes back with that answer (as openChat).
+      State.chatHistory = going.history;
+      State.chatSession = going.session;
+    } else if (State.chatHistory.length > 0) {
       State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, turn: i }));
       void Bridge.chatRestore(State.chatId, State.chatHistory.map(conversationTurn), State.chatSession, compactOf(State.chatId));
     }
@@ -3837,11 +3965,12 @@ export function buildPrompt(
    */
   sendFromCard = (text) => {
     // Not while a question is edited: sending it drops what follows it.
-    if (editing != null || preparing) return;
+    if (editing != null || preparing) return false;
     // While an answer is written, it waits above the field like a question typed.
     const current = answering();
     if (current) enqueue(current, text, false);
     else void submit(text);
+    return true;
   };
 
   /**
@@ -3856,7 +3985,11 @@ export function buildPrompt(
     drawQueue();
   }
 
-  async function submit(auto?: string, queuedText?: string) {
+  /**
+   * `away`: Lumo's own message goes to that chat, not the one on screen
+   * (submitAway): its conversation, already loaded in Rust.
+   */
+  async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }) {
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
     if (!query || preparing) return;
@@ -3887,7 +4020,7 @@ export function buildPrompt(
     if (asking) decide("deny", asking.requestId);
     // The chat on screen is being answered: the next question waits above the
     // field and goes once it is done, but an edited one stops it and replaces it.
-    const current = answering();
+    const current = away ? runs.get(away.chatId) : answering();
     if (current) {
       if (!auto && editing == null) enqueue(current, query, typed);
       if (auto || editing == null) return;
@@ -3899,11 +4032,11 @@ export function buildPrompt(
       if (State.chatId !== here || editing == null || answering()) return;
     }
     // Nearly full: the chat is compacted first, the question waiting in the field.
-    const full = editing == null ? autoCompactAt() : null;
+    const full = editing == null && !away ? autoCompactAt() : null;
     // The chat the question was asked in. Compacting, rewinding or reading
     // the screen first takes time, and another chat opened meanwhile must
     // not get the question.
-    const askedIn = State.chatId;
+    const askedIn = away?.chatId ?? State.chatId;
     if (full != null) {
       preparing = true;
       try {
@@ -3918,11 +4051,14 @@ export function buildPrompt(
         return;
       }
     }
-    if (picker.isOpen) picker.close();
-    closeHistory();
-    closeScreen();
-    if (typed) setInput("");
-    Sound.play("send");
+    // Another chat's message leaves the one on screen as it is.
+    if (!away) {
+      if (picker.isOpen) picker.close();
+      closeHistory();
+      closeScreen();
+      if (typed) setInput("");
+      Sound.play("send");
+    }
 
     let run: Run;
     let finish = () => {};
@@ -3946,7 +4082,7 @@ export function buildPrompt(
       if (!auto && (shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], query);
       // Another chat came on screen meanwhile: the question goes back to the
       // field rather than into it.
-      if (State.chatId !== askedIn) {
+      if (!away && State.chatId !== askedIn) {
         if (typed && !input.value.trim()) setInput(query);
         // A question that waited above the field, or Lumo's own message,
         // waits there again.
@@ -3962,8 +4098,8 @@ export function buildPrompt(
       sent = [...(file && context ? [file] : []), ...more];
 
       // The chat it is asked in, whichever is on screen when its answer comes.
-      const chatId = State.chatId;
-      const history = State.chatHistory;
+      const chatId = askedIn;
+      const history = away?.history ?? State.chatHistory;
       // Its copies in the inbox now belong to the chat: they go when it is deleted.
       noteSentCopies(chatId, sent.map((f) => f.path));
       // Where the question goes in Rust's conversation: after every turn recorded.
@@ -3997,7 +4133,7 @@ export function buildPrompt(
       run = {
         chatId,
         history,
-        session: State.chatSession,
+        session: away ? away.session : State.chatSession,
         provider: State.settings.chatProvider,
         model: activeModel(State.settings),
         turn,
@@ -4074,7 +4210,7 @@ export function buildPrompt(
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
       run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true, at: Date.now() });
-      if (!(State.mode === "expanded" && State.view === "prompt")) {
+      if (!away && !(State.mode === "expanded" && State.view === "prompt")) {
         State.noteMessage = problem;
         State.view = "note";
       }
@@ -4135,14 +4271,20 @@ export function buildPrompt(
 
   /** The watches the user said Listen to, for chat `chatId`: what can't start is said on the island. */
   async function startListens(chatId: string, asks: ListenAsk[]) {
-    const addOne = (ask: ListenAsk) => ask.source === "github.pr"
-      ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, chatId, ask.mode)
-      : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, chatId, ask.mode, ask.amount);
+    // Each one's outcome: started, or why not (`needs:…`, what to turn on first).
+    const addOne = async (ask: ListenAsk): Promise<{ ok: boolean; error?: string }> => ask.source === "github.pr"
+      ? { ok: !!(await Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, chatId, ask.mode)) }
+      : Bridge.listenTryLocal(ask.source, ask.target, ask.until, ask.text, ask.task, chatId, ask.mode, ask.amount)
+        .then((got) => ({ ok: !!got.watch, error: got.error }));
     const added = await Promise.all(asks.map(addOne));
     const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
-    const unheard = asks.filter((_, i) => !added[i]).map(named);
+    const unheard = asks.filter((_, i) => !added[i].ok).map(named);
     Sound.play(unheard.length ? "error" : "blip");
-    if (unheard.length) compactNotice(t(LISTEN_STRINGS.unread, { what: unheard.join(", ") }), LISTEN_COLOR, 10_000);
+    if (!unheard.length) return;
+    // What to do about it, when Rust said: "Turn on the Email pill first."
+    const needs = [...new Set(added.map((a) => (a.ok ? null : neededText(a.error))).filter((n): n is string => !!n))];
+    const said = t(LISTEN_STRINGS.unread, { what: unheard.join(", ") });
+    compactNotice(needs.length ? `${said} ${needs.join(" ")}` : said, LISTEN_COLOR, 10_000);
   }
 
   // ── What Claude Code writes by itself ─────────────────────────────────────
@@ -4187,45 +4329,177 @@ export function buildPrompt(
 
   // ── Listening to GitHub ───────────────────────────────────────────────────
 
-  /** Events with something for Claude to do, waiting for the chat to be free. */
-  const heard: ListenFired[] = [];
+  /** Events with something for Claude to do, each with its chat, waiting for that chat to be free. */
+  const heard: { text: string; chatId: string }[] = [];
+  /** Chats whose conversation Rust is loading for such a message (submitAway). */
+  const loadingAway = new Set<string>();
 
   /**
-   * The next one goes to Claude in the chat that asked for it: that chat is
-   * opened from the history when another is on screen (a new one when it was
-   * deleted; the message says all it needs).
+   * The next one goes to Claude in the chat that asked for it, where that
+   * chat is: on screen, or in the background, the chat on screen staying as
+   * it is (concept: compito-senza-cambiare-chat).
    */
   function runHeard() {
-    // The tool workshop is on screen: the event waits for the chat to come back.
-    if (State.chatSlot !== "chat") return;
-    // Its chat answers one message at a time: the event waits for that answer.
-    const next = heard[0];
-    if (!next || preparing || runs.has(next.watch.chatId)) return;
-    const fired = heard.shift();
-    if (!fired) return;
-    if (State.chatId !== fired.watch.chatId) {
-      const saved = loadChats().find((c) => c.id === fired.watch.chatId);
-      if (saved) openChat(saved);
-      // Only to be told, and its chat is gone: the island's notice was enough.
-      else if (!fired.watch.task.trim()) return runHeard();
-      else newChat();
+    // Each chat's messages go in their order; a chat busy answering, loading,
+    // or put aside by the other slot (its history comes back as it was left)
+    // holds back only its own.
+    const held = new Set<string>([State.parkedChatId() ?? ""]);
+    for (let i = 0; i < heard.length && !preparing; ) {
+      const next = heard[i];
+      if (held.has(next.chatId) || runs.has(next.chatId) || loadingAway.has(next.chatId)) {
+        held.add(next.chatId);
+        i++;
+        continue;
+      }
+      heard.splice(i, 1);
+      held.add(next.chatId);
+      if (next.chatId === State.chatId) void submit(next.text);
+      else void submitAway(next.chatId, next.text);
     }
-    void submit(listenMessage(fired));
+  }
+
+  /**
+   * Lumo's own message to a chat that is not on screen: its conversation is
+   * loaded in Rust beside the one on screen (chat_load), and answered there
+   * in the background, as a chat left while it is answered is. Opened
+   * meanwhile, it goes there as on screen.
+   */
+  async function submitAway(chatId: string, text: string) {
+    const saved = loadChats().find((c) => c.id === chatId);
+    // Rust takes every turn back as it is: each one's place there is its place here (as openChat).
+    const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => ({
+      id: nextId++, role: turn.role, content: turn.content, turn: i,
+      at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined,
+    }));
+    const session = saved?.session ?? null;
+    loadingAway.add(chatId);
+    try {
+      await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId));
+    } finally {
+      loadingAway.delete(chatId);
+    }
+    if (preparing || runs.has(chatId)) {
+      // Something else went first: it waits for its turn again, before its
+      // chat's next ones (an answer that ends calls for it; a moment later in any case).
+      const at = heard.findIndex((h) => h.chatId === chatId);
+      heard.splice(at < 0 ? heard.length : at, 0, { text, chatId });
+      window.setTimeout(() => runHeard(), 2000);
+      return;
+    }
+    if (State.chatId === chatId) void submit(text);
+    else void submit(text, undefined, { chatId, history, session });
+  }
+
+  /** The chat `chatId` is on screen, open: what it hears is seen at once. */
+  function chatVisible(chatId: string): boolean {
+    return State.mode === "expanded" && State.view === "prompt" && State.chatSlot === "chat" && State.chatId === chatId;
+  }
+
+  /** A chat's name, wherever it is: on screen, being answered, or in Past chats. */
+  function chatNamed(chatId: string): string | null {
+    // The chat on screen, even still empty (a watch started from the panel),
+    // or the one the other slot put aside.
+    if (chatId === State.chatId) return chatTitle(State.chatHistory);
+    const parked = State.parkedChat();
+    if (parked && chatId === parked.chatId) return chatTitle(parked.chatHistory);
+    const run = runs.get(chatId);
+    if (run) return chatTitle(run.history);
+    const saved = loadChats().find((c) => c.id === chatId);
+    return saved ? saved.title : null;
+  }
+
+  /**
+   * What a watch heard: a line in the chat that asked (core/heard.ts), which
+   * waits to be seen unless that chat is open; with a task, the message to
+   * Claude in that chat too. "Only tell me" never wakes the AI.
+   */
+  function hear(fired: ListenFired) {
+    const asks = answersInChat(fired);
+    let chatId = fired.watch.chatId;
+    let name = chatId ? chatNamed(chatId) : null;
+    if (name == null) {
+      // No chat asked, or it was deleted: with nothing to do, the closed
+      // island says it for a while; with a task, a new chat does it.
+      if (!asks) {
+        compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
+        return;
+      }
+      chatId = newChatId();
+      name = chatTitle([{ role: "user", content: listenMessage(fired) }]);
+    }
+    const line = heardLine({ ...fired, watch: { ...fired.watch, chatId } }, name);
+    // With a task, Claude is asked already: no Ask button.
+    if (asks) line.asked = true;
+    // Lines of chats not saved yet stay: on screen, being answered, waiting to be seen or to be answered.
+    const kept = [...loadChats().map((c) => c.id), State.chatId, State.parkedChatId() ?? "", chatId, ...runs.keys(), ...loadingAway, ...heard.map((x) => x.chatId), ...State.listenPending.map((p) => p.chatId)];
+    addHeard(line, new Set(kept));
+    if (!chatVisible(chatId)) State.listenPending = addPending(State.listenPending, line);
+    if (chatId === State.chatId) renderedCount = -1;
+    drawHeardBar();
+    drawListening();
+    drawHistoryBadge();
+    if (body.classList.contains("browsing")) drawHistory();
+    if (asks) {
+      heard.push({ text: listenMessage({ ...fired, watch: line.watch }), chatId });
+      runHeard();
+    }
+    State.notify();
+  }
+
+  /**
+   * A line Lumo heard, between the chat's messages (concept: riga-in-chat):
+   * the source's tile, what happened and when; Ask {helper} while the AI was
+   * not asked about it, Stop listening while its watch goes on.
+   */
+  function heardRow(line: HeardLine): HTMLElement {
+    const when = h("span", { class: "heard-time", text: sentAgo(line.at), title: new Date(line.at).toLocaleString(language()) });
+    sentTimes.push({ el: when, at: line.at });
+    // Its watch, still on: the same id (never given twice, listen.rs) on the
+    // same source. Not the same chat: a deleted chat's task lands in a new one.
+    const watching = !line.ended && State.listening.some((w) => w.id === line.watch.id && (w.source ?? "github.pr") === (line.watch.source ?? "github.pr"));
+    const ask = line.asked ? null : h("button", {
+      class: "listen-head-btn", type: "button",
+      onclick: () => {
+        // What it heard goes to the AI as a message, as a task would have sent
+        // it; the button goes once it went (not while a question is edited).
+        if (!sendFromCard?.(listenMessage({ watch: line.watch, met: line.met, summary: line.summary, ended: line.ended }))) {
+          Sound.play("error");
+          return;
+        }
+        markAsked(line.chatId, line.id);
+        renderedCount = -1;
+        State.notify();
+      },
+    }, h("span", { text: t(STRINGS.heardAsk, { helper: chatSpeaker().who }) }));
+    const stop = watching ? h("button", {
+      class: "listen-head-btn", type: "button",
+      onclick: () => {
+        void Bridge.listenStop(line.watch.id);
+        Sound.play("pop");
+      },
+    }, h("span", { text: t(LISTENING_STRINGS.stop) })) : null;
+    return h("div", { class: "chat-row heard-row" },
+      h("div", { class: line.met ? "heard-pill" : "heard-pill not-met", style: `--watch:${line.color}` },
+        watchTile(line.watch),
+        h("span", { class: "heard-text" },
+          h("span", { class: "heard-title", text: `${line.title} · ` }),
+          h("span", { class: "heard-summary", text: line.summary }),
+          h("span", { class: "heard-dot", text: " · " }),
+          when)),
+      ask || stop ? h("div", { class: "heard-actions" }, ask, stop) : null);
   }
 
   void onEvent<ListenFired>("listen-fired", (fired) => {
     if (!fired) return;
     Sound.play(fired.met ? "finish" : "error");
-    compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
     // What it heard joins the panel's history.
     if (body.classList.contains("hearing")) listening.opened();
-    // With no task, the chat it was asked in still says what happened.
-    if (!answersInChat(fired)) return;
-    heard.push(fired);
-    runHeard();
+    hear(fired);
   });
   void onEvent<ListenWatch[]>("listen-changed", (list) => {
     State.listening = list ?? [];
+    // A line's Stop listening goes with its watch.
+    if (State.chatSlot === "chat" && heardIn(State.chatId).some((l) => !l.ended)) renderedCount = -1;
     drawListening();
     State.notify();
   });
@@ -4721,11 +4995,20 @@ export function buildPrompt(
       // A dropped file just came in: a word that it did, for a moment.
       const uploaded = State.uploadedNote && State.uploadedNote.until > Date.now() ? State.uploadedNote : null;
       if (!uploaded) State.uploadedNote = null;
-      // The waves and the Listening panel follow the watches and the chat on screen.
-      const heardKey = `${State.chatId}\n${JSON.stringify(State.listening)}`;
+      // The chat on screen, open, is seen: what it heard no longer waits.
+      if (chatVisible(State.chatId) && State.listenPending.some((p) => p.chatId === State.chatId)) {
+        State.listenPending = seenChat(State.listenPending, State.chatId);
+        // The closed island draws again without it.
+        queueMicrotask(() => State.notify());
+      }
+      // The waves, the bar, the clock's badge and the Listening panel follow
+      // the watches, what waits to be seen and the chat on screen.
+      const heardKey = `${State.chatId}\n${State.chatSlot}\n${JSON.stringify(State.listening)}\n${State.listenPending.map((p) => p.id).join(",")}`;
       if (heardKey !== listenKey) {
         listenKey = heardKey;
         drawListening();
+        drawHeardBar();
+        drawHistoryBadge();
       }
       const editKey = editing != null ? String(editing) : uploaded ? `uploaded\t${uploaded.name}\t${uploaded.until}` : "";
       if (chipRow.dataset.label !== editKey) {
@@ -4760,7 +5043,10 @@ export function buildPrompt(
         const asked = lastAsked >= 0 && !run && editing == null ? history[lastAsked] : null;
         // No answer under the last question (it failed, or was stopped before a word): its actions stay in sight.
         const unanswered = asked != null && (lastAsked === history.length - 1 || !!history[lastAsked + 1]?.failed);
+        // What Lumo heard for the chat, between its messages by time.
+        const heardLines = placeHeard(history, workshop ? [] : heardIn(State.chatId));
         history.forEach((m, i) => {
+          for (const line of heardLines.before[i]) log.append(heardRow(line));
           // A message's scope is its place among those kept with the chat, as the checklists count them.
           const scope = messageScope(State.chatId, m.failed ? -1 : place++);
           const retries = asked != null && (i === lastAsked || (i === lastAsked + 1 && !m.failed));
@@ -4780,6 +5066,7 @@ export function buildPrompt(
           const scope = messageScope(State.chatId, place - 1);
           inked.mount(lastReply, (el, words) => drawReply(el, words, workshop, scope, words.length < last.content.length));
         } else if (!run) dropInk();
+        for (const line of heardLines.after) log.append(heardRow(line));
         // The answer being written: its text so far, then the dots while it works.
         if (run?.text) {
           live = h("div", { class: "reply" });
