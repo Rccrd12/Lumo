@@ -348,6 +348,10 @@ export function islandSize(
       // (character/greeting.ts): a size dragged for the other views would leave it
       // off-centre in a box too big for it.
       if (view === "greeting") return { w: EXPANDED_W, h: VIEW_LAYOUTS.greeting.height };
+      // A file being dropped, and the upload after it, are a moment: their own
+      // compact size, never the one dragged for the other views, which could
+      // turn the drop zone into a wall over half the screen.
+      if (view === "upload" || view === "uploading") return { w: EXPANDED_W, h: VIEW_LAYOUTS[view].height };
       const h = view === "prompt"
         ? chatHeight(shape, chatCount)
         : Math.max(VIEW_LAYOUTS[view].height, pickedHeight(shape));

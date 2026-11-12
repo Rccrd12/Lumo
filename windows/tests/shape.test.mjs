@@ -26,6 +26,13 @@ test("the launch greeting keeps its own 640 × 150, whatever size was dragged", 
   }
 });
 
+test("the drop zone and the upload keep their own 640 × 176, whatever size was dragged", () => {
+  for (const shape of [{ width: 900, height: 0 }, { width: 1200, height: 500 }, { width: 560, height: 640 }]) {
+    assert.deepEqual(islandSize("expanded", "upload", 0, shape), { w: 640, h: 176 });
+    assert.deepEqual(islandSize("expanded", "uploading", 0, shape), { w: 640, h: 176 });
+  }
+});
+
 test("a picked height makes every open view at least that tall", () => {
   const tall = { width: 640, height: 500 };
   assert.equal(islandSize("expanded", "prompt", 0, tall).h, 500);
