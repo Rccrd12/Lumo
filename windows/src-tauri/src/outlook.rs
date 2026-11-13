@@ -513,14 +513,15 @@ fn fill(item: &Disp, account: Option<Account>, draft: &Draft, subject: &str, tex
 
 /// The email as the user left it on its card (mail.rs outlook_revision),
 /// checked: who it goes to, the subject, the text when it changed, the files
-/// kept (by their place on the card) and the paths added with Attach.
+/// left out and the paths added with Attach.
 pub struct Revision {
     pub to: Vec<String>,
     pub cc: Vec<String>,
     pub subject: String,
     /// Only when the user changed it: Outlook's own text (a reply's HTML) stays otherwise.
     pub new_body: Option<String>,
-    pub keep: Vec<usize>,
+    /// The files the user took off the card, by name and size (places_to_remove).
+    pub drop: Vec<(String, usize)>,
     pub add: Vec<String>,
     /// What changed, in words for the AI.
     pub changed: Vec<&'static str>,
@@ -551,13 +552,11 @@ pub async fn revise(made: &mut Made, change: Revision) -> Result<(), String> {
         if let Some(body) = &change.new_body {
             item.put("Body", body.as_str().into())?;
         }
-        // The files left out go, from the last one so the places hold.
+        // The files left out go, found by name and size, from the last one so the places hold.
         let attachments = item.obj("Attachments")?;
-        let count = attachments.int("Count")?.max(0) as usize;
-        for i in (0..count).rev() {
-            if !change.keep.contains(&i) {
-                attachments.call("Remove", vec![((i + 1) as i32).into()])?;
-            }
+        let listed: Vec<Option<(String, usize)>> = (1..=attachments.int("Count")?.max(0)).map(|i| file_at(&attachments, i).map(|f| (f.name, f.size))).collect();
+        for place in places_to_remove(&listed, &change.drop) {
+            attachments.call("Remove", vec![place.into()])?;
         }
         for path in &change.add {
             item.obj("Attachments")?.call("Add", vec![path.as_str().into()])?;
@@ -1492,13 +1491,34 @@ fn people(item: &Disp) -> Result<(Vec<String>, Vec<String>), String> {
 
 fn files_of(item: &Disp) -> Result<Vec<File>, String> {
     let list = item.obj("Attachments")?;
-    let mut out = Vec::new();
-    for i in 1..=list.int("Count")? {
-        let Ok(a) = list.call("Item", vec![i.into()]).and_then(|v| v.dispatch()) else { continue };
-        let name = Some(a.text("FileName")).filter(|n| !n.is_empty()).unwrap_or_else(|| a.text("DisplayName"));
-        out.push(File { mime: crate::smtp::mime_of(&name), size: a.int("Size").unwrap_or(0).max(0) as usize, name });
+    Ok((1..=list.int("Count")?).filter_map(|i| file_at(&list, i)).collect())
+}
+
+/// The attachment at `place` (from 1) of an email's Attachments, as the card
+/// lists it; None when Outlook can't give it.
+fn file_at(list: &Disp, place: i32) -> Option<File> {
+    let a = list.call("Item", vec![place.into()]).and_then(|v| v.dispatch()).ok()?;
+    let name = Some(a.text("FileName")).filter(|n| !n.is_empty()).unwrap_or_else(|| a.text("DisplayName"));
+    Some(File { mime: crate::smtp::mime_of(&name), size: a.int("Size").unwrap_or(0).max(0) as usize, name })
+}
+
+/// The places (from 1, the last first) of the attachments to take out of an
+/// email: `listed` is each attachment as Outlook gives it now (None: one it
+/// can't), `drop` the files the user took off the card, by name and size.
+/// Found by what they are, not by their place on the card, which one Outlook
+/// couldn't give when the card was made would have shifted; that one is never
+/// taken out, and of two alike only as many go as were taken off.
+fn places_to_remove(listed: &[Option<(String, usize)>], drop: &[(String, usize)]) -> Vec<i32> {
+    let mut left: Vec<&(String, usize)> = drop.iter().collect();
+    let mut places = Vec::new();
+    for (i, file) in listed.iter().enumerate().rev() {
+        let Some(file) = file else { continue };
+        if let Some(at) = left.iter().position(|d| *d == file) {
+            left.remove(at);
+            places.push(i as i32 + 1);
+        }
     }
-    Ok(out)
+    places
 }
 
 // ── Ids ───────────────────────────────────────────────────────────────────────
@@ -1698,6 +1718,23 @@ fn match_path(paths: &[String], asked: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn files_taken_off_the_card_go_by_name_and_size_not_by_place() {
+        let f = |name: &str, size: usize| Some((name.to_string(), size));
+        let off = |name: &str, size: usize| (name.to_string(), size);
+        // The second of three taken off: its place, whatever the card's order.
+        assert_eq!(places_to_remove(&[f("a.pdf", 10), f("b.png", 20), f("c.txt", 30)], &[off("b.png", 20)]), [2]);
+        // Outlook couldn't give the first when the card was made (so the card
+        // listed two): b.png is still found, and the one it can't give stays.
+        assert_eq!(places_to_remove(&[None, f("b.png", 20), f("c.txt", 30)], &[off("b.png", 20)]), [2]);
+        // Two alike, one taken off: one goes. The last first, so the places hold.
+        assert_eq!(places_to_remove(&[f("logo.png", 5), f("a.pdf", 10), f("logo.png", 5)], &[off("logo.png", 5)]), [3]);
+        assert_eq!(places_to_remove(&[f("a.pdf", 10), f("b.png", 20), f("c.txt", 30)], &[off("a.pdf", 10), off("c.txt", 30)]), [3, 1]);
+        // Nothing taken off, or a name with another size: nothing goes.
+        assert!(places_to_remove(&[f("a.pdf", 10)], &[]).is_empty());
+        assert!(places_to_remove(&[f("a.pdf", 10)], &[off("a.pdf", 11)]).is_empty());
+    }
 
     #[test]
     fn outlook_is_started_a_minute_after_lumo() {

@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  DROPPED_TAGS, MAX_EMAIL_IMAGES, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkParts, opensInBrowser, readMailHtml, trackingPixel, webImageUrl,
+  DROPPED_TAGS, MAX_EMAIL_IMAGES, droppedAttribute, fitZoom, hiddenBox, imageSource, imagesToLoad, linkParts, opensInBrowser, readMailHtml, trackingPixel, webImageUrl,
 } from "../src/core/mail-html.ts";
 
 test("only http and https links open, in the browser", () => {
@@ -122,4 +122,12 @@ test("a tracking pixel is never loaded: 2 × 2 px or less, or from a service mad
   // Lumo's own marks are never taken from the email.
   assert.equal(droppedAttribute("data-lumo-src", "https://t.example/o.gif"), true);
   assert.equal(droppedAttribute("data-lumo-tracker", ""), true);
+});
+
+test("an image given only by srcset still has an address to load", () => {
+  assert.equal(imageSource(" https://a.example/x.png ", "https://a.example/x@2x.png 2x"), "https://a.example/x.png", "its src first");
+  assert.equal(imageSource("", "https://a.example/s.jpg 480w, https://a.example/l.jpg 1080w"), "https://a.example/s.jpg");
+  assert.equal(imageSource("", "https://a.example/a.jpg, https://a.example/b.jpg 2x"), "https://a.example/a.jpg");
+  assert.equal(imageSource("", "  "), "");
+  assert.equal(imageSource("", ""), "");
 });

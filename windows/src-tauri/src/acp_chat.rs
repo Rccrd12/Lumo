@@ -1611,6 +1611,7 @@ pub async fn send(
     // are only remembered for the chat.
     chat.cli_dirs(folder);
     let history = turn.history.clone();
+    let catch_up = claude_code::catch_up(&chat.cli_unseen(agent.provider()));
     let files = chat.files();
     let workshop = chat.is_workshop();
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
@@ -1644,7 +1645,9 @@ pub async fn send(
     // text, and the tool workshop's instructions with them.
     let text = move |fresh: bool| {
         let carried: &[Value] = if fresh { &history } else { &[] };
-        let text = claude_code::prompt(context2.as_ref(), carried, &files, &query2);
+        // A resumed session gets the turns another provider answered since it last did.
+        let unseen = if fresh { "" } else { catch_up.as_str() };
+        let text = format!("{unseen}{}", claude_code::prompt(context2.as_ref(), carried, &files, &query2));
         if !fresh {
             return text;
         }
@@ -1658,6 +1661,8 @@ pub async fn send(
     let app3 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
+    // The chat its plan belongs to, whichever chat is on screen when it comes.
+    let plan_chat = chat.id().to_string();
     let (state, session) = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             spec,
@@ -1678,7 +1683,7 @@ pub async fn send(
                 let _ = app2.emit_to(
                     crate::island::WINDOW_LABEL,
                     "chat-plan",
-                    json!({ "tool": "update_plan", "input": plan, "agent": agent.name(), "color": agent.color() }),
+                    json!({ "chat": plan_chat, "tool": "update_plan", "input": plan, "agent": agent.name(), "color": agent.color() }),
                 );
             },
             tell,

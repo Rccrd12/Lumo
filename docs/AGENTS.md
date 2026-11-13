@@ -142,8 +142,9 @@ rules decide, with two exceptions.
   of Antigravity's `command(...)` rules covers (its CLI settings, its global grants, and the
   grants of the project holding the working directory) is forwarded as a `PermissionRequest`
   tagged `lumo_agy_gate`. The island shows Allow, Deny and **Reply in Antigravity**: Allow
-  prints `{"decision":"allow"}`, Deny `{"decision":"deny"}`, and Reply in Antigravity, no
-  click, Lumo closed or a command too long to forward whole (over 64 KB) print `{"decision":"ask"}`. This
+  prints `{"decision":"allow"}`, Deny `{"decision":"deny"}` with the reason the model reads, and
+  Reply in Antigravity, no click or Lumo closed print `{"decision":"ask"}`. A command too long
+  to forward whole (over 64 KB) shows its beginning on the card, which says so, and can be allowed. This
   needs the `PreToolUse` hook with `--wait` (below); hooks installed without it never wait.
 - **The island's own chat with Antigravity CLI**, which runs `agy` headless (stream-json on
   stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that run only, the
@@ -151,8 +152,11 @@ rules decide, with two exceptions.
   `browser`, or of a file tool that writes, replaces, edits, deletes, moves, renames or creates
   outside the run's workspace, is forwarded as a `PermissionRequest`, shown as an Allow / Deny
   card over the chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a
-  click. With no click (or Lumo closed) it is `{"decision":"deny"}` too: agy's own confirmation
-  is off in that run, so nothing else would stop the call. Lumo's own email, plan and
+  click; in the chat's Auto every one is allowed at once, of any size. With no click (or Lumo
+  closed) it is `{"decision":"deny"}` too: agy's own confirmation is off in that run, so nothing
+  else would stop the call. A deny's `reason` tells the model what really happened (the user
+  denied it, nobody answered in time, Lumo couldn't show it, Lumo isn't running), so it neither
+  retries in vain nor says nobody approved it. Lumo's own email, plan and
   island tools, and the user's own tools (which Lumo asks about itself), get no card.
 
 The `PreToolUse` hook is installed as `--agent antigravity PreToolUse --wait 100` with a 110 s

@@ -70,14 +70,28 @@ export function mailReadable(m: Pick<MailPeek, "body" | "preview">): string {
  * The text cut where it names a web address: each one becomes a link
  * labelled with its site, so a long tracking URL never fills the card.
  */
+/**
+ * An address as written in a sentence, without the punctuation that closes
+ * the sentence. A ")" is the address's own when the address opened it (a
+ * Wikipedia page, "…/Roma_(città)"), the sentence's otherwise ("(see https://…)").
+ */
+function addressEnd(found: string): string {
+  let url = found;
+  for (;;) {
+    const last = url.at(-1) ?? "";
+    const unopened = last === ")" && url.split(")").length > url.split("(").length;
+    if (!".,;:!?']".includes(last) && !unopened) return url;
+    url = url.slice(0, -1);
+  }
+}
+
 export function mailPieces(text: string): MailPiece[] {
   const out: MailPiece[] = [];
   const re = /<?(https?:\/\/[^\s<>"]+)>?/g;
   let at = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
-    // Punctuation closing the sentence is not part of the address.
-    const raw = m[1].replace(/[.,;:!?'\])]+$/, "");
+    const raw = addressEnd(m[1]);
     let label: string;
     try {
       label = new URL(raw).hostname.replace(/^www\./, "");
@@ -564,6 +578,15 @@ let onNews: (() => void) | null = null;
 /** The island: something new to show, so the closed island comes out for it. */
 export function setCompactNewsHandler(fn: (() => void) | null) {
   onNews = fn;
+}
+
+/**
+ * Something new the closed island draws by itself, with no note of its own
+ * (what a watch heard for a chat, island/compact.ts serviceLines): it comes
+ * out for it, as for a note.
+ */
+export function compactNews() {
+  onNews?.();
 }
 
 /** A note on the closed island ("Haiku answered"). */

@@ -157,7 +157,7 @@ export const REQUEST_KINDS = {
 } as const;
 
 /** Tools that change a file (Claude Code's and Antigravity's). */
-const EDIT_TOOLS = new Set(["write", "edit", "multiedit", "notebookedit", "write_to_file", "replace_file_content", "multi_replace_file_content", "write_file", "replace"]);
+const EDIT_TOOLS = new Set(["write", "edit", "multiedit", "notebookedit", "write_to_file", "replace_file_content", "multi_replace_file_content", "edit_file", "create_file", "write_file", "replace"]);
 
 /** A deletion and a move, as the cards of Copilot CLI and Cursor CLI name them (acp_chat.rs card). */
 const DELETE_TOOLS = new Set(["delete"]);
@@ -194,28 +194,36 @@ export interface EditStat {
 
 /** What the relay says of a request it forwarded (lumo-hook truncate_payload). */
 export interface SentAs {
-  /** `lumo_input_cut`: the input is not the whole one. */
+  /** `lumo_input_cut` / `lumo_text_cut`: the input, or the text a file tool writes, is not the whole one. */
   cut?: boolean;
-  /** `lumo_write_bytes` / `lumo_write_lines`: a Write's real size, when its text was cut. */
-  writeBytes?: unknown;
-  writeLines?: unknown;
+  /**
+   * `lumo_write_added` / `lumo_write_removed` / `lumo_write_bytes`: what a file
+   * tool changes, counted by the relay from the whole request before any cut,
+   * a whole-file write against the file on disk (hook/src/write_stat.rs).
+   */
+  added?: unknown;
+  removed?: unknown;
+  bytes?: unknown;
 }
 
-const isCount = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n > 0;
+const isCount = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
 
 /**
- * The lines a Write, Edit, MultiEdit or NotebookEdit asks to change, for the
- * line under the file on its card: the card names the file Allow allows, and
- * this says how much is written there without showing the text. Null for any
- * other tool, or a call that changes nothing. A request the relay cut is not
- * counted from what is left of it (that would be the cut's size): a Write
- * shows the size the relay read before cutting, anything else no numbers.
+ * The lines a file tool asks to change, for the line under the file on its
+ * card: the card names the file Allow allows, and this says how much is
+ * written there without showing the text. The relay's numbers when it sent
+ * them (any agent's file tool, any size); else counted here for a Write,
+ * Edit, MultiEdit or NotebookEdit. Null for any other tool, or a call that
+ * changes nothing. A request the relay cut is never counted from what is left
+ * of it (that would be the cut's size).
  */
 export function editStat(tool: string, input: Record<string, unknown>, sent: SentAs = {}): EditStat | null {
-  if (sent.cut) {
-    if (tool !== "Write" || !isCount(sent.writeBytes) || !isCount(sent.writeLines)) return null;
-    return { added: sent.writeLines, removed: 0, bytes: sent.writeBytes };
+  if (isCount(sent.added) && isCount(sent.removed)) {
+    const stat: EditStat = { added: sent.added, removed: sent.removed };
+    if (isCount(sent.bytes)) stat.bytes = sent.bytes;
+    return stat.added || stat.removed || stat.bytes ? stat : null;
   }
+  if (sent.cut) return null;
   if (tool === "NotebookEdit") {
     const source = input.new_source;
     if (typeof source !== "string" || input.edit_mode === "delete" || !source) return null;
@@ -235,32 +243,31 @@ export function editStat(tool: string, input: Record<string, unknown>, sent: Sen
 export interface ApprovalOffer {
   /** Allow, or Approve on a plan. */
   allow: boolean;
-  /** "Too long to show here whole": the request was cut, and Allow is gone. */
+  /** "Too long to show here whole: this is its beginning": the request was cut. Allow stays. */
   cutNote: boolean;
   sessionAllow: boolean;
   /** "Approve and let it edit files without asking", on a plan from a session. */
   planEdits: boolean;
-  /** The line that sends the request back: to the agent named on the card, or to its own window. */
-  answerThere: "agent" | "elsewhere" | null;
+  /** The line that sends the request back to the agent named on the card. */
+  answerThere: "agent" | null;
 }
 
 /**
- * The buttons of a permission card. A request the relay had to cut
- * (`cut`) was never on the card whole: nothing allows it from here, a plan's
- * Approve included (pipe.rs refuses it anyway), so no button is left that
- * does nothing. Only Deny, and the agent's own prompt where it has one.
+ * The buttons of a permission card. A request the relay had to cut (`cut`)
+ * is allowed like any other: the card says it shows its beginning, and the
+ * user decides. Only "Allow for this session" is never offered for it: two
+ * requests that only start alike are not the same request (session_rules.rs).
  */
 export function approvalOffer(req: Pick<ApprovalInfo, "cut" | "email" | "plan" | "sessionAllow" | "fromChat" | "answerIn"> | null | undefined): ApprovalOffer {
   const email = !!req?.email;
   const plan = !email && (req?.plan?.length ?? 0) > 0;
   const cut = req?.cut === true && !email;
-  const elsewhere = cut && !req?.fromChat;
   return {
-    allow: !cut,
+    allow: true,
     cutNote: cut,
     sessionAllow: req?.sessionAllow === true && !plan && !cut,
-    planEdits: plan && !req?.fromChat && !cut,
-    answerThere: req?.answerIn && !plan ? "agent" : elsewhere ? "elsewhere" : null,
+    planEdits: plan && !req?.fromChat,
+    answerThere: req?.answerIn && !plan ? "agent" : null,
   };
 }
 

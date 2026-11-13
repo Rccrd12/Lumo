@@ -86,6 +86,18 @@ const TRACKER_HOSTS = /(^|\.)(list-manage\.com|mailtrack\.io|mailstat\.us|sideki
 const TRACKER_PATHS = /\/(track\/open(\.php)?|wf\/open|e\/o\/[^/]+|tr\/op\/[^/]+|trk\/open|open\.php|o\.gif|open\.gif|open\.png|pixel(\.gif|\.png)?|beacon(\.gif|\.png)?)\/?$/i;
 
 /**
+ * The address an image of an email shows: its src, or with none (a picture
+ * given only by srcset), the first of its srcset, as a browser would read it.
+ * The frame takes srcset out (views/mail-view.ts), so without this such an
+ * image would never load, not even after Load images.
+ */
+export function imageSource(src: string, srcset: string): string {
+  const own = src.trim();
+  if (own) return own;
+  return (srcset.trim().split(/\s+/)[0] ?? "").replace(/,+$/, "");
+}
+
+/**
  * Whether an image of an email is there to tell its sender it was opened:
  * a picture of 2 × 2 px or less (or 0 wide or tall by its attributes), or
  * one from a service or a path made for that (TRACKER_HOSTS, TRACKER_PATHS).

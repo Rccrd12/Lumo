@@ -27,6 +27,7 @@ import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen, visiblePlanKinds } from "../views/usage";
 import { buildHeader, buildViews, errorHasLastStep, finishedText, hasSessionTicker, overviewDetailFor, type ViewActions, type ViewHost } from "../views/views";
 import { toolsListRows } from "../views/tools";
+import { onSettingsFieldChanged, settingsHold } from "../views/settings-frame";
 import { cardsFollowDrag } from "../views/rich/resize";
 import { DockEase } from "./dock-ease";
 import { gitHubListSection } from "../views/github";
@@ -530,6 +531,7 @@ export class Island {
     // the keyboard to another app: the countdown follows.
     const changed = () => this.fsm.holdChanged();
     onDialogsChanged(changed);
+    onSettingsFieldChanged(changed);
     for (const type of ["input", "focusin", "focusout"]) document.addEventListener(type, changed, true);
     window.addEventListener("focus", changed);
     window.addEventListener("blur", changed);
@@ -899,9 +901,10 @@ export class Island {
 
   /**
    * What a mouse leave must wait for (fsm.ts LeaveHold): a message being
-   * written in the chat, or a Windows box asked from Settings, keeps the island
-   * open; the cursor in the chat's empty field, or the drop menu opened from
-   * its tab, give it LINGER_CLOSE_DELAY.
+   * written in the chat or in a field of Settings, or a Windows box asked from
+   * Settings, keeps the island open; the cursor in an empty field, a list of
+   * Settings opened, or the drop menu opened from its tab, give it
+   * LINGER_CLOSE_DELAY.
    */
   private leaveHold(): LeaveHold {
     if (State.mode !== "expanded") return "none";
@@ -910,6 +913,9 @@ export class Island {
     if (isDialogOpen()) return "keep";
     // Opened by a drag passing by: that one closes as the drag goes (followDrag).
     if (State.view === "upload" && !this.dragOpened) return "linger";
+    // Something being written in Settings (a key pasted, a name typed),
+    // with the mouse slipping off: as for the chat's field.
+    if (State.view === "settings") return settingsHold();
     const field = document.activeElement;
     if (State.view === "prompt" && document.hasFocus() &&
         field instanceof HTMLTextAreaElement && field.classList.contains("chat-input")) {

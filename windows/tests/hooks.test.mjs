@@ -586,7 +586,7 @@ test("anything else, or an island that cannot show it, gets the full card", () =
   State.settings.quickApprovals = true;
   assert.deepEqual(card(ls, () => { quickFits = false; }), { quick: false, asked: ["quick", "alert:approval"] });
   quickFits = true;
-  // A request the relay had to cut has no Allow: never the closed island's buttons.
+  // A request the relay had to cut shows on the full card, where it says so: never the closed island's buttons.
   assert.deepEqual(card({ ...ls, lumo_input_cut: true }), { quick: false, asked: ["alert:approval"] });
 });
 
@@ -1031,9 +1031,32 @@ test("Claude Code's Auto is not Antigravity's: its own mode, which asks until pi
 });
 
 test("a request the relay had to cut is never offered Allow for this session, and says so", () => {
-  ask("c1", { tool_name: "Bash", tool_input: { command: "npm run build && …" }, lumo_input_cut: true, lumo_session_allow: true });
+  ask("c1", { tool_name: "Bash", tool_input: { command: "npm run build && …" }, lumo_input_cut: true, lumo_input_bytes: 210 * 1024, lumo_session_allow: true });
   assert.equal(State.pendingApproval.cut, true);
+  assert.equal(State.pendingApproval.cutBytes, 210 * 1024);
   assert.equal(State.pendingApproval.sessionAllow, undefined);
+});
+
+test("a big change whose text the relay cut is an ordinary card, with the relay's numbers", () => {
+  // Antigravity CLI's edit_file of a 400 KB file: the text was cut, which the card never shows.
+  ask("big", {
+    tool_name: "edit_file", tool_input: { Path: "C:\\Users\\me\\Downloads\\Analisi2.tex", Target: "x", Replacement: "x…" },
+    lumo_text_cut: true, lumo_write_added: 1_249, lumo_write_removed: 0, lumo_session_allow: true,
+  });
+  assert.equal(State.pendingApproval.cut, undefined);
+  assert.equal(State.pendingApproval.sessionAllow, true, "the same file again: it can be kept for the session");
+  assert.deepEqual(State.pendingApproval.edit, { added: 1_249, removed: 0 });
+  assert.equal(State.pendingApproval.command, "edit_file · C:\\Users\\me\\Downloads\\Analisi2.tex", "its file, not its fields");
+});
+
+test("Auto in the chat's Antigravity run allows a big change at once, with no card", () => {
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionModeAgy: "auto" };
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "big-auto", lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "edit_file", tool_input: { Path: "C:/x.tex", Target: "a", Replacement: "a…" }, lumo_text_cut: true, lumo_input_cut: true,
+  });
+  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "big-auto" }]);
+  assert.equal(State.pendingApproval, null);
 });
 
 test("Auto lets nothing through when asking every time, nor for a session outside the chat", () => {

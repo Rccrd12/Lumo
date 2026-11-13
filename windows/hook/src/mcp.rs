@@ -33,7 +33,8 @@
 //!
 //! `--tools=plan` offers `update_plan` (Codex's own tool, which the models
 //! know): the agent's plan, step by step, for the Plan island. The call is
-//! handed to Lumo (`{"lumo_plan": {"input": …}}`, antigravity_cli.rs), and
+//! handed to Lumo (`{"lumo_plan": {"input": …, "chat": …}}`, antigravity_cli.rs),
+//! with the chat it came from (`LUMO_CHAT_ID`), and
 //! answered as done even when Lumo can't be reached: a plan not shown never
 //! stops the agent's work.
 
@@ -695,7 +696,7 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         if !input.get("plan").and_then(Value::as_array).is_some_and(|p| !p.is_empty()) {
             return failed("The plan needs at least one step.");
         }
-        let _ = lumo(&json!({ "lumo_plan": { "input": input } }));
+        let _ = lumo(&json!({ "lumo_plan": { "input": input, "chat": chat_id() } }));
         return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
     }
     if ISLAND_NAMES.contains(&name) {
@@ -972,6 +973,8 @@ mod tests {
         let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_plan","arguments":{"plan":[{"step":"Read","status":"in_progress"}]}}}"#;
         let shown = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_plan"]["input"]["plan"][0]["step"], "Read");
+            // With the chat it came from (`LUMO_CHAT_ID`), whatever chat is on screen.
+            assert!(req["lumo_plan"]["chat"].is_string());
             Ok(json!({ "text": "Plan shown to the user." }))
         };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &shown).unwrap()).unwrap();

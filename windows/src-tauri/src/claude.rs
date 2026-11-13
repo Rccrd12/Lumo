@@ -129,6 +129,11 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value, max_
         "tools": [{ "type": "web_search_20260209", "name": "web_search", "max_uses": 5 }],
         "fallbacks": "default",
         "messages": messages,
+        // Prompt caching: the conversation so far is read from the cache on
+        // the next message (and the next round of tools), at a tenth of the
+        // price, instead of being paid for again in full. The API moves the
+        // breakpoint to the last block by itself.
+        "cache_control": { "type": "ephemeral" },
     })
 }
 
@@ -413,7 +418,11 @@ pub async fn summarize(model: &str, system: &str, prompt: &str) -> Result<String
     let known = model_facts(&endpoint, &key, model).await;
     let user = json!({ "role": "user", "content": prompt });
     let mut body = request_body(model, system, &[], &user, known.max_tokens);
-    body.as_object_mut().map(|b| b.remove("tools"));
+    // Asked once: nothing to read back from a cache, which costs more to write.
+    if let Some(b) = body.as_object_mut() {
+        b.remove("tools");
+        b.remove("cache_control");
+    }
     let mut smaller = false;
     let mut retried = false;
     let response = loop {
@@ -1162,6 +1171,8 @@ mod tests {
         assert_eq!(body["tools"][0]["name"], "web_search");
         assert_eq!(body["messages"].as_array().unwrap().len(), 3);
         assert_eq!(body["messages"][2], user);
+        // The conversation is cached for the next message.
+        assert_eq!(body["cache_control"], json!({ "type": "ephemeral" }));
     }
 
     #[test]

@@ -267,9 +267,33 @@ export function providerDef(id: string): ProviderDef {
 
 /** The model the chat uses for the active provider. */
 export function activeModel(settings: Settings): string {
-  const p = providerDef(settings.chatProvider);
+  return modelFor(settings, settings.chatProvider);
+}
+
+/** The model last picked for provider `id`, or its default. */
+export function modelFor(settings: Settings, id: string): string {
+  const p = providerDef(id);
   if (p.id === "anthropic") return settings.model || p.defaultModel;
   return settings.chatModels[p.id] || p.defaultModel;
+}
+
+/**
+ * `settings` on the provider and model a chat is on (chats.ts chatModelOf),
+ * so the picker shows them again once that chat is back on screen. A provider
+ * the picker no longer offers (its key taken out, hidden from the chat, its
+ * server's address cleared) leaves them as they are; a chat saved before each
+ * chat kept its own model takes its provider's.
+ */
+export function onChatModel(
+  settings: Settings,
+  chat: { provider: string; model?: string } | null,
+  ready: ReadonlySet<string> | null = null,
+): Settings {
+  if (!chat || !PROVIDERS.some((p) => p.id === chat.provider)) return settings;
+  const id = chat.provider as ProviderId;
+  if (!visibleProviders(settings, ready).some((p) => p.id === id)) return settings;
+  const on = settings.chatProvider === id ? settings : { ...settings, chatProvider: id };
+  return chat.model && chat.model !== modelFor(on, id) ? withModel(on, id, chat.model) : on;
 }
 
 /** `settings` with `model` picked for `provider`. */

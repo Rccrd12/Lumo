@@ -604,10 +604,10 @@ function planWords(button: HTMLElement, words: string): HTMLElement {
 /** Under the buttons of a card whose Allow is kept for the rest of the chat. */
 const REMEMBERED_TEXT = N_("In Auto, Allow counts for the rest of the chat");
 
-/** A request too long to reach the island whole (`cut`): what the card says instead of Allow. */
+/** A request too long to reach the island whole (`cut`): the card shows its beginning, and says so. */
 const CUT_TEXT = {
-  note: N_("Too long to show here whole: Lumo can't allow it."),
-  elsewhere: N_("Reply in its own window"),
+  note: N_("Too long to show here whole: this is its beginning."),
+  noteSize: N_("Too long to show here whole: this is its beginning ({size} in all)."),
 };
 
 function buildApproval(actions: ViewActions): ViewHost {
@@ -617,7 +617,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   // The whole command, wrapped, scrolling past a few lines: Allow allows all of it.
   const code = h("div", { class: "code approval-code" });
   code.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
-  const cutNote = h("div", { class: "approval-cut", text: tl(CUT_TEXT.note) });
+  const cutNote = h("div", { class: "approval-cut" });
   // A file to write: its lines added and removed, and a new text's size (the text is not shown).
   const stat = h("div", { class: "approval-stat" });
   const mail = h("div", { class: "mail-slot" });
@@ -658,8 +658,6 @@ function buildApproval(actions: ViewActions): ViewHost {
   let fitChrome: { w: number; h: number } | null = null;
   const guarded = (d: Decision) => () => {
     if (performance.now() - shownAt < CLICK_GUARD_MS) return;
-    // Never allowed from here: it was not on the card whole (pipe.rs refuses it too).
-    if (State.pendingApproval?.cut && d !== "deny") return;
     // The request on screen: one that just took its place from the line is not drawn yet.
     if (shownFor != null) actions.decide(d, shownFor);
   };
@@ -784,6 +782,8 @@ function buildApproval(actions: ViewActions): ViewHost {
       // Which of the card's buttons and lines it offers (core/approvals.ts).
       const offer = approvalOffer(pending);
       cutNote.hidden = !offer.cutNote;
+      const cutText = pending?.cutBytes ? t(CUT_TEXT.noteSize, { size: formatSize(pending.cutBytes) }) : t(CUT_TEXT.note);
+      if (cutNote.textContent !== cutText) cutNote.textContent = cutText;
       allowBtn.style.display = offer.allow ? "" : "none";
       const edit = !email && !plan ? pending?.edit ?? null : null;
       clear(stat);
@@ -803,11 +803,9 @@ function buildApproval(actions: ViewActions): ViewHost {
       sessionAllow.style.display = offer.sessionAllow ? "" : "none";
       // In its place on a plan asking to start, from a session (the island's chat has its own way).
       planEdits.style.display = offer.planEdits ? "" : "none";
-      // A request cut short goes back to the agent's own prompt, where it is whole (not the chat's: it has none).
       answerThere.style.display = offer.answerThere ? "" : "none";
       rememberedNote.style.display = pending?.remembered === true && !plan ? "" : "none";
-      const answerWords = offer.answerThere === "agent" && pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn })
-        : offer.answerThere === "elsewhere" ? t(CUT_TEXT.elsewhere) : "";
+      const answerWords = offer.answerThere === "agent" && pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn }) : "";
       if (answerThere.firstElementChild && answerThere.firstElementChild.textContent !== answerWords) answerThere.firstElementChild.textContent = answerWords;
 
       sessionAllow.title = t("Allowed again without asking until this session ends");

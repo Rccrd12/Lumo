@@ -420,6 +420,27 @@ fn args_with(
     a
 }
 
+/// Turns as plain text, `role: text`, the last MAX_CARRIED_CHARS of them.
+fn transcript(turns: &[Value]) -> String {
+    let mut text = String::new();
+    for turn in turns {
+        let role = turn["role"].as_str().unwrap_or("user");
+        let content = turn["content"].as_str().unwrap_or("");
+        text.push_str(&format!("{role}: {content}\n\n"));
+    }
+    text.chars().rev().take(MAX_CARRIED_CHARS).collect::<Vec<_>>().into_iter().rev().collect()
+}
+
+/// In front of a resumed session's question: the turns of the chat it has not
+/// seen (`Chat::cli_unseen`, another provider answered them), so it keeps the
+/// whole conversation without starting again. "" for none.
+pub(crate) fn catch_up(unseen: &[Value]) -> String {
+    if unseen.is_empty() {
+        return String::new();
+    }
+    format!("Meanwhile in this conversation, another assistant answered these turns:\n\n{}---\n\n", transcript(unseen))
+}
+
 /// What goes in on stdin: the question, with the file or the window when the
 /// island sends one (a file only once, with the question after it was added),
 /// and — when this session has not seen the turns before (another provider
@@ -428,15 +449,8 @@ fn args_with(
 pub(crate) fn prompt(context: Option<&ChatContext>, carried: &[Value], files: &[(String, String)], query: &str) -> String {
     let mut out = String::new();
     if !carried.is_empty() {
-        let mut transcript = String::new();
-        for turn in carried {
-            let role = turn["role"].as_str().unwrap_or("user");
-            let text = turn["content"].as_str().unwrap_or("");
-            transcript.push_str(&format!("{role}: {text}\n\n"));
-        }
-        let cut: String = transcript.chars().rev().take(MAX_CARRIED_CHARS).collect::<Vec<_>>().into_iter().rev().collect();
         out.push_str("Earlier in this conversation:\n\n");
-        out.push_str(&cut);
+        out.push_str(&transcript(carried));
         let current = match context {
             Some(ChatContext::File { path, .. }) => Some(path.as_str()),
             _ => None,
@@ -2232,7 +2246,7 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
         events.file(app, &file);
     }
     for (tool, input) in run.take_plans() {
-        let _ = app.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
+        let _ = app.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": chat_id, "tool": tool, "input": input }));
     }
     let text = match run.result.take() {
         Some(Ok(text)) => chat::keep_lumo_lines(text, &run.said),
@@ -2312,13 +2326,25 @@ pub async fn send(
     // Turns this session has not seen (another provider answered them, or a
     // message was edited) are carried over once, as text.
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
+    // The turns another provider answered since this session last did: they
+    // go in front of the question, and the session goes on (its cache too).
+    let unseen = chat.cli_unseen(PROVIDER);
     // A command goes alone, as typed: anything in front of it and it is a question.
     let command = command_of(&query).map(str::to_string);
     if command.is_some() && !carried.is_empty() {
         // A fresh session would run it on nothing, and then never be told the conversation.
         return Ok(ChatReply::answer(t("Send a message first: Claude Code hasn't seen this conversation yet."), chat.cli_session()));
     }
-    let input = if command.is_some() { query.trim().to_string() } else { prompt(context.as_ref(), &carried, &chat.files(), &query) };
+    if command.is_some() && !unseen.is_empty() {
+        // It would run it without the turns another provider answered, and
+        // then never be told them (the command's turn counts as seen).
+        return Ok(ChatReply::answer(t("Send a message first: Claude Code hasn't seen the latest answers in this chat yet."), chat.cli_session()));
+    }
+    let input = if command.is_some() {
+        query.trim().to_string()
+    } else {
+        format!("{}{}", catch_up(&unseen), prompt(context.as_ref(), &carried, &chat.files(), &query))
+    };
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     // Computer use: the chat's own instructions, Lumo's MCP server, and the
     // computer only usable while this turn runs.
@@ -2343,6 +2369,8 @@ pub async fn send(
     let stop = chat.stopper();
     let chat_id = chat.id().to_string();
     let usage_chat = chat_id.clone();
+    // The chat its plan belongs to, whichever chat is on screen when it comes.
+    let plan_chat = chat_id.clone();
     let resumed = session.clone();
     // What Claude Code writes by itself after this turn, until the next message.
     let own = {
@@ -2366,7 +2394,7 @@ pub async fn send(
             |file| events.file(&app2, file),
             // The plan Claude writes in the chat, for the Plan island.
             |tool, input| {
-                let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
+                let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": plan_chat, "tool": tool, "input": input }));
             },
             own,
             tell,
@@ -3102,6 +3130,16 @@ mod tests {
             vec![Activity::thinking(), Activity::new("web", ""), Activity::new("command", ""), Activity::thinking()],
         );
         assert!(run.pending.is_empty());
+    }
+
+    #[test]
+    fn a_resumed_session_is_told_what_it_missed_first() {
+        assert_eq!(catch_up(&[]), "");
+        let unseen = vec![json!({"role":"user","content":"two"}), json!({"role":"assistant","content":"2"})];
+        let text = format!("{}{}", catch_up(&unseen), prompt(None, &[], &[], "three"));
+        assert!(text.starts_with("Meanwhile in this conversation, another assistant answered these turns:\n\nuser: two\n\nassistant: 2\n\n---\n\n"), "{text}");
+        assert!(text.ends_with("---\n\nthree"), "{text}");
+        assert!(!text.contains("Earlier in this conversation"));
     }
 
     #[test]

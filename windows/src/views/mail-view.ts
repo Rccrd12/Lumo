@@ -29,7 +29,7 @@ import { State } from "../core/state";
 import { askAboutMail } from "../island/compact";
 import { loadClickedImage, webImagesOn } from "./rich/image";
 import {
-  DROPPED_TAGS, EMAIL_FRAME_STYLE, droppedAttribute, fitZoom, hiddenBox, imagesToLoad, linkParts, opensInBrowser, trackingPixel, webImageUrl,
+  DROPPED_TAGS, EMAIL_FRAME_STYLE, droppedAttribute, fitZoom, hiddenBox, imageSource, imagesToLoad, linkParts, opensInBrowser, trackingPixel, webImageUrl,
 } from "../core/mail-html";
 import {
   ALL, accountColor, accountLabel, avatarColor, initials, keptFilter, mailWhen, neighbours, readMailView,
@@ -103,7 +103,7 @@ function frameDocument(html: string): { doc: string; images: string[]; trackers:
   }
   let trackers = 0;
   for (const img of Array.from(page.images)) {
-    const src = (img.getAttribute("src") ?? "").trim();
+    const src = imageSource(img.getAttribute("src") ?? "", img.getAttribute("srcset") ?? "");
     img.removeAttribute("srcset");
     img.removeAttribute("loading");
     if (src.startsWith("data:")) continue;

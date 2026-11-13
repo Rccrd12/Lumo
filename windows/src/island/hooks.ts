@@ -313,11 +313,16 @@ interface HookPayload {
   lumo_session_allow?: boolean;
   /** A card of the chat's Copilot CLI or Cursor CLI in Auto: Allow is answered with the CLI's "always allow" (acp_chat.rs card). */
   lumo_remembered?: boolean;
-  /** The relay had to cut the request's input (lumo-hook's truncate_payload): the card can't show it whole. */
+  /** The relay had to cut what the card shows of the request (lumo-hook's truncate_payload): it says it shows the beginning. */
   lumo_input_cut?: boolean;
-  /** A Write whose text was cut (lumo_input_cut): the real size of that text, read by the relay before cutting. */
+  /** With lumo_input_cut: the size of the whole input, before the cut. */
+  lumo_input_bytes?: number;
+  /** The relay cut only the text a file tool writes, which the card never shows: its numbers below are the whole text's. */
+  lumo_text_cut?: boolean;
+  /** What a file tool changes, counted by the relay before any cut (hook/src/write_stat.rs): lines added and removed, a whole-file write's size. */
+  lumo_write_added?: number;
+  lumo_write_removed?: number;
   lumo_write_bytes?: number;
-  lumo_write_lines?: number;
   /** The Claude Code session's title (/rename, else Claude Code's own), read from its transcript by the relay (hook/src/title.rs). */
   lumo_title?: string;
   /** A command of an Antigravity session that none of its rules covers (hook/src/main.rs): a card, else Antigravity asks. */
@@ -521,6 +526,10 @@ const APPROVAL_FIELDS = [
   "command", // Bash, PowerShell
   "file_path", // Write, Edit, MultiEdit, NotebookEdit
   "path", // Read, LS
+  "TargetFile", // Antigravity's write_to_file, replace_file_content
+  "Path", // Antigravity CLI's edit_file
+  "AbsolutePath", // Antigravity's view_file
+  "filePath", // OpenCode
   "url", // WebFetch
   "query", // WebSearch
   "pattern", // Glob, Grep
@@ -1060,7 +1069,10 @@ function handleHook(island: Island, payload: HookPayload) {
         ? stepsFromMarkdown(input.plan) : [];
       // A file to write: how many lines, under its name (the text itself is not on the card).
       const edit = !questions && !email && !change && !userTool
-        ? editStat(tool, input, { cut: payload.lumo_input_cut === true, writeBytes: payload.lumo_write_bytes, writeLines: payload.lumo_write_lines })
+        ? editStat(tool, input, {
+          cut: payload.lumo_input_cut === true || payload.lumo_text_cut === true,
+          added: payload.lumo_write_added, removed: payload.lumo_write_removed, bytes: payload.lumo_write_bytes,
+        })
         : null;
       const info: ApprovalInfo = {
         requestId,
@@ -1077,7 +1089,8 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(fromChat && typeof payload.agent_id === "string" && payload.agent_id ? { subagentId: payload.agent_id } : {}),
         ...(payload.lumo_session_allow === true && payload.lumo_input_cut !== true && !questions && !agyGate ? { sessionAllow: true } : {}),
         ...(payload.lumo_remembered === true && !questions ? { remembered: true } : {}),
-        ...(payload.lumo_input_cut === true && !questions && !email && !change && !userTool ? { cut: true } : {}),
+        ...(payload.lumo_input_cut === true && !questions && !email && !change && !userTool
+          ? { cut: true, ...(typeof payload.lumo_input_bytes === "number" ? { cutBytes: payload.lumo_input_bytes } : {}) } : {}),
         ...(agyGate ? { answerIn: agentName("antigravity") } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),

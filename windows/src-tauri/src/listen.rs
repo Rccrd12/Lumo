@@ -762,13 +762,17 @@ pub fn checks_of(runs: Option<&Value>, status: Option<&Value>) -> Checks {
 /// asked when it lists no checks: a run still queued, waiting or running whose
 /// jobs GitHub has not created yet lists no check, and must not read as none.
 /// A run that ended failing before any job (a broken workflow file, say) is a
-/// failure; one cancelled before its jobs (superseded by a newer push) is not.
+/// failure; one cancelled before its jobs (superseded by a newer push) is not,
+/// beside a run that went through. Every run cancelled, nothing ran: that
+/// passes nothing (a pull request whose CI never ran is not green).
 pub fn actions_of(checks: Checks, actions: Option<&Value>) -> Checks {
     if checks != Checks::None {
         return checks;
     }
     let mut pending = false;
     let mut failed = Vec::new();
+    let mut cancelled = Vec::new();
+    let mut ran = false;
     let mut any = false;
     for run in actions.and_then(|a| a["workflow_runs"].as_array()).into_iter().flatten() {
         any = true;
@@ -781,13 +785,17 @@ pub fn actions_of(checks: Checks, actions: Option<&Value>) -> Checks {
             Some("failure" | "startup_failure" | "timed_out") => failed.push(name),
             // Waiting for someone to approve the run: it hasn't run yet.
             Some("action_required") => pending = true,
-            _ => {}
+            // Stopped before it said anything: it passes nothing by itself.
+            Some("cancelled" | "stale") => cancelled.push(name),
+            _ => ran = true,
         }
     }
     if !failed.is_empty() {
         Checks::Failed(failed)
     } else if pending {
         Checks::Pending
+    } else if !ran && !cancelled.is_empty() {
+        Checks::Failed(cancelled)
     } else if any {
         Checks::Passed
     } else {
@@ -1967,6 +1975,14 @@ mod tests {
             { "name": "Windows E2E", "status": "completed", "conclusion": "cancelled" },
         ]});
         assert_eq!(actions_of(Checks::None, Some(&done)), Checks::Passed);
+        // Every run cancelled in the queue: nothing ran, so nothing passed.
+        let stopped = json!({ "workflow_runs": [
+            { "name": "Windows CI", "status": "completed", "conclusion": "cancelled" },
+            { "name": "Windows E2E", "status": "completed", "conclusion": "cancelled" },
+        ]});
+        let stopped = actions_of(Checks::None, Some(&stopped));
+        assert_eq!(stopped, Checks::Failed(vec!["Windows CI".into(), "Windows E2E".into()]));
+        assert_ne!(judge(&watch("green"), &open(stopped), 10 * NO_CHECKS_GRACE_MS).map(|j| j.0), Some(true), "never green");
     }
 
     #[test]
