@@ -1180,17 +1180,20 @@ async fn send_to(
                 chat.cli_dirs(Some(dir.to_string_lossy().to_string()));
             }
         }
-        // Computer use: Claude Code's as it always was; the other CLIs'
-        // each action asked for by Lumo (computer.rs OtherTurn).
+        // Computer use: Claude Code's as it always was; Antigravity CLI's
+        // each action asked for by Lumo (computer.rs OtherTurn). Codex,
+        // Copilot CLI and Cursor CLI could take the same tools but are left
+        // out: Copilot CLI answered it can't control Windows, Codex and
+        // Cursor CLI were never tried.
         let computer = settings.chat_computer_use;
         if provider == antigravity_cli::PROVIDER {
             return Box::pin(antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), computer, query, context, folder)).await;
         }
         if provider == codex_chat::PROVIDER {
-            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)).await;
+            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, false, query, context, folder)).await;
         }
         if acp_chat::Agent::of(provider).is_some() {
-            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)).await;
+            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, false, query, context, folder)).await;
         }
         return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)).await;
     }
