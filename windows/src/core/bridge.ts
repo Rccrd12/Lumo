@@ -299,9 +299,13 @@ export const Bridge = {
   /**
    * One chat turn. The API key and any file bytes never leave Rust. `screen`
    * is what the user added from the screen button, sent with this turn only.
+   * `pick`: the provider and model the chat is on (chats.ts chatModelOf),
+   * which answer it in place of the ones in the settings.
    */
-  chatSend: (chatId: string, query: string, context: ChatContext | null, screen?: ScreenContext | null) =>
-    callOrThrow<ChatReply>("chat_send", screen ? { chatId, query, context, screen } : { chatId, query, context }),
+  chatSend: (chatId: string, query: string, context: ChatContext | null, screen?: ScreenContext | null, pick?: { provider: string; model: string }) =>
+    callOrThrow<ChatReply>("chat_send", {
+      chatId, query, context, ...(screen ? { screen } : {}), ...(pick ? { provider: pick.provider, model: pick.model } : {}),
+    }),
   /** A new chat on screen; an answer still written in another one goes on. */
   chatReset: (chatId: string) => call<void>("chat_reset", { chatId }),
   /** Listens to a pull request for the chat `chatId` (listen.rs); `mode` "every": once for each new commit. */
