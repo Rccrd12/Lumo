@@ -342,6 +342,38 @@ fn seconds(word: &str) -> Option<f64> {
 
 /// Claude Code's PreToolUse reply to a command that would wait on GitHub:
 /// denied, with what to do instead.
+/// A computer tool of the island's Claude Code chat that did not get its
+/// turn: `place` and how many wait, or None when the user pressed Esc.
+/// Only ever a deny: the turn come, the hook prints nothing.
+pub fn computer_turn_denied(place: Option<(usize, usize)>) -> String {
+    let reason = match place {
+        Some((place, of)) => format!(
+            "Lumo: another agent of this chat is using the computer, and Lumo lets one agent at a time use it. You are {} of {of} waiting for it. Do work that doesn't need the screen meanwhile, then call the tool again: you keep your place.",
+            ordinal(place)
+        ),
+        None => "Lumo: the user pressed Esc to stop you using the computer. Don't use Lumo's computer tools again in this turn: say briefly what you did and stop.".to_string(),
+    };
+    serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    })
+    .to_string()
+}
+
+fn ordinal(n: usize) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (1, 11) | (2, 12) | (3, 13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
+}
+
 pub fn claude_wait_denied() -> String {
     serde_json::json!({
         "hookSpecificOutput": {

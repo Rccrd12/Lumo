@@ -98,8 +98,8 @@ import {
   chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
-  agentAsk, applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
-  noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents,
+  agentAsk, applyAgent, applyComputerTurns, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
+  noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns,
   type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, talkBox, type AgentsCardHost } from "./agents-card";
@@ -4100,6 +4100,11 @@ export function buildPrompt(
       },
       // Ask: the agent over the field, as a quote; what is typed then goes to it.
       ask: editing == null ? (quote) => askAgent(chatId, quote) : undefined,
+      // Give it the turn: first in line for the computer.
+      computerFirst: (agentId) => {
+        void invoke("chat_computer_first", { chatId, agentId }).catch((err) => void Bridge.log(`[agents] computer first ${agentId}: ${String(err)}`));
+        Sound.play("blip");
+      },
       changed: () => onHeightChange(),
     };
   }
@@ -4216,6 +4221,17 @@ export function buildPrompt(
     tickAgents();
     // An agent that just ended is kept with the chat.
     if (isFinal(ev.agent.state) && before !== ev.agent.state) saveAgents(ev.chat);
+  });
+
+  // The line for the computer changed (computer_turns.rs): the rows of the chats in it say so.
+  let computerChats = new Set<string>();
+  void onEvent<ComputerTurns>("computer-turns", (ev) => {
+    if (!applyComputerTurns(ev)) return;
+    const chats = new Set([...(ev?.holder ? [ev.holder.chat] : []), ...(ev?.waiting ?? []).map((w) => w.chat)]);
+    for (const chat of new Set([...chats, ...computerChats])) drawAgents(chat);
+    computerChats = chats;
+    drawIslandActivity();
+    tickAgents();
   });
 
   void onEvent<ChatSignalEvent>("chat-signal", (ev) => {

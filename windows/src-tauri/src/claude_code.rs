@@ -326,9 +326,29 @@ fn chat_settings(permission: Value, guard: &str) -> Value {
             "PreToolUse": [{
                 "matcher": "Bash|PowerShell",
                 "hooks": [{ "type": "command", "command": guard, "timeout": 10 }],
+            }, {
+                // One agent at a time on the computer (computer_turns.rs):
+                // each of Lumo's computer tools waits for its turn first.
+                // Longer than the relay waits, so Claude Code never kills it.
+                "matcher": computer_matcher(),
+                "hooks": [{ "type": "command", "command": format!("{guard} --computer-turn"), "timeout": COMPUTER_TURN_TIMEOUT }],
             }],
         },
     })
+}
+
+/// Claude Code's hook timeout for the computer's turn, in seconds: past the
+/// relay's own wait (lumo-hook COMPUTER_TURN_BUDGET, 100 s).
+const COMPUTER_TURN_TIMEOUT: u64 = 110;
+
+/// Lumo's computer tools as Claude Code names them (lumo-hook mcp.rs NAMES).
+const COMPUTER_TOOLS: &[&str] = &[
+    "screenshot", "zoom", "left_click", "right_click", "middle_click", "double_click", "triple_click", "mouse_move",
+    "left_click_drag", "scroll", "type", "key", "wait", "cursor_position",
+];
+
+fn computer_matcher() -> String {
+    format!("mcp__lumo__({})", COMPUTER_TOOLS.join("|"))
 }
 
 /// `args`, plus the chat's own hooks (`chat_settings`), when the file could be
@@ -2404,6 +2424,8 @@ pub async fn send(
     .map_err(|e| e.to_string());
     if computer {
         crate::computer::end_turn(app);
+        // Nobody of this chat waits for the computer any more.
+        crate::computer_turns::turn_end(app, chat.id());
     }
     let state = state??;
 
@@ -2927,6 +2949,28 @@ mod tests {
         let guard = &v["hooks"]["PreToolUse"][0];
         assert_eq!(guard["matcher"], "Bash|PowerShell");
         assert!(guard["hooks"][0]["command"].as_str().unwrap().contains("--chat-guard"));
+    }
+
+    #[test]
+    fn each_computer_tool_waits_for_its_turn_and_nothing_else_does() {
+        let v = chat_settings(crate::hooks::permission_request_entry(), "'/x/lumo-hook' --chat-guard PreToolUse");
+        let gate = &v["hooks"]["PreToolUse"][1];
+        let matcher = regex_lite_full(gate["matcher"].as_str().unwrap());
+        for tool in COMPUTER_TOOLS {
+            assert!(matcher(&format!("mcp__lumo__{tool}")), "{tool}");
+        }
+        for other in ["mcp__lumo__mail_send", "mcp__lumo__set_timer", "Bash", "mcp__other__screenshot"] {
+            assert!(!matcher(other), "{other}");
+        }
+        assert_eq!(gate["hooks"][0]["command"], "'/x/lumo-hook' --chat-guard PreToolUse --computer-turn");
+        assert!(gate["hooks"][0]["timeout"].as_u64().unwrap() > 100, "longer than the relay waits in line");
+    }
+
+    /// Claude Code matches a hook's matcher as a whole-name regex; this one is `prefix(a|b|…)`.
+    fn regex_lite_full(m: &str) -> impl Fn(&str) -> bool + '_ {
+        let (prefix, rest) = m.split_once('(').unwrap();
+        let names: Vec<&str> = rest.trim_end_matches(')').split('|').collect();
+        move |s: &str| s.strip_prefix(prefix).is_some_and(|n| names.contains(&n))
     }
 
     #[test]

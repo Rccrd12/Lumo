@@ -134,6 +134,8 @@ fn args() -> Args {
     while let Some(arg) = it.next() {
         if arg == "--chat-guard" {
             chat_guard = true;
+        } else if arg == "--computer-turn" {
+            // Read on its own (main): not the event's name.
         } else if arg == "--agent" {
             agent = it.next().unwrap_or_default();
         } else if arg == "--wait" {
@@ -191,6 +193,11 @@ fn main() {
     // GitHub (`gh pr checks --watch`, a sleep loop) holds the whole chat:
     // Claude is told to let Lumo listen instead (listen.rs), at once.
     if from_island && args.agent.is_empty() && args.chat_guard {
+        // `--computer-turn`: one of Lumo's computer tools waits for its turn
+        // (computer_turns.rs in the app).
+        if std::env::args().skip(1).any(|a| a == "--computer-turn") {
+            computer_turn(&raw, &env);
+        }
         if waits_on_github(&raw) {
             print(Some(reply::claude_wait_denied()));
         }
@@ -256,6 +263,58 @@ fn main() {
         print(reply::stdout(&args.agent, &event.name, decision.as_deref(), event.question.as_ref()));
     }
     std::process::exit(0);
+}
+
+/// How long one of Lumo's computer tools waits for its turn in one go: a
+/// little past the app's own wait (computer_turns.rs QUEUE_WAIT, 90 s), and
+/// within Claude Code's timeout for the hook (claude_code.rs, 110 s).
+const COMPUTER_TURN_BUDGET: Duration = Duration::from_secs(100);
+
+/// One of Lumo's computer tools of the island's Claude Code chat waits for
+/// its turn: one agent at a time on the computer. Its turn come, nothing is
+/// printed (Claude Code goes on, and its own card still asks for the click);
+/// otherwise the call is denied with why. Lumo not there: nothing, the call's
+/// own answer says why.
+fn computer_turn(raw: &[u8], env: &dyn Fn(&str) -> Option<String>) {
+    let Some(ask) = computer_ask(raw, env) else { std::process::exit(0) };
+    let (tx, rx) = mpsc::channel::<Heard>();
+    std::thread::spawn(move || {
+        let _ = tx.send(talk(&ask, true));
+    });
+    let parent = parent();
+    let answer = match wait(&rx, COMPUTER_TURN_BUDGET, || parent.as_ref().is_some_and(|p| p.gone())) {
+        Heard::Said(a) => Some(a),
+        _ => None,
+    };
+    print(answer.as_deref().and_then(computer_turn_reply));
+    std::process::exit(0);
+}
+
+/// The ask for the turn, as one line: the chat (LUMO_CHAT_ID), the agent
+/// (Claude Code's `agent_id`, "main" for the conversation) and the tool.
+/// None for anything else than one of Lumo's computer tools, or with no chat.
+fn computer_ask(raw: &[u8], env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let v = serde_json::from_slice::<Value>(without_bom(raw)).ok()?;
+    let tool = mcp::lumo_tool(v["tool_name"].as_str()?).filter(|t| mcp::NAMES.contains(t))?;
+    let chat = env("LUMO_CHAT_ID").filter(|c| !c.is_empty() && !c.starts_with("${"))?;
+    let agent = v["agent_id"].as_str().filter(|a| !a.is_empty()).unwrap_or("main");
+    Some(format!("{}\n", serde_json::json!({ "lumo_computer_turn": { "chat": chat, "agent": agent, "tool": tool } })))
+}
+
+/// The app's answer (a JSON string: "go", "wait <place> <of>", "stopped",
+/// "closed") as the hook's output: nothing when the call may go.
+fn computer_turn_reply(answer: &str) -> Option<String> {
+    let answer = serde_json::from_str::<String>(answer).unwrap_or_else(|_| answer.to_string());
+    let mut words = answer.split_whitespace();
+    match words.next()? {
+        "wait" => {
+            let place = words.next().and_then(|w| w.parse().ok()).unwrap_or(1);
+            let of = words.next().and_then(|w| w.parse().ok()).unwrap_or(place);
+            Some(reply::computer_turn_denied(Some((place, of))))
+        }
+        "stopped" => Some(reply::computer_turn_denied(None)),
+        _ => None,
+    }
 }
 
 /// What came back from Lumo.
@@ -733,6 +792,37 @@ fn talk(payload: &str, waits_for_answer: bool) -> Heard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_computer_tool_asks_for_its_turn_with_its_chat_and_agent() {
+        let env = |k: &str| (k == "LUMO_CHAT_ID").then(|| "chat-7".to_string());
+        let ask = |raw: &str| computer_ask(raw.as_bytes(), &env).map(|l| serde_json::from_str::<Value>(l.trim_end()).unwrap());
+        let sub = r#"{"hook_event_name":"PreToolUse","tool_name":"mcp__lumo__left_click","agent_id":"a79d00bacacf190b5","tool_input":{}}"#;
+        assert_eq!(ask(sub).unwrap()["lumo_computer_turn"], serde_json::json!({ "chat": "chat-7", "agent": "a79d00bacacf190b5", "tool": "left_click" }));
+        let main = r#"{"hook_event_name":"PreToolUse","tool_name":"mcp__lumo__screenshot","tool_input":{}}"#;
+        assert_eq!(ask(main).unwrap()["lumo_computer_turn"]["agent"], "main");
+        // Lumo's other tools, and anyone else's, go on as they are.
+        for other in ["mcp__lumo__mail_send", "mcp__lumo__set_timer", "Bash", "mcp__other__screenshot"] {
+            assert!(ask(&format!(r#"{{"tool_name":"{other}"}}"#)).is_none(), "{other}");
+        }
+        // No chat: no turn to ask for.
+        assert!(computer_ask(main.as_bytes(), &|_| None).is_none());
+        assert!(computer_ask(main.as_bytes(), &|_| Some("${env:LUMO_CHAT_ID}".into())).is_none());
+    }
+
+    #[test]
+    fn its_turn_come_the_call_goes_on_and_otherwise_it_is_denied_with_why() {
+        assert_eq!(computer_turn_reply("\"go\""), None);
+        assert_eq!(computer_turn_reply("\"closed\""), None, "Lumo's own refusal speaks");
+        let wait: Value = serde_json::from_str(&computer_turn_reply("\"wait 2 3\"").unwrap()).unwrap();
+        assert_eq!(wait["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+        assert_eq!(wait["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert!(wait["hookSpecificOutput"]["permissionDecisionReason"].as_str().unwrap().contains("You are 2nd of 3 waiting"));
+        let stopped = computer_turn_reply("\"stopped\"").unwrap();
+        assert!(stopped.contains("pressed Esc") && stopped.contains("\"deny\""));
+        assert!(!stopped.contains("allow") && !computer_turn_reply("\"wait 1 1\"").unwrap().contains("\"allow\""));
+        assert!(computer_turn_reply("\"wait 11 12\"").unwrap().contains("11th of 12"));
+    }
 
     fn run(raw: &str, agent: &str, event: &str) -> (Value, Event) {
         let args = Args { agent: agent.into(), event: event.into(), wait: None, chat_guard: false };

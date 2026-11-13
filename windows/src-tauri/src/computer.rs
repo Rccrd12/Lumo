@@ -47,8 +47,11 @@ const MAX_ZOOM: f64 = 4.0;
 const MAX_TEXT: usize = 5000;
 const MAX_WAIT_SECS: f64 = 60.0;
 
+/// What a call that skipped the line reads while other agents wait for the computer.
+const BUSY_TEXT: &str = "Another agent of this chat is using the computer: Lumo lets one agent at a time use it. Do work that doesn't need the screen, then call the tool again.";
+
 /// What Claude reads when the user pressed Esc.
-const STOPPED_TEXT: &str = "The user pressed Esc to stop you using the computer. Don't use Lumo's computer tools again in this turn: say briefly what you did and stop.";
+pub(crate) const STOPPED_TEXT: &str = "The user pressed Esc to stop you using the computer. Don't use Lumo's computer tools again in this turn: say briefly what you did and stop.";
 
 // ── State of the turn ───────────────────────────────────────────────────────
 
@@ -176,6 +179,18 @@ pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
     }
 }
 
+/// `agent` of `chat` waits for its turn on the computer (pipe.rs, from the
+/// chat's PreToolUse gate): the relay's answer line.
+pub async fn queue(app: &AppHandle, request: &Value) -> String {
+    let chat = request.get("chat").and_then(Value::as_str).unwrap_or("");
+    let agent = request.get("agent").and_then(Value::as_str).filter(|a| !a.is_empty()).unwrap_or(crate::computer_turns::MAIN);
+    let on = app.state::<crate::Shared>().settings.lock().unwrap().chat_computer_use;
+    // No turn with the computer: the call's own refusal says why.
+    let open = || (on && TURN.load(Ordering::SeqCst) > 0).then(|| STOPPED.load(Ordering::SeqCst));
+    let cards = || CARDS.load(Ordering::SeqCst) > 0;
+    crate::computer_turns::wait_turn(app, chat, agent, open, cards).await.line()
+}
+
 /// A chat turn that may use the computer starts.
 pub fn begin_turn() {
     *VIEW.lock().unwrap_or_else(|e| e.into_inner()) = None;
@@ -256,6 +271,7 @@ fn disengage<R: Runtime>(app: &AppHandle<R>) {
 /// a turn, so one that came up before the turn and is answered during it
 /// keeps the count right.
 pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
+    crate::computer_turns::cards_changed();
     if CARDS.fetch_add(1, Ordering::SeqCst) == 0 && ENGAGED.load(Ordering::SeqCst) {
         mouse_to_user();
         fx(app, json!({ "kind": "pause" }));
@@ -265,6 +281,7 @@ pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
 /// The card was answered: Claude has the mouse again.
 pub fn card_down<R: Runtime>(app: &AppHandle<R>) {
     let before = CARDS.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))).unwrap_or(0);
+    crate::computer_turns::cards_changed();
     if before == 1 && mouse_to_claude() {
         fx(app, json!({ "kind": "resume" }));
     }
@@ -360,6 +377,8 @@ pub fn stop<R: Runtime>(app: &AppHandle<R>) {
         return;
     }
     crate::log::line("computer use: stopped with Esc");
+    // Nobody waits for the computer any more: each waiter is told at once.
+    crate::computer_turns::clear(app);
     release_stop_key_later(app);
     // The mouse is the user's at once; the glow turns red, then goes.
     mouse_to_user();
@@ -964,6 +983,18 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         Ok(a) => a,
         Err(e) => return refuse(e),
     };
+    // One agent at a time (computer_turns.rs): a call that skipped the line
+    // while others wait for their turn is told to wait too.
+    if !crate::computer_turns::call_start() {
+        return refuse(BUSY_TEXT);
+    }
+    let answer = Box::pin(act(app, action)).await;
+    crate::computer_turns::call_done();
+    answer
+}
+
+/// The call, once it may go.
+async fn act(app: &AppHandle, action: Action) -> Value {
     // The glow, Claude's mouse and the hand held still, from Claude's first
     // call on, a screenshot included: Esc gives them back from that moment,
     // not only from the first click.

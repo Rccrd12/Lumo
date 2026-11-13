@@ -19457,6 +19457,42 @@
    "id": "Mengirim pesan",
    "it": "Invio un messaggio"
   },
+  "uses the computer": {
+   "zh-Hans": "正在使用电脑",
+   "hi": "कंप्यूटर इस्तेमाल कर रहा है",
+   "es": "usa el ordenador",
+   "ar": "يستخدم الحاسوب",
+   "fr": "utilise l'ordinateur",
+   "bn": "কম্পিউটার ব্যবহার করছে",
+   "pt-BR": "usa o computador",
+   "ru": "использует компьютер",
+   "id": "memakai komputer",
+   "it": "usa il computer"
+  },
+  "Waiting for the computer · {place} of {total} · {time}": {
+   "zh-Hans": "等待电脑 · 第 {place}/{total} 位 · {time}",
+   "hi": "कंप्यूटर का इंतज़ार · {total} में {place} · {time}",
+   "es": "Esperando el ordenador · {place} de {total} · {time}",
+   "ar": "بانتظار الحاسوب · {place} من {total} · {time}",
+   "fr": "En attente de l'ordinateur · {place} sur {total} · {time}",
+   "bn": "কম্পিউটারের অপেক্ষায় · {total}-এর {place} · {time}",
+   "pt-BR": "Aguardando o computador · {place} de {total} · {time}",
+   "ru": "Ждёт компьютер · {place} из {total} · {time}",
+   "id": "Menunggu komputer · {place} dari {total} · {time}",
+   "it": "In attesa del computer · {place}° di {total} · {time}"
+  },
+  "Give it the turn": {
+   "zh-Hans": "让它先用",
+   "hi": "इसे बारी दें",
+   "es": "Darle el turno",
+   "ar": "أعطه الدور",
+   "fr": "Lui donner la main",
+   "bn": "একে পালা দিন",
+   "pt-BR": "Dar a vez",
+   "ru": "Пропустить вперёд",
+   "id": "Beri giliran",
+   "it": "Passagli il turno"
+  },
   "See request": {
    "zh-Hans": "查看请求",
    "hi": "अनुरोध देखें",

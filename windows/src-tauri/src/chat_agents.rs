@@ -292,6 +292,11 @@ impl Agents {
         self.rows.iter().filter(|r| !r.state.is_final()).count()
     }
 
+    /// The ids of the agents still open, in the order they started.
+    pub fn open_ids(&self) -> Vec<String> {
+        self.rows.iter().filter(|r| !r.state.is_final()).map(|r| r.id.clone()).collect()
+    }
+
     /// Every agent still open ends as `state` (its CLI ended under it).
     pub fn end_open(&mut self, state: AgentState, error: &str) {
         let ids: Vec<String> = self.rows.iter().filter(|r| !r.state.is_final()).map(|r| r.id.clone()).collect();
@@ -338,11 +343,14 @@ pub type Tell = Arc<dyn Fn(&mut Agents, bool) + Send + Sync>;
 /// The `Tell` of the chat `chat`.
 pub fn teller(app: &AppHandle, chat: &str) -> Tell {
     let app = app.clone();
-    let events = crate::chat::ChatEvents::new(chat);
+    let chat = chat.to_string();
+    let events = crate::chat::ChatEvents::new(&chat);
     Arc::new(move |agents: &mut Agents, alive: bool| {
         if alive {
             events.signal(&app);
         }
+        // An agent that ended waits for the computer no more, nor keeps it.
+        crate::computer_turns::agents_open(&app, &chat, &agents.open_ids());
         events.agents(&app, agents);
     })
 }
