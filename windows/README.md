@@ -1080,11 +1080,11 @@ plan, with no API key.
   `update_plan` (one step is enough). It keeps the plan up to date as it goes,
   and may change or add steps at any time.
 - **The plan is on the island**: as computer use starts, the island opens on
-  the plan for 3 seconds ("Starts in 3 s") and the first action waits for it;
+  the plan for 2 seconds ("Starts in 2 s") and the first action waits for it;
   then, on the top or bottom edge, it closes to a short line with the agent's
   colour, the step under way, a dash for each step, how far it is (2/5) and
   Esc (upright on a side, the island keeps its short pill). Each step marked
-  done opens the plan again for 3 seconds, and Claude goes on meanwhile.
+  done opens the plan again for 2 seconds, and Claude goes on meanwhile.
 - **Every action asks first**, with the chat set to *Ask every time*: a click,
   a key or a text is an Allow / Deny card on the island. It says who asks, in
   the provider's name and colour, at which step of the plan ("wants to use the
