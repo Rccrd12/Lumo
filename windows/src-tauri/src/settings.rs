@@ -110,8 +110,8 @@ pub struct Settings {
     pub mail_imap: bool,
     pub mail_outlook: bool,
     /// Settings → Security → "Open Outlook if it's closed": Lumo starts
-    /// Outlook in the background once, when it starts (outlook.rs). Off
-    /// until the user turns it on.
+    /// Outlook in the background once, when it starts (outlook.rs). On at
+    /// the first start; shown in Security only while Outlook is connected.
     pub outlook_start: bool,
     /// Settings → Pills → Email → IMAP: the accounts the user paused with
     /// their switch, by address (mail.rs): kept, not read. None until then.
@@ -163,12 +163,17 @@ pub struct Settings {
     /// until the user turns it on in Settings → Chat.
     pub chat_share_explorer: bool,
     /// Every chat message carries the open windows and the documents they
-    /// show, found on disk (desk.rs). On until the user turns it off.
+    /// show, found on disk (desk.rs). Off until the user turns it on.
     pub chat_share_open: bool,
     /// Every chat message carries the browsers' open tabs (Settings → General →
     /// Security; the chat view reads it, src/core/screen.ts autoShare). Off
     /// until the user turns it on.
     pub chat_share_tabs: bool,
+    /// Settings → Security → "Other chats' files": the CLIs a chat runs
+    /// (Claude Code, Antigravity CLI) may read the files and screenshots
+    /// given to any chat, the whole inbox. Off, each chat's CLI gets only its
+    /// own (files.rs `for_cli`). Off until the user turns it on.
+    pub chat_other_files: bool,
     /// The chat's Claude Code may see the screen, click and type (computer.rs,
     /// lumo-hook --mcp), Windows only. Off until the user turns it on.
     pub chat_computer_use: bool,
@@ -182,8 +187,9 @@ pub struct Settings {
     /// Whether an image line in the chat's answers (`![alt](https://…)`) is
     /// downloaded and shown at once (web_image.rs, with its checks). Off, the
     /// card shows only the site and a way to open it in the browser, and
-    /// nothing is downloaded. On by default (Settings → Security). A file from
-    /// before keeps its old `webImageSites` list unread: it no longer matters.
+    /// nothing is downloaded. Off at the first start (Settings → Security); a
+    /// file from before it was a setting keeps it on (`LEGACY_DEFAULTS`). A
+    /// file from before keeps its old `webImageSites` list unread: it no longer matters.
     pub web_images: bool,
     /// Whether an email in the island's Email view shows its images at once,
     /// with no click on Load images (views/mail-view.ts; the tracking pixels
@@ -191,16 +197,17 @@ pub struct Settings {
     /// and only with `web_images` on.
     pub mail_images_always: bool,
     /// What the AI may do with the user's email (Settings → General →
-    /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
-    /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
-    /// Kept as it comes; mail.rs reads anything but "none" as "read".
+    /// Security): "manage" (read, send and manage: each change is a card the
+    /// user clicks), "send", "read" (the chat and Gemini Live read it, Lumo's
+    /// email tools for Antigravity CLI) or "none" (nothing of the mailbox
+    /// reaches any AI). "manage" at the first start. Kept as it comes; mail.rs
+    /// reads anything else as "read".
     pub ai_mail_access: String,
     /// The same for the calendar's events: "read" or "none".
     pub ai_calendar_access: String,
     /// The same for the GitHub account set in Lumo (github_tools.rs): "read"
-    /// (the chat's providers get the read-only GitHub tools) or "none". Off
-    /// until the user turns it on: a token saved for the GitHub pill is not a
-    /// yes to hand its private repositories to an AI.
+    /// (the chat's providers get the read-only GitHub tools) or "none". "read"
+    /// at the first start; Security shows it only once a GitHub token is saved.
     pub ai_github_access: String,
     /// Gemini Live, the voice conversation (live.rs, src/live): the model,
     /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
@@ -351,7 +358,7 @@ impl Default for Settings {
             mail_hide_promotions: false,
             mail_imap: true,
             mail_outlook: false,
-            outlook_start: false,
+            outlook_start: true,
             mail_paused: Vec::new(),
             hidden_chat_providers: Vec::new(),
             energy_mode: "auto".into(),
@@ -365,16 +372,17 @@ impl Default for Settings {
             local_sandbox: "high".into(),
             chat_show_usage: false,
             chat_share_explorer: false,
-            chat_share_open: true,
+            chat_share_open: false,
             chat_share_tabs: false,
+            chat_other_files: false,
             chat_computer_use: false,
             chat_web_search: false,
             chat_auto_compact: true,
-            web_images: true,
+            web_images: false,
             mail_images_always: false,
-            ai_mail_access: "read".into(),
+            ai_mail_access: "manage".into(),
             ai_calendar_access: "read".into(),
-            ai_github_access: "none".into(),
+            ai_github_access: "read".into(),
             live_model: "gemini-3.8-live".into(),
             live_thinking: "medium".into(),
             live_voice: String::new(),
@@ -474,12 +482,35 @@ fn parse(bytes: &[u8]) -> Option<Settings> {
     if text.iter().all(u8::is_ascii_whitespace) {
         return Some(Settings::default());
     }
-    let Value::Object(fields) = serde_json::from_slice(text).ok()? else {
+    let Value::Object(mut fields) = serde_json::from_slice(text).ok()? else {
         return None;
     };
+    // A file that is there was written by a Lumo that had other defaults:
+    // what it lacks takes the value that Lumo used, not the first start's.
+    for (key, value) in LEGACY_DEFAULTS {
+        if !fields.contains_key(*key) {
+            fields.insert(key.to_string(), value());
+        }
+    }
     let whole = serde_json::from_value(Value::Object(fields.clone()));
     Some(whole.unwrap_or_else(|_| salvage(fields)))
 }
+
+/// A setting's name in settings.json, and the value Lumo had for it before.
+type LegacyDefault = (&'static str, fn() -> Value);
+
+/// The defaults Lumo had before the first start's became more private
+/// (Settings → Security): a settings.json from before lacks a key only when
+/// it was written before the setting existed, and what the user had then was
+/// this, so it stays. Only a Lumo starting with no settings.json at all gets
+/// `Settings::default()`.
+const LEGACY_DEFAULTS: &[LegacyDefault] = &[
+    ("webImages", || Value::Bool(true)),
+    ("chatShareOpen", || Value::Bool(true)),
+    ("outlookStart", || Value::Bool(false)),
+    ("aiMailAccess", || Value::String("read".into())),
+    ("aiGithubAccess", || Value::String("none".into())),
+];
 
 /// Settings from the fields of a settings.json that does not load as a whole.
 /// Each field is taken on its own: one that is not the kind of value expected
@@ -726,7 +757,7 @@ mod tests {
   "mailHidePromotions": true,
   "mailImap": false,
   "mailOutlook": true,
-  "outlookStart": true,
+  "outlookStart": false,
   "mailPaused": ["old@icloud.com"],
   "hiddenChatProviders": ["copilot-cli"],
   "energyMode": "saver",
@@ -740,16 +771,17 @@ mod tests {
   "localSandbox": "low",
   "chatShowUsage": true,
   "chatShareExplorer": true,
-  "chatShareOpen": false,
+  "chatShareOpen": true,
   "chatShareTabs": true,
+  "chatOtherFiles": true,
   "chatComputerUse": true,
   "chatWebSearch": true,
   "chatAutoCompact": false,
-  "webImages": false,
+  "webImages": true,
   "mailImagesAlways": true,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
-  "aiGithubAccess": "read",
+  "aiGithubAccess": "none",
   "liveModel": "gemini-3.8-live-extended-thinking",
   "liveThinking": "high",
   "liveVoice": "Kore",
@@ -913,7 +945,11 @@ mod tests {
             let loaded = parse(&custom_with(key, None))
                 .unwrap_or_else(|| panic!("a file without {key} was thrown away"));
             let mut expected = custom();
-            expected[key] = defaults()[key].clone();
+            // A file from before lacks the newer ones: they take what Lumo had then.
+            expected[key] = match LEGACY_DEFAULTS.iter().find(|(k, _)| k == key) {
+                Some((_, before)) => before(),
+                None => defaults()[key].clone(),
+            };
             assert_eq!(shown(&loaded), expected, "without {key}");
         }
     }
@@ -1001,10 +1037,39 @@ mod tests {
     }
 
     #[test]
-    fn images_from_the_web_show_until_they_are_turned_off() {
+    fn images_from_the_web_are_off_at_the_first_start_and_stay_on_for_a_file_from_before() {
         assert!(parse(&custom_with("webImages", None)).unwrap().web_images);
-        assert!(Settings::default().web_images);
-        assert!(!parse(CUSTOM.as_bytes()).unwrap().web_images);
+        assert!(!Settings::default().web_images);
+        assert!(parse(CUSTOM.as_bytes()).unwrap().web_images);
+        assert!(!parse(&custom_with("webImages", Some(json!(false)))).unwrap().web_images);
+    }
+
+    #[test]
+    fn the_first_start_has_the_security_defaults_and_a_file_from_before_keeps_its_own() {
+        let first = Settings::default();
+        assert!(!first.chat_share_open);
+        assert!(!first.chat_other_files);
+        assert!(first.outlook_start);
+        assert_eq!(first.ai_mail_access, "manage");
+        assert_eq!(first.ai_calendar_access, "read");
+        assert_eq!(first.ai_github_access, "read");
+        assert_eq!(first.chat_permission_mode, "default");
+        // A settings.json written before these were settings: what Lumo did then.
+        let mut object = custom().as_object().unwrap().clone();
+        for key in ["chatShareOpen", "outlookStart", "aiMailAccess", "aiGithubAccess", "chatOtherFiles"] {
+            object.remove(key);
+        }
+        let old = parse(&serde_json::to_vec(&object).unwrap()).unwrap();
+        assert!(old.chat_share_open);
+        assert!(!old.outlook_start);
+        assert_eq!(old.ai_mail_access, "read");
+        assert_eq!(old.ai_github_access, "none");
+        assert!(!old.chat_other_files);
+        // What the user chose is kept, whatever the defaults.
+        let chosen = parse(&custom_with("chatShareOpen", Some(json!(false)))).unwrap();
+        assert!(!chosen.chat_share_open);
+        // An empty file is a first start.
+        assert!(!parse(b"  ").unwrap().chat_share_open);
     }
 
     #[test]
@@ -1013,12 +1078,11 @@ mod tests {
         let mut object = custom().as_object().unwrap().clone();
         object.remove("webImages");
         object.insert("webImageSites".into(), json!(["upload.wikimedia.org"]));
-        let mut s = parse(&serde_json::to_vec(&object).unwrap()).unwrap();
-        // The old list is dropped, the new switch takes its default (on), and
-        // every other setting is the file's own.
+        let s = parse(&serde_json::to_vec(&object).unwrap()).unwrap();
+        // The old list is dropped, the new switch takes what Lumo did then
+        // (on), and every other setting is the file's own.
         assert!(s.web_images);
         assert_eq!(shown(&s).get("webImageSites"), None);
-        s.web_images = false;
         assert_eq!(shown(&s), shown(&parse(CUSTOM.as_bytes()).unwrap()));
     }
 
@@ -1293,6 +1357,7 @@ mod tests {
                 "chatShareExplorer",
                 "chatShareOpen",
                 "chatShareTabs",
+                "chatOtherFiles",
                 "chatComputerUse",
                 "chatWebSearch",
                 "chatAutoCompact",

@@ -358,8 +358,12 @@ impl Chat {
     }
 
     /// The files added in this chat, oldest first.
+    /// As its CLI is told them: each one in the inbox, in this chat's own
+    /// folder of it (files.rs for_chat).
     pub fn files(&self) -> Vec<(String, String)> {
-        self.inner.lock().unwrap().files.iter().map(|(name, path, _)| (name.clone(), path.clone())).collect()
+        let files: Vec<(String, String)> =
+            self.inner.lock().unwrap().files.iter().map(|(name, path, _)| (name.clone(), path.clone())).collect();
+        files.into_iter().map(|(name, path)| (name, crate::files::for_chat(&self.id, &path))).collect()
     }
 
     /// The × of one of the chat's files: it is no longer told to a fresh
@@ -673,7 +677,7 @@ pub fn api_tools_note(mail: &str) -> String {
         note.push_str(crate::github_tools::NOTE);
     }
     if !mail.is_empty() {
-        note.push_str(" The user's email: Lumo's email tools (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached; Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking.");
+        note.push_str(" The user's email: Lumo's email tools (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached. Use them for any question about email, and never say there is no email before looking.");
         if mail.contains("mailsend") {
             note.push_str(" To send one, answer one in its conversation or forward one, use mail_send, mail_reply or mail_forward: the user sees the email on a card and it goes only if they click Send; mail_draft saves one in their Drafts.");
         } else {
@@ -1021,17 +1025,9 @@ async fn dispatch(
         }
         s.documents = documents;
     }
-    // The Email pill: a question about email gets the newest emails, read or
-    // not, so every provider can answer it, not only those with a mail tool of
-    // their own. Not when Settings → Security keeps the email from the AI.
-    if !command && crate::mail::asks_about(&query) && crate::mail::for_ai(app) {
-        let Some(mail) = chat.unless_stopped(crate::mail::for_chat(app)).await else {
-            return Ok(stopped_before_sent(chat));
-        };
-        if let Some(text) = mail {
-            screen.get_or_insert_with(ScreenContext::default).mail = text;
-        }
-    }
+    // The emails never go with a question by themselves: the providers read
+    // what they need with Lumo's email tools (mail.rs ai_tools), each call
+    // seen on the island.
     if chat.stopper().is_stopped() {
         return Ok(stopped_before_sent(chat));
     }
@@ -1042,7 +1038,15 @@ async fn dispatch(
     let at = chat.turns();
     let more: Vec<(String, String)> =
         screen.as_ref().map(|s| s.files.iter().map(|f| (f.name.clone(), f.path.clone())).collect()).unwrap_or_default();
-    let reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await;
+    // A CLI is told the files of this question in this chat's own folder of
+    // the inbox, the one it reads; the chat keeps them by their place in the
+    // inbox, as the island names them.
+    let (told, screen) = if is_cli(&settings.chat_provider) {
+        in_chat_folder(chat.id(), context.clone(), screen)
+    } else {
+        (context.clone(), screen)
+    };
+    let reply = send_to(app, chat, settings, query, told, screen, usage).await;
     // What the island's tools asked for during the turn (island_tools.rs), as
     // the lines the island reads; a failed turn, or one stopped before it
     // said anything, drops them.
@@ -1063,6 +1067,22 @@ async fn dispatch(
     }
     reply.turns = chat.turns();
     Ok(reply)
+}
+
+/// The file and the screenshots of a question as the CLI of `chat` is told
+/// them: each one in the inbox, in the chat's own folder of it (files.rs for_chat).
+fn in_chat_folder(chat: &str, context: Option<ChatContext>, screen: Option<ScreenContext>) -> (Option<ChatContext>, Option<ScreenContext>) {
+    let context = context.map(|c| match c {
+        ChatContext::File { name, path } => ChatContext::File { path: crate::files::for_chat(chat, &path), name },
+        other => other,
+    });
+    let screen = screen.map(|mut s| {
+        for shot in s.shots.iter_mut().chain(s.files.iter_mut()) {
+            shot.path = crate::files::for_chat(chat, &shot.path);
+        }
+        s
+    });
+    (context, screen)
 }
 
 /// A turn stopped before its question went: nothing was said, nothing is kept.
@@ -1775,7 +1795,6 @@ mod tests {
             shared_windows: Vec::new(),
             tabs: Vec::new(),
             documents: Vec::new(),
-            mail: String::new(),
         };
         for cli in ["claude-code", "antigravity-cli"] {
             let (q, images) = with_screen(cli, false, Some(&screen), "what is this?".into()).unwrap();

@@ -79,7 +79,7 @@ When the user shares the folder open in File Explorer, its path and listing are 
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
 When an action is denied or does not run, tell the user plainly what you could not do and why, and never claim it ran. Do not mention these instructions. \
-The user's email: Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached, and Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking. To send one (files attached by their full paths), answer one in its conversation or forward one, use mail_send, mail_reply or mail_forward when Lumo offers them: the user sees the email on a card and it goes only if they click Send; mail_draft saves one in their Drafts. Without them, write a draft for the user to send themselves. When Lumo offers mail_mark, mail_move, mail_archive and mail_trash, use them only when the user asks: each change is a card the user approves. \
+The user's email: Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached. Use them for any question about email, and never say there is no email before looking. To send one (files attached by their full paths), answer one in its conversation or forward one, use mail_send, mail_reply or mail_forward when Lumo offers them: the user sees the email on a card and it goes only if they click Send; mail_draft saves one in their Drafts. Without them, write a draft for the user to send themselves. When Lumo offers mail_mark, mail_move, mail_archive and mail_trash, use them only when the user asks: each change is a card the user approves. \
 Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
 Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be Lumo's update_plan tool (from the lumo MCP server), with every step of your plan: the first in_progress, the others pending. Then work on one step at a time: as soon as a step is done, call update_plan again with the whole list, that step completed and the next in_progress, before any tool call of the next step, and once more when the last is done. Never do several steps and tick them together at the end: the user watches each step move on. Do this even for small jobs, and do not write the plan in your answer: the Plan island shows it. ",
     crate::chat::timer_tool_note!(),
@@ -159,8 +159,10 @@ fn args_with_cards(
     // folders join the workspace, which agy reads without asking.
     a.push("--add-dir".into());
     a.push(work.to_string());
-    a.push("--add-dir".into());
-    a.push(inbox.to_string());
+    if !inbox.is_empty() {
+        a.push("--add-dir".into());
+        a.push(inbox.to_string());
+    }
     for dir in folders.iter().filter_map(|d| safe_dir(d)) {
         a.push("--add-dir".into());
         a.push(dir.to_string());
@@ -927,7 +929,8 @@ pub async fn send(
         None => with_instructions(&text),
     };
     let input = user_event(&text);
-    let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    // This chat's folder of the inbox, or all of it with "Other chats' files" on.
+    let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
     let work = claude_code::work_dir();
     let args = args(model, mode, conversation.as_deref(), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
     // Lumo's plan tool, its email tools while the Email pill is on and Security
@@ -1144,7 +1147,7 @@ async fn command(
             // It would sum up the conversation without the turns another provider answered.
             return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen the latest answers in this chat yet."), chat.cli_session()));
         }
-        let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+        let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
         let mut args = args(model, mode, Some(conversation.as_str()), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
         args.retain(|a| a != "--disable-slash-commands");
         let events = chat.events();
@@ -1213,7 +1216,8 @@ pub(crate) fn help(
     // workspace (claude_code::helper_folder), its own settings never loaded.
     let folders: Vec<String> = claude_code::helper_folder(folder).into_iter().collect();
     let work = claude_code::work_dir();
-    let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    // No chat's: the inbox only with "Other chats' files" on.
+    let inbox = if crate::settings::load().chat_other_files { crate::files::inbox_dir().to_string_lossy().to_string() } else { String::new() };
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
     crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
     let _mail = crate::mail::agent_turn();
@@ -1393,6 +1397,8 @@ mod tests {
         assert!(!a.contains(&"--mode".to_string()), "nothing is let through wholesale");
         assert!(!a.contains(&"--conversation".to_string()));
         assert_eq!(a.iter().filter(|s| *s == "--add-dir").count(), 2, "its folder and the inbox: {a:?}");
+        let a = args("default", "", None, "/w", "", &[]);
+        assert_eq!(a.iter().filter(|s| *s == "--add-dir").count(), 1, "no inbox, only its folder: {a:?}");
         assert!(!args("default", "", None, "/w", "/inbox", &[]).contains(&"--model".to_string()), "Default: agy's own choice");
         assert_eq!(safe_model("gemini & calc"), None);
         assert_eq!(safe_model("100%"), None);
