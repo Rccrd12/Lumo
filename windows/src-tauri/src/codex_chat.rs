@@ -1288,12 +1288,12 @@ pub async fn send(
         }
     };
 
+    // The agents Codex starts, and the turn's sign of life.
+    let tell = chat_agents::teller(app, chat.id());
     let app2 = app.clone();
     let app3 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
-    // The agents Codex starts, and the turn's sign of life.
-    let tell = chat_agents::teller(app, chat.id());
     let (state, thread) = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             spec,

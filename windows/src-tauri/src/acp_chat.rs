@@ -1652,12 +1652,12 @@ pub async fn send(
         format!("<lumo_instructions>\n{}{workshop}\n</lumo_instructions>\n\n{text}", INSTRUCTIONS.trim())
     };
 
+    // The tasks the CLI hands to subagents, and the turn's sign of life.
+    let tell = chat_agents::teller(app, chat.id());
     let app2 = app.clone();
     let app3 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
-    // The tasks the CLI hands to subagents, and the turn's sign of life.
-    let tell = chat_agents::teller(app, chat.id());
     let (state, session) = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             spec,

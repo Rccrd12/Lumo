@@ -359,19 +359,6 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     pipe.finish();
 }
 
-/// `work`, a call lumo-hook --mcp makes for a CLI that answers in the
-/// island's chat `request["chat"]` (its LUMO_CHAT_ID): run as that chat's
-/// own (tools.rs `call_for_chat`), a card it raises puts the chat in
-/// "waiting for your permission", and it says the chat is alive while it
-/// runs (the CLI writes nothing meanwhile). A call that names no chat (a CLI
-/// in the user's terminal, a lumo-hook from before) just runs.
-async fn in_chat<T>(app: &AppHandle, request: &Value, work: impl std::future::Future<Output = T> + Unpin) -> T {
-    match request.get("chat").and_then(Value::as_str).filter(|c| !c.is_empty()) {
-        Some(chat) => crate::chat_agents::alive_while(app, chat, Box::pin(CHAT.scope(chat.to_string(), work))).await,
-        None => work.await,
-    }
-}
-
 /// Resolves once the relay has gone (end of stream or a broken pipe). It sends
 /// nothing after its one line, so any read result means it is done.
 async fn client_gone(pipe: &mut impl Relay) {
@@ -396,6 +383,19 @@ async fn first_of<T>(a: impl std::future::Future<Output = T>, b: impl std::futur
         b.as_mut().poll(cx)
     })
     .await
+}
+
+/// `work`, a call lumo-hook --mcp makes for a CLI that answers in the
+/// island's chat `request["chat"]` (its LUMO_CHAT_ID): run as that chat's
+/// own (tools.rs `call_for_chat`), a card it raises puts the chat in
+/// "waiting for your permission", and it says the chat is alive while it
+/// runs (the CLI writes nothing meanwhile). A call that names no chat (a CLI
+/// in the user's terminal, a lumo-hook from before) just runs.
+async fn in_chat<T>(app: &AppHandle, request: &Value, work: impl std::future::Future<Output = T> + Unpin) -> T {
+    match request.get("chat").and_then(Value::as_str).filter(|c| !c.is_empty()) {
+        Some(chat) => crate::chat_agents::alive_while(app, chat, Box::pin(CHAT.scope(chat.to_string(), work))).await,
+        None => work.await,
+    }
 }
 
 /// A new request id, waiting for the island's replies.

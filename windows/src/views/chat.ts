@@ -95,14 +95,15 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatTitle, compactOf, deleteChat, foldOwnAnswer, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setCompact,
-  updateChatTurns, type ChatHit, type SavedChat,
+  chatChecklists, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
   addUpdate, applyAgent, applySignal, batchEntries, countAgents, durationText, foldsOwnAnswer, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, withAgents, type AgentBatch, type ChatAgents, type PendingCard,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, type AgentsCardHost } from "./agents-card";
+import { foldOwnAnswer, updateChatTurns } from "../core/chats";
+import type { AgentsPeek } from "../core/compact";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
 } from "../core/checklists";
@@ -125,7 +126,7 @@ import type { ViewHost } from "./views";
 import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
-import { COMPACT_TEXT, UPLOADED_TEXT, type AgentsPeek, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
+import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, listeningLine, takeListens, untilText, watchColor, watchLabel, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { LISTENING_STRINGS, buildListeningPanel, listeningButtonTitle, neededText, watchTile } from "./listening";
 import { addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, placeHeard, seenChat, waitingElsewhere, wavesLit, type HeardLine } from "../core/heard";
