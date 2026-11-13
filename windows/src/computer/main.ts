@@ -11,8 +11,10 @@
 // halo here (fx.ts ease), so the two land together.
 
 import "./computer.css";
-import { onEvent } from "../core/bridge";
-import { aimBox, aimSide, along, keyCaps, sparks, toCss, typedTail, type Fx } from "./fx";
+import { Bridge, onEvent } from "../core/bridge";
+import type { Settings } from "../core/state";
+import { N_, resolveLanguage, setLanguage, systemLanguages, t } from "../i18n/i18n";
+import { HINT_MS, aimBox, aimSide, along, hintBox, keyCaps, sparks, toCss, typedTail, type Fx } from "./fx";
 
 const root = document.createElement("div");
 root.id = "fx";
@@ -292,6 +294,61 @@ function waitRing(p: { x: number; y: number }, ms: number) {
   window.setTimeout(() => svg.remove(), ms + 200);
 }
 
+/** The pointer hint's words: who has the mouse, and the key that gives it back. */
+const HINT_TEXT = {
+  using: N_("{agent} is using the mouse"),
+  pauses: N_("{key} pauses"),
+};
+
+let hintEl: HTMLElement | null = null;
+let hintTimer: number | null = null;
+
+/** `words` with `{key}` drawn as a keycap. */
+function withKey(words: string, key: string): Node[] {
+  const at = words.indexOf("{key}");
+  const kbd = document.createElement("kbd");
+  kbd.textContent = key;
+  if (at < 0) return [kbd, document.createTextNode(` ${words}`)];
+  return [document.createTextNode(words.slice(0, at)), kbd, document.createTextNode(words.slice(at + 5))];
+}
+
+/**
+ * The user moved or clicked the mouse the agent holds: a small dark tooltip
+ * by their pointer says who has it and that Esc pauses. A new one takes the
+ * old one's place; each goes after HINT_MS.
+ */
+function hint(p: { x: number; y: number }, agent: string) {
+  if (hintTimer != null) window.clearTimeout(hintTimer);
+  hintEl?.remove();
+  const el = document.createElement("div");
+  el.className = "hint";
+  const who = document.createElement("div");
+  who.className = "hint-who";
+  const words = t(HINT_TEXT.using, { agent: "{agent}" });
+  const at = words.indexOf("{agent}");
+  const name = document.createElement("b");
+  name.textContent = agent.trim() || "AI";
+  if (at < 0) who.append(name, ` ${words}`);
+  else who.append(words.slice(0, at), name, words.slice(at + 7));
+  const key = document.createElement("div");
+  key.className = "hint-key";
+  key.append(...withKey(t(HINT_TEXT.pauses, { key: "{key}" }), "Esc"));
+  el.append(who, key);
+  root.append(el);
+  hintEl = el;
+  // Measured where it is drawn, then placed clear of the pointer and whole on the screen.
+  const box = hintBox(p, el.offsetWidth, el.offsetHeight, window.innerWidth, window.innerHeight);
+  place(el, { x: box.left, y: box.top });
+  hintTimer = window.setTimeout(() => {
+    el.classList.add("out");
+    hintTimer = window.setTimeout(() => {
+      el.remove();
+      if (hintEl === el) hintEl = null;
+      hintTimer = null;
+    }, 400);
+  }, HINT_MS);
+}
+
 function handle(fx: Fx) {
   switch (fx.kind) {
     case "show":
@@ -306,6 +363,10 @@ function handle(fx: Fx) {
       root.classList.add("paused");
       break;
     case "hide":
+      if (hintTimer != null) window.clearTimeout(hintTimer);
+      hintTimer = null;
+      hintEl?.remove();
+      hintEl = null;
       // A glide or typing still running would put the halo back.
       if (glide != null) cancelAnimationFrame(glide);
       if (typing != null) window.clearInterval(typing);
@@ -363,8 +424,18 @@ function handle(fx: Fx) {
     case "wait":
       waitRing(css(fx.at), fx.ms);
       break;
+    case "hint":
+      if (Array.isArray(fx.at) && fx.at.length === 2) hint(css(fx.at), typeof fx.agent === "string" ? fx.agent : "");
+      break;
   }
 }
+
+/** The hint speaks the island's language: the one Settings asks for, else the system's. */
+function applyLanguage(settings: Pick<Settings, "language"> | null | undefined) {
+  setLanguage(resolveLanguage(settings?.language, systemLanguages()));
+}
+void Bridge.boot().then((info) => applyLanguage(info?.settings)).catch(() => {});
+void onEvent<Settings>("settings-changed", (s) => applyLanguage(s));
 
 void onEvent<Fx>("computer-fx", handle);
 // `npm run dev` in a browser: the effects can be tried by hand.

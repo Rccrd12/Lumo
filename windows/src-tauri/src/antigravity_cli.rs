@@ -367,6 +367,62 @@ fn error_text(error: &Value) -> Option<String> {
     }
 }
 
+/// A `result` event as agy wrote it, for the log: its answer (the user's
+/// work, maybe long) only as its length, wherever agy put it.
+fn without_response(frame: &Value) -> String {
+    let mut f = frame.clone();
+    let cut = |v: &mut Value| {
+        if let Some(text) = v.get("response").and_then(Value::as_str) {
+            let n = text.chars().count();
+            v["response"] = json!(format!("<{n} characters>"));
+        }
+    };
+    cut(&mut f);
+    if let Some(inner) = f.get_mut("result").filter(|r| r.is_object()) {
+        cut(inner);
+    }
+    f.to_string()
+}
+
+/// agy's words when the model sent a tool call it could not read (Gemini's
+/// MALFORMED_FUNCTION_CALL): agy has the model try again, but may still end
+/// the turn with them.
+fn is_malformed_call(error: &str) -> bool {
+    let l = error.to_lowercase();
+    l.contains("malformed function call") || l.contains("improperly formatted function call")
+}
+
+/// The part of agy's error worth showing: for a malformed call, its line
+/// that says so, without what agy tells the model ("Please retry…").
+fn error_words(error: &str) -> String {
+    let error = error.trim();
+    if is_malformed_call(error) {
+        let lower = error.to_lowercase();
+        if let Some(at) = lower.find("malformed function call") {
+            return error[at..].lines().next().unwrap_or("").trim().to_string();
+        }
+    }
+    error.to_string()
+}
+
+/// What agy said, after what Lumo says about it (chat::ERROR_DETAIL).
+fn with_agy_words(said: String, error: &str) -> String {
+    format!("{said}\n{}{}", crate::chat::ERROR_DETAIL, tf("Antigravity CLI's message: {error}", &[("error", &error_words(error))]))
+}
+
+/// The answer came, but agy ended the turn with `error`: said under it.
+fn answer_warning(error: &str) -> crate::chat::ChatWarning {
+    let why = if is_malformed_call(error) {
+        t("While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”.")
+    } else {
+        t("Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”.")
+    };
+    crate::chat::ChatWarning {
+        line: t("Antigravity CLI reported a problem at the end"),
+        detail: format!("{why}\n\n{}", tf("Antigravity CLI's message: {error}", &[("error", &error_words(error))])),
+    }
+}
+
 // ── The subagents it delegates to ─────────────────────────────────────────────
 
 /// A tool's parameters: an object, or its JSON text.
@@ -514,6 +570,13 @@ struct Run {
     text_step: Option<u64>,
     /// The `result` event: final text, or the error agy reported.
     result: Option<Result<String, String>>,
+    /// The answer a `result` that reported an error still carried: agy can end
+    /// a turn the model finished as an error (a malformed tool call it had the
+    /// model try again, earlier in the turn).
+    failed_response: String,
+    /// That `result` as agy wrote it, its answer left out (only its length):
+    /// for the log, so what agy said is known later.
+    failed_line: Option<String>,
     denied: usize,
     /// The user pressed Stop and the CLI was ended.
     stopped: bool,
@@ -580,8 +643,11 @@ impl Run {
                 let response = v["response"].as_str().unwrap_or("").to_string();
                 self.result = Some(match (status.as_str(), error) {
                     ("SUCCESS", _) | ("", None) => Ok(response),
-                    (_, Some(e)) => Err(e),
-                    (s, None) => Err(s.to_string()),
+                    (s, error) => {
+                        self.failed_line = Some(without_response(&frame));
+                        self.failed_response = response;
+                        Err(error.unwrap_or_else(|| s.to_string()))
+                    }
                 });
                 false
             }
@@ -809,6 +875,11 @@ fn empty_answer(denied: usize, stderr_tail: &str) -> String {
 fn result_error(error: &str) -> String {
     if is_auth_error(error) {
         not_signed_in()
+    } else if is_malformed_call(error) {
+        with_agy_words(
+            t("Antigravity CLI stopped: the model sent an empty tool call and couldn't correct it. What it did so far is saved: write “continue” to pick up from there."),
+            error,
+        )
     } else {
         tf("Antigravity CLI: {error}", &[("error", error)])
     }
@@ -968,6 +1039,9 @@ fn run(
         let code = status.and_then(|s| s.code()).map(|c| c.to_string()).unwrap_or_default();
         return Err(failure(&stderr, &code));
     }
+    if let Some(line) = &state.failed_line {
+        crate::log::line(format!("antigravity: the turn ended with an error: {line}"));
+    }
     Ok(state)
 }
 
@@ -1051,11 +1125,13 @@ pub async fn models() -> Result<Vec<ModelInfo>, String> {
 // ── One turn ──────────────────────────────────────────────────────────────────
 
 /// One chat turn through Antigravity CLI.
+#[allow(clippy::too_many_arguments)]
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     model: &str,
     mode: &str,
+    computer: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -1080,6 +1156,10 @@ pub async fn send(
         None if chat.is_workshop() => with_workshop_instructions(&text),
         None => with_instructions(&text),
     };
+    // Computer use: the note in front of every question.
+    let computer = computer && cfg!(windows);
+    let grid = crate::computer::uses_grid(PROVIDER, model);
+    let text = if computer { crate::computer::with_note(&text, grid) } else { text };
     let input = user_event(&text);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let work = claude_code::work_dir();
@@ -1087,8 +1167,10 @@ pub async fn send(
     // Lumo's plan tool, its email tools while the Email pill is on and Security
     // lets the AI read it (only during this turn), and the user's tools that are on (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
-    crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools);
+    crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer);
     let _mail = crate::mail::agent_turn();
+    // The computer usable while this turn runs, each action asked for by Lumo.
+    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
 
     let app2 = app.clone();
     let events = chat.events();
@@ -1155,12 +1237,22 @@ pub async fn send(
         }
         return Ok(ChatReply::stopped(shown, chat.cli_session()));
     }
+    let mut warning = None;
     let answer = match state.result {
         // The result repeats the answer; should it come back empty, what was
         // streamed is the answer.
         Some(Ok(text)) if text.trim().is_empty() => state.visible.trim().to_string(),
         Some(Ok(text)) => text,
-        Some(Err(e)) => return Err(result_error(&e)),
+        // An error with an answer written: the answer stays, the error is
+        // said under it. Without one, or signed out, the error alone.
+        Some(Err(e)) => {
+            let written = if state.failed_response.trim().is_empty() { state.visible.trim().to_string() } else { state.failed_response.clone() };
+            if is_auth_error(&e) || written.trim().is_empty() {
+                return Err(result_error(&e));
+            }
+            warning = Some(answer_warning(&e));
+            written
+        }
         None => unreachable!("run() returns an error without a result"),
     };
     let answer = chat::keep_lumo_lines(answer, &state.said);
@@ -1171,7 +1263,7 @@ pub async fn send(
         answer
     };
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply::answer(answer, chat.cli_session()))
+    Ok(ChatReply { warning, ..ChatReply::answer(answer, chat.cli_session()) })
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -1373,7 +1465,7 @@ pub(crate) fn help(
     let work = claude_code::work_dir();
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
-    crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
+    crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled(), false);
     let _mail = crate::mail::agent_turn();
     let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {}, &chat_agents::silent())?;
     if state.stopped {
@@ -1697,6 +1789,48 @@ mod tests {
         run.feed(br#"{"event":"result","conversation_id":"../../x","status":"SUCCESS","response":"ok"}"#);
         assert_eq!(run.conversation, None);
         assert_eq!(run.result, Some(Ok("ok".into())));
+    }
+
+    /// agy's words when Gemini sent a tool call it could not read.
+    const MALFORMED: &str = "Your previous response contained an improperly formatted function call: Malformed function call: Failed to parse function call: Function call is empty - no input to parse.\nPlease retry with a properly formatted function call\nRetries remaining: 3";
+
+    #[test]
+    fn an_answer_that_ends_in_an_error_is_kept_with_the_error_and_logged_without_it() {
+        let mut run = Run::default();
+        let line = json!({ "event": "result", "result": { "status": "ERROR", "error": MALFORMED, "response": "Ecco gli appunti: 109 pagine." } }).to_string();
+        run.feed(line.as_bytes());
+        assert_eq!(run.result, Some(Err(MALFORMED.into())));
+        assert_eq!(run.failed_response, "Ecco gli appunti: 109 pagine.");
+        // The log has what agy said, never the answer itself.
+        let logged = run.failed_line.unwrap();
+        assert!(logged.contains("Retries remaining") && logged.contains("<29 characters>") && !logged.contains("appunti"));
+
+        // A result that went well leaves nothing for the log.
+        let mut ok = Run::default();
+        ok.feed(br#"{"event":"result","result":{"status":"SUCCESS","response":"ok"}}"#);
+        assert_eq!((ok.failed_line, ok.failed_response.as_str()), (None, ""));
+    }
+
+    #[test]
+    fn a_malformed_tool_call_is_said_in_plain_words_with_agys_own_line_apart() {
+        assert!(is_malformed_call(MALFORMED) && !is_malformed_call("quota exceeded"));
+        assert_eq!(error_words(MALFORMED), "Malformed function call: Failed to parse function call: Function call is empty - no input to parse.");
+        assert_eq!(error_words("quota exceeded"), "quota exceeded");
+
+        // No answer: what happened and what to do, then agy's line after the separator.
+        let said = result_error(MALFORMED);
+        let (plain, words) = said.split_once(crate::chat::ERROR_DETAIL).unwrap();
+        assert!(plain.contains("empty tool call") && plain.contains("continue"));
+        assert_eq!(words, format!("Antigravity CLI's message: {}", error_words(MALFORMED)));
+        assert!(!said.contains("Please retry"));
+        // Other errors are said as before.
+        assert_eq!(result_error("quota exceeded"), "Antigravity CLI: quota exceeded");
+
+        // With an answer: one line under it, and what to know on a click.
+        let w = answer_warning(MALFORMED);
+        assert_eq!(w.line, "Antigravity CLI reported a problem at the end");
+        assert!(w.detail.contains("empty tool call") && w.detail.ends_with(&error_words(MALFORMED)));
+        assert!(answer_warning("internal error").detail.contains("ended this turn with an error"));
     }
 
     #[test]

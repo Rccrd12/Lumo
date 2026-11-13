@@ -16,6 +16,7 @@ import { readMailHtml } from "./mail-html";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
 import type { LocalCaps } from "./providers";
+import type { ComputerPeek, ComputerRecap } from "./computer-use";
 
 /** An answer to a permission card: `always` allows it for the rest of the session. */
 /** `edits`: a plan approved with "let it edit files without asking" (Claude Code's acceptEdits, for the session). */
@@ -176,6 +177,15 @@ export const Bridge = {
 
   /** Give the window keyboard focus (chat field) and take it away again. */
   focusWindow: (focused: boolean) => call<void>("focus_window", { focused }),
+
+  /** Computer use paused with Esc goes on (computer.rs resume): the agent's next action runs. */
+  computerResume: () => call<void>("computer_resume"),
+  /** Computer use stops for good in this turn (computer.rs stop): the plan's Stop. */
+  computerStop: () => call<void>("computer_stop"),
+  /** While paused: the user's question, given to the agent as the answer of its waiting action. */
+  computerAsk: (text: string) => call<void>("computer_ask", { text }),
+  /** The point `[x, y]` of the agent's last screenshot an action is about: a crop around it and what Windows says is there. */
+  computerPeek: (x: number, y: number) => call<ComputerPeek | null>("computer_peek", { x, y }),
 
 
   reposition: () => call<void>("reposition"),
@@ -863,6 +873,16 @@ export interface ChatReply {
   turns?: number;
   /** What Rust's conversation kept for it, when not `text` ("(No answer.)"): given back as that by `chatRestore`. */
   kept?: string;
+  /** The turn used the computer: its plan as it ended, for the recap under the answer (computer.rs). */
+  computer?: ComputerRecap;
+  /** The answer came, but the CLI ended its turn with an error (antigravity_cli.rs): said under the answer. */
+  warning?: ChatWarning;
+}
+
+/** A problem under an answer: one short line, and what to know, opened with a click. */
+export interface ChatWarning {
+  line: string;
+  detail: string;
 }
 
 /** A display the screen button can capture; `index` is its place in the menu. */

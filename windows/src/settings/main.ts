@@ -758,7 +758,7 @@ const SECURITY = {
   get onItsOwn() { return t("What it may do on its own"); },
   get permissions() { return t("Default permissions"); },
   get permissionsHint() { return t("How free Claude Code, Codex and Antigravity CLI are in the chat. The shield in the chat changes it too."); },
-  get computerHint() { return t("Only while it answers: the screen it uses glows, and Esc stops it. With Ask every time, each click waits for yours."); },
+  get computerHint() { return t("Only while it answers, and only once it has shown you its plan: the screen it uses glows, and Esc pauses it. With Ask every time, each click waits for yours."); },
   get webHint() { return t("For the models that can't search on their own. Free, no account: only the useful passages reach the model."); },
   get sees() { return t("What it sees with every message"); },
   get seesHint() { return t("Only the chat's AI gets them. The × on a chip leaves one out of a single message."); },
@@ -846,7 +846,9 @@ function securitySection(): HTMLElement {
   mailImages.hidden = settings.webImages === false;
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
-    note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
+    // Codex, Antigravity CLI, Copilot CLI and Cursor CLI use it too.
+    const cli = ["claude-code", "codex", "antigravity-cli", "copilot-cli", "cursor-cli"].includes(settings.chatProvider);
+    note.hidden = !(settings.chatComputerUse && !cli);
   };
   showNote();
   return h(

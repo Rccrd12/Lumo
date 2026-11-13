@@ -4,10 +4,13 @@
 //!
 //! It speaks MCP over stdin and stdout (JSON-RPC, one message per line) and
 //! hands every tool call to Lumo over the same pipe or socket as the hooks
-//! (`{"lumo_computer": {"tool": …, "input": …}}`), then gives Claude Code
+//! (`{"lumo_computer": {"tool": …, "input": …, "chat": …}}`, with the chat
+//! it came from, `LUMO_CHAT_ID`), then gives Claude Code
 //! Lumo's answer: a screenshot, or what was done. The app decides everything:
 //! whether computer use is on, whether a chat turn is running, whether the
-//! user pressed Esc. Nothing is clicked or typed here.
+//! agent gave its plan (update_plan, which always comes with the computer),
+//! whether the user paused it with Esc or stopped it. Nothing is clicked or
+//! typed here.
 //!
 //! The tools copy the names and inputs of Claude's own computer use tool
 //! (`screenshot`, `left_click`, `type`, `key`…), which the models know well.
@@ -18,7 +21,7 @@
 //! also sending, replying, forwarding and drafts, with `mailmanage` marking,
 //! moving, archiving and trashing: what Settings → Security lets
 //! the AI do, each email sent and each change on a card of Lumo's first.
-//! Without `--tools`, the computer.
+//! Without `--tools`, the computer (and update_plan, which it needs first).
 //!
 //! `--tools=user` offers the user's own tools, the ones on in Lumo's Tools
 //! tab (tools.rs): the list is asked of Lumo (`{"lumo_tools": {}}`) each time
@@ -33,10 +36,12 @@
 //!
 //! `--tools=plan` offers `update_plan` (Codex's own tool, which the models
 //! know): the agent's plan, step by step, for the Plan island. The call is
-//! handed to Lumo (`{"lumo_plan": {"input": …, "chat": …}}`, antigravity_cli.rs),
+//! handed to Lumo (`{"lumo_plan": {"input": …, "chat": …, "computer": …}}`,
+//! antigravity_cli.rs, or computer.rs when this server lends the computer),
 //! with the chat it came from (`LUMO_CHAT_ID`), and
 //! answered as done even when Lumo can't be reached: a plan not shown never
-//! stops the agent's work.
+//! stops the agent's work. With the computer it does, as Lumo lends the
+//! computer only once it has the plan: then Lumo's refusal is the answer.
 
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc;
@@ -47,6 +52,9 @@ use serde_json::{json, Value};
 /// The longest a call may take: `wait` asks for up to a minute, and a typed
 /// text or a drag needs a little more.
 const CALL_BUDGET: Duration = Duration::from_secs(90);
+/// A computer action of another agent waits for Lumo's card first (108 s at
+/// most, pipe.rs DECISION_TIMEOUT), then runs within CALL_BUDGET.
+const COMPUTER_CALL_BUDGET: Duration = Duration::from_secs(108 + 90 + 12);
 /// A call of one of the user's tools waits for the island's card (108 s at
 /// most, pipe.rs) and then runs up to its own time limit (600 s, tools.rs).
 const TOOL_CALL_BUDGET: Duration = Duration::from_secs(108 + 600 + 12);
@@ -61,10 +69,14 @@ const MAX_ANSWER: usize = 24 * 1024 * 1024;
 const PROTOCOL: &str = "2025-06-18";
 const KNOWN_PROTOCOLS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 
-const INSTRUCTIONS: &str = "Lumo's tools to see and use the user's Windows desktop: take a screenshot first, \
+const INSTRUCTIONS: &str = "Lumo's tools to see and use the user's Windows desktop. Before any of them, give \
+the user your plan with update_plan (one step is enough): Lumo refuses them until it has one. Keep the plan \
+updated: mark each step completed as soon as it is done and the next one in_progress. Take a screenshot first, \
 then click, type and press keys at coordinates in that screenshot's pixels. Take a new screenshot after \
 acting to check what happened. Prefer other tools (commands, files) when they can do the job. The user can \
-press Esc at any time to stop you.";
+press Esc at any time to pause you: your next call then waits until they resume from Lumo's island, and may \
+bring you their message, which you answer in update_plan's explanation. While paused, wait by calling \
+screenshot, never by making an action again.";
 
 const MAIL_INSTRUCTIONS: &str = "Lumo's tools to read the user's email, read only: list the newest emails of a folder \
 (read or not), search every folder, read one email in full with the list of its files, save one of those files \
@@ -141,6 +153,12 @@ impl Kit {
         }
     }
 
+    /// It offers update_plan: asked for, or with the computer, which Lumo
+    /// lends only once the agent gave its plan (computer.rs).
+    fn plans(self) -> bool {
+        self.plan || self.computer
+    }
+
     /// The tools `tools/list` gives.
     fn tools(self) -> Vec<Value> {
         let mut all = Vec::new();
@@ -156,7 +174,7 @@ impl Kit {
                 all.extend(mail_manage_tools());
             }
         }
-        if self.plan {
+        if self.plans() {
             all.push(plan_tool());
         }
         if self.island {
@@ -179,7 +197,7 @@ impl Kit {
                 parts.push(MAIL_MANAGE_INSTRUCTIONS);
             }
         }
-        if self.plan {
+        if self.plans() {
             parts.push(PLAN_INSTRUCTIONS);
         }
         if self.user {
@@ -696,7 +714,15 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         if !input.get("plan").and_then(Value::as_array).is_some_and(|p| !p.is_empty()) {
             return failed("The plan needs at least one step.");
         }
-        let _ = lumo(&json!({ "lumo_plan": { "input": input, "chat": chat_id() } }));
+        // `computer`: this server lends the computer, so the plan is the one
+        // the computer works by (pipe.rs routes it by that, never by what else runs).
+        match lumo(&json!({ "lumo_plan": { "input": input, "chat": chat_id(), "computer": kit.computer } })) {
+            // Not taken (a plan of blank steps): the computer would stay shut, so the agent hears why.
+            Ok(a) if a.get("error").and_then(Value::as_str).is_some() => return failed(a["error"].as_str().unwrap_or_default()),
+            // Lumo not there: only the Plan island misses it, unless the computer needs it.
+            Err(m) if kit.computer => return failed(&m),
+            _ => {}
+        }
         return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
     }
     if ISLAND_NAMES.contains(&name) {
@@ -706,7 +732,8 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         // With its chat: a card it raises puts the chat in "waiting for your permission".
         return answer(lumo(&json!({ "lumo_mail": { "tool": name, "input": input, "chat": chat_id() } })));
     }
-    answer(lumo(&json!({ "lumo_computer": { "tool": name, "input": input } })))
+    // With the chat it came from: only that chat's own plan lets it use the computer.
+    answer(lumo(&json!({ "lumo_computer": { "tool": name, "input": input, "chat": chat_id() } })))
 }
 
 /// What Lumo answered to a call, as MCP gives it.
@@ -775,6 +802,8 @@ fn call_lumo(request: &Value) -> Result<Value, String> {
         TOOL_CALL_BUDGET
     } else if request["lumo_mail"]["tool"].as_str().is_some_and(|t| MAIL_SEND_NAMES.contains(&t) || MAIL_MANAGE_NAMES.contains(&t)) {
         MAIL_SEND_BUDGET
+    } else if request.get("lumo_computer").is_some() {
+        COMPUTER_CALL_BUDGET
     } else {
         CALL_BUDGET
     };
@@ -852,7 +881,11 @@ mod tests {
         for t in v["result"]["tools"].as_array().unwrap() {
             assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
         }
-        assert_eq!(names, NAMES, "one list of names");
+        assert_eq!(names[..NAMES.len()], *NAMES, "one list of names");
+        assert_eq!(names[NAMES.len()..], [PLAN_NAME], "and the plan, which the computer needs first");
+        let v = ask(r#"{"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}"#, &never);
+        let said = v["result"]["instructions"].as_str().unwrap();
+        assert!(said.contains("update_plan") && said.contains("pause you"), "{said}");
     }
 
     #[test]
@@ -901,7 +934,7 @@ mod tests {
         assert_eq!(ask(line, &never)["result"]["isError"], true);
 
         assert_eq!(lumo_tool("mcp_lumo_mail_read"), Some("mail_read"));
-        assert!(!crate::reply::island_card("mcp_lumo_mail_search", None) && crate::reply::island_card("mcp_lumo_left_click", None));
+        assert!(!crate::reply::island_card("mcp_lumo_mail_search", None) && !crate::reply::island_card("mcp_lumo_left_click", None));
     }
 
     #[test]
@@ -975,6 +1008,8 @@ mod tests {
             assert_eq!(req["lumo_plan"]["input"]["plan"][0]["step"], "Read");
             // With the chat it came from (`LUMO_CHAT_ID`), whatever chat is on screen.
             assert!(req["lumo_plan"]["chat"].is_string());
+            // Without the computer: never the plan the computer works by.
+            assert_eq!(req["lumo_plan"]["computer"], false);
             Ok(json!({ "text": "Plan shown to the user." }))
         };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &shown).unwrap()).unwrap();
@@ -986,6 +1021,23 @@ mod tests {
         let closed = |_: &Value| -> Result<Value, String> { Err("Lumo isn't running.".into()) };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &closed).unwrap()).unwrap();
         assert!(v["result"].get("isError").is_none());
+        // With the computer, the plan is the one it works by: it says so, and
+        // a plan Lumo didn't take, or Lumo not there, is what the agent hears.
+        let computer = Kit::from_args(["--mcp", "--tools=computer,plan"].iter().map(|s| s.to_string()));
+        let taken = |req: &Value| -> Result<Value, String> {
+            assert_eq!(req["lumo_plan"]["computer"], true);
+            Ok(json!({ "text": "Plan shown to the user." }))
+        };
+        let v: Value = serde_json::from_str(&handle_with(line, computer, &taken).unwrap()).unwrap();
+        assert!(v["result"].get("isError").is_none());
+        let refused = |_: &Value| -> Result<Value, String> { Ok(json!({ "error": "The plan was not taken: each step needs some text." })) };
+        let v: Value = serde_json::from_str(&handle_with(line, computer, &refused).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true);
+        assert_eq!(v["result"]["content"][0]["text"], "The plan was not taken: each step needs some text.");
+        let v: Value = serde_json::from_str(&handle_with(line, computer, &closed).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true, "no Lumo, no computer: the agent is told");
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &refused).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true, "a refusal is told without the computer too");
         let line = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"update_plan","arguments":{"plan":[]}}}"#;
         let v: Value = serde_json::from_str(&handle_with(line, kit, &never).unwrap()).unwrap();
         assert_eq!(v["result"]["isError"], true);
@@ -1005,12 +1057,14 @@ mod tests {
         // Another server's call whose arguments (an object) name Lumo's server and tool.
         let posing = json!({ "name": "github__delete_repo", "arguments": { "server": "lumo", "tool": "update_plan" } });
         assert_eq!(lumo_call("call_mcp_tool", Some(&posing)), None);
-        // Another server's tool, or a computer tool, still asks.
+        // Another server's tool still asks; a computer tool has Lumo's own card (computer.rs).
         let github = json!({ "ServerName": "github", "ToolName": "update_plan" });
         assert_eq!(lumo_call("call_mcp_tool", Some(&github)), None);
         assert!(crate::reply::island_card("call_mcp_tool", Some(&github)));
         let click = json!({ "ServerName": "lumo", "ToolName": "left_click" });
-        assert!(crate::reply::island_card("call_mcp_tool", Some(&click)));
+        assert!(!crate::reply::island_card("call_mcp_tool", Some(&click)));
+        let posing_click = json!({ "ServerName": "github", "ToolName": "left_click" });
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&posing_click)), "only Lumo's own server");
         assert_eq!(lumo_call("view_file", Some(&call)), None, "only an MCP call");
         // Another server's tool whose arguments or summary name one of Lumo's: still a card.
         let disguised = json!({ "ServerName": "github", "ToolName": "delete_repo", "Arguments": "mcp_lumo_update_plan", "toolSummary": "lumo update_plan" });
@@ -1110,6 +1164,8 @@ mod tests {
         let lumo = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_computer"]["tool"], "screenshot");
             assert_eq!(req["lumo_computer"]["input"], json!({}));
+            // With the chat it came from: only its own plan lets it in.
+            assert!(req["lumo_computer"]["chat"].is_string());
             Ok(json!({ "image": "iVBOR", "text": "Screen 1 of 1, 1280×720." }))
         };
         let v = ask(r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"screenshot"}}"#, &lumo);
