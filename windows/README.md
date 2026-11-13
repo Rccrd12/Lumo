@@ -1071,18 +1071,17 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
 `cursor_position`, and Lumo's `update_plan` for its plan. It runs on your
 plan, with no API key.
 
-- **Codex, Antigravity CLI, Copilot CLI and Cursor CLI** get the same tools
-  when they are the chat's provider (in their own MCP configuration for the
-  chat's runs, as for the email's tools). They call Lumo's tools without
-  asking, so Lumo asks itself: with *Ask every time* each click, key or text
-  is the same Allow / Deny card, under the agent's name; in *Plan* mode they
-  may only look; in *Auto* (or the CLI's own auto mode) they act without a
-  card. Same glow, mouse, Esc and rules as Claude Code's. A note in front of
-  every question tells them how the tools work. Gemini models (Antigravity
-  CLI's, or a Gemini model in another CLI) give and read points on a
-  0–999 grid over the screenshot, the way Gemini counts them: Lumo turns them
-  into the screenshot's pixels and back, so a click lands where the model
-  meant.
+- **Antigravity CLI** gets the same tools when it is the chat's provider
+  (in its own MCP configuration for the chat's runs, as for the email's
+  tools). It calls Lumo's tools without asking, so Lumo asks itself: with
+  *Ask every time* each click, key or text is the same Allow / Deny card,
+  under Antigravity's name; in *Plan* mode it may only look; in *Auto* (or
+  Antigravity's own auto mode) it acts without a card. Same glow, mouse, Esc
+  and rules as Claude Code's. A note in front of every question tells it how
+  the tools work. Its Gemini models give and read points on a 0–999 grid
+  over the screenshot, the way Gemini counts them: Lumo turns them into the
+  screenshot's pixels and back, so a click lands where the model meant.
+  Codex, Copilot CLI and Cursor CLI don't get the computer.
 
 - **Gemini Live** hands what is to be done on the screen ("click Send", "open
   the display settings and turn on night light") to Claude Code with its own
