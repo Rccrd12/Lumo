@@ -1905,8 +1905,6 @@ export function buildPrompt(
     planAskFor = id;
     planAskAt = performance.now();
     planAsk.hidden = !req;
-    // A plan too long to reach the island whole is never approved from here (pipe.rs refuses it).
-    planApprove.style.display = req?.cut === true ? "none" : "";
     clear(planAskList);
     if (req?.plan) {
       planAskTitle.textContent = tn("{agent} has a plan · {count} step", "{agent} has a plan · {count} steps", req.plan.length,
