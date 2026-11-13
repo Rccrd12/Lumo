@@ -48,7 +48,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, Chats, ModelInfo, Stop};
-use crate::chat_agents::{self, AgentRow, AgentState, Agents, StopAgent, Tell};
+use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, StopAgent, Tell};
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
@@ -511,7 +511,7 @@ fn command_of(query: &str) -> Option<&str> {
 
 /// What the answer is doing while no text shows: the line next to the island's
 /// typing dots (`chat-activity`, worded by views/chat.ts). `kind` is one of
-/// thinking, read, search, command, edit, web, subtask, plan, screen, tool;
+/// thinking, read, search, command, edit, web, subtask, talk, plan, screen, tool;
 /// `detail` is a file name, a host, a search pattern or a tool's name, cut
 /// short — never a full path.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -661,6 +661,12 @@ fn activity_for(name: &str, input: &Value) -> Activity {
             h => Activity::new("read", h),
         },
         "Task" | "Agent" => Activity::new("subtask", ""),
+        // A message to one of its agents: who to (Run names the agent by its title).
+        "SendMessage" => match field(&["to"]) {
+            // An agent's answer to the conversation that started it.
+            to if to == "main" => Activity::new("talk", ""),
+            to => Activity::new("talk", short(&to)),
+        },
         "TodoWrite" | "TodoRead" | "EnterPlanMode" | "ExitPlanMode" => Activity::new("plan", ""),
         // Lumo's computer use (computer.rs): looking, or using the computer.
         "mcp__lumo__screenshot" | "mcp__lumo__zoom" => Activity::new("screen", ""),
@@ -709,6 +715,17 @@ struct Subagents {
     /// stops. Claude Code says a stopped agent ended only by answering the
     /// request: it sends no `task_notification` for it.
     stopping: HashMap<String, String>,
+    /// Claude Code offers SendMessage (its `init` line lists it): the chat may
+    /// pass its agents a message.
+    can_message: bool,
+    /// The Agent call that started each agent, kept after it ended: a message
+    /// resumes it, and its new lines name that call again.
+    origin: HashMap<String, String>,
+    /// The name an Agent call gave its agent → the call; then → the task, once it started.
+    names: HashMap<String, String>,
+    named: HashMap<String, String>,
+    /// SendMessage calls not answered yet → the agent each went to.
+    talks: HashMap<String, String>,
 }
 
 /// A field's text, when there is some.
@@ -762,6 +779,7 @@ impl Subagents {
         match v["type"].as_str() {
             Some("system") => self.system(v),
             Some("assistant") if !top_level(v) => self.tools_of(v),
+            Some("assistant") => self.main_tools(v),
             Some("user") if !top_level(v) => self.results_of(v),
             Some("user") => self.agent_results(v),
             Some("stream_event") if !top_level(v) => self.writing(v),
@@ -797,6 +815,17 @@ impl Subagents {
     fn agent_results(&mut self, v: &Value) {
         let launched = v["tool_use_result"]["status"] == "async_launched" || v["tool_use_result"]["isAsync"] == true;
         for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result") {
+            if let Some(call) = block["tool_use_id"].as_str() {
+                if let Some(id) = self.talks.remove(call) {
+                    if block["is_error"] == true {
+                        let why = result_text(&block["content"]).map(chat_agents::summary_of).unwrap_or_default();
+                        if let Some(talk) = self.agents.touch(&id).and_then(|r| r.talk.as_mut()).filter(|t| t.call == call && t.pending()) {
+                            talk.failed = Some(why);
+                        }
+                    }
+                    continue;
+                }
+            }
             let Some(id) = block["tool_use_id"].as_str().and_then(|call| self.by_call.get(call)).cloned() else { continue };
             if self.agents.get(&id).is_none_or(|r| r.background || r.state.is_final()) {
                 continue;
@@ -818,6 +847,66 @@ impl Subagents {
                 row.end(AgentState::Done, None);
             }
             self.forget(&id);
+        }
+    }
+
+    /// Whether Claude Code offers SendMessage, as its `init` line says (each
+    /// turn): the agents learn whether the chat can ask them.
+    fn offers(&mut self, can_message: bool) {
+        self.can_message = can_message;
+        let ids: Vec<String> = self.agents.ids().filter(|id| self.agents.get(id).is_some_and(|r| r.can_ask != can_message)).collect();
+        for id in ids {
+            if let Some(row) = self.agents.touch(&id) {
+                row.can_ask = can_message;
+            }
+        }
+    }
+
+    /// The agent a SendMessage `to` names: its task id (Claude Code's agentId),
+    /// or the name its Agent call gave it. Another session, a teammate or
+    /// "main" is none of the chat's agents.
+    fn resolve(&self, to: &str) -> Option<String> {
+        let to = to.trim();
+        // A pinned name may come with its reference ("counter [26c776]").
+        let to = match to.rfind(" [") {
+            Some(at) if to.ends_with(']') => to[..at].trim(),
+            _ => to,
+        };
+        if self.agents.get(to).is_some() {
+            return Some(to.to_string());
+        }
+        self.named.get(to).cloned()
+    }
+
+    /// The title of the agent a SendMessage `to` names, for the typing line.
+    fn title_for(&self, to: &str) -> Option<String> {
+        self.resolve(to).and_then(|id| self.agents.get(&id).map(|r| r.title.clone()))
+    }
+
+    /// The main conversation's whole message: the names its Agent calls give,
+    /// and the messages it sends its agents (the island's "Talking to …").
+    fn main_tools(&mut self, v: &Value) {
+        for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_use") {
+            let call = block["id"].as_str().unwrap_or("");
+            let input = &block["input"];
+            match block["name"].as_str() {
+                Some("Agent" | "Task") => {
+                    if let Some(name) = text_of(input, "name").filter(|_| !call.is_empty()) {
+                        self.names.insert(call.to_string(), name.to_string());
+                    }
+                }
+                Some("SendMessage") if !call.is_empty() => {
+                    let Some(id) = text_of(input, "to").and_then(|to| self.resolve(to)) else { continue };
+                    let message = text_of(input, "message").or_else(|| text_of(input, "content")).unwrap_or("");
+                    let Some(row) = self.agents.touch(&id) else { continue };
+                    if row.talk.as_ref().is_some_and(|t| t.call == call) {
+                        continue;
+                    }
+                    row.talk = Some(AgentTalk::new(call, message));
+                    self.talks.insert(call.to_string(), id);
+                }
+                _ => {}
+            }
         }
     }
 
@@ -847,6 +936,9 @@ impl Subagents {
         if subtype == "permission_check_status" {
             return self.checking(v);
         }
+        if subtype == "init" {
+            return self.offers(v["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "SendMessage")));
+        }
         let Some(id) = text_of(v, "task_id").map(str::to_string) else { return };
         match subtype {
             "task_started" => {
@@ -854,10 +946,26 @@ impl Subagents {
                     return;
                 }
                 let title = agent_title(v);
+                let can_ask = self.can_message;
                 let row = self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title));
+                // Started again: a message (SendMessage) took it up after it ended.
+                let resumed = row.state.is_final();
+                row.reopen();
                 row.can_stop = true;
+                row.can_ask = can_ask;
                 if let Some(background) = v["is_backgrounded"].as_bool() {
                     row.background = background;
+                }
+                if resumed {
+                    // Its lines name the Agent call that first started it.
+                    if let Some(call) = self.origin.get(&id).cloned() {
+                        self.by_call.insert(call, id.clone());
+                    }
+                } else if let Some(call) = text_of(v, "tool_use_id") {
+                    self.origin.insert(id.clone(), call.to_string());
+                    if let Some(name) = self.names.remove(call) {
+                        self.named.insert(name, id.clone());
+                    }
                 }
                 if let Some(call) = text_of(v, "tool_use_id") {
                     self.by_call.insert(call.to_string(), id);
@@ -912,7 +1020,11 @@ impl Subagents {
                 }
             }
             "task_notification" => {
-                let Some(row) = self.open_row(&id) else { return };
+                // Its last word comes after `task_updated` ended it: kept all the same.
+                let Some(row) = self.agents.touch(&id) else { return };
+                if let Some(talk) = row.talk.as_mut() {
+                    talk.answer(text_of(v, "summary").unwrap_or(""));
+                }
                 let summary = text_of(v, "summary").map(chat_agents::summary_of);
                 if let Some(summary) = &summary {
                     row.summary = Some(summary.clone());
@@ -954,6 +1066,13 @@ impl Subagents {
         let Some(id) = self.agent_of(v) else { return };
         let mut tools: Vec<(String, Activity)> = Vec::new();
         for block in v["message"]["content"].as_array().into_iter().flatten() {
+            // Its answer to a message the chat sent it.
+            if block["type"] == "tool_use" && block["name"] == "SendMessage" && text_of(&block["input"], "to") == Some("main") {
+                let message = text_of(&block["input"], "message").or_else(|| text_of(&block["input"], "content")).unwrap_or("");
+                if let Some(talk) = self.agents.touch(&id).and_then(|r| r.talk.as_mut()) {
+                    talk.answer(message);
+                }
+            }
             if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                 tools.push((block["id"].as_str().unwrap_or("").to_string(), activity_for(block["name"].as_str().unwrap_or(""), &block["input"])));
             }
@@ -1049,6 +1168,19 @@ impl AgentLink {
         if subagents.agents.open() > 0 {
             let error = if state == AgentState::Failed { cli_ended() } else { String::new() };
             subagents.agents.end_open(state, &error);
+        }
+        // Nothing passes them a message any more: Ask goes, and a message
+        // still waiting for its answer gets none.
+        subagents.can_message = false;
+        let pending = |r: &AgentRow| r.can_ask || r.talk.as_ref().is_some_and(AgentTalk::pending);
+        let ids: Vec<String> = subagents.agents.ids().filter(|id| subagents.agents.get(id).is_some_and(pending)).collect();
+        for id in ids {
+            if let Some(row) = subagents.agents.touch(&id) {
+                row.can_ask = false;
+                if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
+                    talk.failed = Some(cli_ended());
+                }
+            }
         }
         (self.tell)(&mut subagents.agents, false);
     }
@@ -1218,6 +1350,19 @@ fn created_task_id(line: &Value, result: &Value) -> Option<String> {
 }
 
 impl Run {
+    /// What a tool call of the main conversation is doing: a message to one
+    /// of its agents names that agent by its title, as its row does.
+    fn tool_activity(&self, name: &str, input: &Value) -> Activity {
+        let mut activity = activity_for(name, input);
+        if activity.kind == "talk" {
+            let title = self.subagents.as_ref().and_then(|s| s.lock().unwrap_or_else(|e| e.into_inner()).title_for(&activity.detail));
+            if let Some(title) = title {
+                activity.detail = title;
+            }
+        }
+        activity
+    }
+
     /// A run whose lines also tell the chat's agents (`link`).
     fn linked(link: &AgentLink) -> Self {
         Run { subagents: Some(link.subagents.clone()), ..Run::default() }
@@ -1320,7 +1465,8 @@ impl Run {
                         if let Some(pos) = self.blocks.iter().position(|b| b.0 == index) {
                             let (_, id, name, input) = self.blocks.remove(pos);
                             let input = serde_json::from_str::<Value>(&input).unwrap_or(Value::Null);
-                            self.started_tool(id, activity_for(&name, &input));
+                            let activity = self.tool_activity(&name, &input);
+                            self.started_tool(id, activity);
                         }
                         false
                     }
@@ -1354,7 +1500,8 @@ impl Run {
                     if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                         let name = block["name"].as_str().unwrap_or("");
                         let id = block["id"].as_str().unwrap_or("").to_string();
-                        self.started_tool(id.clone(), activity_for(name, &block["input"]));
+                        let activity = self.tool_activity(name, &block["input"]);
+                        self.started_tool(id.clone(), activity);
                         if name == "TaskCreate" {
                             self.creating.push((id.clone(), block["input"].clone()));
                         } else if is_plan_tool(name) {
@@ -3315,5 +3462,113 @@ mod tests {
         feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_A","content":"moved"}]},"tool_use_result":{"status":"async_launched"}}"#]);
         let a = sub.agents.get("a1b2").unwrap();
         assert_eq!((a.state, a.background), (AgentState::Working, true));
+    }
+
+    // As Claude Code writes them (2.1): an agent named in its Agent call,
+    // ended, then sent a message, which takes it up again in the background.
+    const NAMED_CALL: &str = r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_A","name":"Agent","input":{"description":"Run sleep counter","prompt":"...","name":"counter","run_in_background":true}}]}}"#;
+    const NAMED_STARTED: &str = r#"{"type":"system","subtype":"task_started","task_id":"a593","tool_use_id":"toolu_A","description":"Run sleep counter","subagent_type":"general-purpose","is_backgrounded":true,"task_type":"local_agent"}"#;
+    const NAMED_ENDED: &str = r#"{"type":"system","subtype":"task_updated","task_id":"a593","patch":{"status":"completed","end_time":1}}"#;
+    const NAMED_NOTIFIED: &str = r#"{"type":"system","subtype":"task_notification","task_id":"a593","tool_use_id":"toolu_A","status":"completed","summary":"Blocked on the first sleep.","usage":{"total_tokens":25407,"tool_uses":1}}"#;
+    const SEND: &str = r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_S","name":"SendMessage","input":{"to":"counter","message":"What step are you on? Reply to main.","summary":"Ask counter"}}]}}"#;
+    const RESUMED: &str = r#"{"type":"system","subtype":"task_started","task_id":"a593","tool_use_id":"toolu_S","description":"Run sleep counter","subagent_type":"general-purpose","is_backgrounded":true,"task_type":"local_agent","prompt":"What step are you on? Reply to main."}"#;
+    const SENT: &str = r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_S","content":[{"type":"text","text":"{\"success\":true,\"message\":\"Resuming agent counter\"}"}]}]},"tool_use_result":{"success":true,"resumedAgentId":"a593"}}"#;
+    const ANSWER: &str = r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"toolu_M","name":"SendMessage","input":{"to":"main","message":"I'm stuck on step 1 of 3.\nThe sleep was blocked."}}]}}"#;
+
+    #[test]
+    fn claude_code_offers_its_agents_a_message_only_when_its_init_lists_send_message() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[AGENT_STARTED]);
+        assert!(!sub.agents.changed()[0].can_ask);
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"init","tools":["Agent","SendMessage"]}"#]);
+        assert!(sub.agents.changed()[0].can_ask, "the agents already known learn it");
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_started","task_id":"c3","tool_use_id":"toolu_C","description":"Two","subagent_type":"x"}"#]);
+        assert!(sub.agents.changed()[0].can_ask);
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"init","tools":["Agent"]}"#]);
+        assert!(sub.agents.changed().iter().all(|r| !r.can_ask));
+    }
+
+    #[test]
+    fn a_message_to_an_agent_is_its_talk_and_takes_it_up_again_once_ended() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"init","tools":["SendMessage"]}"#, NAMED_CALL, NAMED_STARTED, NAMED_ENDED, NAMED_NOTIFIED]);
+        let row = sub.agents.get("a593").unwrap().clone();
+        assert_eq!((row.state, row.round), (AgentState::Done, 0));
+        // Its last word, which comes after it ended, is kept.
+        assert_eq!(row.summary.as_deref(), Some("Blocked on the first sleep."));
+        assert_eq!(row.tokens, Some(25407));
+        sub.agents.changed();
+
+        // The chat's Claude Code messages it by the name its call gave.
+        feed_agents(&mut sub, &[SEND]);
+        let talk = sub.agents.get("a593").unwrap().talk.clone().unwrap();
+        assert_eq!((talk.call.as_str(), talk.message.as_str()), ("toolu_S", "What step are you on? Reply to main."));
+        assert!(talk.pending());
+        assert_eq!(sub.agents.changed().len(), 1, "the island hears of it, though it had ended");
+
+        // It starts again: a new round, at work, its lines counted again.
+        feed_agents(&mut sub, &[RESUMED, SENT]);
+        let row = sub.agents.get("a593").unwrap().clone();
+        assert_eq!((row.state, row.round, row.ended_at), (AgentState::Working, 1, None));
+        assert!(row.background && row.can_ask);
+        feed_agents(&mut sub, &[ANSWER]);
+        let row = sub.agents.get("a593").unwrap().clone();
+        assert_eq!(row.steps, 1, "its own line counted");
+        let talk = row.talk.unwrap();
+        assert_eq!(talk.reply.as_deref(), Some("I'm stuck on step 1 of 3.\nThe sleep was blocked."));
+
+        // Its end's summary does not replace the answer it gave.
+        feed_agents(&mut sub, &[
+            r#"{"type":"system","subtype":"task_updated","task_id":"a593","patch":{"status":"completed"}}"#,
+            r#"{"type":"system","subtype":"task_notification","task_id":"a593","status":"completed","summary":"Told main."}"#,
+        ]);
+        let row = sub.agents.get("a593").unwrap().clone();
+        assert_eq!((row.state, row.round), (AgentState::Done, 1));
+        assert_eq!(row.talk.unwrap().reply.as_deref(), Some("I'm stuck on step 1 of 3.\nThe sleep was blocked."));
+        assert_eq!(row.summary.as_deref(), Some("Told main."));
+    }
+
+    #[test]
+    fn an_agent_that_answers_no_message_answers_with_its_end_and_a_message_that_failed_says_so() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[NAMED_CALL, NAMED_STARTED, NAMED_ENDED]);
+        // By its task id, as Claude Code's own result tells it to.
+        feed_agents(&mut sub, &[&SEND.replace(r#""to":"counter""#, r#""to":"a593""#), RESUMED, SENT]);
+        feed_agents(&mut sub, &[NAMED_ENDED, r#"{"type":"system","subtype":"task_notification","task_id":"a593","status":"completed","summary":"Blocked."}"#]);
+        assert_eq!(sub.agents.get("a593").unwrap().talk.as_ref().unwrap().reply.as_deref(), Some("Blocked."));
+
+        // Another message, refused: it fails, and the agent stays ended.
+        let again = SEND.replace("toolu_S", "toolu_T");
+        feed_agents(&mut sub, &[&again, r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_T","is_error":true,"content":"No agent named counter"}]}}"#]);
+        let row = sub.agents.get("a593").unwrap();
+        assert_eq!((row.state, row.round), (AgentState::Done, 1));
+        let talk = row.talk.as_ref().unwrap();
+        assert_eq!((talk.call.as_str(), talk.failed.as_deref()), ("toolu_T", Some("No agent named counter")));
+
+        // To main, a teammate or an unknown name: none of the chat's agents.
+        sub.agents.changed();
+        for to in ["main", "someone", ""] {
+            feed_agents(&mut sub, &[&SEND.replace(r#""to":"counter""#, &format!(r#""to":"{to}""#)).replace("toolu_S", "toolu_U")]);
+        }
+        assert!(sub.agents.changed().is_empty());
+        assert_eq!(sub.resolve("counter [26c776]").as_deref(), Some("a593"), "a pinned name with its reference");
+        assert_eq!(sub.title_for("a593").as_deref(), Some("Run sleep counter"));
+        assert_eq!(activity_for("SendMessage", &json!({ "to": "counter" })), Activity::new("talk", "counter"));
+    }
+
+    #[test]
+    fn once_claude_code_ended_no_agent_can_be_asked_and_a_message_waiting_gets_no_answer() {
+        let (link, seen) = recording();
+        {
+            let mut sub = link.lock();
+            feed_agents(&mut sub, &[r#"{"type":"system","subtype":"init","tools":["SendMessage"]}"#, NAMED_CALL, NAMED_STARTED, NAMED_ENDED, SEND]);
+        }
+        link.tell(false);
+        seen.lock().unwrap().0.clear();
+        link.ended();
+        let rows = seen.lock().unwrap().0.clone();
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].can_ask);
+        assert_eq!(rows[0].talk.as_ref().unwrap().failed, Some(cli_ended()));
     }
 }

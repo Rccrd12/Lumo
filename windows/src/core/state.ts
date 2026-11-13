@@ -2,7 +2,7 @@
 
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
-import { newChatId } from "./chats";
+import { newChatId, type AskQuote } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../character/engine";
 import {
@@ -159,8 +159,10 @@ export interface ChatMessage {
   failed?: boolean;
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
-  /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing). */
+  /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing, a question asked of an agent). */
   kept?: string;
+  /** A question's: the agent it was asked of (Ask), shown as a quote over it. */
+  ask?: AskQuote;
   /** The files a local model changed or made in its folder of copies while
    * answering (workspace.rs), listed under the answer to open or put back. */
   copies?: { chat: string; path: string; made?: boolean }[];

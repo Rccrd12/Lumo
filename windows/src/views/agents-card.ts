@@ -8,9 +8,11 @@
 // now and when it was last heard of; a click opens it on the CLI's summary,
 // its last steps and its numbers, with Stop this agent. An agent with no sign
 // for minutes asks Wait or Stop; one waiting for a permission offers See
-// request. Under the card, what the CLI wrote by itself meanwhile folds into
-// one line, and while any agent works a line of dots says how many and when
-// the last sign came. Once all are over the card folds into one line that
+// request. An agent the chat's CLI can pass a message to offers Ask (in its
+// opened row, and next to Wait); while a message waits for its answer, its
+// row says it is in conversation, and the message and the answer show in a
+// "Talking to …" box (talkBox). While any agent works a line of dots says
+// how many and when the last sign came. Once all are over the card folds into one line that
 // stays in the chat, and opens again with a click; if the CLI ended under
 // them, a red line says so and offers Resume, which sends a message only on
 // that click.
@@ -25,9 +27,10 @@ import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import type { ChatActivity } from "../core/bridge";
 import {
-  AGENT_TEXT, agentStall, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, worstStall,
-  type AgentBatch, type AgentEntry, type AgentLook, type ChatAgents,
+  AGENT_TEXT, agentStall, askable, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
+  type AgentBatch, type AgentEntry, type AgentLook, type ChatAgents, type TalkEntry,
 } from "../core/chat-agents";
+import type { AskQuote } from "../core/chats";
 import { providerDef } from "../core/providers";
 import { N_, t, tn } from "../i18n/i18n";
 
@@ -64,6 +67,12 @@ export const AGENTS_CARD_TEXT = {
   close: N_("Close"),
   show: N_("Show the agents"),
   hide: N_("Hide the agents"),
+  ask: N_("agents|Ask"),
+  inConversation: N_("in conversation"),
+  talking: N_("Talking to {name}"),
+  waitingReply: N_("waiting for the reply… {time}"),
+  notReached: N_("The message did not reach {name}"),
+  noReply: N_("No reply came"),
 };
 
 /** A key with its context ("agents|Wait"): its translation, else its English after the "|". */
@@ -84,6 +93,8 @@ export interface AgentsCardHost {
   requestOnTop: string | null;
   /** Brings up the permission card the agent asks on. */
   seeRequest(agentId: string): void;
+  /** Ask: puts the agent over the field as a quote; nothing is sent. None where the chat cannot ask (an edit under way). */
+  ask?(quote: AskQuote): void;
   /** The card changed: its height, or its state worth saving. */
   changed(): void;
 }
@@ -237,6 +248,7 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
     stop: (id) => current().host.stop(id),
     send: (text) => current().host.send(text),
     seeRequest: (id) => current().host.seeRequest(id),
+    ask: given.ask ? (quote) => current().host.ask?.(quote) : undefined,
     changed: () => current().host.changed(),
   };
   const key = agentsCardKey(input.chatId, input.batch);
@@ -327,7 +339,9 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     : h("span", { class: `agents-mark ${look}` }, h("i"));
   const line = rowLine(e, look, host, now);
   const side = h("span", { class: "agents-side" });
+  const ask = canAsk(e, host) ? () => host.ask!({ agentId: r.id, title: r.title, line, look }) : null;
   if (look === "stalled") {
+    if (ask) side.append(cardButton("ask", tc(AGENTS_CARD_TEXT.ask), ask));
     side.append(cardButton("wait", tc(AGENTS_CARD_TEXT.wait), () => {
       // From the click: the button may have been drawn a while before.
       snooze(e);
@@ -347,9 +361,13 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     side.append(h("span", { class: "agents-time", text: `${durationText(now - r.startedAt)} · ${t(AGENTS_CARD_TEXT.ago, { time: durationText(now - r.lastSignalAt) })}` }));
   }
   const open = ui.open.has(r.id);
+  const talking = r.talk && talkWaits(r.talk)
+    ? h("span", { class: "agents-badge talk", text: t(AGENTS_CARD_TEXT.inConversation) })
+    : null;
   const head = h("div", { class: "agents-row-head" },
     marker,
     h("span", { class: "agents-name", text: r.title, title: r.title }),
+    ...(talking ? [talking] : []),
     h("span", { class: "agents-line", text: line, title: line }),
     side);
   const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}` }, head);
@@ -358,12 +376,17 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     else ui.open.add(r.id);
     redraw();
   });
-  if (open) el.append(rowDetail(e, host, ui, now, redraw));
+  if (open) el.append(rowDetail(e, host, ui, now, redraw, ask));
   return el;
 }
 
+/** Whether Ask shows on an agent: its CLI can pass it a message, and the chat can ask now. */
+function canAsk(e: AgentEntry, host: AgentsCardHost): boolean {
+  return !!host.ask && askable(e) && !cliEnded(e);
+}
+
 /** An opened row: the CLI's summary, the last steps, the numbers, and Stop this agent. */
-function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void): HTMLElement {
+function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, ask: (() => void) | null): HTMLElement {
   const r = e.row;
   const box = h("div", { class: "agents-detail" });
   if (r.summary) box.append(h("div", { class: "agents-summary", text: r.summary }));
@@ -381,6 +404,7 @@ function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number,
   ].filter((x): x is string => !!x);
   box.append(h("div", { class: "agents-numbers", text: numbers.join(" · ") }));
   const actions = h("div", { class: "agents-actions" });
+  if (ask) actions.append(cardButton("ask", tc(AGENTS_CARD_TEXT.ask), ask));
   if (r.canStop && !isFinal(r.state)) actions.append(cardButton("stop", t(AGENTS_CARD_TEXT.stopThis), () => host.stop(r.id)));
   actions.append(cardButton("close", t(AGENTS_CARD_TEXT.close), () => {
     ui.open.delete(r.id);
@@ -437,6 +461,53 @@ function endedBanner(ended: { name: string; entries: AgentEntry[] }, current: ()
     redraw();
   });
   return el;
+}
+
+/**
+ * A message the chat's CLI sent one of its agents (`x`), and its answer:
+ * "Talking to …", what `who` (the CLI) said, then the agent's answer, or
+ * the dots and how long it has been waiting. Drawn again each second while
+ * it waits: `fillTalkBox`, which only writes the words when nothing else changed.
+ */
+export function talkBox(x: TalkEntry, who: string, now = Date.now()): HTMLElement {
+  // In `.agents`, for its colours and its place in the log.
+  const el = h("div", { class: "agents agents-talk" });
+  fillTalkBox(el, x, who, now);
+  return el;
+}
+
+export function fillTalkBox(el: HTMLElement, x: TalkEntry, who: string, now = Date.now()) {
+  const fresh = h("div");
+  drawTalk(fresh, x, who, now);
+  if (sameShape(el, fresh)) {
+    copyWords(el, fresh);
+    return;
+  }
+  clear(el);
+  el.append(...Array.from(fresh.childNodes));
+}
+
+function drawTalk(into: HTMLElement, x: TalkEntry, who: string, now: number) {
+  const waits = talkWaits(x);
+  const took = (x.repliedAt ?? (waits ? now : x.sentAt)) - x.sentAt;
+  into.append(h("div", { class: "agents-talk-head" },
+    h("span", { class: "agents-talk-icon" }, svg(ICONS.bubble, 12, { stroke: 1.6 })),
+    h("span", { class: "agents-talk-title", text: t(AGENTS_CARD_TEXT.talking, { name: x.title }), title: x.title }),
+    h("span", { class: "agents-gap" }),
+    h("span", { class: "agents-time", text: durationText(took) })));
+  into.append(h("div", { class: "agents-talk-msg" },
+    h("span", { class: "agents-talk-who", text: who }),
+    h("span", { class: "agents-talk-text", text: x.message })));
+  let answer: HTMLElement;
+  if (x.reply) answer = h("span", { class: "agents-talk-text", text: x.reply });
+  else if (x.failed != null) answer = h("span", { class: "agents-talk-text failed", text: t(AGENTS_CARD_TEXT.notReached, { name: x.title }), title: x.failed });
+  else if (x.stale) answer = h("span", { class: "agents-talk-text dim", text: t(AGENTS_CARD_TEXT.noReply) });
+  else {
+    answer = h("span", { class: "agents-talk-text dim" },
+      h("span", { class: "typing" }, h("i"), h("i"), h("i")),
+      h("span", { text: t(AGENTS_CARD_TEXT.waitingReply, { time: durationText(now - x.sentAt) }) }));
+  }
+  into.append(h("div", { class: "agents-talk-msg agent" }, h("span", { class: "agents-talk-who", text: x.title, title: x.title }), answer));
 }
 
 /**

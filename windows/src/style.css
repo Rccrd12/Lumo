@@ -9531,6 +9531,210 @@ button.bg-row:hover {
   gap: 6px;
 }
 
+/* Ask: the agent's own button colour, and its row's badge while a message waits for its answer. */
+.agents-btn.ask {
+  color: var(--ag-working);
+}
+
+.agents-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font: 500 9.5px var(--font);
+  white-space: nowrap;
+}
+
+.agents-badge.talk {
+  background: color-mix(in srgb, var(--ag-working) 16%, transparent);
+  color: var(--ag-working);
+}
+
+/* "Talking to …": a message of the chat's CLI to one of its agents, and the answer (views/agents-card.ts). */
+.agents-talk {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 10px 8px;
+  border-radius: 10px;
+  border-left: 2px solid var(--ag-working);
+  background: color-mix(in srgb, var(--ag-working) 7%, transparent);
+  min-width: 0;
+}
+
+.agents-talk-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agents-talk-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--ag-working);
+}
+
+.agents-talk-title {
+  min-width: 0;
+  font: 600 11.5px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-talk-msg {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agents-talk-who {
+  flex: none;
+  max-width: 34%;
+  font: 500 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-talk-msg.agent .agents-talk-who {
+  color: var(--ag-working);
+}
+
+.agents-talk-text {
+  flex: 1 1 0;
+  min-width: 0;
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.agents-talk-text.dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim-3);
+}
+
+.agents-talk-text.dim .typing {
+  padding: 0;
+}
+
+.agents-talk-text.failed {
+  color: var(--red-text);
+}
+
+/* Ask on an agent's row: the agent over the field until the question goes (views/chat.ts),
+   in its row's colour (the agents' colours above: the field is not inside their card). */
+.chat-ask {
+  --ask: #3b9eff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  animation: queue-in 0.18s ease-out;
+}
+
+.chat-ask[hidden],
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .chat-ask {
+  display: none;
+}
+
+.chat-ask[data-look="stalled"],
+.bubble-quote[data-look="stalled"] { --ask: #f5a524; }
+.chat-ask[data-look="waiting"],
+.bubble-quote[data-look="waiting"] { --ask: #a78bfa; }
+.chat-ask[data-look="done"],
+.bubble-quote[data-look="done"] { --ask: #22c55e; }
+.chat-ask[data-look="failed"],
+.bubble-quote[data-look="failed"] { --ask: #f4505e; }
+
+.ask-bar {
+  flex: none;
+  align-self: stretch;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--ask);
+}
+
+.ask-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ask-who {
+  font: 600 11px var(--font);
+  color: var(--ask);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ask-line {
+  font: 400 11px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ask-close {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.ask-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* A question asked of an agent: that agent on top, inside the bubble. */
+.bubble-quote {
+  --ask: #3b9eff;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px -4px 5px;
+  padding: 4px 8px;
+  border-left: 3px solid var(--ask);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.bubble-quote b {
+  font: 600 11px var(--font);
+  color: var(--ask);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bubble-quote span {
+  font: 400 11px var(--font);
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Under the card while agents work: the dots, in the worst case's colour, and the last sign. */
 .agents-live {
   display: flex;

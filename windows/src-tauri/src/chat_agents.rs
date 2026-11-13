@@ -106,6 +106,66 @@ pub struct AgentRow {
     pub background: bool,
     /// The island may stop this one agent alone (`chat_stop_agent`).
     pub can_stop: bool,
+    /// Its CLI can pass it a message from the chat (Claude Code's SendMessage):
+    /// the island offers Ask on it.
+    pub can_ask: bool,
+    /// How many times it was taken up again after it ended (a message sent
+    /// to it resumes it): a row of a later round replaces the ended one.
+    pub round: u32,
+    /// The last message its CLI sent it, and its answer once it came.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub talk: Option<AgentTalk>,
+}
+
+/// A message the chat's CLI sent one of its agents (Claude Code's SendMessage),
+/// and the agent's answer: the island's "Talking to …" box.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTalk {
+    /// The tool call that sent it: one box per call.
+    pub call: String,
+    pub message: String,
+    /// Epoch ms.
+    pub sent_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replied_at: Option<u64>,
+    /// Why it did not reach the agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed: Option<String>,
+}
+
+impl AgentTalk {
+    pub fn new(call: &str, message: &str) -> Self {
+        AgentTalk { call: call.to_string(), message: talk_text(message), sent_at: now_ms(), reply: None, replied_at: None, failed: None }
+    }
+
+    /// Neither answered nor failed yet.
+    pub fn pending(&self) -> bool {
+        self.reply.is_none() && self.failed.is_none()
+    }
+
+    /// The agent's answer: the first one only.
+    pub fn answer(&mut self, text: &str) {
+        if self.pending() && !text.trim().is_empty() {
+            self.reply = Some(talk_text(text));
+            self.replied_at = Some(now_ms());
+        }
+    }
+}
+
+/// The longest a message or an answer goes to the "Talking to …" box.
+const MAX_TALK: usize = 1500;
+
+/// `text` for the "Talking to …" box: its lines kept, cut short.
+pub fn talk_text(text: &str) -> String {
+    let text = text.trim();
+    if text.chars().count() <= MAX_TALK {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(MAX_TALK - 1).collect();
+    format!("{}…", cut.trim_end())
 }
 
 impl AgentRow {
@@ -128,7 +188,24 @@ impl AgentRow {
             error: None,
             background: false,
             can_stop: false,
+            can_ask: false,
+            round: 0,
+            talk: None,
         }
+    }
+
+    /// A message sent to it after it ended took it up again: at work, in a new round.
+    pub fn reopen(&mut self) {
+        if !self.state.is_final() {
+            return;
+        }
+        self.round += 1;
+        self.state = AgentState::Working;
+        self.waiting_for = None;
+        self.now = None;
+        self.ended_at = None;
+        self.error = None;
+        self.heard();
     }
 
     /// Lumo heard of it just now.
@@ -223,6 +300,11 @@ impl Agents {
                 row.end(state, Some(error.to_string()));
             }
         }
+    }
+
+    /// The agents' ids, in the order they started.
+    pub fn ids(&self) -> impl Iterator<Item = String> + '_ {
+        self.rows.iter().map(|r| r.id.clone())
     }
 
     /// The rows changed since the last call, in the order they started.
@@ -429,6 +511,32 @@ mod tests {
         assert_eq!(v["background"], true);
         assert!(v.get("startedAt").is_some() && v.get("lastSignalAt").is_some());
         assert!(v.get("waitingFor").is_none() && v.get("endedAt").is_none());
+    }
+
+    #[test]
+    fn a_message_to_an_agent_and_its_round_go_to_the_island_and_it_is_taken_up_once_ended() {
+        let mut row = AgentRow::new("t1", "claude-code", "Count");
+        let v = serde_json::to_value(&row).unwrap();
+        assert_eq!((v["canAsk"].as_bool(), v["round"].as_u64()), (Some(false), Some(0)));
+        assert!(v.get("talk").is_none());
+        // Not ended: nothing to take up.
+        row.reopen();
+        assert_eq!(row.round, 0);
+        row.end(AgentState::Done, None);
+        row.talk = Some(AgentTalk::new("toolu_S", "  What step?\nReply.  "));
+        row.reopen();
+        assert_eq!((row.state, row.round, row.ended_at), (AgentState::Working, 1, None));
+        let talk = row.talk.as_mut().unwrap();
+        assert_eq!(talk.message, "What step?\nReply.");
+        talk.answer("Step 1.");
+        talk.answer("Step 2.");
+        assert_eq!(talk.reply.as_deref(), Some("Step 1."), "the first answer only");
+        let v = serde_json::to_value(&row).unwrap();
+        assert_eq!(v["talk"]["call"], "toolu_S");
+        assert_eq!(v["talk"]["reply"], "Step 1.");
+        assert!(v["talk"].get("sentAt").is_some() && v["talk"].get("failed").is_none());
+        let long = "x".repeat(MAX_TALK + 10);
+        assert_eq!(talk_text(&long).chars().count(), MAX_TALK);
     }
 
     #[test]

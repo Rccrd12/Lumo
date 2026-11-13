@@ -793,6 +793,25 @@ export interface ChatAgent {
   background: boolean;
   /** `chat_stop_agent` can stop it alone. */
   canStop: boolean;
+  /** Its CLI can pass it a message from the chat (Claude Code's SendMessage): Ask. */
+  canAsk?: boolean;
+  /** How many times a message took it up again after it ended: a higher round replaces an ended row. */
+  round?: number;
+  /** The last message its CLI sent it, and its answer once it came. */
+  talk?: ChatAgentTalk;
+}
+
+/** A message the chat's CLI sent one of its agents, and the agent's answer (the "Talking to …" box). */
+export interface ChatAgentTalk {
+  /** The tool call that sent it: one box per call. */
+  call: string;
+  message: string;
+  /** Epoch ms. */
+  sentAt: number;
+  reply?: string;
+  repliedAt?: number;
+  /** Why it did not reach the agent. */
+  failed?: string;
 }
 
 /** The `chat-agent` event. */

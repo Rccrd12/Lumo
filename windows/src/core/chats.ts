@@ -14,6 +14,39 @@ export interface SavedTurn {
   kept?: string;
   /** An answer's: the agents it started that ended, in short (core/chat-agents.ts savedAgents). */
   agents?: SavedAgent[];
+  /** An answer's: the messages its CLI sent its agents, and their answers ("Talking to …"). */
+  talks?: SavedTalk[];
+  /** A question's: the agent it was asked of (Ask, the quote above the field). */
+  ask?: AskQuote;
+}
+
+/** A question asked of one agent: who, and what it was doing then (the quote over the question). */
+export interface AskQuote {
+  agentId: string;
+  title: string;
+  /** What its row said when Ask was clicked. */
+  line: string;
+  /** Its look then (working, stalled, done…): the quote's colour. */
+  look: string;
+}
+
+/** A saved quote, checked: a chat saved by hand or by an older Lumo may hold anything. */
+export function askQuoteOf(x: unknown): AskQuote | undefined {
+  const q = x as AskQuote;
+  return q && typeof q.agentId === "string" && typeof q.title === "string" && typeof q.line === "string" && typeof q.look === "string"
+    ? { agentId: q.agentId, title: q.title, line: q.line, look: q.look }
+    : undefined;
+}
+
+/** A message sent to an agent, as the chat keeps it with its answer. */
+export interface SavedTalk {
+  call: string;
+  agentId: string;
+  title: string;
+  message: string;
+  sentAt: number;
+  reply?: string;
+  failed?: string;
 }
 
 /** One agent an answer started, as the chat keeps it once it ended (bridge.ts ChatAgent, in short). */

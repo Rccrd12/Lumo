@@ -13,7 +13,7 @@
 // permission is never stuck: it says so instead.
 
 import type { ChatActivity, ChatAgent, ChatAgentEvent, ChatSignalEvent } from "./bridge";
-import type { SavedAgent, SavedTurn } from "./chats";
+import type { AskQuote, SavedAgent, SavedTalk, SavedTurn } from "./chats";
 import type { AgentsPeek } from "./compact";
 import { isApiProvider, isCliProvider } from "./providers";
 import { N_, t, tn } from "../i18n/i18n";
@@ -82,7 +82,28 @@ export interface ChatAgents {
   waiting: "permission" | null;
   /** Agents of answers the user took back (an edited question, `rewindAgents`): their late news is ignored. */
   dropped?: Set<string>;
+  /** The messages the chat's CLI sent its agents, oldest first: a "Talking to …" box each, under its answer. */
+  talks: TalkEntry[];
 }
+
+/** A message the CLI sent one of its agents (`ChatAgent.talk`), under the answer `anchor`. */
+export interface TalkEntry {
+  call: string;
+  agentId: string;
+  /** The agent's title when it was sent. */
+  title: string;
+  anchor: number;
+  message: string;
+  sentAt: number;
+  reply?: string;
+  repliedAt?: number;
+  failed?: string;
+  /** From a chat saved before it was answered: its answer will never come. */
+  stale?: boolean;
+}
+
+/** The talks kept per chat. */
+export const MAX_TALKS = 40;
 
 /** Every chat's, by chat id. */
 export type AgentStore = Map<string, ChatAgents>;
@@ -103,7 +124,7 @@ export function newAgentStore(): AgentStore {
 export function chatAgentsOf(store: AgentStore, chat: string): ChatAgents {
   let c = store.get(chat);
   if (!c) {
-    c = { rows: new Map(), batches: [], lastSignalAt: 0, waiting: null };
+    c = { rows: new Map(), batches: [], lastSignalAt: 0, waiting: null, talks: [] };
     store.set(chat, c);
   }
   return c;
@@ -129,9 +150,11 @@ function sameActivity(a: ChatActivity | undefined, b: ChatActivity | undefined):
 /**
  * A `chat-agent` event: the agent's whole state, which replaces what was
  * known. One that already ended keeps its end (a late event never brings it
- * back). A new one joins the batch still at work, or the one of the same
- * answer; otherwise it starts a batch under the answer `anchor` (asked
- * only then, when a function). True when something changed.
+ * back), unless a message took it up again (a higher `round`); an event of
+ * an earlier round is late. A new one joins the batch still at work, or the
+ * one of the same answer; otherwise it starts a batch under the answer
+ * `anchor` (asked only then, when a function). Its talk (a message its CLI
+ * sent it) joins the chat's talks. True when something changed.
  */
 export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number | (() => number)): boolean {
   const agent = ev?.agent;
@@ -139,11 +162,15 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
   const c = chatAgentsOf(store, ev.chat);
   if (c.dropped?.has(agent.id)) return false;
   const known = c.rows.get(agent.id);
-  if (known && isFinal(known.row.state)) return false;
+  const round = agent.round ?? 0;
+  const knownRound = known?.row.round ?? 0;
+  if (known && (round < knownRound || (round === knownRound && isFinal(known.row.state) && !isFinal(agent.state)))) return false;
   const entry: AgentEntry = known ?? { row: agent, steps: [] };
+  // Worked out only when needed: the chat may have to be read from Past chats.
+  const at = () => (typeof anchor === "function" ? (anchor = anchor()) : anchor);
+  if (agent.talk) noteTalk(c, agent, at);
   if (!known) {
-    // Worked out only for a new agent: the chat may have to be read from Past chats.
-    if (typeof anchor === "function") anchor = anchor();
+    const anchor = at();
     const last = c.batches.at(-1);
     const lastOpen = last ? last.ids.some((id) => { const r = c.rows.get(id); return r && !isFinal(r.row.state); }) : false;
     if (last && (lastOpen || last.anchor === anchor)) last.ids.push(agent.id);
@@ -156,6 +183,60 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
   }
   c.lastSignalAt = Math.max(c.lastSignalAt, agent.lastSignalAt || 0);
   return true;
+}
+
+/** The talk an agent's row carries, added to the chat's talks or brought up to date. */
+function noteTalk(c: ChatAgents, agent: ChatAgent, anchor: () => number) {
+  const talk = agent.talk!;
+  const known = c.talks.find((x) => x.call === talk.call);
+  if (known) {
+    known.reply = talk.reply;
+    known.repliedAt = talk.repliedAt;
+    known.failed = talk.failed;
+    return;
+  }
+  c.talks.push({
+    call: talk.call, agentId: agent.id, title: agent.title, anchor: anchor(), message: talk.message, sentAt: talk.sentAt,
+    reply: talk.reply, repliedAt: talk.repliedAt, failed: talk.failed,
+  });
+  if (c.talks.length > MAX_TALKS) c.talks.splice(0, c.talks.length - MAX_TALKS);
+}
+
+/** A talk still waiting for its agent's answer. */
+export function talkWaits(talk: { reply?: string; failed?: string; stale?: boolean }): boolean {
+  return !talk.reply && !talk.failed && !talk.stale;
+}
+
+/** The newest talk of the chat still waiting for its answer, if any. */
+export function waitingTalk(c: ChatAgents | undefined): TalkEntry | undefined {
+  for (let i = (c?.talks.length ?? 0) - 1; i >= 0; i--) if (talkWaits(c!.talks[i])) return c!.talks[i];
+  return undefined;
+}
+
+// ── Ask ───────────────────────────────────────────────────────────────────────
+//
+// Ask on an agent's row puts it over the field, as a quote (WhatsApp's
+// Reply); what is typed then goes to the chat's CLI with what it takes to
+// pass it on to that agent (Claude Code's SendMessage), and the CLI's
+// message and the agent's answer show in a "Talking to …" box.
+
+/** Whether the chat can pass this agent a message: its CLI said so (Claude Code with SendMessage, still running). */
+export function askable(e: AgentEntry | undefined): boolean {
+  return !!e?.row.canAsk;
+}
+
+/**
+ * What goes to the CLI for a question asked of one agent: pass it on with
+ * SendMessage, and say what came back. English, as toolAsk: it is for the AI,
+ * which answers in the user's language. Of an agent with no sign of life, or
+ * one that ended, the CLI is told to look at what it did when no answer comes.
+ */
+export function agentAsk(q: AskQuote, question: string): string {
+  const to = JSON.stringify(q.agentId);
+  let ask = `My question below is for your agent "${q.title}" (agentId: ${q.agentId}). Send it to that agent with SendMessage (to: ${to}), then tell me its answer.`;
+  if (q.look === "stalled") ask += " It has given no sign of life for a while: if it does not answer, look at what it did last and tell me why it is stuck.";
+  else if (q.look === "done" || q.look === "failed") ask += " It had ended: the message takes it up again.";
+  return `${ask}\n\n${question}`;
 }
 
 /** A `chat-signal` event: the answer moved, and maybe started or stopped waiting. True when that changes what shows. */
@@ -328,30 +409,44 @@ export function savedAgents(entries: AgentEntry[]): SavedAgent[] {
 }
 
 /**
- * The turns to save, each answer with its agents: an answer's
- * place among the answers is its batches' anchor.
+ * The turns to save, each answer with its agents and the messages sent to
+ * them: an answer's place among the answers is their anchor.
  */
-export function withAgents<T extends { role: string }>(c: ChatAgents | undefined, turns: T[]): (T & Pick<SavedTurn, "agents">)[] {
-  if (!c || c.batches.length === 0) return turns;
+export function withAgents<T extends { role: string }>(c: ChatAgents | undefined, turns: T[]): (T & Pick<SavedTurn, "agents" | "talks">)[] {
+  if (!c || (c.batches.length === 0 && c.talks.length === 0)) return turns;
   let answer = -1;
   const answers = turns.filter((x) => x.role === "assistant").length;
-  // Batches anchored past the last answer (its answer was stopped or failed)
-  // go with the question still unanswered after it, else with that answer.
+  // Anchored past the last answer (its answer was stopped or failed): with
+  // the question still unanswered after it, else with that answer.
   const unanswered = turns.length > 0 && turns[turns.length - 1].role === "user";
   return turns.map((turn, i) => {
-    let mine: AgentBatch[];
+    let mine: (anchor: number) => boolean;
     if (turn.role === "assistant") {
-      answer++;
-      mine = c.batches.filter((b) => b.anchor === answer || (!unanswered && answer === answers - 1 && b.anchor > answer));
+      const at = ++answer;
+      mine = (a) => a === at || (!unanswered && at === answers - 1 && a > at);
     } else if (unanswered && i === turns.length - 1) {
-      mine = c.batches.filter((b) => b.anchor >= answers);
+      mine = (a) => a >= answers;
     } else {
       return turn;
     }
-    if (!mine.length) return turn;
-    const agents = savedAgents(mine.flatMap((b) => batchEntries(c, b)));
-    return agents.length ? { ...turn, agents } : turn;
+    const agents = savedAgents(c.batches.filter((b) => mine(b.anchor)).flatMap((b) => batchEntries(c, b)));
+    const talks = c.talks.filter((x) => mine(x.anchor)).map(savedTalk);
+    if (!agents.length && !talks.length) return turn;
+    return { ...turn, ...(agents.length ? { agents } : {}), ...(talks.length ? { talks } : {}) };
   });
+}
+
+function savedTalk(x: TalkEntry): SavedTalk {
+  return {
+    call: x.call, agentId: x.agentId, title: x.title, message: x.message, sentAt: x.sentAt,
+    ...(x.reply ? { reply: x.reply } : {}), ...(x.failed ? { failed: x.failed } : {}),
+  };
+}
+
+function isSavedTalk(x: unknown): x is SavedTalk {
+  const v = x as SavedTalk;
+  return !!v && typeof v.call === "string" && typeof v.agentId === "string" && typeof v.title === "string"
+    && typeof v.message === "string" && typeof v.sentAt === "number";
 }
 
 function isSavedAgent(a: unknown): a is SavedAgent {
@@ -363,14 +458,17 @@ function isSavedAgent(a: unknown): a is SavedAgent {
  * A chat opened from Past chats: its answers' agents come back,
  * unless the island still holds them (agents still at work there).
  */
-export function restoreAgents(store: AgentStore, chat: string, turns: readonly Pick<SavedTurn, "role" | "agents">[], source = "") {
+export function restoreAgents(store: AgentStore, chat: string, turns: readonly Pick<SavedTurn, "role" | "agents" | "talks">[], source = "") {
   const known = store.get(chat);
-  if (known && known.batches.length > 0) return;
+  if (known && (known.batches.length > 0 || known.talks.length > 0)) return;
   const c = chatAgentsOf(store, chat);
   let answer = -1;
   for (const turn of turns) {
     // A question's: the agents of its answer that never came, past the last answer.
     const anchor = turn.role === "assistant" ? ++answer : answer + 1;
+    const talks = Array.isArray(turn.talks) ? turn.talks.filter(isSavedTalk) : [];
+    // Not answered when it was saved: its answer will not come any more.
+    for (const x of talks) c.talks.push({ ...x, anchor, ...(x.reply || x.failed ? {} : { stale: true }) });
     const agents = Array.isArray(turn.agents) ? turn.agents.filter(isSavedAgent) : [];
     if (!agents.length) continue;
     for (const a of agents) {
@@ -398,6 +496,7 @@ export function restoreAgents(store: AgentStore, chat: string, turns: readonly P
 export function rewindAgents(store: AgentStore, chat: string, answers: number) {
   const c = store.get(chat);
   if (!c) return;
+  c.talks = c.talks.filter((x) => x.anchor < answers);
   const going = c.batches.filter((b) => b.anchor >= answers);
   if (!going.length) return;
   c.batches = c.batches.filter((b) => b.anchor < answers);
