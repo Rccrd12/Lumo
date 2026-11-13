@@ -433,25 +433,34 @@ impl Subagents {
         self.mark.get_or_insert_with(chat_agents::run_mark).clone()
     }
 
+    /// The step that delegated to a subagent heard of now, by its place in
+    /// `delegating`: the oldest still without a subagent (agy starts them in
+    /// the order it delegated), or else the latest. agy's steps don't say,
+    /// so the one rule names a subagent, titles it and ends it.
+    fn delegation(&self) -> Option<usize> {
+        self.delegating.iter().position(|d| d.2.is_none()).or_else(|| self.delegating.len().checked_sub(1))
+    }
+
     /// One step of a subagent (`subagent_info`).
     fn step(&mut self, index: u64, done: bool, v: &Value) {
         let info = &v["subagent_info"];
         let conversation = ["conversation_id", "conversationId"].iter().filter_map(|k| info[*k].as_str()).map(str::trim).find(|s| !s.is_empty());
+        let delegation = self.delegation();
         // Without its conversation, the step that delegated names it, with
         // the turn's mark: the next turn has a step 5 of its own.
         let id = match conversation {
             Some(conversation) => conversation.to_string(),
             None => {
                 let mark = self.mark();
-                match self.delegating.last() {
-                    Some(d) => format!("step-{}-{mark}", d.0),
+                match delegation {
+                    Some(pos) => format!("step-{}-{mark}", self.delegating[pos].0),
                     None => format!("subagent-{mark}"),
                 }
             }
         };
         if self.agents.get(&id).is_none() {
-            // The step that delegated and has no subagent yet gives it its title.
-            let title = match self.delegating.iter_mut().find(|d| d.2.is_none()) {
+            // The step that delegated, when it has no subagent yet, gives it its title.
+            let title = match delegation.map(|pos| &mut self.delegating[pos]).filter(|d| d.2.is_none()) {
                 Some(d) => {
                     d.2 = Some(id.clone());
                     d.1.clone()
@@ -1839,6 +1848,36 @@ mod tests {
         run.feed(br#"{"event":"step_update","step_index":5,"state":"ERROR","step_type":"tool","tool_info":{"name":"delegate_task","error":{"type":"FAILED","message":"Browser crashed"}}}"#);
         let a = run.subagents.agents.get(&id).unwrap();
         assert_eq!((a.state, a.error.as_deref()), (AgentState::Failed, Some("Browser crashed")));
+    }
+
+    #[test]
+    fn two_delegations_at_once_each_name_and_end_their_own_subagent() {
+        let delegate = |index: u64, task: &str| format!(r#"{{"event":"step_update","step_index":{index},"state":"ACTIVE","step_type":"tool","tool_info":{{"name":"browser_subagent","parameters":{{"TaskName":"{task}"}}}}}}"#);
+        let sub_step = |info: &str| format!(r#"{{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{info},"tool_info":{{"name":"run_command","parameters":{{}}}}}}"#);
+        let done = |index: u64| format!(r#"{{"event":"step_update","step_index":{index},"state":"DONE","step_type":"tool","tool_info":{{"name":"browser_subagent"}}}}"#);
+
+        // With no conversation: the id, the title and the end come from the same step.
+        let mut run = Run::default();
+        for l in [delegate(3, "Pricing"), delegate(4, "Docs"), sub_step("{}"), sub_step("{}")] {
+            run.feed(l.as_bytes());
+        }
+        let rows = run.subagents.agents.changed();
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(rows[0].id.starts_with("step-3-") && rows[1].id.starts_with("step-4-"), "{rows:?}");
+        assert_eq!((rows[0].title.as_str(), rows[1].title.as_str()), ("Pricing", "Docs"));
+        run.feed(done(3).as_bytes());
+        assert_eq!(run.subagents.agents.get(&rows[0].id).unwrap().state, AgentState::Done);
+        assert_eq!(run.subagents.agents.get(&rows[1].id).unwrap().state, AgentState::Working, "step 4 still runs");
+
+        // With their conversations: each delegation has one subagent, and ends only it.
+        let mut run = Run::default();
+        for l in [delegate(3, "Pricing"), delegate(4, "Docs"), sub_step(r#"{"conversation_id":"a"}"#), sub_step(r#"{"conversation_id":"b"}"#), sub_step(r#"{"conversation_id":"a"}"#)] {
+            run.feed(l.as_bytes());
+        }
+        run.feed(done(4).as_bytes());
+        let (a, b) = (run.subagents.agents.get("a").unwrap(), run.subagents.agents.get("b").unwrap());
+        assert_eq!((a.title.as_str(), a.state), ("Pricing", AgentState::Working));
+        assert_eq!((b.title.as_str(), b.state), ("Docs", AgentState::Done));
     }
 
     #[test]

@@ -390,7 +390,13 @@ pub async fn send(
                 }
                 *shown.lock().unwrap_or_else(|p| p.into_inner()) = all;
             };
-            let sent = if streaming { stream_post(p, &endpoint, &key, &body, usage, show, || events.signal(app)).await } else { post(p, &endpoint, &key, &body, usage).await };
+            // A whole answer tells nothing until it comes (a reasoning model:
+            // minutes): alive all the same.
+            let sent = if streaming {
+                stream_post(p, &endpoint, &key, &body, usage, show, || events.signal(app)).await
+            } else {
+                crate::chat_agents::alive_while(app, events.chat_id(), post(p, &endpoint, &key, &body, usage)).await
+            };
             // A whole answer, or a refusal, is news too.
             events.signal(app);
             let mut json = match sent {

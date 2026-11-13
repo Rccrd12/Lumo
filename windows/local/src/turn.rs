@@ -82,10 +82,15 @@ pub trait Hooks {
     /// putting its plan right after its answer, which stays as it was.
     fn hush(&mut self, _on: bool) {}
     /// The answer moved just now: a piece of the stream came (even one with
-    /// nothing to show), a request went, a tool started or ended. Called
-    /// often: the app keeps it cheap (the island's sign of life).
+    /// nothing to show), a request went, a tool started or ended, and every
+    /// WHOLE_HEARTBEAT while a whole answer is awaited. Called often: the app
+    /// keeps it cheap (the island's sign of life).
     fn signal(&mut self) {}
 }
+
+/// How often a request answered whole (no stream: nothing comes until the
+/// whole answer does, a minute or more on a slow model) says it is alive.
+pub const WHOLE_HEARTBEAT: Duration = Duration::from_secs(10);
 
 /// What a turn goes by.
 pub struct Rules<'a> {
@@ -218,7 +223,14 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         let before = said.join("\n\n");
         let after_before = |visible: &str| if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") };
         let answer = if whole {
-            let answer = ask_whole(to, body).await;
+            let mut asked = std::pin::pin!(ask_whole(to, body));
+            let answer = loop {
+                match tokio::time::timeout(WHOLE_HEARTBEAT, asked.as_mut()).await {
+                    Ok(answer) => break answer,
+                    // The model is at work: alive, though nothing came yet.
+                    Err(_) => hooks.signal(),
+                }
+            };
             if let Ok(a) = &answer {
                 if !a.text.is_empty() && !hushed {
                     hooks.shown(&after_before(&progressive_filter(&a.text)));

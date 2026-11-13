@@ -999,10 +999,15 @@ impl Tasks {
         self.by_call.retain(|_, task| *task != id);
     }
 
-    /// The turn is over: the tasks still open ended with it (stopped, with Stop).
-    fn turn_ended(&mut self, stopped: bool) {
+    /// The turn is over: the tasks still open ended with it (stopped, with
+    /// Stop; failed, with the turn's `error`).
+    fn turn_ended(&mut self, stopped: bool, error: Option<&str>) {
         if self.agents.open() > 0 {
-            self.agents.end_open(if stopped { AgentState::Stopped } else { AgentState::Done }, "");
+            match (stopped, error) {
+                (true, _) => self.agents.end_open(AgentState::Stopped, ""),
+                (false, Some(error)) => self.agents.end_open(AgentState::Failed, error),
+                (false, None) => self.agents.end_open(AgentState::Done, ""),
+            }
         }
         self.by_call.clear();
     }
@@ -1524,7 +1529,11 @@ fn live_turn(
     match ended {
         Ended::Completed => {
             // Nothing reads the CLI between turns: its tasks end with this one.
-            live.tasks.turn_ended(state.stopped);
+            let failed = match &state.done {
+                Some(Err(e)) => Some(e.as_str()),
+                _ => None,
+            };
+            live.tasks.turn_ended(state.stopped, failed);
             (live.tell)(&mut live.tasks.agents, false);
             live.used = Instant::now();
             let old = lives(|all| all.insert(spec.chat_id.clone(), live));
@@ -1535,7 +1544,7 @@ fn live_turn(
         // Not cancelled in time: ended (Drop), the run so far kept. The
         // user asked for it: its tasks stopped, not failed.
         Ended::Stopped | Ended::Closed if state.stopped => {
-            live.tasks.turn_ended(true);
+            live.tasks.turn_ended(true, None);
             (live.tell)(&mut live.tasks.agents, false);
             Ok((state, session))
         }
@@ -2048,9 +2057,17 @@ mod tests {
         assert!(numbered.starts_with("task-") && numbered.ends_with("-1"), "{numbered}");
         assert_eq!(tasks.agents.get(&numbered).unwrap().title, "Agent");
         // The turn ended: the open ones with it.
-        tasks.turn_ended(true);
+        tasks.turn_ended(true, None);
         assert_eq!(tasks.agents.get(&numbered).unwrap().state, AgentState::Stopped);
         assert_eq!(tasks.agents.open(), 0);
+        // A turn that failed: its open tasks failed with it, not finished.
+        tasks.task(CURSOR, &json!({ "taskId": "t4", "name": "Refactor" }));
+        tasks.turn_ended(false, Some("Rate limited"));
+        let t4 = tasks.agents.get("t4").unwrap();
+        assert_eq!((t4.state, t4.error.as_deref()), (AgentState::Failed, Some("Rate limited")));
+        tasks.task(CURSOR, &json!({ "taskId": "t5", "name": "Docs" }));
+        tasks.turn_ended(false, None);
+        assert_eq!(tasks.agents.get("t5").unwrap().state, AgentState::Done);
 
         // The next server numbers its tasks from 1 again: another id all the same.
         let mut next = Tasks::default();

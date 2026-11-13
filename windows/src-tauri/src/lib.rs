@@ -861,6 +861,15 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     acp_chat::close(&chat_id);
 }
 
+/// A deleted chat: its CLI, waiting for its next message, ends, and the
+/// agents it started with it (each provider tells the island they ended).
+#[tauri::command]
+fn chat_close(chat_id: String) {
+    claude_code::close(&chat_id);
+    codex_chat::close(&chat_id);
+    acp_chat::close(&chat_id);
+}
+
 /// The chat's Stop button: ends the answer being written. `chat_send` then
 /// returns what was written so far, marked stopped.
 #[tauri::command]
@@ -1441,6 +1450,7 @@ pub fn run() {
             unsloth_studio_start,
             unsloth_studio_stop,
             chat_reset,
+            chat_close,
             chat_restore,
             chat_load,
             chat_compact,

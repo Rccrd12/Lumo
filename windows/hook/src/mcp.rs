@@ -23,7 +23,7 @@
 //! `--tools=user` offers the user's own tools, the ones on in Lumo's Tools
 //! tab (tools.rs): the list is asked of Lumo (`{"lumo_tools": {}}`) each time
 //! the agent lists them, and each call handed to Lumo
-//! (`{"lumo_tool": {"tool": …, "input": …}}`), which runs it.
+//! (`{"lumo_tool": {"tool": …, "input": …, "chat": …}}`), which runs it.
 //!
 //! `--tools=island` offers the island's timer and listening tools (`set_timer`,
 //! `listen`, `stop_listening`, `list_listening`; `listen_pull_request`, the
@@ -680,7 +680,7 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
     if !island_before && !kit.tools().iter().any(|t| t["name"] == name) {
         // One of the user's tools: Lumo knows whether it is there and on.
         if kit.user && !name.is_empty() {
-            return answer(lumo(&json!({ "lumo_tool": { "tool": name, "input": input } })));
+            return answer(lumo(&json!({ "lumo_tool": { "tool": name, "input": input, "chat": chat_id() } })));
         }
         return failed(&format!("Lumo has no tool called {name}."));
     }
@@ -692,12 +692,20 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
     }
     if ISLAND_NAMES.contains(&name) {
-        // A `${env:…}` Cursor's mcp.json left as it was (acp_chat.rs) names no chat.
-        let chat = std::env::var("LUMO_CHAT_ID").ok().filter(|c| !c.starts_with("${")).unwrap_or_default();
-        return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat } })));
+        return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat_id() } })));
     }
-    let key = if mail_tool(name) { "lumo_mail" } else { "lumo_computer" };
-    answer(lumo(&json!({ key: { "tool": name, "input": input } })))
+    if mail_tool(name) {
+        // With its chat: a card it raises puts the chat in "waiting for your permission".
+        return answer(lumo(&json!({ "lumo_mail": { "tool": name, "input": input, "chat": chat_id() } })));
+    }
+    answer(lumo(&json!({ "lumo_computer": { "tool": name, "input": input } })))
+}
+
+/// The island chat the agent that started this server answers in
+/// (`LUMO_CHAT_ID`, set by the app), or "" for none. A `${env:…}` Cursor's
+/// mcp.json left as it was (acp_chat.rs) names no chat.
+fn chat_id() -> String {
+    std::env::var("LUMO_CHAT_ID").ok().filter(|c| !c.starts_with("${")).unwrap_or_default()
 }
 
 /// What Lumo answered to a call, as MCP gives it.

@@ -99,7 +99,7 @@ import {
   updateChatTurns, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
-  addUpdate, applyAgent, applySignal, countAgents, durationText, foldsOwnAnswer, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
+  addUpdate, applyAgent, applySignal, batchEntries, countAgents, durationText, foldsOwnAnswer, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, withAgents, type AgentBatch, type ChatAgents, type PendingCard,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, type AgentsCardHost } from "./agents-card";
@@ -3359,8 +3359,11 @@ export function buildPrompt(
           run.forgotten = true;
           if (!run.stopping) void Bridge.chatStop(c.id);
           run.stopping = true;
-          drawIslandActivity();
         }
+        // Its CLI, waiting for a message, ends, and the agents it still runs
+        // with it (a run being stopped closes it as it ends).
+        void Bridge.chatClose(c.id);
+        drawIslandActivity();
         // The chat on screen is gone: so is it from the screen.
         if (c.id === State.chatId) {
           newChat();
@@ -3428,7 +3431,7 @@ export function buildPrompt(
       State.chatSession = c.session;
       void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
       // Its answers' agents come back under them, unless the island still holds them.
-      restoreAgents(agentStore, c.id, c.turns);
+      restoreAgents(agentStore, c.id, c.turns, c.provider);
     }
     State.chatId = c.id;
     State.droppedFile = null;
@@ -3953,12 +3956,22 @@ export function buildPrompt(
     if (!cards.length) return { main: false, agents: new Set() };
     const run = runs.get(chatId);
     const session = run ? run.session : chatId === State.chatId ? State.chatSession : chats().find((c) => c.id === chatId)?.session ?? null;
-    return permissionMatch(cards, session, chatId === State.chatId, agentStore.get(chatId)?.rows.keys() ?? []);
+    // A card with no session is the chat on screen's only for a CLI before
+    // its first answer: an API or a local model's chat has no session ever,
+    // and Rust says itself when one of its cards is up (`waiting`).
+    const onScreen = chatId === State.chatId && (!run || isCliProvider(run.provider));
+    return permissionMatch(cards, session, onScreen, agentStore.get(chatId)?.rows.keys() ?? []);
   }
 
-  /** The chat's answer waits for the user: a card is up for it, or Rust said so. */
+  /**
+   * The chat's answer waits for the user: a card is up for it, or for one of
+   * its agents the answer waits on (not one in the background), or Rust said so.
+   */
   function turnWaiting(chatId: string): boolean {
-    return agentStore.get(chatId)?.waiting === "permission" || permissionOf(chatId).main;
+    const c = agentStore.get(chatId);
+    if (c?.waiting === "permission") return true;
+    const permission = permissionOf(chatId);
+    return permission.main || [...permission.agents].some((id) => c?.rows.get(id)?.row.background === false);
   }
 
   /**
@@ -4104,7 +4117,8 @@ export function buildPrompt(
   function agentsActivity(chatId: string, c: ChatAgents, chats: () => SavedChat[]): { chat: ActiveChatRun; island: { who: string; label: string }; peek: AgentsPeek } | null {
     if (openCount(c) === 0) return null;
     const now = Date.now();
-    const entries = [...c.rows.values()];
+    // The batches at work only, as their cards count: not the agents of earlier answers.
+    const entries = c.batches.map((b) => batchEntries(c, b)).filter((es) => es.some((e) => !isFinal(e.row.state))).flat();
     const permission = permissionOf(chatId, chats).agents;
     const line = islandAgentsLine(entries, now, permission);
     if (!line) return null;
@@ -4526,6 +4540,8 @@ export function buildPrompt(
       clearTimeout(run.timer);
       runs.delete(run.chatId);
       if (outcome === "finished" && !run.forgotten) noteFinishedChat(run);
+      // Its chat was deleted meanwhile: its CLI, back to waiting, ends now.
+      if (run.forgotten) void Bridge.chatClose(run.chatId);
       // A local model the answer loaded: what it can do (reasoning, context) is known only now.
       const caps = localCapsOf(run.provider);
       if (providerDef(run.provider).urlField && run.provider === State.settings.chatProvider && (!caps || caps.loadedContext === 0)) {
@@ -4694,7 +4710,7 @@ export function buildPrompt(
       at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined,
     }));
     const session = saved?.session ?? null;
-    if (saved) restoreAgents(agentStore, chatId, saved.turns);
+    if (saved) restoreAgents(agentStore, chatId, saved.turns, saved.provider);
     loadingAway.add(chatId);
     try {
       await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId));
@@ -5386,11 +5402,13 @@ export function buildPrompt(
           });
           log.append(lastBubble);
           if (m.role === "assistant" && !m.failed) {
-            // The last answer also takes the agents of an answer that never came (stopped, failed).
-            log.append(...agentCardsFor(State.chatId, answer, !run && answer === answers - 1));
+            log.append(...agentCardsFor(State.chatId, answer));
             answer++;
           }
         });
+        // The agents of an answer that never came (stopped, failed) go after
+        // its question, and its failed answer.
+        if (!run) log.append(...agentCardsFor(State.chatId, answers, true));
         // An answer just finished: the ink goes on in its bubble until all is uncovered.
         const last = State.chatHistory[State.chatHistory.length - 1];
         const inked = ink && !run && inkChat === State.chatId && ink.behind ? ink : null;
@@ -5407,8 +5425,8 @@ export function buildPrompt(
           log.append(h("div", { class: "chat-row" }, live));
           writeAnswer(run.chatId, live, run.text, false, messageScope(State.chatId, place));
         }
-        // The agents of the answer being written, or of none yet (the chat's first answer failed).
-        if (run || answers === 0) log.append(...agentCardsFor(State.chatId, answers, true));
+        // The agents of the answer being written.
+        if (run) log.append(...agentCardsFor(State.chatId, answers, true));
         if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
         drawStall();
         // The chat stays where it was read, or at its end when it is stuck

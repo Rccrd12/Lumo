@@ -40,8 +40,8 @@ export const MAX_SAVED_AGENTS = 24;
 /** The progress updates kept per batch. */
 export const MAX_UPDATES = 40;
 
-/** What a local model does before its first word: slow, but alive. */
-const LOCAL_STARTING = new Set(["starting", "loading", "prompt"]);
+/** What a local model does before its first word: slow, but alive (a retry reads the prompt again). */
+const LOCAL_STARTING = new Set(["starting", "loading", "prompt", "retry"]);
 /** What a CLI does that can rightly last minutes without a word. */
 const CLI_LONG = new Set(["command", "subtask", "tool", "calling"]);
 
@@ -91,6 +91,14 @@ export interface ChatAgents {
 /** Every chat's, by chat id. */
 export type AgentStore = Map<string, ChatAgents>;
 
+/** The chats the user deleted, by store (`forgetChat`): late news of theirs is ignored, never a chat again. */
+const deletedChats = new WeakMap<AgentStore, Set<string>>();
+
+/** The chat `chat` was deleted. */
+function isDeleted(store: AgentStore, chat: string): boolean {
+  return deletedChats.get(store)?.has(chat) ?? false;
+}
+
 export function newAgentStore(): AgentStore {
   return new Map();
 }
@@ -131,7 +139,7 @@ function sameActivity(a: ChatActivity | undefined, b: ChatActivity | undefined):
  */
 export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number | (() => number)): boolean {
   const agent = ev?.agent;
-  if (!ev?.chat || !agent?.id) return false;
+  if (!ev?.chat || !agent?.id || isDeleted(store, ev.chat)) return false;
   const c = chatAgentsOf(store, ev.chat);
   if (c.dropped?.has(agent.id)) return false;
   const known = c.rows.get(agent.id);
@@ -156,7 +164,7 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
 
 /** A `chat-signal` event: the answer moved, and maybe started or stopped waiting. True when that changes what shows. */
 export function applySignal(store: AgentStore, ev: ChatSignalEvent): boolean {
-  if (!ev?.chat) return false;
+  if (!ev?.chat || isDeleted(store, ev.chat)) return false;
   const c = chatAgentsOf(store, ev.chat);
   let changed = false;
   if (typeof ev.at === "number" && ev.at > c.lastSignalAt) {
@@ -175,6 +183,7 @@ export function applySignal(store: AgentStore, ev: ChatSignalEvent): boolean {
 
 /** The answer of `chat` moved at `at` (a piece of text, a tool call shown): a sign of life too. */
 export function noteSignal(store: AgentStore, chat: string, at = Date.now()) {
+  if (isDeleted(store, chat)) return;
   const c = chatAgentsOf(store, chat);
   if (at > c.lastSignalAt) c.lastSignalAt = at;
 }
@@ -355,11 +364,19 @@ export function withAgents<T extends { role: string }>(c: ChatAgents | undefined
   if (!c || c.batches.length === 0) return turns;
   let answer = -1;
   const answers = turns.filter((x) => x.role === "assistant").length;
-  return turns.map((turn) => {
-    if (turn.role !== "assistant") return turn;
-    answer++;
-    // Batches anchored past the last answer belong to it (its answer was stopped or failed).
-    const mine = c.batches.filter((b) => b.anchor === answer || (answer === answers - 1 && b.anchor > answer));
+  // Batches anchored past the last answer (its answer was stopped or failed)
+  // go with the question still unanswered after it, else with that answer.
+  const unanswered = turns.length > 0 && turns[turns.length - 1].role === "user";
+  return turns.map((turn, i) => {
+    let mine: AgentBatch[];
+    if (turn.role === "assistant") {
+      answer++;
+      mine = c.batches.filter((b) => b.anchor === answer || (!unanswered && answer === answers - 1 && b.anchor > answer));
+    } else if (unanswered && i === turns.length - 1) {
+      mine = c.batches.filter((b) => b.anchor >= answers);
+    } else {
+      return turn;
+    }
     if (!mine.length) return turn;
     const agents = savedAgents(mine.flatMap((b) => batchEntries(c, b)));
     const updates = mine.flatMap((b) => b.updates).slice(-MAX_UPDATES);
@@ -376,28 +393,28 @@ function isSavedAgent(a: unknown): a is SavedAgent {
  * A chat opened from Past chats: its answers' agents and updates come back,
  * unless the island still holds them (agents still at work there).
  */
-export function restoreAgents(store: AgentStore, chat: string, turns: readonly Pick<SavedTurn, "role" | "agents" | "updates">[]) {
+export function restoreAgents(store: AgentStore, chat: string, turns: readonly Pick<SavedTurn, "role" | "agents" | "updates">[], source = "") {
   const known = store.get(chat);
   if (known && known.batches.length > 0) return;
   const c = chatAgentsOf(store, chat);
   let answer = -1;
   for (const turn of turns) {
-    if (turn.role !== "assistant") continue;
-    answer++;
+    // A question's: the agents of its answer that never came, past the last answer.
+    const anchor = turn.role === "assistant" ? ++answer : answer + 1;
     const agents = Array.isArray(turn.agents) ? turn.agents.filter(isSavedAgent) : [];
     const updates = Array.isArray(turn.updates) ? turn.updates.filter((u): u is string => typeof u === "string") : [];
     if (!agents.length && !updates.length) continue;
     for (const a of agents) {
       c.rows.set(a.id, {
         row: {
-          id: a.id, source: "", title: a.title, state: a.state, summary: a.summary, error: a.error,
+          id: a.id, source, title: a.title, state: a.state, summary: a.summary, error: a.error,
           steps: typeof a.steps === "number" ? a.steps : 0, tokens: a.tokens, startedAt: a.startedAt || 0,
           lastSignalAt: a.endedAt || a.startedAt || 0, endedAt: a.endedAt, background: false, canStop: false,
         },
         steps: [],
       });
     }
-    c.batches.push({ anchor: answer, ids: agents.map((a) => a.id), updates, resumed: true });
+    c.batches.push({ anchor, ids: agents.map((a) => a.id), updates, resumed: true });
   }
 }
 
@@ -425,9 +442,16 @@ export function rewindAgents(store: AgentStore, chat: string, answers: number) {
   c.dropped = dropped;
 }
 
-/** The chat was deleted or started anew: its agents are forgotten. */
+/**
+ * The chat was deleted: its agents are forgotten, and what its CLI still says
+ * of them (it ends as the chat closes it, or a minute later) never makes the
+ * chat show again, on the closed island or the home.
+ */
 export function forgetChat(store: AgentStore, chat: string) {
   store.delete(chat);
+  let deleted = deletedChats.get(store);
+  if (!deleted) deletedChats.set(store, (deleted = new Set()));
+  deleted.add(chat);
 }
 
 // ── The closed island ─────────────────────────────────────────────────────────

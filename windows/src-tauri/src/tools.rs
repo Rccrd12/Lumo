@@ -1440,13 +1440,14 @@ pub fn not_offered(name: &str) -> String {
 /// it failed. `asking`: when one of the user's tools needs a card (a local
 /// model's chat asks as its permission mode says); `sandbox_high`: they run
 /// in the Windows sandbox when they can (the local chat's Sandbox High).
-/// The call starting and ending are the chat's sign of life, and a card it
-/// raises puts the chat in "waiting for your permission" (pipe.rs `CHAT`,
-/// chat_agents.rs).
+/// The call starting and ending are the chat's sign of life, and so is a
+/// heartbeat while it runs (a script, the Windows sandbox starting: a minute
+/// or more, working all along); a card it raises puts the chat in "waiting
+/// for your permission" (pipe.rs `CHAT`, chat_agents.rs).
 pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
     crate::chat_agents::signal(app, chat_id);
     let call = call_in_chat(app, chat_id, id, input, asking, sandbox_high);
-    let answer = crate::pipe::CHAT.scope(chat_id.to_string(), call).await;
+    let answer = crate::chat_agents::alive_while(app, chat_id, crate::pipe::CHAT.scope(chat_id.to_string(), call)).await;
     crate::chat_agents::signal(app, chat_id);
     answer
 }

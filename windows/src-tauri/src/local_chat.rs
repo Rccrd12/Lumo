@@ -79,9 +79,6 @@ const FILE_SHARE_PCT: u64 = 60;
 /// The least and the most of a file's text sent, whatever the context.
 const MIN_FILE_CHARS: usize = 4_000;
 const MAX_FILE_CHARS: usize = 1_000_000;
-/// How often a model's load still says the chat is alive when its server
-/// tells nothing until the model is in (Ollama's load is one request).
-const LOAD_HEARTBEAT: Duration = Duration::from_secs(10);
 
 /// How many characters of a dropped file's text go to a model with `context`
 /// tokens (0: not known), `taken` of them by the instructions, the tools and
@@ -627,17 +624,11 @@ fn log_turn(server: &Server, model: &str, prompt: usize, tools: usize, outcome: 
 }
 
 /// `work` (a model's load), with a sign of life for the chat every
-/// LOAD_HEARTBEAT while it runs: Ollama's load answers nothing until the model
+/// chat_agents::HEARTBEAT while it runs: Ollama's load answers nothing until the model
 /// is in, which can take minutes, and the island would take it for stuck. The
 /// timer lives only as long as the load (no CPU while the island is idle).
 async fn alive_while<T>(app: &AppHandle, events: &chat::ChatEvents, work: impl std::future::Future<Output = T>) -> T {
-    let mut work = std::pin::pin!(work);
-    loop {
-        match tokio::time::timeout(LOAD_HEARTBEAT, work.as_mut()).await {
-            Ok(done) => return done,
-            Err(_) => events.signal(app),
-        }
-    }
+    crate::chat_agents::alive_while(app, events.chat_id(), work).await
 }
 
 /// One chat turn with a model server.

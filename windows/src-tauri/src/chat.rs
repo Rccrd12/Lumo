@@ -534,6 +534,11 @@ impl ChatEvents {
         let _ = app.emit_to(WINDOW_LABEL, "chat-activity", json!({ "chat": self.chat, "activity": activity }));
     }
 
+    /// The island's id of the chat.
+    pub fn chat_id(&self) -> &str {
+        &self.chat
+    }
+
     /// The answer moved just now: its sign of life (chat_agents.rs), once a second at most.
     pub fn signal(&self, app: &AppHandle) {
         crate::chat_agents::signal(app, &self.chat);

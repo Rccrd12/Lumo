@@ -306,6 +306,24 @@ pub fn signal(app: &AppHandle, chat: &str) {
     let _ = app.emit_to(WINDOW_LABEL, "chat-signal", json!({ "chat": chat, "at": now_ms() }));
 }
 
+/// How often work that tells nothing until it ends (a whole answer, a tool
+/// call, a model's load) says the chat is alive while it runs.
+pub const HEARTBEAT: Duration = Duration::from_secs(10);
+
+/// `work`, with a sign of life for the chat `chat` every HEARTBEAT while it
+/// runs: it is working, not stuck, and the island must not say "no signal".
+/// The timer lives only as long as `work`, which ends by itself (its own
+/// timeout, the user's Stop).
+pub async fn alive_while<T>(app: &AppHandle, chat: &str, work: impl std::future::Future<Output = T>) -> T {
+    let mut work = std::pin::pin!(work);
+    loop {
+        match tokio::time::timeout(HEARTBEAT, work.as_mut()).await {
+            Ok(done) => return done,
+            Err(_) => signal(app, chat),
+        }
+    }
+}
+
 /// The chat `chat`'s answer waits for the user (`Some("permission")`: a card
 /// is up) or stops waiting (`None`). Always sent, never held back: while it
 /// waits, the island says so instead of "no signal".

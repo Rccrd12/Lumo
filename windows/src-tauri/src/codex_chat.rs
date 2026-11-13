@@ -506,6 +506,11 @@ const AGENT_ALIVE_EVERY: u64 = 5_000;
 #[derive(Default, Debug)]
 struct Subagents {
     agents: Agents,
+    /// The threads set to work again after their turn ended (Codex's
+    /// sendInput, followupTask, resumeAgent): how many times each worked, and
+    /// the row of its latest work (`<thread>~2`…). A row that ended never
+    /// changes, on the island too, so each new piece of work is a row of its own.
+    rounds: HashMap<String, (u32, String)>,
 }
 
 /// A field's text, when there is some.
@@ -529,12 +534,31 @@ impl Subagents {
         }
     }
 
-    /// The agent `id`, while it is at work, marked changed: one that ended never changes.
-    fn open_row(&mut self, id: &str) -> Option<&mut AgentRow> {
-        if self.agents.get(id)?.state.is_final() {
+    /// The row of the thread `thread`'s latest work.
+    fn row_id(&self, thread: &str) -> String {
+        self.rounds.get(thread).map_or_else(|| thread.to_string(), |r| r.1.clone())
+    }
+
+    /// The thread `thread` works again: when its last row ended, a new row
+    /// for it, with the same task. True when one was made.
+    fn again(&mut self, thread: &str) -> bool {
+        let Some(last) = self.agents.get(&self.row_id(thread)).filter(|r| r.state.is_final()) else { return false };
+        let (title, background) = (last.title.clone(), last.background);
+        let round = self.rounds.get(thread).map_or(2, |r| r.0 + 1);
+        let id = format!("{thread}~{round}");
+        self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title)).background = background;
+        self.rounds.insert(thread.to_string(), (round, id));
+        true
+    }
+
+    /// The agent of the thread `thread`, while it is at work, marked changed:
+    /// one that ended never changes.
+    fn open_row(&mut self, thread: &str) -> Option<&mut AgentRow> {
+        let id = self.row_id(thread);
+        if self.agents.get(&id)?.state.is_final() {
             return None;
         }
-        self.agents.touch(id)
+        self.agents.touch(&id)
     }
 
     /// A collaboration tool call: a new agent (`spawnAgent`, its prompt the
@@ -578,7 +602,10 @@ impl Subagents {
                     .map(|p| p.trim_end_matches('/').rsplit('/').next().unwrap_or(p).to_string())
                     .filter(|p| !p.is_empty())
                     .unwrap_or_else(|| t("Agent"));
-                self.agents.upsert(id, || AgentRow::new(id, PROVIDER, &title));
+                // Set to work again after it finished: a new row; otherwise its row.
+                if !self.again(id) {
+                    self.agents.upsert(&self.row_id(id), || AgentRow::new(id, PROVIDER, &title));
+                }
             }
             "completed" => {
                 if let Some(row) = self.open_row(id) {
@@ -598,6 +625,12 @@ impl Subagents {
 
     /// A notification of a subagent's own thread.
     fn of_thread(&mut self, thread: &str, method: &str, params: &Value) {
+        // A new turn of a thread that finished one: it was set to work again.
+        if method == "turn/started" {
+            self.again(thread);
+        }
+        let id = self.row_id(thread);
+        let thread = id.as_str();
         if self.agents.get(thread).is_some_and(|r| r.state.is_final()) {
             return;
         }
@@ -889,8 +922,12 @@ fn reap_idle() {
         }
         return;
     }
-    let reaper = std::thread::spawn(|| {
-        let mut wait = Duration::from_secs(60);
+    std::thread::spawn(|| {
+        // Known before LIVES is read: a chat's Codex that starts waiting from
+        // now on wakes this thread, not one that ended.
+        *REAPER.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::thread::current());
+        // The one that just started waiting may have agents at work already.
+        let mut wait = if lives(|all| all.values().any(|l| l.agents.agents.open() > 0)) { AGENTS_READ_EVERY } else { Duration::from_secs(60) };
         loop {
             std::thread::park_timeout(wait);
             let (gone, working): (Vec<Live>, bool) = lives(|all| {
@@ -921,7 +958,6 @@ fn reap_idle() {
             }
         }
     });
-    *REAPER.lock().unwrap_or_else(|e| e.into_inner()) = Some(reaper.thread().clone());
 }
 
 /// The chat's Codex started with `key`, or a new one.
@@ -1637,5 +1673,48 @@ mod tests {
         assert_eq!(sub.agents.get("a3").unwrap().error.as_deref(), Some("Rate limited"));
         assert_eq!(sub.agents.get("a4").unwrap().state, AgentState::Stopped);
         assert_eq!(sub.agents.open(), 0);
+    }
+
+    #[test]
+    fn an_agent_set_to_work_again_is_a_new_row() {
+        let mut sub = Subagents::default();
+        let on_sub = |method: &str, params: &str| format!(r#"{{"method":"{method}","params":{{"threadId":"{SUB}",{params}}}}}"#);
+        feed_agents(
+            &mut sub,
+            &[
+                &format!(r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"s","tool":"spawnAgent","receiverThreadIds":["{SUB}"],"prompt":"Explore the parser","agentsStates":{{}}}}}}}}"#),
+                &on_sub("turn/started", r#""turn":{"id":"t1","status":"inProgress","items":[]}"#),
+                &on_sub("item/started", r#""item":{"type":"commandExecution","id":"c1","commandActions":[]}"#),
+                &on_sub("turn/completed", r#""turn":{"id":"t1","status":"completed","items":[]}"#),
+            ],
+        );
+        assert_eq!(sub.agents.get(SUB).unwrap().state, AgentState::Done);
+        assert_eq!(sub.agents.open(), 0);
+        sub.agents.changed();
+        // followupTask: a new turn of the same thread.
+        feed_agents(
+            &mut sub,
+            &[
+                &on_sub("turn/started", r#""turn":{"id":"t2","status":"inProgress","items":[]}"#),
+                &on_sub("item/started", r#""item":{"type":"commandExecution","id":"c2","commandActions":[{"type":"search","query":"parse_expr","command":"rg parse_expr"}]}"#),
+            ],
+        );
+        let again = format!("{SUB}~2");
+        let rows = sub.agents.changed();
+        assert_eq!(rows.len(), 1, "the first row stays as it ended");
+        assert_eq!((rows[0].id.as_str(), rows[0].title.as_str(), rows[0].state), (again.as_str(), "Explore the parser", AgentState::Working));
+        assert_eq!(rows[0].steps, 1);
+        assert_eq!(sub.agents.get(SUB).unwrap().state, AgentState::Done);
+        assert_eq!(sub.agents.open(), 1, "its server is kept while it works");
+        // What the chat's thread says of it now is said of its new row.
+        feed_agents(
+            &mut sub,
+            &[&format!(r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"w","tool":"wait","receiverThreadIds":[],"agentsStates":{{"{SUB}":{{"status":"completed","message":"Found it."}}}}}}}}}}"#)],
+        );
+        let row = sub.agents.get(&again).unwrap();
+        assert_eq!((row.state, row.summary.as_deref()), (AgentState::Done, Some("Found it.")));
+        // A third time, through Codex's own word.
+        feed_agents(&mut sub, &[&format!(r#"{{"method":"item/started","params":{{"item":{{"type":"subAgentActivity","id":"x","kind":"started","agentThreadId":"{SUB}","agentPath":"root/explorer"}}}}}}"#)]);
+        assert_eq!(sub.agents.get(&format!("{SUB}~3")).unwrap().state, AgentState::Working);
     }
 }

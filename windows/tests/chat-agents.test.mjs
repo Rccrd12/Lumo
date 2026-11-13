@@ -10,8 +10,8 @@ import { installFakeDom } from "./fakedom.mjs";
 installFakeDom();
 const {
   AGENT_STALL_S, CLI_STALL_S, CLI_TOOL_STALL_S, CLOUD_STALL_S, LOCAL_START_STALL_S, LOCAL_STREAM_STALL_S, MAX_AGENT_STEPS, MAX_SAVED_AGENTS,
-  addUpdate, applyAgent, applySignal, batchEntries, countAgents, durationText, foldsOwnAnswer, islandAgentsLine, lookOf, newAgentStore,
-  openCount, permissionMatch, restoreAgents, rewindAgents, savedAgents, snooze, stallOf, withAgents,
+  addUpdate, applyAgent, applySignal, batchEntries, countAgents, durationText, foldsOwnAnswer, forgetChat, islandAgentsLine, lookOf, newAgentStore,
+  noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, savedAgents, snooze, stallOf, withAgents,
 } = await import("../src/core/chat-agents.ts");
 const { foldOwnAnswer, joinOwnAnswer } = await import("../src/core/chats.ts");
 const { conversationTurn } = await import("../src/views/chat.ts");
@@ -113,6 +113,8 @@ test("no sign of life is said past each provider's threshold", () => {
     assert.ok(stalled(turn(p), LOCAL_STREAM_STALL_S), p);
     assert.equal(stalled(turn(p, "prompt"), LOCAL_STREAM_STALL_S), null, p);
     assert.ok(stalled(turn(p, "loading"), LOCAL_START_STALL_S), p);
+    // A retry reads the prompt again.
+    assert.equal(stalled(turn(p, "retry"), LOCAL_STREAM_STALL_S), null, p);
   }
   assert.deepEqual([LOCAL_STREAM_STALL_S, LOCAL_START_STALL_S], [20, 90]);
   // A CLI: two minutes thinking, five running a command, a sub-task or a tool.
@@ -252,6 +254,39 @@ test("the agents that ended are saved with their answer, in short, and come back
   // Nonsense is left out.
   restoreAgents(back, "d", [{ role: "assistant", agents: [{ id: 1 }, { id: "w", title: "t", state: "working" }], updates: [3] }]);
   assert.equal(back.get("d").batches.length, 0);
+});
+
+test("the agents of an answer that never came are saved with its question, and come back after it", () => {
+  const store = newAgentStore();
+  send(store, "c", agent("a0", { state: "done", endedAt: T0 + S }), 0);
+  // Started by the answer to q2, which failed: anchored past the last answer.
+  send(store, "c", agent("a1", { state: "failed", error: "Claude Code ended", endedAt: T0 + S }), 1);
+  const turns = [{ role: "user", content: "q1" }, { role: "assistant", content: "r1" }, { role: "user", content: "q2" }];
+  const saved = withAgents(store.get("c"), turns);
+  assert.deepEqual(saved[1].agents.map((a) => a.id), ["a0"]);
+  assert.deepEqual(saved[2].agents.map((a) => a.id), ["a1"], "with the question, not above it");
+  const back = newAgentStore();
+  restoreAgents(back, "c", saved, "claude-code");
+  assert.deepEqual(back.get("c").batches.map((b) => [b.anchor, b.ids]), [[0, ["a0"]], [1, ["a1"]]]);
+  assert.equal(back.get("c").rows.get("a1").row.source, "claude-code", "who started them, as the chat was saved");
+  // Answered since: they stay with the last answer, as before.
+  const answered = withAgents(store.get("c"), [...turns, { role: "assistant", content: "r2" }]);
+  assert.deepEqual(answered[3].agents.map((a) => a.id), ["a1"]);
+  assert.equal(answered[2].agents, undefined);
+});
+
+test("a deleted chat never comes back from its CLI's late news", () => {
+  const store = newAgentStore();
+  send(store, "gone", agent("a1"));
+  forgetChat(store, "gone");
+  assert.equal(store.has("gone"), false);
+  assert.equal(send(store, "gone", agent("a1", { state: "failed", error: "Claude Code ended" })), false);
+  assert.equal(send(store, "gone", agent("a2")), false);
+  assert.equal(applySignal(store, { chat: "gone", at: T0 + S }), false);
+  noteSignal(store, "gone", T0 + 2 * S);
+  assert.equal(store.has("gone"), false);
+  // Other chats are not concerned.
+  assert.equal(send(store, "kept", agent("a1")), true);
 });
 
 test("the closed island's line: how many work and how far, or one with no sign", () => {

@@ -304,6 +304,8 @@ export const Bridge = {
     callOrThrow<ChatReply>("chat_send", screen ? { chatId, query, context, screen } : { chatId, query, context }),
   /** A new chat on screen; an answer still written in another one goes on. */
   chatReset: (chatId: string) => call<void>("chat_reset", { chatId }),
+  /** The chat `chatId` was deleted: its CLI (and the agents it started) ends. */
+  chatClose: (chatId: string) => call<void>("chat_close", { chatId }),
   /** Listens to a pull request for the chat `chatId` (listen.rs); `mode` "every": once for each new commit. */
   /** `replace`: the watch this one changes, which keeps its id (a webhook its address). */
   listenAdd: (repo: string, number: number, until: string, task: string, chatId: string, mode = "once", replace: number | null = null) =>
