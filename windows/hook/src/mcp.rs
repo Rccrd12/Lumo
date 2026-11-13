@@ -26,7 +26,7 @@
 //! `--tools=user` offers the user's own tools, the ones on in Lumo's Tools
 //! tab (tools.rs): the list is asked of Lumo (`{"lumo_tools": {}}`) each time
 //! the agent lists them, and each call handed to Lumo
-//! (`{"lumo_tool": {"tool": …, "input": …}}`), which runs it.
+//! (`{"lumo_tool": {"tool": …, "input": …, "chat": …}}`), which runs it.
 //!
 //! `--tools=island` offers the island's timer and listening tools (`set_timer`,
 //! `listen`, `stop_listening`, `list_listening`; `listen_pull_request`, the
@@ -703,7 +703,7 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
     if !island_before && !kit.tools().iter().any(|t| t["name"] == name) {
         // One of the user's tools: Lumo knows whether it is there and on.
         if kit.user && !name.is_empty() {
-            return answer(lumo(&json!({ "lumo_tool": { "tool": name, "input": input } })));
+            return answer(lumo(&json!({ "lumo_tool": { "tool": name, "input": input, "chat": chat_id() } })));
         }
         return failed(&format!("Lumo has no tool called {name}."));
     }
@@ -726,7 +726,8 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat_id() } })));
     }
     if mail_tool(name) {
-        return answer(lumo(&json!({ "lumo_mail": { "tool": name, "input": input } })));
+        // With its chat: a card it raises puts the chat in "waiting for your permission".
+        return answer(lumo(&json!({ "lumo_mail": { "tool": name, "input": input, "chat": chat_id() } })));
     }
     // With the chat it came from: only that chat's own plan lets it use the computer.
     answer(lumo(&json!({ "lumo_computer": { "tool": name, "input": input, "chat": chat_id() } })))

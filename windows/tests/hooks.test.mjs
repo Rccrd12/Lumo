@@ -997,10 +997,26 @@ test("the chat's permission request is a card over the chat, and leaves the pill
     lumo_island: true, tool_name: "Write", tool_input: { file_path: "C:\\Users\\me\\a.txt" },
   });
   assert.equal(State.pendingApproval?.fromChat, true);
+  assert.equal(State.pendingApproval?.subagentId, undefined, "the answer's own");
   assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
   assert.deepEqual(asked, ["alert:approval"]);
   assert.equal(task().name, "VS Code");
   assert.equal(task().state, "idle");
+});
+
+test("a permission asked inside one of the chat's agents says which one (its row in the Agents card waits)", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "r2", session_id: "s1", cwd: "C:\\Users\\me\\Lumo",
+    lumo_island: true, agent_id: "task-7", tool_name: "Bash", tool_input: { command: "npm test" },
+  });
+  assert.equal(State.pendingApproval?.subagentId, "task-7");
+  // A terminal's Claude Code: no chat, no agent to name.
+  State.pendingApproval = null;
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "r3", session_id: "s2", cwd: "C:\\Users\\me\\Lumo",
+    agent_id: "task-8", tool_name: "Bash", tool_input: { command: "npm test" },
+  });
+  assert.equal(State.pendingApproval?.subagentId, undefined);
 });
 
 // ── The island's own chat (Antigravity CLI provider) ──────────────────────────

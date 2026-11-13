@@ -9247,3 +9247,611 @@ button.bg-row:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Under an answer the CLI ended with an error (views/chat.ts bubble): one
+   line on its bar, in amber, and what to know under it once clicked. The
+   same box holds a failed answer's own words from the CLI (failedParts). */
+.msg-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font: 400 10.5px var(--font);
+  color: var(--amber);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.msg-warning:hover {
+  text-decoration: underline;
+}
+
+.msg-warning svg {
+  flex-shrink: 0;
+}
+
+.msg-warning-detail {
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  font: 400 11px/1.45 var(--font);
+  color: var(--dim-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg-warning-detail[hidden] {
+  display: none;
+}
+
+/* ── The agents a chat's CLI started (views/agents-card.ts) ──────────────────
+   Concept: concepts/sotto-agenti. A dark card under the answer that started
+   them, one row per agent; the segments and markers in the plan chip's
+   colours: green done, blue at work, amber no sign of life, purple waiting
+   for the user, red failed or stopped. */
+
+.agents,
+#compact .cp-agents {
+  --ag-done: #22c55e;
+  --ag-working: #3b9eff;
+  --ag-stalled: #f5a524;
+  --ag-waiting: #a78bfa;
+  --ag-failed: #f4505e;
+}
+
+.agents {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 8px;
+  min-width: 0;
+}
+
+.agents:empty {
+  display: none;
+}
+
+.agents-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: #141518;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.agents-head,
+.agents-folded,
+.agents-ended {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px;
+  font: 400 11px var(--font);
+  color: var(--dim);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.agents-head {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.agents-title {
+  flex: none;
+  font: 600 11.5px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.agents-status,
+.agents-ended-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-card.agents-ended {
+  border-color: rgba(244, 80, 94, 0.45);
+}
+
+.agents-ended-text {
+  color: var(--red-text);
+}
+
+.agents-gap {
+  flex: 1;
+  min-width: 4px;
+}
+
+.agents-time {
+  flex: none;
+  color: var(--dim-3);
+  font: 400 10.5px var(--font);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One segment per agent, as the plan chip's. */
+.agents-segs {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.agents-segs i {
+  width: 12px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.agents-segs i.done { background: var(--ag-done); }
+.agents-segs i.working { background: var(--ag-working); }
+.agents-segs i.stalled { background: var(--ag-stalled); }
+.agents-segs i.waiting { background: var(--ag-waiting); }
+.agents-segs i.failed { background: var(--ag-failed); }
+
+.agents-chev {
+  display: inline-flex;
+  flex: none;
+  color: var(--dim-3);
+  transition: transform 0.15s ease;
+}
+
+.agents-chev.down {
+  transform: rotate(180deg);
+}
+
+.agents-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.agents-row + .agents-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.agents-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.agents-row-head:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.agents-row.stalled .agents-row-head {
+  background: rgba(245, 165, 36, 0.06);
+}
+
+.agents-row.waiting .agents-row-head {
+  background: rgba(167, 139, 250, 0.07);
+}
+
+/* The check of a finished agent, a dot in its colour otherwise. */
+.agents-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.agents-mark.done {
+  color: var(--ag-done);
+}
+
+.agents-mark i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ag-working);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--ag-working) 25%, transparent);
+}
+
+.agents-mark.stalled i { background: var(--ag-stalled); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--ag-stalled) 25%, transparent); }
+.agents-mark.waiting i { background: var(--ag-waiting); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--ag-waiting) 25%, transparent); }
+.agents-mark.failed i { background: var(--ag-failed); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--ag-failed) 25%, transparent); }
+
+.agents-name {
+  flex: 0 1 34%;
+  min-width: 0;
+  font: 500 11.5px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-line {
+  flex: 1 1 0;
+  min-width: 0;
+  font: 400 11px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-row.done .agents-line { color: var(--dim-3); }
+.agents-row.stalled .agents-line { color: var(--ag-stalled); }
+.agents-row.waiting .agents-line { color: var(--ag-waiting); }
+.agents-row.failed .agents-line { color: var(--red-text); }
+
+.agents-side {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+}
+
+.agents-btn {
+  height: 22px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink-2);
+  font: 500 10.5px var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.agents-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.agents-btn.stop {
+  color: var(--red-text);
+}
+
+/* A row opened: the CLI's summary, the last steps, the numbers. */
+.agents-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 12px 10px 34px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.agents-summary {
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.agents-summary.failed {
+  color: var(--red-text);
+}
+
+.agents-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.agents-step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agents-step-what {
+  flex: 1;
+  min-width: 0;
+  font: 400 11px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-numbers {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.agents-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Ask: the agent's own button colour, and its row's badge while a message waits for its answer. */
+.agents-btn.ask {
+  color: var(--ag-working);
+}
+
+.agents-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font: 500 9.5px var(--font);
+  white-space: nowrap;
+}
+
+.agents-badge.talk {
+  background: color-mix(in srgb, var(--ag-working) 16%, transparent);
+  color: var(--ag-working);
+}
+
+/* "Talking to …": a message of the chat's CLI to one of its agents, and the answer (views/agents-card.ts). */
+.agents-talk {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 10px 8px;
+  border-radius: 10px;
+  border-left: 2px solid var(--ag-working);
+  background: color-mix(in srgb, var(--ag-working) 7%, transparent);
+  min-width: 0;
+}
+
+.agents-talk-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agents-talk-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--ag-working);
+}
+
+.agents-talk-title {
+  min-width: 0;
+  font: 600 11.5px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-talk-msg {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agents-talk-who {
+  flex: none;
+  max-width: 34%;
+  font: 500 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-talk-msg.agent .agents-talk-who {
+  color: var(--ag-working);
+}
+
+.agents-talk-text {
+  flex: 1 1 0;
+  min-width: 0;
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.agents-talk-text.dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim-3);
+}
+
+.agents-talk-text.dim .typing {
+  padding: 0;
+}
+
+.agents-talk-text.failed {
+  color: var(--red-text);
+}
+
+/* Ask on an agent's row: the agent over the field until the question goes (views/chat.ts),
+   in its row's colour (the agents' colours above: the field is not inside their card). */
+.chat-ask {
+  --ask: #3b9eff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  animation: queue-in 0.18s ease-out;
+}
+
+.chat-ask[hidden],
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .chat-ask {
+  display: none;
+}
+
+.chat-ask[data-look="stalled"],
+.bubble-quote[data-look="stalled"] { --ask: #f5a524; }
+.chat-ask[data-look="waiting"],
+.bubble-quote[data-look="waiting"] { --ask: #a78bfa; }
+.chat-ask[data-look="done"],
+.bubble-quote[data-look="done"] { --ask: #22c55e; }
+.chat-ask[data-look="failed"],
+.bubble-quote[data-look="failed"] { --ask: #f4505e; }
+
+.ask-bar {
+  flex: none;
+  align-self: stretch;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--ask);
+}
+
+.ask-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ask-who {
+  font: 600 11px var(--font);
+  color: var(--ask);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ask-line {
+  font: 400 11px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ask-close {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.ask-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* A question asked of an agent: that agent on top, inside the bubble. */
+.bubble-quote {
+  --ask: #3b9eff;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px -4px 5px;
+  padding: 4px 8px;
+  border-left: 3px solid var(--ask);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.bubble-quote b {
+  font: 600 11px var(--font);
+  color: var(--ask);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bubble-quote span {
+  font: 400 11px var(--font);
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Under the card while agents work: the dots, in the worst case's colour, and the last sign. */
+.agents-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.agents-dots {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  padding: 4px 2px;
+}
+
+.agents-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ag-working);
+  animation: typing 0.9s ease-in-out infinite;
+}
+
+.agents-dots i:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.agents-dots i:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+.agents-live.stalled .agents-dots i { background: var(--ag-stalled); }
+.agents-live.waiting .agents-dots i { background: var(--ag-waiting); }
+
+.agents-live-text {
+  min-width: 0;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.agents-live.stalled .agents-live-text { color: var(--ag-stalled); }
+.agents-live.waiting .agents-live-text { color: var(--ag-waiting); }
+
+/* After the dots' words: the answer gave no sign for too long, or waits for the user. */
+.typing-stall {
+  align-self: center;
+  flex: none;
+  font: 400 10.5px var(--font);
+  white-space: nowrap;
+}
+
+.typing-stall.stalled { color: #f5a524; }
+.typing-stall.waiting { color: #a78bfa; }
+
+@media (prefers-reduced-motion: reduce) {
+  .agents-dots i {
+    animation: none;
+  }
+}
+
+/* The closed island: a chat whose agents work after its answer, a segment
+   each after the words (concept: sotto-agenti, image 5); amber words when one
+   gives no sign. */
+#compact .cp-agents {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#compact .cp-stalled {
+  color: #f5a524;
+}

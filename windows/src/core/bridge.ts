@@ -318,6 +318,8 @@ export const Bridge = {
     }),
   /** A new chat on screen; an answer still written in another one goes on. */
   chatReset: (chatId: string) => call<void>("chat_reset", { chatId }),
+  /** The chat `chatId` was deleted: its CLI (and the agents it started) ends. */
+  chatClose: (chatId: string) => call<void>("chat_close", { chatId }),
   /** Listens to a pull request for the chat `chatId` (listen.rs); `mode` "every": once for each new commit. */
   /** `replace`: the watch this one changes, which keeps its id (a webhook its address). */
   listenAdd: (repo: string, number: number, until: string, task: string, chatId: string, mode = "once", replace: number | null = null) =>
@@ -772,6 +774,77 @@ export interface ChatActivity {
   detail: string;
 }
 
+/** Where an agent a chat's CLI started stands (chat_agents.rs AgentState); the last three are final. */
+export type ChatAgentState = "working" | "waiting" | "done" | "failed" | "stopped";
+
+/**
+ * One agent a chat's answer started (chat_agents.rs AgentRow), always whole:
+ * the payload of the `chat-agent` event, `{ chat, agent }`.
+ */
+export interface ChatAgent {
+  /** Its id in its CLI, unique in the chat (Claude Code's task id, Codex's thread id…). */
+  id: string;
+  /** The provider that runs it (a providers.ts id). */
+  source: string;
+  /** Its task, as the CLI described it. */
+  title: string;
+  state: ChatAgentState;
+  /** With "waiting": what it waits for. */
+  waitingFor?: "permission" | "rate_limit";
+  /** What it is doing now, worded as the typing line is (activityLabel). */
+  now?: ChatActivity;
+  /** The CLI's own one-line account of its progress. */
+  summary?: string;
+  /** Tool calls so far. */
+  steps: number;
+  tokens?: number;
+  /** Epoch ms. */
+  startedAt: number;
+  lastSignalAt: number;
+  endedAt?: number;
+  error?: string;
+  /** It goes on after the turn that started it. */
+  background: boolean;
+  /** `chat_stop_agent` can stop it alone. */
+  canStop: boolean;
+  /** Its CLI can pass it a message from the chat (Claude Code's SendMessage): Ask. */
+  canAsk?: boolean;
+  /** How many times a message took it up again after it ended: a higher round replaces an ended row. */
+  round?: number;
+  /** The last message its CLI sent it, and its answer once it came. */
+  talk?: ChatAgentTalk;
+}
+
+/** A message the chat's CLI sent one of its agents, and the agent's answer (the "Talking to …" box). */
+export interface ChatAgentTalk {
+  /** The tool call that sent it: one box per call. */
+  call: string;
+  message: string;
+  /** Epoch ms. */
+  sentAt: number;
+  reply?: string;
+  repliedAt?: number;
+  /** Why it did not reach the agent. */
+  failed?: string;
+}
+
+/** The `chat-agent` event. */
+export interface ChatAgentEvent {
+  chat: string;
+  agent: ChatAgent;
+}
+
+/**
+ * The `chat-signal` event: the chat's answer moved at `at` (epoch ms), sent
+ * once a second at most. With `waiting` present, the answer starts ("permission":
+ * a card is up for the user) or stops (null) waiting for the user; those are always sent.
+ */
+export interface ChatSignalEvent {
+  chat: string;
+  at: number;
+  waiting?: "permission" | null;
+}
+
 /**
  * Unsloth Studio as Lumo starts and stops it (unsloth_studio.rs Status), also
  * the payload of the `unsloth-studio` event.
@@ -802,6 +875,14 @@ export interface ChatReply {
   kept?: string;
   /** The turn used the computer: its plan as it ended, for the recap under the answer (computer.rs). */
   computer?: ComputerRecap;
+  /** The answer came, but the CLI ended its turn with an error (antigravity_cli.rs): said under the answer. */
+  warning?: ChatWarning;
+}
+
+/** A problem under an answer: one short line, and what to know, opened with a click. */
+export interface ChatWarning {
+  line: string;
+  detail: string;
 }
 
 /** A display the screen button can capture; `index` is its place in the menu. */

@@ -15,6 +15,56 @@ export interface SavedTurn {
   kept?: string;
   /** The answer's turn used the computer: its plan as it ended (ChatMessage.computer), with the steps' small pictures. */
   computer?: ComputerRecap;
+  /** The problem said under an answer (ChatMessage.warning). */
+  warning?: { line: string; detail: string };
+  /** An answer's: the agents it started that ended, in short (core/chat-agents.ts savedAgents). */
+  agents?: SavedAgent[];
+  /** An answer's: the messages its CLI sent its agents, and their answers ("Talking to …"). */
+  talks?: SavedTalk[];
+  /** A question's: the agent it was asked of (Ask, the quote above the field). */
+  ask?: AskQuote;
+}
+
+/** A question asked of one agent: who, and what it was doing then (the quote over the question). */
+export interface AskQuote {
+  agentId: string;
+  title: string;
+  /** What its row said when Ask was clicked. */
+  line: string;
+  /** Its look then (working, stalled, done…): the quote's colour. */
+  look: string;
+}
+
+/** A saved quote, checked: a chat saved by hand or by an older Lumo may hold anything. */
+export function askQuoteOf(x: unknown): AskQuote | undefined {
+  const q = x as AskQuote;
+  return q && typeof q.agentId === "string" && typeof q.title === "string" && typeof q.line === "string" && typeof q.look === "string"
+    ? { agentId: q.agentId, title: q.title, line: q.line, look: q.look }
+    : undefined;
+}
+
+/** A message sent to an agent, as the chat keeps it with its answer. */
+export interface SavedTalk {
+  call: string;
+  agentId: string;
+  title: string;
+  message: string;
+  sentAt: number;
+  reply?: string;
+  failed?: string;
+}
+
+/** One agent an answer started, as the chat keeps it once it ended (bridge.ts ChatAgent, in short). */
+export interface SavedAgent {
+  id: string;
+  title: string;
+  state: "done" | "failed" | "stopped";
+  summary?: string;
+  error?: string;
+  steps: number;
+  tokens?: number;
+  startedAt: number;
+  endedAt?: number;
 }
 
 const STATUSES = new Set(["pending", "active", "done"]);
@@ -49,24 +99,38 @@ export function cleanRecap(raw: unknown): ComputerRecap | undefined {
   };
 }
 
-/** A message of the chat as it is saved (chat.ts remember): what it said, when, what it kept, and its recap. */
-export function toSavedTurn(m: { role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap }): SavedTurn {
+/**
+ * A message of the chat as it is saved (chat.ts remember): what it said, when,
+ * what it kept, its recap, the problem said under it and the agent it was asked of.
+ */
+export function toSavedTurn(m: {
+  role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap;
+  warning?: { line: string; detail: string }; ask?: AskQuote;
+}): SavedTurn {
   return {
     role: m.role,
     content: m.content,
     ...(m.at != null ? { at: m.at } : {}),
     ...(m.kept ? { kept: m.kept } : {}),
     ...(m.role === "assistant" && m.computer ? { computer: m.computer } : {}),
+    ...(m.warning ? { warning: m.warning } : {}),
+    ...(m.ask ? { ask: m.ask } : {}),
   };
 }
 
 /** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */
-export function fromSavedTurn(turn: SavedTurn): { at?: number; kept?: string; computer?: ComputerRecap } {
+export function fromSavedTurn(turn: SavedTurn): {
+  at?: number; kept?: string; computer?: ComputerRecap; warning?: { line: string; detail: string }; ask?: AskQuote;
+} {
   const computer = turn.role === "assistant" ? cleanRecap(turn.computer) : undefined;
+  const warning = savedWarning(turn.warning);
+  const ask = askQuoteOf(turn.ask);
   return {
     at: typeof turn.at === "number" ? turn.at : undefined,
     kept: typeof turn.kept === "string" ? turn.kept : undefined,
     ...(computer ? { computer } : {}),
+    ...(warning ? { warning } : {}),
+    ...(ask ? { ask } : {}),
   };
 }
 
@@ -115,10 +179,26 @@ export function loadChats(): SavedChat[] {
   try {
     const raw = storage()?.getItem(KEY);
     const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list.filter(isChat) : [];
+    return Array.isArray(list) ? list.filter(isChat).map(unfoldUpdates) : [];
   } catch {
     return [];
   }
+}
+
+/**
+ * The 0.22.2 betas folded what Claude Code wrote by itself while agents worked
+ * into one line under them (`updates`), out of the answer's text but in what
+ * the conversation holds (`kept`). It shows as the answer's text again.
+ */
+function unfoldUpdates(chat: SavedChat): SavedChat {
+  if (!chat.turns.some((turn) => "updates" in turn)) return chat;
+  const turns = chat.turns.map((turn) => {
+    if (!("updates" in turn)) return turn;
+    const { updates, ...rest } = turn as SavedTurn & { updates?: unknown };
+    const folded = Array.isArray(updates) && updates.length > 0 && rest.role === "assistant" && typeof rest.kept === "string";
+    return folded ? { ...rest, content: rest.kept! } : rest;
+  });
+  return { ...chat, turns };
 }
 
 function isChat(c: unknown): c is SavedChat {
@@ -220,6 +300,12 @@ function store(list: SavedChat[]): SavedChat[] {
 }
 
 /** The first question, on one line and shortened. */
+/** A saved answer's warning (SavedTurn.warning), when it is one. */
+export function savedWarning(w: unknown): { line: string; detail: string } | undefined {
+  const o = w as { line?: unknown; detail?: unknown } | null | undefined;
+  return o && typeof o.line === "string" && typeof o.detail === "string" ? { line: o.line, detail: o.detail } : undefined;
+}
+
 export function chatTitle(turns: SavedTurn[]): string {
   const first = turns.find((t) => t.role === "user")?.content ?? "";
   const line = first.replace(/\s+/g, " ").trim();
@@ -233,15 +319,14 @@ export function chatTitle(turns: SavedTurn[]): string {
  * `add_own`). A question still waiting for its answer stays after it. False
  * with no answer to join.
  */
-export function joinOwnAnswer(turns: { role: string; content: string; failed?: boolean; kept?: string }[], text: string): boolean {
-  const join = (before: string) => (before.trim() ? `${before}\n\n${text}` : text);
+export function joinOwnAnswer(turns: { role: string; content: string; kept?: string; failed?: boolean }[], text: string): boolean {
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
     if (turn.role !== "assistant" || turn.failed) continue;
-    turn.content = join(turn.content);
-    // What Rust's conversation holds for it ("(No answer.)") gets the answer
-    // too, as add_own adds it there: given back by chat_restore, it is the same.
-    if (turn.kept != null) turn.kept = join(turn.kept);
+    turn.content = turn.content.trim() ? `${turn.content}\n\n${text}` : text;
+    // An answer whose conversation is not its text gives Rust its `kept` (chat_restore):
+    // the text joins it too, or Claude would not see this answer when the chat comes back.
+    if (typeof turn.kept === "string") turn.kept = turn.kept.trim() ? `${turn.kept}\n\n${text}` : text;
     return true;
   }
   return false;
@@ -319,6 +404,19 @@ export function setChatChecklists(id: string, checklists: ChatChecklists) {
   }
   chat.checklists = checklists;
   store(list);
+}
+
+/**
+ * Changes a saved chat's turns where it is (its agents ended, an update came
+ * in): its place in the history does not change. False when it is not saved.
+ */
+export function updateChatTurns(id: string, change: (turns: SavedTurn[]) => SavedTurn[]): boolean {
+  const list = loadChats();
+  const chat = list.find((c) => c.id === id);
+  if (!chat) return false;
+  chat.turns = change(chat.turns);
+  store(list);
+  return true;
 }
 
 export function deleteChat(id: string): SavedChat[] {

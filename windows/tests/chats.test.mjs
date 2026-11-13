@@ -199,3 +199,17 @@ test("with storage full, the pictures go before any chat, the oldest recap's fir
   // The steps' text stays.
   assert.ok(loadChats().filter((c) => c.turns[1]?.computer).every((c) => c.turns[1].computer.steps.length === 2));
 });
+
+test("a chat saved by a beta that folded the CLI's own answers under the agents shows them in the answer again", () => {
+  localStorage.setItem("lumo.chats.v1", JSON.stringify([{
+    id: "beta", title: "t", updatedAt: 1, provider: "claude-code", session: null,
+    turns: [
+      { role: "user", content: "go" },
+      { role: "assistant", content: "Launched.\n\nAll done.", kept: "Launched.\n\nFirst result.\n\nAll done.", updates: ["First result."] },
+      { role: "user", content: "thanks" },
+    ],
+  }]));
+  const [chat] = loadChats();
+  assert.deepEqual(chat.turns[1], { role: "assistant", content: "Launched.\n\nFirst result.\n\nAll done.", kept: "Launched.\n\nFirst result.\n\nAll done." });
+  assert.deepEqual(chat.turns[2], { role: "user", content: "thanks" });
+});
