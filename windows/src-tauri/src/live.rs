@@ -717,7 +717,8 @@ pub fn computer_ready(settings: &crate::settings::Settings) -> bool {
 
 /// Hands `task`, something to do on the screen, to Claude Code with Lumo's
 /// computer tools: the same turn as in the chat (the glow, Claude's mouse,
-/// the cards, Esc). Its answer, for Gemini to say.
+/// the cards, Esc to pause it and the island's Resume to go on). Its
+/// answer, for Gemini to say.
 pub async fn use_computer(app: &AppHandle, task: String) -> Result<String, String> {
     let task = task.trim().to_string();
     if task.is_empty() {
@@ -740,7 +741,8 @@ pub async fn use_computer(app: &AppHandle, task: String) -> Result<String, Strin
     let mode = settings.chat_permission_mode.clone();
     let app2 = app.clone();
     let stop2 = stop.clone();
-    crate::computer::begin_turn(crate::computer::Who::of(crate::claude_code::PROVIDER));
+    // No island chat: its plan is its own ("") and shows on the island alone.
+    crate::computer::begin_turn(crate::computer::Who::of(crate::claude_code::PROVIDER), "");
     let result = tauri::async_runtime::spawn_blocking(move || {
         let tell = |a: &crate::claude_code::Activity| {
             let _ = app2.emit_to(
@@ -754,7 +756,7 @@ pub async fn use_computer(app: &AppHandle, task: String) -> Result<String, Strin
     .await
     .map_err(|e| e.to_string());
     // Gemini says the answer: the recap has nowhere to go.
-    let _ = crate::computer::end_turn(app, stop.is_stopped());
+    let _ = crate::computer::end_turn(app, "", stop.is_stopped());
     let mut current = HELPING.lock().unwrap_or_else(|e| e.into_inner());
     if current.as_ref().is_some_and(|s| Arc::ptr_eq(s, &stop)) {
         *current = None;

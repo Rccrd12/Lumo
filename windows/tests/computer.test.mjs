@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { computerActionOn, computerPoint, describeComputerAction, isComputerTool, peekPlacement, scrollDirectionOf, splitComputerLine } = await import("../src/core/computer.ts");
+const { computerActionOn, computerPoint, describeComputerAction, isComputerTool, peekPlacement, scrollDirection, splitComputerLine } = await import("../src/core/computer.ts");
 const { setLanguage } = await import("../src/i18n/i18n.ts");
 
 const say = (name, input = {}) => describeComputerAction(`mcp__lumo__${name}`, input);
@@ -78,7 +78,9 @@ test("an action on a thing Windows named is said on it, the name apart with its 
   assert.deepEqual(on("  File \n menu "), { before: "Click on ", name: "«File menu»", after: "" }, "on one line");
   assert.deepEqual(on("Text", {}, "right_click"), { before: "Right click on ", name: "«Text»", after: "" });
   assert.deepEqual(on("List", { scroll_direction: "up" }, "scroll"), { before: "Scroll up on ", name: "«List»", after: "" });
-  assert.deepEqual(on("List", {}, "scroll"), { before: "Scroll down on ", name: "«List»", after: "" });
+  // A scroll that says no way (or one of its own) is not said on the thing: never a made-up "down".
+  assert.equal(on("List", {}, "scroll"), null);
+  assert.equal(on("List", { scroll_direction: "sideways" }, "scroll"), null);
   assert.deepEqual(on("Bin", {}, "left_click_drag"), { before: "Drag to ", name: "«Bin»", after: "" });
   assert.deepEqual(on("OK", {}, "mouse_move"), { before: "Move the mouse to ", name: "«OK»", after: "" });
   assert.equal(on(""), null, "no name, no words");
@@ -92,13 +94,15 @@ test("an action on a thing Windows named is said on it, the name apart with its 
   }
 });
 
-test("the card's line comes apart into what is done and on what; a scroll's way is read back", () => {
+test("the card's line comes apart into what is done and on what; a scroll's way is the request's", () => {
   assert.deepEqual(splitComputerLine("Click · 640, 320"), { label: "Click", detail: "640, 320" });
   assert.deepEqual(splitComputerLine("Type · a · b"), { label: "Type", detail: "a · b" });
   assert.deepEqual(splitComputerLine("Look at the screen"), { label: "Look at the screen", detail: "" });
-  assert.equal(scrollDirectionOf(say("scroll", { scroll_direction: "left", coordinate: [1, 2] })), "left");
-  assert.equal(scrollDirectionOf(say("scroll", { scroll_direction: "up" })), "up");
-  assert.equal(scrollDirectionOf(say("left_click", { coordinate: [1, 2] })), null);
+  assert.equal(scrollDirection({ scroll_direction: "left", coordinate: [1, 2] }), "left");
+  assert.equal(scrollDirection({ scroll_direction: "up" }), "up");
+  assert.equal(scrollDirection({ scroll_direction: "UP" }), null);
+  assert.equal(scrollDirection({ scroll_direction: 1 }), null);
+  assert.equal(scrollDirection({}), null);
 });
 
 test("the screen's crop fills the card's thumbnail, its point inside it", () => {

@@ -224,10 +224,13 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         // `"lumo_island": true` instead, and goes on below as an event.
         Some(crate::island_tools::serve(request))
     } else {
-        // During a computer turn, the plan is the one the computer works by
-        // (computer.rs: no plan, no computer); otherwise Antigravity CLI's.
+        // Routed by who sent it, never by what else runs: a lumo-hook that
+        // lends the computer says so (`"computer": true`), and its plan is the
+        // one the computer works by (computer.rs: no plan, no computer). Any
+        // other (Antigravity CLI's, which never has the computer, or an older
+        // relay) is Antigravity CLI's plan, and never lets anyone in.
         payload.get("lumo_plan").map(|request| {
-            if crate::computer::turn_running() {
+            if request.get("computer").and_then(Value::as_bool) == Some(true) {
                 crate::computer::note_plan(&app, request)
             } else {
                 crate::antigravity_cli::serve_plan(&app, request)

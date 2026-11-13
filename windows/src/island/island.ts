@@ -50,6 +50,7 @@ import { isHookPill, pillDefinition } from "../core/pills";
 import { isComputerTool } from "../core/computer";
 import type { ComputerState } from "../core/computer-use";
 import { ComputerPill, clearComputerReveal, computerShowing, setComputerReveal } from "../views/computer-plan";
+import { type PlanSpot, afterCard, pausedPlanWaits, planLeave, planMove } from "../core/computer-plan";
 import { N_, t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { IslandPlan } from "./plan";
@@ -308,16 +309,14 @@ export class Island {
       presentApproval(this);
       return;
     }
-    // Claude is using the computer: back to Lumo's ring, out of its way;
-    // paused with Esc meanwhile, back to the plan, where Resume is.
-    if (fromChat && State.computerActive) {
-      if (State.computer?.paused) this.openComputerPlan();
-      else this.collapse();
-      return;
-    }
+    // Computer use paused with Esc meanwhile: back to the plan, whoever asked.
+    if (this.reopenPausedPlan()) return;
+    // Claude is using the computer: back to Lumo's ring, out of its way.
     // The chat asked: back to the chat, where the answer is still coming.
     // Gemini's helper asked: back to the call.
-    this.setView(fromChat ? (State.liveActive ? "live" : "prompt") : State.agentsView());
+    const next = afterCard(fromChat, State.computerActive, State.liveActive);
+    if (next === "collapse") this.collapse();
+    else this.setView(next === "agents" ? State.agentsView() : next);
   }
 
   /**
@@ -361,8 +360,10 @@ export class Island {
     }
     State.endApproval();
     this.dropPin();
-    // The next request in line, if any, comes up in its turn.
+    // The next request in line, if any, comes up in its turn; none, and
+    // computer use is paused: the plan, where Stop, Ask and Resume are.
     presentApproval(this);
+    this.reopenPausedPlan();
     State.notify();
   }
 
@@ -626,6 +627,7 @@ export class Island {
   }
 
   expand(view: IslandViewName) {
+    this.noteComputerShowing(view);
     this.stopSequenceIfLeaving(view);
     if (view !== "overview") closePlanCard();
     State.view = view;
@@ -635,6 +637,7 @@ export class Island {
   }
 
   setView(view: IslandViewName) {
+    this.noteComputerShowing(view);
     this.stopSequenceIfLeaving(view);
     if (view !== "overview") closePlanCard();
     if (State.mode !== "expanded") {
@@ -648,6 +651,11 @@ export class Island {
     State.view = view;
     this.animateGeometry(!grew);
     State.notify();
+  }
+
+  /** The computer use plan comes on screen afresh (any way it opens): what changed is counted from its last showing. */
+  private noteComputerShowing(view: IslandViewName) {
+    if (view === "computer" && !(State.mode === "expanded" && State.view === "computer")) computerShowing();
   }
 
   collapse() {
@@ -719,7 +727,7 @@ export class Island {
     if (!on) {
       // The plan goes with it (computer-state may come after this).
       State.computer = null;
-      this.leaveComputerPlan();
+      this.leaveComputerPlan(false);
     }
     if (on) {
       // The plan already opened for it (computer-state came first, over the
@@ -747,20 +755,22 @@ export class Island {
    * opens a moment as it starts and each time a step is done, then the
    * island closes again by itself (the agent goes on meanwhile); paused with
    * Esc it stays open on the plan until it is resumed or stopped. A
-   * permission card waiting wins: the plan does not cover it.
+   * permission card waiting wins: the plan does not cover it; nor does a
+   * step done take over a view the user opened meanwhile (planMove).
    */
   onComputerState(s: ComputerState) {
     const was = State.computer;
+    const move = planMove(was, s, this.planSpot());
     State.computer = s.engaged ? s : null;
-    if (!s.engaged || s.stopped) {
-      this.leaveComputerPlan();
-    } else if (s.paused) {
+    if (move === "leave") {
+      this.leaveComputerPlan(false);
+    } else if (move === "pause") {
       this.endComputerReveal();
       if (!State.pendingApproval) this.openComputerPlan();
-    } else if (was?.paused) {
-      // Resumed: back to the closed island, out of the agent's way.
-      this.leaveComputerPlan();
-    } else if (s.reveal && !State.pendingApproval && !State.paused) {
+    } else if (move === "resume") {
+      // Resumed: back to the closed island, out of the agent's way, whatever was open.
+      this.leaveComputerPlan(true);
+    } else if (move === "reveal" && s.reveal) {
       const ms = Number.isFinite(s.revealMs) && (s.revealMs ?? 0) > 0 ? s.revealMs! : 3000;
       setComputerReveal(s.reveal, ms);
       this.openComputerPlan();
@@ -770,7 +780,7 @@ export class Island {
         clearComputerReveal();
         if (State.computer?.paused || State.pendingApproval) return;
         if (State.mode === "expanded" && State.view === "computer") this.collapse();
-        else this.fsm.pinned = State.isPinned;
+        else this.releasePlanHold();
         State.notify();
       }, ms);
     }
@@ -792,7 +802,6 @@ export class Island {
     }
     // Over the chat: the chat comes back when computer use is over.
     if (State.mode === "expanded" && State.view === "prompt") this.foldedForComputer = true;
-    computerShowing();
     this.fsm.forceHome();
     this.expand("computer");
   }
@@ -803,11 +812,50 @@ export class Island {
     clearComputerReveal();
   }
 
-  /** The plan has nothing more to show (resumed, stopped, over): the island closes again if it is on it. */
-  private leaveComputerPlan() {
+  /**
+   * The plan has nothing more to show (resumed, stopped, over): the island
+   * closes again if it is on it. Resumed, it closes on any view the user
+   * moved to meanwhile: the mouse is the agent's again, so nothing could
+   * reach it (a chat closed so comes back when computer use is over).
+   */
+  private leaveComputerPlan(resumed: boolean) {
     this.endComputerReveal();
-    if (State.mode === "expanded" && State.view === "computer") this.collapse();
-    else if (!State.pendingApproval) this.fsm.pinned = State.isPinned;
+    switch (planLeave(resumed, this.planSpot())) {
+      case "fold-chat":
+        this.foldedForComputer = true;
+        this.collapse();
+        break;
+      case "collapse":
+        this.collapse();
+        break;
+      case "release":
+        this.releasePlanHold();
+        break;
+      case "keep":
+        break;
+    }
+  }
+
+  /** The plan's hold goes: the island closes as it would have, the countdown the pin held back starting now (dropPin). */
+  private releasePlanHold() {
+    this.fsm.pinned = State.isPinned;
+    if (!State.isPinned && !this.wasInIsland && this.fsm.state === "home") this.fsm.mouseLeft();
+  }
+
+  /** Where the island is, for what computer use does to it (core/computer-plan.ts). */
+  private planSpot(): PlanSpot {
+    return { mode: State.mode, view: State.view, card: !!State.pendingApproval, appPaused: State.paused };
+  }
+
+  /**
+   * A card left (answered, withdrawn, expired) while computer use is paused
+   * with Esc: back to the plan, where Stop, Ask and Resume are. False when it
+   * is not paused or another card came up.
+   */
+  reopenPausedPlan(): boolean {
+    if (State.pendingApproval || !pausedPlanWaits(State.computerActive, State.computer)) return false;
+    this.openComputerPlan();
+    return true;
   }
 
   // ── The right-click menu ────────────────────────────────────────────────────
@@ -1753,7 +1801,8 @@ export class Island {
       }
       if (e.key === "Escape" && State.mode === "expanded") {
         if (State.pendingApproval) this.foldApproval();
-        // On the computer use plan Esc is Rust's (a global key: pause, resume), never a close here.
+        // On the computer use plan Esc never closes the island nor resumes:
+        // only Resume does (the open field's Esc, its own, closes the field).
         else if (State.view === "computer") return;
         else if (!State.isPinned) {
           this.collapse();

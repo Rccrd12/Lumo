@@ -1052,7 +1052,8 @@ with `--mcp-config` to the chat's runs only; your Claude Code settings are not
 touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
 `left_click`, `right_click`, `double_click`, `triple_click`, `middle_click`,
 `mouse_move`, `left_click_drag`, `scroll`, `type`, `key`, `wait` and
-`cursor_position`. It runs on your plan, with no API key.
+`cursor_position`, and Lumo's `update_plan` for its plan. It runs on your
+plan, with no API key.
 
 - **Gemini Live** hands what is to be done on the screen ("click Send", "open
   the display settings and turn on night light") to Claude Code with its own
@@ -1067,9 +1068,10 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
   and may change or add steps at any time.
 - **The plan is on the island**: as computer use starts, the island opens on
   the plan for 3 seconds ("Starts in 3 s") and the first action waits for it;
-  then it closes to a short line with the agent's colour, the step under way,
-  a dash for each step, how far it is (2/5) and Esc. Each step marked done
-  opens the plan again for 3 seconds, and Claude goes on meanwhile.
+  then, on the top or bottom edge, it closes to a short line with the agent's
+  colour, the step under way, a dash for each step, how far it is (2/5) and
+  Esc (upright on a side, the island keeps its short pill). Each step marked
+  done opens the plan again for 3 seconds, and Claude goes on meanwhile.
 - **Every action asks first**, with the chat set to *Ask every time*: a click,
   a key or a text is an Allow / Deny card on the island. It says who asks, in
   the provider's name and colour, at which step of the plan ("wants to use the
@@ -1085,7 +1087,10 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
   the plan with **Stop** (nothing more is done in this answer), **Ask Claude
   Code** (a field: what you write reaches Claude as the answer of the action it
   is waiting on; it answers above the plan, may change the plan, and waits
-  again) and **Resume** (or Esc again).
+  again; Esc in the field closes it, nothing sent) and **Resume**. Only
+  Resume gives Claude the mouse back: Esc pressed again, by a panic double
+  press or in another app, never does. While it is paused, Esc is yours
+  again, for your apps and the island.
 - **You can see it work**: the screen it uses glows softly around its edges
   (on whichever display it is), the mouse turns into an orange arrow and
   glides from point to point instead of jumping, and each action shows where
@@ -1102,8 +1107,10 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
 - **A recap under the answer**: "Used the computer · 5 steps · 41 s", which a
   click opens on the plan's steps as they ended, each with a small picture of
   the screen taken when it was done. Stopped before the end, an amber line
-  says at which step and what was done last. It is saved with the chat, the
-  pictures too, on this computer only.
+  says at which step and what was done last, even when Claude had written
+  nothing yet. It is saved with the chat, on this computer only, with the
+  pictures of the last few recaps (older ones keep their steps without
+  pictures, and pictures go first, never a chat, when space runs short).
 - One screen at a time: the one under the mouse at the first screenshot (or
   the one Claude asks for). Screenshots are sent at 1456 px on the long edge
   at most, about 1.15 megapixels; Lumo turns Claude's coordinates back into

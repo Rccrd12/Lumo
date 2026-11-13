@@ -37,6 +37,8 @@
 }
 
 .cu-recap-meta {
+  /* Its leading " · " kept (a flex item's first space would go). */
+  white-space: pre;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -1050,13 +1050,15 @@ async fn dispatch(
     let reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await;
     // What the island's tools asked for during the turn (island_tools.rs), as
     // the lines the island reads; a failed turn, or one stopped before it
-    // said anything, drops them.
+    // said anything, drops them. One stopped that used the computer is kept
+    // (claude_code.rs), as the island keeps it: its recap goes under it.
     let asked = crate::island_tools::take(chat.id());
     let mut reply = reply?;
-    if !(reply.stopped && reply.text.is_empty()) {
+    let kept = !(reply.stopped && reply.text.is_empty()) || reply.computer.is_some();
+    if kept {
         chat.told_forgotten(&forgotten);
     }
-    if !asked.is_empty() && !(reply.stopped && reply.text.is_empty()) {
+    if !asked.is_empty() && kept {
         reply.text = keep_lumo_lines(std::mem::take(&mut reply.text), &asked);
     }
     // Remembered once it went, for a fresh Claude Code session after an edit.

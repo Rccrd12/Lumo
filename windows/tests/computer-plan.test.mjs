@@ -1,6 +1,7 @@
 // Computer use with a plan, as the island says it (src/core/computer-plan.ts):
 // the clock, which step it is at, what changed since the plan was last shown,
-// the countdowns, the footer and the closed island's line.
+// the countdowns, the footer, the closed island's line, and what each
+// computer-state does to the island (open, close, let go).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -85,7 +86,7 @@ test("the footer: a countdown as it starts and at a step done, the buttons while
 test("the closed island's line: who, the step under way, the segments and k/n; nothing without a plan", () => {
   const parts = computerPillParts(state());
   assert.deepEqual(parts, {
-    color: "#D97757", agent: "Claude Code", text: "Open the File menu", segments: ["done", "active", "pending"], place: "2/3",
+    color: "#D97757", agent: "Claude Code", text: "Open the File menu", segments: ["done", "active", "pending"], place: "2/3", paused: false,
   });
   assert.equal(computerPillParts(state({ steps: [] })), null, "no plan, nothing said");
   assert.equal(computerPillParts(state({ engaged: false })), null);
@@ -94,6 +95,7 @@ test("the closed island's line: who, the step under way, the segments and k/n; n
   assert.notEqual(computerPillKey(parts), computerPillKey(computerPillParts(state({ steps: [step("a", "done"), step("b", "done"), step("c", "active")] }))));
   assert.equal(computerPillKey(parts), computerPillKey(computerPillParts(state({ since: 99, explanation: "ok" }))),
     "what the line does not show does not redraw it");
+  assert.notEqual(computerPillKey(parts), computerPillKey(computerPillParts(state({ paused: true }))), "a pause redraws it (no Esc then)");
 });
 
 test("the plan's height grows with its steps up to a scroll, and with what paused adds", () => {
@@ -106,4 +108,73 @@ test("the plan's height grows with its steps up to a scroll, and with what pause
   assert.ok(computerViewHeight(3, { banner: true, buttons: true, field: true }) > paused, "the field to write in");
   assert.ok(computerViewHeight(3, { banner: true, buttons: true, note: true }) > paused, "the agent's answer");
   assert.ok(computerViewHeight(0, {}) < three, "no plan: its head alone");
+});
+
+const { afterCard, pausedPlanWaits, planLeave, planMove } = await import("../src/core/computer-plan.ts");
+const { State } = await import("../src/core/state.ts");
+
+const spot = (mode, view, extra = {}) => ({ mode, view, card: false, ...extra });
+
+test("what a computer-state does to the island: leave, pause, resume, a reveal, or nothing", () => {
+  const running = state();
+  assert.equal(planMove(running, state({ engaged: false }), spot("compact", "home")), "leave");
+  assert.equal(planMove(running, state({ stopped: true }), spot("expanded", "computer")), "leave");
+  assert.equal(planMove(running, state({ paused: true }), spot("expanded", "prompt")), "pause");
+  assert.equal(planMove(state({ paused: true }), running, spot("expanded", "settings")), "resume");
+  assert.equal(planMove(null, state({ reveal: "start" }), spot("expanded", "prompt")), "reveal", "the start folds what is open");
+  assert.equal(planMove(running, state({ reveal: "step" }), spot("compact", "prompt")), "reveal");
+  assert.equal(planMove(running, state({ reveal: "step" }), spot("expanded", "computer")), "reveal");
+  // A step done never takes over a chat (or Settings) the user opened meanwhile.
+  assert.equal(planMove(running, state({ reveal: "step" }), spot("expanded", "prompt")), null);
+  assert.equal(planMove(running, state({ reveal: "step" }), spot("expanded", "settings")), null);
+  // A card waiting, or Lumo paused: no reveal.
+  assert.equal(planMove(running, state({ reveal: "start" }), spot("compact", "home", { card: true })), null);
+  assert.equal(planMove(running, state({ reveal: "start" }), spot("hidden", "home", { appPaused: true })), null);
+  assert.equal(planMove(running, running, spot("compact", "home")), null);
+});
+
+test("a card answered during computer use closes the island, whoever asked: no step done would fold it", () => {
+  assert.equal(afterCard(false, true, false), "collapse", "a terminal session's card: not left open on Agents");
+  assert.equal(afterCard(true, true, false), "collapse");
+  assert.equal(afterCard(true, true, true), "collapse");
+  // Without computer use: back to who asked.
+  assert.equal(afterCard(true, false, false), "prompt");
+  assert.equal(afterCard(true, false, true), "live");
+  assert.equal(afterCard(false, false, false), "agents");
+  // Then a step done still does not take over the Agents view, were it open.
+  assert.equal(planMove(state(), state({ reveal: "step" }), spot("expanded", "agents")), null);
+});
+
+test("resumed, the island closes on any view; stopped or over, it lets go and closes as it would", () => {
+  assert.equal(planLeave(true, spot("expanded", "computer")), "collapse");
+  assert.equal(planLeave(true, spot("expanded", "settings")), "collapse", "the user moved to Settings while paused");
+  assert.equal(planLeave(true, spot("expanded", "prompt")), "fold-chat", "the chat comes back when computer use is over");
+  assert.equal(planLeave(true, spot("compact", "computer")), "release");
+  assert.equal(planLeave(true, spot("expanded", "approval", { card: true })), "keep");
+  assert.equal(planLeave(false, spot("expanded", "computer")), "collapse");
+  assert.equal(planLeave(false, spot("expanded", "prompt")), "release");
+});
+
+test("paused, the island opens on the plan, after a card and before Settings left open", () => {
+  const paused = state({ paused: true });
+  assert.equal(pausedPlanWaits(true, paused), true);
+  assert.equal(pausedPlanWaits(false, paused), false);
+  assert.equal(pausedPlanWaits(true, state()), false);
+  assert.equal(pausedPlanWaits(true, state({ paused: true, stopped: true })), false);
+  assert.equal(pausedPlanWaits(true, null), false);
+  try {
+    State.computerActive = true;
+    State.computer = paused;
+    State.settingsLeftOpen = true;
+    assert.equal(State.defaultView(), "computer");
+    assert.equal(State.openingView(), "computer");
+    assert.equal(State.settingsLeftOpen, true, "Settings wait for the next opening");
+    State.computer = state();
+    assert.notEqual(State.defaultView(), "computer", "the agent at work: the island opens as always");
+    assert.equal(State.openingView(), "settings");
+  } finally {
+    State.computerActive = false;
+    State.computer = null;
+    State.settingsLeftOpen = false;
+  }
 });

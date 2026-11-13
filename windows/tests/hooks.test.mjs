@@ -18,6 +18,7 @@ const island = {
   giveReadingTime: () => asked.push("read"),
   reveal: () => asked.push("reveal"),
   dropPin: () => asked.push("dropPin"),
+  reopenPausedPlan: () => asked.push("pausedPlan"),
   quickApproval: () => {
     asked.push("quick");
     return quickFits;
@@ -601,6 +602,34 @@ test("a computer use action's card says why (the plan's step) and where (the poi
     assert.equal(c.computerAt, undefined);
     assert.equal(c.reason, "Run the tests");
   } finally {
+    State.computer = null;
+  }
+});
+
+test("a card that goes while computer use is paused gives way to the plan (Stop, Ask, Resume)", () => {
+  const plan = (paused) => ({
+    engaged: true, paused, stopped: false, agent: "Claude Code", color: "#D97757", since: 0,
+    steps: [{ text: "Open Notepad", status: "active" }],
+  });
+  try {
+    State.mode = "expanded";
+    State.computerActive = true;
+    State.computer = plan(true);
+    ask("r1");
+    State.view = "approval";
+    asked = [];
+    seconds(107);
+    assert.equal(State.pendingApproval, null);
+    assert.deepEqual(asked, ["dropPin", "setView:home", "pausedPlan"]);
+    // Not paused: the agent has the mouse, the card simply goes.
+    State.computer = plan(false);
+    ask("r2");
+    State.view = "approval";
+    asked = [];
+    seconds(107);
+    assert.deepEqual(asked, ["dropPin", "setView:home"]);
+  } finally {
+    State.computerActive = false;
     State.computer = null;
   }
 });

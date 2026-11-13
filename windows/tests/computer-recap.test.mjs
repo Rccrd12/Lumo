@@ -157,7 +157,7 @@ test("a click: the screen around it, the point marked, what Windows calls it, th
 
 test("a scroll and a drag are said on their thing; no name keeps the plain line; no crop, no picture", async () => {
   await withPeek({ image: PNG, width: 100, height: 60, at: [50, 30], name: "Results" }, async () => {
-    const scroll = computerTargetBox(info({ requestId: "s-1", tool: "mcp__lumo__scroll", command: "Scroll up · 5, 6 ×3", computerAt: [5, 6] }));
+    const scroll = computerTargetBox(info({ requestId: "s-1", tool: "mcp__lumo__scroll", command: "Scroll up · 5, 6 ×3", computerAt: [5, 6], computerScroll: "up" }));
     const drag = computerTargetBox(info({ requestId: "d-1", tool: "mcp__lumo__left_click_drag", command: "Drag · 1, 2 → 5, 6", computerAt: [5, 6] }));
     await settle();
     assert.equal(scroll.querySelector(".cu-target-what").textContent, "Scroll up on «Results»");
@@ -181,4 +181,17 @@ test("a scroll and a drag are said on their thing; no name keeps the plain line;
       assert.equal(box.querySelector(".cu-target-what").textContent, "Click 5, 6");
     });
   }
+});
+
+test("a scroll's way comes with the request, never off its translated line: none known, the plain line stays", async () => {
+  await withPeek({ image: PNG, width: 100, height: 60, at: [50, 30], name: "Results" }, async () => {
+    // The line says up (in a language since changed, say), the request says left: the request wins.
+    const left = computerTargetBox(info({ requestId: "s-2", tool: "mcp__lumo__scroll", command: "Scroll up · 5, 6", computerAt: [5, 6], computerScroll: "left" }));
+    // No way with the request: never "Scroll down" made up, the plain line.
+    const none = computerTargetBox(info({ requestId: "s-3", tool: "mcp__lumo__scroll", command: "Scroll up · 5, 6 ×3", computerAt: [5, 6] }));
+    await settle();
+    assert.equal(left.querySelector(".cu-target-what").textContent, "Scroll left on «Results»");
+    assert.equal(none.querySelector(".cu-target-what").textContent, "Scroll up 5, 6 ×3");
+    assert.equal(none.querySelector(".cu-target-name"), null);
+  });
 });

@@ -4,7 +4,8 @@
 //!
 //! It speaks MCP over stdin and stdout (JSON-RPC, one message per line) and
 //! hands every tool call to Lumo over the same pipe or socket as the hooks
-//! (`{"lumo_computer": {"tool": …, "input": …}}`), then gives Claude Code
+//! (`{"lumo_computer": {"tool": …, "input": …, "chat": …}}`, with the chat
+//! it came from, `LUMO_CHAT_ID`), then gives Claude Code
 //! Lumo's answer: a screenshot, or what was done. The app decides everything:
 //! whether computer use is on, whether a chat turn is running, whether the
 //! agent gave its plan (update_plan, which always comes with the computer),
@@ -35,10 +36,12 @@
 //!
 //! `--tools=plan` offers `update_plan` (Codex's own tool, which the models
 //! know): the agent's plan, step by step, for the Plan island. The call is
-//! handed to Lumo (`{"lumo_plan": {"input": …, "chat": …}}`, antigravity_cli.rs),
+//! handed to Lumo (`{"lumo_plan": {"input": …, "chat": …, "computer": …}}`,
+//! antigravity_cli.rs, or computer.rs when this server lends the computer),
 //! with the chat it came from (`LUMO_CHAT_ID`), and
 //! answered as done even when Lumo can't be reached: a plan not shown never
-//! stops the agent's work.
+//! stops the agent's work. With the computer it does, as Lumo lends the
+//! computer only once it has the plan: then Lumo's refusal is the answer.
 
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc;
@@ -68,8 +71,9 @@ the user your plan with update_plan (one step is enough): Lumo refuses them unti
 updated: mark each step completed as soon as it is done and the next one in_progress. Take a screenshot first, \
 then click, type and press keys at coordinates in that screenshot's pixels. Take a new screenshot after \
 acting to check what happened. Prefer other tools (commands, files) when they can do the job. The user can \
-press Esc at any time to pause you: your next call then waits until they resume, and may bring you their \
-message, which you answer in update_plan's explanation.";
+press Esc at any time to pause you: your next call then waits until they resume from Lumo's island, and may \
+bring you their message, which you answer in update_plan's explanation. While paused, wait by calling \
+screenshot, never by making an action again.";
 
 const MAIL_INSTRUCTIONS: &str = "Lumo's tools to read the user's email, read only: list the newest emails of a folder \
 (read or not), search every folder, read one email in full with the list of its files, save one of those files \
@@ -707,14 +711,25 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         if !input.get("plan").and_then(Value::as_array).is_some_and(|p| !p.is_empty()) {
             return failed("The plan needs at least one step.");
         }
-        let _ = lumo(&json!({ "lumo_plan": { "input": input, "chat": chat_id() } }));
+        // `computer`: this server lends the computer, so the plan is the one
+        // the computer works by (pipe.rs routes it by that, never by what else runs).
+        match lumo(&json!({ "lumo_plan": { "input": input, "chat": chat_id(), "computer": kit.computer } })) {
+            // Not taken (a plan of blank steps): the computer would stay shut, so the agent hears why.
+            Ok(a) if a.get("error").and_then(Value::as_str).is_some() => return failed(a["error"].as_str().unwrap_or_default()),
+            // Lumo not there: only the Plan island misses it, unless the computer needs it.
+            Err(m) if kit.computer => return failed(&m),
+            _ => {}
+        }
         return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
     }
     if ISLAND_NAMES.contains(&name) {
         return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat_id() } })));
     }
-    let key = if mail_tool(name) { "lumo_mail" } else { "lumo_computer" };
-    answer(lumo(&json!({ key: { "tool": name, "input": input } })))
+    if mail_tool(name) {
+        return answer(lumo(&json!({ "lumo_mail": { "tool": name, "input": input } })));
+    }
+    // With the chat it came from: only that chat's own plan lets it use the computer.
+    answer(lumo(&json!({ "lumo_computer": { "tool": name, "input": input, "chat": chat_id() } })))
 }
 
 /// What Lumo answered to a call, as MCP gives it.
@@ -987,6 +1002,8 @@ mod tests {
             assert_eq!(req["lumo_plan"]["input"]["plan"][0]["step"], "Read");
             // With the chat it came from (`LUMO_CHAT_ID`), whatever chat is on screen.
             assert!(req["lumo_plan"]["chat"].is_string());
+            // Without the computer: never the plan the computer works by.
+            assert_eq!(req["lumo_plan"]["computer"], false);
             Ok(json!({ "text": "Plan shown to the user." }))
         };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &shown).unwrap()).unwrap();
@@ -998,6 +1015,23 @@ mod tests {
         let closed = |_: &Value| -> Result<Value, String> { Err("Lumo isn't running.".into()) };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &closed).unwrap()).unwrap();
         assert!(v["result"].get("isError").is_none());
+        // With the computer, the plan is the one it works by: it says so, and
+        // a plan Lumo didn't take, or Lumo not there, is what the agent hears.
+        let computer = Kit::from_args(["--mcp", "--tools=computer,plan"].iter().map(|s| s.to_string()));
+        let taken = |req: &Value| -> Result<Value, String> {
+            assert_eq!(req["lumo_plan"]["computer"], true);
+            Ok(json!({ "text": "Plan shown to the user." }))
+        };
+        let v: Value = serde_json::from_str(&handle_with(line, computer, &taken).unwrap()).unwrap();
+        assert!(v["result"].get("isError").is_none());
+        let refused = |_: &Value| -> Result<Value, String> { Ok(json!({ "error": "The plan was not taken: each step needs some text." })) };
+        let v: Value = serde_json::from_str(&handle_with(line, computer, &refused).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true);
+        assert_eq!(v["result"]["content"][0]["text"], "The plan was not taken: each step needs some text.");
+        let v: Value = serde_json::from_str(&handle_with(line, computer, &closed).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true, "no Lumo, no computer: the agent is told");
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &refused).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true, "a refusal is told without the computer too");
         let line = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"update_plan","arguments":{"plan":[]}}}"#;
         let v: Value = serde_json::from_str(&handle_with(line, kit, &never).unwrap()).unwrap();
         assert_eq!(v["result"]["isError"], true);
@@ -1122,6 +1156,8 @@ mod tests {
         let lumo = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_computer"]["tool"], "screenshot");
             assert_eq!(req["lumo_computer"]["input"], json!({}));
+            // With the chat it came from: only its own plan lets it in.
+            assert!(req["lumo_computer"]["chat"].is_string());
             Ok(json!({ "image": "iVBOR", "text": "Screen 1 of 1, 1280×720." }))
         };
         let v = ask(r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"screenshot"}}"#, &lumo);

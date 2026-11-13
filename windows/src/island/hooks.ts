@@ -4,7 +4,7 @@
 // The relay has already mapped every agent's events and fields onto Claude
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
-import { computerPoint, describeComputerAction } from "../core/computer";
+import { computerPoint, computerToolName, describeComputerAction, scrollDirection } from "../core/computer";
 import { currentStep } from "../core/computer-use";
 import { userToolTarget } from "../core/tools";
 import { clipUnits } from "../core/clip";
@@ -78,6 +78,8 @@ function dropPendingCard(island: Island): void {
     else State.view = State.agentsView();
   }
   presentApproval(island);
+  // Computer use paused meanwhile: back to its plan, where Stop, Ask and Resume are.
+  if (State.computerActive && State.computer?.paused) island.reopenPausedPlan();
   State.notify();
 }
 
@@ -1079,6 +1081,7 @@ function handleHook(island: Island, payload: HookPayload) {
         })
         : null;
       const computerAt = !questions && !email && !change && !userTool ? computerPoint(tool, input) : null;
+      const computerScroll = computerAt && computerToolName(tool) === "scroll" ? scrollDirection(input) : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -1102,6 +1105,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(edit ? { edit } : {}),
         // A computer use action: the point it acts on, for the screen around it on the card.
         ...(computerAt ? { computerAt } : {}),
+        ...(computerScroll ? { computerScroll } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how

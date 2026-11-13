@@ -1,6 +1,7 @@
 // App state: what the island shows and remembers.
 
 import type { ComputerRecap, ComputerState } from "./computer-use";
+import { pausedPlanWaits } from "./computer-plan";
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
 import { newChatId } from "./chats";
@@ -122,6 +123,8 @@ export interface ApprovalInfo {
    * move, a scroll, a drag's end). The card shows the screen around it.
    */
   computerAt?: [number, number];
+  /** A computer use scroll's way, from its request (core/computer.ts scrollDirection). */
+  computerScroll?: "up" | "down" | "left" | "right";
 }
 
 /**
@@ -1038,9 +1041,12 @@ class AppState {
 
   /**
    * What the opening island shows: the Settings it closed on, unless a card
-   * waits for an answer; otherwise defaultView. Asked once per opening.
+   * waits for an answer or computer use is paused (its plan, where Stop, Ask
+   * and Resume are; the Settings wait for the next opening); otherwise
+   * defaultView. Asked once per opening.
    */
   openingView(): IslandViewName {
+    if (!this.pendingApproval && pausedPlanWaits(this.computerActive, this.computer)) return "computer";
     const back = this.settingsLeftOpen && !this.pendingApproval;
     this.settingsLeftOpen = false;
     return back ? "settings" : this.defaultView();
@@ -1053,6 +1059,8 @@ class AppState {
    */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.requestView(this.pendingApproval);
+    // Computer use paused with Esc: the plan, else Stop and Ask could not be reached.
+    if (pausedPlanWaits(this.computerActive, this.computer)) return "computer";
     // A file dropped and not yet asked about waits in the chat, so the island
     // opens there rather than on the home.
     if (this.droppedFile && !this.droppedFile.sent) return "prompt";

@@ -115,7 +115,10 @@ export function computerActionOn(tool: string, input: Record<string, unknown>, n
   const tool_ = computerToolName(tool);
   const named = name.replace(/\s+/g, " ").trim();
   if (tool_ == null || !POINTED.has(tool_) || !named) return null;
-  const dir = typeof input.scroll_direction === "string" && ["up", "down", "left", "right"].includes(input.scroll_direction) ? input.scroll_direction : "down";
+  // A scroll that does not say which way is not said on the thing: the card
+  // keeps its plain line rather than a way it may not go.
+  const dir = scrollDirection(input);
+  if (tool_ === "scroll" && dir == null) return null;
   const key = (tool_ === "scroll" ? `scroll_${dir}` : tool_) as keyof typeof COMPUTER_ON_TEXT;
   const words = t(COMPUTER_ON_TEXT[key]);
   const at = words.indexOf("{name}");
@@ -126,11 +129,14 @@ export function computerActionOn(tool: string, input: Record<string, unknown>, n
   return { before: words.slice(0, at - open.length), name: `${open}${named}${close}`, after: words.slice(at + 6 + close.length) };
 }
 
-/** Which way a scroll goes, read back off its card line (describeComputerAction), in the language it was said in. */
-export function scrollDirectionOf(line: string): "up" | "down" | "left" | "right" | null {
-  const label = splitComputerLine(line).label;
-  for (const dir of ["up", "down", "left", "right"] as const) if (t(SCROLLS[dir]) === label) return dir;
-  return null;
+/**
+ * Which way a scroll goes, from the request's own input (its
+ * scroll_direction), null when it says none of the four. The card takes it
+ * from there, never from its translated line.
+ */
+export function scrollDirection(input: Record<string, unknown>): "up" | "down" | "left" | "right" | null {
+  const dir = input.scroll_direction;
+  return dir === "up" || dir === "down" || dir === "left" || dir === "right" ? dir : null;
 }
 
 /**

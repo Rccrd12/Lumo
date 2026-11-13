@@ -1723,7 +1723,7 @@ pub async fn send(
     args = with_mcp(args, computer, tools, true, mail);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     if computer {
-        crate::computer::begin_turn(crate::computer::Who::of(PROVIDER));
+        crate::computer::begin_turn(crate::computer::Who::of(PROVIDER), chat.id());
     }
 
     let app2 = app.clone();
@@ -1763,8 +1763,20 @@ pub async fn send(
     .await
     .map_err(|e| e.to_string());
     // What the turn did on the computer, for under its answer.
-    let recap = if computer { crate::computer::end_turn(app, matches!(&state, Ok(Ok(s)) if s.stopped)) } else { None };
-    let state = state??;
+    let recap = if computer { crate::computer::end_turn(app, chat.id(), matches!(&state, Ok(Ok(s)) if s.stopped)) } else { None };
+    let plain = chat::plain_question(true, context.as_ref(), &query);
+    // It failed after using the computer: the turn is kept as an empty
+    // answer that says why, so the recap of what was done on the screen is
+    // shown and saved under it (and the next turn knows it was done).
+    let failed = |error: String, recap: Option<Value>| -> Result<ChatReply, String> {
+        let Some(recap) = recap else { return Err(error) };
+        chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+        Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
+    };
+    let state = match state {
+        Ok(Ok(state)) => state,
+        Ok(Err(e)) | Err(e) => return failed(e, recap),
+    };
 
     // The commands it has, for the island's "/" menu.
     if let Some(list) = &state.commands {
@@ -1792,17 +1804,29 @@ pub async fn send(
     if let Some(id) = &state.session {
         chat.set_cli_session(&turn, id);
     }
-    let plain = chat::plain_question(true, context.as_ref(), &query);
     if state.stopped {
         let shown = state.visible.trim().to_string();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
+        } else if recap.is_some() {
+            // Stopped before it wrote anything, but it used the computer: the
+            // turn is kept, as an empty answer, so the recap has an answer to
+            // go under (the island records one when `computer` comes) and the
+            // next turn knows what was done.
+            chat.commit(
+                &turn,
+                json!({ "role": "user", "content": plain }),
+                json!({ "role": "assistant", "content": chat::NO_ANSWER }),
+                &plain,
+                chat::NO_ANSWER,
+            );
+            return Ok(ChatReply { computer: recap, kept: Some(chat::NO_ANSWER.into()), ..ChatReply::stopped(String::new(), chat.cli_session()) });
         }
         return Ok(ChatReply { computer: recap, ..ChatReply::stopped(shown, chat.cli_session()) });
     }
     let answer = match state.result {
         Some(Ok(text)) => text,
-        Some(Err(e)) => return Err(tf("Claude Code: {error}", &[("error", &e)])),
+        Some(Err(e)) => return failed(tf("Claude Code: {error}", &[("error", &e)]), recap),
         None => unreachable!("live_turn() returns an error without a result"),
     };
     let answer = chat::keep_lumo_lines(answer, &state.said);

@@ -9,7 +9,7 @@
 
 import "./computer-card.css";
 import { Bridge } from "../core/bridge";
-import { computerActionOn, computerToolName, peekPlacement, scrollDirectionOf, splitComputerLine } from "../core/computer";
+import { computerActionOn, computerToolName, peekPlacement, splitComputerLine } from "../core/computer";
 import type { ComputerPeek } from "../core/computer-use";
 import type { ApprovalInfo } from "../core/state";
 import { h } from "./dom";
@@ -88,7 +88,9 @@ export function computerTargetBox(info: ApprovalInfo): HTMLElement | null {
     thumb.classList.add("loaded");
     // What Windows calls the thing there: the action said on it, the numbers small under it.
     const name = text(peek.name);
-    const on = name ? computerActionOn(info.tool, { scroll_direction: scrollDirectionOf(line) ?? undefined }, name) : null;
+    // A scroll's way comes with the request (hooks.ts, scrollDirection), never
+    // read back off the translated line: without it, the plain line stays.
+    const on = name ? computerActionOn(info.tool, { scroll_direction: info.computerScroll }, name) : null;
     if (!on) return;
     const { detail } = splitComputerLine(line);
     const said = `${on.before}${on.name}${on.after}`;

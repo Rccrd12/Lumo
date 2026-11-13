@@ -54,12 +54,13 @@ async function main() {
   await onEvent<null>("outside-press", () => island.onOutsidePress());
   // The left button let go anywhere on the screen: ends a file drag the page never saw end.
   await onEvent<null>("left-up", () => island.onLeftUp());
-  // Esc stopped the chat's computer use (computer.rs).
+  // Computer use was stopped (the plan's Stop, computer.rs): Esc only pauses it.
   await onEvent<null>("computer-stopped", () => compactNotice(t(COMPUTER_TEXT.stopped), "#F5A524"));
   // Claude starts or stops using the computer (computer.rs): the island closes to Lumo's ring.
   await onEvent<boolean>("computer-engaged", (on) => island.onComputer(on === true));
   // How computer use goes, with its plan (computer.rs): the plan opens a moment
-  // as it starts and at each step done, and stays while paused with Esc.
+  // as it starts and at each step done, and stays while paused with Esc
+  // (until Resume or Stop: Esc again does not resume).
   await onEvent<ComputerState>("computer-state", (s) => {
     if (s && typeof s === "object") island.onComputerState(s);
   });

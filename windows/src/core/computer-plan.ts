@@ -139,16 +139,87 @@ export interface ComputerPillParts {
   text: string;
   segments: ComputerStep["status"][];
   place: string;
+  /** Paused: Esc does nothing then (only the island's Resume goes on), so no Esc keycap. */
+  paused: boolean;
 }
 
 export function computerPillParts(state: ComputerState | null): ComputerPillParts | null {
   if (!state?.engaged || !state.steps.length) return null;
   const text = stepNowText(state.steps) ?? "";
   const { step, total } = stepPlace(state.steps);
-  return { color: state.color, agent: state.agent, text, segments: state.steps.map((s) => s.status), place: `${step}/${total}` };
+  return {
+    color: state.color, agent: state.agent, text, segments: state.steps.map((s) => s.status), place: `${step}/${total}`, paused: state.paused,
+  };
 }
 
 /** A key for what the closed island draws, to redraw only when it changes. */
 export function computerPillKey(parts: ComputerPillParts | null): string {
-  return parts ? JSON.stringify([parts.color, parts.text, parts.segments, parts.place]) : "";
+  return parts ? JSON.stringify([parts.color, parts.text, parts.segments, parts.place, parts.paused]) : "";
+}
+
+// ── What the island does with it ───────────────────────────────────────────
+
+/**
+ * The plan is paused with Esc and waits for the user (Stop, Ask, Resume):
+ * the island opens on it, and goes back to it when a card leaves.
+ */
+export function pausedPlanWaits(active: boolean, state: ComputerState | null): boolean {
+  return active && !!state?.engaged && state.paused && !state.stopped;
+}
+
+/** Where the island is when a computer-state comes or the plan leaves. */
+export interface PlanSpot {
+  mode: "hidden" | "compact" | "expanded";
+  view: string;
+  /** A permission card or a question waits for an answer. */
+  card: boolean;
+  /** Lumo is paused (the tray's Pause): nothing opens. */
+  appPaused?: boolean;
+}
+
+/**
+ * What a new computer-state does to the island (island.ts onComputerState):
+ * the plan leaves (over, stopped), opens and stays (paused), leaves after a
+ * resume, opens a moment (a reveal), or nothing. A card waiting wins over a
+ * reveal, and a step done does not take over a view the user opened
+ * meanwhile (a chat, Settings): the closed island's line and the chat's plan
+ * strip say it. The start still folds what is open, as computer use always did.
+ */
+export type PlanMove = "leave" | "pause" | "resume" | "reveal" | null;
+
+export function planMove(was: ComputerState | null, state: ComputerState, spot: PlanSpot): PlanMove {
+  if (!state.engaged || state.stopped) return "leave";
+  if (state.paused) return "pause";
+  if (was?.paused) return "resume";
+  if (!state.reveal || spot.card || spot.appPaused) return null;
+  if (state.reveal === "step" && spot.mode === "expanded" && spot.view !== "computer") return null;
+  return "reveal";
+}
+
+/**
+ * Where the island goes once a card is answered and none waits, unless the
+ * plan is paused (island.ts closeApproval): out of the agent's way while it
+ * uses the computer, whoever asked (a step done no longer takes over an open
+ * view, so nothing else would fold it); otherwise back to who asked: the
+ * chat, Gemini's call for its helper, or the agents for a terminal session.
+ */
+export function afterCard(fromChat: boolean, computer: boolean, live: boolean): "collapse" | "live" | "prompt" | "agents" {
+  if (computer) return "collapse";
+  return fromChat ? (live ? "live" : "prompt") : "agents";
+}
+
+/**
+ * How the island lets the plan go (island.ts leaveComputerPlan): it closes if
+ * it is on the plan; after a resume it closes on any view, the agent has the
+ * mouse again (a chat closed so comes back when computer use is over);
+ * otherwise its hold goes and it closes as it would have ("release"). A card
+ * waiting keeps it as it is.
+ */
+export type PlanLeave = "collapse" | "fold-chat" | "release" | "keep";
+
+export function planLeave(resumed: boolean, spot: PlanSpot): PlanLeave {
+  if (spot.mode === "expanded" && spot.view === "computer") return "collapse";
+  if (spot.card) return "keep";
+  if (resumed && spot.mode === "expanded") return spot.view === "prompt" ? "fold-chat" : "collapse";
+  return "release";
 }

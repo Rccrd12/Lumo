@@ -19471,7 +19471,7 @@
    "pt-BR": "Parado no passo {step} de {total} · o último feito: {text}",
    "ru": "Остановлено на шаге {step} из {total} · последнее сделанное: {text}",
    "id": "Dihentikan di langkah {step} dari {total} · terakhir selesai: {text}",
-   "it": "Fermato al passo {step} di {total} · l'ultimo fatto: {text}"
+   "it": "Fermato al passo {step} di {total} · ultimo completato: {text}"
   },
   "Only while it answers, and only once it has shown you its plan: the screen it uses glows, and Esc pauses it. With Ask every time, each click waits for yours.": {
    "zh-Hans": "仅在它回答时，且要先向你展示计划：它使用的屏幕会发光，按 Esc 即可暂停。选择“每次都询问”时，它的每次点击都会先等你确认。",

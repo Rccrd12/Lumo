@@ -4196,8 +4196,11 @@ export function buildPrompt(
       const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
       const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model });
       // Stopped before anything was written: the question stays, unanswered,
-      // and Rust kept nothing of it (the file goes with the next one).
-      const recorded = !reply.stopped || reply.text !== "";
+      // and Rust kept nothing of it (the file goes with the next one). Unless
+      // it used the computer meanwhile: Rust kept the turn ("(No answer.)",
+      // reply.kept), and its recap says how far it went.
+      const recap = cleanRecap(reply.computer);
+      const recorded = !reply.stopped || reply.text !== "" || recap != null;
       if (recorded && ticked) checklistsTold(run.chatId, ticked.told);
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
       const content = await lumoLines(run.chatId, reply.text);
@@ -4213,7 +4216,7 @@ export function buildPrompt(
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
-          computer: cleanRecap(reply.computer),
+          computer: recap,
         });
         run.copies = undefined;
       } else {
@@ -4336,7 +4339,7 @@ export function buildPrompt(
     if (session && known && known !== session) return;
     if (history) {
       if (!joinOwnAnswer(history, content)) return;
-      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, ...(m.computer ? { computer: m.computer } : {}) }));
+      const turns = history.filter((m) => !m.failed).map(toSavedTurn);
       if (run) remember(run);
       else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns });
       if (onScreen) renderedCount = -1;

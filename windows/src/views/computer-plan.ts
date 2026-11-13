@@ -1,7 +1,7 @@
 // The plan of an agent using the computer (computer.rs, `computer-state`):
 // on the open island a moment as computer use starts and each time a step is
 // done, and for as long as the user paused it with Esc, with Stop, "Ask" and
-// Resume; and, while the agent works, the closed island's line (ComputerPill):
+// Resume (only Resume resumes: Esc pauses, never more); and, while the agent works, the closed island's line (ComputerPill):
 // the step under way, the plan's segments, how far it is and Esc.
 //
 // It shows only the plan Rust sent: no steps, nothing but its head.
@@ -122,7 +122,7 @@ export function buildComputerView(actions: ComputerViewActions): ViewHost {
   const askLabel = h("span");
   const askBtn = h("button", { class: "btn secondary cu-ask", type: "button" }, askLabel);
   const resumeBtn = h("button", { class: "btn cu-resume", type: "button" },
-    svg(ICONS.play, 11), h("span", { text: tl(COMPUTER_PLAN_TEXT.resume) }), h("span", { class: "kbd", text: "Esc" }));
+    svg(ICONS.play, 11), h("span", { text: tl(COMPUTER_PLAN_TEXT.resume) }));
   const cancelBtn = h("button", { class: "btn secondary cu-cancel", type: "button" }, h("span", { text: tl(COMPUTER_PLAN_TEXT.cancel) }));
   const buttons = h("div", { class: "cu-foot buttons" }, stopBtn, h("span", { class: "cu-gap" }), askBtn, cancelBtn, resumeBtn);
 
@@ -188,6 +188,14 @@ export function buildComputerView(actions: ComputerViewActions): ViewHost {
       e.preventDefault();
       send();
     }
+  });
+  // Esc in the field (Rust lets Esc go while paused) cancels it, as Cancel:
+  // nothing sent, the keyboard given back, the agent still waiting.
+  field.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.isComposing || !asking) return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeField(true);
   });
 
   /** The clock and the countdown, each second (each quarter while counting down), only while on screen. */
@@ -268,7 +276,8 @@ export function buildComputerView(actions: ComputerViewActions): ViewHost {
         asking = false;
         input.value = "";
       }
-      lastShown = c.steps.map((s) => ({ ...s }));
+      // Only a plan the user saw counts: sync() runs on the closed island too.
+      if (onScreen()) lastShown = c.steps.map((s) => ({ ...s }));
       if (!c.paused) {
         askedInPause = false;
         if (asking) closeField(true);
@@ -363,9 +372,10 @@ export class ComputerPill {
           h("span", { class: "cu-pill-text", text: p.text }),
           segs,
           h("span", { class: "cu-pill-place", text: p.place }),
-          h("span", { class: "cu-kbd", text: "Esc" }),
         );
-        this.el.title = t(COMPUTER_PLAN_TEXT.pillTitle, { agent: p.agent });
+        // Paused, Esc is the user's apps' again: only the plan's Resume goes on.
+        if (!p.paused) this.el.append(h("span", { class: "cu-kbd", text: "Esc" }));
+        this.el.title = p.paused ? `${p.agent} · ${t(COMPUTER_PLAN_TEXT.paused)}` : t(COMPUTER_PLAN_TEXT.pillTitle, { agent: p.agent });
         this.measured = this.measure();
       }
     }

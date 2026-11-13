@@ -93,6 +93,14 @@ export interface SavedChat {
 const KEY = "lumo.chats.v1";
 /** The oldest chats go past this many. */
 export const MAX_CHATS = 40;
+/**
+ * The newest computer use recaps that keep their steps' small pictures in
+ * the history; older ones keep their text (steps, actions, time). Storage is
+ * shared with the chats and Lumo's other saved data, which come first.
+ */
+export const RECAP_PICTURES = 5;
+/** The pictures kept in the history, all together, in characters of base64 at most. */
+export const PICTURE_CHARS = 800_000;
 const TITLE_CHARS = 60;
 
 function storage(): Storage | null {
@@ -118,18 +126,87 @@ function isChat(c: unknown): c is SavedChat {
   return !!x && typeof x.id === "string" && typeof x.title === "string" && Array.isArray(x.turns);
 }
 
+/** How many characters a saved recap's pictures take (storage holds anything: 0 for what is not one). */
+function pictureChars(recap: unknown): number {
+  const steps = (recap as { steps?: unknown } | null)?.steps;
+  if (!Array.isArray(steps)) return 0;
+  let chars = 0;
+  for (const step of steps) {
+    const image = (step as { image?: unknown } | null)?.image;
+    if (typeof image === "string") chars += image.length;
+  }
+  return chars;
+}
+
+/** A saved recap without its pictures: its text stays. */
+function withoutPictures(recap: ComputerRecap): ComputerRecap {
+  return {
+    ...recap,
+    steps: recap.steps.map((step) => {
+      if (!step || typeof step !== "object") return step;
+      const { image: _, ...rest } = step;
+      return rest;
+    }),
+  };
+}
+
 /**
- * Writes the list, newest first, and returns what was kept. Storage full: the
- * oldest chats go until it fits. Kept whole, the list never fit again, and
- * nothing more was saved from then on, the newest chat included.
+ * The list with the steps' pictures of its newest `recaps` computer use
+ * recaps only, `chars` of base64 at most in all; the others keep their text.
+ * The newest come first: the chats newest first, in each its last answers.
+ */
+export function boundPictures(list: SavedChat[], recaps = RECAP_PICTURES, chars = PICTURE_CHARS): SavedChat[] {
+  let kept = 0;
+  let used = 0;
+  return list.map((chat) => {
+    let turns: SavedTurn[] | null = null;
+    for (let i = chat.turns.length - 1; i >= 0; i--) {
+      const recap = chat.turns[i]?.computer;
+      const size = pictureChars(recap);
+      if (size === 0) continue;
+      if (kept < recaps && used + size <= chars) {
+        kept++;
+        used += size;
+        continue;
+      }
+      turns ??= chat.turns.slice();
+      turns[i] = { ...turns[i], computer: withoutPictures(recap as ComputerRecap) };
+    }
+    return turns ? { ...chat, turns } : chat;
+  });
+}
+
+/** How many recaps of the list still have pictures. */
+function picturedRecaps(list: SavedChat[]): number {
+  return list.reduce((n, chat) => n + chat.turns.filter((turn) => pictureChars(turn?.computer) > 0).length, 0);
+}
+
+/**
+ * Writes the list, newest first, and returns what was kept. The recaps'
+ * pictures are bounded first (boundPictures). Storage full: the pictures go,
+ * the oldest recap's first, and only once none is left the oldest chats go
+ * until it fits: a chat's text always wins over a picture. Kept whole, the
+ * list never fit again, and nothing more was saved from then on, the newest
+ * chat included.
  */
 function store(list: SavedChat[]): SavedChat[] {
   const s = storage();
   if (!s) return list;
+  let bounded = boundPictures(list);
+  for (let pictured = picturedRecaps(bounded); ; pictured--) {
+    try {
+      s.setItem(KEY, JSON.stringify(bounded));
+      return bounded;
+    } catch {
+      // Full: one recap's pictures fewer, the oldest.
+    }
+    if (pictured <= 0) break;
+    bounded = boundPictures(bounded, pictured - 1, Infinity);
+  }
   // An empty list is written too (the last chat deleted); a list that is not
   // keeps one chat at least.
-  for (let keep = list.length; keep >= Math.min(1, list.length); keep--) {
-    const kept = list.slice(0, keep);
+  for (let keep = bounded.length - 1; keep >= Math.min(1, bounded.length); keep--) {
+    const kept = bounded.slice(0, keep);
     try {
       s.setItem(KEY, JSON.stringify(kept));
       return kept;
@@ -156,11 +233,15 @@ export function chatTitle(turns: SavedTurn[]): string {
  * `add_own`). A question still waiting for its answer stays after it. False
  * with no answer to join.
  */
-export function joinOwnAnswer(turns: { role: string; content: string; failed?: boolean }[], text: string): boolean {
+export function joinOwnAnswer(turns: { role: string; content: string; failed?: boolean; kept?: string }[], text: string): boolean {
+  const join = (before: string) => (before.trim() ? `${before}\n\n${text}` : text);
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
     if (turn.role !== "assistant" || turn.failed) continue;
-    turn.content = turn.content.trim() ? `${turn.content}\n\n${text}` : text;
+    turn.content = join(turn.content);
+    // What Rust's conversation holds for it ("(No answer.)") gets the answer
+    // too, as add_own adds it there: given back by chat_restore, it is the same.
+    if (turn.kept != null) turn.kept = join(turn.kept);
     return true;
   }
   return false;
