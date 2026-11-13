@@ -98,6 +98,22 @@ test("the card: the badge on the one that has it, the place and the wait on the 
   assert.deepEqual(plain.find(".agents-line").map((l) => l.textContent), ["Working…", "Working…", "Working…"]);
 });
 
+test("only in line for the computer, the card does not say it waits for the user's permission", () => {
+  const store = newAgentStore();
+  for (const id of ["m1", "m2"]) send(store, "m", agent(id, { lastSignalAt: T0 + 30 * S }));
+  const c = store.get("m");
+  applyComputerTurns({
+    holder: { chat: "m", agent: "main", sinceMs: T0 },
+    waiting: [{ chat: "m", agent: "m1", sinceMs: T0, place: 1 }, { chat: "m", agent: "m2", sinceMs: T0, place: 2 }],
+  });
+  const { host: h } = host();
+  const live = (perm) => agentsCard({ chatId: "m", chat: c, batch: c.batches[0], now: T0 + 30 * S, permission: perm }, h).querySelector(".agents-live-text").textContent;
+  assert.equal(live(), "Waiting for the computer");
+  // A card of one of them is up: that one waits for the user.
+  assert.equal(live(new Set(["m2"])), "Waiting for your permission");
+  applyComputerTurns({ holder: null, waiting: [] });
+});
+
 test("in the chat: the line comes as an event, and Give it the turn asks Rust", async () => {
   const { emit, internals, sent } = await import("./tauri.mjs");
   const mem = new Map();

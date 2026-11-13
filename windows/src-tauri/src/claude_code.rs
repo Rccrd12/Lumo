@@ -351,6 +351,11 @@ fn computer_matcher() -> String {
     format!("mcp__lumo__({})", COMPUTER_TOOLS.join("|"))
 }
 
+/// Whether Claude Code's tool `name` is one of Lumo's computer tools.
+pub fn is_computer_tool(name: &str) -> bool {
+    name.strip_prefix("mcp__lumo__").is_some_and(|t| COMPUTER_TOOLS.contains(&t))
+}
+
 /// `args`, plus the chat's own hooks (`chat_settings`), when the file could be
 /// written where Claude Code can be pointed at it.
 fn with_cards(mut args: Vec<String>) -> Vec<String> {
@@ -2961,7 +2966,9 @@ mod tests {
         }
         for other in ["mcp__lumo__mail_send", "mcp__lumo__set_timer", "Bash", "mcp__other__screenshot"] {
             assert!(!matcher(other), "{other}");
+            assert!(!is_computer_tool(other), "{other}");
         }
+        assert!(COMPUTER_TOOLS.iter().all(|t| is_computer_tool(&format!("mcp__lumo__{t}"))));
         assert_eq!(gate["hooks"][0]["command"], "'/x/lumo-hook' --chat-guard PreToolUse --computer-turn");
         assert!(gate["hooks"][0]["timeout"].as_u64().unwrap() > 100, "longer than the relay waits in line");
     }

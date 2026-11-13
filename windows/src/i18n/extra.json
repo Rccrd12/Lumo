@@ -19481,6 +19481,18 @@
    "id": "Menunggu komputer · {place} dari {total} · {time}",
    "it": "In attesa del computer · {place}° di {total} · {time}"
   },
+  "Waiting for the computer": {
+   "zh-Hans": "等待电脑",
+   "hi": "कंप्यूटर का इंतज़ार",
+   "es": "Esperando el ordenador",
+   "ar": "بانتظار الحاسوب",
+   "fr": "En attente de l'ordinateur",
+   "bn": "কম্পিউটারের অপেক্ষায়",
+   "pt-BR": "Aguardando o computador",
+   "ru": "Ждёт компьютер",
+   "id": "Menunggu komputer",
+   "it": "In attesa del computer"
+  },
   "Give it the turn": {
    "zh-Hans": "让它先用",
    "hi": "इसे बारी दें",

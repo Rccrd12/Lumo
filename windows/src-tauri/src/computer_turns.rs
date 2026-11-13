@@ -205,6 +205,15 @@ impl Turns {
         }
     }
 
+    /// A card came or went: the holder waiting on the user's click is using
+    /// the computer, and once answered has HOLDER_IDLE again for the call it
+    /// was allowed to reach it.
+    pub fn touch(&mut self, now: u64) {
+        if let Some(h) = self.holder.as_mut() {
+            h.active = h.active.max(now);
+        }
+    }
+
     /// Esc: nobody has the computer, nobody waits.
     pub fn clear(&mut self) -> bool {
         let changed = self.holder.is_some() || !self.waiting.is_empty();
@@ -371,6 +380,14 @@ pub fn cards_changed() {
     CHANGED.notify_waiters();
 }
 
+/// The card of a computer tool was answered: the holder, which waited on it,
+/// keeps the computer a while from the click, for the call it was allowed.
+/// Before the card leaves the count (computer.rs card_down), so no waiter
+/// takes the turn in between. Any other card leaves the holder's time alone.
+pub fn card_answered() {
+    TURNS.lock().unwrap_or_else(|e| e.into_inner()).touch(now_ms());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,6 +434,25 @@ mod tests {
         assert_eq!(t.ask("c", "a3", 90_003), Ask::Go);
         // Nobody waits: an idle holder keeps it.
         assert!(!t.pass_if_due(500_000, false));
+    }
+
+    #[test]
+    fn a_holder_answered_on_its_card_keeps_the_turn_for_the_call_it_was_allowed() {
+        let mut t = Turns::default();
+        assert_eq!(t.ask("c", MAIN, 0), Ask::Go);
+        t.ask("c", "a1", 0);
+        // Its card stays up 25 s: it keeps it.
+        assert!(!t.pass_if_due(25_000, true));
+        // The click: the card goes, the holder is fresh again.
+        t.touch(25_000);
+        assert!(!t.pass_if_due(25_001, false));
+        assert_eq!(t.ask("c", "a1", 25_002), Ask::Wait { place: 1, of: 1 });
+        // The allowed call arrives and ends: then, unused, it passes.
+        t.call_start(26_000);
+        t.call_done(27_000);
+        assert!(!t.pass_if_due(40_000, false));
+        assert!(t.pass_if_due(47_000, false));
+        assert_eq!(t.ask("c", "a1", 47_001), Ask::Go);
     }
 
     #[test]

@@ -1085,7 +1085,9 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
   chat's Agents card: "uses the computer" on the one that has it, "Waiting
   for the computer · 2 of 3 · 20 s" on the others (never "no signal"), and
   **Give it the turn** to put one first. The computer passes on when the
-  agent that has it ends, or leaves it unused for 20 s with someone waiting.
+  agent that has it ends, or leaves it unused for 20 s with someone waiting
+  (the card of its computer tool waiting for your click counts as use, and
+  the 20 s start again from the click).
   Before each of its computer tools, the chat's own PreToolUse hook
   (`lumo-hook --chat-guard PreToolUse --computer-turn`, in the chat's
   `--settings` file, never in `~/.claude/settings.json`) asks Lumo for the

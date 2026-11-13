@@ -75,6 +75,7 @@ export const AGENTS_CARD_TEXT = {
   noReply: N_("No reply came"),
   usesComputer: N_("uses the computer"),
   waitingComputer: N_("Waiting for the computer · {place} of {total} · {time}"),
+  inLineComputer: N_("Waiting for the computer"),
   giveTurn: N_("Give it the turn"),
 };
 
@@ -546,7 +547,9 @@ function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<s
     if (counts.working + counts.waiting > 0) text += ` · ${t(AGENTS_CARD_TEXT.others)}`;
   } else if (counts.waiting && !counts.working) {
     tone = "waiting";
-    text = t(AGENTS_CARD_TEXT.permission);
+    // Those waiting only in line for the computer have no card for the user.
+    const onUser = entries.some((e) => !isFinal(e.row.state) && (e.row.state === "waiting" || permission?.has(e.row.id)));
+    text = t(onUser ? AGENTS_CARD_TEXT.permission : AGENTS_CARD_TEXT.inLineComputer);
   } else {
     tone = counts.waiting ? "waiting" : "working";
     const last = Math.max(...entries.filter((e) => !isFinal(e.row.state)).map((e) => e.row.lastSignalAt || 0));

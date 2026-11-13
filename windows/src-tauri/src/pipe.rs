@@ -337,6 +337,12 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
             Err(Unanswered::Released)
         }
     };
+    // A card of one of the computer tools: its holder kept the computer while
+    // it waited, and keeps it a while from the click for the call it allowed
+    // (before the card leaves the count, so nobody takes it in between).
+    if tool_name.as_deref().is_some_and(crate::claude_code::is_computer_tool) {
+        crate::computer_turns::card_answered();
+    }
     crate::computer::card_down(&app);
     // A request the relay had to cut (lumo_input_cut) is allowed like any
     // other: its card says it shows the beginning, the user decides, and in
