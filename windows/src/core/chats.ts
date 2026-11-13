@@ -112,11 +112,14 @@ export function chatTitle(turns: SavedTurn[]): string {
  * `add_own`). A question still waiting for its answer stays after it. False
  * with no answer to join.
  */
-export function joinOwnAnswer(turns: { role: string; content: string; failed?: boolean }[], text: string): boolean {
+export function joinOwnAnswer(turns: { role: string; content: string; kept?: string; failed?: boolean }[], text: string): boolean {
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
     if (turn.role !== "assistant" || turn.failed) continue;
     turn.content = turn.content.trim() ? `${turn.content}\n\n${text}` : text;
+    // An answer that holds progress updates gives Rust its `kept` (chat_restore):
+    // the text joins it too, or Claude would not see this answer when the chat comes back.
+    if (typeof turn.kept === "string") turn.kept = turn.kept.trim() ? `${turn.kept}\n\n${text}` : text;
     return true;
   }
   return false;

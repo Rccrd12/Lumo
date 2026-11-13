@@ -103,12 +103,14 @@ test("the agents' card goes under the answer that started them, and stays there 
   assert.deepEqual(saved.turns[1].agents.map((a) => [a.id, a.state, a.summary]), [["a1", "done", "L01 ready"]]);
 
   // Its answer is done, its agents still work: the closed island and the home say so.
-  assert.equal(State.chatActivity?.label, "1 agent working · 1/2");
-  assert.deepEqual(State.activeChats.map((c) => [c.chatId, c.line]), [[chat, "1 agent working · 1/2"]]);
+  // The closed island names the chat; how far they are comes after the segments.
+  assert.equal(State.chatActivity?.who, "«transcribe the lessons»");
+  assert.equal(State.chatActivity?.label, "1 agent working");
+  assert.deepEqual(State.activeChats.map((c) => [c.chatId, c.who, c.line]), [[chat, "Claude Code", "1 agent working · 1/2"]]);
   // The closed island draws a segment each after the words.
   assert.deepEqual(islandAgents(), { looks: ["done", "working"], done: 1, total: 2, stalled: false });
   const island = activityLine({ ...State.chatActivity, agents: islandAgents() }, null, null);
-  assert.equal(island.text, "Claude Code · 1 agent working · 1/2");
+  assert.equal(island.text, "«transcribe the lessons» · 1 agent working");
   assert.deepEqual(island.agents.looks, ["done", "working"]);
 
   // Stop this one agent: Rust is asked, by chat and agent.
@@ -136,6 +138,10 @@ test("what the CLI writes by itself while agents work folds under them; once the
   await flush();
   view.sync();
   assert.equal(State.chatHistory.at(-1).content, "Launched.\n\nAll done.");
+  // Saved with what Rust's conversation holds: the updates and the final report, for when the chat comes back.
+  const back = loadChats().find((c) => c.id === chat).turns[1];
+  assert.equal(back.kept, "Launched.\n\nL15 is ready, 7 to go.\n\nAll done.");
+  assert.equal(typeof back.at, "number");
   assert.equal(State.chatActivity, null, "nothing at work any more");
   assert.equal(islandAgents(), null);
   assert.equal($(".agents-folded").querySelector(".agents-title").textContent, "1 agent finished");
@@ -161,4 +167,54 @@ test("the typing line says when the answer gives no sign, or waits for the user"
   assert.equal($(".typing-stall"), null, "a sign just came");
   Date.now = real;
   await answer({ text: "Hi!", turns: 2 });
+});
+
+test("a permission card asked inside an agent turns its row purple, not the answer's line", async () => {
+  const answer = await ask("go");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("p1") });
+  emit("chat-agent", { chat, agent: agent("p2") });
+  view.sync();
+  // A card of the answer itself: the line by the dots says it waits, no row does.
+  State.pendingApproval = { requestId: "r0", sessionId: "s", pillId: "agent_claude", tool: "Bash", command: "ls", fromChat: true };
+  view.sync();
+  assert.equal($(".typing-stall")?.textContent, " · waiting for your permission");
+  assert.equal($(".chat-log").find(".agents-row").some((r) => r.className.includes("waiting")), false);
+
+  State.pendingApproval = { requestId: "r1", sessionId: "s", pillId: "agent_claude", tool: "Bash", command: "ls", fromChat: true, subagentId: "p2" };
+  view.sync();
+  const rowsNow = $(".chat-log").find(".agents-row");
+  assert.equal(rowsNow[0].className.includes("waiting"), false);
+  assert.equal(rowsNow[1].className.includes("waiting"), true);
+  assert.equal($(".typing-stall"), null, "the answer itself waits for nothing");
+  rowsNow[1].querySelector(".agents-btn.see").fire("click");
+  assert.equal(State.view, State.requestView(State.pendingApproval));
+  State.pendingApproval = null;
+  State.view = "prompt";
+  await answer({ text: "Launched.", turns: 2 });
+});
+
+test("an edited question takes the agents of the answers it drops with it", async () => {
+  let answer = await ask("first");
+  const chat = State.chatId;
+  await answer({ text: "One.", turns: 2 });
+  answer = await ask("second");
+  emit("chat-agent", { chat, agent: agent("r1") });
+  await answer({ text: "Two, with an agent.", turns: 4 });
+  assert.deepEqual(rows(), ["question", "answer", "question", "answer", "agents"]);
+
+  // The second question is edited and sent again: its answer's agents go with it.
+  $(".chat-log").children[2].find(".msg-edit")[0].fire("click");
+  view.sync();
+  answer = await ask("second, but better");
+  assert.deepEqual(rows(), ["question", "answer", "question", "dots"]);
+  // The end Rust still sends for the dropped agent makes no card.
+  emit("chat-agent", { chat, agent: agent("r1", { state: "failed", error: "Claude Code ended" }) });
+  view.sync();
+  assert.equal($(".agents"), null);
+  // The new answer's agents get a card of their own.
+  emit("chat-agent", { chat, agent: agent("n1") });
+  view.sync();
+  assert.deepEqual($(".chat-log").find(".agents-name").map((e) => e.textContent), ["Transcribe n1"]);
+  await answer({ text: "Better.", turns: 4 });
 });

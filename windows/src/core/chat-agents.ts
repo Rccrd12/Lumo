@@ -84,6 +84,8 @@ export interface ChatAgents {
   lastSignalAt: number;
   /** The answer waits for the user: a permission card is up. */
   waiting: "permission" | null;
+  /** Agents of answers the user took back (an edited question, `rewindAgents`): their late news is ignored. */
+  dropped?: Set<string>;
 }
 
 /** Every chat's, by chat id. */
@@ -131,6 +133,7 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
   const agent = ev?.agent;
   if (!ev?.chat || !agent?.id) return false;
   const c = chatAgentsOf(store, ev.chat);
+  if (c.dropped?.has(agent.id)) return false;
   const known = c.rows.get(agent.id);
   if (known && isFinal(known.row.state)) return false;
   const entry: AgentEntry = known ?? { row: agent, steps: [] };
@@ -398,6 +401,30 @@ export function restoreAgents(store: AgentStore, chat: string, turns: readonly P
   }
 }
 
+/**
+ * The user edited a question: the answers from it on leave the chat
+ * (chat.ts rewindTo), and so do the agents they started. `answers` is how
+ * many answers stay (failed ones not counted). The ids of the agents that
+ * go are kept aside, so the end Rust still sends for those at work ("Claude
+ * Code ended" once the next question starts a new session) makes no batch
+ * of its own; the next agent starts a batch of its own under the new answer.
+ */
+export function rewindAgents(store: AgentStore, chat: string, answers: number) {
+  const c = store.get(chat);
+  if (!c) return;
+  const going = c.batches.filter((b) => b.anchor >= answers);
+  if (!going.length) return;
+  c.batches = c.batches.filter((b) => b.anchor < answers);
+  const dropped = c.dropped ?? new Set<string>();
+  for (const b of going) {
+    for (const id of b.ids) {
+      c.rows.delete(id);
+      dropped.add(id);
+    }
+  }
+  c.dropped = dropped;
+}
+
 /** The chat was deleted or started anew: its agents are forgotten. */
 export function forgetChat(store: AgentStore, chat: string) {
   store.delete(chat);
@@ -442,8 +469,9 @@ export function durationText(ms: number): string {
 
 /**
  * What the closed island and the home say of a chat whose agents work with
- * no answer being written (concept 5): how many work and how far they are,
- * or, in amber, that one gives no sign.
+ * no answer being written (concept 5): how many work, or, in amber, that one
+ * gives no sign. How far they are ("3/8") is said apart: after the segments
+ * on the closed island, after the words in the home's list.
  */
 export function islandAgentsLine(entries: AgentEntry[], now = Date.now(), permission?: ReadonlySet<string>): { text: string; stalled: boolean } | null {
   const n = countAgents(entries, now, permission);
@@ -452,5 +480,5 @@ export function islandAgentsLine(entries: AgentEntry[], now = Date.now(), permis
   if (worst) {
     return { text: tn("{count} agent with no signal for {time}", AGENT_TEXT.islandStalled, n.stalled, { time: durationText(worst.seconds * 1000) }), stalled: true };
   }
-  return { text: `${tn("{count} agent working", AGENT_TEXT.islandWorking, n.open)} · ${n.done}/${n.total}`, stalled: false };
+  return { text: tn("{count} agent working", AGENT_TEXT.islandWorking, n.open), stalled: false };
 }

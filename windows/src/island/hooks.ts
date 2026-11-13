@@ -301,6 +301,8 @@ interface HookPayload {
   term_editor?: string;
   /** The island's own chat started this Claude Code run (only its permission requests arrive). */
   lumo_island?: boolean;
+  /** PermissionRequest from inside an agent Claude Code started: that agent's id (the chat's Agents card matches it). */
+  agent_id?: string;
   /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
   lumo_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
@@ -1071,6 +1073,8 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(email ? { email } : change ? { reason: change.reason } : userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
+        // Asked inside one of the chat's agents: its row in the Agents card says so.
+        ...(fromChat && typeof payload.agent_id === "string" && payload.agent_id ? { subagentId: payload.agent_id } : {}),
         ...(payload.lumo_session_allow === true && payload.lumo_input_cut !== true && !questions && !agyGate ? { sessionAllow: true } : {}),
         ...(payload.lumo_remembered === true && !questions ? { remembered: true } : {}),
         ...(payload.lumo_input_cut === true && !questions && !email && !change && !userTool ? { cut: true } : {}),

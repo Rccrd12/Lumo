@@ -100,7 +100,7 @@ import {
 } from "../core/chats";
 import {
   addUpdate, applyAgent, applySignal, countAgents, durationText, foldsOwnAnswer, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
-  noteSignal, openCount, permissionMatch, restoreAgents, setIslandAgents, stallOf, withAgents, type AgentBatch, type ChatAgents, type PendingCard,
+  noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, withAgents, type AgentBatch, type ChatAgents, type PendingCard,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, type AgentsCardHost } from "./agents-card";
 import {
@@ -2512,6 +2512,8 @@ export function buildPrompt(
     State.chatSession = null;
     // The cards of the dropped messages (a quiz's answers) are not the next answer's.
     forgetCardsFrom(State.chatId, kept.filter((m) => !m.failed).length);
+    // So are the agents the dropped answers started: the next answer's start a card of their own.
+    rewindAgents(agentStore, State.chatId, kept.filter((m) => m.role === "assistant" && !m.failed).length);
     renderedCount = -1;
     // The files of the dropped turns leave the chat's files, and Rust forgets them too.
     rewindChatFiles(State.chatId, keep);
@@ -3757,10 +3759,13 @@ export function buildPrompt(
     const current = answering();
     const run = (current && !current.forgotten ? current : undefined) ?? liveRuns.at(-1);
     // A chat whose answer is done while its agents still work: the one on screen first.
-    const working: { chat: ActiveChatRun; peek: AgentsPeek }[] = [];
+    const working: { chat: ActiveChatRun; island: { who: string; label: string }; peek: AgentsPeek }[] = [];
+    // Past chats are read once, and only when a chat at work is in none of the open slots.
+    let saved: SavedChat[] | null = null;
+    const savedChats = () => (saved ??= loadChats());
     for (const [chatId, c] of agentStore) {
       if (runs.has(chatId)) continue;
-      const one = agentsActivity(chatId, c);
+      const one = agentsActivity(chatId, c, savedChats);
       if (one) working[chatId === State.chatId ? "unshift" : "push"](one);
     }
     const agentChats = working.map((w) => w.chat);
@@ -3770,7 +3775,7 @@ export function buildPrompt(
     const next = run
       ? { ...runSpeaker(run), label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null }
       : compactingLabel != null ? { ...chatSpeaker(), label: compactingLabel }
-      : agentsLine ? { who: agentsLine.chat.who, color: agentsLine.chat.color, label: agentsLine.chat.line } : null;
+      : agentsLine ? { who: agentsLine.island.who, color: agentsLine.chat.color, label: agentsLine.island.label } : null;
     const nextChats: ActiveChatRun[] = liveRuns.map((r) => {
       const { who, color } = runSpeaker(r);
       return {
@@ -3807,7 +3812,7 @@ export function buildPrompt(
     const nextKey = nextChats.map((c) => `${c.chatId}\t${c.who}\t${c.color}\t${c.title}\t${c.line}\t${c.done ? 1 : 0}`).join("\n");
     const now = State.chatActivity;
     const sameActivity = next == null ? now == null : now != null && now.label === next.label && now.who === next.who && now.color === next.color;
-    const peekKey = agentsLine ? agentsLine.peek.looks.join(",") : "";
+    const peekKey = agentsLine ? `${agentsLine.peek.looks.join(",")}:${agentsLine.peek.done}/${agentsLine.peek.total}` : "";
     if (sameActivity && nextKey === activeChatsKey && peekKey === islandPeekKey) return;
     islandPeekKey = peekKey;
     activeChatsKey = nextKey;
@@ -3939,15 +3944,15 @@ export function buildPrompt(
     return [State.pendingApproval, ...State.approvalQueue]
       .filter((a) => a?.fromChat)
       // The agent that asked, when the hook said (Claude Code's `agent_id`).
-      .map((a) => ({ sessionId: a!.sessionId, agentId: (a as { agentId?: string }).agentId, fromChat: true }));
+      .map((a) => ({ sessionId: a!.sessionId, agentId: a!.subagentId, fromChat: true }));
   }
 
-  /** What the cards up wait on in `chatId`: its answer itself, or some of its agents. */
-  function permissionOf(chatId: string): { main: boolean; agents: Set<string> } {
+  /** What the cards up wait on in `chatId`: its answer itself, or some of its agents. `chats`: Past chats, read once by the caller. */
+  function permissionOf(chatId: string, chats: () => SavedChat[] = loadChats): { main: boolean; agents: Set<string> } {
     const cards = chatCards();
     if (!cards.length) return { main: false, agents: new Set() };
     const run = runs.get(chatId);
-    const session = run ? run.session : chatId === State.chatId ? State.chatSession : loadChats().find((c) => c.id === chatId)?.session ?? null;
+    const session = run ? run.session : chatId === State.chatId ? State.chatSession : chats().find((c) => c.id === chatId)?.session ?? null;
     return permissionMatch(cards, session, chatId === State.chatId, agentStore.get(chatId)?.rows.keys() ?? []);
   }
 
@@ -4005,7 +4010,6 @@ export function buildPrompt(
 
   /** What one Agents card of the chat on screen needs from the chat. */
   function agentsHost(chatId: string): AgentsCardHost {
-    const pending = State.pendingApproval?.fromChat ? State.pendingApproval : null;
     return {
       label: activityLabel,
       // Stops that one agent alone; its CLI says how it ended (a `chat-agent` event).
@@ -4017,16 +4021,29 @@ export function buildPrompt(
         Sound.play("pop");
       },
       // Resume: a message to the chat, only on that click; it waits if an answer is being written.
-      send: (text) => void sendFromCard?.(text),
-      // The card a waiting agent asks on comes to the front.
-      seeRequest: pending
-        ? () => {
-          State.view = State.requestView(pending);
-          State.notify();
-        }
-        : null,
+      // False when it could not go (a question being edited): the card keeps offering it.
+      send: (text) => sendFromCard?.(text) ?? false,
+      requestOnTop: requestOnTop(chatId),
+      // The card the agent asks on comes to the front, if it is still the one on top.
+      seeRequest: (agentId) => {
+        const pending = State.pendingApproval;
+        if (!pending?.fromChat || requestOnTop(chatId) !== agentId) return;
+        State.view = State.requestView(pending);
+        State.notify();
+      },
       changed: () => onHeightChange(),
     };
+  }
+
+  /**
+   * The agent of `chatId` the permission card on top asks for (Claude Code's
+   * `agent_id`); null when that card is not one of its agents' (the answer's
+   * own, another chat's, or no card: Claude Code checking a call in auto mode).
+   */
+  function requestOnTop(chatId: string): string | null {
+    const pending = State.pendingApproval;
+    const id = pending?.fromChat ? pending.subagentId : undefined;
+    return id && agentStore.get(chatId)?.rows.has(id) ? id : null;
   }
 
   /** Draws the chat on screen's Agents cards again, where they are; a new card draws the log again. */
@@ -4035,8 +4052,9 @@ export function buildPrompt(
     const c = agentStore.get(chatId);
     if (!c) return;
     if (redraw && c.batches.some((b) => !shownCards.has(agentsCardKey(chatId, b)))) {
+      // The log is drawn again on its next sync; it syncs now only when it shows.
       renderedCount = -1;
-      State.notify();
+      if (State.view === "prompt") State.notify();
       return;
     }
     const permission = permissionOf(chatId).agents;
@@ -4083,17 +4101,21 @@ export function buildPrompt(
    * What the closed island and the home say of a chat whose answer is done
    * while its agents still work (concept 5); null for none.
    */
-  function agentsActivity(chatId: string, c: ChatAgents): { chat: ActiveChatRun; peek: AgentsPeek } | null {
+  function agentsActivity(chatId: string, c: ChatAgents, chats: () => SavedChat[]): { chat: ActiveChatRun; island: { who: string; label: string }; peek: AgentsPeek } | null {
     if (openCount(c) === 0) return null;
     const now = Date.now();
     const entries = [...c.rows.values()];
-    const permission = permissionOf(chatId).agents;
+    const permission = permissionOf(chatId, chats).agents;
     const line = islandAgentsLine(entries, now, permission);
     if (!line) return null;
     const { who, color } = agentsSpeaker(chatId, c);
     const counts = countAgents(entries, now, permission);
+    const title = chatNamed(chatId, chats) || t("Chat");
     return {
-      chat: { chatId, who, color: line.stalled ? "#f5a524" : color, title: chatNamed(chatId) || t("Chat"), line: line.text },
+      // The home's list: who answers, the chat's title, and how far they are after the words.
+      chat: { chatId, who, color: line.stalled ? "#f5a524" : color, title, line: line.stalled ? line.text : `${line.text} · ${counts.done}/${counts.total}` },
+      // The closed island: the chat's name, then the words; "3/8" comes after the segments (island/compact.ts).
+      island: { who: `«${title}»`, label: line.text },
       peek: { looks: looksOf(entries, now, permission), done: counts.done, total: counts.total, stalled: line.stalled },
     };
   }
@@ -4129,6 +4151,8 @@ export function buildPrompt(
   let agentsTimer: ReturnType<typeof setInterval> | null = null;
   let agentsEvery = 0;
   function agentsPace(): number {
+    // The island hidden: nothing to draw, nothing runs (0 % CPU).
+    if (State.mode === "hidden") return 0;
     const shown = State.mode === "expanded" && State.view === "prompt";
     if (shown && (answering() || openCount(agentStore.get(State.chatId)) > 0)) return 1000;
     for (const c of agentStore.values()) if (openCount(c) > 0) return 5000;
@@ -4150,6 +4174,9 @@ export function buildPrompt(
     // Under Node (the tests), agents left at work don't keep the process alive.
     (agentsTimer as { unref?: () => void }).unref?.();
   }
+  // The island hides or shows again, the chat leaves the screen or comes back:
+  // the pace follows (a pace unchanged costs nothing).
+  State.subscribe(() => tickAgents());
 
   /** The answers a queued question waits for (`sendAfter`). */
   const waitingFor = new Set<Run>();
@@ -4602,7 +4629,7 @@ export function buildPrompt(
     }
     if (history) {
       if (!joinOwnAnswer(history, content)) return;
-      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
+      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}) }));
       if (run) remember(run);
       else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns: withAgents(agents, turns) });
       if (onScreen) renderedCount = -1;
@@ -4692,7 +4719,7 @@ export function buildPrompt(
   }
 
   /** A chat's name, wherever it is: on screen, being answered, or in Past chats. */
-  function chatNamed(chatId: string): string | null {
+  function chatNamed(chatId: string, chats: () => SavedChat[] = loadChats): string | null {
     // The chat on screen, even still empty (a watch started from the panel),
     // or the one the other slot put aside.
     if (chatId === State.chatId) return chatTitle(State.chatHistory);
@@ -4700,7 +4727,7 @@ export function buildPrompt(
     if (parked && chatId === parked.chatId) return chatTitle(parked.chatHistory);
     const run = runs.get(chatId);
     if (run) return chatTitle(run.history);
-    const saved = loadChats().find((c) => c.id === chatId);
+    const saved = chats().find((c) => c.id === chatId);
     return saved ? saved.title : null;
   }
 

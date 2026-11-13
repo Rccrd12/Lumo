@@ -93,6 +93,8 @@ export interface ApprovalInfo {
   questions?: AskedQuestion[];
   /** Asked by the island's own chat (Claude Code provider): no session pill, and the chat comes back after. */
   fromChat?: boolean;
+  /** Asked from inside one of the chat's agents (Claude Code's `agent_id`): that agent's row says it waits (core/chat-agents.ts). */
+  subagentId?: string;
   /** "Allow for this session" can be offered: the same request is then allowed without a card until the session ends (session_rules.rs). */
   sessionAllow?: boolean;
   /** Allow is kept for the rest of the chat (Copilot CLI and Cursor CLI in Auto): the new look's card says so under its buttons. */

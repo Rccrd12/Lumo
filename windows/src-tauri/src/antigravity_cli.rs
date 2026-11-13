@@ -399,6 +399,9 @@ struct Subagents {
     delegating: Vec<(u64, String, Option<String>)>,
     /// The subagents' steps already counted, as "row:step".
     counted: HashSet<String>,
+    /// This turn's mark (chat_agents::run_mark), made when first needed: in
+    /// the ids of subagents named by their step, which a later turn reuses.
+    mark: Option<String>,
 }
 
 impl Subagents {
@@ -425,15 +428,27 @@ impl Subagents {
         }
     }
 
+    /// This turn's mark.
+    fn mark(&mut self) -> String {
+        self.mark.get_or_insert_with(chat_agents::run_mark).clone()
+    }
+
     /// One step of a subagent (`subagent_info`).
     fn step(&mut self, index: u64, done: bool, v: &Value) {
         let info = &v["subagent_info"];
         let conversation = ["conversation_id", "conversationId"].iter().filter_map(|k| info[*k].as_str()).map(str::trim).find(|s| !s.is_empty());
-        // Without its conversation, the step that delegated names it.
-        let id = conversation
-            .map(str::to_string)
-            .or_else(|| self.delegating.last().map(|d| format!("step-{}", d.0)))
-            .unwrap_or_else(|| "subagent".to_string());
+        // Without its conversation, the step that delegated names it, with
+        // the turn's mark: the next turn has a step 5 of its own.
+        let id = match conversation {
+            Some(conversation) => conversation.to_string(),
+            None => {
+                let mark = self.mark();
+                match self.delegating.last() {
+                    Some(d) => format!("step-{}-{mark}", d.0),
+                    None => format!("subagent-{mark}"),
+                }
+            }
+        };
         if self.agents.get(&id).is_none() {
             // The step that delegated and has no subagent yet gives it its title.
             let title = match self.delegating.iter_mut().find(|d| d.2.is_none()) {
@@ -1818,10 +1833,30 @@ mod tests {
         let mut run = Run::default();
         run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"delegate_task","parameters":{}}}"#);
         run.feed(br#"{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{},"tool_info":{"name":"run_command","parameters":{}}}"#);
-        assert_eq!(run.subagents.agents.get("step-5").unwrap().title, "delegate task");
+        let id = run.subagents.agents.changed()[0].id.clone();
+        assert!(id.starts_with("step-5-"), "{id}");
+        assert_eq!(run.subagents.agents.get(&id).unwrap().title, "delegate task");
         run.feed(br#"{"event":"step_update","step_index":5,"state":"ERROR","step_type":"tool","tool_info":{"name":"delegate_task","error":{"type":"FAILED","message":"Browser crashed"}}}"#);
-        let a = run.subagents.agents.get("step-5").unwrap();
+        let a = run.subagents.agents.get(&id).unwrap();
         assert_eq!((a.state, a.error.as_deref()), (AgentState::Failed, Some("Browser crashed")));
+    }
+
+    #[test]
+    fn a_subagent_named_by_its_step_is_another_one_in_the_next_turn() {
+        // Two turns, each delegating at step 5 to a subagent with no
+        // conversation, and one with neither: four rows, never the same id.
+        let ids = |run: &mut Run| {
+            run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"delegate_task","parameters":{}}}"#);
+            run.feed(br#"{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{},"tool_info":{"name":"run_command"}}"#);
+            run.feed(br#"{"event":"step_update","step_index":5,"state":"DONE","step_type":"tool","tool_info":{"name":"delegate_task"}}"#);
+            run.subagents.step(0, false, &json!({ "step_type": "tool", "subagent_info": {} }));
+            run.subagents.agents.changed().into_iter().map(|r| r.id).collect::<Vec<_>>()
+        };
+        let first = ids(&mut Run::default());
+        let second = ids(&mut Run::default());
+        assert_eq!((first.len(), second.len()), (2, 2), "{first:?} {second:?}");
+        assert!(first[0].starts_with("step-5-") && first[1].starts_with("subagent-"));
+        assert!(first.iter().all(|id| !second.contains(id)), "{first:?} {second:?}");
     }
 
     #[test]

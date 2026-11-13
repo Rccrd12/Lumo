@@ -940,6 +940,9 @@ struct Tasks {
     by_call: HashMap<String, String>,
     /// Tasks that named neither an id nor a call, numbered.
     unnamed: u64,
+    /// This server's mark (chat_agents::run_mark), made when first needed:
+    /// in the numbered tasks' ids, which the next server numbers from 1 again.
+    mark: Option<String>,
 }
 
 impl Tasks {
@@ -953,7 +956,8 @@ impl Tasks {
             Some(id) => id,
             None => {
                 self.unnamed += 1;
-                format!("task-{}", self.unnamed)
+                let mark = self.mark.get_or_insert_with(chat_agents::run_mark);
+                format!("task-{mark}-{}", self.unnamed)
             }
         };
         if let Some(call) = &call {
@@ -1528,10 +1532,14 @@ fn live_turn(
             reap_idle();
             Ok((state, session))
         }
-        // Not cancelled in time: ended (Drop), the run so far kept.
-        Ended::Stopped if state.stopped => Ok((state, session)),
+        // Not cancelled in time: ended (Drop), the run so far kept. The
+        // user asked for it: its tasks stopped, not failed.
+        Ended::Stopped | Ended::Closed if state.stopped => {
+            live.tasks.turn_ended(true);
+            (live.tell)(&mut live.tasks.agents, false);
+            Ok((state, session))
+        }
         Ended::Stopped => Err(tf("{agent} took too long to answer.", &[("agent", agent.name())])),
-        Ended::Closed if state.stopped => Ok((state, session)),
         Ended::Closed => Err(live.ended()),
     }
 }
@@ -2036,10 +2044,18 @@ mod tests {
         tasks.task(CURSOR, &json!({ "taskId": "t3", "name": "Lint", "status": "failed", "error": "eslint crashed" }));
         assert_eq!(tasks.agents.get("t3").unwrap().error.as_deref(), Some("eslint crashed"));
         tasks.task(CURSOR, &json!({}));
-        assert_eq!(tasks.agents.get("task-1").unwrap().title, "Agent");
+        let numbered = tasks.agents.changed().pop().unwrap().id;
+        assert!(numbered.starts_with("task-") && numbered.ends_with("-1"), "{numbered}");
+        assert_eq!(tasks.agents.get(&numbered).unwrap().title, "Agent");
         // The turn ended: the open ones with it.
         tasks.turn_ended(true);
-        assert_eq!(tasks.agents.get("task-1").unwrap().state, AgentState::Stopped);
+        assert_eq!(tasks.agents.get(&numbered).unwrap().state, AgentState::Stopped);
         assert_eq!(tasks.agents.open(), 0);
+
+        // The next server numbers its tasks from 1 again: another id all the same.
+        let mut next = Tasks::default();
+        next.task(CURSOR, &json!({}));
+        let again = next.agents.changed().pop().unwrap().id;
+        assert!(again.ends_with("-1") && again != numbered, "{again} {numbered}");
     }
 }

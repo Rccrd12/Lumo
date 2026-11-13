@@ -705,11 +705,25 @@ struct Subagents {
     /// The tool calls of agents not answered yet → the agent, for the
     /// permission checks that name only the call.
     calls: HashMap<String, String>,
+    /// The `stop_task` requests Lumo sent, not answered yet → the agent each
+    /// stops. Claude Code says a stopped agent ended only by answering the
+    /// request: it sends no `task_notification` for it.
+    stopping: HashMap<String, String>,
 }
 
 /// A field's text, when there is some.
 fn text_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v[key].as_str().map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// The first text of a tool result's content (a text, or text parts): an
+/// agent's last message, before what Claude Code adds after it (its id, its usage).
+fn result_text(content: &Value) -> Option<&str> {
+    match content {
+        Value::String(s) => Some(s.trim()).filter(|s| !s.is_empty()),
+        Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str()).map(str::trim).find(|s| !s.is_empty()),
+        _ => None,
+    }
 }
 
 /// A task Claude Code started that is an agent, not a command it left
@@ -749,8 +763,61 @@ impl Subagents {
             Some("system") => self.system(v),
             Some("assistant") if !top_level(v) => self.tools_of(v),
             Some("user") if !top_level(v) => self.results_of(v),
+            Some("user") => self.agent_results(v),
             Some("stream_event") if !top_level(v) => self.writing(v),
+            Some("control_response") => self.stop_answered(&v["response"]),
             _ => {}
+        }
+    }
+
+    /// Lumo asks Claude Code to stop the agent `id` with the request `request`.
+    fn stop_sent(&mut self, request: String, id: &str) {
+        self.stopping.insert(request, id.to_string());
+    }
+
+    /// Claude Code's answer to a request: a `stop_task` of Lumo's done is
+    /// the agent stopped (one that failed, as for an agent that ended
+    /// meanwhile, changes nothing).
+    fn stop_answered(&mut self, response: &Value) {
+        let Some(id) = response["request_id"].as_str().and_then(|r| self.stopping.remove(r)) else { return };
+        if response["subtype"] != "success" {
+            return;
+        }
+        if let Some(row) = self.open_row(&id) {
+            row.end(AgentState::Stopped, None);
+        }
+        self.forget(&id);
+    }
+
+    /// The main conversation's tool results: the Agent call of an agent that
+    /// worked in the foreground answered is that agent's end, the one sure
+    /// sign of it (Claude Code tells the end of background agents only).
+    /// One launched in the background, or moved there, is answered at once
+    /// (`async_launched`): it goes on.
+    fn agent_results(&mut self, v: &Value) {
+        let launched = v["tool_use_result"]["status"] == "async_launched" || v["tool_use_result"]["isAsync"] == true;
+        for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result") {
+            let Some(id) = block["tool_use_id"].as_str().and_then(|call| self.by_call.get(call)).cloned() else { continue };
+            if self.agents.get(&id).is_none_or(|r| r.background || r.state.is_final()) {
+                continue;
+            }
+            if launched {
+                if let Some(row) = self.open_row(&id) {
+                    row.background = true;
+                }
+                continue;
+            }
+            let text = result_text(&block["content"]).map(chat_agents::summary_of);
+            let Some(row) = self.open_row(&id) else { continue };
+            if block["is_error"] == true {
+                row.end(AgentState::Failed, text);
+            } else {
+                if let Some(text) = text {
+                    row.summary = Some(text);
+                }
+                row.end(AgentState::Done, None);
+            }
+            self.forget(&id);
         }
     }
 
@@ -771,6 +838,7 @@ impl Subagents {
     fn forget(&mut self, id: &str) {
         self.by_call.retain(|_, task| task != id);
         self.calls.retain(|_, task| task != id);
+        self.stopping.retain(|_, task| task != id);
         self.counted.remove(id);
     }
 
@@ -971,9 +1039,16 @@ impl AgentLink {
 
     /// Its Claude Code ended: the agents still at work ended with it.
     fn ended(&self) {
+        self.ended_as(AgentState::Failed);
+    }
+
+    /// Its Claude Code ended, and its agents still at work as `state` says:
+    /// stopped when the user's Stop ended it, failed when it ended by itself.
+    fn ended_as(&self, state: AgentState) {
         let mut subagents = self.lock();
         if subagents.agents.open() > 0 {
-            subagents.agents.end_open(AgentState::Failed, &cli_ended());
+            let error = if state == AgentState::Failed { cli_ended() } else { String::new() };
+            subagents.agents.end_open(state, &error);
         }
         (self.tell)(&mut subagents.agents, false);
     }
@@ -984,35 +1059,44 @@ fn cli_ended() -> String {
     tf("{agent} ended", &[("agent", "Claude Code")])
 }
 
-/// Asks Claude Code to stop one of its agents (`task`), keeping the rest.
-fn stop_task_line(task: &str) -> String {
+/// Asks Claude Code to stop one of its agents (`task`), keeping the rest:
+/// the request's id (its answer names it), and the line.
+fn stop_task_line(task: &str) -> (String, String) {
     static NEXT: AtomicU64 = AtomicU64::new(1);
-    let n = NEXT.fetch_add(1, Ordering::SeqCst);
-    format!("{}\n", json!({ "type": "control_request", "request_id": format!("lumo-stop-{n}"), "request": { "subtype": "stop_task", "task_id": task } }))
+    let request = format!("lumo-stop-{}", NEXT.fetch_add(1, Ordering::SeqCst));
+    let line = format!("{}\n", json!({ "type": "control_request", "request_id": request, "request": { "subtype": "stop_task", "task_id": task } }));
+    (request, line)
 }
 
 /// What stops one agent of a chat's Claude Code (chat_agents.rs `stop`):
 /// `stop_task` on its stdin, for an agent of its still at work (one that
 /// ended, or none of its, has nothing to stop). It holds neither: once that
 /// Claude Code is gone, there is nothing to stop. It works during a turn
-/// too, while the Claude Code is out of LIVES.
-fn agent_stopper(stdin: &Arc<Mutex<std::process::ChildStdin>>, link: &AgentLink) -> StopAgent {
+/// too, while the Claude Code is out of LIVES. The request is noted, so its
+/// answer ends the agent's row (`Subagents::stop_answered`).
+fn agent_stopper<W: Write + Send + 'static>(stdin: &Arc<Mutex<W>>, link: &AgentLink) -> StopAgent {
     let stdin = Arc::downgrade(stdin);
     let subagents = Arc::downgrade(&link.subagents);
     Box::new(move |id: &str| {
-        let open = subagents
-            .upgrade()
-            .is_some_and(|s| s.lock().unwrap_or_else(|e| e.into_inner()).agents.get(id).is_some_and(|r| !r.state.is_final()));
-        if !open {
-            return Ok(());
-        }
-        let stdin = stdin.upgrade().ok_or_else(cli_ended)?;
-        write_stdin(&stdin, &stop_task_line(id)).map_err(|_| cli_ended())
+        let Some(subagents) = subagents.upgrade() else { return Ok(()) };
+        let (stdin, line) = {
+            let mut subagents = subagents.lock().unwrap_or_else(|e| e.into_inner());
+            if !subagents.agents.get(id).is_some_and(|r| !r.state.is_final()) {
+                return Ok(());
+            }
+            let stdin = stdin.upgrade().ok_or_else(cli_ended)?;
+            // Noted before it goes, so its answer always finds it; written
+            // out of the lock, so the thread reading the stream never waits on stdin.
+            let (request, line) = stop_task_line(id);
+            subagents.stop_sent(request, id);
+            (stdin, line)
+        };
+        write_stdin(&stdin, &line).map_err(|_| cli_ended())
     })
 }
 
 /// Writes `text` whole on a chat's Claude Code's stdin: an error once it is gone.
-fn write_stdin(stdin: &Mutex<std::process::ChildStdin>, text: &str) -> std::io::Result<()> {
+fn write_stdin(stdin: &Mutex<impl Write>, text: &str) -> std::io::Result<()> {
     let mut pipe = stdin.lock().unwrap_or_else(|e| e.into_inner());
     pipe.write_all(text.as_bytes()).and_then(|_| pipe.flush())
 }
@@ -1715,13 +1799,17 @@ impl Live {
         let mut interrupted: Option<Instant> = None;
         let waiting = Instant::now();
         while !idle.is_finished() {
+            // Ended for the user's Stop: its agents stopped, not failed
+            // (marked first, so the thread reading it finds none open).
             if stop.is_stopped() && interrupted.is_none() {
                 interrupted = Some(Instant::now());
                 if write_stdin(&self.stdin, &interrupt_line(0)).is_err() {
+                    self.link.ended_as(AgentState::Stopped);
                     kill_tree(&mut self.child);
                 }
             }
             if interrupted.is_some_and(|at| at.elapsed() > INTERRUPT_GRACE) {
+                self.link.ended_as(AgentState::Stopped);
                 kill_tree(&mut self.child);
             }
             // Mostly it gives it back at once: looked at often only at first.
@@ -1966,11 +2054,16 @@ fn live_turn(
             live.park(chat_id, own);
             Ok(state)
         }
-        // Not interrupted in time: ended, the run so far kept.
-        Ended::Stopped => Ok(state),
+        // Not interrupted in time: ended, the run so far kept. The user asked
+        // for it: its agents stopped with it, not failed (Drop then finds none open).
+        Ended::Stopped => {
+            link.ended_as(AgentState::Stopped);
+            Ok(state)
+        }
         Ended::Closed => {
             let status = live.child.wait().ok();
             if state.stopped {
+                link.ended_as(AgentState::Stopped);
                 return Ok(state);
             }
             std::thread::sleep(Duration::from_millis(50));
@@ -2971,8 +3064,11 @@ mod tests {
         assert!(!is_full_path("a.txt") && !is_full_path(r"..\a.txt") && !is_full_path("C:"));
     }
 
-    /// An AgentLink whose tells are kept: (rows sent, signs of life).
-    fn recording() -> (AgentLink, Arc<std::sync::Mutex<(Vec<AgentRow>, usize)>>) {
+    /// What a recording link was told: the rows sent, and how many signs of life.
+    type Told = Arc<std::sync::Mutex<(Vec<AgentRow>, usize)>>;
+
+    /// An AgentLink whose tells are kept.
+    fn recording() -> (AgentLink, Told) {
         let seen = Arc::new(std::sync::Mutex::new((Vec::new(), 0usize)));
         let into = seen.clone();
         let tell: Tell = Arc::new(move |agents: &mut Agents, alive: bool| {
@@ -3137,12 +3233,87 @@ mod tests {
 
     #[test]
     fn one_agent_is_stopped_with_a_control_request_of_its_own() {
-        let v: Value = serde_json::from_str(stop_task_line("a1b2").trim_end()).unwrap();
+        let (request, line) = stop_task_line("a1b2");
+        let v: Value = serde_json::from_str(line.trim_end()).unwrap();
         assert_eq!(v["type"], "control_request");
+        assert_eq!(v["request_id"], request.as_str());
         assert_eq!(v["request"]["subtype"], "stop_task");
         assert_eq!(v["request"]["task_id"], "a1b2");
-        let other: Value = serde_json::from_str(stop_task_line("a1b2").trim_end()).unwrap();
-        assert_ne!(v["request_id"], other["request_id"], "each request its own id");
-        assert!(stop_task_line("a\"b\nc").matches('\n').count() == 1, "one line, whatever the id");
+        let (other, _) = stop_task_line("a1b2");
+        assert_ne!(request, other, "each request its own id");
+        assert!(stop_task_line("a\"b\nc").1.matches('\n').count() == 1, "one line, whatever the id");
+    }
+
+    #[test]
+    fn the_stopper_asks_only_for_an_agent_at_work_and_only_while_claude_code_lives() {
+        let (link, _) = recording();
+        feed_agents(&mut link.lock(), &[AGENT_STARTED, &AGENT_STARTED.replace("a1b2", "done1").replace("toolu_A", "toolu_D")]);
+        link.lock().agents.touch("done1").unwrap().end(AgentState::Done, None);
+        let stdin = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let stop = agent_stopper(&stdin, &link);
+        // Ended, or none of its: nothing to stop, nothing written.
+        assert!(stop("done1").is_ok() && stop("nobody").is_ok());
+        assert!(stdin.lock().unwrap().is_empty());
+        // At work: its request goes, and is noted for its answer.
+        assert!(stop("a1b2").is_ok());
+        let written = String::from_utf8(stdin.lock().unwrap().clone()).unwrap();
+        let v: Value = serde_json::from_str(written.trim_end()).unwrap();
+        assert_eq!(v["request"]["task_id"], "a1b2");
+        assert_eq!(link.lock().stopping.get(v["request_id"].as_str().unwrap()).map(String::as_str), Some("a1b2"));
+        // Its Claude Code gone (stdin dropped): it says so.
+        drop(stdin);
+        assert_eq!(stop("a1b2"), Err("Claude Code ended".to_string()));
+        // Its agents gone too: nothing to stop.
+        drop(link);
+        assert!(stop("a1b2").is_ok());
+    }
+
+    #[test]
+    fn an_agent_lumo_stopped_ends_when_claude_code_answers_the_request() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[AGENT_STARTED, &AGENT_STARTED.replace("a1b2", "a2").replace("toolu_A", "toolu_2")]);
+        sub.stop_sent("lumo-stop-41".into(), "a1b2");
+        sub.stop_sent("lumo-stop-42".into(), "a2");
+        sub.agents.changed();
+        // An answer to another request: nothing of theirs.
+        feed_agents(&mut sub, &[r#"{"type":"control_response","response":{"subtype":"success","request_id":"lumo-interrupt-1","response":{}}}"#]);
+        assert!(sub.agents.changed().is_empty());
+        feed_agents(&mut sub, &[r#"{"type":"control_response","response":{"subtype":"success","request_id":"lumo-stop-41","response":{}}}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!(a.state, AgentState::Stopped);
+        assert!(a.error.is_none() && a.ended_at.is_some());
+        assert_eq!(sub.agents.changed().len(), 1);
+        // Refused (it had ended already, say): it stays as the stream says.
+        feed_agents(&mut sub, &[r#"{"type":"control_response","response":{"subtype":"error","request_id":"lumo-stop-42","error":"Task a2 is not running"}}"#]);
+        assert_eq!(sub.agents.get("a2").unwrap().state, AgentState::Working);
+        assert!(sub.stopping.is_empty());
+        assert!(!sub.by_call.contains_key("toolu_A") && sub.by_call.contains_key("toolu_2"));
+    }
+
+    #[test]
+    fn an_agent_in_the_foreground_ends_when_its_call_is_answered() {
+        let foreground = AGENT_STARTED.replace(r#""is_backgrounded":true"#, r#""is_backgrounded":false"#);
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[&foreground, &foreground.replace("a1b2", "f2").replace("toolu_A", "toolu_F"), &AGENT_STARTED.replace("a1b2", "bg").replace("toolu_A", "toolu_G")]);
+        // The background one's call is answered at launch: it goes on.
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_G","content":[{"type":"text","text":"Async agent launched"}]}]},"tool_use_result":{"status":"async_launched","isAsync":true}}"#]);
+        assert_eq!(sub.agents.get("bg").unwrap().state, AgentState::Working);
+        // The foreground one's answer is its end, its last message the summary.
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_A","content":[{"type":"text","text":"All 52 pages\ntranscribed."},{"type":"text","text":"agentId: x"}]}]},"tool_use_result":{"status":"completed"}}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!((a.state, a.summary.as_deref()), (AgentState::Done, Some("All 52 pages transcribed.")));
+        assert!(!sub.by_call.contains_key("toolu_A"));
+        // One answered with an error failed, and says why.
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_F","is_error":true,"content":"Agent ran out of turns"}]}}"#]);
+        let f = sub.agents.get("f2").unwrap();
+        assert_eq!((f.state, f.error.as_deref()), (AgentState::Failed, Some("Agent ran out of turns")));
+        assert_eq!(sub.agents.get("bg").unwrap().state, AgentState::Working);
+
+        // Moved to the background while it worked: answered as launched, it goes on, in the background now.
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[&foreground]);
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_A","content":"moved"}]},"tool_use_result":{"status":"async_launched"}}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!((a.state, a.background), (AgentState::Working, true));
     }
 }

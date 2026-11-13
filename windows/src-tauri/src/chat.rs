@@ -544,11 +544,6 @@ impl ChatEvents {
         crate::chat_agents::emit_changed(app, &self.chat, agents);
     }
 
-    /// The chat these events are for.
-    pub fn chat_id(&self) -> &str {
-        &self.chat
-    }
-
     /// A file the answer read, edited or created (claude_code.rs FileTouch):
     /// the chat lists it, and may open it from now on (chat_files.rs).
     pub fn file(&self, app: &AppHandle, file: &claude_code::FileTouch) {

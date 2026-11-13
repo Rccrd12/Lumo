@@ -16,8 +16,10 @@
 // that click.
 //
 // Drawn from the store (core/chat-agents.ts) every time something changes:
-// only the card is drawn again, never the chat around it. What the user
-// opened or folded is kept per card.
+// only the card is drawn again, never the chat around it. When only its words
+// changed (the times, each second), they are written into the card as it is,
+// so a button pressed or a summary being selected stays under the mouse.
+// What the user opened or folded is kept per card.
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
@@ -78,10 +80,12 @@ export interface AgentsCardHost {
   label(activity: ChatActivity): string;
   /** Stops one agent alone (`chat_stop_agent`). */
   stop(agentId: string): void;
-  /** Sends a message to the chat, as if typed: Resume. */
-  send(text: string): void;
-  /** Brings up the permission card an agent waits on; null when there is no way to. */
-  seeRequest: ((agentId: string) => void) | null;
+  /** Sends a message to the chat, as if typed: Resume. False when it could not go (a question being edited). */
+  send(text: string): boolean;
+  /** The agent the permission card on top asks for: its row offers See request. Null for none. */
+  requestOnTop: string | null;
+  /** Brings up the permission card the agent asks on. */
+  seeRequest(agentId: string): void;
   /** The card changed: its height, or its state worth saving. */
   changed(): void;
 }
@@ -110,6 +114,9 @@ interface CardUi {
 }
 
 const uis = new Map<string, CardUi>();
+
+/** What each card was last drawn from: its buttons act on the newest, not on what was known when they were made. */
+const latest = new WeakMap<HTMLElement, { input: AgentsCardInput; host: AgentsCardHost }>();
 
 function uiOf(key: string): CardUi {
   let ui = uis.get(key);
@@ -169,37 +176,102 @@ function endedByCli(entries: AgentEntry[]): { name: string; entries: AgentEntry[
   return { name: t(providerDef(ended[0].row.source).name), entries: ended };
 }
 
-/** Draws the card in `el`, from what the store holds now. */
+/**
+ * Draws the card in `el`, from what the store holds now. Drawn the same but
+ * for its words (the times, as each second goes), the card stays as it is and
+ * only its words change: a click whose press and release fall either side of
+ * a redraw still lands, and a selection in an opened row stays.
+ */
 export function fillAgentsCard(el: HTMLElement, input: AgentsCardInput, host: AgentsCardHost) {
+  latest.set(el, { input, host });
+  const fresh = h("div");
+  drawCard(fresh, el, input, host);
+  if (sameShape(el, fresh)) {
+    copyWords(el, fresh);
+    return;
+  }
+  clear(el);
+  el.append(...Array.from(fresh.childNodes));
+}
+
+/** The class of an element, as a string also for an SVG one. */
+function classOf(e: Element): string {
+  return typeof e.className === "string" ? e.className : e.getAttribute("class") ?? "";
+}
+
+/** Whether `a` and `b` hold the same elements, with the same classes, in the same places: only their words may differ. */
+function sameShape(a: Element, b: Element): boolean {
+  if (a.childNodes.length !== b.childNodes.length) return false;
+  for (let i = 0; i < a.childNodes.length; i++) {
+    const x = a.childNodes[i];
+    const y = b.childNodes[i];
+    if (x.nodeType !== y.nodeType) return false;
+    if (x.nodeType !== 1) continue;
+    const ex = x as Element;
+    const ey = y as Element;
+    if (ex.tagName !== ey.tagName || classOf(ex) !== classOf(ey) || !sameShape(ex, ey)) return false;
+  }
+  return true;
+}
+
+/** Writes the words of `from` (its texts and tooltips) into `to`, of the same shape. */
+function copyWords(to: Element, from: Element) {
+  for (const attr of ["title", "aria-label"]) {
+    const v = from.getAttribute(attr);
+    if (v == null) to.removeAttribute(attr);
+    else if (to.getAttribute(attr) !== v) to.setAttribute(attr, v);
+  }
+  for (let i = 0; i < to.childNodes.length; i++) {
+    const x = to.childNodes[i];
+    const y = from.childNodes[i];
+    if (x.nodeType === 3) {
+      const text = (y as Text).data;
+      if ((x as Text).data !== text) (x as Text).data = text;
+    } else if (x.nodeType === 1) copyWords(x as Element, y as Element);
+  }
+}
+
+/** Draws the card into `into`; `el` is the card itself, which its buttons draw again. */
+function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, given: AgentsCardHost) {
   const now = input.now ?? Date.now();
+  // From the newest input and host: a button drawn a while ago acts on what is known now.
+  const current = () => latest.get(el) ?? { input, host: given };
+  const host: AgentsCardHost = {
+    label: given.label,
+    requestOnTop: given.requestOnTop,
+    stop: (id) => current().host.stop(id),
+    send: (text) => current().host.send(text),
+    seeRequest: (id) => current().host.seeRequest(id),
+    changed: () => current().host.changed(),
+  };
   const key = agentsCardKey(input.chatId, input.batch);
   const ui = uiOf(key);
   const entries = batchEntries(input.chat, input.batch);
   const counts = countAgents(entries, now, input.permission);
   const allOver = counts.open === 0;
   const redraw = () => {
-    fillAgentsCard(el, input, host);
-    host.changed();
+    const last = current();
+    fillAgentsCard(el, last.input, last.host);
+    last.host.changed();
   };
-  clear(el);
   if (entries.length === 0 && input.batch.updates.length === 0) return;
 
   const ended = allOver ? endedByCli(entries) : null;
   if (entries.length === 0) {
     // Only updates kept (an old chat): their line alone.
   } else if (ended && !input.batch.resumed) {
-    el.append(endedBanner(ended, input, host, ui, redraw));
-    if (ui.unfolded) el.append(h("div", { class: "agents-card" }, rows(entries, input, host, ui, now, redraw)));
+    into.append(endedBanner(ended, () => current().input, host, ui, redraw));
+    if (ui.unfolded) into.append(h("div", { class: "agents-card" }, rows(entries, input, host, ui, now, redraw)));
   } else if (allOver && !ui.unfolded) {
-    el.append(foldedLine(entries, now, input.permission, () => {
+    into.append(foldedLine(entries, now, input.permission, () => {
       ui.unfolded = true;
       redraw();
     }));
   } else {
-    el.append(fullCard(entries, input, host, ui, now, redraw));
+    into.append(fullCard(entries, input, host, ui, now, redraw));
   }
-  if (input.batch.updates.length) el.append(updatesLine(input, ui, redraw));
-  if (!allOver) el.append(liveLine(entries, now, input.permission));
+  if (input.batch.updates.length) into.append(updatesLine(input, ui, redraw));
+  if (!allOver) into.append(liveLine(entries, now, input.permission));
 }
 
 /** The header and the rows. */
@@ -265,13 +337,16 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const side = h("span", { class: "agents-side" });
   if (look === "stalled") {
     side.append(cardButton("wait", tc(AGENTS_CARD_TEXT.wait), () => {
-      snooze(e, now);
+      // From the click: the button may have been drawn a while before.
+      snooze(e);
       redraw();
     }));
     if (r.canStop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), () => host.stop(r.id)));
   } else if (look === "waiting") {
-    const see = host.seeRequest;
-    if (see && r.waitingFor !== "rate_limit") side.append(cardButton("see", t(AGENTS_CARD_TEXT.seeRequest), () => see(r.id)));
+    // Only on the row whose card is the one up: not while Claude Code checks a call itself (no card), nor for another's card.
+    if (r.waitingFor !== "rate_limit" && input.permission?.has(r.id) && host.requestOnTop === r.id) {
+      side.append(cardButton("see", t(AGENTS_CARD_TEXT.seeRequest), () => host.seeRequest(r.id)));
+    }
   } else if (look === "done") {
     side.append(h("span", { class: "agents-time", text: t(AGENTS_CARD_TEXT.doneIn, { time: durationText((r.endedAt ?? now) - r.startedAt) }) }));
   } else if (look === "failed") {
@@ -349,10 +424,14 @@ function foldedLine(entries: AgentEntry[], now: number, permission: ReadonlySet<
 }
 
 /** The CLI ended under its agents: a red line, and Resume. */
-function endedBanner(ended: { name: string; entries: AgentEntry[] }, input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, redraw: () => void): HTMLElement {
+function endedBanner(ended: { name: string; entries: AgentEntry[] }, current: () => AgentsCardInput, host: AgentsCardHost, ui: CardUi, redraw: () => void): HTMLElement {
   const resume = cardButton("resume", t(AGENTS_CARD_TEXT.resume), () => {
-    const tasks = ended.entries.map((e) => `- ${e.row.title}`).join("\n");
-    host.send(`${t(AGENTS_CARD_TEXT.resumeAsk, { name: ended.name })}\n${tasks}`);
+    // The agents that ended halfway as the store has them now (the line may have been drawn before one more did).
+    const input = current();
+    const halfway = endedByCli(batchEntries(input.chat, input.batch)) ?? ended;
+    const tasks = halfway.entries.map((e) => `- ${e.row.title}`).join("\n");
+    // Not sent (a question being edited, one being prepared): the line stays, Resume with it.
+    if (!host.send(`${t(AGENTS_CARD_TEXT.resumeAsk, { name: halfway.name })}\n${tasks}`)) return;
     input.batch.resumed = true;
     redraw();
   });

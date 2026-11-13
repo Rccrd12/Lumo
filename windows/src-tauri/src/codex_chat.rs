@@ -64,6 +64,9 @@ const COLOR: &str = "#2DD4BF";
 const START_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long a chat's Codex waits for the next message before it is ended.
 const LIVE_IDLE: Duration = Duration::from_secs(10 * 60);
+/// How long it is kept with no message while agents it started are at work:
+/// ending it would end them.
+const LIVE_BUSY: Duration = Duration::from_secs(3 * 60 * 60);
 /// How long an interrupted turn may take to end before its Codex is ended.
 const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
 /// `model/list` answers at once, or not at all.
@@ -673,6 +676,8 @@ struct Live {
 
 impl Drop for Live {
     fn drop(&mut self) {
+        // What it wrote last may say an agent finished: read before the rest end with it.
+        self.drain();
         if matches!(self.child.try_wait(), Ok(None)) {
             kill_tree(&mut self.child);
         }
@@ -685,6 +690,29 @@ impl Drop for Live {
 }
 
 impl Live {
+    /// Reads what the server wrote since the last turn, or since it was last
+    /// read, without waiting. No turn of the chat is running: what it says is
+    /// for its agents only (one finished, one is at work), and a request of an
+    /// agent's thread is answered as during a turn (`other_answer`), so it
+    /// never waits on Lumo. False once its output closed.
+    fn drain(&mut self) -> bool {
+        let main = self.thread.clone().unwrap_or_default();
+        let stdin = self.stdin.clone();
+        drain_lines(&self.rx, &mut self.agents, &main, |answer| {
+            write_line(&stdin, &answer);
+        })
+    }
+
+    /// How long it may wait for the next message: longer while agents it
+    /// started are at work.
+    fn idle_limit(&self) -> Duration {
+        if self.agents.agents.open() > 0 {
+            LIVE_BUSY
+        } else {
+            LIVE_IDLE
+        }
+    }
+
     /// Starts `codex app-server` in `dir` and says hello.
     fn start(exe: &Path, dir: &Path, key: &str) -> Result<Live, String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -815,58 +843,95 @@ fn lives<T>(f: impl FnOnce(&mut HashMap<String, Live>) -> T) -> T {
     f(LIVES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default))
 }
 
-/// Ends the chats' Codex servers idle for LIVE_IDLE, or ended already, once a
-/// minute while there is one; the thread goes when none is left.
+/// A request of a thread that is not `main` (an agent's).
+fn is_other_thread(params: &Value, main: &str) -> bool {
+    params["threadId"].as_str().is_some_and(|t| t != main)
+}
+
+/// `Live::drain`: the lines waiting in `rx` told to `agents` (`main` is the
+/// chat's thread), and `answer` given what each request of an agent's
+/// thread gets. False once the output closed.
+fn drain_lines(rx: &mpsc::Receiver<Vec<u8>>, agents: &mut Subagents, main: &str, mut answer: impl FnMut(Value)) -> bool {
+    loop {
+        let line = match rx.try_recv() {
+            Ok(line) => line,
+            Err(mpsc::TryRecvError::Empty) => return true,
+            Err(mpsc::TryRecvError::Disconnected) => return false,
+        };
+        let Ok(message) = serde_json::from_slice::<Value>(&line) else { continue };
+        let method = message["method"].as_str().unwrap_or("");
+        agents.feed(main, method, &message["params"]);
+        if let Some(rid) = message.get("id").filter(|_| is_other_thread(&message["params"], main)) {
+            let mut reply = other_answer(method);
+            reply["id"] = rid.clone();
+            answer(reply);
+        }
+    }
+}
+
+/// How often the chats' Codex servers are read between two turns while
+/// agents they started are at work: their rows move this often.
+const AGENTS_READ_EVERY: Duration = Duration::from_secs(5);
+
+/// The thread that ends idle ones, while it runs: woken when a chat's Codex
+/// starts waiting, so agents still at work are read from then on.
+static REAPER: Mutex<Option<std::thread::Thread>> = Mutex::new(None);
+
+/// Ends the chats' Codex servers idle for too long (`Live::idle_limit`), or
+/// ended already, once a minute while there is one; the thread goes when
+/// none is left. Between two turns nothing else reads them: it reads what
+/// they wrote for their agents and tells the island, every AGENTS_READ_EVERY
+/// while agents are at work (once a minute otherwise).
 fn reap_idle() {
     if REAPING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        if let Some(reaper) = REAPER.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            reaper.unpark();
+        }
         return;
     }
-    std::thread::spawn(|| loop {
-        std::thread::sleep(Duration::from_secs(60));
-        let gone: Vec<Live> = lives(|all| {
-            let ids: Vec<String> = all
-                .iter_mut()
-                .filter_map(|(id, l)| (l.used.elapsed() > LIVE_IDLE || !matches!(l.child.try_wait(), Ok(None))).then(|| id.clone()))
-                .collect();
-            ids.iter().filter_map(|id| all.remove(id)).collect()
-        });
-        drop(gone);
-        let empty = lives(|all| {
-            let empty = all.is_empty();
+    let reaper = std::thread::spawn(|| {
+        let mut wait = Duration::from_secs(60);
+        loop {
+            std::thread::park_timeout(wait);
+            let (gone, working): (Vec<Live>, bool) = lives(|all| {
+                let ids: Vec<String> = all
+                    .iter_mut()
+                    .filter_map(|(id, l)| {
+                        let open = l.drain();
+                        let working = l.agents.agents.open() > 0;
+                        (l.tell)(&mut l.agents.agents, working);
+                        (!open || l.used.elapsed() > l.idle_limit() || !matches!(l.child.try_wait(), Ok(None))).then(|| id.clone())
+                    })
+                    .collect();
+                let gone = ids.iter().filter_map(|id| all.remove(id)).collect();
+                (gone, all.values().any(|l| l.agents.agents.open() > 0))
+            });
+            wait = if working { AGENTS_READ_EVERY } else { Duration::from_secs(60) };
+            // Ended here, out of the lock (Drop ends each).
+            drop(gone);
+            let empty = lives(|all| {
+                let empty = all.is_empty();
+                if empty {
+                    REAPING.store(false, std::sync::atomic::Ordering::SeqCst);
+                }
+                empty
+            });
             if empty {
-                REAPING.store(false, std::sync::atomic::Ordering::SeqCst);
+                return;
             }
-            empty
-        });
-        if empty {
-            return;
         }
     });
+    *REAPER.lock().unwrap_or_else(|e| e.into_inner()) = Some(reaper.thread().clone());
 }
 
 /// The chat's Codex started with `key`, or a new one.
 fn live_for(chat_id: &str, key: &str, exe: &Path, dir: &Path) -> Result<Live, String> {
     if let Some(mut live) = lives(|all| all.remove(chat_id)) {
         let alive = matches!(live.child.try_wait(), Ok(None));
-        // Lines left from the turn before (after an interrupt) are not this
-        // turn's, but what they say of its agents (one that ended meanwhile) is.
-        let mut open = true;
-        let main = live.thread.clone().unwrap_or_default();
-        loop {
-            match live.rx.try_recv() {
-                Ok(line) => {
-                    if let Ok(message) = serde_json::from_slice::<Value>(&line) {
-                        live.agents.feed(&main, message["method"].as_str().unwrap_or(""), &message["params"]);
-                    }
-                    continue;
-                }
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    open = false;
-                    break;
-                }
-            }
-        }
+        // Lines left from the turn before (after an interrupt), or written
+        // since the reaper last read, are not this turn's, but what they say
+        // of its agents (one that ended meanwhile) is.
+        let open = live.drain();
         if alive && open && live.key == key {
             return Ok(live);
         }
@@ -1076,10 +1141,15 @@ fn live_turn(
             reap_idle();
             Ok((state, thread))
         }
-        // Not interrupted in time: ended (Drop), the run so far kept.
-        Ended::Stopped if state.stopped => Ok((state, thread)),
+        // Not interrupted in time: ended (Drop), the run so far kept. The
+        // user asked for it: its agents stopped with it, not failed.
+        Ended::Stopped | Ended::Closed if state.stopped => {
+            live.drain();
+            live.agents.agents.end_open(AgentState::Stopped, "");
+            (live.tell)(&mut live.agents.agents, false);
+            Ok((state, thread))
+        }
         Ended::Stopped => Err(t("Codex took too long to answer.")),
-        Ended::Closed if state.stopped => Ok((state, thread)),
         Ended::Closed => Err(live.ended()),
     }
 }
@@ -1504,6 +1574,30 @@ mod tests {
         sub.agents.changed();
         feed_agents(&mut sub, &[&format!(r#"{{"method":"item/started","params":{{"threadId":"{THREAD}","item":{{"type":"webSearch","id":"w2"}}}}}}"#)]);
         assert!(sub.agents.changed().is_empty());
+    }
+
+    #[test]
+    fn what_codex_wrote_between_two_turns_reaches_its_agents() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[&format!(r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"s","tool":"spawnAgent","receiverThreadIds":["{SUB}"],"prompt":"Check the tests","agentsStates":{{}}}}}}}}"#)]);
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        for line in [
+            // An agent's request is answered at once; a stale one of the chat's thread is not.
+            format!(r#"{{"id":7,"method":"item/commandExecution/requestApproval","params":{{"threadId":"{SUB}","itemId":"c1"}}}}"#),
+            format!(r#"{{"id":8,"method":"item/commandExecution/requestApproval","params":{{"threadId":"{THREAD}","itemId":"c2"}}}}"#),
+            "not json".to_string(),
+            format!(r#"{{"method":"turn/completed","params":{{"threadId":"{SUB}","turn":{{"id":"t9","status":"completed","items":[]}}}}}}"#),
+        ] {
+            tx.send(line.into_bytes()).unwrap();
+        }
+        let mut answers = Vec::new();
+        assert!(drain_lines(&rx, &mut sub, THREAD, |a| answers.push(a)), "the server is still there");
+        assert_eq!(sub.agents.get(SUB).unwrap().state, AgentState::Done, "finished between turns, not failed when the server goes");
+        assert_eq!(answers.len(), 1);
+        assert_eq!(answers[0]["id"], 7);
+        // Its output closed: said so.
+        drop(tx);
+        assert!(!drain_lines(&rx, &mut sub, THREAD, |_| {}));
     }
 
     #[test]

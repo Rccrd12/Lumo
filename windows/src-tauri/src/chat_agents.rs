@@ -33,6 +33,17 @@ pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+/// A mark of its own for one run of a CLI (a turn, a server), for the ids of
+/// the agents it names only by their place in that run (`step-5`, `task-1`):
+/// the same place in a later run is another agent, and the island keeps a
+/// chat's rows by id, so the same id would never show again once ended. The
+/// time keeps it apart from the runs of an earlier Lumo, the count from runs
+/// of the same millisecond.
+pub fn run_mark() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!("{:x}-{}", now_ms(), NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
+}
+
 /// Where an agent stands. Done, failed and stopped are final: an agent in one
 /// of them never changes again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -432,6 +443,11 @@ mod tests {
         let long = summary_of(&"word ".repeat(200));
         assert_eq!(long.chars().count(), MAX_SUMMARY);
         assert!(long.ends_with('…'));
+    }
+
+    #[test]
+    fn each_run_has_a_mark_of_its_own() {
+        assert_ne!(run_mark(), run_mark());
     }
 
     #[test]

@@ -353,10 +353,10 @@ export class CompactStrip {
             h("span", { class: "cp-text cp-lead", text: lead }),
             h("span", { class: agents?.stalled ? "cp-text cp-rest cp-stalled" : "cp-text cp-rest", text: text.slice(lead.length) }));
           if (!agents || compact) return [dot, line];
-          // Its agents, a segment each, as in the chat (concept: sotto-agenti, image 5).
+          // Its agents, a segment each, as in the chat, then how many are done (concept: sotto-agenti, image 5).
           return [dot, line, h("span", { class: "cp-agents" },
             h("span", { class: "agents-segs" }, ...agents.looks.map((l) => h("i", { class: l }))),
-            agents.stalled ? h("span", { class: "cp-time", text: `${agents.done}/${agents.total}` }) : null)];
+            h("span", { class: "cp-time", text: `${agents.done}/${agents.total}` }))];
         }
         return [dot, h("span", { class: "cp-text", text, title: text })];
       }
@@ -608,7 +608,7 @@ function itemKey(item: CompactItem, now: number): string {
     case "upload":
       return `upload:${item.upload.name}`;
     case "line":
-      return `line:${item.line.text}:${item.line.color}:${item.notice}:${item.line.agents?.looks.join(",") ?? ""}`;
+      return `line:${item.line.text}:${item.line.color}:${item.notice}:${item.line.agents ? `${item.line.agents.looks.join(",")}:${item.line.agents.done}/${item.line.agents.total}` : ""}`;
     case "timer":
       return `timer:${item.timer.id}:${timerLeft(item.timer.endsAt - now)}:${item.timer.label}`;
     case "media":

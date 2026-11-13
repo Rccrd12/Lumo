@@ -753,10 +753,11 @@ fn every_piece_of_the_stream_is_a_sign_of_life() {
     events.extend([text("Fa 4."), finish("stop"), DONE.into()]);
     let (outcome, _) = turn(vec![Reply::Paced(events, Duration::from_millis(50))], &mut question("2+2?", &[]), &rules("signal-chunks", ""), &mut island);
     assert_eq!(outcome.unwrap().text, "Fa 4.");
-    // Before any text showed: the request, and at least one piece of
-    // reasoning on its own. The network may join pieces that come 50 ms
-    // apart, but not the reasoning with the text, 200 ms later. The answer
-    // is one more sign after the text.
+    // Before any text showed: the request, at least one piece of reasoning
+    // read on its own, and the piece that brought the text. The network may
+    // join pieces that come 50 ms apart, so this holds as soon as the first
+    // reasoning is read before the text is written, 200 ms after it. The
+    // answer is one more sign after the text.
     let before_text = island.signals_before_text.unwrap();
     assert!(before_text >= 1 + 2, "{before_text}");
     assert!(island.signals > before_text, "{}", island.signals);
