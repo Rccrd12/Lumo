@@ -89,15 +89,16 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. ",
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
+Lumo shows the user your plan on its Plan island. When the job uses the computer, its plan goes in Lumo's update_plan tool, as said above, not in TaskCreate or TodoWrite. Whenever the user gives you another job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
     crate::chat::rich_note!()
 );
 
-/// Lumo's computer use tools that only look: Claude Code runs them without asking.
-const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait";
+/// Lumo's computer use tools that only look, and its plan tool, which the
+/// computer needs first (computer.rs): Claude Code runs them without asking.
+const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait mcp__lumo__update_plan";
 
 /// The island's timer and GitHub tools (island_tools.rs): they only start what
 /// the user asked for, so Claude Code runs them without asking.
@@ -139,13 +140,10 @@ fn mcp_config(computer: bool, tools: bool, island: bool, mail: &str) -> Value {
     if computer || island || !mail.is_empty() {
         let mut server = crate::computer::server_entry();
         server["type"] = json!("stdio");
-        if island || !mail.is_empty() {
-            let kits: Vec<&str> = [computer.then_some("computer"), (!mail.is_empty()).then_some(mail), island.then_some("island")]
-                .into_iter()
-                .flatten()
-                .collect();
-            server["args"] = json!(["--mcp", format!("--tools={}", kits.join(","))]);
-        }
+        // The computer always with Lumo's plan tool: no plan, no computer (computer.rs).
+        let kits: Vec<&str> =
+            [computer.then_some("computer,plan"), (!mail.is_empty()).then_some(mail), island.then_some("island")].into_iter().flatten().collect();
+        server["args"] = json!(["--mcp", format!("--tools={}", kits.join(","))]);
         servers.insert("lumo".into(), server);
     }
     if tools {
@@ -326,9 +324,34 @@ fn chat_settings(permission: Value, guard: &str) -> Value {
             "PreToolUse": [{
                 "matcher": "Bash|PowerShell",
                 "hooks": [{ "type": "command", "command": guard, "timeout": 10 }],
+            }, {
+                // One agent at a time on the computer (computer_turns.rs):
+                // each of Lumo's computer tools waits for its turn first.
+                // Longer than the relay waits, so Claude Code never kills it.
+                "matcher": computer_matcher(),
+                "hooks": [{ "type": "command", "command": format!("{guard} --computer-turn"), "timeout": COMPUTER_TURN_TIMEOUT }],
             }],
         },
     })
+}
+
+/// Claude Code's hook timeout for the computer's turn, in seconds: past the
+/// relay's own wait (lumo-hook COMPUTER_TURN_BUDGET, 100 s).
+const COMPUTER_TURN_TIMEOUT: u64 = 110;
+
+/// Lumo's computer tools as Claude Code names them (lumo-hook mcp.rs NAMES).
+const COMPUTER_TOOLS: &[&str] = &[
+    "screenshot", "zoom", "left_click", "right_click", "middle_click", "double_click", "triple_click", "mouse_move",
+    "left_click_drag", "scroll", "type", "key", "wait", "cursor_position",
+];
+
+fn computer_matcher() -> String {
+    format!("mcp__lumo__({})", COMPUTER_TOOLS.join("|"))
+}
+
+/// Whether Claude Code's tool `name` is one of Lumo's computer tools.
+pub fn is_computer_tool(name: &str) -> bool {
+    name.strip_prefix("mcp__lumo__").is_some_and(|t| COMPUTER_TOOLS.contains(&t))
 }
 
 /// `args`, plus the chat's own hooks (`chat_settings`), when the file could be
@@ -2360,7 +2383,7 @@ pub async fn send(
     args = with_mcp(args, computer, tools, true, mail);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     if computer {
-        crate::computer::begin_turn();
+        crate::computer::begin_turn(crate::computer::Who::of(PROVIDER), chat.id());
     }
 
     let app2 = app.clone();
@@ -2402,10 +2425,25 @@ pub async fn send(
     })
     .await
     .map_err(|e| e.to_string());
+    // What the turn did on the computer, for under its answer.
+    let recap = if computer { crate::computer::end_turn(app, chat.id(), matches!(&state, Ok(Ok(s)) if s.stopped)) } else { None };
     if computer {
-        crate::computer::end_turn(app);
+        // Nobody of this chat waits for the computer any more.
+        crate::computer_turns::turn_end(app, chat.id());
     }
-    let state = state??;
+    let plain = chat::plain_question(true, context.as_ref(), &query);
+    // It failed after using the computer: the turn is kept as an empty
+    // answer that says why, so the recap of what was done on the screen is
+    // shown and saved under it (and the next turn knows it was done).
+    let failed = |error: String, recap: Option<Value>| -> Result<ChatReply, String> {
+        let Some(recap) = recap else { return Err(error) };
+        chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+        Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
+    };
+    let state = match state {
+        Ok(Ok(state)) => state,
+        Ok(Err(e)) | Err(e) => return failed(e, recap),
+    };
 
     // The commands it has, for the island's "/" menu.
     if let Some(list) = &state.commands {
@@ -2433,17 +2471,29 @@ pub async fn send(
     if let Some(id) = &state.session {
         chat.set_cli_session(&turn, id);
     }
-    let plain = chat::plain_question(true, context.as_ref(), &query);
     if state.stopped {
         let shown = state.visible.trim().to_string();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
+        } else if recap.is_some() {
+            // Stopped before it wrote anything, but it used the computer: the
+            // turn is kept, as an empty answer, so the recap has an answer to
+            // go under (the island records one when `computer` comes) and the
+            // next turn knows what was done.
+            chat.commit(
+                &turn,
+                json!({ "role": "user", "content": plain }),
+                json!({ "role": "assistant", "content": chat::NO_ANSWER }),
+                &plain,
+                chat::NO_ANSWER,
+            );
+            return Ok(ChatReply { computer: recap, kept: Some(chat::NO_ANSWER.into()), ..ChatReply::stopped(String::new(), chat.cli_session()) });
         }
-        return Ok(ChatReply::stopped(shown, chat.cli_session()));
+        return Ok(ChatReply { computer: recap, ..ChatReply::stopped(shown, chat.cli_session()) });
     }
     let answer = match state.result {
         Some(Ok(text)) => text,
-        Some(Err(e)) => return Err(tf("Claude Code: {error}", &[("error", &e)])),
+        Some(Err(e)) => return failed(tf("Claude Code: {error}", &[("error", &e)]), recap),
         None => unreachable!("live_turn() returns an error without a result"),
     };
     let answer = chat::keep_lumo_lines(answer, &state.said);
@@ -2458,7 +2508,7 @@ pub async fn send(
         answer
     };
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply::answer(answer, chat.cli_session()))
+    Ok(ChatReply { computer: recap, ..ChatReply::answer(answer, chat.cli_session()) })
 }
 
 // ── Helping Gemini Live ───────────────────────────────────────────────────────
@@ -2798,7 +2848,7 @@ mod tests {
     fn the_chat_always_gets_the_island_tools_and_may_run_them() {
         let config = mcp_config(false, false, true, "");
         assert_eq!(config["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=island"]));
-        assert_eq!(mcp_config(true, false, true, "")["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,island"]));
+        assert_eq!(mcp_config(true, false, true, "")["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,island"]));
         let a = with_mcp(vec!["-p".into()], false, true, true, "");
         if a.iter().any(|s| s == "--mcp-config") {
             assert_eq!(a[a.len() - 1], format!("{ISLAND_ALLOWED} {TOOLS_SERVER_ALLOWED}"));
@@ -2817,7 +2867,7 @@ mod tests {
         let read = mcp_config(false, false, true, "mail");
         assert_eq!(read["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=mail,island"]));
         let send = mcp_config(true, false, true, "mail,mailsend");
-        assert_eq!(send["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,mail,mailsend,island"]));
+        assert_eq!(send["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,mail,mailsend,island"]));
         let a = with_mcp(vec!["-p".into()], false, false, true, "mail,mailsend");
         if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
             assert!(a[i + 1].ends_with("chat-island-mail-mailsend.json"));
@@ -2840,7 +2890,7 @@ mod tests {
         let server = &config["mcpServers"]["lumo"];
         assert!(server["command"].as_str().unwrap().contains("lumo-hook"));
         assert_eq!(server["type"], "stdio");
-        assert_eq!(server["args"], json!(["--mcp"]));
+        assert_eq!(server["args"], json!(["--mcp", "--tools=computer,plan"]), "the computer always with Lumo's plan tool");
         assert_eq!(server["env"]["LUMO_ISLAND_RUN"], "1", "the island's own run");
         let a = with_computer(vec!["-p".into()]);
         if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
@@ -2851,10 +2901,14 @@ mod tests {
                 assert!(COMPUTER_LOOKING.split(' ').any(|t| t == format!("mcp__lumo__{tool}")), "{tool}");
             }
             assert!(!COMPUTER_LOOKING.contains("click") && !COMPUTER_LOOKING.contains("type") && !COMPUTER_LOOKING.contains("key"));
+            // The plan comes before the computer: Claude Code never asks for it.
+            assert!(COMPUTER_LOOKING.split(' ').any(|t| t == "mcp__lumo__update_plan"));
         }
         // An argument on cmd.exe's line: plain words only, and it says how to stop.
         assert!(!COMPUTER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`']));
         assert!(COMPUTER_PROMPT.contains("Esc") && COMPUTER_PROMPT.contains("Never type passwords"));
+        assert!(COMPUTER_PROMPT.contains("update_plan") && COMPUTER_PROMPT.contains("pause you"), "the plan first, and Esc pauses");
+        assert!(HELPER_COMPUTER_PROMPT.contains("update_plan"));
         assert!(!COMPUTER_PROMPT.contains("Never take a screenshot"), "the chat's usual rule doesn't hold here");
         assert!(!HELPER_COMPUTER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`', '(', ')']));
         assert!(HELPER_COMPUTER_PROMPT.contains("helping Gemini") && HELPER_COMPUTER_PROMPT.contains("lumo MCP server"));
@@ -2927,6 +2981,30 @@ mod tests {
         let guard = &v["hooks"]["PreToolUse"][0];
         assert_eq!(guard["matcher"], "Bash|PowerShell");
         assert!(guard["hooks"][0]["command"].as_str().unwrap().contains("--chat-guard"));
+    }
+
+    #[test]
+    fn each_computer_tool_waits_for_its_turn_and_nothing_else_does() {
+        let v = chat_settings(crate::hooks::permission_request_entry(), "'/x/lumo-hook' --chat-guard PreToolUse");
+        let gate = &v["hooks"]["PreToolUse"][1];
+        let matcher = regex_lite_full(gate["matcher"].as_str().unwrap());
+        for tool in COMPUTER_TOOLS {
+            assert!(matcher(&format!("mcp__lumo__{tool}")), "{tool}");
+        }
+        for other in ["mcp__lumo__mail_send", "mcp__lumo__set_timer", "Bash", "mcp__other__screenshot"] {
+            assert!(!matcher(other), "{other}");
+            assert!(!is_computer_tool(other), "{other}");
+        }
+        assert!(COMPUTER_TOOLS.iter().all(|t| is_computer_tool(&format!("mcp__lumo__{t}"))));
+        assert_eq!(gate["hooks"][0]["command"], "'/x/lumo-hook' --chat-guard PreToolUse --computer-turn");
+        assert!(gate["hooks"][0]["timeout"].as_u64().unwrap() > 100, "longer than the relay waits in line");
+    }
+
+    /// Claude Code matches a hook's matcher as a whole-name regex; this one is `prefix(a|b|…)`.
+    fn regex_lite_full(m: &str) -> impl Fn(&str) -> bool + '_ {
+        let (prefix, rest) = m.split_once('(').unwrap();
+        let names: Vec<&str> = rest.trim_end_matches(')').split('|').collect();
+        move |s: &str| s.strip_prefix(prefix).is_some_and(|n| names.contains(&n))
     }
 
     #[test]

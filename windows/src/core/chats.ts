@@ -4,6 +4,7 @@
 // without a webview.
 
 import { cleanChecklists, type ChatChecklists } from "./checklists";
+import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
 
 export interface SavedTurn {
   role: "user" | "assistant";
@@ -12,6 +13,10 @@ export interface SavedTurn {
   at?: number;
   /** What the conversation holds for it, when not `content` (ChatMessage.kept). */
   kept?: string;
+  /** The answer's turn used the computer: its plan as it ended (ChatMessage.computer), with the steps' small pictures. */
+  computer?: ComputerRecap;
+  /** The problem said under an answer (ChatMessage.warning). */
+  warning?: { line: string; detail: string };
   /** An answer's: the agents it started that ended, in short (core/chat-agents.ts savedAgents). */
   agents?: SavedAgent[];
   /** An answer's: the messages its CLI sent its agents, and their answers ("Talking to …"). */
@@ -62,6 +67,73 @@ export interface SavedAgent {
   endedAt?: number;
 }
 
+const STATUSES = new Set(["pending", "active", "done"]);
+/** A small picture's base64, nothing else: it goes into an <img>'s data: address. */
+const BASE64 = /^[A-Za-z0-9+/]+=*$/;
+
+/**
+ * A computer use recap as far as it can be shown (Rust's ChatReply.computer,
+ * or one read back from storage): undefined when it is not one.
+ */
+export function cleanRecap(raw: unknown): ComputerRecap | undefined {
+  const r = raw as Partial<ComputerRecap> | null;
+  if (!r || typeof r !== "object" || !Array.isArray(r.steps)) return undefined;
+  const steps: ComputerRecapStep[] = [];
+  for (const s of r.steps as unknown[]) {
+    const step = s as Partial<ComputerRecapStep> | null;
+    if (!step || typeof step.text !== "string" || !STATUSES.has(step.status as string)) continue;
+    steps.push({
+      text: step.text,
+      status: step.status as ComputerRecapStep["status"],
+      ...(typeof step.image === "string" && step.image && BASE64.test(step.image) ? { image: step.image } : {}),
+    });
+  }
+  const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.round(n) : 0);
+  return {
+    agent: typeof r.agent === "string" ? r.agent : "",
+    color: typeof r.color === "string" && /^#[0-9a-f]{3,8}$/i.test(r.color) ? r.color : "",
+    steps,
+    actions: count(r.actions),
+    ms: count(r.ms),
+    ...(r.stopped === true ? { stopped: true } : {}),
+  };
+}
+
+/**
+ * A message of the chat as it is saved (chat.ts remember): what it said, when,
+ * what it kept, its recap, the problem said under it and the agent it was asked of.
+ */
+export function toSavedTurn(m: {
+  role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap;
+  warning?: { line: string; detail: string }; ask?: AskQuote;
+}): SavedTurn {
+  return {
+    role: m.role,
+    content: m.content,
+    ...(m.at != null ? { at: m.at } : {}),
+    ...(m.kept ? { kept: m.kept } : {}),
+    ...(m.role === "assistant" && m.computer ? { computer: m.computer } : {}),
+    ...(m.warning ? { warning: m.warning } : {}),
+    ...(m.ask ? { ask: m.ask } : {}),
+  };
+}
+
+/** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */
+export function fromSavedTurn(turn: SavedTurn): {
+  at?: number; kept?: string; computer?: ComputerRecap; warning?: { line: string; detail: string }; ask?: AskQuote;
+} {
+  const computer = turn.role === "assistant" ? cleanRecap(turn.computer) : undefined;
+  const warning = savedWarning(turn.warning);
+  const ask = askQuoteOf(turn.ask);
+  return {
+    at: typeof turn.at === "number" ? turn.at : undefined,
+    kept: typeof turn.kept === "string" ? turn.kept : undefined,
+    ...(computer ? { computer } : {}),
+    ...(warning ? { warning } : {}),
+    ...(ask ? { ask } : {}),
+  };
+}
+
 export interface SavedChat {
   id: string;
   /** The first question, shortened. */
@@ -85,6 +157,14 @@ export interface SavedChat {
 const KEY = "lumo.chats.v1";
 /** The oldest chats go past this many. */
 export const MAX_CHATS = 40;
+/**
+ * The newest computer use recaps that keep their steps' small pictures in
+ * the history; older ones keep their text (steps, actions, time). Storage is
+ * shared with the chats and Lumo's other saved data, which come first.
+ */
+export const RECAP_PICTURES = 5;
+/** The pictures kept in the history, all together, in characters of base64 at most. */
+export const PICTURE_CHARS = 800_000;
 const TITLE_CHARS = 60;
 
 function storage(): Storage | null {
@@ -126,18 +206,87 @@ function isChat(c: unknown): c is SavedChat {
   return !!x && typeof x.id === "string" && typeof x.title === "string" && Array.isArray(x.turns);
 }
 
+/** How many characters a saved recap's pictures take (storage holds anything: 0 for what is not one). */
+function pictureChars(recap: unknown): number {
+  const steps = (recap as { steps?: unknown } | null)?.steps;
+  if (!Array.isArray(steps)) return 0;
+  let chars = 0;
+  for (const step of steps) {
+    const image = (step as { image?: unknown } | null)?.image;
+    if (typeof image === "string") chars += image.length;
+  }
+  return chars;
+}
+
+/** A saved recap without its pictures: its text stays. */
+function withoutPictures(recap: ComputerRecap): ComputerRecap {
+  return {
+    ...recap,
+    steps: recap.steps.map((step) => {
+      if (!step || typeof step !== "object") return step;
+      const { image: _, ...rest } = step;
+      return rest;
+    }),
+  };
+}
+
 /**
- * Writes the list, newest first, and returns what was kept. Storage full: the
- * oldest chats go until it fits. Kept whole, the list never fit again, and
- * nothing more was saved from then on, the newest chat included.
+ * The list with the steps' pictures of its newest `recaps` computer use
+ * recaps only, `chars` of base64 at most in all; the others keep their text.
+ * The newest come first: the chats newest first, in each its last answers.
+ */
+export function boundPictures(list: SavedChat[], recaps = RECAP_PICTURES, chars = PICTURE_CHARS): SavedChat[] {
+  let kept = 0;
+  let used = 0;
+  return list.map((chat) => {
+    let turns: SavedTurn[] | null = null;
+    for (let i = chat.turns.length - 1; i >= 0; i--) {
+      const recap = chat.turns[i]?.computer;
+      const size = pictureChars(recap);
+      if (size === 0) continue;
+      if (kept < recaps && used + size <= chars) {
+        kept++;
+        used += size;
+        continue;
+      }
+      turns ??= chat.turns.slice();
+      turns[i] = { ...turns[i], computer: withoutPictures(recap as ComputerRecap) };
+    }
+    return turns ? { ...chat, turns } : chat;
+  });
+}
+
+/** How many recaps of the list still have pictures. */
+function picturedRecaps(list: SavedChat[]): number {
+  return list.reduce((n, chat) => n + chat.turns.filter((turn) => pictureChars(turn?.computer) > 0).length, 0);
+}
+
+/**
+ * Writes the list, newest first, and returns what was kept. The recaps'
+ * pictures are bounded first (boundPictures). Storage full: the pictures go,
+ * the oldest recap's first, and only once none is left the oldest chats go
+ * until it fits: a chat's text always wins over a picture. Kept whole, the
+ * list never fit again, and nothing more was saved from then on, the newest
+ * chat included.
  */
 function store(list: SavedChat[]): SavedChat[] {
   const s = storage();
   if (!s) return list;
+  let bounded = boundPictures(list);
+  for (let pictured = picturedRecaps(bounded); ; pictured--) {
+    try {
+      s.setItem(KEY, JSON.stringify(bounded));
+      return bounded;
+    } catch {
+      // Full: one recap's pictures fewer, the oldest.
+    }
+    if (pictured <= 0) break;
+    bounded = boundPictures(bounded, pictured - 1, Infinity);
+  }
   // An empty list is written too (the last chat deleted); a list that is not
   // keeps one chat at least.
-  for (let keep = list.length; keep >= Math.min(1, list.length); keep--) {
-    const kept = list.slice(0, keep);
+  for (let keep = bounded.length - 1; keep >= Math.min(1, bounded.length); keep--) {
+    const kept = bounded.slice(0, keep);
     try {
       s.setItem(KEY, JSON.stringify(kept));
       return kept;
@@ -151,6 +300,12 @@ function store(list: SavedChat[]): SavedChat[] {
 }
 
 /** The first question, on one line and shortened. */
+/** A saved answer's warning (SavedTurn.warning), when it is one. */
+export function savedWarning(w: unknown): { line: string; detail: string } | undefined {
+  const o = w as { line?: unknown; detail?: unknown } | null | undefined;
+  return o && typeof o.line === "string" && typeof o.detail === "string" ? { line: o.line, detail: o.detail } : undefined;
+}
+
 export function chatTitle(turns: SavedTurn[]): string {
   const first = turns.find((t) => t.role === "user")?.content ?? "";
   const line = first.replace(/\s+/g, " ").trim();

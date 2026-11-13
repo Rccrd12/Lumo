@@ -1,0 +1,156 @@
+/* The recap of a turn that used the computer, under its answer in the chat
+   (views/computer-recap.ts): a box like the copies' (style.css .reply-copies),
+   closed on one line, open on the plan's steps. */
+
+.cu-recap {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 0 2px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.cu-recap-head {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--dim-3);
+  font: 400 11.5px var(--font);
+  text-align: start;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.cu-recap-head:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cu-recap-title {
+  font-weight: 600;
+  color: #c8cdd4;
+}
+
+.cu-recap-meta {
+  /* Its leading " · " kept (a flex item's first space would go). */
+  white-space: pre;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cu-recap-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-left: 8px;
+  overflow: hidden;
+}
+
+.cu-recap-agent > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cu-recap-chevron {
+  flex: none;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--dim-3);
+  transition: transform 0.15s ease-out;
+}
+
+.cu-recap.open .cu-recap-chevron {
+  transform: rotate(90deg);
+}
+
+/* Stopped before the end: where, and what was done last. */
+.cu-recap-stopped {
+  padding: 6px 10px;
+  border-top: 1px solid rgba(245, 165, 36, 0.18);
+  background: rgba(245, 165, 36, 0.07);
+  color: var(--amber);
+  font: 500 11.5px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cu-recap-steps {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cu-recap-steps[hidden] {
+  display: none;
+}
+
+.cu-recap-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 10px;
+}
+
+.cu-recap-step + .cu-recap-step {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* The screen when the step was done, small; none: a quiet box in its place. */
+.cu-recap-shot {
+  flex: none;
+  width: 56px;
+  height: 34px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.cu-recap-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 12px var(--font);
+  color: #c8cdd4;
+}
+
+.cu-recap-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--green-2);
+}
+
+/* Not done: dimmed. */
+.cu-recap-step:not(.done) .cu-recap-text,
+.cu-recap-step:not(.done) .cu-recap-shot {
+  opacity: 0.5;
+}
+
+html[data-dir="rtl"] .cu-recap-agent {
+  margin-left: 0;
+  margin-right: 8px;
+}
+
+html[data-dir="rtl"] .cu-recap-chevron {
+  margin-left: 0;
+  margin-right: auto;
+  padding-left: 0;
+  padding-right: 8px;
+  transform: scaleX(-1);
+}
+
+html[data-dir="rtl"] .cu-recap.open .cu-recap-chevron {
+  transform: rotate(90deg);
+}

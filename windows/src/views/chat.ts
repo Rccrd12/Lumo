@@ -95,15 +95,16 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
+  chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact,
+  toSavedTurn, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
-  agentAsk, applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
-  noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents,
+  agentAsk, applyAgent, applyComputerTurns, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
+  noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns,
   type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, talkBox, type AgentsCardHost } from "./agents-card";
-import { askQuoteOf, updateChatTurns, type AskQuote } from "../core/chats";
+import { updateChatTurns, type AskQuote } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
@@ -122,6 +123,8 @@ import {
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import { COMPUTER_TEXT } from "../core/computer";
+import { currentStep } from "../core/computer-use";
+import { computerRecapBox } from "./computer-recap";
 import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
 import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
@@ -390,9 +393,12 @@ function msgAction(cls: string, name: string, icon: SVGElement, run: () => void)
  */
 function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   const state = opts.editing ? " editing" : opts.dropped ? " dropped" : "";
-  // The answer failed: what went wrong stays under the question.
+  // The answer failed: what went wrong stays under the question, the CLI's
+  // own words for it apart and smaller when Lumo said it in plain words.
   if (message.role === "assistant" && message.failed) {
-    return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
+    const [said, words] = failedParts(message.content);
+    const detail = words ? h("div", { class: "msg-warning-detail", text: words }) : null;
+    return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: said }), detail));
   }
   const copy = copyButton(message.content, "msg-action msg-copy", 12);
   const retry = opts.onRetry ? msgAction("msg-retry", STRINGS.retry, svg(ICONS.arrowClockwise, 12, { stroke: 1.9 }), opts.onRetry) : null;
@@ -420,13 +426,44 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     drawReply(reply, message.content, !!opts.workshop, opts.scope);
     // A stopped answer says so on the same line.
     const stopped = message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null;
-    bar.append(...[copy, retry, stopped, when].filter((x): x is HTMLElement => x != null));
+    // The CLI ended with an error after this answer: one line on the bar, what to know on a click.
+    const warned = message.warning;
+    const detail = warned ? h("div", { class: "msg-warning-detail", text: warned.detail }) : null;
+    let warning: HTMLElement | null = null;
+    if (warned && detail) {
+      detail.hidden = !openWarnings.has(message);
+      warning = h("button", { class: "msg-warning", "aria-expanded": String(!detail.hidden) }, svg(ICONS.warning, 11, { stroke: 2.2 }), h("span", { text: warned.line }));
+      warning.addEventListener("click", (e) => {
+        e.stopPropagation();
+        detail.hidden = !detail.hidden;
+        if (detail.hidden) openWarnings.delete(message);
+        else openWarnings.add(message);
+        warning?.setAttribute("aria-expanded", String(!detail.hidden));
+        // Opened at the bottom of the log: what it says comes in sight.
+        if (!detail.hidden) detail.scrollIntoView?.({ block: "nearest" });
+      });
+    }
+    bar.append(...[copy, retry, stopped, warning, when].filter((x): x is HTMLElement => x != null));
+    // The turn used the computer: how it went, under the answer (views/computer-recap.ts).
+    const computer = message.computer ? computerRecapBox(message.computer, message.id) : null;
     const copies = message.copies?.length ? copiesBox(message.copies) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, bar));
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
   return row;
+}
+
+/** The answers whose warning (ChatMessage.warning) is open: a redrawn log keeps it open. */
+const openWarnings = new WeakSet<ChatMessage>();
+
+/**
+ * A failed answer's text: what Lumo says, and the CLI's own words for it when
+ * they come apart (after U+2063, chat.rs ERROR_DETAIL).
+ */
+export function failedParts(text: string): [string, string] {
+  const at = text.indexOf("\u2063");
+  return at < 0 ? [text, ""] : [text.slice(0, at).trim(), text.slice(at + 1).trim()];
 }
 
 /** The agent a question was asked of, inside its bubble: who, and its line then. */
@@ -841,8 +878,11 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.plan);
     case "screen":
       return t(ACTIVITY_STRINGS.screen);
-    case "computer":
-      return t(ACTIVITY_STRINGS.computer);
+    case "computer": {
+      // The step of its plan under way, while it uses the computer with one (computer-state).
+      const step = State.computer && !State.computer.stopped ? currentStep(State.computer.steps)?.step.text.replace(/\s+/g, " ").trim() : "";
+      return step || t(ACTIVITY_STRINGS.computer);
+    }
     case "tool":
       return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
     case "starting":
@@ -3469,7 +3509,7 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined, ask: askQuoteOf(turn.ask) }));
+      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, ...fromSavedTurn(turn) }));
       State.chatSession = c.session;
       void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
       // Its answers' agents come back under them, unless the island still holds them.
@@ -3669,7 +3709,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}), ...(m.ask ? { ask: m.ask } : {}) }));
+    const turns = run.history.filter((m) => !m.failed).map(toSavedTurn);
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -4100,6 +4140,11 @@ export function buildPrompt(
       },
       // Ask: the agent over the field, as a quote; what is typed then goes to it.
       ask: editing == null ? (quote) => askAgent(chatId, quote) : undefined,
+      // Give it the turn: first in line for the computer.
+      computerFirst: (agentId) => {
+        void invoke("chat_computer_first", { chatId, agentId }).catch((err) => void Bridge.log(`[agents] computer first ${agentId}: ${String(err)}`));
+        Sound.play("blip");
+      },
       changed: () => onHeightChange(),
     };
   }
@@ -4216,6 +4261,17 @@ export function buildPrompt(
     tickAgents();
     // An agent that just ended is kept with the chat.
     if (isFinal(ev.agent.state) && before !== ev.agent.state) saveAgents(ev.chat);
+  });
+
+  // The line for the computer changed (computer_turns.rs): the rows of the chats in it say so.
+  let computerChats = new Set<string>();
+  void onEvent<ComputerTurns>("computer-turns", (ev) => {
+    if (!applyComputerTurns(ev)) return;
+    const chats = new Set([...(ev?.holder ? [ev.holder.chat] : []), ...(ev?.waiting ?? []).map((w) => w.chat)]);
+    for (const chat of new Set([...chats, ...computerChats])) drawAgents(chat);
+    computerChats = chats;
+    drawIslandActivity();
+    tickAgents();
   });
 
   void onEvent<ChatSignalEvent>("chat-signal", (ev) => {
@@ -4647,8 +4703,11 @@ export function buildPrompt(
       const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
       const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model });
       // Stopped before anything was written: the question stays, unanswered,
-      // and Rust kept nothing of it (the file goes with the next one).
-      const recorded = !reply.stopped || reply.text !== "";
+      // and Rust kept nothing of it (the file goes with the next one). Unless
+      // it used the computer meanwhile: Rust kept the turn ("(No answer.)",
+      // reply.kept), and its recap says how far it went.
+      const recap = cleanRecap(reply.computer);
+      const recorded = !reply.stopped || reply.text !== "" || recap != null;
       if (recorded && ticked) checklistsTold(run.chatId, ticked.told);
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
       const content = await lumoLines(run.chatId, reply.text);
@@ -4661,8 +4720,11 @@ export function buildPrompt(
           at: Date.now(),
           stopped: reply.stopped || undefined,
           kept: reply.kept,
+          warning: reply.warning,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
+          // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
+          computer: recap,
         });
         run.copies = undefined;
       } else {
@@ -4685,11 +4747,12 @@ export function buildPrompt(
       outcome = "error";
       noticeAway(COMPACT_TEXT.failed, runSpeaker(run));
       const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who });
+      const [plainProblem] = failedParts(problem);
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
       run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true, at: Date.now() });
       if (!away && !(State.mode === "expanded" && State.view === "prompt")) {
-        State.noteMessage = problem;
+        State.noteMessage = plainProblem;
         State.view = "note";
       }
       Sound.play("error");
@@ -4790,7 +4853,7 @@ export function buildPrompt(
     const agents = agentStore.get(chatId);
     if (history) {
       if (!joinOwnAnswer(history, content)) return;
-      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}), ...(m.ask ? { ask: m.ask } : {}) }));
+      const turns = history.filter((m) => !m.failed).map(toSavedTurn);
       if (run) remember(run);
       else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns: withAgents(agents, turns) });
       if (onScreen) renderedCount = -1;
@@ -4851,8 +4914,7 @@ export function buildPrompt(
     const saved = loadChats().find((c) => c.id === chatId);
     // Rust takes every turn back as it is: each one's place there is its place here (as openChat).
     const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => ({
-      id: nextId++, role: turn.role, content: turn.content, turn: i,
-      at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined, ask: askQuoteOf(turn.ask),
+      id: nextId++, role: turn.role, content: turn.content, turn: i, ...fromSavedTurn(turn),
     }));
     const session = saved?.session ?? null;
     if (saved) restoreAgents(agentStore, chatId, saved.turns, saved.provider);

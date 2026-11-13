@@ -67,7 +67,8 @@ pub fn stdout(agent: &str, event: &str, decision: Option<&str>, question: Option
 /// runs on nobody's say once agy's own confirmation is off. Its file tools
 /// need none here (reads_outside and writes_outside decide by the path), and
 /// neither does a call of Lumo's own email or plan tool, even through agy's
-/// `call_mcp_tool`, nor one of the user's own tools, which Lumo asks for itself.
+/// `call_mcp_tool`, nor one of its computer tools or of the user's own tools,
+/// which Lumo asks for itself.
 pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     // The user's own tools: Lumo asks for each call itself (tools.rs in the app).
     if crate::mcp::user_tool_call(tool, input) {
@@ -76,8 +77,11 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     // Lumo's email tools only read the user's mailbox, or have Lumo's own
     // card (an email to send, a change), its plan tool only shows, its island
     // tools only start a timer or a watch (mcp.rs).
+    // Its computer tools have Lumo's own card in the island's chat (computer.rs
+    // `OtherTurn`, which asks as the chat's mode says).
     if crate::mcp::lumo_call(tool, input).is_some_and(|name| {
-        crate::mcp::MAIL_NAMES.contains(&name)
+        crate::mcp::NAMES.contains(&name)
+            || crate::mcp::MAIL_NAMES.contains(&name)
             || crate::mcp::MAIL_SEND_NAMES.contains(&name)
             || crate::mcp::MAIL_MANAGE_NAMES.contains(&name)
             || name == crate::mcp::PLAN_NAME
@@ -342,6 +346,38 @@ fn seconds(word: &str) -> Option<f64> {
 
 /// Claude Code's PreToolUse reply to a command that would wait on GitHub:
 /// denied, with what to do instead.
+/// A computer tool of the island's Claude Code chat that did not get its
+/// turn: `place` and how many wait, or None when the user pressed Esc.
+/// Only ever a deny: the turn come, the hook prints nothing.
+pub fn computer_turn_denied(place: Option<(usize, usize)>) -> String {
+    let reason = match place {
+        Some((place, of)) => format!(
+            "Lumo: another agent of this chat is using the computer, and Lumo lets one agent at a time use it. You are {} of {of} waiting for it. Do work that doesn't need the screen meanwhile, then call the tool again: you keep your place.",
+            ordinal(place)
+        ),
+        None => "Lumo: the user pressed Esc to stop you using the computer. Don't use Lumo's computer tools again in this turn: say briefly what you did and stop.".to_string(),
+    };
+    serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    })
+    .to_string()
+}
+
+fn ordinal(n: usize) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (1, 11) | (2, 12) | (3, 13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
+}
+
 pub fn claude_wait_denied() -> String {
     serde_json::json!({
         "hookSpecificOutput": {

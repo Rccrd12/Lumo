@@ -22,6 +22,7 @@ mod api_agents;
 mod codex_chat;
 mod codex_plan;
 mod computer;
+mod computer_turns;
 mod config_file;
 mod confirmed;
 mod desk;
@@ -889,6 +890,13 @@ fn chat_stop_agent(chat_id: String, agent_id: String) -> Result<(), String> {
     chat_agents::stop(&chat_id, &agent_id)
 }
 
+/// "Give it the turn" on an agent waiting for the computer: first in line
+/// (computer_turns.rs); it gets the computer once the holder lets it go.
+#[tauri::command]
+fn chat_computer_first(app: AppHandle, chat_id: String, agent_id: String) {
+    computer_turns::put_first(&app, &chat_id, &agent_id);
+}
+
 /// An edited message: the conversation goes back to its first `keep` turns
 /// (as `chat_send` counted them) before the edited one is sent.
 #[tauri::command]
@@ -1462,6 +1470,7 @@ pub fn run() {
             chat_commands,
             chat_stop,
             chat_stop_agent,
+            chat_computer_first,
             chat_rewind,
             chat_forget_file,
             island_drag,
@@ -1502,6 +1511,10 @@ pub fn run() {
             live::live_help,
             live::live_help_stop,
             live::live_computer,
+            computer::computer_resume,
+            computer::computer_stop,
+            computer::computer_ask,
+            computer::computer_peek,
             live::live_computer_ready,
             live::live_microphone,
             typing::live_type,
@@ -1597,7 +1610,7 @@ pub fn run() {
             computer::recover();
             // Antigravity CLI's plan tool, its email tools following the Email pill
             // and the user's tools while any is on (set again before each run).
-            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled());
+            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled(), false);
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             energy::start(handle.clone());

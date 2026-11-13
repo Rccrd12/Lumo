@@ -312,13 +312,13 @@ export function lookOf(e: AgentEntry, now = Date.now(), permission?: ReadonlySet
   const s = e.row.state;
   if (s === "done") return "done";
   if (s === "failed" || s === "stopped") return "failed";
-  if (s === "waiting" || permission?.has(e.row.id)) return "waiting";
+  if (s === "waiting" || permission?.has(e.row.id) || computerOf(e.row.id)?.waits) return "waiting";
   return agentStall(e, now) ? "stalled" : "working";
 }
 
-/** An agent at work with no sign of life for too long. */
+/** An agent at work with no sign of life for too long (not one waiting in line for the computer). */
 export function agentStall(e: AgentEntry, now = Date.now()): { seconds: number } | null {
-  if (isFinal(e.row.state) || e.row.state === "waiting") return null;
+  if (isFinal(e.row.state) || e.row.state === "waiting" || computerOf(e.row.id)?.waits) return null;
   return stallOf({ kind: "agent", lastSignalAt: e.row.lastSignalAt, snoozedUntil: e.snoozedUntil, source: e.row.source }, now);
 }
 
@@ -359,6 +359,43 @@ export function worstStall(entries: AgentEntry[], now = Date.now()): { seconds: 
     if (s && (!worst || s.seconds > worst.seconds)) worst = s;
   }
   return worst;
+}
+
+// ── The computer, one agent at a time ─────────────────────────────────────────
+//
+// Rust keeps the line for the one screen (computer_turns.rs) and sends it
+// whole as `computer-turns` when it changes: who holds the computer, and who
+// waits for it, in order, since when. One line for every chat.
+
+/** The line for the computer, as Rust sends it. */
+export interface ComputerTurns {
+  holder: { chat: string; agent: string; sinceMs: number } | null;
+  waiting: { chat: string; agent: string; sinceMs: number; place: number }[];
+}
+
+let computerTurns: ComputerTurns = { holder: null, waiting: [] };
+
+/** A `computer-turns` event: true when the line changed. */
+export function applyComputerTurns(ev: ComputerTurns | null | undefined): boolean {
+  const next: ComputerTurns = {
+    holder: ev?.holder && typeof ev.holder.agent === "string" ? ev.holder : null,
+    waiting: Array.isArray(ev?.waiting) ? ev!.waiting.filter((w) => typeof w?.agent === "string") : [],
+  };
+  if (JSON.stringify(next) === JSON.stringify(computerTurns)) return false;
+  computerTurns = next;
+  return true;
+}
+
+/** Where agent `agentId` stands for the computer: it holds it, or waits at `place` of `of` since `since`; null if neither. */
+export function computerOf(agentId: string): { holds: true; waits?: undefined } | { holds?: undefined; waits: true; place: number; of: number; since: number } | null {
+  if (computerTurns.holder?.agent === agentId) return { holds: true };
+  const w = computerTurns.waiting.find((x) => x.agent === agentId);
+  return w ? { waits: true, place: w.place, of: computerTurns.waiting.length, since: w.sinceMs } : null;
+}
+
+/** Whether anyone holds or waits for the computer: the card's seconds then count. */
+export function computerBusy(): boolean {
+  return computerTurns.holder != null || computerTurns.waiting.length > 0;
 }
 
 // ── Permission cards ──────────────────────────────────────────────────────────

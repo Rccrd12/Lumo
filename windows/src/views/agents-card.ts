@@ -27,7 +27,7 @@ import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import type { ChatActivity } from "../core/bridge";
 import {
-  AGENT_TEXT, agentStall, askable, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
+  AGENT_TEXT, agentStall, askable, computerOf, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
   type AgentBatch, type AgentEntry, type AgentLook, type ChatAgents, type TalkEntry,
 } from "../core/chat-agents";
 import type { AskQuote } from "../core/chats";
@@ -74,6 +74,10 @@ export const AGENTS_CARD_TEXT = {
   notReached: N_("The message did not reach {name}"),
   noReply: N_("No reply came"),
   queued: N_("Waiting its turn · {place} in line"),
+  usesComputer: N_("uses the computer"),
+  waitingComputer: N_("Waiting for the computer · {place} of {total} · {time}"),
+  inLineComputer: N_("Waiting for the computer"),
+  giveTurn: N_("Give it the turn"),
 };
 
 /** A key with its context ("agents|Wait"): its translation, else its English after the "|". */
@@ -96,6 +100,8 @@ export interface AgentsCardHost {
   seeRequest(agentId: string): void;
   /** Ask: puts the agent over the field as a quote; nothing is sent. None where the chat cannot ask (an edit under way). */
   ask?(quote: AskQuote): void;
+  /** Give it the turn: the agent waiting for the computer goes first in line (`chat_computer_first`). */
+  computerFirst?(agentId: string): void;
   /** The card changed: its height, or its state worth saving. */
   changed(): void;
 }
@@ -250,6 +256,7 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
     send: (text) => current().host.send(text),
     seeRequest: (id) => current().host.seeRequest(id),
     ask: given.ask ? (quote) => current().host.ask?.(quote) : undefined,
+    computerFirst: given.computerFirst ? (id) => current().host.computerFirst?.(id) : undefined,
     changed: () => current().host.changed(),
   };
   const key = agentsCardKey(input.chatId, input.batch);
@@ -319,9 +326,14 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
       return r.summary ? t(AGENTS_CARD_TEXT.doneSummary, { summary: r.summary }) : t("Done");
     case "failed":
       return r.error || t(r.state === "stopped" ? AGENTS_CARD_TEXT.stopped : AGENTS_CARD_TEXT.failed);
-    case "waiting":
+    case "waiting": {
       if (r.waitingFor === "queue") return t(AGENTS_CARD_TEXT.queued, { place: r.queue ?? 1 });
+      const pc = computerOf(r.id);
+      if (pc?.waits && r.state !== "waiting") {
+        return t(AGENTS_CARD_TEXT.waitingComputer, { place: pc.place, total: pc.of, time: durationText(now - pc.since) });
+      }
       return t(r.waitingFor === "rate_limit" ? AGENTS_CARD_TEXT.rateLimit : AGENTS_CARD_TEXT.permission);
+    }
     case "stalled": {
       const time = durationText((agentStall(e, now)?.seconds ?? 0) * 1000);
       const last = e.steps[0]?.now ?? r.now;
@@ -355,6 +367,11 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     if (r.waitingFor !== "rate_limit" && input.permission?.has(r.id) && host.requestOnTop === r.id) {
       side.append(cardButton("see", t(AGENTS_CARD_TEXT.seeRequest), () => host.seeRequest(r.id)));
     }
+    // In line for the computer, behind another: Give it the turn.
+    const pc = computerOf(r.id);
+    if (pc?.waits && pc.place > 1 && host.computerFirst) {
+      side.append(cardButton("first", t(AGENTS_CARD_TEXT.giveTurn), () => host.computerFirst!(r.id)));
+    }
   } else if (look === "done") {
     side.append(h("span", { class: "agents-time", text: t(AGENTS_CARD_TEXT.doneIn, { time: durationText((r.endedAt ?? now) - r.startedAt) }) }));
   } else if (look === "failed") {
@@ -366,10 +383,14 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const talking = r.talk && talkWaits(r.talk)
     ? h("span", { class: "agents-badge talk", text: t(AGENTS_CARD_TEXT.inConversation) })
     : null;
+  const computer = !isFinal(r.state) && computerOf(r.id)?.holds
+    ? h("span", { class: "agents-badge computer", text: t(AGENTS_CARD_TEXT.usesComputer) })
+    : null;
   const head = h("div", { class: "agents-row-head" },
     marker,
     h("span", { class: "agents-name", text: r.title, title: r.title }),
     ...(talking ? [talking] : []),
+    ...(computer ? [computer] : []),
     h("span", { class: "agents-line", text: line, title: line }),
     side);
   const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}` }, head);
@@ -528,7 +549,9 @@ function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<s
     if (counts.working + counts.waiting > 0) text += ` · ${t(AGENTS_CARD_TEXT.others)}`;
   } else if (counts.waiting && !counts.working) {
     tone = "waiting";
-    text = t(AGENTS_CARD_TEXT.permission);
+    // Those waiting only in line for the computer have no card for the user.
+    const onUser = entries.some((e) => !isFinal(e.row.state) && (e.row.state === "waiting" || permission?.has(e.row.id)));
+    text = t(onUser ? AGENTS_CARD_TEXT.permission : AGENTS_CARD_TEXT.inLineComputer);
   } else {
     tone = counts.waiting ? "waiting" : "working";
     const last = Math.max(...entries.filter((e) => !isFinal(e.row.state)).map((e) => e.row.lastSignalAt || 0));

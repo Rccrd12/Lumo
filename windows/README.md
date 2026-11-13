@@ -1068,22 +1068,58 @@ with `--mcp-config` to the chat's runs only; your Claude Code settings are not
 touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
 `left_click`, `right_click`, `double_click`, `triple_click`, `middle_click`,
 `mouse_move`, `left_click_drag`, `scroll`, `type`, `key`, `wait` and
-`cursor_position`. It runs on your plan, with no API key.
+`cursor_position`, and Lumo's `update_plan` for its plan. It runs on your
+plan, with no API key.
+
+- **Codex, Antigravity CLI, Copilot CLI and Cursor CLI** get the same tools
+  when they are the chat's provider (in their own MCP configuration for the
+  chat's runs, as for the email's tools). They call Lumo's tools without
+  asking, so Lumo asks itself: with *Ask every time* each click, key or text
+  is the same Allow / Deny card, under the agent's name; in *Plan* mode they
+  may only look; in *Auto* (or the CLI's own auto mode) they act without a
+  card. Same glow, mouse, Esc and rules as Claude Code's. A note in front of
+  every question tells them how the tools work. Gemini models (Antigravity
+  CLI's, or a Gemini model in another CLI) give and read points on a
+  0–999 grid over the screenshot, the way Gemini counts them: Lumo turns them
+  into the screenshot's pixels and back, so a click lands where the model
+  meant.
 
 - **Gemini Live** hands what is to be done on the screen ("click Send", "open
   the display settings and turn on night light") to Claude Code with its own
   tool, `use_computer`: always Claude Code on Haiku 5.5 at medium effort,
   whoever helps Gemini otherwise (Settings → Voice), and only when Claude
-  Code is set up for Lumo (installed, with Lumo's hooks). Same cards, glow,
-  orange mouse and Esc as in the chat.
+  Code is set up for Lumo (installed, with Lumo's hooks). Same plan, cards,
+  glow, orange mouse and Esc as in the chat.
 
+- **A plan comes first**: Lumo refuses every computer tool, screenshots
+  included, until Claude has said what it is going to do with Lumo's
+  `update_plan` (one step is enough). It keeps the plan up to date as it goes,
+  and may change or add steps at any time.
+- **The plan is on the island**: as computer use starts, the island opens on
+  the plan for 3 seconds ("Starts in 3 s") and the first action waits for it;
+  then, on the top or bottom edge, it closes to a short line with the agent's
+  colour, the step under way, a dash for each step, how far it is (2/5) and
+  Esc (upright on a side, the island keeps its short pill). Each step marked
+  done opens the plan again for 3 seconds, and Claude goes on meanwhile.
 - **Every action asks first**, with the chat set to *Ask every time*: a click,
-  a key or a text is an Allow / Deny card on the island that says what will
-  happen ("Click · 640, 320", "Type · …", "Press · ctrl+s"). Screenshots,
-  zooms and waits don't ask. In *Auto* mode Claude Code decides, as for its
-  other tools.
-- **Esc, anywhere, stops it** for the rest of the answer: the key is Lumo's
-  while Claude acts, and every later action is refused.
+  a key or a text is an Allow / Deny card on the island. It says who asks, in
+  the provider's name and colour, at which step of the plan ("wants to use the
+  computer · step 3 of 5"), why (the step under way), and what: for a click, a
+  move, a scroll or a drag, the screen around the point with the point ringed
+  and what Windows calls the thing there ("Click on «Save as…»", "Menu item ·
+  Notepad"), the coordinates still under it, small; for typing and keys, the
+  whole text (each Enter and Tab shown where it falls) and the keys, since
+  that is what Allow allows. Screenshots, zooms and waits don't ask. In *Auto*
+  mode Claude Code decides, as for its other tools.
+- **Esc, anywhere, pauses it**: the mouse is yours again at once, the glow
+  turns grey, and Claude waits at its next action. The island stays open on
+  the plan with **Stop** (nothing more is done in this answer), **Ask Claude
+  Code** (a field: what you write reaches Claude as the answer of the action it
+  is waiting on; it answers above the plan, may change the plan, and waits
+  again; Esc in the field closes it, nothing sent) and **Resume**. Only
+  Resume gives Claude the mouse back: Esc pressed again, by a panic double
+  press or in another app, never does. While it is paused, Esc is yours
+  again, for your apps and the island.
 - **You can see it work**: the screen it uses glows softly around its edges
   (on whichever display it is), the mouse turns into an orange arrow and
   glides from point to point instead of jumping, and each action shows where
@@ -1092,10 +1128,32 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
   Claude's screenshots.
 - **The mouse is Claude's while it answers**: your hand's moves and clicks
   are held back (a low-level mouse hook drops them; only Lumo's own input goes
-  through), except while a card on the island waits for your click. Esc
-  gives it back at once, and so does the end of the answer. Should Lumo close
-  meanwhile, the hook goes with it, and the usual arrow comes back at the next
-  start (or at once on quitting).
+  through), except while a card on the island waits for your click. Move or
+  click it meanwhile and a small note by your pointer says who is using the
+  mouse and that Esc pauses. Esc gives it back at once, and so does the end of
+  the answer. Should Lumo close meanwhile, the hook goes with it, and the
+  usual arrow comes back at the next start (or at once on quitting).
+- **One agent at a time**: when the agents Claude Code started want the
+  computer too, the first to ask gets it, and the others wait in line on the
+  chat's Agents card: "uses the computer" on the one that has it, "Waiting
+  for the computer · 2 of 3 · 20 s" on the others (never "no signal"), and
+  **Give it the turn** to put one first. The computer passes on when the
+  agent that has it ends, or leaves it unused for 20 s with someone waiting
+  (the card of its computer tool waiting for your click counts as use, and
+  the 20 s start again from the click).
+  Before each of its computer tools, the chat's own PreToolUse hook
+  (`lumo-hook --chat-guard PreToolUse --computer-turn`, in the chat's
+  `--settings` file, never in `~/.claude/settings.json`) asks Lumo for the
+  turn: given, nothing more is said and Claude Code's own card still asks for
+  the click; not given within 90 s, the call is denied with its place in
+  line, and the agent keeps that place while it tries again.
+- **A recap under the answer**: "Used the computer · 5 steps · 41 s", which a
+  click opens on the plan's steps as they ended, each with a small picture of
+  the screen taken when it was done. Stopped before the end, an amber line
+  says at which step and what was done last, even when Claude had written
+  nothing yet. It is saved with the chat, on this computer only, with the
+  pictures of the last few recaps (older ones keep their steps without
+  pictures, and pictures go first, never a chat, when space runs short).
 - One screen at a time: the one under the mouse at the first screenshot (or
   the one Claude asks for). Screenshots are sent at 1456 px on the long edge
   at most, about 1.15 megapixels; Lumo turns Claude's coordinates back into

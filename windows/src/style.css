@@ -9248,6 +9248,46 @@ button.bg-row:hover {
   text-overflow: ellipsis;
 }
 
+/* Under an answer the CLI ended with an error (views/chat.ts bubble): one
+   line on its bar, in amber, and what to know under it once clicked. The
+   same box holds a failed answer's own words from the CLI (failedParts). */
+.msg-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font: 400 10.5px var(--font);
+  color: var(--amber);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.msg-warning:hover {
+  text-decoration: underline;
+}
+
+.msg-warning svg {
+  flex-shrink: 0;
+}
+
+.msg-warning-detail {
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  font: 400 11px/1.45 var(--font);
+  color: var(--dim-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg-warning-detail[hidden] {
+  display: none;
+}
+
 /* ── The agents a chat's CLI started (views/agents-card.ts) ──────────────────
    Concept: concepts/sotto-agenti. A dark card under the answer that started
    them, one row per agent; the segments and markers in the plan chip's
@@ -9547,6 +9587,16 @@ button.bg-row:hover {
 .agents-badge.talk {
   background: color-mix(in srgb, var(--ag-working) 16%, transparent);
   color: var(--ag-working);
+}
+
+/* The agent that has the computer now (computer_turns.rs): one at a time. */
+.agents-badge.computer {
+  background: rgba(45, 212, 191, 0.14);
+  color: #2dd4bf;
+}
+
+.agents-btn.first {
+  color: var(--ag-waiting);
 }
 
 /* "Talking to …": a message of the chat's CLI to one of its agents, and the answer (views/agents-card.ts). */
