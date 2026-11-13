@@ -224,6 +224,22 @@ test("an address on the web in the text is a link with its site's name", () => {
     { kind: "link", url: "https://www.example.com/settings", label: "example.com" },
   ]);
   assert.deepEqual(mailPieces("No link, ftp://x.it or javascript:alert(1)"), [{ kind: "text", text: "No link, ftp://x.it or javascript:alert(1)" }]);
+  // A ")" the address opened is its own; one the sentence opened is not.
+  assert.deepEqual(mailPieces("Read https://it.wikipedia.org/wiki/Roma_(città)."), [
+    { kind: "text", text: "Read " },
+    { kind: "link", url: "https://it.wikipedia.org/wiki/Roma_(città)", label: "it.wikipedia.org" },
+    { kind: "text", text: "." },
+  ]);
+  assert.deepEqual(mailPieces("(see https://example.com/a)"), [
+    { kind: "text", text: "(see " },
+    { kind: "link", url: "https://example.com/a", label: "example.com" },
+    { kind: "text", text: ")" },
+  ]);
+  assert.deepEqual(mailPieces("(https://en.wikipedia.org/wiki/Pi_(letter))!"), [
+    { kind: "text", text: "(" },
+    { kind: "link", url: "https://en.wikipedia.org/wiki/Pi_(letter)", label: "en.wikipedia.org" },
+    { kind: "text", text: ")!" },
+  ]);
 });
 
 test("an email's time: the hour today, the day before, nothing when unreadable", () => {

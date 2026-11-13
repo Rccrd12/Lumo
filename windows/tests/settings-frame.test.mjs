@@ -10,7 +10,7 @@ installFakeDom();
 // The page's messages come to the window; none in this test.
 window.addEventListener ??= () => {};
 globalThis.location ??= { origin: "http://tauri.localhost" };
-const { buildSettingsFrame, FRAME_SHOWN } = await import("../src/views/settings-frame.ts");
+const { buildSettingsFrame, FRAME_SHOWN, fieldHold, settingsHold } = await import("../src/views/settings-frame.ts");
 const { State } = await import("../src/core/state.ts");
 
 test("Settings coming back after another tab tell the page to show what changed", () => {
@@ -31,4 +31,37 @@ test("Settings coming back after another tab tell the page to show what changed"
   // Still on screen: nothing more.
   host.sync();
   assert.deepEqual(told, [FRAME_SHOWN]);
+});
+
+test("a field of Settings being written in holds the island open, as the chat's does", () => {
+  const field = (tagName, type, value = "") => ({ tagName, type, value });
+  // A key half pasted, a name typed: the mouse slipping off doesn't fold it.
+  assert.equal(fieldHold(field("INPUT", "password", "sk-ant-")), "keep");
+  assert.equal(fieldHold(field("INPUT", "text", "Riccardo")), "keep");
+  assert.equal(fieldHold(field("TEXTAREA", "textarea", "a note")), "keep");
+  // The cursor in an empty field, a list opened: a while.
+  assert.equal(fieldHold(field("INPUT", "url")), "linger");
+  assert.equal(fieldHold(field("INPUT", "", "  ")), "linger");
+  assert.equal(fieldHold(field("SELECT", "select-one", "timer")), "linger");
+  // A switch or a button pressed, nothing focused: nothing to wait for.
+  assert.equal(fieldHold(field("INPUT", "checkbox", "on")), "none");
+  assert.equal(fieldHold(field("BUTTON", "button")), "none");
+  assert.equal(fieldHold(null), "none");
+
+  // In the island: only the field of the frame the cursor is in, while the island has the keyboard.
+  const host = buildSettingsFrame({ openSettingsWindow() {}, collapse() {}, closeSettings() {} });
+  State.mode = "expanded";
+  State.view = "settings";
+  host.sync();
+  const frame = host.el.find("IFRAME")[0];
+  frame.contentDocument = { activeElement: field("INPUT", "password", "sk-ant-") };
+  document.hasFocus = () => true;
+  document.activeElement = frame;
+  assert.equal(settingsHold(), "keep");
+  // Another app has the keyboard, or the cursor is no longer in the frame.
+  document.hasFocus = () => false;
+  assert.equal(settingsHold(), "none");
+  document.hasFocus = () => true;
+  document.activeElement = document.body;
+  assert.equal(settingsHold(), "none");
 });

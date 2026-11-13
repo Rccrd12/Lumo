@@ -124,6 +124,16 @@ fn policy(mode: &str) -> (&'static str, Value) {
     }
 }
 
+/// How long Codex waits for one of Lumo's tools, past the longest a call
+/// can take in lumo-hook (hook/src/mcp.rs): an email waits for the user on
+/// its card (pipe.rs MAIL_CARD_TIMEOUT, 300 s) and then for the mail server
+/// (MAIL_SEND_BUDGET, 442 s in all); one of the user's tools waits for its
+/// card and runs up to 600 s (TOOL_CALL_BUDGET, 720 s). lumo-hook then
+/// answers that Lumo may still have done it; cut off sooner by Codex, the AI
+/// would hear "failed" for an email that still goes.
+const TOOL_TIMEOUT_SECS: u64 = 750;
+const _: () = assert!(TOOL_TIMEOUT_SECS > crate::pipe::MAIL_CARD_TIMEOUT.as_secs() + 130 + 12 && TOOL_TIMEOUT_SECS > 108 + 600 + 12);
+
 /// Lumo's MCP servers for the chat's thread, as Codex configuration: the
 /// island's timer and GitHub tools (`lumo`, island_tools.rs), and the user's
 /// tools while one of them is on (`lumo_tools`, which ask on the island
@@ -138,9 +148,8 @@ fn mcp_config(chat_id: &str, tools: bool, mail: &str) -> Value {
             entry["env"]["LUMO_CHAT_ID"] = json!(chat_id);
         }
         entry["default_tools_approval_mode"] = json!("approve");
-        // An email waits for the user's click on its card (108 s at most) and
-        // then for the mail server: longer than Codex's own minute.
-        entry["tool_timeout_sec"] = json!(300);
+        // Longer than Codex's own minute: lumo-hook gives up first and says so.
+        entry["tool_timeout_sec"] = json!(TOOL_TIMEOUT_SECS);
         entry
     };
     let mut servers = serde_json::Map::new();
@@ -1239,6 +1248,8 @@ mod tests {
         assert_eq!(lumo["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(lumo["env"]["LUMO_CHAT_ID"], "chat-1");
         assert_eq!(lumo["default_tools_approval_mode"], "approve");
+        // An email's card and its send, a user's tool and its run: lumo-hook answers before Codex gives up.
+        assert_eq!(lumo["tool_timeout_sec"], json!(TOOL_TIMEOUT_SECS));
         assert!(config["mcp_servers"].get(crate::tools::SERVER).is_none());
         let both = mcp_config("chat-1", true, "");
         assert_eq!(both["mcp_servers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));

@@ -118,7 +118,7 @@ import type { ViewHost } from "./views";
 import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
-import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
+import { COMPACT_TEXT, UPLOADED_TEXT, compactNews, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, listeningLine, takeListens, untilText, watchColor, watchLabel, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { LISTENING_STRINGS, buildListeningPanel, listeningButtonTitle, neededText, watchTile } from "./listening";
 import { addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, placeHeard, seenChat, waitingElsewhere, wavesLit, type HeardLine } from "../core/heard";
@@ -4452,7 +4452,12 @@ export function buildPrompt(
     // Lines of chats not saved yet stay: on screen, being answered, waiting to be seen or to be answered.
     const kept = [...loadChats().map((c) => c.id), State.chatId, State.parkedChatId() ?? "", chatId, ...runs.keys(), ...loadingAway, ...heard.map((x) => x.chatId), ...State.listenPending.map((p) => p.chatId)];
     addHeard(line, new Set(kept));
-    if (!chatVisible(chatId)) State.listenPending = addPending(State.listenPending, line);
+    if (!chatVisible(chatId)) {
+      State.listenPending = addPending(State.listenPending, line);
+      // Hidden (auto-hide, or put away in the edge): the closed island comes
+      // out to say it, as the note did before the line took its place.
+      compactNews();
+    }
     if (chatId === State.chatId) renderedCount = -1;
     drawHeardBar();
     drawListening();
