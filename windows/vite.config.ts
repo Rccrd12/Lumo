@@ -90,7 +90,6 @@ export default defineConfig({
         island: resolve(__dirname, "index.html"),
         settings: resolve(__dirname, "settings.html"),
         computer: resolve(__dirname, "computer.html"),
-        // The computer use test (/test, experimental branch only).
       },
     },
   },
