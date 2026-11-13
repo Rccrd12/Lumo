@@ -790,6 +790,14 @@ export interface ChatReply {
   turns?: number;
   /** What Rust's conversation kept for it, when not `text` ("(No answer.)"): given back as that by `chatRestore`. */
   kept?: string;
+  /** The answer came, but the CLI ended its turn with an error (antigravity_cli.rs): said under the answer. */
+  warning?: ChatWarning;
+}
+
+/** A problem under an answer: one short line, and what to know, opened with a click. */
+export interface ChatWarning {
+  line: string;
+  detail: string;
 }
 
 /** A display the screen button can capture; `index` is its place in the menu. */

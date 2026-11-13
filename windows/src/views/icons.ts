@@ -48,6 +48,8 @@ export const ICONS = {
   arrowUp: "M12 4.5 5.5 11l1.5 1.5 4-4V19.5h2V8.5l4 4L18.5 11 12 4.5z",
   // arrow.down (back to the end of the chat)
   arrowDown: "M12 19.5 18.5 13 17 11.5l-4 4V4.5h-2v11l-4-4L5.5 13 12 19.5z",
+  // exclamationmark.triangle (stroke): a problem worth a look, not a failure
+  warning: "M10.3 4.4 2.7 17.9a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 4.4a2 2 0 0 0-3.4 0zM12 9.5v4M12 17.3v.1",
   // exclamationmark
   bang: "M11 4h2v10h-2V4zm0 12.2h2v2.2h-2v-2.2z",
   // xmark

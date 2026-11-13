@@ -12,6 +12,8 @@ export interface SavedTurn {
   at?: number;
   /** What the conversation holds for it, when not `content` (ChatMessage.kept). */
   kept?: string;
+  /** The problem said under an answer (ChatMessage.warning). */
+  warning?: { line: string; detail: string };
 }
 
 export interface SavedChat {
@@ -87,6 +89,12 @@ function store(list: SavedChat[]): SavedChat[] {
 }
 
 /** The first question, on one line and shortened. */
+/** A saved answer's warning (SavedTurn.warning), when it is one. */
+export function savedWarning(w: unknown): { line: string; detail: string } | undefined {
+  const o = w as { line?: unknown; detail?: unknown } | null | undefined;
+  return o && typeof o.line === "string" && typeof o.detail === "string" ? { line: o.line, detail: o.detail } : undefined;
+}
+
 export function chatTitle(turns: SavedTurn[]): string {
   const first = turns.find((t) => t.role === "user")?.content ?? "";
   const line = first.replace(/\s+/g, " ").trim();

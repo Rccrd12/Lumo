@@ -94,7 +94,7 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
+  chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, savedWarning, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
@@ -377,9 +377,12 @@ function msgAction(cls: string, name: string, icon: SVGElement, run: () => void)
  */
 function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   const state = opts.editing ? " editing" : opts.dropped ? " dropped" : "";
-  // The answer failed: what went wrong stays under the question.
+  // The answer failed: what went wrong stays under the question, the CLI's
+  // own words for it apart and smaller when Lumo said it in plain words.
   if (message.role === "assistant" && message.failed) {
-    return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
+    const [said, words] = failedParts(message.content);
+    const detail = words ? h("div", { class: "msg-warning-detail", text: words }) : null;
+    return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: said }), detail));
   }
   const copy = copyButton(message.content, "msg-action msg-copy", 12);
   const retry = opts.onRetry ? msgAction("msg-retry", STRINGS.retry, svg(ICONS.arrowClockwise, 12, { stroke: 1.9 }), opts.onRetry) : null;
@@ -405,13 +408,42 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     drawReply(reply, message.content, !!opts.workshop, opts.scope);
     // A stopped answer says so on the same line.
     const stopped = message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null;
-    bar.append(...[copy, retry, stopped, when].filter((x): x is HTMLElement => x != null));
+    // The CLI ended with an error after this answer: one line on the bar, what to know on a click.
+    const warned = message.warning;
+    const detail = warned ? h("div", { class: "msg-warning-detail", text: warned.detail }) : null;
+    let warning: HTMLElement | null = null;
+    if (warned && detail) {
+      detail.hidden = !openWarnings.has(message);
+      warning = h("button", { class: "msg-warning", "aria-expanded": String(!detail.hidden) }, svg(ICONS.warning, 11, { stroke: 2.2 }), h("span", { text: warned.line }));
+      warning.addEventListener("click", (e) => {
+        e.stopPropagation();
+        detail.hidden = !detail.hidden;
+        if (detail.hidden) openWarnings.delete(message);
+        else openWarnings.add(message);
+        warning?.setAttribute("aria-expanded", String(!detail.hidden));
+        // Opened at the bottom of the log: what it says comes in sight.
+        if (!detail.hidden) detail.scrollIntoView?.({ block: "nearest" });
+      });
+    }
+    bar.append(...[copy, retry, stopped, warning, when].filter((x): x is HTMLElement => x != null));
     const copies = message.copies?.length ? copiesBox(message.copies) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, bar));
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
   return row;
+}
+
+/** The answers whose warning (ChatMessage.warning) is open: a redrawn log keeps it open. */
+const openWarnings = new WeakSet<ChatMessage>();
+
+/**
+ * A failed answer's text: what Lumo says, and the CLI's own words for it when
+ * they come apart (after U+2063, chat.rs ERROR_DETAIL).
+ */
+export function failedParts(text: string): [string, string] {
+  const at = text.indexOf("\u2063");
+  return at < 0 ? [text, ""] : [text.slice(0, at).trim(), text.slice(at + 1).trim()];
 }
 
 /**
@@ -3414,7 +3446,7 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined }));
+      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined, warning: savedWarning(turn.warning) }));
       State.chatSession = c.session;
       void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
     }
@@ -3612,7 +3644,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}) }));
+    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}), ...(m.warning ? { warning: m.warning } : {}) }));
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -4202,6 +4234,7 @@ export function buildPrompt(
           at: Date.now(),
           stopped: reply.stopped || undefined,
           kept: reply.kept,
+          warning: reply.warning,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
         });
@@ -4226,11 +4259,12 @@ export function buildPrompt(
       outcome = "error";
       noticeAway(COMPACT_TEXT.failed, runSpeaker(run));
       const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who });
+      const [plainProblem] = failedParts(problem);
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
       run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true, at: Date.now() });
       if (!away && !(State.mode === "expanded" && State.view === "prompt")) {
-        State.noteMessage = problem;
+        State.noteMessage = plainProblem;
         State.view = "note";
       }
       Sound.play("error");
@@ -4388,7 +4422,7 @@ export function buildPrompt(
     // Rust takes every turn back as it is: each one's place there is its place here (as openChat).
     const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => ({
       id: nextId++, role: turn.role, content: turn.content, turn: i,
-      at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined,
+      at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined, warning: savedWarning(turn.warning),
     }));
     const session = saved?.session ?? null;
     loadingAway.add(chatId);

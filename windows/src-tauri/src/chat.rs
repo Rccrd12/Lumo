@@ -54,15 +54,31 @@ pub struct ChatReply {
     /// opened again from the history (NO_ANSWER, never Lumo's words as the agent's).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kept: Option<String>,
+    /// The answer came, but the CLI ended its turn with an error: said under
+    /// the answer, never in place of it (antigravity_cli.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<ChatWarning>,
 }
+
+/// A problem under an answer: one short line, and what to know, shown on a click.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct ChatWarning {
+    pub line: String,
+    pub detail: String,
+}
+
+/// Between what an error says to the user and the words the CLI gave for it,
+/// in a failed answer's text: the island shows the second part apart, smaller
+/// (src/views/chat.ts `failedParts`). U+2063, never typed.
+pub const ERROR_DETAIL: char = '\u{2063}';
 
 impl ChatReply {
     pub fn answer(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: false, turns: 0, kept: None }
+        ChatReply { text, session, stopped: false, turns: 0, kept: None, warning: None }
     }
 
     pub fn stopped(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: true, turns: 0, kept: None }
+        ChatReply { text, session, stopped: true, turns: 0, kept: None, warning: None }
     }
 
     /// The CLI answered with nothing: the island shows `why`, the

@@ -157,6 +157,8 @@ export interface ChatMessage {
   stopped?: boolean;
   /** No answer: what went wrong, said in the chat where it was asked (never saved). */
   failed?: boolean;
+  /** The answer came, but the CLI ended its turn with an error: said under it (ChatReply.warning). */
+  warning?: { line: string; detail: string };
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
   /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing). */

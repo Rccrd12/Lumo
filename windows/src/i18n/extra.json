@@ -19066,6 +19066,66 @@
    "ru": "Остров читает не больше {max} календарей: отключите ненужные.",
    "id": "Pulau membaca paling banyak {max} kalender: matikan yang tidak Anda perlukan.",
    "it": "L'isola legge al massimo {max} calendari: spegni quelli che non ti servono."
+  },
+  "Antigravity CLI reported a problem at the end": {
+   "zh-Hans": "Antigravity CLI 在结束时报告了一个问题",
+   "hi": "Antigravity CLI ने अंत में एक समस्या बताई",
+   "es": "Antigravity CLI informó de un problema al final",
+   "ar": "أبلغ Antigravity CLI عن مشكلة في النهاية",
+   "fr": "Antigravity CLI a signalé un problème à la fin",
+   "bn": "Antigravity CLI শেষে একটি সমস্যার কথা জানিয়েছে",
+   "pt-BR": "O Antigravity CLI relatou um problema no final",
+   "ru": "Antigravity CLI сообщил о проблеме в конце",
+   "id": "Antigravity CLI melaporkan masalah di akhir",
+   "it": "Antigravity CLI ha segnalato un problema alla fine"
+  },
+  "Antigravity CLI's message: {error}": {
+   "zh-Hans": "Antigravity CLI 的消息：{error}",
+   "hi": "Antigravity CLI का संदेश: {error}",
+   "es": "Mensaje de Antigravity CLI: {error}",
+   "ar": "رسالة Antigravity CLI: {error}",
+   "fr": "Message d'Antigravity CLI : {error}",
+   "bn": "Antigravity CLI-এর বার্তা: {error}",
+   "pt-BR": "Mensagem do Antigravity CLI: {error}",
+   "ru": "Сообщение Antigravity CLI: {error}",
+   "id": "Pesan Antigravity CLI: {error}",
+   "it": "Messaggio di Antigravity CLI: {error}"
+  },
+  "While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”.": {
+   "zh-Hans": "工作过程中，模型发送了一个空的工具调用（这是模型自身的错误），Antigravity CLI 让它重试了。上面的回答是它最后写的：请检查工作是否已完成，如果没有，请输入“继续”。",
+   "hi": "काम के दौरान मॉडल ने एक खाली टूल कॉल भेजी, जो मॉडल की अपनी गलती थी, और Antigravity CLI ने उसे फिर से कोशिश करवाई। ऊपर का जवाब उसका आखिरी लिखा हुआ है: देख लें कि काम पूरा हुआ है, और अगर नहीं, तो “जारी रखो” लिखें।",
+   "es": "Mientras trabajaba, el modelo envió una llamada a herramienta vacía, un error del propio modelo, y Antigravity CLI le hizo volver a intentarlo. La respuesta de arriba es la última que escribió: comprueba que el trabajo esté terminado y, si no lo está, escribe «continúa».",
+   "ar": "أثناء العمل، أرسل النموذج استدعاء أداة فارغًا، وهو خطأ من النموذج نفسه، فجعله Antigravity CLI يحاول مرة أخرى. الإجابة أعلاه هي آخر ما كتبه: تحقق من اكتمال العمل، وإن لم يكتمل فاكتب «تابع».",
+   "fr": "Pendant son travail, le modèle a envoyé un appel d'outil vide, une erreur du modèle lui-même, et Antigravity CLI l'a fait réessayer. La réponse ci-dessus est la dernière qu'il a écrite : vérifiez que le travail est terminé et, sinon, écrivez « continue ».",
+   "bn": "কাজ করার সময় মডেলটি একটি ফাঁকা টুল কল পাঠিয়েছিল, যা মডেলের নিজেরই ভুল, এবং Antigravity CLI তাকে আবার চেষ্টা করিয়েছে। উপরের উত্তরটি তার লেখা শেষটি: কাজটি শেষ হয়েছে কিনা দেখে নিন, না হলে “চালিয়ে যাও” লিখুন।",
+   "pt-BR": "Durante o trabalho, o modelo enviou uma chamada de ferramenta vazia, um erro do próprio modelo, e o Antigravity CLI o fez tentar de novo. A resposta acima é a última que ele escreveu: confira se o trabalho terminou e, se não terminou, escreva “continue”.",
+   "ru": "Во время работы модель отправила пустой вызов инструмента, это ошибка самой модели, и Antigravity CLI попросил её повторить. Ответ выше — последний, который она написала: проверьте, что работа закончена, а если нет, напишите «продолжай».",
+   "id": "Saat bekerja, model mengirim panggilan alat yang kosong, kesalahan model itu sendiri, dan Antigravity CLI memintanya mencoba lagi. Jawaban di atas adalah yang terakhir ia tulis: periksa apakah pekerjaannya selesai, dan jika belum, tulis “lanjutkan”.",
+   "it": "Mentre lavorava, il modello ha mandato una chiamata a strumento vuota, un errore del modello stesso, e Antigravity CLI gli ha fatto riprovare. La risposta qui sopra è l'ultima che ha scritto: controlla che il lavoro sia finito e, se non lo è, scrivi «continua»."
+  },
+  "Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”.": {
+   "zh-Hans": "Antigravity CLI 在写完上面的回答后以错误结束了这一轮：请检查工作是否已完成，如果没有，请输入“继续”。",
+   "hi": "ऊपर का जवाब लिखने के बाद Antigravity CLI ने यह बारी एक त्रुटि के साथ खत्म की: देख लें कि काम पूरा हुआ है, और अगर नहीं, तो “जारी रखो” लिखें।",
+   "es": "Antigravity CLI terminó este turno con un error después de escribir la respuesta de arriba: comprueba que el trabajo esté terminado y, si no lo está, escribe «continúa».",
+   "ar": "أنهى Antigravity CLI هذه الجولة بخطأ بعد كتابة الإجابة أعلاه: تحقق من اكتمال العمل، وإن لم يكتمل فاكتب «تابع».",
+   "fr": "Antigravity CLI a terminé ce tour par une erreur après avoir écrit la réponse ci-dessus : vérifiez que le travail est terminé et, sinon, écrivez « continue ».",
+   "bn": "উপরের উত্তরটি লেখার পর Antigravity CLI এই পালাটি একটি ত্রুটি দিয়ে শেষ করেছে: কাজটি শেষ হয়েছে কিনা দেখে নিন, না হলে “চালিয়ে যাও” লিখুন।",
+   "pt-BR": "O Antigravity CLI encerrou esta vez com um erro depois de escrever a resposta acima: confira se o trabalho terminou e, se não terminou, escreva “continue”.",
+   "ru": "Antigravity CLI завершил этот ход с ошибкой после ответа выше: проверьте, что работа закончена, а если нет, напишите «продолжай».",
+   "id": "Antigravity CLI mengakhiri giliran ini dengan kesalahan setelah menulis jawaban di atas: periksa apakah pekerjaannya selesai, dan jika belum, tulis “lanjutkan”.",
+   "it": "Antigravity CLI ha chiuso questo turno con un errore dopo aver scritto la risposta qui sopra: controlla che il lavoro sia finito e, se non lo è, scrivi «continua»."
+  },
+  "Antigravity CLI stopped: the model sent an empty tool call and couldn't correct it. What it did so far is saved: write “continue” to pick up from there.": {
+   "zh-Hans": "Antigravity CLI 已停止：模型发送了一个空的工具调用，且未能纠正。到目前为止完成的内容已保存：输入“继续”即可从那里接着做。",
+   "hi": "Antigravity CLI रुक गया: मॉडल ने एक खाली टूल कॉल भेजी और उसे ठीक नहीं कर पाया। अब तक का काम सहेजा गया है: वहीं से आगे बढ़ने के लिए “जारी रखो” लिखें।",
+   "es": "Antigravity CLI se detuvo: el modelo envió una llamada a herramienta vacía y no logró corregirla. Lo que hizo hasta ahora está guardado: escribe «continúa» para retomarlo desde ahí.",
+   "ar": "توقف Antigravity CLI: أرسل النموذج استدعاء أداة فارغًا ولم يتمكن من تصحيحه. ما أنجزه حتى الآن محفوظ: اكتب «تابع» للمتابعة من هناك.",
+   "fr": "Antigravity CLI s'est arrêté : le modèle a envoyé un appel d'outil vide et n'a pas réussi à le corriger. Ce qu'il a fait jusqu'ici est conservé : écrivez « continue » pour reprendre à partir de là.",
+   "bn": "Antigravity CLI থেমে গেছে: মডেলটি একটি ফাঁকা টুল কল পাঠিয়েছিল এবং তা ঠিক করতে পারেনি। এখন পর্যন্ত করা কাজ সংরক্ষিত আছে: সেখান থেকে আবার শুরু করতে “চালিয়ে যাও” লিখুন।",
+   "pt-BR": "O Antigravity CLI parou: o modelo enviou uma chamada de ferramenta vazia e não conseguiu corrigi-la. O que ele fez até agora está salvo: escreva “continue” para retomar de onde parou.",
+   "ru": "Antigravity CLI остановился: модель отправила пустой вызов инструмента и не смогла его исправить. Сделанное до сих пор сохранено: напишите «продолжай», чтобы продолжить с этого места.",
+   "id": "Antigravity CLI berhenti: model mengirim panggilan alat yang kosong dan tidak berhasil memperbaikinya. Yang sudah dikerjakan sejauh ini tersimpan: tulis “lanjutkan” untuk melanjutkan dari sana.",
+   "it": "Antigravity CLI si è fermato: il modello ha mandato una chiamata a strumento vuota e non è riuscito a correggerla. Quello che ha fatto finora è salvato: scrivi «continua» per riprendere da lì."
   }
  }
 }
