@@ -202,6 +202,8 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
     if TURN.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))) != Ok(1) {
         return;
     }
+    // The chat's use of the computer, recorded, is written out (computer_test.rs).
+    crate::computer_test::record_stop();
     // An action still under way (typing, a wait, a drag) stops as with Esc:
     // the chat's Stop ended the turn, not only Esc does.
     STOPPED.store(true, Ordering::SeqCst);
@@ -1079,21 +1081,19 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     if STOPPED.load(Ordering::SeqCst) {
         return refuse(STOPPED_TEXT);
     }
-    // The click test (/test, computer_test.rs): every call recorded, only
-    // looking and left clicks on the test's own screen, which the test page
-    // covers whole.
-    let testing = crate::computer_test::active();
+    // Every call of the turn recorded (experimental branch, computer_test.rs):
+    // the click test's (/test), or the chat's own use of the computer. The
+    // test allows only looking and left clicks on its own screen, which the
+    // test page covers whole.
+    crate::computer_test::record_start();
+    crate::computer_test::note_call(&tool, &input);
+    let testing = crate::computer_test::testing();
     let refused = |why: String| {
-        if testing {
-            crate::computer_test::note_refused(&why);
-        }
+        crate::computer_test::note_refused(&why);
         refuse(why)
     };
-    if testing {
-        crate::computer_test::note_call(&tool, &input);
-        if !crate::computer_test::allows(&tool) {
-            return refused("During Lumo's click test only screenshot, zoom, left_click and mouse_move are allowed.".into());
-        }
+    if testing && !crate::computer_test::allows(&tool) {
+        return refused("During Lumo's click test only screenshot, zoom, left_click and mouse_move are allowed.".into());
     }
     let action = match parse(&tool, &input) {
         Ok(a) => a,
@@ -1132,7 +1132,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         });
         match crate::pipe::ask(app, card).await.as_deref() {
             Some("allow") => {}
-            Some(_) => return refuse(DENIED_TEXT),
+            Some(_) => return refused(DENIED_TEXT.into()),
             None => return refuse("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment."),
         }
         // Esc, or the chat's Stop, while the card waited.

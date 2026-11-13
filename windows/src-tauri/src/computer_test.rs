@@ -13,6 +13,12 @@
 // 0–999 grid over the screenshot (how Gemini's own computer use counts) and
 // the screen's full resolution (a model that ignores the screenshot's size).
 //
+// Outside the test, the chat's own use of the computer is recorded the same
+// way (record_start, record_stop): every call, the screenshots and where each
+// click landed, in `computer-test\<time>-uso\`, so a click that went wrong
+// can be looked at afterwards: what the model saw, what it asked, where the
+// mouse went.
+//
 // During the test only looking, left clicks and moving the mouse are allowed,
 // and only on the test's screen, which the page covers whole: nothing but the
 // page can be clicked, so Lumo shows no card for them.
@@ -44,8 +50,10 @@ Take one screenshot, then click the centre of each circle exactly once with left
 Don't take another screenshot between the clicks, don't correct a click that missed, and use no other tool. \
 When you are done, answer with the 9 coordinates you clicked, one per line, as \"n: [x, y]\".";
 
-/// The test under way.
+/// The test under way, or the chat's use of the computer being recorded.
 struct Test {
+    /// The click test (/test); false: the chat's own use, only recorded.
+    test: bool,
     /// The screen it is on, in physical pixels.
     rect: (i32, i32, i32, i32),
     dir: PathBuf,
@@ -62,9 +70,43 @@ pub fn is_test(query: &str) -> bool {
     query.trim().eq_ignore_ascii_case("/test")
 }
 
-/// A test is under way.
-pub fn active() -> bool {
-    TEST.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+/// The click test is under way.
+pub fn testing() -> bool {
+    TEST.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|t| t.test)
+}
+
+/// The folder for a test or a recording made now.
+fn new_dir(suffix: &str) -> Result<PathBuf, String> {
+    let t = crate::platform::local_time();
+    let stamp = format!("{:04}{:02}{:02}-{:02}{:02}{:02}{suffix}", t.year, t.month, t.day, t.hour, t.minute, t.second);
+    let dir = crate::settings::local_dir().join("computer-test").join(&stamp);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Cartella del test non creata: {e}"))?;
+    Ok(dir)
+}
+
+/// The chat's use of the computer starts being recorded, at its first call
+/// (experimental branch): every call, the screenshots and where each click
+/// landed go to `computer-test\<time>-uso\`, to see a miss afterwards. A
+/// test under way, or a recording already, is left as it is.
+pub fn record_start() {
+    let mut test = TEST.lock().unwrap_or_else(|e| e.into_inner());
+    if test.is_some() {
+        return;
+    }
+    let Ok(dir) = new_dir("-uso") else { return };
+    crate::log::line(format!("computer use: recorded in {}", dir.display()));
+    *test = Some(Test { test: false, rect: (0, 0, 0, 0), dir, calls: Vec::new(), shots: 0, clicks: 0 });
+}
+
+/// The chat's turn is over: its recording is written (a test is finish's to end).
+pub fn record_stop() {
+    let mut test = TEST.lock().unwrap_or_else(|e| e.into_inner());
+    if !test.as_ref().is_some_and(|t| !t.test) {
+        return;
+    }
+    let Some(t) = test.take() else { return };
+    let report = json!({ "calls": t.calls, "shots": t.shots, "clicks": t.clicks });
+    let _ = std::fs::write(t.dir.join("report.json"), serde_json::to_string_pretty(&report).unwrap_or_default());
 }
 
 /// The tools the test allows: looking, left clicks and moving the mouse.
@@ -75,7 +117,7 @@ pub fn allows(tool: &str) -> bool {
 /// An action on `view` (the screen the agent works on) is on the test's own screen.
 pub fn on_test_screen(view: Option<View>) -> bool {
     let test = TEST.lock().unwrap_or_else(|e| e.into_inner());
-    match (test.as_ref(), view) {
+    match (test.as_ref().filter(|t| t.test), view) {
         (Some(t), Some(v)) => v.rect == t.rect,
         // No test: not this check's to refuse. No screenshot yet: the click is refused anyway.
         _ => true,
@@ -107,10 +149,7 @@ pub fn begin(app: &AppHandle, computer_on: bool, provider_can: bool) -> Result<S
     let rects = crate::screen::monitor_rects();
     let index = crate::screen::display_under_cursor().unwrap_or(0);
     let rect = *rects.get(index).or(rects.first()).ok_or("Nessuno schermo trovato.")?;
-    let t = crate::platform::local_time();
-    let stamp = format!("{:04}{:02}{:02}-{:02}{:02}{:02}", t.year, t.month, t.day, t.hour, t.minute, t.second);
-    let dir = crate::settings::local_dir().join("computer-test").join(&stamp);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Cartella del test non creata: {e}"))?;
+    let dir = new_dir("")?;
     if let Some(old) = app.get_webview_window(WINDOW) {
         let _ = old.destroy();
     }
@@ -139,7 +178,9 @@ pub fn begin(app: &AppHandle, computer_on: bool, provider_can: bool) -> Result<S
         rect,
         dir.display()
     ));
-    *TEST.lock().unwrap_or_else(|e| e.into_inner()) = Some(Test { rect, dir, calls: Vec::new(), shots: 0, clicks: 0 });
+    // A recording left by a turn before is written first; the test replaces it.
+    record_stop();
+    *TEST.lock().unwrap_or_else(|e| e.into_inner()) = Some(Test { test: true, rect, dir, calls: Vec::new(), shots: 0, clicks: 0 });
     Ok(PROMPT.to_string())
 }
 
@@ -176,8 +217,15 @@ pub fn note_click(asked: Option<(i64, i64)>, landed: (i32, i32), view: &View) {
     let Some(t) = test.as_mut() else { return };
     t.clicks += 1;
     let n = t.clicks;
-    let measured = measure(n, asked, landed, view);
-    crate::log::line(format!("computer test: click {n} {measured}"));
+    let measured = if t.test {
+        measure(n, asked, landed, view)
+    } else {
+        // The chat's own click: what was asked and where it landed, in the screenshot's pixels.
+        let shot = view.point_in_shot(landed.0, landed.1);
+        let off = asked.map(|a| (shot.0 - a.0).abs().max((shot.1 - a.1).abs()));
+        json!({ "n": n, "asked": asked.map(|a| json!([a.0, a.1])), "landed_shot": [shot.0, shot.1], "landed_screen": [landed.0, landed.1], "landed_off_asked": off, "shot": t.shots })
+    };
+    crate::log::line(format!("computer {}: click {n} {measured}", if t.test { "test" } else { "use" }));
     if let Some(call) = t.calls.last_mut() {
         call["click"] = measured;
     }
@@ -256,7 +304,7 @@ pub fn finish<R: Runtime>(app: &AppHandle<R>, answer: &str) -> String {
     if let Some(win) = app.get_webview_window(WINDOW) {
         let _ = win.destroy();
     }
-    let Some(test) = TEST.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+    let Some(test) = TEST.lock().unwrap_or_else(|e| e.into_inner()).take_if(|t| t.test) else {
         return String::new();
     };
     let clicks: Vec<&Value> = test.calls.iter().filter_map(|c| c.get("click")).collect();
@@ -295,11 +343,11 @@ fn summary(clicks: &[&Value], shots: usize, calls: usize) -> String {
                 landed_wrong += usize::from(landed > 3);
                 let at = c["expected_at"].as_array().map(|e| format!("[{}, {}]", e[0], e[1])).unwrap_or_default();
                 lines.push(format!(
-                    "- {n} → cerchio {}: chiesto [{}, {}], il centro era a {at}, {} di {d} px{}",
+                    "- {n} → cerchio {}: chiesto [{}, {}], il centro era a {at}, {} {d} px{}",
                     c["expected_circle"],
                     a[0],
                     a[1],
-                    if hit { "preso, a" } else { "mancato" },
+                    if hit { "preso, a" } else { "mancato di" },
                     if landed > 3 { format!(" · il mouse è finito a {} px da dove chiesto", landed) } else { String::new() },
                 ));
             }
