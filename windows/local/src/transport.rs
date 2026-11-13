@@ -95,6 +95,9 @@ pub enum Seen {
     Reasoning,
     /// The model prepares a call of this tool (each new one, once its name comes).
     Calling(String),
+    /// A piece of the stream came, whatever it holds (reasoning, a call's
+    /// arguments, nothing new to show): the answer is still moving.
+    Chunk,
 }
 
 /// The body of `reply`, refused past `limit` bytes.
@@ -189,7 +192,8 @@ pub fn whole_answer(bytes: &[u8]) -> Result<Answer, Failure> {
 
 /// Posts the request and reads the event stream. `on` gets the visible text at
 /// most 15 times a second and once more at the end, `Reasoning` once when the
-/// model reasons before any visible text, and `Calling` as each tool call starts.
+/// model reasons before any visible text, `Calling` as each tool call starts,
+/// and `Chunk` for every piece of the stream that comes.
 pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Result<Answer, Failure> {
     let mut reply = to
         .streaming
@@ -300,6 +304,7 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             Err(_) if finished.load(Ordering::Relaxed) => break,
             Err(_) => return Err(Failure::Unreachable),
         };
+        on(Seen::Chunk);
         pending.extend_from_slice(&chunk);
         // Whole lines only: a chunk may end in the middle of one, or of a character.
         while let Some(end) = pending.iter().position(|b| *b == b'\n') {
