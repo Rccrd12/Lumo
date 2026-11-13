@@ -894,6 +894,22 @@ another image is saved in the inbox (up to 32 MB), and a file copied in File
 Explorer is copied there like a dropped one (the first, when you copied
 several). Text pastes as usual.
 
+### Agents of the API models and the local ones
+
+A model called by its API (Anthropic, Google AI, OpenAI, OpenRouter) or
+served on this computer (Ollama, LM Studio, Unsloth Studio, a custom
+server) can start agents too, with Lumo's tool `run_agents`: a list of
+tasks, each run by an agent of its own with the same model and the chat's
+tools (none that start more agents, make the chat's plan or set timers),
+seeing only its task. They show on the chat's Agents card as Claude Code's
+do — what each does now, its steps and tokens, **Stop this agent** — and are
+said to give no signal past 45 s for an API model, 90 s for a local one.
+An API model's agents all run at once (six at most); a local model's run one
+at a time, the others "Waiting its turn · 2 in line". Their calls ask for
+your click as the chat's own do. The model that started them waits for all
+of them and answers from their reports: nothing runs after the answer, and
+the chat's Stop stops them all.
+
 ### The chat knows what's open
 
 With **Settings → Security → Open windows** (on by default), every

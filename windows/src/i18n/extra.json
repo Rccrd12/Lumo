@@ -19457,6 +19457,18 @@
    "id": "Mengirim pesan",
    "it": "Invio un messaggio"
   },
+  "Waiting its turn · {place} in line": {
+   "zh-Hans": "等待轮到它 · 第 {place} 位",
+   "hi": "अपनी बारी का इंतज़ार · कतार में {place}",
+   "es": "Esperando su turno · {place}.º en la cola",
+   "ar": "ينتظر دوره · {place} في الصف",
+   "fr": "Attend son tour · {place}e dans la file",
+   "bn": "নিজের পালার অপেক্ষায় · লাইনে {place}",
+   "pt-BR": "Aguardando a vez · {place}º na fila",
+   "ru": "Ждёт очереди · {place}-й",
+   "id": "Menunggu giliran · urutan {place}",
+   "it": "Aspetta il suo turno · {place}° in coda"
+  },
   "See request": {
    "zh-Hans": "查看请求",
    "hi": "अनुरोध देखें",

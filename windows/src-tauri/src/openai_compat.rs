@@ -357,10 +357,13 @@ pub async fn send(
     let asking = crate::tools::Asking::for_local(mode);
     let sandbox_high = sandbox != "low";
     let plan = if mode == "plan" { crate::tools::PLAN_ONLY_NOTE } else { "" };
-    let system = format!("{}{}{}{plan}", chat::system_prompt_in(chat, web, true), chat::api_tools_note(mail), if web { crate::web_search::NOTE } else { "" });
+    let system = format!("{}{}{}{plan}{}", chat::system_prompt_in(chat, web, true), chat::api_tools_note(mail), if web { crate::web_search::NOTE } else { "" }, crate::api_agents::NOTE);
     let mut body = request_body(model, &system, &turn.history, &user);
     let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false)).await.unwrap_or_default();
-    let tools = crate::tools::tools_for_mode(all, mode);
+    let mut tools = crate::tools::tools_for_mode(all, mode);
+    // Agents of its own, with the chat's tools but none that start more (api_agents.rs).
+    let launch = Launch { p, model: model.to_string(), effort: effort.to_string(), key: key.clone(), tools: crate::api_agents::sub_tools(&tools), asking, sandbox_high };
+    tools.push(crate::api_agents::tool());
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
     }
@@ -487,6 +490,15 @@ pub async fn send(
                     turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": crate::tools::not_offered(name) }));
                     continue;
                 }
+                // Agents of its own (api_agents.rs): they run here, and their reports are the result.
+                if name == crate::api_agents::RUN {
+                    chat.events().activity(app, crate::claude_code::Activity::new("subtask", ""));
+                    let launch = &launch;
+                    let turn: crate::api_agents::Turn = Box::new(move |task, sink| Box::pin(agent_turn(app, chat.id(), launch, task, sink)));
+                    let (text, _) = Box::pin(crate::api_agents::run(app, chat.id(), p.id, &input, crate::api_agents::MAX_AGENTS, turn)).await;
+                    turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
+                    continue;
+                }
                 chat.events().activity(app, act);
                 let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, asking, sandbox_high).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
@@ -582,6 +594,115 @@ fn mentions_streaming(error: &str) -> bool {
 
 /// A tool call's arguments as JSON: an object, or nothing when they don't
 /// parse (a call cut short). No arguments at all are `{}`.
+/// What an agent of the chat runs with (api_agents.rs): the chat's provider, model and tools.
+struct Launch {
+    p: &'static Provider,
+    model: String,
+    effort: String,
+    key: String,
+    tools: Vec<(String, String, Value)>,
+    asking: crate::tools::Asking,
+    sandbox_high: bool,
+}
+
+/// How long an agent waits each time it meets the rate limit, before it fails.
+const AGENT_BACKOFF: [Duration; 3] = [Duration::from_secs(5), Duration::from_secs(15), Duration::from_secs(30)];
+
+/// One agent's whole turn: its task alone, the chat's tools (no more
+/// agents), its rounds of tools, and its last word as the report.
+async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api_agents::Task, sink: crate::api_agents::Sink) -> Result<String, String> {
+    let p = l.p;
+    let endpoint = url(p, "chat/completions")?;
+    let user = json!({ "role": "user", "content": task.task });
+    let mut body = request_body(&l.model, crate::api_agents::SYSTEM, &[], &user);
+    if !l.tools.is_empty() {
+        body["tools"] = function_tools(&l.tools);
+    }
+    with_effort(p, &mut body, &l.model, &l.effort);
+    body["stream_options"] = json!({ "include_usage": true });
+    let mut said: Vec<String> = Vec::new();
+    let (mut rounds, mut streaming, mut retried, mut limited) = (0, true, false, 0);
+    loop {
+        let sent = if streaming {
+            stream_post(p, &endpoint, &l.key, &body, &mut None, |_| sink.chunk(), || sink.chunk()).await
+        } else {
+            crate::chat_agents::alive_while(app, chat_id, Box::pin(post(p, &endpoint, &l.key, &body, &mut None))).await
+        };
+        sink.chunk();
+        let mut json = match sent {
+            Err((400, e)) if streaming && mentions_streaming(&e) => {
+                if body.get("stream_options").is_some() && e.contains("stream_options") {
+                    body.as_object_mut().map(|b| b.remove("stream_options"));
+                    continue;
+                }
+                streaming = false;
+                body.as_object_mut().map(|b| b.remove("stream_options"));
+                continue;
+            }
+            Err((400 | 422, e)) if has_effort(&body) && e.to_lowercase().contains("reasoning") => {
+                without_effort(&mut body);
+                continue;
+            }
+            // Agents at once may meet the rate limit: each waits it out a few times.
+            Err((429, _)) if limited < AGENT_BACKOFF.len() => {
+                sink.rate_limited(true);
+                tokio::time::sleep(AGENT_BACKOFF[limited]).await;
+                limited += 1;
+                sink.rate_limited(false);
+                continue;
+            }
+            Err((500 | 502 | 503 | 504, _)) if !retried => {
+                retried = true;
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+            Err((_, e)) => return Err(e),
+            Ok(json) => json,
+        };
+        if let Some(n) = chat_usage::context_tokens(&json["usage"]) {
+            sink.tokens(n);
+        }
+        if let Some(content) = json.pointer_mut("/choices/0/message/content").filter(|c| c.is_string()) {
+            *content = json!(filter_thinking_blocks(content.as_str().unwrap_or_default()));
+        }
+        let message = json.pointer("/choices/0/message").cloned().unwrap_or(Value::Null);
+        let calls = message["tool_calls"].as_array().cloned().unwrap_or_default();
+        let text = message["content"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string);
+        if calls.is_empty() || body.get("tools").is_none() {
+            said.extend(text);
+            let report = said.join("\n\n");
+            return if report.trim().is_empty() { Err(json.pointer("/error/message").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| t("No response text."))) } else { Ok(report) };
+        }
+        if rounds == crate::api_agents::MAX_AGENT_ROUNDS {
+            return Ok(crate::claude::capped_answer(said, text, rounds));
+        }
+        rounds += 1;
+        said.extend(text);
+        let mut turn_messages = vec![message.clone()];
+        for call in &calls {
+            let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
+            let Some(input) = call_input(call) else {
+                turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": "The arguments of this call were not valid JSON, so it did not run. Call it again with complete arguments." }));
+                continue;
+            };
+            if !crate::tools::offered_in(&l.tools, name) {
+                turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": crate::tools::not_offered(name) }));
+                continue;
+            }
+            sink.step(if crate::web_search::NAMES.contains(&name) {
+                crate::web_search::activity(name)
+            } else {
+                crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
+            });
+            let (text, _) = crate::tools::call_for_chat(app, chat_id, name, input, l.asking, l.sandbox_high).await;
+            turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
+        }
+        if let Some(messages) = body["messages"].as_array_mut() {
+            messages.extend(turn_messages);
+        }
+    }
+}
+
 fn call_input(call: &Value) -> Option<Value> {
     match call.pointer("/function/arguments") {
         None | Some(Value::Null) => Some(json!({})),

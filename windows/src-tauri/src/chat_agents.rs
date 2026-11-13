@@ -115,6 +115,9 @@ pub struct AgentRow {
     /// The last message its CLI sent it, and its answer once it came.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub talk: Option<AgentTalk>,
+    /// With `Waiting` for "queue": its place in line (a local model's agents run one at a time).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue: Option<u32>,
 }
 
 /// A message the chat's CLI sent one of its agents (Claude Code's SendMessage),
@@ -191,6 +194,7 @@ impl AgentRow {
             can_ask: false,
             round: 0,
             talk: None,
+            queue: None,
         }
     }
 
@@ -221,6 +225,7 @@ impl AgentRow {
         let now = now_ms();
         self.state = state;
         self.waiting_for = None;
+        self.queue = None;
         self.now = None;
         self.ended_at = Some(now);
         self.last_signal_at = now;

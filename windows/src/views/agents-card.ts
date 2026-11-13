@@ -73,6 +73,7 @@ export const AGENTS_CARD_TEXT = {
   waitingReply: N_("waiting for the reply… {time}"),
   notReached: N_("The message did not reach {name}"),
   noReply: N_("No reply came"),
+  queued: N_("Waiting its turn · {place} in line"),
 };
 
 /** A key with its context ("agents|Wait"): its translation, else its English after the "|". */
@@ -319,6 +320,7 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
     case "failed":
       return r.error || t(r.state === "stopped" ? AGENTS_CARD_TEXT.stopped : AGENTS_CARD_TEXT.failed);
     case "waiting":
+      if (r.waitingFor === "queue") return t(AGENTS_CARD_TEXT.queued, { place: r.queue ?? 1 });
       return t(r.waitingFor === "rate_limit" ? AGENTS_CARD_TEXT.rateLimit : AGENTS_CARD_TEXT.permission);
     case "stalled": {
       const time = durationText((agentStall(e, now)?.seconds ?? 0) * 1000);
