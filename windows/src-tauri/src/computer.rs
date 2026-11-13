@@ -1079,12 +1079,32 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     if STOPPED.load(Ordering::SeqCst) {
         return refuse(STOPPED_TEXT);
     }
+    // The click test (/test, computer_test.rs): every call recorded, only
+    // looking and left clicks on the test's own screen, which the test page
+    // covers whole.
+    let testing = crate::computer_test::active();
+    let refused = |why: String| {
+        if testing {
+            crate::computer_test::note_refused(&why);
+        }
+        refuse(why)
+    };
+    if testing {
+        crate::computer_test::note_call(&tool, &input);
+        if !crate::computer_test::allows(&tool) {
+            return refused("During Lumo's click test only screenshot, zoom, left_click and mouse_move are allowed.".into());
+        }
+    }
     let action = match parse(&tool, &input) {
         Ok(a) => a,
-        Err(e) => return refuse(e),
+        Err(e) => return refused(e),
     };
+    if testing && !only_looks(&tool) && !crate::computer_test::on_test_screen(VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied()) {
+        return refused("During Lumo's click test, click only on the screen with the test page: take a screenshot of it first.".into());
+    }
     // Another agent's turn (experimental): Lumo asks, or refuses, itself.
-    let others = if only_looks(&tool) { None } else { others_ask() };
+    // Not during the test: nothing but the test page can be clicked.
+    let others = if only_looks(&tool) || testing { None } else { others_ask() };
     if matches!(others, Some((Asks::LookOnly, _))) {
         return refuse(PLAN_TEXT);
     }
@@ -1155,7 +1175,7 @@ fn base64(bytes: &[u8]) -> String {
 /// and which screenshots leave out. The island and the glow let the mouse
 /// through then, so they are never what is under it.
 fn not_on_lumo(app: &AppHandle, p: (i32, i32)) -> Result<(), String> {
-    let mine: Vec<isize> = [crate::island::WINDOW_LABEL, OVERLAY]
+    let mine: Vec<isize> = [crate::island::WINDOW_LABEL, OVERLAY, crate::computer_test::WINDOW]
         .iter()
         .filter_map(|label| app.get_webview_window(label))
         .filter_map(|w| w.hwnd().ok().map(|h| h.0 as isize))
@@ -1238,6 +1258,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             };
             let view = View::new(index, rect);
             let png = crate::screen::unseen_by_claude(app, |hidden| crate::screen::grab_png(rect, view.w, view.h, hidden))?;
+            crate::computer_test::note_shot(&png, &view);
             let moved = VIEW.lock().unwrap_or_else(|e| e.into_inner()).replace(view).is_none_or(|v| v.rect != rect);
             // Another screen: the glow goes with Claude.
             if moved {
@@ -1289,6 +1310,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
                 imp::click(button, count, &hold)?;
                 Ok(here)
             })?;
+            crate::computer_test::note_click(at, here, &view);
             let (x, y) = view.point_in_shot(here.0, here.1);
             Ok(json!({ "text": click_text(at, (x, y)) }))
         }

@@ -947,6 +947,18 @@ async fn dispatch(
     // pressed while the open windows or the emails are read (seconds, at
     // times) ends the turn before it is sent.
     chat.arm();
+    // /test (experimental branch): how well the chat's agent clicks (computer_test.rs).
+    if crate::computer_test::is_test(&query) {
+        let provider = settings.chat_provider.as_str();
+        let prompt = crate::computer_test::begin(app, settings.chat_computer_use, is_cli(provider))?;
+        let reply = send_to(app, chat, settings, prompt, None, None, usage).await;
+        let answer = reply.as_ref().map(|r| r.text.clone()).unwrap_or_else(|e| e.clone());
+        let report = crate::computer_test::finish(app, &answer);
+        let mut reply = reply?;
+        reply.text = format!("{}\n\n{report}", reply.text.trim_end());
+        reply.turns = chat.turns();
+        return Ok(reply);
+    }
     // One of Claude Code's commands ("/context") goes alone, exactly as typed:
     // nothing of the screen, the windows or the email in front of it, or
     // Claude Code takes it for a question (claude_code.rs). Antigravity CLI's

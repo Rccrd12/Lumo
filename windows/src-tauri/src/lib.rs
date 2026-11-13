@@ -20,6 +20,7 @@ mod acp_chat;
 mod codex_chat;
 mod codex_plan;
 mod computer;
+mod computer_test;
 mod config_file;
 mod confirmed;
 mod desk;
