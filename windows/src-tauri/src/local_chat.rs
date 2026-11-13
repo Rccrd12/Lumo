@@ -590,8 +590,8 @@ impl lumo_local::Hooks for AgentHooks<'_> {
         } else {
             Activity::new("tool", crate::claude_code::pretty_tool(name))
         });
-        let (app, chat, asking, high, name) = (self.app, self.chat_id.to_string(), self.asking, self.sandbox_high, name.to_string());
-        async move { crate::tools::call_for_chat(app, &chat, &name, input, asking, high).await }
+        let (app, chat, asking, high, name, sink) = (self.app, self.chat_id.to_string(), self.asking, self.sandbox_high, name.to_string(), self.sink.clone());
+        async move { sink.alive_while(Box::pin(crate::tools::call_for_chat(app, &chat, &name, input, asking, high))).await }
     }
 }
 
@@ -698,7 +698,8 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
                     let chat_id = chat_id.clone();
                     Box::pin(async move { agent_turn(app, &chat_id, launch, task, sink).await })
                 });
-                return Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, 1, turn)).await;
+                let run = Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, 1, turn));
+                return crate::chat_agents::alive_while(app, &chat, run).await;
             }
             crate::tools::call_for_chat(app, &chat, &name, input, asking, high).await
         }

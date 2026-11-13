@@ -172,7 +172,8 @@ async fn run_user_tools(
         if name == crate::api_agents::RUN {
             chat.events().activity(app, crate::claude_code::Activity::new("subtask", ""));
             let turn: crate::api_agents::Turn = Box::new(move |task, sink| Box::pin(agent_turn(app, chat.id(), launch, task, sink)));
-            let (text, failed) = crate::api_agents::run(app, chat.id(), chat::ANTHROPIC, &b["input"], crate::api_agents::MAX_AGENTS, turn).await;
+            let run = Box::pin(crate::api_agents::run(app, chat.id(), chat::ANTHROPIC, &b["input"], crate::api_agents::MAX_AGENTS, turn));
+            let (text, failed) = crate::chat_agents::alive_while(app, chat.id(), run).await;
             results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
             continue;
         }
@@ -263,7 +264,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
                 continue;
             }
             sink.step(crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)));
-            let (text, failed) = crate::tools::call_for_chat(app, chat_id, name, b["input"].clone(), l.asking, l.sandbox_high).await;
+            let (text, failed) = sink.alive_while(Box::pin(crate::tools::call_for_chat(app, chat_id, name, b["input"].clone(), l.asking, l.sandbox_high))).await;
             results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
         }
         if let Some(messages) = body["messages"].as_array_mut() {

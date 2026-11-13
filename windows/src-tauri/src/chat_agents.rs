@@ -415,11 +415,33 @@ pub async fn alive_while<T>(app: &AppHandle, chat: &str, mut work: impl std::fut
 /// The chat `chat`'s answer waits for the user (`Some("permission")`: a card
 /// is up) or stops waiting (`None`). Always sent, never held back: while it
 /// waits, the island says so instead of "no signal".
+/// Its agents (api_agents.rs) may have several cards up at once: it waits
+/// until the last one is answered.
 pub fn signal_waiting(app: &AppHandle, chat: &str, waiting: Option<&str>) {
     if chat.is_empty() {
         return;
     }
+    let still = {
+        let mut open = OPEN_CARDS.lock().unwrap_or_else(|e| e.into_inner());
+        cards_open(open.get_or_insert_with(HashMap::new), chat, waiting.is_some())
+    };
+    let waiting = if still { waiting.or(Some("permission")) } else { None };
     let _ = app.emit_to(WINDOW_LABEL, "chat-signal", json!({ "chat": chat, "at": now_ms(), "waiting": waiting }));
+}
+
+/// The cards up for each chat's answer (signal_waiting).
+static OPEN_CARDS: Mutex<Option<HashMap<String, usize>>> = Mutex::new(None);
+
+/// One card of `chat` comes up (`up`) or goes: whether some are still up.
+fn cards_open(open: &mut HashMap<String, usize>, chat: &str, up: bool) -> bool {
+    let n = open.get(chat).copied().unwrap_or(0);
+    let n = if up { n + 1 } else { n.saturating_sub(1) };
+    if n == 0 {
+        open.remove(chat);
+    } else {
+        open.insert(chat.to_string(), n);
+    }
+    n > 0
 }
 
 // ── Stopping one agent ────────────────────────────────────────────────────────
@@ -588,5 +610,17 @@ mod tests {
         agents.upsert("a1", || AgentRow::new("a1", "codex", "x"));
         silent()(&mut agents, true);
         assert!(agents.changed().is_empty());
+    }
+
+    #[test]
+    fn a_chat_waits_until_the_last_of_its_cards_is_answered() {
+        let mut open = HashMap::new();
+        assert!(cards_open(&mut open, "c", true));
+        assert!(cards_open(&mut open, "c", true), "two agents, two cards");
+        assert!(cards_open(&mut open, "d", true));
+        assert!(cards_open(&mut open, "c", false), "one still up");
+        assert!(!cards_open(&mut open, "c", false));
+        assert!(!cards_open(&mut open, "c", false), "never below none");
+        assert!(!cards_open(&mut open, "d", false) && open.is_empty());
     }
 }

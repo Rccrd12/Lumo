@@ -495,7 +495,8 @@ pub async fn send(
                     chat.events().activity(app, crate::claude_code::Activity::new("subtask", ""));
                     let launch = &launch;
                     let turn: crate::api_agents::Turn = Box::new(move |task, sink| Box::pin(agent_turn(app, chat.id(), launch, task, sink)));
-                    let (text, _) = Box::pin(crate::api_agents::run(app, chat.id(), p.id, &input, crate::api_agents::MAX_AGENTS, turn)).await;
+                    let run = Box::pin(crate::api_agents::run(app, chat.id(), p.id, &input, crate::api_agents::MAX_AGENTS, turn));
+                    let (text, _) = crate::chat_agents::alive_while(app, chat.id(), run).await;
                     turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
                     continue;
                 }
@@ -621,12 +622,12 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
     with_effort(p, &mut body, &l.model, &l.effort);
     body["stream_options"] = json!({ "include_usage": true });
     let mut said: Vec<String> = Vec::new();
-    let (mut rounds, mut streaming, mut retried, mut limited) = (0, true, false, 0);
+    let (mut rounds, mut streaming, mut retried, mut limited, mut capped) = (0, true, false, 0, false);
     loop {
         let sent = if streaming {
             stream_post(p, &endpoint, &l.key, &body, &mut None, |_| sink.chunk(), || sink.chunk()).await
         } else {
-            crate::chat_agents::alive_while(app, chat_id, Box::pin(post(p, &endpoint, &l.key, &body, &mut None))).await
+            sink.alive_while(Box::pin(post(p, &endpoint, &l.key, &body, &mut None))).await
         };
         sink.chunk();
         let mut json = match sent {
@@ -654,6 +655,12 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
             Err((500 | 502 | 503 | 504, _)) if !retried => {
                 retried = true;
                 tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+            // The credits don't cover the model's whole ceiling: the room they pay for, as in `send`.
+            Err((402, e)) if !capped && affordable(&e).is_some() => {
+                capped = true;
+                body[p.max_tokens_field] = json!(affordable(&e));
                 continue;
             }
             Err((_, e)) => return Err(e),
@@ -694,7 +701,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
             } else {
                 crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
             });
-            let (text, _) = crate::tools::call_for_chat(app, chat_id, name, input, l.asking, l.sandbox_high).await;
+            let (text, _) = sink.alive_while(Box::pin(crate::tools::call_for_chat(app, chat_id, name, input, l.asking, l.sandbox_high))).await;
             turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
         }
         if let Some(messages) = body["messages"].as_array_mut() {

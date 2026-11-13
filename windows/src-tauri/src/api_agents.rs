@@ -155,6 +155,18 @@ impl Sink {
         self.with(false, |row| row.tokens = Some(row.tokens.unwrap_or(0).max(used)));
     }
 
+    /// `work` (a tool call, maybe waiting on a card for the user's click),
+    /// with a sign of life on its row every HEARTBEAT while it runs: it is
+    /// working, not stuck. `work` comes boxed, as for chat_agents::alive_while.
+    pub async fn alive_while<T>(&self, mut work: impl Future<Output = T> + Unpin) -> T {
+        loop {
+            match tokio::time::timeout(crate::chat_agents::HEARTBEAT, &mut work).await {
+                Ok(done) => return done,
+                Err(_) => self.with(true, |_| {}),
+            }
+        }
+    }
+
     /// It waits for the provider's rate limit, or no longer.
     pub fn rate_limited(&self, on: bool) {
         self.with(true, |row| {
@@ -254,20 +266,33 @@ async fn run_with(chat: &str, source: &str, tasks: Vec<Task>, limit: usize, turn
         .map(|(task, id)| {
             let sink = Sink { id: id.clone(), agents: agents.clone(), tell: tell.clone() };
             let work = turn(task.clone(), sink);
-            let (stops, wake, id) = (stops.clone(), wake.clone(), id.clone());
+            let (stops, wake, row) = (stops.clone(), wake.clone(), id.clone());
             let stopped = async move {
                 loop {
                     let woken = wake.notified();
-                    if stops.lock().unwrap_or_else(|e| e.into_inner()).contains(&id) {
+                    if stops.lock().unwrap_or_else(|e| e.into_inner()).contains(&row) {
                         return Err::<String, String>(STOPPED.to_string());
                     }
                     woken.await;
                 }
             };
-            Box::pin(first_of(work, stopped)) as Job
+            // Its row ends as soon as it does, not when the last one does.
+            let (agents, tell, id) = (agents.clone(), tell.clone(), id.clone());
+            Box::pin(async move {
+                let result = first_of(stopped, work).await;
+                end_row(&agents, &tell, &id, &result);
+                result
+            }) as Job
         })
         .collect();
-    let results = join_all(jobs, limit, |waiting: &[usize]| {
+    let is_stopped = |i: usize| stops.lock().unwrap_or_else(|e| e.into_inner()).contains(&ids[i]);
+    // Stopped while still in line: it leaves the line at once, never started.
+    let left = |i: usize| {
+        let result = Err(STOPPED.to_string());
+        end_row(&agents, &tell, &ids[i], &result);
+        result
+    };
+    let results = join_all(jobs, limit, is_stopped, left, |waiting: &[usize]| {
         let mut all = agents.lock().unwrap_or_else(|e| e.into_inner());
         let waiting: Vec<String> = waiting.iter().map(|&i| ids[i].clone()).collect();
         for id in &ids {
@@ -289,28 +314,15 @@ async fn run_with(chat: &str, source: &str, tasks: Vec<Task>, limit: usize, turn
 
     let mut out = Vec::new();
     let mut all_failed = true;
-    {
-        let mut all = agents.lock().unwrap_or_else(|e| e.into_inner());
-        for ((task, id), result) in tasks.iter().zip(&ids).zip(&results) {
-            let Some(row) = all.touch(id) else { continue };
-            match result {
-                Ok(report) => {
-                    all_failed = false;
-                    row.summary = Some(crate::chat_agents::summary_of(report));
-                    row.end(AgentState::Done, None);
-                    out.push(format!("## {}\n{}", task.title, cut(report)));
-                }
-                Err(e) if e == STOPPED => {
-                    row.end(AgentState::Stopped, None);
-                    out.push(format!("## {}\n(The user stopped this agent before it ended: no report.)", task.title));
-                }
-                Err(e) => {
-                    row.end(AgentState::Failed, Some(e.clone()));
-                    out.push(format!("## {}\n(This agent failed: {e})", task.title));
-                }
+    for (task, result) in tasks.iter().zip(&results) {
+        match result {
+            Ok(report) => {
+                all_failed = false;
+                out.push(format!("## {}\n{}", task.title, cut(report)));
             }
+            Err(e) if e == STOPPED => out.push(format!("## {}\n(The user stopped this agent before it ended: no report.)", task.title)),
+            Err(e) => out.push(format!("## {}\n(This agent failed: {e})", task.title)),
         }
-        tell(&mut all, true);
     }
     drop(rows);
     (out.join("\n\n"), all_failed)
@@ -318,6 +330,22 @@ async fn run_with(chat: &str, source: &str, tasks: Vec<Task>, limit: usize, turn
 
 /// What a stopped agent's future answers.
 const STOPPED: &str = "\u{0}stopped";
+
+/// The row of the agent `id` ends as its run did.
+fn end_row(agents: &Mutex<Agents>, tell: &Tell, id: &str, result: &Result<String, String>) {
+    let mut all = agents.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(row) = all.touch(id) {
+        match result {
+            Ok(report) => {
+                row.summary = Some(crate::chat_agents::summary_of(report));
+                row.end(AgentState::Done, None);
+            }
+            Err(e) if e == STOPPED => row.end(AgentState::Stopped, None),
+            Err(e) => row.end(AgentState::Failed, Some(e.clone())),
+        }
+    }
+    tell(&mut all, true);
+}
 
 fn cut(report: &str) -> String {
     let report = report.trim();
@@ -359,19 +387,57 @@ fn queue(all: &mut Agents, ids: &[String]) {
 
 /// The jobs, `limit` at a time, in the same task (nothing spawned: dropping
 /// this drops them all, and closes their connections); a job starts only
-/// when one ends, and `started` hears which still wait, in order. The
-/// results in the jobs' order.
-async fn join_all<T>(jobs: Vec<Pin<Box<dyn Future<Output = T> + Send + '_>>>, limit: usize, mut started: impl FnMut(&[usize])) -> Vec<T> {
+/// when one ends, in order, and `started` hears which still wait, in order.
+/// A job still waiting that `skip` says to leave out never starts: its
+/// result is `skipped`'s. The results in the jobs' order.
+async fn join_all<T>(
+    jobs: Vec<Pin<Box<dyn Future<Output = T> + Send + '_>>>,
+    limit: usize,
+    skip: impl Fn(usize) -> bool,
+    skipped: impl Fn(usize) -> T,
+    mut started: impl FnMut(&[usize]),
+) -> Vec<T> {
+    let limit = limit.max(1);
     let mut jobs: Vec<Option<Pin<Box<dyn Future<Output = T> + Send + '_>>>> = jobs.into_iter().map(Some).collect();
     let mut done: Vec<Option<T>> = jobs.iter().map(|_| None).collect();
-    let mut running = limit.min(jobs.len());
+    let mut on = vec![false; jobs.len()];
+    let mut first = true;
     std::future::poll_fn(|cx| loop {
+        // Those in line that were stopped leave it, never started.
+        let mut moved = false;
+        for i in 0..jobs.len() {
+            if !on[i] && jobs[i].is_some() && skip(i) {
+                jobs[i] = None;
+                done[i] = Some(skipped(i));
+                moved = true;
+            }
+        }
+        // As many start, in order, as there is room for.
+        let mut at_work = (0..jobs.len()).filter(|&i| on[i] && jobs[i].is_some()).count();
+        for i in 0..jobs.len() {
+            if at_work >= limit {
+                break;
+            }
+            if !on[i] && jobs[i].is_some() {
+                on[i] = true;
+                at_work += 1;
+                moved = !first || moved;
+            }
+        }
+        first = false;
+        if moved {
+            let waiting: Vec<usize> = (0..jobs.len()).filter(|&i| !on[i] && jobs[i].is_some()).collect();
+            started(&waiting);
+        }
         let mut ended = false;
-        for (job, out) in jobs.iter_mut().zip(done.iter_mut()).take(running) {
-            if let Some(f) = job {
+        for i in 0..jobs.len() {
+            if !on[i] {
+                continue;
+            }
+            if let Some(f) = jobs[i].as_mut() {
                 if let Poll::Ready(v) = f.as_mut().poll(cx) {
-                    *out = Some(v);
-                    *job = None;
+                    done[i] = Some(v);
+                    jobs[i] = None;
                     ended = true;
                 }
             }
@@ -380,11 +446,7 @@ async fn join_all<T>(jobs: Vec<Pin<Box<dyn Future<Output = T> + Send + '_>>>, li
             return Poll::Ready(());
         }
         // One ended: as many more start, and are polled at once.
-        let at_work = jobs.iter().take(running).filter(|j| j.is_some()).count();
-        if ended && at_work < limit && running < jobs.len() {
-            running = (running + limit - at_work).min(jobs.len());
-            let waiting: Vec<usize> = (running..jobs.len()).collect();
-            started(&waiting);
+        if ended {
             continue;
         }
         return Poll::Pending;
@@ -544,6 +606,61 @@ mod tests {
         assert!(seen.iter().any(|r| r.title == "C" && r.queue == Some(1)));
         assert!(seen.iter().all(|r| r.state != AgentState::Done || r.queue.is_none()));
         assert!(seen.iter().rev().find(|r| r.title == "C").is_some_and(|r| r.state == AgentState::Done));
+    }
+
+    #[test]
+    fn a_row_ends_as_soon_as_its_agent_does_not_when_the_last_one_does() {
+        let (tell, seen) = quiet();
+        let tasks = vec![Task { title: "A".into(), task: "a".into() }, Task { title: "B".into(), task: "b".into() }];
+        let turn: Turn = Box::new(|task: Task, _| Box::pin(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(if task.task == "a" { 10 } else { 300 })).await;
+            Ok(format!("report of {}", task.task))
+        }));
+        block_on(async {
+            let run = run_with("c", "anthropic", tasks, 6, turn, tell, false);
+            let look = async {
+                tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                let seen = seen.lock().unwrap();
+                let last = |t: &str| seen.iter().rev().find(|r| r.title == t).unwrap().state;
+                assert_eq!((last("A"), last("B")), (AgentState::Done, AgentState::Working));
+            };
+            both(run, look).await
+        });
+    }
+
+    #[test]
+    fn stopped_while_in_line_it_leaves_the_line_at_once_and_never_starts() {
+        let (tell, seen) = quiet();
+        let tasks: Vec<Task> = ["a", "b", "c"].iter().map(|t| Task { title: t.to_uppercase(), task: t.to_string() }).collect();
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let o = order.clone();
+        let turn: Turn = Box::new(move |task: Task, _| {
+            let o = o.clone();
+            Box::pin(async move {
+                o.lock().unwrap().push(task.task.clone());
+                tokio::time::sleep(std::time::Duration::from_millis(if task.task == "a" { 300 } else { 10 })).await;
+                Ok(task.task)
+            })
+        });
+        let chat = format!("stop-queued-{}", crate::chat_agents::run_mark());
+        let (text, ()) = block_on(async {
+            let run = run_with(&chat, "ollama", tasks, 1, turn, tell, true);
+            let stop = async {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                let id = seen.lock().unwrap().iter().find(|r| r.title == "B").unwrap().id.clone();
+                crate::chat_agents::stop(&chat, &id).unwrap();
+                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                let seen = seen.lock().unwrap();
+                let last = |t: &str| seen.iter().rev().find(|r| r.title == t).unwrap().clone();
+                assert_eq!(last("B").state, AgentState::Stopped, "out of the line before A ends");
+                assert_eq!((last("C").waiting_for, last("C").queue), (Some("queue"), Some(1)), "C moves up");
+                assert_eq!(last("A").state, AgentState::Working);
+            };
+            let ((text, _), ()) = both(run, stop).await;
+            (text, ())
+        });
+        assert_eq!(*order.lock().unwrap(), ["a", "c"], "B never started");
+        assert_eq!(text, "## A\na\n\n## B\n(The user stopped this agent before it ended: no report.)\n\n## C\nc");
     }
 
     /// Both futures, side by side.
