@@ -15849,6 +15849,18 @@
    "id": "Akun Anda",
    "it": "I tuoi account"
   },
+  "Each email sent, moved or trashed waits for your click on its card. Nothing is ever deleted for good.": {
+   "zh-Hans": "每封要发送、移动或移到废纸篓的邮件都会等你在其卡片上点击。任何内容都不会被永久删除。",
+   "hi": "भेजा, ले जाया या ट्रैश में डाला जाने वाला हर ईमेल उसके कार्ड पर आपके क्लिक का इंतज़ार करता है। कुछ भी हमेशा के लिए नहीं मिटाया जाता।",
+   "es": "Cada correo que se envía, se mueve o va a la papelera espera tu clic en su tarjeta. Nada se borra nunca para siempre.",
+   "ar": "كل رسالة تُرسل أو تُنقل أو توضع في المهملات تنتظر نقرتك على بطاقتها. لا يُحذف أي شيء نهائيًا أبدًا.",
+   "fr": "Chaque e-mail envoyé, déplacé ou mis à la corbeille attend votre clic sur sa carte. Rien n'est jamais supprimé définitivement.",
+   "bn": "পাঠানো, সরানো বা ট্র্যাশে ফেলা প্রতিটি ইমেল তার কার্ডে আপনার ক্লিকের অপেক্ষা করে। কিছুই কখনো চিরতরে মোছা হয় না।",
+   "pt-BR": "Cada e-mail enviado, movido ou levado à lixeira espera o seu clique no cartão dele. Nada é apagado para sempre.",
+   "ru": "Каждое письмо, которое отправляется, перемещается или удаляется в корзину, ждёт вашего щелчка на его карточке. Ничто никогда не удаляется навсегда.",
+   "id": "Setiap email yang dikirim, dipindahkan, atau dibuang ke sampah menunggu klik Anda di kartunya. Tidak ada yang dihapus permanen.",
+   "it": "Ogni email da inviare, spostare o cestinare aspetta il tuo clic sulla sua scheda. Niente viene mai cancellato per sempre."
+  },
   "Read your coming events, or nothing.": {
    "zh-Hans": "读取你即将到来的日程，或什么都不做。",
    "hi": "आपके आने वाले इवेंट पढ़ना, या कुछ नहीं।",
@@ -15860,6 +15872,42 @@
    "ru": "Читать ваши ближайшие события или ничего.",
    "id": "Membaca acara Anda berikutnya, atau tidak sama sekali.",
    "it": "Leggere i prossimi eventi, oppure niente."
+  },
+  "Read your pull requests, issues and checks when you ask.": {
+   "zh-Hans": "在你询问时读取你的拉取请求、议题和检查。",
+   "hi": "आपके पूछने पर आपके pull request, issue और check पढ़ना।",
+   "es": "Leer tus pull requests, issues y comprobaciones cuando lo pidas.",
+   "ar": "قراءة طلبات السحب والمشكلات والفحوصات عندما تطلب.",
+   "fr": "Lire vos pull requests, issues et vérifications quand vous le demandez.",
+   "bn": "আপনি চাইলে আপনার pull request, issue ও check পড়া।",
+   "pt-BR": "Ler seus pull requests, issues e verificações quando você pede.",
+   "ru": "Читать ваши pull request, issue и проверки, когда вы просите.",
+   "id": "Membaca pull request, issue, dan pemeriksaan Anda saat Anda minta.",
+   "it": "Leggere pull request, issue e controlli quando lo chiedi."
+  },
+  "Other chats' files": {
+   "zh-Hans": "其他聊天的文件",
+   "hi": "दूसरी चैट की फ़ाइलें",
+   "es": "Archivos de otros chats",
+   "ar": "ملفات الدردشات الأخرى",
+   "fr": "Fichiers des autres chats",
+   "bn": "অন্য চ্যাটের ফাইল",
+   "pt-BR": "Arquivos de outros chats",
+   "ru": "Файлы других чатов",
+   "id": "File chat lain",
+   "it": "File delle altre chat"
+  },
+  "Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: also those of the other chats from the last 7 days.": {
+   "zh-Hans": "关闭：Claude Code 和 Antigravity CLI 只读取交给其所在聊天的文件和截图。开启：也读取最近 7 天其他聊天的文件和截图。",
+   "hi": "बंद: Claude Code और Antigravity CLI केवल अपनी चैट को दी गई फ़ाइलें और स्क्रीनशॉट पढ़ते हैं। चालू: पिछले 7 दिनों की दूसरी चैट की भी।",
+   "es": "Apagado: Claude Code y Antigravity CLI leen solo los archivos y capturas que se dieron a su propio chat. Encendido: también los de los otros chats de los últimos 7 días.",
+   "ar": "متوقف: لا يقرأ Claude Code وAntigravity CLI إلا الملفات ولقطات الشاشة المعطاة لدردشتهما. مشغّل: وأيضًا ملفات الدردشات الأخرى في آخر 7 أيام.",
+   "fr": "Désactivé : Claude Code et Antigravity CLI ne lisent que les fichiers et captures donnés à leur propre chat. Activé : aussi ceux des autres chats des 7 derniers jours.",
+   "bn": "বন্ধ: Claude Code ও Antigravity CLI শুধু নিজের চ্যাটকে দেওয়া ফাইল ও স্ক্রিনশট পড়ে। চালু: গত ৭ দিনের অন্য চ্যাটেরগুলোও।",
+   "pt-BR": "Desligado: Claude Code e Antigravity CLI leem só os arquivos e capturas dados ao próprio chat. Ligado: também os dos outros chats dos últimos 7 dias.",
+   "ru": "Выключено: Claude Code и Antigravity CLI читают только файлы и снимки экрана, отданные их собственному чату. Включено: также файлы других чатов за последние 7 дней.",
+   "id": "Mati: Claude Code dan Antigravity CLI hanya membaca file dan tangkapan layar yang diberikan ke chat-nya sendiri. Nyala: juga milik chat lain dari 7 hari terakhir.",
+   "it": "Spento: Claude Code e Antigravity CLI leggono solo i file e le schermate dati alla loro chat. Acceso: anche quelli delle altre chat degli ultimi 7 giorni."
   },
   "Always on": {
    "zh-Hans": "始终开启",
@@ -19042,54 +19090,6 @@
    "ru": "Остров читает не больше {max} календарей: отключите ненужные.",
    "id": "Pulau membaca paling banyak {max} kalender: matikan yang tidak Anda perlukan.",
    "it": "L'isola legge al massimo {max} calendari: spegni quelli che non ti servono."
-  },
-  "Each email sent, moved or trashed waits for your click on its card. Nothing is ever deleted for good.": {
-   "zh-Hans": "每封要发送、移动或移到废纸篓的邮件都会等你在其卡片上点击。任何内容都不会被永久删除。",
-   "hi": "भेजा, ले जाया या ट्रैश में डाला जाने वाला हर ईमेल उसके कार्ड पर आपके क्लिक का इंतज़ार करता है। कुछ भी हमेशा के लिए नहीं मिटाया जाता।",
-   "es": "Cada correo que se envía, se mueve o va a la papelera espera tu clic en su tarjeta. Nada se borra nunca para siempre.",
-   "ar": "كل رسالة تُرسل أو تُنقل أو توضع في المهملات تنتظر نقرتك على بطاقتها. لا يُحذف أي شيء نهائيًا أبدًا.",
-   "fr": "Chaque e-mail envoyé, déplacé ou mis à la corbeille attend votre clic sur sa carte. Rien n'est jamais supprimé définitivement.",
-   "bn": "পাঠানো, সরানো বা ট্র্যাশে ফেলা প্রতিটি ইমেল তার কার্ডে আপনার ক্লিকের অপেক্ষা করে। কিছুই কখনো চিরতরে মোছা হয় না।",
-   "pt-BR": "Cada e-mail enviado, movido ou levado à lixeira espera o seu clique no cartão dele. Nada é apagado para sempre.",
-   "ru": "Каждое письмо, которое отправляется, перемещается или удаляется в корзину, ждёт вашего щелчка на его карточке. Ничто никогда не удаляется навсегда.",
-   "id": "Setiap email yang dikirim, dipindahkan, atau dibuang ke sampah menunggu klik Anda di kartunya. Tidak ada yang dihapus permanen.",
-   "it": "Ogni email da inviare, spostare o cestinare aspetta il tuo clic sulla sua scheda. Niente viene mai cancellato per sempre."
-  },
-  "Read your pull requests, issues and checks when you ask.": {
-   "zh-Hans": "在你询问时读取你的拉取请求、议题和检查。",
-   "hi": "आपके पूछने पर आपके pull request, issue और check पढ़ना।",
-   "es": "Leer tus pull requests, issues y comprobaciones cuando lo pidas.",
-   "ar": "قراءة طلبات السحب والمشكلات والفحوصات عندما تطلب.",
-   "fr": "Lire vos pull requests, issues et vérifications quand vous le demandez.",
-   "bn": "আপনি চাইলে আপনার pull request, issue ও check পড়া।",
-   "pt-BR": "Ler seus pull requests, issues e verificações quando você pede.",
-   "ru": "Читать ваши pull request, issue и проверки, когда вы просите.",
-   "id": "Membaca pull request, issue, dan pemeriksaan Anda saat Anda minta.",
-   "it": "Leggere pull request, issue e controlli quando lo chiedi."
-  },
-  "Other chats' files": {
-   "zh-Hans": "其他聊天的文件",
-   "hi": "दूसरी चैट की फ़ाइलें",
-   "es": "Archivos de otros chats",
-   "ar": "ملفات الدردشات الأخرى",
-   "fr": "Fichiers des autres chats",
-   "bn": "অন্য চ্যাটের ফাইল",
-   "pt-BR": "Arquivos de outros chats",
-   "ru": "Файлы других чатов",
-   "id": "File chat lain",
-   "it": "File delle altre chat"
-  },
-  "Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: also those of the other chats from the last 7 days.": {
-   "zh-Hans": "关闭：Claude Code 和 Antigravity CLI 只读取交给其所在聊天的文件和截图。开启：也读取最近 7 天其他聊天的文件和截图。",
-   "hi": "बंद: Claude Code और Antigravity CLI केवल अपनी चैट को दी गई फ़ाइलें और स्क्रीनशॉट पढ़ते हैं। चालू: पिछले 7 दिनों की दूसरी चैट की भी।",
-   "es": "Apagado: Claude Code y Antigravity CLI leen solo los archivos y capturas que se dieron a su propio chat. Encendido: también los de los otros chats de los últimos 7 días.",
-   "ar": "متوقف: لا يقرأ Claude Code وAntigravity CLI إلا الملفات ولقطات الشاشة المعطاة لدردشتهما. مشغّل: وأيضًا ملفات الدردشات الأخرى في آخر 7 أيام.",
-   "fr": "Désactivé : Claude Code et Antigravity CLI ne lisent que les fichiers et captures donnés à leur propre chat. Activé : aussi ceux des autres chats des 7 derniers jours.",
-   "bn": "বন্ধ: Claude Code ও Antigravity CLI শুধু নিজের চ্যাটকে দেওয়া ফাইল ও স্ক্রিনশট পড়ে। চালু: গত ৭ দিনের অন্য চ্যাটেরগুলোও।",
-   "pt-BR": "Desligado: Claude Code e Antigravity CLI leem só os arquivos e capturas dados ao próprio chat. Ligado: também os dos outros chats dos últimos 7 dias.",
-   "ru": "Выключено: Claude Code и Antigravity CLI читают только файлы и снимки экрана, отданные их собственному чату. Включено: также файлы других чатов за последние 7 дней.",
-   "id": "Mati: Claude Code dan Antigravity CLI hanya membaca file dan tangkapan layar yang diberikan ke chat-nya sendiri. Nyala: juga milik chat lain dari 7 hari terakhir.",
-   "it": "Spento: Claude Code e Antigravity CLI leggono solo i file e le schermate dati alla loro chat. Acceso: anche quelli delle altre chat degli ultimi 7 giorni."
   }
  }
 }
