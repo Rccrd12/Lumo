@@ -2,7 +2,7 @@
 // (claude.rs, openai_compat.rs, local_chat.rs).
 //
 // Offered only when the user lets the AI read GitHub (Settings → General →
-// Security → GitHub, `ai_github_access`, off until turned on), has saved a
+// Security → GitHub, `ai_github_access`, on at the first start), has saved a
 // GitHub token in Lumo's credential store (`secrets::present("github-token")`)
 // and Lumo is not paused. Every
 // response is formatted concisely so small local models get the facts they need
@@ -862,9 +862,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_a_plain_read_lets_the_ai_read_github_and_it_starts_off() {
+    fn only_a_plain_read_lets_the_ai_read_github_and_it_starts_on() {
         let with = |v: &str| crate::settings::Settings { ai_github_access: v.into(), ..crate::settings::Settings::default() };
-        assert!(!allowed(&crate::settings::Settings::default()));
+        // The first start reads, once a token is saved (`enabled`).
+        assert!(allowed(&crate::settings::Settings::default()));
         assert!(allowed(&with("read")));
         assert!(!allowed(&with("none")));
         assert!(!allowed(&with("anything")));

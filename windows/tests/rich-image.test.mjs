@@ -57,8 +57,8 @@ beforeEach(() => {
   State.settings = { ...State.settings, webImages: true };
 });
 
-test("images from the web are on unless the user turns them off", () => {
-  assert.equal(DEFAULT_SETTINGS.webImages, true);
+test("images from the web are off until the user turns them on", () => {
+  assert.equal(DEFAULT_SETTINGS.webImages, false);
 });
 
 test("from a site that may keep a record, the image waits for a click on Load image", async () => {
