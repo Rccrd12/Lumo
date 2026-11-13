@@ -1474,6 +1474,7 @@ pub async fn send(
     // are only remembered for the chat.
     chat.cli_dirs(folder);
     let history = turn.history.clone();
+    let catch_up = claude_code::catch_up(&chat.cli_unseen(agent.provider()));
     let files = chat.files();
     let workshop = chat.is_workshop();
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
@@ -1507,7 +1508,9 @@ pub async fn send(
     // text, and the tool workshop's instructions with them.
     let text = move |fresh: bool| {
         let carried: &[Value] = if fresh { &history } else { &[] };
-        let text = claude_code::prompt(context2.as_ref(), carried, &files, &query2);
+        // A resumed session gets the turns another provider answered since it last did.
+        let unseen = if fresh { "" } else { catch_up.as_str() };
+        let text = format!("{unseen}{}", claude_code::prompt(context2.as_ref(), carried, &files, &query2));
         if !fresh {
             return text;
         }
