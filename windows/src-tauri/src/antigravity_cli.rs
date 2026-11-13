@@ -16,6 +16,9 @@
 //   `chat-activity` events say what agy is doing while no text shows, read off
 //   its `step_update` events (tool steps, by tool name).
 // - Stop ends agy and everything it started.
+// - A tool step that delegates (`browser_subagent`…) starts a subagent, whose
+//   own steps carry `subagent_info`: each is one of the chat's agents
+//   (`Subagents`, chat_agents.rs), done when the step that delegated is.
 //
 // Permissions: headless agy never prompts. Workspace files are read and
 // written freely; a tool that needs approval (a shell command, by default) is
@@ -32,6 +35,7 @@
 // not): everything runs without asking, and the island lets its cards
 // through (src/island/hooks.ts).
 
+use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -42,6 +46,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
+use crate::chat_agents::{self, AgentRow, AgentState, Agents, Tell};
 use crate::claude_code::{self, file_name, host, is_screenshot, kill_tree, pretty_tool, safe_dir, safe_session, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
@@ -362,6 +367,194 @@ fn error_text(error: &Value) -> Option<String> {
     }
 }
 
+/// A `result` event as agy wrote it, for the log: its answer (the user's
+/// work, maybe long) only as its length, wherever agy put it.
+fn without_response(frame: &Value) -> String {
+    let mut f = frame.clone();
+    let cut = |v: &mut Value| {
+        if let Some(text) = v.get("response").and_then(Value::as_str) {
+            let n = text.chars().count();
+            v["response"] = json!(format!("<{n} characters>"));
+        }
+    };
+    cut(&mut f);
+    if let Some(inner) = f.get_mut("result").filter(|r| r.is_object()) {
+        cut(inner);
+    }
+    f.to_string()
+}
+
+/// agy's words when the model sent a tool call it could not read (Gemini's
+/// MALFORMED_FUNCTION_CALL): agy has the model try again, but may still end
+/// the turn with them.
+fn is_malformed_call(error: &str) -> bool {
+    let l = error.to_lowercase();
+    l.contains("malformed function call") || l.contains("improperly formatted function call")
+}
+
+/// The part of agy's error worth showing: for a malformed call, its line
+/// that says so, without what agy tells the model ("Please retry…").
+fn error_words(error: &str) -> String {
+    let error = error.trim();
+    if is_malformed_call(error) {
+        let lower = error.to_lowercase();
+        if let Some(at) = lower.find("malformed function call") {
+            return error[at..].lines().next().unwrap_or("").trim().to_string();
+        }
+    }
+    error.to_string()
+}
+
+/// What agy said, after what Lumo says about it (chat::ERROR_DETAIL).
+fn with_agy_words(said: String, error: &str) -> String {
+    format!("{said}\n{}{}", crate::chat::ERROR_DETAIL, tf("Antigravity CLI's message: {error}", &[("error", &error_words(error))]))
+}
+
+/// The answer came, but agy ended the turn with `error`: said under it.
+fn answer_warning(error: &str) -> crate::chat::ChatWarning {
+    let why = if is_malformed_call(error) {
+        t("While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”.")
+    } else {
+        t("Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”.")
+    };
+    crate::chat::ChatWarning {
+        line: t("Antigravity CLI reported a problem at the end"),
+        detail: format!("{why}\n\n{}", tf("Antigravity CLI's message: {error}", &[("error", &error_words(error))])),
+    }
+}
+
+// ── The subagents it delegates to ─────────────────────────────────────────────
+
+/// A tool's parameters: an object, or its JSON text.
+fn params_of(params: &Value) -> Value {
+    match params {
+        Value::String(s) => serde_json::from_str::<Value>(s).unwrap_or(Value::Null),
+        other => other.clone(),
+    }
+}
+
+/// The task a delegating step gives its subagent, as its parameters say it,
+/// else the tool's name in words ("browser subagent").
+fn delegated_title(name: &str, params: &Value) -> String {
+    let params = params_of(params);
+    ["TaskName", "TaskSummary", "Task", "Prompt", "Description", "task", "prompt", "description"]
+        .iter()
+        .filter_map(|k| params.get(*k).and_then(Value::as_str))
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| pretty_tool(name))
+}
+
+/// The subagents of a turn: one row for each, by its conversation.
+#[derive(Default, Debug)]
+struct Subagents {
+    agents: Agents,
+    /// The steps of the main conversation that delegate, still running:
+    /// step index, the title they give, and the row once its first step came.
+    delegating: Vec<(u64, String, Option<String>)>,
+    /// The subagents' steps already counted, as "row:step".
+    counted: HashSet<String>,
+    /// This turn's mark (chat_agents::run_mark), made when first needed: in
+    /// the ids of subagents named by their step, which a later turn reuses.
+    mark: Option<String>,
+}
+
+impl Subagents {
+    /// A tool step of the main conversation that delegates began.
+    fn delegated(&mut self, index: u64, title: String) {
+        if !self.delegating.iter().any(|d| d.0 == index) {
+            self.delegating.push((index, title, None));
+        }
+    }
+
+    /// The step that delegated ended (`error`: as ERROR): its subagent with it.
+    fn delegation_ended(&mut self, index: u64, error: Option<Option<String>>) {
+        let Some(pos) = self.delegating.iter().position(|d| d.0 == index) else { return };
+        let (_, _, row) = self.delegating.remove(pos);
+        let Some(id) = row else { return };
+        if self.agents.get(&id).is_some_and(|r| r.state.is_final()) {
+            return;
+        }
+        if let Some(row) = self.agents.touch(&id) {
+            match error {
+                Some(error) => row.end(AgentState::Failed, error),
+                None => row.end(AgentState::Done, None),
+            }
+        }
+    }
+
+    /// This turn's mark.
+    fn mark(&mut self) -> String {
+        self.mark.get_or_insert_with(chat_agents::run_mark).clone()
+    }
+
+    /// The step that delegated to a subagent heard of now, by its place in
+    /// `delegating`: the oldest still without a subagent (agy starts them in
+    /// the order it delegated), or else the latest. agy's steps don't say,
+    /// so the one rule names a subagent, titles it and ends it.
+    fn delegation(&self) -> Option<usize> {
+        self.delegating.iter().position(|d| d.2.is_none()).or_else(|| self.delegating.len().checked_sub(1))
+    }
+
+    /// One step of a subagent (`subagent_info`).
+    fn step(&mut self, index: u64, done: bool, v: &Value) {
+        let info = &v["subagent_info"];
+        let conversation = ["conversation_id", "conversationId"].iter().filter_map(|k| info[*k].as_str()).map(str::trim).find(|s| !s.is_empty());
+        let delegation = self.delegation();
+        // Without its conversation, the step that delegated names it, with
+        // the turn's mark: the next turn has a step 5 of its own.
+        let id = match conversation {
+            Some(conversation) => conversation.to_string(),
+            None => {
+                let mark = self.mark();
+                match delegation {
+                    Some(pos) => format!("step-{}-{mark}", self.delegating[pos].0),
+                    None => format!("subagent-{mark}"),
+                }
+            }
+        };
+        if self.agents.get(&id).is_none() {
+            // The step that delegated, when it has no subagent yet, gives it its title.
+            let title = match delegation.map(|pos| &mut self.delegating[pos]).filter(|d| d.2.is_none()) {
+                Some(d) => {
+                    d.2 = Some(id.clone());
+                    d.1.clone()
+                }
+                None => t("Agent"),
+            };
+            self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title));
+        }
+        if self.agents.get(&id).is_some_and(|r| r.state.is_final()) {
+            return;
+        }
+        let first = !done && v["step_type"] == "tool" && self.counted.insert(format!("{id}:{index}"));
+        let Some(row) = self.agents.touch(&id) else { return };
+        if done {
+            return;
+        }
+        if first {
+            row.steps += 1;
+        }
+        row.now = Some(match v["step_type"].as_str() {
+            Some("tool") => {
+                let info = &v["tool_info"];
+                let name = info["name"].as_str().filter(|s| !s.is_empty()).or_else(|| v["tool_name"].as_str()).unwrap_or("");
+                activity_for(name, &info["parameters"])
+            }
+            _ => Activity::thinking(),
+        });
+    }
+
+    /// The run is over: the subagents still open end as it did.
+    fn run_ended(&mut self, state: AgentState) {
+        let error = if state == AgentState::Failed { tf("{agent} ended", &[("agent", "Antigravity CLI")]) } else { String::new() };
+        if self.agents.open() > 0 {
+            self.agents.end_open(state, &error);
+        }
+    }
+}
+
 // ── Reading the stream ────────────────────────────────────────────────────────
 
 /// What the stream-json output has told us so far.
@@ -377,6 +570,13 @@ struct Run {
     text_step: Option<u64>,
     /// The `result` event: final text, or the error agy reported.
     result: Option<Result<String, String>>,
+    /// The answer a `result` that reported an error still carried: agy can end
+    /// a turn the model finished as an error (a malformed tool call it had the
+    /// model try again, earlier in the turn).
+    failed_response: String,
+    /// That `result` as agy wrote it, its answer left out (only its length):
+    /// for the log, so what agy said is known later.
+    failed_line: Option<String>,
     denied: usize,
     /// The user pressed Stop and the CLI was ended.
     stopped: bool,
@@ -400,6 +600,8 @@ struct Run {
     /// The tokens the turn's result says it used (read and written): about how
     /// full the conversation is, for the chat's usage menu.
     context_used: Option<u64>,
+    /// The subagents its steps delegated to.
+    subagents: Subagents,
 }
 
 /// The tokens a result's `usage` counts: what the model read (cached or not,
@@ -441,8 +643,11 @@ impl Run {
                 let response = v["response"].as_str().unwrap_or("").to_string();
                 self.result = Some(match (status.as_str(), error) {
                     ("SUCCESS", _) | ("", None) => Ok(response),
-                    (_, Some(e)) => Err(e),
-                    (s, None) => Err(s.to_string()),
+                    (s, error) => {
+                        self.failed_line = Some(without_response(&frame));
+                        self.failed_response = response;
+                        Err(error.unwrap_or_else(|| s.to_string()))
+                    }
                 });
                 false
             }
@@ -461,8 +666,9 @@ impl Run {
         let index = v["step_index"].as_u64().unwrap_or(u64::MAX);
         // A step ends DONE, or ERROR (a tool refused or failed).
         let done = matches!(v["state"].as_str(), Some("DONE" | "ERROR"));
-        // A subagent at work: its own steps are its business.
+        // A subagent at work: its own steps are its row's, not the answer's.
         if v.get("subagent_info").is_some_and(|s| !s.is_null()) {
+            self.subagents.step(index, done, v);
             if done {
                 self.finished_tool(index);
             } else {
@@ -497,6 +703,9 @@ impl Run {
                 let info = &v["tool_info"];
                 let name = info["name"].as_str().filter(|s| !s.is_empty()).or_else(|| v["tool_name"].as_str()).unwrap_or("");
                 if done {
+                    // A step that delegated: its subagent is done, or failed with it.
+                    let failed = v["state"] == "ERROR" || error_text(&info["error"]).is_some();
+                    self.subagents.delegation_ended(index, failed.then(|| error_text(&info["error"])));
                     if is_denial(&info["error"]) {
                         self.denied += 1;
                     }
@@ -511,6 +720,9 @@ impl Run {
                 } else {
                     if is_plan_tool(name) {
                         self.saw_plan(&info["parameters"]);
+                    }
+                    if activity_for(name, &Value::Null).kind == "subtask" {
+                        self.subagents.delegated(index, delegated_title(name, &info["parameters"]));
                     }
                     if !self.touching.iter().any(|(i, _)| *i == index) {
                         if let Some(touch) = touch_for(name, &info["parameters"]) {
@@ -663,6 +875,11 @@ fn empty_answer(denied: usize, stderr_tail: &str) -> String {
 fn result_error(error: &str) -> String {
     if is_auth_error(error) {
         not_signed_in()
+    } else if is_malformed_call(error) {
+        with_agy_words(
+            t("Antigravity CLI stopped: the model sent an empty tool call and couldn't correct it. What it did so far is saved: write “continue” to pick up from there."),
+            error,
+        )
     } else {
         tf("Antigravity CLI: {error}", &[("error", error)])
     }
@@ -671,7 +888,8 @@ fn result_error(error: &str) -> String {
 /// Runs agy headless once in `dir`, blocking. `on_text` gets the visible text as
 /// it grows, `on_activity` what agy is doing each time it changes, `on_file`
 /// each file a tool step read or wrote once it finished, `on_plan` each plan
-/// it gives Lumo's update_plan tool. Stop ends the CLI and its children; the
+/// it gives Lumo's update_plan tool, `tell` every line (a sign of life) and
+/// the subagents it delegates to. Stop ends the CLI and its children; the
 /// run so far is returned, `stopped`.
 #[allow(clippy::too_many_arguments)]
 fn run(
@@ -685,6 +903,7 @@ fn run(
     mut on_activity: impl FnMut(&Activity),
     mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&Value),
+    tell: &Tell,
 ) -> Result<Run, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -761,6 +980,8 @@ fn run(
             drop(stdin.take());
             kill_tree(&mut child);
             state.stopped = true;
+            state.subagents.run_ended(AgentState::Stopped);
+            tell(&mut state.subagents.agents, false);
             return Ok(state);
         }
         // The answer is in: agy gets a moment to end, then it and what it
@@ -773,6 +994,7 @@ fn run(
         match rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
+                tell(&mut state.subagents.agents, true);
                 if state.result.is_some() && result_at.is_none() {
                     // The turn is over: agy may end.
                     drop(stdin.take());
@@ -799,6 +1021,9 @@ fn run(
         }
     }
     drop(stdin);
+    // The turn is over: a subagent can't outlive it.
+    state.subagents.run_ended(if matches!(state.result, Some(Ok(_))) { AgentState::Done } else { AgentState::Failed });
+    tell(&mut state.subagents.agents, false);
     let status = if state.result.is_some() {
         // Ended already, or its output closed with the answer in: it may not
         // be gone yet, and is not waited for past AFTER_RESULT.
@@ -813,6 +1038,9 @@ fn run(
     if state.result.is_none() {
         let code = status.and_then(|s| s.code()).map(|c| c.to_string()).unwrap_or_default();
         return Err(failure(&stderr, &code));
+    }
+    if let Some(line) = &state.failed_line {
+        crate::log::line(format!("antigravity: the turn ended with an error: {line}"));
     }
     Ok(state)
 }
@@ -942,13 +1170,15 @@ pub async fn send(
     crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer);
     let _mail = crate::mail::agent_turn();
     // The computer usable while this turn runs, each action asked for by Lumo.
-    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, "antigravity", mode, grid));
+    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
 
     let app2 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
     let chat_id = chat.id().to_string();
     let usage_chat = chat_id.clone();
+    // The subagents agy delegates to, and the turn's sign of life.
+    let tell = chat_agents::teller(app, chat.id());
     let state = tauri::async_runtime::spawn_blocking(move || {
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
@@ -978,6 +1208,7 @@ pub async fn send(
                 by_tool.set(true);
                 emit("update_plan", plan.clone());
             },
+            &tell,
         )
     })
     .await
@@ -1006,12 +1237,22 @@ pub async fn send(
         }
         return Ok(ChatReply::stopped(shown, chat.cli_session()));
     }
+    let mut warning = None;
     let answer = match state.result {
         // The result repeats the answer; should it come back empty, what was
         // streamed is the answer.
         Some(Ok(text)) if text.trim().is_empty() => state.visible.trim().to_string(),
         Some(Ok(text)) => text,
-        Some(Err(e)) => return Err(result_error(&e)),
+        // An error with an answer written: the answer stays, the error is
+        // said under it. Without one, or signed out, the error alone.
+        Some(Err(e)) => {
+            let written = if state.failed_response.trim().is_empty() { state.visible.trim().to_string() } else { state.failed_response.clone() };
+            if is_auth_error(&e) || written.trim().is_empty() {
+                return Err(result_error(&e));
+            }
+            warning = Some(answer_warning(&e));
+            written
+        }
         None => unreachable!("run() returns an error without a result"),
     };
     let answer = chat::keep_lumo_lines(answer, &state.said);
@@ -1022,7 +1263,7 @@ pub async fn send(
         answer
     };
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply::answer(answer, chat.cli_session()))
+    Ok(ChatReply { warning, ..ChatReply::answer(answer, chat.cli_session()) })
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -1160,8 +1401,9 @@ async fn command(
         let stop = chat.stopper();
         let chat_id = chat.id().to_string();
         let input = user_event(&query);
+        let tell = chat_agents::teller(app, chat.id());
         let state = tauri::async_runtime::spawn_blocking(move || {
-            run(exe, args, input, work, &chat_id, stop, |_| {}, |a| events.activity(&app2, a), |_| {}, |_| {})
+            run(exe, args, input, work, &chat_id, stop, |_| {}, |a| events.activity(&app2, a), |_| {}, |_| {}, &tell)
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -1225,7 +1467,7 @@ pub(crate) fn help(
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
     crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled(), false);
     let _mail = crate::mail::agent_turn();
-    let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {})?;
+    let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {}, &chat_agents::silent())?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -1247,7 +1489,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
     let work = platform::local_dir().join("tool-review");
     let dir = work.to_string_lossy().to_string();
     let args = args_with_cards(model, "plan", None, &dir, &dir, &[], false);
-    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_| {})?;
+    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_| {}, &chat_agents::silent())?;
     match state.result {
         Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
         Some(Ok(text)) => Ok(text),
@@ -1549,6 +1791,48 @@ mod tests {
         assert_eq!(run.result, Some(Ok("ok".into())));
     }
 
+    /// agy's words when Gemini sent a tool call it could not read.
+    const MALFORMED: &str = "Your previous response contained an improperly formatted function call: Malformed function call: Failed to parse function call: Function call is empty - no input to parse.\nPlease retry with a properly formatted function call\nRetries remaining: 3";
+
+    #[test]
+    fn an_answer_that_ends_in_an_error_is_kept_with_the_error_and_logged_without_it() {
+        let mut run = Run::default();
+        let line = json!({ "event": "result", "result": { "status": "ERROR", "error": MALFORMED, "response": "Ecco gli appunti: 109 pagine." } }).to_string();
+        run.feed(line.as_bytes());
+        assert_eq!(run.result, Some(Err(MALFORMED.into())));
+        assert_eq!(run.failed_response, "Ecco gli appunti: 109 pagine.");
+        // The log has what agy said, never the answer itself.
+        let logged = run.failed_line.unwrap();
+        assert!(logged.contains("Retries remaining") && logged.contains("<29 characters>") && !logged.contains("appunti"));
+
+        // A result that went well leaves nothing for the log.
+        let mut ok = Run::default();
+        ok.feed(br#"{"event":"result","result":{"status":"SUCCESS","response":"ok"}}"#);
+        assert_eq!((ok.failed_line, ok.failed_response.as_str()), (None, ""));
+    }
+
+    #[test]
+    fn a_malformed_tool_call_is_said_in_plain_words_with_agys_own_line_apart() {
+        assert!(is_malformed_call(MALFORMED) && !is_malformed_call("quota exceeded"));
+        assert_eq!(error_words(MALFORMED), "Malformed function call: Failed to parse function call: Function call is empty - no input to parse.");
+        assert_eq!(error_words("quota exceeded"), "quota exceeded");
+
+        // No answer: what happened and what to do, then agy's line after the separator.
+        let said = result_error(MALFORMED);
+        let (plain, words) = said.split_once(crate::chat::ERROR_DETAIL).unwrap();
+        assert!(plain.contains("empty tool call") && plain.contains("continue"));
+        assert_eq!(words, format!("Antigravity CLI's message: {}", error_words(MALFORMED)));
+        assert!(!said.contains("Please retry"));
+        // Other errors are said as before.
+        assert_eq!(result_error("quota exceeded"), "Antigravity CLI: quota exceeded");
+
+        // With an answer: one line under it, and what to know on a click.
+        let w = answer_warning(MALFORMED);
+        assert_eq!(w.line, "Antigravity CLI reported a problem at the end");
+        assert!(w.detail.contains("empty tool call") && w.detail.ends_with(&error_words(MALFORMED)));
+        assert!(answer_warning("internal error").detail.contains("ended this turn with an error"));
+    }
+
     #[test]
     fn no_result_is_explained_and_a_missing_sign_in_says_so() {
         assert_eq!(failure("Error: authentication required. Run agy to sign in.\n", "1"), not_signed_in());
@@ -1684,5 +1968,108 @@ mod tests {
             ]
         );
         assert!(run.take_files().is_empty(), "once");
+    }
+
+    #[test]
+    fn a_subagent_agy_delegates_to_is_a_row_done_when_its_step_is() {
+        let mut run = Run::default();
+        let lines = [
+            r#"{"event":"step_update","step_index":3,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"browser_subagent","parameters":"{\"TaskName\":\"Check the pricing page\",\"Task\":\"Open the site\"}"}}"#,
+            r#"{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"agent_response","subagent_info":{"conversation_id":"sub-1"}}"#,
+            r#"{"event":"step_update","step_index":1,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"sub-1"},"tool_info":{"name":"read_url_content","parameters":{"Url":"https://www.example.com/pricing"}}}"#,
+            // Said again, and done: one step.
+            r#"{"event":"step_update","step_index":1,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"sub-1"},"tool_info":{"name":"read_url_content","parameters":{"Url":"https://www.example.com/pricing"}}}"#,
+            r#"{"event":"step_update","step_index":1,"state":"DONE","step_type":"tool","subagent_info":{"conversation_id":"sub-1"},"tool_info":{"name":"read_url_content"}}"#,
+        ];
+        for l in lines {
+            run.feed(l.as_bytes());
+        }
+        let rows = run.subagents.agents.changed();
+        assert_eq!(rows.len(), 1);
+        let a = run.subagents.agents.get("sub-1").unwrap();
+        assert_eq!((a.title.as_str(), a.source.as_str(), a.state), ("Check the pricing page", PROVIDER, AgentState::Working));
+        assert_eq!(a.steps, 1);
+        assert_eq!(a.now, Some(Activity::new("read", "example.com")));
+        assert!(!a.can_stop);
+        // The step that delegated is done: so is its subagent.
+        run.feed(br#"{"event":"step_update","step_index":3,"state":"DONE","step_type":"tool","tool_info":{"name":"browser_subagent","output":"..."}}"#);
+        assert_eq!(run.subagents.agents.get("sub-1").unwrap().state, AgentState::Done);
+        assert!(run.subagents.delegating.is_empty());
+
+        // One with no conversation is named by its step; an ERROR fails it with the tool's error.
+        let mut run = Run::default();
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"delegate_task","parameters":{}}}"#);
+        run.feed(br#"{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{},"tool_info":{"name":"run_command","parameters":{}}}"#);
+        let id = run.subagents.agents.changed()[0].id.clone();
+        assert!(id.starts_with("step-5-"), "{id}");
+        assert_eq!(run.subagents.agents.get(&id).unwrap().title, "delegate task");
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"ERROR","step_type":"tool","tool_info":{"name":"delegate_task","error":{"type":"FAILED","message":"Browser crashed"}}}"#);
+        let a = run.subagents.agents.get(&id).unwrap();
+        assert_eq!((a.state, a.error.as_deref()), (AgentState::Failed, Some("Browser crashed")));
+    }
+
+    #[test]
+    fn two_delegations_at_once_each_name_and_end_their_own_subagent() {
+        let delegate = |index: u64, task: &str| format!(r#"{{"event":"step_update","step_index":{index},"state":"ACTIVE","step_type":"tool","tool_info":{{"name":"browser_subagent","parameters":{{"TaskName":"{task}"}}}}}}"#);
+        let sub_step = |info: &str| format!(r#"{{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{info},"tool_info":{{"name":"run_command","parameters":{{}}}}}}"#);
+        let done = |index: u64| format!(r#"{{"event":"step_update","step_index":{index},"state":"DONE","step_type":"tool","tool_info":{{"name":"browser_subagent"}}}}"#);
+
+        // With no conversation: the id, the title and the end come from the same step.
+        let mut run = Run::default();
+        for l in [delegate(3, "Pricing"), delegate(4, "Docs"), sub_step("{}"), sub_step("{}")] {
+            run.feed(l.as_bytes());
+        }
+        let rows = run.subagents.agents.changed();
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(rows[0].id.starts_with("step-3-") && rows[1].id.starts_with("step-4-"), "{rows:?}");
+        assert_eq!((rows[0].title.as_str(), rows[1].title.as_str()), ("Pricing", "Docs"));
+        run.feed(done(3).as_bytes());
+        assert_eq!(run.subagents.agents.get(&rows[0].id).unwrap().state, AgentState::Done);
+        assert_eq!(run.subagents.agents.get(&rows[1].id).unwrap().state, AgentState::Working, "step 4 still runs");
+
+        // With their conversations: each delegation has one subagent, and ends only it.
+        let mut run = Run::default();
+        for l in [delegate(3, "Pricing"), delegate(4, "Docs"), sub_step(r#"{"conversation_id":"a"}"#), sub_step(r#"{"conversation_id":"b"}"#), sub_step(r#"{"conversation_id":"a"}"#)] {
+            run.feed(l.as_bytes());
+        }
+        run.feed(done(4).as_bytes());
+        let (a, b) = (run.subagents.agents.get("a").unwrap(), run.subagents.agents.get("b").unwrap());
+        assert_eq!((a.title.as_str(), a.state), ("Pricing", AgentState::Working));
+        assert_eq!((b.title.as_str(), b.state), ("Docs", AgentState::Done));
+    }
+
+    #[test]
+    fn a_subagent_named_by_its_step_is_another_one_in_the_next_turn() {
+        // Two turns, each delegating at step 5 to a subagent with no
+        // conversation, and one with neither: four rows, never the same id.
+        let ids = |run: &mut Run| {
+            run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"delegate_task","parameters":{}}}"#);
+            run.feed(br#"{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{},"tool_info":{"name":"run_command"}}"#);
+            run.feed(br#"{"event":"step_update","step_index":5,"state":"DONE","step_type":"tool","tool_info":{"name":"delegate_task"}}"#);
+            run.subagents.step(0, false, &json!({ "step_type": "tool", "subagent_info": {} }));
+            run.subagents.agents.changed().into_iter().map(|r| r.id).collect::<Vec<_>>()
+        };
+        let first = ids(&mut Run::default());
+        let second = ids(&mut Run::default());
+        assert_eq!((first.len(), second.len()), (2, 2), "{first:?} {second:?}");
+        assert!(first[0].starts_with("step-5-") && first[1].starts_with("subagent-"));
+        assert!(first.iter().all(|id| !second.contains(id)), "{first:?} {second:?}");
+    }
+
+    #[test]
+    fn a_subagent_still_open_when_the_turn_ends_ends_with_it() {
+        let mut sub = Subagents::default();
+        sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "a" }, "tool_info": { "name": "view_file" } }));
+        sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "b" }, "tool_info": { "name": "view_file" } }));
+        assert_eq!(sub.agents.get("a").unwrap().title, "Agent", "no step named it");
+        sub.agents.touch("a").unwrap().end(AgentState::Done, None);
+        sub.run_ended(AgentState::Failed);
+        assert_eq!(sub.agents.get("a").unwrap().state, AgentState::Done);
+        let b = sub.agents.get("b").unwrap();
+        assert_eq!((b.state, b.error.as_deref()), (AgentState::Failed, Some("Antigravity CLI ended")));
+        let mut sub = Subagents::default();
+        sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "c" } }));
+        sub.run_ended(AgentState::Done);
+        assert!(sub.agents.get("c").unwrap().error.is_none());
     }
 }

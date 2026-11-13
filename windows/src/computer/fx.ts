@@ -20,7 +20,9 @@ export type Fx =
   | { kind: "scroll"; at: [number, number]; dx: number; dy: number }
   | { kind: "type"; at: [number, number]; text: string }
   | { kind: "key"; at: [number, number]; keys: string }
-  | { kind: "wait"; at: [number, number]; ms: number };
+  | { kind: "wait"; at: [number, number]; ms: number }
+  /** The user moved or clicked the mouse while the agent holds it: who has it, and that Esc pauses (near the user's pointer). */
+  | { kind: "hint"; at: [number, number]; agent: string };
 
 /**
  * Ease in and out (cubic): the same curve computer.rs moves the real mouse
@@ -122,3 +124,23 @@ export function typedTail(text: string, max = 28): string {
   const chars = [...line];
   return chars.length <= max ? line : `…${chars.slice(chars.length - max + 1).join("")}`;
 }
+
+/**
+ * Where the pointer hint goes (its top-left corner, CSS pixels): below and to
+ * the right of the user's pointer at `p`, clear of the arrow; turned to the
+ * other side of it where the `w`×`h` screen ends, and kept whole on it.
+ */
+export function hintBox(p: { x: number; y: number }, boxW: number, boxH: number, w: number, h: number): { left: number; top: number } {
+  const GAP_X = 16;
+  const GAP_Y = 22;
+  const MARGIN = 8;
+  let left = p.x + GAP_X;
+  let top = p.y + GAP_Y;
+  if (left + boxW > w - MARGIN) left = p.x - GAP_X - boxW;
+  if (top + boxH > h - MARGIN) top = p.y - GAP_Y / 2 - boxH;
+  const keep = (c: number, size: number, room: number) => Math.min(Math.max(c, MARGIN), Math.max(MARGIN, room - size - MARGIN));
+  return { left: keep(left, boxW, w), top: keep(top, boxH, h) };
+}
+
+/** How long the pointer hint stays before it fades, ms. */
+export const HINT_MS = 2500;

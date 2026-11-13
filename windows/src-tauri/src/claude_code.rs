@@ -35,11 +35,12 @@
 // shows, `chat-activity` events say what Claude Code is doing (thinking,
 // reading a file, running a command…), read off the tool calls it streams.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -47,6 +48,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, Chats, ModelInfo, Stop};
+use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, StopAgent, Tell};
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
@@ -87,15 +89,16 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. ",
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
+Lumo shows the user your plan on its Plan island. When the job uses the computer, its plan goes in Lumo's update_plan tool, as said above, not in TaskCreate or TodoWrite. Whenever the user gives you another job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
     crate::chat::rich_note!()
 );
 
-/// Lumo's computer use tools that only look: Claude Code runs them without asking.
-const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait";
+/// Lumo's computer use tools that only look, and its plan tool, which the
+/// computer needs first (computer.rs): Claude Code runs them without asking.
+const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait mcp__lumo__update_plan";
 
 /// The island's timer and GitHub tools (island_tools.rs): they only start what
 /// the user asked for, so Claude Code runs them without asking.
@@ -137,13 +140,10 @@ fn mcp_config(computer: bool, tools: bool, island: bool, mail: &str) -> Value {
     if computer || island || !mail.is_empty() {
         let mut server = crate::computer::server_entry();
         server["type"] = json!("stdio");
-        if island || !mail.is_empty() {
-            let kits: Vec<&str> = [computer.then_some("computer"), (!mail.is_empty()).then_some(mail), island.then_some("island")]
-                .into_iter()
-                .flatten()
-                .collect();
-            server["args"] = json!(["--mcp", format!("--tools={}", kits.join(","))]);
-        }
+        // The computer always with Lumo's plan tool: no plan, no computer (computer.rs).
+        let kits: Vec<&str> =
+            [computer.then_some("computer,plan"), (!mail.is_empty()).then_some(mail), island.then_some("island")].into_iter().flatten().collect();
+        server["args"] = json!(["--mcp", format!("--tools={}", kits.join(","))]);
         servers.insert("lumo".into(), server);
     }
     if tools {
@@ -523,7 +523,7 @@ fn command_of(query: &str) -> Option<&str> {
 
 /// What the answer is doing while no text shows: the line next to the island's
 /// typing dots (`chat-activity`, worded by views/chat.ts). `kind` is one of
-/// thinking, read, search, command, edit, web, subtask, plan, screen, tool;
+/// thinking, read, search, command, edit, web, subtask, talk, plan, screen, tool;
 /// `detail` is a file name, a host, a search pattern or a tool's name, cut
 /// short — never a full path.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -673,6 +673,12 @@ fn activity_for(name: &str, input: &Value) -> Activity {
             h => Activity::new("read", h),
         },
         "Task" | "Agent" => Activity::new("subtask", ""),
+        // A message to one of its agents: who to (Run names the agent by its title).
+        "SendMessage" => match field(&["to"]) {
+            // An agent's answer to the conversation that started it.
+            to if to == "main" => Activity::new("talk", ""),
+            to => Activity::new("talk", short(&to)),
+        },
         "TodoWrite" | "TodoRead" | "EnterPlanMode" | "ExitPlanMode" => Activity::new("plan", ""),
         // Lumo's computer use (computer.rs): looking, or using the computer.
         "mcp__lumo__screenshot" | "mcp__lumo__zoom" => Activity::new("screen", ""),
@@ -688,6 +694,555 @@ fn activity_for(name: &str, input: &Value) -> Activity {
 /// A line of the main conversation, not of a subagent (those carry a parent).
 fn top_level(v: &Value) -> bool {
     v.get("parent_tool_use_id").map(Value::is_null).unwrap_or(true)
+}
+
+// ── The agents it starts ──────────────────────────────────────────────────────
+//
+// Claude Code's Agent tool starts agents of its own, often in the background:
+// the turn that started them ends while they work, and they report in turns
+// Claude Code takes by itself later. Its stream tells each one's life on
+// `system` lines (`task_started`, `task_progress`, `task_updated`,
+// `task_notification`), and carries each agent's own messages, marked with
+// the Agent tool call that started it (`parent_tool_use_id`). A chat keeps
+// them for as long as its Claude Code lives (`AgentLink`), across turns and
+// between them, for the island's Agents card (chat_agents.rs).
+
+/// An agent writing on and on, with no tool call, is said to be alive this
+/// often (epoch ms): not on every piece of its text.
+const AGENT_ALIVE_EVERY: u64 = 5_000;
+
+/// The agents of a chat's Claude Code, as its stream told them.
+#[derive(Default, Debug)]
+struct Subagents {
+    agents: Agents,
+    /// The Agent tool call that started each agent → its task id: the
+    /// agent's own messages name the call, never the task.
+    by_call: HashMap<String, String>,
+    /// The tool calls each agent made, as its own messages showed them.
+    counted: HashMap<String, u64>,
+    /// The tool calls of agents not answered yet → the agent, for the
+    /// permission checks that name only the call.
+    calls: HashMap<String, String>,
+    /// The `stop_task` requests Lumo sent, not answered yet → the agent each
+    /// stops. Claude Code says a stopped agent ended only by answering the
+    /// request: it sends no `task_notification` for it.
+    stopping: HashMap<String, String>,
+    /// Claude Code offers SendMessage (its `init` line lists it): the chat may
+    /// pass its agents a message.
+    can_message: bool,
+    /// The Agent call that started each agent, kept after it ended: a message
+    /// resumes it, and its new lines name that call again.
+    origin: HashMap<String, String>,
+    /// The name an Agent call gave its agent → the call; then → the task, once it started.
+    names: HashMap<String, String>,
+    named: HashMap<String, String>,
+    /// SendMessage calls not answered yet → the agent each went to.
+    talks: HashMap<String, String>,
+}
+
+/// A field's text, when there is some.
+fn text_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
+    v[key].as_str().map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// The first text of a tool result's content (a text, or text parts): an
+/// agent's last message, before what Claude Code adds after it (its id, its usage).
+fn result_text(content: &Value) -> Option<&str> {
+    match content {
+        Value::String(s) => Some(s.trim()).filter(|s| !s.is_empty()),
+        Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str()).map(str::trim).find(|s| !s.is_empty()),
+        _ => None,
+    }
+}
+
+/// A task Claude Code started that is an agent, not a command it left
+/// running in the background (`local_bash`): those have no card.
+fn is_agent_task(v: &Value) -> bool {
+    match v["task_type"].as_str() {
+        Some("local_agent") => true,
+        Some(_) => text_of(v, "subagent_type").is_some(),
+        None => text_of(v, "subagent_type").is_some() || text_of(v, "description").is_some(),
+    }
+}
+
+/// An agent's title: its task as Claude Code described it, else its kind.
+fn agent_title(v: &Value) -> String {
+    text_of(v, "description").or_else(|| text_of(v, "subagent_type")).map(str::to_string).unwrap_or_else(|| t("Agent"))
+}
+
+/// The state a task's status ends it in; None while it runs.
+fn final_state(status: &str) -> Option<AgentState> {
+    match status {
+        "completed" | "done" | "success" => Some(AgentState::Done),
+        "failed" | "error" => Some(AgentState::Failed),
+        "stopped" | "killed" | "cancelled" | "canceled" | "interrupted" => Some(AgentState::Stopped),
+        _ => None,
+    }
+}
+
+/// The error a task line gives: a text, or an object with a message.
+fn error_of(v: &Value) -> Option<String> {
+    text_of(v, "error").or_else(|| text_of(&v["error"], "message")).map(str::to_string)
+}
+
+impl Subagents {
+    /// One line of the stream, whichever turn (or none) it belongs to.
+    fn feed(&mut self, v: &Value) {
+        match v["type"].as_str() {
+            Some("system") => self.system(v),
+            Some("assistant") if !top_level(v) => self.tools_of(v),
+            Some("assistant") => self.main_tools(v),
+            Some("user") if !top_level(v) => self.results_of(v),
+            Some("user") => self.agent_results(v),
+            Some("stream_event") if !top_level(v) => self.writing(v),
+            Some("control_response") => self.stop_answered(&v["response"]),
+            _ => {}
+        }
+    }
+
+    /// Lumo asks Claude Code to stop the agent `id` with the request `request`.
+    fn stop_sent(&mut self, request: String, id: &str) {
+        self.stopping.insert(request, id.to_string());
+    }
+
+    /// Claude Code's answer to a request: a `stop_task` of Lumo's done is
+    /// the agent stopped (one that failed, as for an agent that ended
+    /// meanwhile, changes nothing).
+    fn stop_answered(&mut self, response: &Value) {
+        let Some(id) = response["request_id"].as_str().and_then(|r| self.stopping.remove(r)) else { return };
+        if response["subtype"] != "success" {
+            return;
+        }
+        if let Some(row) = self.open_row(&id) {
+            row.end(AgentState::Stopped, None);
+        }
+        self.forget(&id);
+    }
+
+    /// The main conversation's tool results: the Agent call of an agent that
+    /// worked in the foreground answered is that agent's end, the one sure
+    /// sign of it (Claude Code tells the end of background agents only).
+    /// One launched in the background, or moved there, is answered at once
+    /// (`async_launched`): it goes on.
+    fn agent_results(&mut self, v: &Value) {
+        let launched = v["tool_use_result"]["status"] == "async_launched" || v["tool_use_result"]["isAsync"] == true;
+        for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result") {
+            if let Some(call) = block["tool_use_id"].as_str() {
+                if let Some(id) = self.talks.remove(call) {
+                    if block["is_error"] == true {
+                        let why = result_text(&block["content"]).map(chat_agents::summary_of).unwrap_or_default();
+                        if let Some(talk) = self.agents.touch(&id).and_then(|r| r.talk.as_mut()).filter(|t| t.call == call && t.pending()) {
+                            talk.failed = Some(why);
+                        }
+                    }
+                    continue;
+                }
+            }
+            let Some(id) = block["tool_use_id"].as_str().and_then(|call| self.by_call.get(call)).cloned() else { continue };
+            if self.agents.get(&id).is_none_or(|r| r.background || r.state.is_final()) {
+                continue;
+            }
+            if launched {
+                if let Some(row) = self.open_row(&id) {
+                    row.background = true;
+                }
+                continue;
+            }
+            let text = result_text(&block["content"]).map(chat_agents::summary_of);
+            let Some(row) = self.open_row(&id) else { continue };
+            if block["is_error"] == true {
+                row.end(AgentState::Failed, text);
+            } else {
+                if let Some(text) = text {
+                    row.summary = Some(text);
+                }
+                row.end(AgentState::Done, None);
+            }
+            self.forget(&id);
+        }
+    }
+
+    /// Whether Claude Code offers SendMessage, as its `init` line says (each
+    /// turn): the agents learn whether the chat can ask them.
+    fn offers(&mut self, can_message: bool) {
+        self.can_message = can_message;
+        let ids: Vec<String> = self.agents.ids().filter(|id| self.agents.get(id).is_some_and(|r| r.can_ask != can_message)).collect();
+        for id in ids {
+            if let Some(row) = self.agents.touch(&id) {
+                row.can_ask = can_message;
+            }
+        }
+    }
+
+    /// The agent a SendMessage `to` names: its task id (Claude Code's agentId),
+    /// or the name its Agent call gave it. Another session, a teammate or
+    /// "main" is none of the chat's agents.
+    fn resolve(&self, to: &str) -> Option<String> {
+        let to = to.trim();
+        // A pinned name may come with its reference ("counter [26c776]").
+        let to = match to.rfind(" [") {
+            Some(at) if to.ends_with(']') => to[..at].trim(),
+            _ => to,
+        };
+        if self.agents.get(to).is_some() {
+            return Some(to.to_string());
+        }
+        self.named.get(to).cloned()
+    }
+
+    /// The title of the agent a SendMessage `to` names, for the typing line.
+    fn title_for(&self, to: &str) -> Option<String> {
+        self.resolve(to).and_then(|id| self.agents.get(&id).map(|r| r.title.clone()))
+    }
+
+    /// The main conversation's whole message: the names its Agent calls give,
+    /// and the messages it sends its agents (the island's "Talking to …").
+    fn main_tools(&mut self, v: &Value) {
+        for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_use") {
+            let call = block["id"].as_str().unwrap_or("");
+            let input = &block["input"];
+            match block["name"].as_str() {
+                Some("Agent" | "Task") => {
+                    if let Some(name) = text_of(input, "name").filter(|_| !call.is_empty()) {
+                        self.names.insert(call.to_string(), name.to_string());
+                    }
+                }
+                Some("SendMessage") if !call.is_empty() => {
+                    let Some(id) = text_of(input, "to").and_then(|to| self.resolve(to)) else { continue };
+                    let message = text_of(input, "message").or_else(|| text_of(input, "content")).unwrap_or("");
+                    let Some(row) = self.agents.touch(&id) else { continue };
+                    if row.talk.as_ref().is_some_and(|t| t.call == call) {
+                        continue;
+                    }
+                    row.talk = Some(AgentTalk::new(call, message));
+                    self.talks.insert(call.to_string(), id);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// The agent `id`, while it is at work, marked changed: one that ended never changes.
+    fn open_row(&mut self, id: &str) -> Option<&mut AgentRow> {
+        if self.agents.get(id)?.state.is_final() {
+            return None;
+        }
+        self.agents.touch(id)
+    }
+
+    /// The agent a subagent's line belongs to, by the Agent call that started it.
+    fn agent_of(&self, v: &Value) -> Option<String> {
+        v["parent_tool_use_id"].as_str().and_then(|call| self.by_call.get(call)).cloned()
+    }
+
+    /// An agent ended: what was kept to follow it goes.
+    fn forget(&mut self, id: &str) {
+        self.by_call.retain(|_, task| task != id);
+        self.calls.retain(|_, task| task != id);
+        self.stopping.retain(|_, task| task != id);
+        self.counted.remove(id);
+    }
+
+    fn system(&mut self, v: &Value) {
+        let subtype = v["subtype"].as_str().unwrap_or("");
+        if subtype == "permission_check_status" {
+            return self.checking(v);
+        }
+        if subtype == "init" {
+            return self.offers(v["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "SendMessage")));
+        }
+        let Some(id) = text_of(v, "task_id").map(str::to_string) else { return };
+        match subtype {
+            "task_started" => {
+                if !is_agent_task(v) {
+                    return;
+                }
+                let title = agent_title(v);
+                let can_ask = self.can_message;
+                let row = self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title));
+                // Started again: a message (SendMessage) took it up after it ended.
+                let resumed = row.state.is_final();
+                row.reopen();
+                row.can_stop = true;
+                row.can_ask = can_ask;
+                if let Some(background) = v["is_backgrounded"].as_bool() {
+                    row.background = background;
+                }
+                if resumed {
+                    // Its lines name the Agent call that first started it.
+                    if let Some(call) = self.origin.get(&id).cloned() {
+                        self.by_call.insert(call, id.clone());
+                    }
+                } else if let Some(call) = text_of(v, "tool_use_id") {
+                    self.origin.insert(id.clone(), call.to_string());
+                    if let Some(name) = self.names.remove(call) {
+                        self.named.insert(name, id.clone());
+                    }
+                }
+                if let Some(call) = text_of(v, "tool_use_id") {
+                    self.by_call.insert(call.to_string(), id);
+                }
+            }
+            "task_progress" => {
+                // An agent heard of first here, its start unseen: only one that says its kind.
+                if self.agents.get(&id).is_none() {
+                    if text_of(v, "subagent_type").is_none() {
+                        return;
+                    }
+                    let title = agent_title(v);
+                    self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title)).can_stop = true;
+                }
+                if let Some(call) = text_of(v, "tool_use_id") {
+                    self.by_call.insert(call.to_string(), id.clone());
+                }
+                let counted = self.counted.get(&id).copied().unwrap_or(0);
+                let Some(row) = self.open_row(&id) else { return };
+                if let Some(description) = text_of(v, "description") {
+                    row.title = short(description);
+                }
+                let usage = &v["usage"];
+                if let Some(tokens) = usage["total_tokens"].as_u64() {
+                    row.tokens = Some(tokens);
+                }
+                row.steps = row.steps.max(usage["tool_uses"].as_u64().unwrap_or(0)).max(counted);
+                if let Some(summary) = text_of(v, "summary") {
+                    row.summary = Some(chat_agents::summary_of(summary));
+                }
+                // Only the tool's name: what the agent's own message said of it
+                // (the file, the search) stays when it is the same kind.
+                if let Some(tool) = text_of(v, "last_tool_name") {
+                    let now = activity_for(tool, &Value::Null);
+                    if row.now.as_ref().map(|a| a.kind) != Some(now.kind) {
+                        row.now = Some(now);
+                    }
+                }
+            }
+            "task_updated" => {
+                let patch = &v["patch"];
+                let Some(row) = self.open_row(&id) else { return };
+                if let Some(description) = text_of(patch, "description") {
+                    row.title = short(description);
+                }
+                if let Some(background) = patch["is_backgrounded"].as_bool() {
+                    row.background = background;
+                }
+                if let Some(state) = patch["status"].as_str().and_then(final_state) {
+                    row.end(state, error_of(patch).filter(|_| state == AgentState::Failed));
+                    self.forget(&id);
+                }
+            }
+            "task_notification" => {
+                // Its last word comes after `task_updated` ended it: kept all the same.
+                let Some(row) = self.agents.touch(&id) else { return };
+                if let Some(talk) = row.talk.as_mut() {
+                    talk.answer(text_of(v, "summary").unwrap_or(""));
+                }
+                let summary = text_of(v, "summary").map(chat_agents::summary_of);
+                if let Some(summary) = &summary {
+                    row.summary = Some(summary.clone());
+                }
+                if let Some(tokens) = v["usage"]["total_tokens"].as_u64() {
+                    row.tokens = Some(tokens);
+                }
+                if let Some(uses) = v["usage"]["tool_uses"].as_u64() {
+                    row.steps = row.steps.max(uses);
+                }
+                if let Some(state) = v["status"].as_str().and_then(final_state) {
+                    let error = (state == AgentState::Failed).then(|| error_of(v).or(summary)).flatten();
+                    row.end(state, error);
+                    self.forget(&id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Auto mode's check of a tool call (`permission_check_status`): the agent
+    /// that made the call waits while it runs.
+    fn checking(&mut self, v: &Value) {
+        let by_agent = text_of(v, "agent_id").filter(|a| self.agents.get(a).is_some()).map(str::to_string);
+        let Some(id) = by_agent.or_else(|| text_of(v, "tool_use_id").and_then(|call| self.calls.get(call)).cloned()) else { return };
+        let checking = v["status"].as_str() == Some("checking");
+        let Some(row) = self.open_row(&id) else { return };
+        if checking {
+            row.state = AgentState::Waiting;
+            row.waiting_for = Some("permission");
+        } else if row.state == AgentState::Waiting {
+            row.state = AgentState::Working;
+            row.waiting_for = None;
+        }
+    }
+
+    /// A subagent's whole message: what its last tool call does, and how many it made.
+    fn tools_of(&mut self, v: &Value) {
+        let Some(id) = self.agent_of(v) else { return };
+        let mut tools: Vec<(String, Activity)> = Vec::new();
+        for block in v["message"]["content"].as_array().into_iter().flatten() {
+            // Its answer to a message the chat sent it.
+            if block["type"] == "tool_use" && block["name"] == "SendMessage" && text_of(&block["input"], "to") == Some("main") {
+                let message = text_of(&block["input"], "message").or_else(|| text_of(&block["input"], "content")).unwrap_or("");
+                if let Some(talk) = self.agents.touch(&id).and_then(|r| r.talk.as_mut()) {
+                    talk.answer(message);
+                }
+            }
+            if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
+                tools.push((block["id"].as_str().unwrap_or("").to_string(), activity_for(block["name"].as_str().unwrap_or(""), &block["input"])));
+            }
+        }
+        for (call, _) in tools.iter().filter(|(c, _)| !c.is_empty()) {
+            self.calls.insert(call.clone(), id.clone());
+        }
+        let counted = {
+            let n = self.counted.entry(id.clone()).or_insert(0);
+            *n += tools.len() as u64;
+            *n
+        };
+        let Some(row) = self.open_row(&id) else { return };
+        row.steps = row.steps.max(counted);
+        if let Some((_, now)) = tools.pop() {
+            row.now = Some(now);
+            // A new call: whatever it waited for is over.
+            if row.state == AgentState::Waiting {
+                row.state = AgentState::Working;
+                row.waiting_for = None;
+            }
+        }
+    }
+
+    /// A subagent's tool results: its calls answered, and a sign it is alive.
+    fn results_of(&mut self, v: &Value) {
+        for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result") {
+            if let Some(call) = block["tool_use_id"].as_str() {
+                self.calls.remove(call);
+            }
+        }
+        if let Some(id) = self.agent_of(v) {
+            self.open_row(&id);
+        }
+    }
+
+    /// A piece of a subagent's message being written: a sign it is alive, now and then.
+    fn writing(&mut self, v: &Value) {
+        let Some(id) = self.agent_of(v) else { return };
+        let due = self.agents.get(&id).is_some_and(|r| chat_agents::now_ms().saturating_sub(r.last_signal_at) >= AGENT_ALIVE_EVERY);
+        if due {
+            self.open_row(&id);
+        }
+    }
+}
+
+/// A chat's Claude Code's agents, kept for as long as it lives, and who is
+/// told of them (`Tell`): the thread reading a turn and the one reading
+/// between turns tell the same.
+#[derive(Clone)]
+struct AgentLink {
+    subagents: Arc<Mutex<Subagents>>,
+    tell: Tell,
+}
+
+impl AgentLink {
+    fn new(tell: Tell) -> Self {
+        AgentLink { subagents: Arc::default(), tell }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Subagents> {
+        self.subagents.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// What changed goes to the island, with a sign of life when `alive`.
+    fn tell(&self, alive: bool) {
+        let mut subagents = self.lock();
+        (self.tell)(&mut subagents.agents, alive);
+    }
+
+    /// `tell`, with a sign of life only while agents are at work: between two
+    /// turns a line says the chat's answer moved only through them.
+    fn tell_while_open(&self) {
+        let mut subagents = self.lock();
+        let alive = subagents.agents.open() > 0;
+        (self.tell)(&mut subagents.agents, alive);
+    }
+
+    /// The agents still at work.
+    fn open(&self) -> usize {
+        self.lock().agents.open()
+    }
+
+    /// Its Claude Code ended: the agents still at work ended with it.
+    fn ended(&self) {
+        self.ended_as(AgentState::Failed);
+    }
+
+    /// Its Claude Code ended, and its agents still at work as `state` says:
+    /// stopped when the user's Stop ended it, failed when it ended by itself.
+    fn ended_as(&self, state: AgentState) {
+        let mut subagents = self.lock();
+        if subagents.agents.open() > 0 {
+            let error = if state == AgentState::Failed { cli_ended() } else { String::new() };
+            subagents.agents.end_open(state, &error);
+        }
+        // Nothing passes them a message any more: Ask goes, and a message
+        // still waiting for its answer gets none.
+        subagents.can_message = false;
+        let pending = |r: &AgentRow| r.can_ask || r.talk.as_ref().is_some_and(AgentTalk::pending);
+        let ids: Vec<String> = subagents.agents.ids().filter(|id| subagents.agents.get(id).is_some_and(pending)).collect();
+        for id in ids {
+            if let Some(row) = subagents.agents.touch(&id) {
+                row.can_ask = false;
+                if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
+                    talk.failed = Some(cli_ended());
+                }
+            }
+        }
+        (self.tell)(&mut subagents.agents, false);
+    }
+}
+
+/// What an agent still at work when its Claude Code ended says (its error).
+fn cli_ended() -> String {
+    tf("{agent} ended", &[("agent", "Claude Code")])
+}
+
+/// Asks Claude Code to stop one of its agents (`task`), keeping the rest:
+/// the request's id (its answer names it), and the line.
+fn stop_task_line(task: &str) -> (String, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let request = format!("lumo-stop-{}", NEXT.fetch_add(1, Ordering::SeqCst));
+    let line = format!("{}\n", json!({ "type": "control_request", "request_id": request, "request": { "subtype": "stop_task", "task_id": task } }));
+    (request, line)
+}
+
+/// What stops one agent of a chat's Claude Code (chat_agents.rs `stop`):
+/// `stop_task` on its stdin, for an agent of its still at work (one that
+/// ended, or none of its, has nothing to stop). It holds neither: once that
+/// Claude Code is gone, there is nothing to stop. It works during a turn
+/// too, while the Claude Code is out of LIVES. The request is noted, so its
+/// answer ends the agent's row (`Subagents::stop_answered`).
+fn agent_stopper<W: Write + Send + 'static>(stdin: &Arc<Mutex<W>>, link: &AgentLink) -> StopAgent {
+    let stdin = Arc::downgrade(stdin);
+    let subagents = Arc::downgrade(&link.subagents);
+    Box::new(move |id: &str| {
+        let Some(subagents) = subagents.upgrade() else { return Ok(()) };
+        let (stdin, line) = {
+            let mut subagents = subagents.lock().unwrap_or_else(|e| e.into_inner());
+            if !subagents.agents.get(id).is_some_and(|r| !r.state.is_final()) {
+                return Ok(());
+            }
+            let stdin = stdin.upgrade().ok_or_else(cli_ended)?;
+            // Noted before it goes, so its answer always finds it; written
+            // out of the lock, so the thread reading the stream never waits on stdin.
+            let (request, line) = stop_task_line(id);
+            subagents.stop_sent(request, id);
+            (stdin, line)
+        };
+        write_stdin(&stdin, &line).map_err(|_| cli_ended())
+    })
+}
+
+/// Writes `text` whole on a chat's Claude Code's stdin: an error once it is gone.
+fn write_stdin(stdin: &Mutex<impl Write>, text: &str) -> std::io::Result<()> {
+    let mut pipe = stdin.lock().unwrap_or_else(|e| e.into_inner());
+    pipe.write_all(text.as_bytes()).and_then(|_| pipe.flush())
 }
 
 // ── Reading the stream ────────────────────────────────────────────────────────
@@ -743,6 +1298,9 @@ struct Run {
     /// How many background tasks (commands, agents) Claude Code last said are
     /// running (`background_tasks_changed`), if it said.
     tasks: Option<usize>,
+    /// The chat's agents, which every line is told too (`Subagents`): kept
+    /// over the turns, so a run only shares them.
+    subagents: Option<Arc<Mutex<Subagents>>>,
 }
 
 /// The tokens a message's `usage` says the conversation fills: what the model
@@ -804,6 +1362,24 @@ fn created_task_id(line: &Value, result: &Value) -> Option<String> {
 }
 
 impl Run {
+    /// What a tool call of the main conversation is doing: a message to one
+    /// of its agents names that agent by its title, as its row does.
+    fn tool_activity(&self, name: &str, input: &Value) -> Activity {
+        let mut activity = activity_for(name, input);
+        if activity.kind == "talk" {
+            let title = self.subagents.as_ref().and_then(|s| s.lock().unwrap_or_else(|e| e.into_inner()).title_for(&activity.detail));
+            if let Some(title) = title {
+                activity.detail = title;
+            }
+        }
+        activity
+    }
+
+    /// A run whose lines also tell the chat's agents (`link`).
+    fn linked(link: &AgentLink) -> Self {
+        Run { subagents: Some(link.subagents.clone()), ..Run::default() }
+    }
+
     /// The plan tool calls seen since the last time, oldest first.
     fn take_plans(&mut self) -> Vec<(String, Value)> {
         std::mem::take(&mut self.plans)
@@ -853,6 +1429,9 @@ impl Run {
         if let Some(id) = v.get("session_id").and_then(Value::as_str).and_then(safe_session) {
             self.session = Some(id.to_string());
         }
+        if let Some(subagents) = &self.subagents {
+            subagents.lock().unwrap_or_else(|e| e.into_inner()).feed(&v);
+        }
         match v.get("type").and_then(Value::as_str) {
             Some("stream_event") => {
                 // Messages of subagents carry a parent: only the main conversation
@@ -898,7 +1477,8 @@ impl Run {
                         if let Some(pos) = self.blocks.iter().position(|b| b.0 == index) {
                             let (_, id, name, input) = self.blocks.remove(pos);
                             let input = serde_json::from_str::<Value>(&input).unwrap_or(Value::Null);
-                            self.started_tool(id, activity_for(&name, &input));
+                            let activity = self.tool_activity(&name, &input);
+                            self.started_tool(id, activity);
                         }
                         false
                     }
@@ -932,7 +1512,8 @@ impl Run {
                     if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                         let name = block["name"].as_str().unwrap_or("");
                         let id = block["id"].as_str().unwrap_or("").to_string();
-                        self.started_tool(id.clone(), activity_for(name, &block["input"]));
+                        let activity = self.tool_activity(name, &block["input"]);
+                        self.started_tool(id.clone(), activity);
                         if name == "TaskCreate" {
                             self.creating.push((id.clone(), block["input"].clone()));
                         } else if is_plan_tool(name) {
@@ -1158,7 +1739,9 @@ enum Ended {
 /// changes, `on_file` each file a tool read or wrote once it ran, `on_plan`
 /// each plan tool call (name, whole input). On Stop,
 /// `interrupt` asks the CLI to end the turn and says whether it could; the
-/// turn then goes on until its result, for INTERRUPT_GRACE at most.
+/// turn then goes on until its result, for INTERRUPT_GRACE at most. `link`:
+/// the chat's agents, told of every line, with a sign of life for each.
+#[allow(clippy::too_many_arguments)]
 fn read_turn(
     rx: &mpsc::Receiver<Vec<u8>>,
     stop: &Stop,
@@ -1167,11 +1750,12 @@ fn read_turn(
     mut on_activity: impl FnMut(&Activity),
     mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&str, &Value),
+    link: Option<&AgentLink>,
 ) -> (Run, Ended) {
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     // Text the island was not shown yet (it is told at most every DELTA_INTERVAL).
     let mut unsent = false;
-    let mut state = Run::default();
+    let mut state = link.map(Run::linked).unwrap_or_default();
     let mut interrupted: Option<Instant> = None;
     // No time limit: a long piece of work, or a card nobody clicked yet, goes
     // on until it ends or the user presses Stop.
@@ -1190,6 +1774,9 @@ fn read_turn(
         match rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
+                if let Some(link) = link {
+                    link.tell(true);
+                }
                 let activity = state.take_activity();
                 // What was written goes before what is done next, in order.
                 if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) && !state.stopped {
@@ -1250,7 +1837,7 @@ fn run(
     }
     let stderr = read_stderr(&mut child);
     let rx = read_lines(&mut child, MAX_TOTAL)?;
-    let (state, ended) = read_turn(&rx, &stop, || false, on_text, on_activity, on_file, on_plan);
+    let (state, ended) = read_turn(&rx, &stop, || false, on_text, on_activity, on_file, on_plan, None);
     if ended == Ended::Stopped {
         kill_tree(&mut child);
         return Ok(state);
@@ -1309,7 +1896,9 @@ struct Between {
 /// A chat's Claude Code, between two turns.
 struct Live {
     child: std::process::Child,
-    stdin: std::process::ChildStdin,
+    /// Shared with the chat's stopper (`agent_stopper`), which writes on it
+    /// whenever the user stops one agent, in a turn or between two.
+    stdin: Arc<Mutex<std::process::ChildStdin>>,
     /// Its output while a turn reads it; between two turns `idle` has it.
     rx: Option<mpsc::Receiver<Vec<u8>>>,
     /// Where its output goes (`read_lines_to`): an empty line put there (the
@@ -1324,6 +1913,11 @@ struct Live {
     /// The session it is in, once its stream said.
     session: Option<String>,
     used: Instant,
+    /// The agents it started, over all its turns.
+    link: AgentLink,
+    /// The chat it answers in, and the number its stopper has there.
+    chat: String,
+    stopper: u64,
 }
 
 impl Drop for Live {
@@ -1331,6 +1925,9 @@ impl Drop for Live {
         if matches!(self.child.try_wait(), Ok(None)) {
             kill_tree(&mut self.child);
         }
+        // Ended (idle, closed, killed or gone by itself): its agents with it.
+        chat_agents::forget_stopper_of(&self.chat, self.stopper);
+        self.link.ended();
     }
 }
 
@@ -1340,7 +1937,8 @@ impl Live {
     fn park(mut self, chat_id: &str, own: impl FnMut(Run) + Send + 'static) {
         if let Some(rx) = self.rx.take() {
             let between = self.between.clone();
-            self.idle = Some(std::thread::spawn(move || watch(rx, &between, own)));
+            let link = self.link.clone();
+            self.idle = Some(std::thread::spawn(move || watch(rx, &between, own, &link)));
         }
         self.used = Instant::now();
         let old = lives(|all| all.insert(chat_id.to_string(), self));
@@ -1360,13 +1958,17 @@ impl Live {
         let mut interrupted: Option<Instant> = None;
         let waiting = Instant::now();
         while !idle.is_finished() {
+            // Ended for the user's Stop: its agents stopped, not failed
+            // (marked first, so the thread reading it finds none open).
             if stop.is_stopped() && interrupted.is_none() {
                 interrupted = Some(Instant::now());
-                if self.stdin.write_all(interrupt_line(0).as_bytes()).and_then(|_| self.stdin.flush()).is_err() {
+                if write_stdin(&self.stdin, &interrupt_line(0)).is_err() {
+                    self.link.ended_as(AgentState::Stopped);
                     kill_tree(&mut self.child);
                 }
             }
             if interrupted.is_some_and(|at| at.elapsed() > INTERRUPT_GRACE) {
+                self.link.ended_as(AgentState::Stopped);
                 kill_tree(&mut self.child);
             }
             // Mostly it gives it back at once: looked at often only at first.
@@ -1378,7 +1980,7 @@ impl Live {
 
     /// Ended, or idle for too long.
     fn done(&mut self) -> bool {
-        let busy = self.between.busy.load(Ordering::SeqCst) || self.between.tasks.load(Ordering::SeqCst) > 0;
+        let busy = self.between.busy.load(Ordering::SeqCst) || self.between.tasks.load(Ordering::SeqCst) > 0 || self.link.open() > 0;
         !matches!(self.child.try_wait(), Ok(None)) || self.used.elapsed() > if busy { LIVE_BUSY } else { LIVE_IDLE }
     }
 }
@@ -1386,13 +1988,18 @@ impl Live {
 /// Reads a chat's Claude Code between two turns. A turn it takes by itself is
 /// read like any other, and `own` gets it once its `result` comes; the lines
 /// it writes between turns (its background tasks starting and ending) are only
-/// noted. An empty line asks for the output back: given at once, or once the
-/// turn being read ends. The output closing gives it back too.
-fn watch(rx: mpsc::Receiver<Vec<u8>>, between: &Between, mut own: impl FnMut(Run)) -> mpsc::Receiver<Vec<u8>> {
-    let mut run = Run::default();
+/// noted. Its agents (`link`) are told of every line, with a sign of life
+/// while some are at work. An empty line asks for the output back: given at
+/// once, or once the turn being read ends. The output closing (the CLI
+/// ended) gives it back too, its agents ended.
+fn watch(rx: mpsc::Receiver<Vec<u8>>, between: &Between, mut own: impl FnMut(Run), link: &AgentLink) -> mpsc::Receiver<Vec<u8>> {
+    let mut run = Run::linked(link);
     let mut wanted = false;
     loop {
-        let Ok(line) = rx.recv() else { return rx };
+        let Ok(line) = rx.recv() else {
+            link.ended();
+            return rx;
+        };
         if line.is_empty() {
             if !run.began {
                 return rx;
@@ -1401,12 +2008,13 @@ fn watch(rx: mpsc::Receiver<Vec<u8>>, between: &Between, mut own: impl FnMut(Run
             continue;
         }
         run.feed(&line);
+        link.tell_while_open();
         if let Some(n) = run.tasks.take() {
             between.tasks.store(n, Ordering::SeqCst);
         }
         between.busy.store(run.began, Ordering::SeqCst);
         if run.result.is_some() {
-            let done = std::mem::take(&mut run);
+            let done = std::mem::replace(&mut run, Run::linked(link));
             between.busy.store(false, Ordering::SeqCst);
             // A result with no turn before it (one left from an interrupt) says nothing new.
             if done.began {
@@ -1490,8 +2098,18 @@ fn reap_idle() {
     });
 }
 
-/// The chat's Claude Code that can answer with `key` in `session`, or a new one.
-fn live_for(chat_id: &str, key: &str, session: Option<&str>, exe: &std::path::Path, args: &[String], dir: &std::path::Path) -> Result<Live, String> {
+/// The chat's Claude Code that can answer with `key` in `session`, or a new
+/// one, whose agents are told with `tell`.
+#[allow(clippy::too_many_arguments)]
+fn live_for(
+    chat_id: &str,
+    key: &str,
+    session: Option<&str>,
+    exe: &std::path::Path,
+    args: &[String],
+    dir: &std::path::Path,
+    tell: &Tell,
+) -> Result<Live, String> {
     if let Some(mut live) = lives(|all| all.remove(chat_id)) {
         let alive = matches!(live.child.try_wait(), Ok(None));
         if alive && live.key == key && live.session.as_deref() == session {
@@ -1501,11 +2119,14 @@ fn live_for(chat_id: &str, key: &str, session: Option<&str>, exe: &std::path::Pa
     }
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let mut child = spawn(exe, &live_args(args.to_vec()), dir, chat_id)?;
-    let stdin = child.stdin.take().ok_or("no stdin")?;
+    let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("no stdin")?));
     let stderr = read_stderr(&mut child);
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let feed: Feed = Arc::new(std::sync::Mutex::new(Some(tx)));
     read_lines_to(&mut child, usize::MAX, feed.clone())?;
+    let link = AgentLink::new(tell.clone());
+    // From now on the island may stop one of its agents, in a turn or between two.
+    let stopper = chat_agents::register_stopper(chat_id, agent_stopper(&stdin, &link));
     Ok(Live {
         child,
         stdin,
@@ -1517,14 +2138,18 @@ fn live_for(chat_id: &str, key: &str, session: Option<&str>, exe: &std::path::Pa
         key: key.to_string(),
         session: session.map(str::to_string),
         used: Instant::now(),
+        link,
+        chat: chat_id.to_string(),
+        stopper,
     })
 }
 
 /// One turn of the chat `chat_id` through its own Claude Code (started, or
 /// started again, as needed), blocking. `session`: the chat's Claude Code
 /// session, resumed by `args` when a new process starts. `own` gets each turn
-/// Claude Code takes by itself after this one, until the next message. As
-/// `run` otherwise.
+/// Claude Code takes by itself after this one, until the next message.
+/// `tell` hears of the agents it starts, in this turn and later (`AgentLink`).
+/// As `run` otherwise.
 #[allow(clippy::too_many_arguments)]
 fn live_turn(
     exe: PathBuf,
@@ -1539,9 +2164,10 @@ fn live_turn(
     on_file: impl FnMut(&FileTouch),
     on_plan: impl FnMut(&str, &Value),
     own: impl FnMut(Run) + Send + 'static,
+    tell: Tell,
 ) -> Result<Run, String> {
     let key = live_key(&exe, &args);
-    let mut live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir)?;
+    let mut live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
     // Claude Code is answering by itself: the message goes once it is done.
     if !live.take_output(&stop) {
         // Stopped first: the message never went.
@@ -1550,28 +2176,30 @@ fn live_turn(
     }
     if live.rx.is_none() {
         drop(live);
-        live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir)?;
+        live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
     }
-    if live.stdin.write_all(user_line(&input).as_bytes()).and_then(|_| live.stdin.flush()).is_err() {
+    if write_stdin(&live.stdin, &user_line(&input)).is_err() {
         // It ended between two messages: once more, with a new one.
         drop(live);
-        live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir)?;
-        live.stdin.write_all(user_line(&input).as_bytes()).and_then(|_| live.stdin.flush()).map_err(|e| e.to_string())?;
+        live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
+        write_stdin(&live.stdin, &user_line(&input)).map_err(|e| e.to_string())?;
     }
     let Some(rx) = live.rx.take() else { return Err("no stdout".into()) };
     let mut asked = 0u64;
-    let stdin = &mut live.stdin;
+    let stdin = live.stdin.clone();
+    let link = live.link.clone();
     let (state, ended) = read_turn(
         &rx,
         &stop,
         || {
             asked += 1;
-            stdin.write_all(interrupt_line(asked).as_bytes()).and_then(|_| stdin.flush()).is_ok()
+            write_stdin(&stdin, &interrupt_line(asked)).is_ok()
         },
         on_text,
         on_activity,
         on_file,
         on_plan,
+        Some(&link),
     );
     live.rx = Some(rx);
     match ended {
@@ -1585,11 +2213,16 @@ fn live_turn(
             live.park(chat_id, own);
             Ok(state)
         }
-        // Not interrupted in time: ended, the run so far kept.
-        Ended::Stopped => Ok(state),
+        // Not interrupted in time: ended, the run so far kept. The user asked
+        // for it: its agents stopped with it, not failed (Drop then finds none open).
+        Ended::Stopped => {
+            link.ended_as(AgentState::Stopped);
+            Ok(state)
+        }
         Ended::Closed => {
             let status = live.child.wait().ok();
             if state.stopped {
+                link.ended_as(AgentState::Stopped);
                 return Ok(state);
             }
             std::thread::sleep(Duration::from_millis(50));
@@ -1725,7 +2358,7 @@ pub async fn send(
     args = with_mcp(args, computer, tools, true, mail);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     if computer {
-        crate::computer::begin_turn();
+        crate::computer::begin_turn(crate::computer::Who::of(PROVIDER), chat.id());
     }
 
     let app2 = app.clone();
@@ -1743,6 +2376,8 @@ pub async fn send(
         let chat_id = chat_id.clone();
         move |run: Run| own_answer(&app, &chat_id, run)
     };
+    // The agents Claude Code starts, and the turn's sign of life.
+    let tell = chat_agents::teller(app, chat.id());
     let state = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             exe,
@@ -1760,14 +2395,26 @@ pub async fn send(
                 let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": plan_chat, "tool": tool, "input": input }));
             },
             own,
+            tell,
         )
     })
     .await
     .map_err(|e| e.to_string());
-    if computer {
-        crate::computer::end_turn(app);
-    }
-    let state = state??;
+    // What the turn did on the computer, for under its answer.
+    let recap = if computer { crate::computer::end_turn(app, chat.id(), matches!(&state, Ok(Ok(s)) if s.stopped)) } else { None };
+    let plain = chat::plain_question(true, context.as_ref(), &query);
+    // It failed after using the computer: the turn is kept as an empty
+    // answer that says why, so the recap of what was done on the screen is
+    // shown and saved under it (and the next turn knows it was done).
+    let failed = |error: String, recap: Option<Value>| -> Result<ChatReply, String> {
+        let Some(recap) = recap else { return Err(error) };
+        chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+        Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
+    };
+    let state = match state {
+        Ok(Ok(state)) => state,
+        Ok(Err(e)) | Err(e) => return failed(e, recap),
+    };
 
     // The commands it has, for the island's "/" menu.
     if let Some(list) = &state.commands {
@@ -1795,17 +2442,29 @@ pub async fn send(
     if let Some(id) = &state.session {
         chat.set_cli_session(&turn, id);
     }
-    let plain = chat::plain_question(true, context.as_ref(), &query);
     if state.stopped {
         let shown = state.visible.trim().to_string();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
+        } else if recap.is_some() {
+            // Stopped before it wrote anything, but it used the computer: the
+            // turn is kept, as an empty answer, so the recap has an answer to
+            // go under (the island records one when `computer` comes) and the
+            // next turn knows what was done.
+            chat.commit(
+                &turn,
+                json!({ "role": "user", "content": plain }),
+                json!({ "role": "assistant", "content": chat::NO_ANSWER }),
+                &plain,
+                chat::NO_ANSWER,
+            );
+            return Ok(ChatReply { computer: recap, kept: Some(chat::NO_ANSWER.into()), ..ChatReply::stopped(String::new(), chat.cli_session()) });
         }
-        return Ok(ChatReply::stopped(shown, chat.cli_session()));
+        return Ok(ChatReply { computer: recap, ..ChatReply::stopped(shown, chat.cli_session()) });
     }
     let answer = match state.result {
         Some(Ok(text)) => text,
-        Some(Err(e)) => return Err(tf("Claude Code: {error}", &[("error", &e)])),
+        Some(Err(e)) => return failed(tf("Claude Code: {error}", &[("error", &e)]), recap),
         None => unreachable!("live_turn() returns an error without a result"),
     };
     let answer = chat::keep_lumo_lines(answer, &state.said);
@@ -1820,7 +2479,7 @@ pub async fn send(
         answer
     };
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply::answer(answer, chat.cli_session()))
+    Ok(ChatReply { computer: recap, ..ChatReply::answer(answer, chat.cli_session()) })
 }
 
 // ── Helping Gemini Live ───────────────────────────────────────────────────────
@@ -2069,7 +2728,8 @@ mod tests {
             let between = Arc::new(Between::default());
             let got = Arc::new(std::sync::Mutex::new(Vec::<Run>::new()));
             let (b, g) = (between.clone(), got.clone());
-            let thread = std::thread::spawn(move || watch(rx, &b, move |run| g.lock().unwrap().push(run)));
+            let link = AgentLink::new(chat_agents::silent());
+            let thread = std::thread::spawn(move || watch(rx, &b, move |run| g.lock().unwrap().push(run), &link));
             for (i, l) in lines.iter().enumerate() {
                 if poke_after == Some(i) {
                     tx.send(Vec::new()).unwrap();
@@ -2128,7 +2788,7 @@ mod tests {
         let next = r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Next turn"}}}"#;
         let (_tx, rx) = feed(&[text, result, next]);
         let mut shown = String::new();
-        let (state, ended) = read_turn(&rx, &Stop::default(), || unreachable!(), |t| shown = t.to_string(), |_| {}, |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &Stop::default(), || unreachable!(), |t| shown = t.to_string(), |_| {}, |_| {}, |_, _| {}, None);
         assert_eq!(ended, Ended::Result);
         assert_eq!(state.result, Some(Ok("Hello".to_string())));
         assert_eq!(state.session.as_deref(), Some(SID));
@@ -2141,25 +2801,25 @@ mod tests {
         let interrupted = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}"#;
         let (_tx, rx) = feed(&[text, interrupted]);
         let mut asked = 0;
-        let (state, ended) = read_turn(&rx, &stop, || { asked += 1; true }, |_| {}, |_| {}, |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &stop, || { asked += 1; true }, |_| {}, |_| {}, |_| {}, |_, _| {}, None);
         assert_eq!((ended, asked), (Ended::Result, 1));
         assert!(state.stopped);
         // A CLI that can't be interrupted (one prompt, no stdin) is ended.
         let (_tx, rx) = feed(&[text]);
-        let (state, ended) = read_turn(&rx, &stop, || false, |_| {}, |_| {}, |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &stop, || false, |_| {}, |_| {}, |_| {}, |_, _| {}, None);
         assert_eq!(ended, Ended::Stopped);
         assert!(state.stopped);
         // The CLI ended before its result.
         let (tx, rx) = feed(&[text]);
         drop(tx);
-        assert_eq!(read_turn(&rx, &Stop::default(), || false, |_| {}, |_| {}, |_| {}, |_, _| {}).1, Ended::Closed);
+        assert_eq!(read_turn(&rx, &Stop::default(), || false, |_| {}, |_| {}, |_| {}, |_, _| {}, None).1, Ended::Closed);
     }
 
     #[test]
     fn the_chat_always_gets_the_island_tools_and_may_run_them() {
         let config = mcp_config(false, false, true, "");
         assert_eq!(config["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=island"]));
-        assert_eq!(mcp_config(true, false, true, "")["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,island"]));
+        assert_eq!(mcp_config(true, false, true, "")["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,island"]));
         let a = with_mcp(vec!["-p".into()], false, true, true, "");
         if a.iter().any(|s| s == "--mcp-config") {
             assert_eq!(a[a.len() - 1], format!("{ISLAND_ALLOWED} {TOOLS_SERVER_ALLOWED}"));
@@ -2178,7 +2838,7 @@ mod tests {
         let read = mcp_config(false, false, true, "mail");
         assert_eq!(read["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=mail,island"]));
         let send = mcp_config(true, false, true, "mail,mailsend");
-        assert_eq!(send["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,mail,mailsend,island"]));
+        assert_eq!(send["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,mail,mailsend,island"]));
         let a = with_mcp(vec!["-p".into()], false, false, true, "mail,mailsend");
         if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
             assert!(a[i + 1].ends_with("chat-island-mail-mailsend.json"));
@@ -2201,7 +2861,7 @@ mod tests {
         let server = &config["mcpServers"]["lumo"];
         assert!(server["command"].as_str().unwrap().contains("lumo-hook"));
         assert_eq!(server["type"], "stdio");
-        assert_eq!(server["args"], json!(["--mcp"]));
+        assert_eq!(server["args"], json!(["--mcp", "--tools=computer,plan"]), "the computer always with Lumo's plan tool");
         assert_eq!(server["env"]["LUMO_ISLAND_RUN"], "1", "the island's own run");
         let a = with_computer(vec!["-p".into()]);
         if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
@@ -2212,10 +2872,14 @@ mod tests {
                 assert!(COMPUTER_LOOKING.split(' ').any(|t| t == format!("mcp__lumo__{tool}")), "{tool}");
             }
             assert!(!COMPUTER_LOOKING.contains("click") && !COMPUTER_LOOKING.contains("type") && !COMPUTER_LOOKING.contains("key"));
+            // The plan comes before the computer: Claude Code never asks for it.
+            assert!(COMPUTER_LOOKING.split(' ').any(|t| t == "mcp__lumo__update_plan"));
         }
         // An argument on cmd.exe's line: plain words only, and it says how to stop.
         assert!(!COMPUTER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`']));
         assert!(COMPUTER_PROMPT.contains("Esc") && COMPUTER_PROMPT.contains("Never type passwords"));
+        assert!(COMPUTER_PROMPT.contains("update_plan") && COMPUTER_PROMPT.contains("pause you"), "the plan first, and Esc pauses");
+        assert!(HELPER_COMPUTER_PROMPT.contains("update_plan"));
         assert!(!COMPUTER_PROMPT.contains("Never take a screenshot"), "the chat's usual rule doesn't hold here");
         assert!(!HELPER_COMPUTER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`', '(', ')']));
         assert!(HELPER_COMPUTER_PROMPT.contains("helping Gemini") && HELPER_COMPUTER_PROMPT.contains("lumo MCP server"));
@@ -2608,5 +3272,366 @@ mod tests {
         );
         assert!(is_full_path(r"\\server\share\a.txt") && is_full_path("/home/me/a") && is_full_path("D:/x"));
         assert!(!is_full_path("a.txt") && !is_full_path(r"..\a.txt") && !is_full_path("C:"));
+    }
+
+    /// What a recording link was told: the rows sent, and how many signs of life.
+    type Told = Arc<std::sync::Mutex<(Vec<AgentRow>, usize)>>;
+
+    /// An AgentLink whose tells are kept.
+    fn recording() -> (AgentLink, Told) {
+        let seen = Arc::new(std::sync::Mutex::new((Vec::new(), 0usize)));
+        let into = seen.clone();
+        let tell: Tell = Arc::new(move |agents: &mut Agents, alive: bool| {
+            let mut seen = into.lock().unwrap();
+            seen.0.extend(agents.changed());
+            seen.1 += alive as usize;
+        });
+        (AgentLink::new(tell), seen)
+    }
+
+    fn feed_agents(sub: &mut Subagents, lines: &[&str]) {
+        for l in lines {
+            sub.feed(&serde_json::from_str::<Value>(l).unwrap());
+        }
+    }
+
+    // As Claude Code writes them: one agent in the background, one command left running.
+    const AGENT_STARTED: &str = r#"{"type":"system","subtype":"task_started","task_id":"a1b2","tool_use_id":"toolu_A","description":"Transcribe L03-L04","subagent_type":"general-purpose","is_backgrounded":true,"task_type":"local_agent","prompt":"..."}"#;
+    const BASH_STARTED: &str = r#"{"type":"system","subtype":"task_started","task_id":"b9","tool_use_id":"toolu_B","description":"npm run dev","task_type":"local_bash"}"#;
+
+    #[test]
+    fn an_agent_claude_code_starts_is_a_row_and_a_command_left_running_is_not() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[AGENT_STARTED, BASH_STARTED]);
+        let rows = sub.agents.changed();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        let a = &rows[0];
+        assert_eq!((a.id.as_str(), a.source.as_str(), a.title.as_str()), ("a1b2", PROVIDER, "Transcribe L03-L04"));
+        assert_eq!(a.state, AgentState::Working);
+        assert!(a.background && a.can_stop);
+        // A task with no type, but a description: an agent of an older Claude Code.
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_started","task_id":"old","description":"Look around"}"#]);
+        assert_eq!(sub.agents.changed()[0].title, "Look around");
+        // The command ended: nothing of it is told.
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_notification","task_id":"b9","status":"completed","summary":"exit 0"}"#]);
+        assert!(sub.agents.changed().is_empty());
+    }
+
+    #[test]
+    fn an_agents_own_messages_and_progress_say_what_it_does_and_how_far_it_got() {
+        let mut sub = Subagents::default();
+        feed_agents(
+            &mut sub,
+            &[
+                AGENT_STARTED,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"text","text":"Reading."},{"type":"tool_use","id":"s1","name":"Read","input":{"file_path":"C:\\scans\\pag-037.png"}}]}}"#,
+                r#"{"type":"user","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_result","tool_use_id":"s1","content":"..."}]}}"#,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"s2","name":"Grep","input":{"pattern":"L03"}}]}}"#,
+            ],
+        );
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!(a.now, Some(Activity::new("search", "L03")));
+        assert_eq!(a.steps, 2);
+        // Its progress line: tokens, steps (the larger count), summary; the
+        // tool's name alone doesn't wipe a detail of the same kind.
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_progress","task_id":"a1b2","tool_use_id":"toolu_A","description":"Transcribe L03-L04","usage":{"total_tokens":18400,"tool_uses":7,"duration_ms":61000},"last_tool_name":"Grep","summary":"Page 37 of 52"}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!((a.tokens, a.steps, a.summary.as_deref()), (Some(18400), 7, Some("Page 37 of 52")));
+        assert_eq!(a.now, Some(Activity::new("search", "L03")));
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_progress","task_id":"a1b2","usage":{"total_tokens":19000,"tool_uses":3},"last_tool_name":"Write"}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!(a.steps, 7, "never fewer than before");
+        assert_eq!(a.now, Some(Activity::new("edit", "")));
+        // A message of the main conversation, or of an agent Lumo never saw start, is none of its.
+        feed_agents(&mut sub, &[r#"{"type":"assistant","parent_tool_use_id":"toolu_Z","message":{"content":[{"type":"tool_use","id":"z","name":"Bash","input":{}}]}}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().steps, 7);
+    }
+
+    #[test]
+    fn an_agent_waits_while_auto_mode_checks_its_call_and_ends_as_claude_code_says() {
+        let mut sub = Subagents::default();
+        feed_agents(
+            &mut sub,
+            &[
+                AGENT_STARTED,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"s1","name":"Bash","input":{"command":"rm x","description":"Clean up"}}]}}"#,
+                // Named by its call only.
+                r#"{"type":"system","subtype":"permission_check_status","tool_use_id":"s1","status":"checking"}"#,
+            ],
+        );
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!((a.state, a.waiting_for), (AgentState::Waiting, Some("permission")));
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"permission_check_status","tool_use_id":"s1","agent_id":"a1b2","status":"done"}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().state, AgentState::Working);
+        // A check of the main conversation's call is no agent's.
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"permission_check_status","tool_use_id":"toolu_main","status":"checking"}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().state, AgentState::Working);
+
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_notification","task_id":"a1b2","tool_use_id":"toolu_A","status":"completed","summary":"52 pages transcribed","output_file":"x","usage":{"total_tokens":30000,"tool_uses":60}}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!((a.state, a.summary.as_deref(), a.tokens, a.steps), (AgentState::Done, Some("52 pages transcribed"), Some(30000), 60));
+        assert!(a.ended_at.is_some() && a.error.is_none());
+        // Ended: nothing changes it any more.
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_updated","task_id":"a1b2","patch":{"status":"failed","error":"late"}}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().state, AgentState::Done);
+
+        // A failure says why; a stop is a stop.
+        let started = |id: &str, call: &str| format!(r#"{{"type":"system","subtype":"task_started","task_id":"{id}","tool_use_id":"{call}","description":"x","task_type":"local_agent"}}"#);
+        feed_agents(&mut sub, &[&started("f1", "c1"), &started("s1", "c2")]);
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_updated","task_id":"f1","patch":{"status":"failed","error":"API error","end_time":1}}"#]);
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_notification","task_id":"s1","status":"stopped","summary":"Stopped by the user"}"#]);
+        assert_eq!(sub.agents.get("f1").unwrap().state, AgentState::Failed);
+        assert_eq!(sub.agents.get("f1").unwrap().error.as_deref(), Some("API error"));
+        assert_eq!(sub.agents.get("s1").unwrap().state, AgentState::Stopped);
+        assert!(sub.agents.get("s1").unwrap().error.is_none());
+        assert!(sub.by_call.is_empty() && sub.calls.is_empty(), "nothing kept of agents that ended");
+    }
+
+    #[test]
+    fn the_agents_go_to_the_island_from_the_turn_and_from_between_two_turns() {
+        // During a turn: every line a sign of life, and the agents as they change.
+        let (link, seen) = recording();
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        for l in [AGENT_STARTED, r#"{"type":"result","subtype":"success","is_error":false,"result":"Started."}"#] {
+            tx.send(l.as_bytes().to_vec()).unwrap();
+        }
+        let (state, ended) = read_turn(&rx, &Stop::default(), || false, |_| {}, |_| {}, |_| {}, |_, _| {}, Some(&link));
+        assert_eq!(ended, Ended::Result);
+        assert!(state.subagents.is_some());
+        {
+            let seen = seen.lock().unwrap();
+            assert_eq!(seen.0.len(), 1);
+            assert_eq!(seen.1, 2, "a sign of life for each line");
+        }
+
+        // Between turns: the agent goes on reporting; the same link keeps it.
+        let between = Arc::new(Between::default());
+        let got = Arc::new(std::sync::Mutex::new(Vec::<Run>::new()));
+        let (b, g, l) = (between.clone(), got.clone(), link.clone());
+        let thread = std::thread::spawn(move || watch(rx, &b, move |run| g.lock().unwrap().push(run), &l));
+        tx.send(br#"{"type":"system","subtype":"task_progress","task_id":"a1b2","usage":{"total_tokens":500,"tool_uses":2}}"#.to_vec()).unwrap();
+        tx.send(br#"{"type":"system","subtype":"task_notification","task_id":"a1b2","status":"completed","summary":"Done"}"#.to_vec()).unwrap();
+        // With no agent at work, a line is no sign of life.
+        tx.send(br#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#.to_vec()).unwrap();
+        tx.send(Vec::new()).unwrap();
+        thread.join().unwrap();
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.0.len(), 3);
+        assert_eq!(seen.0[2].state, AgentState::Done);
+        assert_eq!(seen.1, 2 + 1, "the progress line only: the agent ended with the next one");
+        assert_eq!(link.open(), 0);
+    }
+
+    #[test]
+    fn when_claude_code_ends_its_agents_still_at_work_end_with_it() {
+        let (link, seen) = recording();
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        let thread = std::thread::spawn({
+            let link = link.clone();
+            move || watch(rx, &Between::default(), |_| {}, &link)
+        });
+        tx.send(AGENT_STARTED.as_bytes().to_vec()).unwrap();
+        // Its output closed: the CLI ended.
+        drop(tx);
+        thread.join().unwrap();
+        let seen = seen.lock().unwrap();
+        let last = seen.0.last().unwrap();
+        assert_eq!((last.id.as_str(), last.state), ("a1b2", AgentState::Failed));
+        assert_eq!(last.error.as_deref(), Some("Claude Code ended"));
+        assert_eq!(link.open(), 0);
+    }
+
+    #[test]
+    fn one_agent_is_stopped_with_a_control_request_of_its_own() {
+        let (request, line) = stop_task_line("a1b2");
+        let v: Value = serde_json::from_str(line.trim_end()).unwrap();
+        assert_eq!(v["type"], "control_request");
+        assert_eq!(v["request_id"], request.as_str());
+        assert_eq!(v["request"]["subtype"], "stop_task");
+        assert_eq!(v["request"]["task_id"], "a1b2");
+        let (other, _) = stop_task_line("a1b2");
+        assert_ne!(request, other, "each request its own id");
+        assert!(stop_task_line("a\"b\nc").1.matches('\n').count() == 1, "one line, whatever the id");
+    }
+
+    #[test]
+    fn the_stopper_asks_only_for_an_agent_at_work_and_only_while_claude_code_lives() {
+        let (link, _) = recording();
+        feed_agents(&mut link.lock(), &[AGENT_STARTED, &AGENT_STARTED.replace("a1b2", "done1").replace("toolu_A", "toolu_D")]);
+        link.lock().agents.touch("done1").unwrap().end(AgentState::Done, None);
+        let stdin = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let stop = agent_stopper(&stdin, &link);
+        // Ended, or none of its: nothing to stop, nothing written.
+        assert!(stop("done1").is_ok() && stop("nobody").is_ok());
+        assert!(stdin.lock().unwrap().is_empty());
+        // At work: its request goes, and is noted for its answer.
+        assert!(stop("a1b2").is_ok());
+        let written = String::from_utf8(stdin.lock().unwrap().clone()).unwrap();
+        let v: Value = serde_json::from_str(written.trim_end()).unwrap();
+        assert_eq!(v["request"]["task_id"], "a1b2");
+        assert_eq!(link.lock().stopping.get(v["request_id"].as_str().unwrap()).map(String::as_str), Some("a1b2"));
+        // Its Claude Code gone (stdin dropped): it says so.
+        drop(stdin);
+        assert_eq!(stop("a1b2"), Err("Claude Code ended".to_string()));
+        // Its agents gone too: nothing to stop.
+        drop(link);
+        assert!(stop("a1b2").is_ok());
+    }
+
+    #[test]
+    fn an_agent_lumo_stopped_ends_when_claude_code_answers_the_request() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[AGENT_STARTED, &AGENT_STARTED.replace("a1b2", "a2").replace("toolu_A", "toolu_2")]);
+        sub.stop_sent("lumo-stop-41".into(), "a1b2");
+        sub.stop_sent("lumo-stop-42".into(), "a2");
+        sub.agents.changed();
+        // An answer to another request: nothing of theirs.
+        feed_agents(&mut sub, &[r#"{"type":"control_response","response":{"subtype":"success","request_id":"lumo-interrupt-1","response":{}}}"#]);
+        assert!(sub.agents.changed().is_empty());
+        feed_agents(&mut sub, &[r#"{"type":"control_response","response":{"subtype":"success","request_id":"lumo-stop-41","response":{}}}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!(a.state, AgentState::Stopped);
+        assert!(a.error.is_none() && a.ended_at.is_some());
+        assert_eq!(sub.agents.changed().len(), 1);
+        // Refused (it had ended already, say): it stays as the stream says.
+        feed_agents(&mut sub, &[r#"{"type":"control_response","response":{"subtype":"error","request_id":"lumo-stop-42","error":"Task a2 is not running"}}"#]);
+        assert_eq!(sub.agents.get("a2").unwrap().state, AgentState::Working);
+        assert!(sub.stopping.is_empty());
+        assert!(!sub.by_call.contains_key("toolu_A") && sub.by_call.contains_key("toolu_2"));
+    }
+
+    #[test]
+    fn an_agent_in_the_foreground_ends_when_its_call_is_answered() {
+        let foreground = AGENT_STARTED.replace(r#""is_backgrounded":true"#, r#""is_backgrounded":false"#);
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[&foreground, &foreground.replace("a1b2", "f2").replace("toolu_A", "toolu_F"), &AGENT_STARTED.replace("a1b2", "bg").replace("toolu_A", "toolu_G")]);
+        // The background one's call is answered at launch: it goes on.
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_G","content":[{"type":"text","text":"Async agent launched"}]}]},"tool_use_result":{"status":"async_launched","isAsync":true}}"#]);
+        assert_eq!(sub.agents.get("bg").unwrap().state, AgentState::Working);
+        // The foreground one's answer is its end, its last message the summary.
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_A","content":[{"type":"text","text":"All 52 pages\ntranscribed."},{"type":"text","text":"agentId: x"}]}]},"tool_use_result":{"status":"completed"}}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!((a.state, a.summary.as_deref()), (AgentState::Done, Some("All 52 pages transcribed.")));
+        assert!(!sub.by_call.contains_key("toolu_A"));
+        // One answered with an error failed, and says why.
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_F","is_error":true,"content":"Agent ran out of turns"}]}}"#]);
+        let f = sub.agents.get("f2").unwrap();
+        assert_eq!((f.state, f.error.as_deref()), (AgentState::Failed, Some("Agent ran out of turns")));
+        assert_eq!(sub.agents.get("bg").unwrap().state, AgentState::Working);
+
+        // Moved to the background while it worked: answered as launched, it goes on, in the background now.
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[&foreground]);
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_A","content":"moved"}]},"tool_use_result":{"status":"async_launched"}}"#]);
+        let a = sub.agents.get("a1b2").unwrap();
+        assert_eq!((a.state, a.background), (AgentState::Working, true));
+    }
+
+    // As Claude Code writes them (2.1): an agent named in its Agent call,
+    // ended, then sent a message, which takes it up again in the background.
+    const NAMED_CALL: &str = r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_A","name":"Agent","input":{"description":"Run sleep counter","prompt":"...","name":"counter","run_in_background":true}}]}}"#;
+    const NAMED_STARTED: &str = r#"{"type":"system","subtype":"task_started","task_id":"a593","tool_use_id":"toolu_A","description":"Run sleep counter","subagent_type":"general-purpose","is_backgrounded":true,"task_type":"local_agent"}"#;
+    const NAMED_ENDED: &str = r#"{"type":"system","subtype":"task_updated","task_id":"a593","patch":{"status":"completed","end_time":1}}"#;
+    const NAMED_NOTIFIED: &str = r#"{"type":"system","subtype":"task_notification","task_id":"a593","tool_use_id":"toolu_A","status":"completed","summary":"Blocked on the first sleep.","usage":{"total_tokens":25407,"tool_uses":1}}"#;
+    const SEND: &str = r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_S","name":"SendMessage","input":{"to":"counter","message":"What step are you on? Reply to main.","summary":"Ask counter"}}]}}"#;
+    const RESUMED: &str = r#"{"type":"system","subtype":"task_started","task_id":"a593","tool_use_id":"toolu_S","description":"Run sleep counter","subagent_type":"general-purpose","is_backgrounded":true,"task_type":"local_agent","prompt":"What step are you on? Reply to main."}"#;
+    const SENT: &str = r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_S","content":[{"type":"text","text":"{\"success\":true,\"message\":\"Resuming agent counter\"}"}]}]},"tool_use_result":{"success":true,"resumedAgentId":"a593"}}"#;
+    const ANSWER: &str = r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"toolu_M","name":"SendMessage","input":{"to":"main","message":"I'm stuck on step 1 of 3.\nThe sleep was blocked."}}]}}"#;
+
+    #[test]
+    fn claude_code_offers_its_agents_a_message_only_when_its_init_lists_send_message() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[AGENT_STARTED]);
+        assert!(!sub.agents.changed()[0].can_ask);
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"init","tools":["Agent","SendMessage"]}"#]);
+        assert!(sub.agents.changed()[0].can_ask, "the agents already known learn it");
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_started","task_id":"c3","tool_use_id":"toolu_C","description":"Two","subagent_type":"x"}"#]);
+        assert!(sub.agents.changed()[0].can_ask);
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"init","tools":["Agent"]}"#]);
+        assert!(sub.agents.changed().iter().all(|r| !r.can_ask));
+    }
+
+    #[test]
+    fn a_message_to_an_agent_is_its_talk_and_takes_it_up_again_once_ended() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"init","tools":["SendMessage"]}"#, NAMED_CALL, NAMED_STARTED, NAMED_ENDED, NAMED_NOTIFIED]);
+        let row = sub.agents.get("a593").unwrap().clone();
+        assert_eq!((row.state, row.round), (AgentState::Done, 0));
+        // Its last word, which comes after it ended, is kept.
+        assert_eq!(row.summary.as_deref(), Some("Blocked on the first sleep."));
+        assert_eq!(row.tokens, Some(25407));
+        sub.agents.changed();
+
+        // The chat's Claude Code messages it by the name its call gave.
+        feed_agents(&mut sub, &[SEND]);
+        let talk = sub.agents.get("a593").unwrap().talk.clone().unwrap();
+        assert_eq!((talk.call.as_str(), talk.message.as_str()), ("toolu_S", "What step are you on? Reply to main."));
+        assert!(talk.pending());
+        assert_eq!(sub.agents.changed().len(), 1, "the island hears of it, though it had ended");
+
+        // It starts again: a new round, at work, its lines counted again.
+        feed_agents(&mut sub, &[RESUMED, SENT]);
+        let row = sub.agents.get("a593").unwrap().clone();
+        assert_eq!((row.state, row.round, row.ended_at), (AgentState::Working, 1, None));
+        assert!(row.background && row.can_ask);
+        feed_agents(&mut sub, &[ANSWER]);
+        let row = sub.agents.get("a593").unwrap().clone();
+        assert_eq!(row.steps, 1, "its own line counted");
+        let talk = row.talk.unwrap();
+        assert_eq!(talk.reply.as_deref(), Some("I'm stuck on step 1 of 3.\nThe sleep was blocked."));
+
+        // Its end's summary does not replace the answer it gave.
+        feed_agents(&mut sub, &[
+            r#"{"type":"system","subtype":"task_updated","task_id":"a593","patch":{"status":"completed"}}"#,
+            r#"{"type":"system","subtype":"task_notification","task_id":"a593","status":"completed","summary":"Told main."}"#,
+        ]);
+        let row = sub.agents.get("a593").unwrap().clone();
+        assert_eq!((row.state, row.round), (AgentState::Done, 1));
+        assert_eq!(row.talk.unwrap().reply.as_deref(), Some("I'm stuck on step 1 of 3.\nThe sleep was blocked."));
+        assert_eq!(row.summary.as_deref(), Some("Told main."));
+    }
+
+    #[test]
+    fn an_agent_that_answers_no_message_answers_with_its_end_and_a_message_that_failed_says_so() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[NAMED_CALL, NAMED_STARTED, NAMED_ENDED]);
+        // By its task id, as Claude Code's own result tells it to.
+        feed_agents(&mut sub, &[&SEND.replace(r#""to":"counter""#, r#""to":"a593""#), RESUMED, SENT]);
+        feed_agents(&mut sub, &[NAMED_ENDED, r#"{"type":"system","subtype":"task_notification","task_id":"a593","status":"completed","summary":"Blocked."}"#]);
+        assert_eq!(sub.agents.get("a593").unwrap().talk.as_ref().unwrap().reply.as_deref(), Some("Blocked."));
+
+        // Another message, refused: it fails, and the agent stays ended.
+        let again = SEND.replace("toolu_S", "toolu_T");
+        feed_agents(&mut sub, &[&again, r#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_T","is_error":true,"content":"No agent named counter"}]}}"#]);
+        let row = sub.agents.get("a593").unwrap();
+        assert_eq!((row.state, row.round), (AgentState::Done, 1));
+        let talk = row.talk.as_ref().unwrap();
+        assert_eq!((talk.call.as_str(), talk.failed.as_deref()), ("toolu_T", Some("No agent named counter")));
+
+        // To main, a teammate or an unknown name: none of the chat's agents.
+        sub.agents.changed();
+        for to in ["main", "someone", ""] {
+            feed_agents(&mut sub, &[&SEND.replace(r#""to":"counter""#, &format!(r#""to":"{to}""#)).replace("toolu_S", "toolu_U")]);
+        }
+        assert!(sub.agents.changed().is_empty());
+        assert_eq!(sub.resolve("counter [26c776]").as_deref(), Some("a593"), "a pinned name with its reference");
+        assert_eq!(sub.title_for("a593").as_deref(), Some("Run sleep counter"));
+        assert_eq!(activity_for("SendMessage", &json!({ "to": "counter" })), Activity::new("talk", "counter"));
+    }
+
+    #[test]
+    fn once_claude_code_ended_no_agent_can_be_asked_and_a_message_waiting_gets_no_answer() {
+        let (link, seen) = recording();
+        {
+            let mut sub = link.lock();
+            feed_agents(&mut sub, &[r#"{"type":"system","subtype":"init","tools":["SendMessage"]}"#, NAMED_CALL, NAMED_STARTED, NAMED_ENDED, SEND]);
+        }
+        link.tell(false);
+        seen.lock().unwrap().0.clear();
+        link.ended();
+        let rows = seen.lock().unwrap().0.clone();
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].can_ask);
+        assert_eq!(rows[0].talk.as_ref().unwrap().failed, Some(cli_ended()));
     }
 }
