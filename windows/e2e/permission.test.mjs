@@ -121,27 +121,25 @@ flow(G, "Small Write: Allow tells Claude Code allow", app, async () => {
   assert.equal(behavior(await told(req)), "allow");
 });
 
-flow(G, "Write of 400 KB: no Allow, only Deny", app, async () => {
+flow(G, "Write of 400 KB: the whole Write's numbers, and Allow tells Claude Code allow", app, async () => {
   const agent = app.agent("write-huge");
   await agent.start();
   // 4 096 lines of 100 bytes: 400 KB, past the 256 KB the relay forwards.
+  // The text is cut on its way, which the card never shows: an ordinary card.
   const req = ask(agent, "Write", { file_path: "C:\\e2e-app\\big.txt", content: `${"x".repeat(99)}\n`.repeat(4_096) });
-  await d.visible(".approval-cut, .cp-approval", 10_000, "the card");
+  await d.visible(ANY_ALLOW, 10_000, "the card");
   await fullCard();
-  await d.visible(".approval-cut", 5_000, "the note that the request is too long to allow");
-  // The size under the file is the file's own, not what the relay kept of it.
+  // The numbers under the file are the whole Write's (a new file: every line), not what the relay kept of it.
   const size = (await d.text(await d.visible(".approval-stat .size", 5_000, "the Write's size"))).trim();
   const lines = (await d.text(await d.visible(".approval-stat .plus", 5_000, "the Write's lines"))).trim();
   step(`the card says ${lines} · ${size}`);
   assert.equal(size, "400 KB", "the size of the whole Write");
   assert.equal(lines, "+4096", "the lines of the whole Write");
-  assert.equal(await d.find(".allow-btn"), null, "Allow must not be offered for a request not shown whole");
-  assert.equal(await d.find(CLOSED_ALLOW), null, "nor on the closed island");
-  const deny = await d.visible(".deny-btn", 5_000, "Deny");
+  const allow = await d.visible(".allow-btn", 5_000, "Allow, whatever the size");
   await sleep(GUARD);
-  step("clicks Deny");
-  await app.click(deny);
-  assert.equal(behavior(await told(req)), "deny");
+  step("clicks Allow");
+  await app.click(allow);
+  assert.equal(behavior(await told(req)), "allow", "a big change is allowed like any other (pipe.rs no longer refuses it)");
 });
 
 flow(G, "Long plan: the card fits on screen and Allow works", app, async () => {

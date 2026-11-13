@@ -2775,12 +2775,20 @@ fn outlook_revision(made: &crate::outlook::Made, revised: &serde_json::Value) ->
     if keep.len() != count || !add.is_empty() {
         changed.push("the files attached");
     }
+    // Taken out of Outlook by name and size (outlook.rs places_to_remove), not by their place here.
+    let drop = (0..count)
+        .filter(|i| !keep.contains(i))
+        .map(|i| {
+            let file = &made.files[i];
+            (file.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string(), file.get("size").and_then(|s| s.as_u64()).unwrap_or(0) as usize)
+        })
+        .collect();
     Ok(crate::outlook::Revision {
         new_body: (mail.body != made.body).then(|| mail.body.clone()),
         to: mail.to,
         cc: mail.cc,
         subject: mail.subject,
-        keep,
+        drop,
         add,
         changed,
     })

@@ -306,31 +306,28 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // Answered in the terminal (or in the Claude app) instead: Claude Code ends
     // the relay, its end of the connection closes, and the island drops the
     // card at once rather than keep offering a question already settled.
-    let decided = async { Some(wait_for_decision(&id, &mut rx, DECISION_TIMEOUT).await) };
+    let decided = async { Some(wait_for_reply(&id, &mut rx, DECISION_TIMEOUT).await) };
     let gone = async {
         client_gone(&mut pipe).await;
         None
     };
-    let decision = match first_of(decided, gone).await {
-        Some(d) => d,
+    let reply = match first_of(decided, gone).await {
+        Some(r) => r,
         None => {
             log::line(format!("hook id={id} answered elsewhere"));
             let _ = app.emit_to(WINDOW_LABEL, "hook-settled", id.clone());
-            None
+            Err(Unanswered::Released)
         }
     };
     crate::computer::card_down(&app);
-    // A request the relay had to cut (lumo_input_cut) was never on the card
-    // whole: nothing allows it from here, whatever came back. The agent asks
-    // in its own terminal instead, as if Lumo were closed.
-    let cut = payload_cut;
-    let decision = match decision {
-        Some(d) if cut && matches!(d.trim(), "allow" | "always" | "edits") => {
-            log::line(format!("hook id={id} allow refused: the request was cut"));
-            None
-        }
-        other => other,
-    };
+    // A request the relay had to cut (lumo_input_cut) is allowed like any
+    // other: its card says it shows the beginning, the user decides, and in
+    // the chat's Auto nothing waits for them. Only "Allow for this session"
+    // never remembers it (session_rules.rs).
+    if payload_cut {
+        log::line(format!("hook id={id} was cut on its way: the card showed its beginning"));
+    }
+    let decision = reply.as_ref().ok().cloned();
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     with_auto_allowable(|set| set.remove(&id));
     crate::session_rules::answered(&id, decision.as_deref().unwrap_or(""));
@@ -344,11 +341,43 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     }
     // No decision: say nothing at all. lumo-hook then writes nothing to stdout
     // and Claude Code asks in the terminal, exactly as if Lumo were closed.
-    if let Some(d) = decision {
+    // The island chat's Antigravity run has no terminal to ask in: it is told
+    // why nobody answered, and lumo-hook passes the reason on to the model
+    // (reply.rs antigravity_island) rather than a bare "nobody approved it".
+    let line = match (decision, reply) {
+        (Some(d), _) => Some(d),
+        (None, Err(why)) if island_agy => Some(format!("{UNANSWERED} {}", why.word())),
+        _ => None,
+    };
+    if let Some(d) = line {
         let _ = pipe.write_all(format!("{d}\n").as_bytes()).await;
         let _ = pipe.flush().await;
     }
     pipe.finish();
+}
+
+/// How the line that says why a card got no answer starts (lumo-hook reply.rs).
+const UNANSWERED: &str = "unanswered";
+
+/// Why a card got no decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Unanswered {
+    /// The island didn't show it: paused, or too many requests already waiting.
+    NotShown,
+    /// Nobody clicked before the time ran out.
+    TimedOut,
+    /// Taken down before anyone answered: Lumo paused, the turn moved on.
+    Released,
+}
+
+impl Unanswered {
+    fn word(self) -> &'static str {
+        match self {
+            Unanswered::NotShown => "busy",
+            Unanswered::TimedOut => "timeout",
+            Unanswered::Released => "released",
+        }
+    }
 }
 
 /// Resolves once the relay has gone (end of stream or a broken pipe). It sends
@@ -480,36 +509,42 @@ fn note_session_window(pipe: &impl Relay, payload: &Value, event: &str) {
 
 /// Two waits: a short one for "the card is up", then the long one for a human.
 async fn wait_for_decision(id: &str, rx: &mut mpsc::Receiver<Reply>, wait: Duration) -> Option<String> {
+    wait_for_reply(id, rx, wait).await.ok()
+}
+
+/// `wait_for_decision`, saying why there was none.
+async fn wait_for_reply(id: &str, rx: &mut mpsc::Receiver<Reply>, wait: Duration) -> Result<String, Unanswered> {
     match tokio::time::timeout(ACK_TIMEOUT, rx.recv()).await {
         Ok(Some(Reply::Ack)) => {}
         // A click that beats the ack is still a click.
         Ok(Some(Reply::Decision(d))) => {
             log::line(format!("hook id={id} answered {}", loggable(&d)));
-            return Some(d);
+            return Ok(d);
         }
         Ok(Some(Reply::Decline)) => {
             log::line(format!("hook id={id} not shown — terminal takes over"));
-            return None;
+            return Err(Unanswered::NotShown);
         }
-        Ok(None) => return None,
+        Ok(None) => return Err(Unanswered::NotShown),
         Err(_) => {
             log::line(format!("hook id={id} island never acknowledged — terminal takes over"));
-            return None;
+            return Err(Unanswered::NotShown);
         }
     }
 
     match tokio::time::timeout(wait, rx.recv()).await {
         Ok(Some(Reply::Decision(d))) => {
             log::line(format!("hook id={id} answered {}", loggable(&d)));
-            Some(d)
+            Ok(d)
         }
         Ok(Some(Reply::Decline)) => {
             log::line(format!("hook id={id} released without a decision"));
-            None
+            Err(Unanswered::Released)
         }
+        Ok(None) => Err(Unanswered::Released),
         _ => {
             log::line(format!("hook id={id} timed out — terminal takes over"));
-            None
+            Err(Unanswered::TimedOut)
         }
     }
 }
@@ -671,6 +706,28 @@ mod tests {
             };
             assert_eq!(first_of(slow, async { "fast" }).await, "fast");
             assert_eq!(first_of(async { "a" }, async { "b" }).await, "a");
+        });
+    }
+
+    /// No decision says why, for the island chat's Antigravity run (lumo-hook
+    /// passes it on to the model): not shown, taken down, or nobody clicked.
+    #[test]
+    fn a_card_with_no_answer_says_why() {
+        block_on(async {
+            let (tx, mut rx) = mpsc::channel::<Reply>(4);
+            tx.send(Reply::Decline).await.unwrap();
+            assert_eq!(wait_for_reply("t1", &mut rx, Duration::from_millis(50)).await, Err(Unanswered::NotShown));
+            tx.send(Reply::Ack).await.unwrap();
+            assert_eq!(wait_for_reply("t2", &mut rx, Duration::from_millis(50)).await, Err(Unanswered::TimedOut));
+            tx.send(Reply::Ack).await.unwrap();
+            tx.send(Reply::Decline).await.unwrap();
+            assert_eq!(wait_for_reply("t3", &mut rx, Duration::from_millis(50)).await, Err(Unanswered::Released));
+            tx.send(Reply::Ack).await.unwrap();
+            tx.send(Reply::Decision("allow".into())).await.unwrap();
+            assert_eq!(wait_for_reply("t4", &mut rx, Duration::from_millis(50)).await, Ok("allow".to_string()));
+            assert_eq!(Unanswered::TimedOut.word(), "timeout");
+            assert_eq!(Unanswered::NotShown.word(), "busy");
+            assert_eq!(Unanswered::Released.word(), "released");
         });
     }
 }

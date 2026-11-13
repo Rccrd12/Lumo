@@ -888,10 +888,10 @@ html.look-new .stack > .approval-code {
   flex-shrink: 0;
 }
 
-/* A request too long to reach the island whole: no Allow, and why. */
+/* A request too long to reach the island whole: the card shows its beginning, and says so. */
 html.look-new .approval-cut {
   font: 500 12px var(--font);
-  color: var(--amber);
+  color: var(--dim);
 }
 
 html.look-new .approval-cut[hidden] {

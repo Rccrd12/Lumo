@@ -357,14 +357,47 @@ pub fn claude_wait_denied() -> String {
     .to_string()
 }
 
+/// Why a card of the island's Antigravity chat got no decision, as the relay
+/// saw it (main.rs): the app's own line (`unanswered …`, pipe.rs) says more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unanswered {
+    /// No Lumo on the other end of the pipe.
+    NotRunning,
+    /// The relay's time for the card ran out.
+    TimedOut,
+    /// Anything else: Lumo said nothing.
+    Unknown,
+}
+
+/// What the model is told after a click on Deny.
+const DENIED: &str = "The user denied this in Lumo. Don't try to do the same in another way: ask them what they want instead.";
+
+/// What the model is told when nobody answered, by why: the true reason, so it
+/// neither retries in vain nor tells the user something that did not happen.
+fn unanswered_reason(word: &str, why: Unanswered, secs: u64) -> String {
+    match (word, why) {
+        ("timeout", _) | ("", Unanswered::TimedOut) => format!(
+            "Nobody answered Lumo's card within {secs} s: the user may be away. Don't retry this on your own: say in your answer what you wanted to do, and wait for their reply."
+        ),
+        ("busy", _) => "Lumo couldn't show this request: it is paused, or other requests are already waiting. Try again in a moment; if it happens again, tell the user.".to_string(),
+        ("released", _) => "Lumo took this request down before anyone answered (it was paused, or the request was withdrawn). Say in your answer what you wanted to do.".to_string(),
+        ("", Unanswered::NotRunning) => "Lumo isn't running, so nobody could approve this. Say in your answer what you wanted to do.".to_string(),
+        _ => "Nobody answered this request in Lumo, so it was not done. Don't retry it on your own: say in your answer what you wanted to do.".to_string(),
+    }
+}
+
 /// Antigravity's PreToolUse reply to its chat's card (main.rs): `allow` only after a click
-/// on Allow. Anything else — Deny, no click in time, an answer not understood
-/// — is a deny: with agy's own confirmation off, nothing else stops it.
-pub fn antigravity_island(decision: Option<&str>) -> String {
+/// on Allow (or the chat's Auto, pipe.rs). Anything else — Deny, no click in
+/// time, an answer not understood — is a deny: with agy's own confirmation
+/// off, nothing else stops it. Its reason says what really happened (`why`,
+/// and the app's `unanswered <word>` line), `secs` being how long the card waited.
+pub fn antigravity_island(decision: Option<&str>, why: Unanswered, secs: u64) -> String {
+    let deny = |reason: &str| json!({ "decision": "deny", "reason": reason }).to_string();
     match decision.map(str::trim) {
         Some("allow" | "always") => r#"{"decision":"allow"}"#.to_string(),
-        Some("deny") => r#"{"decision":"deny","reason":"Denied from Lumo"}"#.to_string(),
-        _ => r#"{"decision":"deny","reason":"Nobody approved it in Lumo"}"#.to_string(),
+        Some("deny") => deny(DENIED),
+        Some(line) if line.starts_with("unanswered ") => deny(&unanswered_reason(line["unanswered ".len()..].trim(), why, secs)),
+        _ => deny(&unanswered_reason("", why, secs)),
     }
 }
 
@@ -375,7 +408,7 @@ pub fn antigravity_island(decision: Option<&str>) -> String {
 pub fn antigravity_gate(decision: Option<&str>) -> String {
     match decision.map(str::trim) {
         Some("allow" | "always" | "edits") => r#"{"decision":"allow"}"#.to_string(),
-        Some("deny") => r#"{"decision":"deny","reason":"Denied from Lumo"}"#.to_string(),
+        Some("deny") => json!({ "decision": "deny", "reason": DENIED }).to_string(),
         _ => r#"{"decision":"ask"}"#.to_string(),
     }
 }
@@ -601,12 +634,27 @@ mod tests {
 
     #[test]
     fn the_islands_antigravity_chat_is_allowed_only_after_a_click() {
-        assert_eq!(antigravity_island(Some("allow")), r#"{"decision":"allow"}"#);
-        assert_eq!(antigravity_island(Some("always")), r#"{"decision":"allow"}"#);
-        assert_eq!(antigravity_island(Some("deny")), r#"{"decision":"deny","reason":"Denied from Lumo"}"#);
-        for not_a_decision in [None, Some(""), Some("ask"), Some("maybe"), Some(r#"{"permissionDecision":"allow"}"#)] {
-            let out = antigravity_island(not_a_decision);
-            assert_eq!(out, r#"{"decision":"deny","reason":"Nobody approved it in Lumo"}"#, "{not_a_decision:?}");
+        let island = |d: Option<&str>| antigravity_island(d, Unanswered::Unknown, 100);
+        let reason = |out: String| -> String {
+            let v: Value = serde_json::from_str(&out).unwrap();
+            assert_eq!(v["decision"], "deny", "{out}");
+            v["reason"].as_str().unwrap().to_string()
+        };
+        assert_eq!(island(Some("allow")), r#"{"decision":"allow"}"#);
+        assert_eq!(island(Some("always")), r#"{"decision":"allow"}"#);
+        assert_eq!(reason(island(Some("deny"))), DENIED);
+        for not_a_decision in [None, Some(""), Some("ask"), Some("maybe"), Some(r#"{"permissionDecision":"allow"}"#), Some("unanswered what")] {
+            let r = reason(island(not_a_decision));
+            assert!(r.starts_with("Nobody answered this request in Lumo"), "{not_a_decision:?}: {r}");
+        }
+        // The true reason, never "nobody approved it" when nobody could.
+        assert!(reason(island(Some("unanswered timeout"))).contains("within 100 s"));
+        assert!(reason(antigravity_island(None, Unanswered::TimedOut, 60)).contains("within 60 s"));
+        assert!(reason(island(Some("unanswered busy"))).contains("other requests are already waiting"));
+        assert!(reason(island(Some("unanswered released"))).contains("before anyone answered"));
+        assert!(reason(antigravity_island(None, Unanswered::NotRunning, 100)).starts_with("Lumo isn't running"));
+        for r in [island(Some("deny")), island(None), island(Some("unanswered timeout"))] {
+            assert!(!r.contains("Nobody approved it"), "{r}");
         }
         assert!(island_card("run_command", None));
         assert!(island_card("send_command_input", None));

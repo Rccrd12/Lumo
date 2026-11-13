@@ -114,36 +114,42 @@ test("a file to write is counted for its card: lines added and removed, and a ne
   assert.equal(editStat("write_file", { file_path: "C:/p/a.ts", content: "x" }), null);
 });
 
-test("a Write cut short shows its real size, never the size of what is left of it", async () => {
+test("a change of any size shows the relay's numbers, never the size of what is left of it", async () => {
   const { editStat } = await import("../src/core/approvals.ts");
-  // What the relay forwards of a 400 KB Write: 256 KB and an ellipsis.
+  // What the relay forwards of a 400 KB rewrite: 256 KB and an ellipsis,
+  // with the numbers it read from the whole text against the file on disk.
   const left = "x".repeat(256 * 1024) + "…";
   const input = { file_path: "C:/p/big.txt", content: left };
-  // With the size the relay read before cutting: that, lines and bytes.
-  assert.deepEqual(editStat("Write", input, { cut: true, writeBytes: 400 * 1024, writeLines: 4_096 }), { added: 4_096, removed: 0, bytes: 400 * 1024 });
-  // Without it (a relay from before), no numbers rather than the cut's ones.
+  assert.deepEqual(editStat("Write", input, { cut: true, added: 1_249, removed: 0, bytes: 400 * 1024 }), { added: 1_249, removed: 0, bytes: 400 * 1024 });
+  // Any agent's file tool: Antigravity CLI's edit_file has no count of its own here.
+  assert.deepEqual(editStat("edit_file", { Path: "C:/p/a.tex", Target: "a", Replacement: "a\nb" }, { added: 1, removed: 0 }), { added: 1, removed: 0 });
+  // A rewrite that drops lines says so.
+  assert.deepEqual(editStat("write_to_file", { TargetFile: "C:/p/a.tex" }, { added: 0, removed: 500, bytes: 10 }), { added: 0, removed: 500, bytes: 10 });
+  // Without them (a relay from before), no numbers rather than the cut's ones.
   assert.equal(editStat("Write", input, { cut: true }), null);
-  assert.equal(editStat("Write", input, { cut: true, writeBytes: "409600", writeLines: 1 }), null);
-  assert.equal(editStat("Write", input, { cut: true, writeBytes: -1, writeLines: 1 }), null);
+  assert.equal(editStat("Write", input, { cut: true, added: "4", removed: 0 }), null);
+  assert.equal(editStat("Write", input, { cut: true, added: -1, removed: 0 }), null);
   // An edit cut short has no count to trust either: the lines left are not the edit's.
   assert.equal(editStat("Edit", { file_path: "C:/p/a.ts", old_string: "a", new_string: left }, { cut: true }), null);
   assert.equal(editStat("NotebookEdit", { notebook_path: "C:/p/a.ipynb", new_source: left }, { cut: true }), null);
-  // A size the relay sends goes only with a cut request: a whole one is counted from its text.
-  assert.deepEqual(editStat("Write", { file_path: "C:/p/a.txt", content: "a\nb\n" }, { writeBytes: 999, writeLines: 9 }), { added: 2, removed: 0, bytes: 4 });
+  // Nothing changed: no line.
+  assert.equal(editStat("Edit", { file_path: "C:/p/a.ts" }, { added: 0, removed: 0 }), null);
+  // No numbers from the relay: a whole request is counted from its text.
+  assert.deepEqual(editStat("Write", { file_path: "C:/p/a.txt", content: "a\nb\n" }), { added: 2, removed: 0, bytes: 4 });
 });
 
-test("a request cut short offers no button that does nothing: Allow and a plan's Approve both go", async () => {
+test("a request cut short keeps Allow and says it shows its beginning; only the session's Allow goes", async () => {
   const { approvalOffer } = await import("../src/core/approvals.ts");
   const plan = [{ text: "Read the settings page" }, { text: "Add the toggle" }];
   // Whole: Allow, and what the request can have besides.
   assert.deepEqual(approvalOffer({ sessionAllow: true }), { allow: true, cutNote: false, sessionAllow: true, planEdits: false, answerThere: null });
   assert.deepEqual(approvalOffer({ plan }), { allow: true, cutNote: false, sessionAllow: false, planEdits: true, answerThere: null });
   assert.deepEqual(approvalOffer({ plan, fromChat: true }), { allow: true, cutNote: false, sessionAllow: false, planEdits: false, answerThere: null });
-  // Cut: no Allow, no session, back to the agent's own window (not from the chat: it has none).
-  assert.deepEqual(approvalOffer({ cut: true, sessionAllow: true }), { allow: false, cutNote: true, sessionAllow: false, planEdits: false, answerThere: "elsewhere" });
-  assert.deepEqual(approvalOffer({ cut: true, fromChat: true }), { allow: false, cutNote: true, sessionAllow: false, planEdits: false, answerThere: null });
-  // A plan cut short: its Approve is gone too (pipe.rs would refuse it), and says why.
-  assert.deepEqual(approvalOffer({ plan, cut: true }), { allow: false, cutNote: true, sessionAllow: false, planEdits: false, answerThere: "elsewhere" });
+  // Cut: Allow stays (the user decides), the note says what is shown; never kept for the session.
+  assert.deepEqual(approvalOffer({ cut: true, sessionAllow: true }), { allow: true, cutNote: true, sessionAllow: false, planEdits: false, answerThere: null });
+  assert.deepEqual(approvalOffer({ cut: true, fromChat: true }), { allow: true, cutNote: true, sessionAllow: false, planEdits: false, answerThere: null });
+  // A plan cut short: approved like any other.
+  assert.deepEqual(approvalOffer({ plan, cut: true }), { allow: true, cutNote: true, sessionAllow: false, planEdits: true, answerThere: null });
   // An agent that answers in its own window says so by name, on any card but a plan's.
   assert.equal(approvalOffer({ answerIn: "Antigravity" }).answerThere, "agent");
   assert.equal(approvalOffer({ answerIn: "Antigravity", plan }).answerThere, null);

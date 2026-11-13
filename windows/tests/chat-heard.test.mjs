@@ -19,6 +19,7 @@ installFakeDom();
 const { buildPrompt } = await import("../src/views/chat.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { loadChats, saveChat } = await import("../src/core/chats.ts");
+const { setCompactNewsHandler } = await import("../src/core/compact.ts");
 
 let answers;
 const plainInvoke = internals.invoke;
@@ -103,6 +104,25 @@ test("heard for another chat: the bar names it, the waves and the clock light, C
   assert.equal($(".history-badge").textContent, "");
 });
 
+test("heard while the island is hidden: the closed island comes out to say it", async () => {
+  let news = 0;
+  setCompactNewsHandler(() => news++);
+  try {
+    // The chat on screen, open: seen at once, nothing to come out for.
+    emit("listen-fired", { watch: watch(1, State.chatId), met: true, summary: "New email from Marco: Quote", ended: true });
+    await flush();
+    assert.equal(news, 0);
+    // Hidden: what another chat heard waits, and the island comes out for it.
+    State.mode = "hidden";
+    emit("listen-fired", { watch: watch(2, "release"), met: true, summary: "#241 is ready to merge", ended: true });
+    await flush();
+    assert.equal(State.listenPending.length, 1);
+    assert.equal(news, 1);
+  } finally {
+    setCompactNewsHandler(null);
+  }
+});
+
 test("Open that chat brings it on screen, with its line", async () => {
   emit("listen-fired", { watch: watch(2, "release"), met: true, summary: "#241 is ready to merge", ended: true });
   await flush();
@@ -138,6 +158,17 @@ test("a task for another chat is done there, in the background; the chat on scre
   assert.deepEqual(saved.turns.map((t) => t.role), ["user", "assistant", "user", "assistant"]);
   assert.equal(saved.turns.at(-1).content, "Merged.");
   assert.equal(State.chatId, here);
+});
+
+test("a task for another chat goes to that chat's provider and model; the picker stays on the one on screen", async () => {
+  saveChat({ ...loadChats().find((c) => c.id === "release"), provider: "openai", model: "gpt-4.1" });
+  answers.chat_send = { text: "Merged.", turns: 4 };
+  emit("listen-fired", { watch: watch(7, "release", "merge it"), met: true, summary: "#241 is ready to merge", ended: true });
+  await flush();
+  await flush();
+  assert.deepEqual(sent("chat_send").map((a) => [a.chatId, a.provider, a.model]), [["release", "openai", "gpt-4.1"]]);
+  assert.equal(State.settings.chatProvider, "anthropic");
+  assert.equal(sent("save_settings").length, 0);
 });
 
 test("a watch that goes on offers Stop listening on its line", async () => {

@@ -111,8 +111,10 @@ export interface ApprovalInfo {
   plan?: import("./agent-plan").PlanStep[];
   /** A file tool's request: the lines it adds and removes, and a Write's size (core/approvals.ts editStat), under the file on the card. */
   edit?: import("./approvals").EditStat;
-  /** Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`): never allowed from the island, only denied or left to the agent's own prompt. */
+  /** Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`): the card shows its beginning and says so; Allow stays, "Allow for this session" doesn't. */
   cut?: boolean;
+  /** With `cut`: the whole request's size (`lumo_input_bytes`), for the line that says so. */
+  cutBytes?: number;
 }
 
 /**

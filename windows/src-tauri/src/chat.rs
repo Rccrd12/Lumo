@@ -151,6 +151,10 @@ struct Conversation {
     cli_session: Option<String>,
     /// The provider `cli_session` belongs to: one CLI never resumes the other's.
     cli_owner: Option<String>,
+    /// How many of `plain`'s turns `cli_session` has seen: the ones after it
+    /// were answered by another provider (an API one, which leaves the session
+    /// as it is), and go to the session as text when its CLI answers again.
+    cli_seen: usize,
     /// Folders the user shared from File Explorer in this chat: Claude Code
     /// keeps reading them on the turns after (explorer.rs). Each with the turn
     /// it came with, so an edit before that turn takes it back.
@@ -256,7 +260,9 @@ impl Chat {
             None => (None, None),
         };
         let compact = compact.filter(|(upto, summary)| upto.is_multiple_of(2) && *upto <= plain.len() && !summary.trim().is_empty());
-        *c = Conversation { epoch, plain, cli_session, cli_owner, compact, ..Default::default() };
+        // A saved chat does not say which turns its session saw: all of them.
+        let cli_seen = plain.len();
+        *c = Conversation { epoch, plain, cli_session, cli_owner, cli_seen, compact, ..Default::default() };
     }
 
     /// An edited message: the conversation goes back to its first `keep` turns
@@ -282,6 +288,7 @@ impl Chat {
         }
         c.cli_session = None;
         c.cli_owner = None;
+        c.cli_seen = 0;
     }
 
     /// /compact: what the model would be sent now, as text to sum up, and
@@ -432,6 +439,17 @@ impl Chat {
         c.cli_session.clone().filter(|_| c.cli_owner.as_deref() == Some(provider))
     }
 
+    /// The turns `provider`'s own session has not seen, as plain text turns:
+    /// those another provider answered since that CLI last did. None without
+    /// a session of its own (it then gets the whole conversation, `Turn::history`).
+    pub fn cli_unseen(&self, provider: &str) -> Vec<Value> {
+        let c = self.inner.lock().unwrap();
+        if c.cli_session.is_none() || c.cli_owner.as_deref() != Some(provider) {
+            return Vec::new();
+        }
+        c.plain.get(c.cli_seen..).map(<[Value]>::to_vec).unwrap_or_default()
+    }
+
     /// The folders Claude Code may read in this chat, with `shared` added.
     pub fn cli_dirs(&self, shared: Option<String>) -> Vec<String> {
         let mut c = self.inner.lock().unwrap();
@@ -450,6 +468,8 @@ impl Chat {
         if c.epoch == turn.epoch {
             c.cli_session = Some(id.to_string());
             c.cli_owner = Some(turn.provider.clone());
+            // It was given every turn before this one (as text, those it had not seen).
+            c.cli_seen = c.plain.len();
         }
     }
 
@@ -481,6 +501,9 @@ impl Chat {
         c.native.push(assistant);
         c.plain.push(json!({ "role": "user", "content": user_text }));
         c.plain.push(json!({ "role": "assistant", "content": answer }));
+        if c.cli_owner.as_deref() == Some(turn.provider.as_str()) {
+            c.cli_seen = c.plain.len();
+        }
     }
 }
 
@@ -830,6 +853,22 @@ pub fn model_for(settings: &Settings, provider: &str) -> String {
         .filter(|m| !m.is_empty())
         .or_else(|| openai_compat::provider(provider).map(|p| p.default_model.to_string()))
         .unwrap_or_default()
+}
+
+/// `settings` with the provider and model a chat is on (the page keeps them
+/// by chat, chats.ts): that chat is answered by them, whatever the picker
+/// shows for another chat meanwhile. None, or empty, leaves the settings' own.
+pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>) -> Settings {
+    let Some(provider) = provider.map(str::trim).filter(|p| !p.is_empty()) else { return settings };
+    settings.chat_provider = provider.to_string();
+    if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
+        if provider == ANTHROPIC {
+            settings.model = model.to_string();
+        } else {
+            settings.chat_models.insert(provider.to_string(), model.to_string());
+        }
+    }
+    settings
 }
 
 /// A file rides along only if it is one of Lumo's own copies of a dropped
@@ -1263,6 +1302,40 @@ mod tests {
         assert_eq!(turn_texts(&t.history), vec![("user".into(), json!("hi")), ("assistant".into(), json!("hello"))]);
         chat.reset();
         assert_eq!(chat.cli_session(), None);
+    }
+
+    #[test]
+    fn a_resumed_session_is_given_the_turns_another_provider_answered() {
+        let chat = Chat::default();
+        let q = |text: &str| json!({ "role": "user", "content": text });
+        let a = |text: &str| json!({ "role": "assistant", "content": text });
+        // Claude Code answers: its session has seen everything.
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("one"), a("1"), "one", "1");
+        assert!(chat.cli_unseen("claude-code").is_empty());
+        // An API provider answers next: the session goes on, without that turn.
+        let t = chat.begin("openai");
+        chat.commit(&t, q("two"), a("2"), "two", "2");
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("s"));
+        assert_eq!(chat.cli_unseen("claude-code"), vec![q("two"), a("2")]);
+        assert!(chat.cli_unseen("antigravity-cli").is_empty(), "only the session's own CLI");
+        // Back to Claude Code: given those turns once, then nothing more.
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("three"), a("3"), "three", "3");
+        assert!(chat.cli_unseen("claude-code").is_empty());
+        // A stopped turn that kept nothing still gave the session what it missed.
+        let t = chat.begin("openai");
+        chat.commit(&t, q("four"), a("4"), "four", "4");
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "s");
+        assert!(chat.cli_unseen("claude-code").is_empty());
+        // A saved chat comes back as all seen; an edit starts a new session.
+        chat.restore(vec![("user".into(), "x".into()), ("assistant".into(), "y".into())], Some("s".into()), None);
+        assert!(chat.cli_unseen("claude-code").is_empty());
+        chat.rewind(0);
+        assert!(chat.cli_unseen("claude-code").is_empty());
     }
 
     #[test]
@@ -1789,5 +1862,28 @@ mod tests {
         assert!(!is_inside(&inbox, &inbox.join("missing.txt")));
         assert!(!is_inside(&inbox, &inbox));
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_chat_is_answered_by_its_own_provider_and_model() {
+        let settings = Settings {
+            chat_provider: "openai".into(),
+            chat_models: [("openai".to_string(), "gpt-4o".to_string())].into_iter().collect(),
+            ..Settings::default()
+        };
+        // Anthropic's model is `model`; the others' are kept by provider.
+        let a = with_pick(settings.clone(), Some("anthropic"), Some("claude-opus-5-5"));
+        assert_eq!(a.chat_provider, ANTHROPIC);
+        assert_eq!(model_for(&a, ANTHROPIC), "claude-opus-5-5");
+        let b = with_pick(settings.clone(), Some("openrouter"), Some("openrouter/auto"));
+        assert_eq!((b.chat_provider.as_str(), model_for(&b, "openrouter").as_str()), ("openrouter", "openrouter/auto"));
+        assert_eq!(model_for(&b, "openai"), "gpt-4o");
+        // No model: that provider's own.
+        let c = with_pick(settings.clone(), Some("claude-code"), None);
+        assert_eq!(c.chat_provider, "claude-code");
+        // Nothing named: the settings as they are.
+        let d = with_pick(settings.clone(), None, Some("x"));
+        assert_eq!((d.chat_provider.as_str(), model_for(&d, "openai").as_str()), ("openai", "gpt-4o"));
+        assert_eq!(with_pick(settings, Some(" "), None).chat_provider, "openai");
     }
 }

@@ -588,13 +588,20 @@ impl Run {
     }
 }
 
-/// agy's plan, to the Plan island (src/island/plan.ts) as the island chat's.
-fn emit_plan(app: &AppHandle, tool: &str, input: Value) {
-    let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input, "agent": "Antigravity CLI", "color": "#E879F9" }));
+/// agy's plan, to the Plan island (src/island/plan.ts) as island chat
+/// `chat`'s: the chat agy works for, never the one on screen when it comes.
+fn emit_plan(app: &AppHandle, chat: &str, tool: &str, input: Value) {
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-plan", plan_event(chat, tool, input));
+}
+
+/// The `chat-plan` event of agy's plan for island chat `chat`.
+fn plan_event(chat: &str, tool: &str, input: Value) -> Value {
+    json!({ "chat": chat, "tool": tool, "input": input, "agent": "Antigravity CLI", "color": "#E879F9" })
 }
 
 /// A call of Lumo's update_plan tool, handed over by lumo-hook's MCP server
-/// (`{"lumo_plan": {"input": …}}`, pipe.rs): its plan goes to the Plan island.
+/// (`{"lumo_plan": {"input": …, "chat": …}}`, pipe.rs): its plan goes to the
+/// Plan island, as the plan of the chat agy was started for (`LUMO_CHAT_ID`).
 /// agy's stream says the same of its tool steps, but not of every build's
 /// MCP calls: this is the way that always comes.
 pub fn serve_plan(app: &AppHandle, request: &Value) -> Value {
@@ -602,7 +609,8 @@ pub fn serve_plan(app: &AppHandle, request: &Value) -> Value {
     if !input["plan"].as_array().is_some_and(|p| !p.is_empty()) {
         return json!({ "error": "The plan needs at least one step." });
     }
-    emit_plan(app, "update_plan", input.clone());
+    let chat = request["chat"].as_str().unwrap_or("");
+    emit_plan(app, chat, "update_plan", input.clone());
     json!({ "text": "Plan shown to the user." })
 }
 
@@ -911,7 +919,10 @@ pub async fn send(
     // Turns this conversation has not seen (another provider answered them, or
     // a message was edited) are carried over once, as text, with the instructions.
     let carried: Vec<Value> = if conversation.is_none() { turn.history.clone() } else { Vec::new() };
-    let text = claude_code::prompt(context.as_ref(), &carried, &chat.files(), &query);
+    // The turns another provider answered since this conversation last did:
+    // they go in front of the question, and the conversation goes on.
+    let unseen = chat.cli_unseen(PROVIDER);
+    let text = format!("{}{}", claude_code::catch_up(&unseen), claude_code::prompt(context.as_ref(), &carried, &chat.files(), &query));
     let text = match conversation {
         Some(_) => text,
         None if chat.is_workshop() => with_workshop_instructions(&text),
@@ -942,7 +953,7 @@ pub async fn send(
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
         // its plan only while it has not called the tool.
-        let emit = |tool: &str, input: Value| emit_plan(&app2, tool, input);
+        let emit = |tool: &str, input: Value| emit_plan(&app2, &chat_id, tool, input);
         let by_tool = std::cell::Cell::new(false);
         let mut plan_sent = String::new();
         run(
@@ -1137,6 +1148,10 @@ async fn command(
             // A new conversation would take it for a question.
             return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen this conversation yet."), chat.cli_session()));
         };
+        if !chat.cli_unseen(PROVIDER).is_empty() {
+            // It would sum up the conversation without the turns another provider answered.
+            return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen the latest answers in this chat yet."), chat.cli_session()));
+        }
         let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
         let mut args = args(model, mode, Some(conversation.as_str()), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
         args.retain(|a| a != "--disable-slash-commands");
@@ -1244,6 +1259,15 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agys_plan_names_the_chat_it_runs_for() {
+        // Not the chat on screen when it comes: the user may have opened another meanwhile.
+        let v = plan_event("chat-a", "update_plan", json!({ "plan": [{ "step": "Read", "status": "in_progress" }] }));
+        assert_eq!(v["chat"], "chat-a");
+        assert_eq!(v["agent"], "Antigravity CLI");
+        assert_eq!(v["input"]["plan"][0]["step"], "Read");
+    }
 
     #[test]
     fn once_the_answer_is_in_agy_is_ended_after_a_moment_or_at_once_on_stop() {

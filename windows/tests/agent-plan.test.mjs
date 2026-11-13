@@ -9,6 +9,7 @@ import {
   PlanBook, isNewPlan, planFinished, planProgress, readPlanUpdate, stepStatus, stepsFromMarkdown,
 } from "../src/core/agent-plan.ts";
 import { IslandPlan } from "../src/island/plan.ts";
+import { homeChatPlans } from "../src/views/home.ts";
 import { liveSessions, registerHookHandlers } from "../src/island/hooks.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 import { Sound } from "../src/core/sound.ts";
@@ -343,6 +344,29 @@ test("a question of the chat edited: the plan its answer made goes, and the next
   assert.equal(open(), true);
   assert.deepEqual(island.plan.current.steps, [{ text: "Open Chrome and check it", status: "active" }]);
   island.plan.forgetChat("edited-chat");
+});
+
+test("a chat at work while another is on screen keeps its own plan: one row on the home, its agent's name", () => {
+  // Antigravity works in chat A; the user opens chat B and writes to Claude Code there.
+  const agy = (statuses) => emit("chat-plan", {
+    chat: "agy-chat", tool: "update_plan", agent: "Antigravity CLI", color: "#E879F9",
+    input: { plan: ["Check Downloads", "Read the file", "Fix the formula", "Save and check LaTeX"].map((step, i) => ({ step, status: statuses[i] })) },
+  });
+  State.chatId = "agy-chat";
+  agy(["completed", "in_progress", "pending", "pending"]);
+  State.chatId = "opus-chat";
+  agy(["completed", "completed", "completed", "in_progress"]);
+  assert.equal(island.plan.book.get("chat|opus-chat"), undefined, "nothing lands in the chat on screen");
+  const rows = homeChatPlans();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].key, "chat|agy-chat");
+  assert.equal(rows[0].agent, "Antigravity CLI");
+  assert.deepEqual(rows[0].steps.map((s) => s.status), ["done", "done", "done", "active"]);
+  // Claude Code's own plan in chat B is a row of its own, in its name.
+  emit("chat-plan", { chat: "opus-chat", tool: "TodoWrite", input: todos(["Answer", "in_progress"]) });
+  assert.deepEqual(homeChatPlans().map((p) => [p.key, p.agent]).sort(), [["chat|agy-chat", "Antigravity CLI"], ["chat|opus-chat", "Claude Code"]]);
+  island.plan.forgetChat("agy-chat");
+  island.plan.forgetChat("opus-chat");
 });
 
 test("a local or API model's update_plan carries its own chat id and speaker", () => {
