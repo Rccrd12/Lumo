@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { describeComputerAction, isComputerTool } = await import("../src/core/computer.ts");
+const { computerActionOn, computerPoint, describeComputerAction, isComputerTool, peekPlacement, scrollDirectionOf, splitComputerLine } = await import("../src/core/computer.ts");
 const { setLanguage } = await import("../src/i18n/i18n.ts");
 
 const say = (name, input = {}) => describeComputerAction(`mcp__lumo__${name}`, input);
@@ -55,4 +55,66 @@ test("the card speaks the interface language", () => {
   } finally {
     setLanguage("en");
   }
+});
+
+test("the point an action acts on: a click's, a move's, a scroll's, a drag's end", () => {
+  assert.deepEqual(computerPoint("mcp__lumo__left_click", { coordinate: [640, 320] }), [640, 320]);
+  assert.deepEqual(computerPoint("mcp__lumo__triple_click", { coordinate: [1, 2] }), [1, 2]);
+  assert.deepEqual(computerPoint("mcp__lumo__left_click_drag", { start_coordinate: [10, 10], coordinate: [200, 50] }), [200, 50]);
+  assert.deepEqual(computerPoint("mcp__lumo__scroll", { coordinate: [3, 4], scroll_direction: "up" }), [3, 4]);
+  assert.deepEqual(computerPoint("mcp_lumo_mouse_move", { coordinate: [5, 6] }), [5, 6]);
+  // None: where the mouse is, typing, keys, looking, a point that is not one, another tool.
+  assert.equal(computerPoint("mcp__lumo__left_click", {}), null);
+  assert.equal(computerPoint("mcp__lumo__left_click", { coordinate: [1] }), null);
+  assert.equal(computerPoint("mcp__lumo__left_click", { coordinate: [1, Infinity] }), null);
+  assert.equal(computerPoint("mcp__lumo__type", { text: "x", coordinate: [1, 2] }), null);
+  assert.equal(computerPoint("mcp__lumo__zoom", { coordinate: [1, 2] }), null);
+  assert.equal(computerPoint("mcp__other__left_click", { coordinate: [1, 2] }), null);
+});
+
+test("an action on a thing Windows named is said on it, the name apart with its quotes", () => {
+  const on = (name, input = {}, tool = "left_click") => computerActionOn(`mcp__lumo__${tool}`, input, name);
+  assert.deepEqual(on("Save as…"), { before: "Click on ", name: "«Save as…»", after: "" });
+  assert.deepEqual(on("  File \n menu "), { before: "Click on ", name: "«File menu»", after: "" }, "on one line");
+  assert.deepEqual(on("Text", {}, "right_click"), { before: "Right click on ", name: "«Text»", after: "" });
+  assert.deepEqual(on("List", { scroll_direction: "up" }, "scroll"), { before: "Scroll up on ", name: "«List»", after: "" });
+  assert.deepEqual(on("List", {}, "scroll"), { before: "Scroll down on ", name: "«List»", after: "" });
+  assert.deepEqual(on("Bin", {}, "left_click_drag"), { before: "Drag to ", name: "«Bin»", after: "" });
+  assert.deepEqual(on("OK", {}, "mouse_move"), { before: "Move the mouse to ", name: "«OK»", after: "" });
+  assert.equal(on(""), null, "no name, no words");
+  assert.equal(on("x", {}, "type"), null, "typing has no point");
+  assert.equal(computerActionOn("Bash", {}, "x"), null);
+  setLanguage("it");
+  try {
+    assert.deepEqual(on("Salva con nome…"), { before: "Clic su ", name: "«Salva con nome…»", after: "" });
+  } finally {
+    setLanguage("en");
+  }
+});
+
+test("the card's line comes apart into what is done and on what; a scroll's way is read back", () => {
+  assert.deepEqual(splitComputerLine("Click · 640, 320"), { label: "Click", detail: "640, 320" });
+  assert.deepEqual(splitComputerLine("Type · a · b"), { label: "Type", detail: "a · b" });
+  assert.deepEqual(splitComputerLine("Look at the screen"), { label: "Look at the screen", detail: "" });
+  assert.equal(scrollDirectionOf(say("scroll", { scroll_direction: "left", coordinate: [1, 2] })), "left");
+  assert.equal(scrollDirectionOf(say("scroll", { scroll_direction: "up" })), "up");
+  assert.equal(scrollDirectionOf(say("left_click", { coordinate: [1, 2] })), null);
+});
+
+test("the screen's crop fills the card's thumbnail, its point inside it", () => {
+  // The same shape: scaled down, the point where it was.
+  assert.deepEqual(peekPlacement({ width: 224, height: 144, at: [112, 72] }, 112, 72), { scale: 0.5, left: 0, top: 0, x: 56, y: 36 });
+  // Wider than the box: cut on the sides, centred on the middle.
+  const wide = peekPlacement({ width: 400, height: 144, at: [200, 72] }, 112, 72);
+  assert.equal(wide.scale, 0.5);
+  assert.equal(wide.left, -44);
+  assert.equal(wide.x, 56);
+  // A point near the crop's edge (a click at the screen's edge) stays in the box, clear of its border.
+  const edge = peekPlacement({ width: 400, height: 144, at: [396, 70] }, 112, 72);
+  assert.ok(edge.x >= 8 && edge.x <= 112, JSON.stringify(edge));
+  assert.ok(edge.left <= 0 && edge.left >= 112 - 400 * edge.scale, "never past the crop's own edges");
+  const corner = peekPlacement({ width: 400, height: 400, at: [0, 0] }, 112, 72);
+  assert.deepEqual([corner.left, corner.top, corner.x, corner.y], [0, 0, 0, 0], "the crop's corner can't move further");
+  // Smaller than the box: scaled up to fill it.
+  assert.equal(peekPlacement({ width: 56, height: 36, at: [28, 18] }, 112, 72).scale, 2);
 });

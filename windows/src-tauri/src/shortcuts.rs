@@ -254,9 +254,9 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
             if event.state != ShortcutState::Pressed {
                 return;
             }
-            // Esc, taken while Claude uses the computer for the chat.
+            // Esc, taken while an agent uses the computer for the chat: it pauses (or resumes).
             if crate::computer::is_stop_key(shortcut) {
-                crate::computer::stop(app);
+                crate::computer::esc(app);
                 return;
             }
             let Some(registry) = app.try_state::<Registry>() else { return };

@@ -94,7 +94,8 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
+  chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact,
+  toSavedTurn, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
@@ -113,6 +114,8 @@ import {
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import { COMPUTER_TEXT } from "../core/computer";
+import { currentStep } from "../core/computer-use";
+import { computerRecapBox } from "./computer-recap";
 import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
 import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
@@ -406,8 +409,10 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     // A stopped answer says so on the same line.
     const stopped = message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null;
     bar.append(...[copy, retry, stopped, when].filter((x): x is HTMLElement => x != null));
+    // The turn used the computer: how it went, under the answer (views/computer-recap.ts).
+    const computer = message.computer ? computerRecapBox(message.computer, message.id) : null;
     const copies = message.copies?.length ? copiesBox(message.copies) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, bar));
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, bar));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
@@ -812,8 +817,11 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.plan);
     case "screen":
       return t(ACTIVITY_STRINGS.screen);
-    case "computer":
-      return t(ACTIVITY_STRINGS.computer);
+    case "computer": {
+      // The step of its plan under way, while it uses the computer with one (computer-state).
+      const step = State.computer && !State.computer.stopped ? currentStep(State.computer.steps)?.step.text.replace(/\s+/g, " ").trim() : "";
+      return step || t(ACTIVITY_STRINGS.computer);
+    }
     case "tool":
       return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
     case "starting":
@@ -3414,7 +3422,7 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined }));
+      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, ...fromSavedTurn(turn) }));
       State.chatSession = c.session;
       void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
     }
@@ -3612,7 +3620,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}) }));
+    const turns = run.history.filter((m) => !m.failed).map(toSavedTurn);
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -4204,6 +4212,8 @@ export function buildPrompt(
           kept: reply.kept,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
+          // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
+          computer: cleanRecap(reply.computer),
         });
         run.copies = undefined;
       } else {
@@ -4326,7 +4336,7 @@ export function buildPrompt(
     if (session && known && known !== session) return;
     if (history) {
       if (!joinOwnAnswer(history, content)) return;
-      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
+      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, ...(m.computer ? { computer: m.computer } : {}) }));
       if (run) remember(run);
       else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns });
       if (onScreen) renderedCount = -1;
@@ -4387,8 +4397,7 @@ export function buildPrompt(
     const saved = loadChats().find((c) => c.id === chatId);
     // Rust takes every turn back as it is: each one's place there is its place here (as openChat).
     const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => ({
-      id: nextId++, role: turn.role, content: turn.content, turn: i,
-      at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined,
+      id: nextId++, role: turn.role, content: turn.content, turn: i, ...fromSavedTurn(turn),
     }));
     const session = saved?.session ?? null;
     loadingAway.add(chatId);

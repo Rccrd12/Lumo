@@ -558,6 +558,53 @@ test("the card names the most specific thing the tool carries", () => {
   assert.equal(target("Grep", { pattern: "x", path: "src", glob: "*.ts" }), "Grep · src");
 });
 
+test("a computer use action's card says why (the plan's step) and where (the point it acts on)", () => {
+  const card = (tool_name, tool_input) => {
+    State.pendingApproval = null;
+    ask("c1", { tool_name, tool_input, lumo_island: true });
+    return State.pendingApproval;
+  };
+  try {
+    // No plan known: what it does and where, nothing said of why.
+    State.computer = null;
+    let c = card("mcp__lumo__left_click", { coordinate: [640, 320] });
+    assert.equal(c.command, "Click · 640, 320", "what Allow allows, as before");
+    assert.deepEqual(c.computerAt, [640, 320]);
+    assert.equal(c.reason, undefined);
+    assert.equal(c.kind, undefined);
+    // With a plan: the step under way is why.
+    State.computer = {
+      engaged: true, paused: false, stopped: false, agent: "Claude Code", color: "#D97757", since: 0,
+      steps: [{ text: "Open Notepad", status: "done" }, { text: "Save the text on the Desktop", status: "active" }, { text: "Check it", status: "pending" }],
+    };
+    c = card("mcp__lumo__double_click", { coordinate: [10, 20], text: "shift" });
+    assert.equal(c.command, "Double click · 10, 20 (shift)");
+    assert.deepEqual(c.computerAt, [10, 20]);
+    assert.equal(c.reason, "Save the text on the Desktop");
+    // A drag acts where it ends; a scroll and a move where they are.
+    assert.deepEqual(card("mcp__lumo__left_click_drag", { start_coordinate: [1, 2], coordinate: [300, 400] }).computerAt, [300, 400]);
+    assert.deepEqual(card("mcp__lumo__scroll", { coordinate: [5, 6], scroll_direction: "up" }).computerAt, [5, 6]);
+    assert.deepEqual(card("mcp__lumo__mouse_move", { coordinate: [7, 8] }).computerAt, [7, 8]);
+    // No point: typing, keys, a click where the mouse is, a point that is not one.
+    c = card("mcp__lumo__type", { text: "ciao\nmondo" });
+    assert.equal(c.command, "Type · ciao⏎\nmondo");
+    assert.equal(c.computerAt, undefined);
+    assert.equal(c.reason, "Save the text on the Desktop");
+    assert.equal(card("mcp__lumo__key", { text: "ctrl+s" }).computerAt, undefined);
+    assert.equal(card("mcp__lumo__left_click", {}).computerAt, undefined);
+    assert.equal(card("mcp__lumo__left_click", { coordinate: ["1", 2] }).computerAt, undefined);
+    // Every step done: nothing under way, nothing said.
+    State.computer = { ...State.computer, steps: [{ text: "Open Notepad", status: "done" }] };
+    assert.equal(card("mcp__lumo__left_click", { coordinate: [1, 1] }).reason, undefined);
+    // Any other tool's card is as it was.
+    c = card("Bash", { command: "npm test", description: "Run the tests" });
+    assert.equal(c.computerAt, undefined);
+    assert.equal(c.reason, "Run the tests");
+  } finally {
+    State.computer = null;
+  }
+});
+
 test("a simple request stays on the closed island, with its buttons (never answered by itself)", () => {
   ask("r1", { tool_name: "Bash", tool_input: { command: "git status && ls -la" } });
   assert.equal(State.pendingApproval.quick, true);

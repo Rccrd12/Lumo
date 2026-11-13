@@ -740,7 +740,7 @@ pub async fn use_computer(app: &AppHandle, task: String) -> Result<String, Strin
     let mode = settings.chat_permission_mode.clone();
     let app2 = app.clone();
     let stop2 = stop.clone();
-    crate::computer::begin_turn();
+    crate::computer::begin_turn(crate::computer::Who::of(crate::claude_code::PROVIDER));
     let result = tauri::async_runtime::spawn_blocking(move || {
         let tell = |a: &crate::claude_code::Activity| {
             let _ = app2.emit_to(
@@ -753,7 +753,8 @@ pub async fn use_computer(app: &AppHandle, task: String) -> Result<String, Strin
     })
     .await
     .map_err(|e| e.to_string());
-    crate::computer::end_turn(app);
+    // Gemini says the answer: the recap has nowhere to go.
+    let _ = crate::computer::end_turn(app, stop.is_stopped());
     let mut current = HELPING.lock().unwrap_or_else(|e| e.into_inner());
     if current.as_ref().is_some_and(|s| Arc::ptr_eq(s, &stop)) {
         *current = None;

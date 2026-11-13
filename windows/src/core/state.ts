@@ -1,5 +1,6 @@
 // App state: what the island shows and remembers.
 
+import type { ComputerRecap, ComputerState } from "./computer-use";
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
 import { newChatId } from "./chats";
@@ -115,6 +116,12 @@ export interface ApprovalInfo {
   cut?: boolean;
   /** With `cut`: the whole request's size (`lumo_input_bytes`), for the line that says so. */
   cutBytes?: number;
+  /**
+   * A computer use action of the chat (core/computer.ts): the point it acts on,
+   * in the pixels of the agent's last screenshot, when it has one (a click, a
+   * move, a scroll, a drag's end). The card shows the screen around it.
+   */
+  computerAt?: [number, number];
 }
 
 /**
@@ -164,6 +171,8 @@ export interface ChatMessage {
   /** The files a local model changed or made in its folder of copies while
    * answering (workspace.rs), listed under the answer to open or put back. */
   copies?: { chat: string; path: string; made?: boolean }[];
+  /** The answer's turn used the computer: its plan as it ended, shown under it (computer.rs, saved with the chat). */
+  computer?: ComputerRecap;
 }
 
 /** A chat currently answering, thinking, calling tools, compacting, or just finished, for the home's list. */
@@ -546,6 +555,11 @@ class AppState {
   liveActive = false;
   /** Claude is using the computer for the chat: the island stays compact and on screen. */
   computerActive = false;
+  /**
+   * The turn that uses the computer, as Rust last said (`computer-state`):
+   * who, the plan, paused or not. Null when no computer use is under way.
+   */
+  computer: ComputerState | null = null;
   /**
    * The chat is answering: who answers (the model the answer was asked of, not
    * the one picked since), in its colour, and what it is doing, in words

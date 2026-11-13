@@ -4,6 +4,7 @@
 // without a webview.
 
 import { cleanChecklists, type ChatChecklists } from "./checklists";
+import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
 
 export interface SavedTurn {
   role: "user" | "assistant";
@@ -12,6 +13,61 @@ export interface SavedTurn {
   at?: number;
   /** What the conversation holds for it, when not `content` (ChatMessage.kept). */
   kept?: string;
+  /** The answer's turn used the computer: its plan as it ended (ChatMessage.computer), with the steps' small pictures. */
+  computer?: ComputerRecap;
+}
+
+const STATUSES = new Set(["pending", "active", "done"]);
+/** A small picture's base64, nothing else: it goes into an <img>'s data: address. */
+const BASE64 = /^[A-Za-z0-9+/]+=*$/;
+
+/**
+ * A computer use recap as far as it can be shown (Rust's ChatReply.computer,
+ * or one read back from storage): undefined when it is not one.
+ */
+export function cleanRecap(raw: unknown): ComputerRecap | undefined {
+  const r = raw as Partial<ComputerRecap> | null;
+  if (!r || typeof r !== "object" || !Array.isArray(r.steps)) return undefined;
+  const steps: ComputerRecapStep[] = [];
+  for (const s of r.steps as unknown[]) {
+    const step = s as Partial<ComputerRecapStep> | null;
+    if (!step || typeof step.text !== "string" || !STATUSES.has(step.status as string)) continue;
+    steps.push({
+      text: step.text,
+      status: step.status as ComputerRecapStep["status"],
+      ...(typeof step.image === "string" && step.image && BASE64.test(step.image) ? { image: step.image } : {}),
+    });
+  }
+  const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.round(n) : 0);
+  return {
+    agent: typeof r.agent === "string" ? r.agent : "",
+    color: typeof r.color === "string" && /^#[0-9a-f]{3,8}$/i.test(r.color) ? r.color : "",
+    steps,
+    actions: count(r.actions),
+    ms: count(r.ms),
+    ...(r.stopped === true ? { stopped: true } : {}),
+  };
+}
+
+/** A message of the chat as it is saved (chat.ts remember): what it said, when, what it kept, and its recap. */
+export function toSavedTurn(m: { role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap }): SavedTurn {
+  return {
+    role: m.role,
+    content: m.content,
+    ...(m.at != null ? { at: m.at } : {}),
+    ...(m.kept ? { kept: m.kept } : {}),
+    ...(m.role === "assistant" && m.computer ? { computer: m.computer } : {}),
+  };
+}
+
+/** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */
+export function fromSavedTurn(turn: SavedTurn): { at?: number; kept?: string; computer?: ComputerRecap } {
+  const computer = turn.role === "assistant" ? cleanRecap(turn.computer) : undefined;
+  return {
+    at: typeof turn.at === "number" ? turn.at : undefined,
+    kept: typeof turn.kept === "string" ? turn.kept : undefined,
+    ...(computer ? { computer } : {}),
+  };
 }
 
 export interface SavedChat {

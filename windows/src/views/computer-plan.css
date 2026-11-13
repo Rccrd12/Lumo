@@ -1,0 +1,450 @@
+/* Computer use with a plan (views/computer-plan.ts): the plan on the open
+   island, and the closed island's line while the agent works. In the app's
+   look: the steps in a box like the plan's, the permission card's buttons,
+   Lumo's amber for what the user does, green for what is done. The heights
+   here are the ones layout.ts computerViewHeight adds up. */
+
+/* ── The open island ───────────────────────────────────────────────────── */
+
+.computer-view [hidden] {
+  display: none !important;
+}
+
+.computer-view .card {
+  background: transparent;
+  border-color: transparent;
+}
+
+.cu-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 16px 14px;
+  box-sizing: border-box;
+}
+
+/* Paused: the mouse is the user's, the agent waits. */
+.cu-banner {
+  flex: none;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: rgba(245, 165, 36, 0.09);
+  border: 1px solid rgba(245, 165, 36, 0.28);
+  color: var(--amber);
+  font: 400 12.5px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.cu-banner b {
+  font-weight: 600;
+}
+
+.cu-banner .cu-banner-rest {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--amber) 75%, var(--dim));
+}
+
+/* The agent's answer to the question, or that it is reading it. */
+.cu-note {
+  flex: none;
+  max-height: 36px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font: 400 12.5px/18px var(--font);
+  color: #b0b5be;
+}
+
+.cu-note b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cu-note.reading {
+  color: var(--dim);
+  animation: cu-reading 1.6s ease-in-out infinite;
+}
+
+@keyframes cu-reading {
+  50% { opacity: 0.55; }
+}
+
+/* The plan: who, how far, since when, and its steps. */
+.cu-plan {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: #111214;
+  border: 1px solid #26282d;
+  overflow: hidden;
+}
+
+.cu-head {
+  flex: none;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  font: 400 13px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.cu-head .cu-who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cu-head .cu-who b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cu-head .cu-place {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cu-steps {
+  max-height: calc(8 * 30px + 6px);
+  overflow-y: auto;
+  padding-bottom: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.cu-steps[hidden] {
+  display: none;
+}
+
+.cu-step {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  font: 400 13px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.cu-step .cu-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cu-step.done {
+  color: #c9ccd2;
+}
+
+.cu-step.active {
+  background: rgba(255, 213, 128, 0.06);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Done: a green check; under way: a warm dot (grey while paused); to do: a ring. */
+.cu-mark {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.cu-mark.done {
+  color: var(--green);
+}
+
+.cu-mark.active i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffd580;
+  box-shadow: 0 0 8px rgba(255, 213, 128, 0.55);
+}
+
+.cu-paused .cu-mark.active i {
+  background: var(--dim-2);
+  box-shadow: none;
+}
+
+.cu-mark.pending i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--dim-4);
+}
+
+/* What changed since the plan was last shown. */
+.cu-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font: 500 10.5px var(--font);
+}
+
+.cu-badge.new {
+  background: rgba(245, 165, 36, 0.14);
+  color: #ffc861;
+}
+
+.cu-badge.changed {
+  background: rgba(59, 158, 255, 0.14);
+  color: #7cc0ff;
+}
+
+/* Writing to the agent while paused. */
+.cu-field {
+  flex: none;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 5px 0 14px;
+  border-radius: 12px;
+  background: #111214;
+  border: 1px solid #26282d;
+  box-sizing: border-box;
+}
+
+.cu-field[hidden] {
+  display: none;
+}
+
+.cu-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: 400 13px var(--font);
+}
+
+.cu-input::placeholder {
+  color: var(--dim-3);
+}
+
+.cu-send {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #0b0c0e;
+  cursor: default;
+}
+
+.cu-send:disabled {
+  opacity: 0.35;
+}
+
+/* The footer: a countdown before the plan closes, or the buttons while paused. */
+.cu-foot {
+  flex: none;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 12px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.cu-foot.buttons {
+  height: 34px;
+}
+
+.cu-foot[hidden] {
+  display: none;
+}
+
+.cu-foot .cu-gap {
+  flex: 1;
+}
+
+.cu-kbd {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  font: 500 10.5px/15px var(--font);
+  color: var(--ink-2);
+}
+
+.cu-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.cu-bar {
+  flex: none;
+  width: 96px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.cu-bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 2px;
+  background: #ffd580;
+  transition: width 0.25s linear;
+}
+
+.cu-foot .btn {
+  height: 34px;
+  border-radius: 10px;
+  justify-content: center;
+  font: 600 12.5px var(--font);
+}
+
+.cu-foot .btn[hidden] {
+  display: none;
+}
+
+/* Stop: for good, so quiet, in red words. */
+.cu-foot .btn.cu-stop {
+  background: #1a1b1f;
+  color: var(--red-text);
+}
+
+.cu-foot .btn.cu-stop:hover {
+  background: #26282d;
+}
+
+.cu-foot .btn.secondary {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+.cu-foot .btn.secondary:hover {
+  background: #26282d;
+}
+
+/* Resume: Lumo's amber, as the permission card's Allow. */
+.cu-foot .btn.cu-resume {
+  min-width: 120px;
+  background: var(--amber);
+  color: #1a1206;
+}
+
+.cu-foot .btn.cu-resume:hover {
+  background: #ffb63d;
+}
+
+.cu-foot .btn.cu-resume .kbd {
+  border: 1px solid currentColor;
+}
+
+/* ── The closed island while the agent works ───────────────────────────── */
+
+/* After Lumo's eyes: the step under way, the plan's segments, k/n, Esc. Never
+   clicked: the mouse is the agent's meanwhile. */
+#computer-pill {
+  position: absolute;
+  top: 0;
+  left: 41px;
+  right: 12px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease-in-out;
+}
+
+#computer-pill.measure {
+  right: auto;
+  width: max-content;
+}
+
+#computer-pill.shown {
+  opacity: 1;
+}
+
+#computer-pill .cu-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+#computer-pill .cu-pill-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#computer-pill .cu-segs {
+  flex: none;
+  display: inline-flex;
+  gap: 3px;
+}
+
+#computer-pill .cu-segs i {
+  width: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+#computer-pill .cu-segs i.done {
+  background: var(--green);
+}
+
+#computer-pill .cu-segs i.active {
+  background: #3b9eff;
+}
+
+#computer-pill .cu-segs.bar i {
+  width: 40px;
+  background: linear-gradient(to right, var(--green) calc(var(--k, 0) * 100%), rgba(255, 255, 255, 0.14) 0);
+}
+
+#computer-pill .cu-pill-place {
+  flex: none;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+#computer-pill .cu-kbd {
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--dim);
+  border-color: rgba(255, 255, 255, 0.25);
+}

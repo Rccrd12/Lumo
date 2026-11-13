@@ -7,7 +7,9 @@
 //! (`{"lumo_computer": {"tool": …, "input": …}}`), then gives Claude Code
 //! Lumo's answer: a screenshot, or what was done. The app decides everything:
 //! whether computer use is on, whether a chat turn is running, whether the
-//! user pressed Esc. Nothing is clicked or typed here.
+//! agent gave its plan (update_plan, which always comes with the computer),
+//! whether the user paused it with Esc or stopped it. Nothing is clicked or
+//! typed here.
 //!
 //! The tools copy the names and inputs of Claude's own computer use tool
 //! (`screenshot`, `left_click`, `type`, `key`…), which the models know well.
@@ -18,7 +20,7 @@
 //! also sending, replying, forwarding and drafts, with `mailmanage` marking,
 //! moving, archiving and trashing: what Settings → Security lets
 //! the AI do, each email sent and each change on a card of Lumo's first.
-//! Without `--tools`, the computer.
+//! Without `--tools`, the computer (and update_plan, which it needs first).
 //!
 //! `--tools=user` offers the user's own tools, the ones on in Lumo's Tools
 //! tab (tools.rs): the list is asked of Lumo (`{"lumo_tools": {}}`) each time
@@ -61,10 +63,13 @@ const MAX_ANSWER: usize = 24 * 1024 * 1024;
 const PROTOCOL: &str = "2025-06-18";
 const KNOWN_PROTOCOLS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 
-const INSTRUCTIONS: &str = "Lumo's tools to see and use the user's Windows desktop: take a screenshot first, \
+const INSTRUCTIONS: &str = "Lumo's tools to see and use the user's Windows desktop. Before any of them, give \
+the user your plan with update_plan (one step is enough): Lumo refuses them until it has one. Keep the plan \
+updated: mark each step completed as soon as it is done and the next one in_progress. Take a screenshot first, \
 then click, type and press keys at coordinates in that screenshot's pixels. Take a new screenshot after \
 acting to check what happened. Prefer other tools (commands, files) when they can do the job. The user can \
-press Esc at any time to stop you.";
+press Esc at any time to pause you: your next call then waits until they resume, and may bring you their \
+message, which you answer in update_plan's explanation.";
 
 const MAIL_INSTRUCTIONS: &str = "Lumo's tools to read the user's email, read only: list the newest emails of a folder \
 (read or not), search every folder, read one email in full with the list of its files, save one of those files \
@@ -141,6 +146,12 @@ impl Kit {
         }
     }
 
+    /// It offers update_plan: asked for, or with the computer, which Lumo
+    /// lends only once the agent gave its plan (computer.rs).
+    fn plans(self) -> bool {
+        self.plan || self.computer
+    }
+
     /// The tools `tools/list` gives.
     fn tools(self) -> Vec<Value> {
         let mut all = Vec::new();
@@ -156,7 +167,7 @@ impl Kit {
                 all.extend(mail_manage_tools());
             }
         }
-        if self.plan {
+        if self.plans() {
             all.push(plan_tool());
         }
         if self.island {
@@ -179,7 +190,7 @@ impl Kit {
                 parts.push(MAIL_MANAGE_INSTRUCTIONS);
             }
         }
-        if self.plan {
+        if self.plans() {
             parts.push(PLAN_INSTRUCTIONS);
         }
         if self.user {
@@ -849,7 +860,11 @@ mod tests {
         for t in v["result"]["tools"].as_array().unwrap() {
             assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
         }
-        assert_eq!(names, NAMES, "one list of names");
+        assert_eq!(names[..NAMES.len()], *NAMES, "one list of names");
+        assert_eq!(names[NAMES.len()..], [PLAN_NAME], "and the plan, which the computer needs first");
+        let v = ask(r#"{"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}"#, &never);
+        let said = v["result"]["instructions"].as_str().unwrap();
+        assert!(said.contains("update_plan") && said.contains("pause you"), "{said}");
     }
 
     #[test]

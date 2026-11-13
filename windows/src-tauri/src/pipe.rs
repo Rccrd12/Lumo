@@ -224,7 +224,15 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         // `"lumo_island": true` instead, and goes on below as an event.
         Some(crate::island_tools::serve(request))
     } else {
-        payload.get("lumo_plan").map(|request| crate::antigravity_cli::serve_plan(&app, request))
+        // During a computer turn, the plan is the one the computer works by
+        // (computer.rs: no plan, no computer); otherwise Antigravity CLI's.
+        payload.get("lumo_plan").map(|request| {
+            if crate::computer::turn_running() {
+                crate::computer::note_plan(&app, request)
+            } else {
+                crate::antigravity_cli::serve_plan(&app, request)
+            }
+        })
     };
     if let Some(answer) = answer {
         let _ = pipe.write_all(format!("{answer}\n").as_bytes()).await;

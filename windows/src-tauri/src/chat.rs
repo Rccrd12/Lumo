@@ -54,15 +54,20 @@ pub struct ChatReply {
     /// opened again from the history (NO_ANSWER, never Lumo's words as the agent's).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kept: Option<String>,
+    /// The turn used the computer (computer.rs end_turn): its plan, its
+    /// pictures, how many actions, how long, whether it was stopped. The
+    /// island shows it under the answer and saves it with the chat.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computer: Option<Value>,
 }
 
 impl ChatReply {
     pub fn answer(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: false, turns: 0, kept: None }
+        ChatReply { text, session, stopped: false, turns: 0, kept: None, computer: None }
     }
 
     pub fn stopped(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: true, turns: 0, kept: None }
+        ChatReply { text, session, stopped: true, turns: 0, kept: None, computer: None }
     }
 
     /// The CLI answered with nothing: the island shows `why`, the

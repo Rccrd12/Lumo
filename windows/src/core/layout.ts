@@ -22,7 +22,9 @@ export type IslandViewName =
   | "live"
   | "tools"
   /** The Email view (views/mail-view.ts): every address's emails, opened from the home's Email tile. */
-  | "mail";
+  | "mail"
+  /** The plan of an agent using the computer (views/computer-plan.ts): shown a moment as it starts and at each step done, and while paused with Esc. */
+  | "computer";
 
 export type BotStateName =
   | "idle"
@@ -93,15 +95,53 @@ export const COMPACT_SIZES = {
 } as const;
 export const EXPANDED_W = 640;
 /**
- * While Claude uses the computer the closed island is Lumo alone, round and
- * yellow in the middle of a short pill: nothing else is said beside him.
+ * While an agent uses the computer without a plan to show (or upright on a
+ * side) the closed island is Lumo alone, round and yellow in the middle of a
+ * short pill: nothing else is said beside him.
  */
 export const COMPUTER_COMPACT_W = 144;
+/**
+ * With a plan, on the top or bottom edge, the closed island says the step
+ * under way, the plan's segments, how far it is and Esc (views/computer-plan.ts
+ * ComputerPill): as wide as that, from the short pill up to this.
+ */
+export const COMPUTER_COMPACT_MAX_W = COMPACT_SIZES.two.w;
 
-/** The closed island while Claude uses the computer, and Lumo in its middle (cy from its top edge). */
-export function computerCompact(dock: Dock): { w: number; h: number; bot: BotPlacement } {
+/**
+ * The closed island while an agent uses the computer, and Lumo in it (cy from
+ * its top edge). `content`: how wide what it says next to Lumo needs it (0:
+ * nothing to say): Lumo then sits at its left end, where he is on any closed
+ * island that says something. Upright on a side it stays the short pill.
+ */
+export function computerCompact(dock: Dock, content = 0): { w: number; h: number; bot: BotPlacement } {
+  if (content > 0 && !isUpright(dock)) {
+    const w = Math.round(Math.min(COMPUTER_COMPACT_MAX_W, Math.max(COMPUTER_COMPACT_W, content)));
+    // The closed island's place for his eyes (island.ts updateBotTargets adds 4 to COMPACT_BOT_X there).
+    return { w, h: NOTCH_H, bot: { cx: COMPACT_BOT_X + 4, cy: NOTCH_H / 2, diameter: 20, opacity: 1 } };
+  }
   const bot = { cx: COMPUTER_COMPACT_W / 2, cy: NOTCH_H / 2, diameter: 20, opacity: 1 };
   return isUpright(dock) ? { w: NOTCH_H, h: COMPUTER_COMPACT_W, bot } : { w: COMPUTER_COMPACT_W, h: NOTCH_H, bot };
+}
+
+/** One step of the computer use plan (views/computer-plan.ts .cu-step), and how many show before the list scrolls. */
+export const COMPUTER_STEP_H = 30;
+export const COMPUTER_MAX_STEPS = 8;
+
+/**
+ * The island's height for the computer use plan (look-new.css-like rules in
+ * views/computer-plan.css): the top bar, the "Paused" banner, the agent's
+ * answer or "is reading", the plan's box (its head and steps), the field to
+ * write to the agent, and the footer (a countdown, or the buttons).
+ */
+export function computerViewHeight(steps: number, parts: { banner?: boolean; note?: boolean; field?: boolean; buttons?: boolean; footer?: boolean }): number {
+  let h = 42 + 4 + 14;
+  if (parts.banner) h += 34 + 8;
+  if (parts.note) h += 36 + 8;
+  h += 36 + (steps > 0 ? Math.min(steps, COMPUTER_MAX_STEPS) * COMPUTER_STEP_H + 6 : 0) + 2;
+  if (parts.field) h += 40 + 10;
+  if (parts.buttons) h += 34 + 10;
+  else if (parts.footer) h += 22 + 10;
+  return h;
 }
 /** The uploading view's track: 36 pt in from either side of the island (views/upload.ts). */
 export const UPLOAD_TRACK_INSET = 36;
@@ -157,6 +197,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   tools: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
   // The Email view (views/mail-view.ts): the addresses' buttons and a list, as the Tools tab.
   mail: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
+  // The computer use plan (views/computer-plan.ts): its own height, for its steps (computerViewHeight).
+  computer: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
 };
 
 // The upload views above are only the fallback geometry. Once a file is actually

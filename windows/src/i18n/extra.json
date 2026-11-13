@@ -15741,18 +15741,6 @@
    "id": "Seberapa bebas Claude Code, Codex, dan Antigravity CLI di obrolan. Perisai di obrolan juga mengubahnya.",
    "it": "Quanta libertà hanno Claude Code, Codex e Antigravity CLI nella chat. Lo cambia anche lo scudo nella chat."
   },
-  "Only while it answers: the screen it uses glows, and Esc stops it. With Ask every time, each click waits for yours.": {
-   "zh-Hans": "仅在它回答时：它使用的屏幕会发光，按 Esc 即可停止。选择“每次都询问”时，它的每次点击都会先等你确认。",
-   "hi": "केवल जवाब देते समय: जिस स्क्रीन का यह उपयोग करता है वह चमकती है, और Esc इसे रोक देता है। “हर बार पूछें” के साथ, इसका हर क्लिक आपके क्लिक का इंतज़ार करता है।",
-   "es": "Solo mientras responde: la pantalla que usa se ilumina y Esc lo detiene. Con Preguntar siempre, cada clic suyo espera el tuyo.",
-   "ar": "فقط أثناء الإجابة: تتوهج الشاشة التي يستخدمها، ويوقفه Esc. مع «السؤال في كل مرة»، تنتظر كل نقرة منه نقرتك.",
-   "fr": "Seulement pendant qu'il répond : l'écran qu'il utilise s'illumine, et Échap l'arrête. Avec Demander à chaque fois, chacun de ses clics attend le vôtre.",
-   "bn": "শুধু উত্তর দেওয়ার সময়: এটি যে স্ক্রিন ব্যবহার করে তা জ্বলে ওঠে, আর Esc এটি থামায়। “প্রতিবার জিজ্ঞাসা করুন” থাকলে এর প্রতিটি ক্লিক আপনার ক্লিকের অপেক্ষা করে।",
-   "pt-BR": "Só enquanto responde: a tela que ele usa brilha, e Esc o interrompe. Com Perguntar sempre, cada clique dele espera o seu.",
-   "ru": "Только пока он отвечает: экран, которым он пользуется, светится, а Esc его останавливает. С «Спрашивать каждый раз» каждый его щелчок ждёт вашего.",
-   "id": "Hanya saat menjawab: layar yang dipakainya menyala, dan Esc menghentikannya. Dengan Selalu tanya, setiap kliknya menunggu klik Anda.",
-   "it": "Solo mentre risponde: lo schermo che usa si illumina ed Esc lo ferma. Con Chiedi ogni volta, ogni suo clic aspetta il tuo."
-  },
   "For the models that can't search on their own. Free, no account: only the useful passages reach the model.": {
    "zh-Hans": "适用于无法自行搜索的模型。免费，无需帐户：只有有用的段落会发送给模型。",
    "hi": "उन मॉडलों के लिए जो खुद खोज नहीं सकते। मुफ़्त, बिना खाते के: मॉडल तक केवल उपयोगी अंश पहुँचते हैं।",
@@ -19066,6 +19054,436 @@
    "ru": "Остров читает не больше {max} календарей: отключите ненужные.",
    "id": "Pulau membaca paling banyak {max} kalender: matikan yang tidak Anda perlukan.",
    "it": "L'isola legge al massimo {max} calendari: spegni quelli che non ti servono."
+  },
+  "{agent} is using the computer": {
+   "zh-Hans": "{agent} 正在使用电脑",
+   "hi": "{agent} कंप्यूटर का उपयोग कर रहा है",
+   "es": "{agent} está usando el ordenador",
+   "ar": "{agent} يستخدم الحاسوب",
+   "fr": "{agent} utilise l'ordinateur",
+   "bn": "{agent} কম্পিউটার ব্যবহার করছে",
+   "pt-BR": "{agent} está usando o computador",
+   "ru": "{agent} использует компьютер",
+   "id": "{agent} sedang memakai komputer",
+   "it": "{agent} usa il computer"
+  },
+  "pauses at any time": {
+   "zh-Hans": "随时暂停",
+   "hi": "कभी भी रोकता है",
+   "es": "pausa en cualquier momento",
+   "ar": "يوقف مؤقتاً في أي وقت",
+   "fr": "met en pause à tout moment",
+   "bn": "যেকোনো সময় বিরতি দেয়",
+   "pt-BR": "pausa a qualquer momento",
+   "ru": "ставит на паузу в любой момент",
+   "id": "menjeda kapan saja",
+   "it": "mette in pausa in qualsiasi momento"
+  },
+  "Starts in {seconds} s": {
+   "zh-Hans": "{seconds} 秒后开始",
+   "hi": "{seconds} सेकंड में शुरू",
+   "es": "Empieza en {seconds} s",
+   "ar": "يبدأ خلال {seconds} ث",
+   "fr": "Commence dans {seconds} s",
+   "bn": "{seconds} সেকেন্ডে শুরু",
+   "pt-BR": "Começa em {seconds} s",
+   "ru": "Начало через {seconds} с",
+   "id": "Mulai dalam {seconds} dtk",
+   "it": "Comincia tra {seconds} s"
+  },
+  "{agent} keeps working": {
+   "zh-Hans": "{agent} 继续工作",
+   "hi": "{agent} काम जारी रखता है",
+   "es": "{agent} sigue trabajando",
+   "ar": "{agent} يواصل العمل",
+   "fr": "{agent} continue de travailler",
+   "bn": "{agent} কাজ চালিয়ে যাচ্ছে",
+   "pt-BR": "{agent} continua trabalhando",
+   "ru": "{agent} продолжает работу",
+   "id": "{agent} terus bekerja",
+   "it": "{agent} continua a lavorare"
+  },
+  "Closes in {seconds} s": {
+   "zh-Hans": "{seconds} 秒后关闭",
+   "hi": "{seconds} सेकंड में बंद",
+   "es": "Se cierra en {seconds} s",
+   "ar": "يُغلق خلال {seconds} ث",
+   "fr": "Se ferme dans {seconds} s",
+   "bn": "{seconds} সেকেন্ডে বন্ধ হবে",
+   "pt-BR": "Fecha em {seconds} s",
+   "ru": "Закроется через {seconds} с",
+   "id": "Tertutup dalam {seconds} dtk",
+   "it": "Si richiude tra {seconds} s"
+  },
+  "the mouse is yours, {agent} is waiting": {
+   "zh-Hans": "鼠标归你了，{agent} 在等待",
+   "hi": "माउस आपका है, {agent} इंतज़ार कर रहा है",
+   "es": "el ratón es tuyo, {agent} espera",
+   "ar": "الفأرة لك، و{agent} ينتظر",
+   "fr": "la souris est à vous, {agent} attend",
+   "bn": "মাউস এখন আপনার, {agent} অপেক্ষা করছে",
+   "pt-BR": "o mouse é seu, {agent} está esperando",
+   "ru": "мышь ваша, {agent} ждёт",
+   "id": "mouse milik Anda, {agent} menunggu",
+   "it": "il mouse è tuo, {agent} aspetta"
+  },
+  "Ask {agent}": {
+   "zh-Hans": "问 {agent}",
+   "hi": "{agent} से पूछें",
+   "es": "Preguntar a {agent}",
+   "ar": "اسأل {agent}",
+   "fr": "Demander à {agent}",
+   "bn": "{agent}-কে জিজ্ঞাসা করুন",
+   "pt-BR": "Perguntar ao {agent}",
+   "ru": "Спросить {agent}",
+   "id": "Tanya {agent}",
+   "it": "Chiedi a {agent}"
+  },
+  "Tell {agent} what to do differently…": {
+   "zh-Hans": "告诉 {agent} 要换个做法…",
+   "hi": "{agent} को बताएँ कि क्या अलग करना है…",
+   "es": "Dile a {agent} qué hacer de otra forma…",
+   "ar": "أخبر {agent} بما يفعله بشكل مختلف…",
+   "fr": "Dites à {agent} quoi faire autrement…",
+   "bn": "{agent}-কে বলুন কী অন্যভাবে করবে…",
+   "pt-BR": "Diga ao {agent} o que fazer diferente…",
+   "ru": "Скажите {agent}, что сделать иначе…",
+   "id": "Beri tahu {agent} apa yang harus dilakukan berbeda…",
+   "it": "Di' a {agent} cosa fare diversamente…"
+  },
+  "{agent} is reading your message…": {
+   "zh-Hans": "{agent} 正在读你的消息…",
+   "hi": "{agent} आपका संदेश पढ़ रहा है…",
+   "es": "{agent} está leyendo tu mensaje…",
+   "ar": "{agent} يقرأ رسالتك…",
+   "fr": "{agent} lit votre message…",
+   "bn": "{agent} আপনার বার্তা পড়ছে…",
+   "pt-BR": "{agent} está lendo sua mensagem…",
+   "ru": "{agent} читает ваше сообщение…",
+   "id": "{agent} sedang membaca pesan Anda…",
+   "it": "{agent} sta leggendo il tuo messaggio…"
+  },
+  "new step": {
+   "zh-Hans": "新",
+   "hi": "नया",
+   "es": "nuevo",
+   "ar": "جديد",
+   "fr": "nouveau",
+   "bn": "নতুন",
+   "pt-BR": "novo",
+   "ru": "новое",
+   "id": "baru",
+   "it": "nuovo"
+  },
+  "step changed": {
+   "zh-Hans": "已更改",
+   "hi": "बदला गया",
+   "es": "cambiado",
+   "ar": "تغيّر",
+   "fr": "modifié",
+   "bn": "বদলানো",
+   "pt-BR": "alterado",
+   "ru": "изменено",
+   "id": "diubah",
+   "it": "cambiato"
+  },
+  "{agent} is using the computer · Esc pauses": {
+   "zh-Hans": "{agent} 正在使用电脑 · Esc 暂停",
+   "hi": "{agent} कंप्यूटर का उपयोग कर रहा है · Esc रोकता है",
+   "es": "{agent} está usando el ordenador · Esc pausa",
+   "ar": "{agent} يستخدم الحاسوب · Esc يوقف مؤقتاً",
+   "fr": "{agent} utilise l'ordinateur · Échap met en pause",
+   "bn": "{agent} কম্পিউটার ব্যবহার করছে · Esc বিরতি দেয়",
+   "pt-BR": "{agent} está usando o computador · Esc pausa",
+   "ru": "{agent} использует компьютер · Esc — пауза",
+   "id": "{agent} sedang memakai komputer · Esc menjeda",
+   "it": "{agent} usa il computer · Esc mette in pausa"
+  },
+  "wants to use the computer": {
+   "zh-Hans": "想要使用电脑",
+   "hi": "कंप्यूटर का उपयोग करना चाहता है",
+   "es": "quiere usar el ordenador",
+   "ar": "يريد استخدام الحاسوب",
+   "fr": "veut utiliser l'ordinateur",
+   "bn": "কম্পিউটার ব্যবহার করতে চায়",
+   "pt-BR": "quer usar o computador",
+   "ru": "хочет использовать компьютер",
+   "id": "ingin memakai komputer",
+   "it": "vuole usare il computer"
+  },
+  "wants to use the computer · step {step} of {total}": {
+   "zh-Hans": "想要使用电脑 · 第 {step} 步，共 {total} 步",
+   "hi": "कंप्यूटर का उपयोग करना चाहता है · {total} में से चरण {step}",
+   "es": "quiere usar el ordenador · paso {step} de {total}",
+   "ar": "يريد استخدام الحاسوب · الخطوة {step} من {total}",
+   "fr": "veut utiliser l'ordinateur · étape {step} sur {total}",
+   "bn": "কম্পিউটার ব্যবহার করতে চায় · {total}টির মধ্যে ধাপ {step}",
+   "pt-BR": "quer usar o computador · passo {step} de {total}",
+   "ru": "хочет использовать компьютер · шаг {step} из {total}",
+   "id": "ingin memakai komputer · langkah {step} dari {total}",
+   "it": "vuole usare il computer · passo {step} di {total}"
+  },
+  "Click on «{name}»": {
+   "zh-Hans": "点击“{name}”",
+   "hi": "“{name}” पर क्लिक",
+   "es": "Clic en «{name}»",
+   "ar": "نقر على «{name}»",
+   "fr": "Clic sur « {name} »",
+   "bn": "“{name}”-এ ক্লিক",
+   "pt-BR": "Clique em “{name}”",
+   "ru": "Щелчок по «{name}»",
+   "id": "Klik “{name}”",
+   "it": "Clic su «{name}»"
+  },
+  "Right click on «{name}»": {
+   "zh-Hans": "右键点击“{name}”",
+   "hi": "“{name}” पर राइट क्लिक",
+   "es": "Clic derecho en «{name}»",
+   "ar": "نقر بزر الماوس الأيمن على «{name}»",
+   "fr": "Clic droit sur « {name} »",
+   "bn": "“{name}”-এ রাইট ক্লিক",
+   "pt-BR": "Clique direito em “{name}”",
+   "ru": "Щелчок правой кнопкой по «{name}»",
+   "id": "Klik kanan “{name}”",
+   "it": "Clic destro su «{name}»"
+  },
+  "Middle click on «{name}»": {
+   "zh-Hans": "中键点击“{name}”",
+   "hi": "“{name}” पर मिडिल क्लिक",
+   "es": "Clic central en «{name}»",
+   "ar": "نقر بالزر الأوسط على «{name}»",
+   "fr": "Clic du milieu sur « {name} »",
+   "bn": "“{name}”-এ মিডল ক্লিক",
+   "pt-BR": "Clique do meio em “{name}”",
+   "ru": "Щелчок средней кнопкой по «{name}»",
+   "id": "Klik tengah “{name}”",
+   "it": "Clic centrale su «{name}»"
+  },
+  "Double click on «{name}»": {
+   "zh-Hans": "双击“{name}”",
+   "hi": "“{name}” पर डबल क्लिक",
+   "es": "Doble clic en «{name}»",
+   "ar": "نقر مزدوج على «{name}»",
+   "fr": "Double-clic sur « {name} »",
+   "bn": "“{name}”-এ ডাবল ক্লিক",
+   "pt-BR": "Clique duplo em “{name}”",
+   "ru": "Двойной щелчок по «{name}»",
+   "id": "Klik ganda “{name}”",
+   "it": "Doppio clic su «{name}»"
+  },
+  "Triple click on «{name}»": {
+   "zh-Hans": "三击“{name}”",
+   "hi": "“{name}” पर ट्रिपल क्लिक",
+   "es": "Triple clic en «{name}»",
+   "ar": "نقر ثلاثي على «{name}»",
+   "fr": "Triple-clic sur « {name} »",
+   "bn": "“{name}”-এ ট্রিপল ক্লিক",
+   "pt-BR": "Clique triplo em “{name}”",
+   "ru": "Тройной щелчок по «{name}»",
+   "id": "Klik tiga kali “{name}”",
+   "it": "Triplo clic su «{name}»"
+  },
+  "Move the mouse to «{name}»": {
+   "zh-Hans": "将鼠标移到“{name}”",
+   "hi": "माउस को “{name}” पर ले जाएँ",
+   "es": "Mover el ratón a «{name}»",
+   "ar": "تحريك الماوس إلى «{name}»",
+   "fr": "Déplacer la souris sur « {name} »",
+   "bn": "মাউস “{name}”-এ সরান",
+   "pt-BR": "Mover o mouse para “{name}”",
+   "ru": "Навести мышь на «{name}»",
+   "id": "Gerakkan mouse ke “{name}”",
+   "it": "Sposta il mouse su «{name}»"
+  },
+  "Drag to «{name}»": {
+   "zh-Hans": "拖动到“{name}”",
+   "hi": "“{name}” तक खींचें",
+   "es": "Arrastrar a «{name}»",
+   "ar": "سحب إلى «{name}»",
+   "fr": "Glisser sur « {name} »",
+   "bn": "“{name}” পর্যন্ত টেনে আনুন",
+   "pt-BR": "Arrastar para “{name}”",
+   "ru": "Перетащить на «{name}»",
+   "id": "Seret ke “{name}”",
+   "it": "Trascina su «{name}»"
+  },
+  "Scroll up on «{name}»": {
+   "zh-Hans": "在“{name}”上向上滚动",
+   "hi": "“{name}” पर ऊपर स्क्रॉल करें",
+   "es": "Desplazar hacia arriba en «{name}»",
+   "ar": "تمرير لأعلى في «{name}»",
+   "fr": "Défiler vers le haut sur « {name} »",
+   "bn": "“{name}”-এ উপরে স্ক্রোল করুন",
+   "pt-BR": "Rolar para cima em “{name}”",
+   "ru": "Прокрутить вверх в «{name}»",
+   "id": "Gulir ke atas di “{name}”",
+   "it": "Scorri su in «{name}»"
+  },
+  "Scroll down on «{name}»": {
+   "zh-Hans": "在“{name}”上向下滚动",
+   "hi": "“{name}” पर नीचे स्क्रॉल करें",
+   "es": "Desplazar hacia abajo en «{name}»",
+   "ar": "تمرير لأسفل في «{name}»",
+   "fr": "Défiler vers le bas sur « {name} »",
+   "bn": "“{name}”-এ নিচে স্ক্রোল করুন",
+   "pt-BR": "Rolar para baixo em “{name}”",
+   "ru": "Прокрутить вниз в «{name}»",
+   "id": "Gulir ke bawah di “{name}”",
+   "it": "Scorri giù in «{name}»"
+  },
+  "Scroll left on «{name}»": {
+   "zh-Hans": "在“{name}”上向左滚动",
+   "hi": "“{name}” पर बाएँ स्क्रॉल करें",
+   "es": "Desplazar a la izquierda en «{name}»",
+   "ar": "تمرير لليسار في «{name}»",
+   "fr": "Défiler vers la gauche sur « {name} »",
+   "bn": "“{name}”-এ বাঁয়ে স্ক্রোল করুন",
+   "pt-BR": "Rolar para a esquerda em “{name}”",
+   "ru": "Прокрутить влево в «{name}»",
+   "id": "Gulir ke kiri di “{name}”",
+   "it": "Scorri a sinistra in «{name}»"
+  },
+  "Scroll right on «{name}»": {
+   "zh-Hans": "在“{name}”上向右滚动",
+   "hi": "“{name}” पर दाएँ स्क्रॉल करें",
+   "es": "Desplazar a la derecha en «{name}»",
+   "ar": "تمرير لليمين في «{name}»",
+   "fr": "Défiler vers la droite sur « {name} »",
+   "bn": "“{name}”-এ ডানে স্ক্রোল করুন",
+   "pt-BR": "Rolar para a direita em “{name}”",
+   "ru": "Прокрутить вправо в «{name}»",
+   "id": "Gulir ke kanan di “{name}”",
+   "it": "Scorri a destra in «{name}»"
+  },
+  "{agent} is using the mouse": {
+   "zh-Hans": "{agent} 正在使用鼠标",
+   "hi": "{agent} माउस का उपयोग कर रहा है",
+   "es": "{agent} está usando el ratón",
+   "ar": "{agent} يستخدم الماوس",
+   "fr": "{agent} utilise la souris",
+   "bn": "{agent} মাউস ব্যবহার করছে",
+   "pt-BR": "{agent} está usando o mouse",
+   "ru": "Мышью сейчас управляет {agent}",
+   "id": "{agent} sedang memakai mouse",
+   "it": "Il mouse ora lo usa {agent}"
+  },
+  "{key} pauses": {
+   "zh-Hans": "按 {key} 暂停",
+   "hi": "{key} से रोकें",
+   "es": "{key} pausa",
+   "ar": "{key} للإيقاف المؤقت",
+   "fr": "{key} met en pause",
+   "bn": "{key} চাপলে বিরতি",
+   "pt-BR": "{key} pausa",
+   "ru": "{key} — пауза",
+   "id": "{key} menjeda",
+   "it": "{key} mette in pausa"
+  },
+  "Used the computer": {
+   "zh-Hans": "使用了电脑",
+   "hi": "कंप्यूटर का उपयोग किया",
+   "es": "Usó el ordenador",
+   "ar": "استخدم الحاسوب",
+   "fr": "A utilisé l'ordinateur",
+   "bn": "কম্পিউটার ব্যবহার করেছে",
+   "pt-BR": "Usou o computador",
+   "ru": "Использовал компьютер",
+   "id": "Memakai komputer",
+   "it": "Ha usato il computer"
+  },
+  "{count} steps": {
+   "zh-Hans": {
+    "other": "{count} 步"
+   },
+   "hi": {
+    "one": "{count} चरण",
+    "other": "{count} चरण"
+   },
+   "es": {
+    "one": "{count} paso",
+    "other": "{count} pasos"
+   },
+   "ar": {
+    "zero": "{count} خطوة",
+    "one": "خطوة واحدة",
+    "two": "خطوتان",
+    "few": "{count} خطوات",
+    "many": "{count} خطوة",
+    "other": "{count} خطوة"
+   },
+   "fr": {
+    "one": "{count} étape",
+    "other": "{count} étapes"
+   },
+   "bn": {
+    "one": "{count}টি ধাপ",
+    "other": "{count}টি ধাপ"
+   },
+   "pt-BR": {
+    "one": "{count} passo",
+    "other": "{count} passos"
+   },
+   "ru": {
+    "one": "{count} шаг",
+    "few": "{count} шага",
+    "many": "{count} шагов",
+    "other": "{count} шага"
+   },
+   "id": {
+    "other": "{count} langkah"
+   },
+   "it": {
+    "one": "{count} passo",
+    "other": "{count} passi"
+   }
+  },
+  "{minutes} min {seconds} s": {
+   "zh-Hans": "{minutes} 分 {seconds} 秒",
+   "hi": "{minutes} मि. {seconds} से.",
+   "es": "{minutes} min {seconds} s",
+   "ar": "{minutes} د {seconds} ث",
+   "fr": "{minutes} min {seconds} s",
+   "bn": "{minutes} মি. {seconds} সে.",
+   "pt-BR": "{minutes} min {seconds} s",
+   "ru": "{minutes} мин {seconds} с",
+   "id": "{minutes} mnt {seconds} dtk",
+   "it": "{minutes} min {seconds} s"
+  },
+  "Stopped at step {step} of {total}": {
+   "zh-Hans": "停在第 {step} 步（共 {total} 步）",
+   "hi": "{total} में से चरण {step} पर रोका गया",
+   "es": "Detenido en el paso {step} de {total}",
+   "ar": "توقف عند الخطوة {step} من {total}",
+   "fr": "Arrêté à l'étape {step} sur {total}",
+   "bn": "{total}টির মধ্যে {step} নম্বর ধাপে থামানো হয়েছে",
+   "pt-BR": "Parado no passo {step} de {total}",
+   "ru": "Остановлено на шаге {step} из {total}",
+   "id": "Dihentikan di langkah {step} dari {total}",
+   "it": "Fermato al passo {step} di {total}"
+  },
+  "Stopped at step {step} of {total} · last done: {text}": {
+   "zh-Hans": "停在第 {step} 步（共 {total} 步）· 最后完成：{text}",
+   "hi": "{total} में से चरण {step} पर रोका गया · आख़िरी पूरा हुआ: {text}",
+   "es": "Detenido en el paso {step} de {total} · lo último hecho: {text}",
+   "ar": "توقف عند الخطوة {step} من {total} · آخر ما أُنجز: {text}",
+   "fr": "Arrêté à l'étape {step} sur {total} · dernière faite : {text}",
+   "bn": "{total}টির মধ্যে {step} নম্বর ধাপে থামানো হয়েছে · শেষ সম্পন্ন: {text}",
+   "pt-BR": "Parado no passo {step} de {total} · o último feito: {text}",
+   "ru": "Остановлено на шаге {step} из {total} · последнее сделанное: {text}",
+   "id": "Dihentikan di langkah {step} dari {total} · terakhir selesai: {text}",
+   "it": "Fermato al passo {step} di {total} · l'ultimo fatto: {text}"
+  },
+  "Only while it answers, and only once it has shown you its plan: the screen it uses glows, and Esc pauses it. With Ask every time, each click waits for yours.": {
+   "zh-Hans": "仅在它回答时，且要先向你展示计划：它使用的屏幕会发光，按 Esc 即可暂停。选择“每次都询问”时，它的每次点击都会先等你确认。",
+   "hi": "केवल जवाब देते समय, और पहले आपको अपनी योजना दिखाने के बाद: जिस स्क्रीन का यह उपयोग करता है वह चमकती है, और Esc इसे रोक (पॉज़) देता है। “हर बार पूछें” के साथ, इसका हर क्लिक आपके क्लिक का इंतज़ार करता है।",
+   "es": "Solo mientras responde, y solo después de mostrarte su plan: la pantalla que usa se ilumina y Esc lo pausa. Con Preguntar siempre, cada clic suyo espera el tuyo.",
+   "ar": "فقط أثناء الإجابة، وبعد أن يعرض عليك خطته: تتوهج الشاشة التي يستخدمها، ويوقفه Esc مؤقتاً. مع «السؤال في كل مرة»، تنتظر كل نقرة منه نقرتك.",
+   "fr": "Seulement pendant qu'il répond, et seulement après vous avoir montré son plan : l'écran qu'il utilise s'illumine, et Échap le met en pause. Avec Demander à chaque fois, chacun de ses clics attend le vôtre.",
+   "bn": "শুধু উত্তর দেওয়ার সময়, আর আগে আপনাকে তার পরিকল্পনা দেখানোর পরেই: এটি যে স্ক্রিন ব্যবহার করে তা জ্বলে ওঠে, আর Esc এটি বিরতিতে রাখে। “প্রতিবার জিজ্ঞাসা করুন” থাকলে এর প্রতিটি ক্লিক আপনার ক্লিকের অপেক্ষা করে।",
+   "pt-BR": "Só enquanto responde, e só depois de mostrar o plano dele: a tela que ele usa brilha, e Esc o pausa. Com Perguntar sempre, cada clique dele espera o seu.",
+   "ru": "Только пока он отвечает и только после того, как он покажет вам свой план: экран, которым он пользуется, светится, а Esc ставит его на паузу. С «Спрашивать каждый раз» каждый его щелчок ждёт вашего.",
+   "id": "Hanya saat menjawab, dan hanya setelah ia menunjukkan rencananya: layar yang dipakainya menyala, dan Esc menjedanya. Dengan Selalu tanya, setiap kliknya menunggu klik Anda.",
+   "it": "Solo mentre risponde, e solo dopo averti mostrato il suo piano: lo schermo che usa si illumina ed Esc lo mette in pausa. Con Chiedi ogni volta, ogni suo clic aspetta il tuo."
   }
  }
 }

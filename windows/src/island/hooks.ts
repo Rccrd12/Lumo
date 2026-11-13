@@ -4,7 +4,8 @@
 // The relay has already mapped every agent's events and fields onto Claude
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
-import { describeComputerAction } from "../core/computer";
+import { computerPoint, describeComputerAction } from "../core/computer";
+import { currentStep } from "../core/computer-use";
 import { userToolTarget } from "../core/tools";
 import { clipUnits } from "../core/clip";
 import { COMPACT_TEXT, compactNotice } from "../core/compact";
@@ -566,10 +567,15 @@ const REASON_KEYS = new Set(["description", "Description", "justification", "exp
 /**
  * The line under the who-row that says what the request is for: the agent's
  * own words when it gave some, else what the request does, read off it.
- * Nothing for the chat's computer use, whose target already says it.
+ * For computer use, the step of its plan under way (computer-state), which
+ * is why it acts; nothing without a plan, the target says the rest.
  */
 function approvalAbout(tool: string, input: Record<string, unknown>): { reason?: string; kind?: { text: string; vars?: Record<string, string> } } {
-  if (describeComputerAction(tool, input)) return {};
+  if (describeComputerAction(tool, input)) {
+    const step = State.computer ? currentStep(State.computer.steps) : null;
+    const why = step?.step.text.trim();
+    return why ? { reason: why } : {};
+  }
   // An MCP tool's `description` is one of its arguments, shown whole below: the line says what kind of call it is.
   const reason = MCP_TOOL.test(tool) ? null : requestReason(input);
   if (reason) return { reason };
@@ -1072,6 +1078,7 @@ function handleHook(island: Island, payload: HookPayload) {
           added: payload.lumo_write_added, removed: payload.lumo_write_removed, bytes: payload.lumo_write_bytes,
         })
         : null;
+      const computerAt = !questions && !email && !change && !userTool ? computerPoint(tool, input) : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -1093,6 +1100,8 @@ function handleHook(island: Island, payload: HookPayload) {
         // The plan Claude Code asks to start, step by step, for the new look's card and chat.
         ...(planSteps.length ? { plan: planSteps } : {}),
         ...(edit ? { edit } : {}),
+        // A computer use action: the point it acts on, for the screen around it on the card.
+        ...(computerAt ? { computerAt } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how
