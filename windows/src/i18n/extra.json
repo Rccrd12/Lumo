@@ -19126,6 +19126,724 @@
    "ru": "Antigravity CLI остановился: модель отправила пустой вызов инструмента и не смогла его исправить. Сделанное до сих пор сохранено: напишите «продолжай», чтобы продолжить с этого места.",
    "id": "Antigravity CLI berhenti: model mengirim panggilan alat yang kosong dan tidak berhasil memperbaikinya. Yang sudah dikerjakan sejauh ini tersimpan: tulis “lanjutkan” untuk melanjutkan dari sana.",
    "it": "Antigravity CLI si è fermato: il modello ha mandato una chiamata a strumento vuota e non è riuscito a correggerla. Quello che ha fatto finora è salvato: scrivi «continua» per riprendere da lì."
+  },
+  "{minutes} min": {
+   "zh-Hans": "{minutes} 分钟",
+   "hi": "{minutes} मिनट",
+   "es": "{minutes} min",
+   "ar": "{minutes} د",
+   "fr": "{minutes} min",
+   "bn": "{minutes} মিনিট",
+   "pt-BR": "{minutes} min",
+   "ru": "{minutes} мин",
+   "id": "{minutes} mnt",
+   "it": "{minutes} min"
+  },
+  "{hours} h": {
+   "zh-Hans": "{hours} 小时",
+   "hi": "{hours} घंटे",
+   "es": "{hours} h",
+   "ar": "{hours} س",
+   "fr": "{hours} h",
+   "bn": "{hours} ঘণ্টা",
+   "pt-BR": "{hours} h",
+   "ru": "{hours} ч",
+   "id": "{hours} j",
+   "it": "{hours} h"
+  },
+  "{hours} h {minutes} min": {
+   "zh-Hans": "{hours} 小时 {minutes} 分钟",
+   "hi": "{hours} घंटे {minutes} मिनट",
+   "es": "{hours} h {minutes} min",
+   "ar": "{hours} س {minutes} د",
+   "fr": "{hours} h {minutes} min",
+   "bn": "{hours} ঘণ্টা {minutes} মিনিট",
+   "pt-BR": "{hours} h {minutes} min",
+   "ru": "{hours} ч {minutes} мин",
+   "id": "{hours} j {minutes} mnt",
+   "it": "{hours} h {minutes} min"
+  },
+  "{count} agents working": {
+   "zh-Hans": {
+    "other": "{count} 个代理在工作"
+   },
+   "hi": {
+    "one": "{count} एजेंट काम कर रहा है",
+    "other": "{count} एजेंट काम कर रहे हैं"
+   },
+   "es": {
+    "one": "{count} agente trabajando",
+    "other": "{count} agentes trabajando"
+   },
+   "ar": {
+    "zero": "لا وكلاء يعملون",
+    "one": "وكيل واحد يعمل",
+    "two": "وكيلان يعملان",
+    "few": "{count} وكلاء يعملون",
+    "many": "{count} وكيلًا يعملون",
+    "other": "{count} وكيل يعملون"
+   },
+   "fr": {
+    "one": "{count} agent au travail",
+    "other": "{count} agents au travail"
+   },
+   "bn": {
+    "one": "{count}টি এজেন্ট কাজ করছে",
+    "other": "{count}টি এজেন্ট কাজ করছে"
+   },
+   "pt-BR": {
+    "one": "{count} agente trabalhando",
+    "other": "{count} agentes trabalhando"
+   },
+   "ru": {
+    "one": "{count} агент работает",
+    "few": "{count} агента работают",
+    "many": "{count} агентов работают",
+    "other": "{count} агента работают"
+   },
+   "id": {
+    "other": "{count} agen bekerja"
+   },
+   "it": {
+    "one": "{count} agente al lavoro",
+    "other": "{count} agenti al lavoro"
+   }
+  },
+  "{count} agents with no signal for {time}": {
+   "zh-Hans": {
+    "other": "{count} 个代理已 {time} 没有信号"
+   },
+   "hi": {
+    "one": "{count} एजेंट से {time} से कोई संकेत नहीं",
+    "other": "{count} एजेंट से {time} से कोई संकेत नहीं"
+   },
+   "es": {
+    "one": "{count} agente sin señal desde hace {time}",
+    "other": "{count} agentes sin señal desde hace {time}"
+   },
+   "ar": {
+    "zero": "لا وكلاء بلا إشارة منذ {time}",
+    "one": "وكيل واحد بلا إشارة منذ {time}",
+    "two": "وكيلان بلا إشارة منذ {time}",
+    "few": "{count} وكلاء بلا إشارة منذ {time}",
+    "many": "{count} وكيلًا بلا إشارة منذ {time}",
+    "other": "{count} وكيل بلا إشارة منذ {time}"
+   },
+   "fr": {
+    "one": "{count} agent sans signal depuis {time}",
+    "other": "{count} agents sans signal depuis {time}"
+   },
+   "bn": {
+    "one": "{count}টি এজেন্টের {time} ধরে কোনো সাড়া নেই",
+    "other": "{count}টি এজেন্টের {time} ধরে কোনো সাড়া নেই"
+   },
+   "pt-BR": {
+    "one": "{count} agente sem sinal há {time}",
+    "other": "{count} agentes sem sinal há {time}"
+   },
+   "ru": {
+    "one": "{count} агент без сигнала уже {time}",
+    "few": "{count} агента без сигнала уже {time}",
+    "many": "{count} агентов без сигнала уже {time}",
+    "other": "{count} агента без сигнала уже {time}"
+   },
+   "id": {
+    "other": "{count} agen tanpa sinyal selama {time}"
+   },
+   "it": {
+    "one": "{count} agente senza segnale da {time}",
+    "other": "{count} agenti senza segnale da {time}"
+   }
+  },
+  "{done} of {total} done": {
+   "zh-Hans": "已完成 {done}/{total}",
+   "hi": "{total} में से {done} पूरे",
+   "es": "{done} de {total} terminados",
+   "ar": "انتهى {done} من {total}",
+   "fr": "{done} sur {total} terminés",
+   "bn": "{total}টির মধ্যে {done}টি শেষ",
+   "pt-BR": "{done} de {total} concluídos",
+   "ru": "готово {done} из {total}",
+   "id": "{done} dari {total} selesai",
+   "it": "{done} di {total} finiti"
+  },
+  "{count} with no signal": {
+   "zh-Hans": {
+    "other": "{count} 个没有信号"
+   },
+   "hi": {
+    "one": "{count} बिना संकेत",
+    "other": "{count} बिना संकेत"
+   },
+   "es": {
+    "one": "{count} sin señal",
+    "other": "{count} sin señal"
+   },
+   "ar": {
+    "zero": "لا شيء بلا إشارة",
+    "one": "واحد بلا إشارة",
+    "two": "اثنان بلا إشارة",
+    "few": "{count} بلا إشارة",
+    "many": "{count} بلا إشارة",
+    "other": "{count} بلا إشارة"
+   },
+   "fr": {
+    "one": "{count} sans signal",
+    "other": "{count} sans signal"
+   },
+   "bn": {
+    "one": "{count}টি সাড়াহীন",
+    "other": "{count}টি সাড়াহীন"
+   },
+   "pt-BR": {
+    "one": "{count} sem sinal",
+    "other": "{count} sem sinal"
+   },
+   "ru": {
+    "one": "{count} без сигнала",
+    "few": "{count} без сигнала",
+    "many": "{count} без сигнала",
+    "other": "{count} без сигнала"
+   },
+   "id": {
+    "other": "{count} tanpa sinyal"
+   },
+   "it": {
+    "one": "{count} senza segnale",
+    "other": "{count} senza segnale"
+   }
+  },
+  "Done: {summary}": {
+   "zh-Hans": "完成：{summary}",
+   "hi": "पूरा: {summary}",
+   "es": "Listo: {summary}",
+   "ar": "تم: {summary}",
+   "fr": "Terminé : {summary}",
+   "bn": "শেষ: {summary}",
+   "pt-BR": "Pronto: {summary}",
+   "ru": "Готово: {summary}",
+   "id": "Selesai: {summary}",
+   "it": "Fatto: {summary}"
+  },
+  "No signal for {time}": {
+   "zh-Hans": "已 {time} 没有信号",
+   "hi": "{time} से कोई संकेत नहीं",
+   "es": "Sin señal desde hace {time}",
+   "ar": "لا إشارة منذ {time}",
+   "fr": "Aucun signal depuis {time}",
+   "bn": "{time} ধরে কোনো সাড়া নেই",
+   "pt-BR": "Sem sinal há {time}",
+   "ru": "Нет сигнала уже {time}",
+   "id": "Tanpa sinyal selama {time}",
+   "it": "Nessun segnale da {time}"
+  },
+  "No signal for {time} · last step: {step}": {
+   "zh-Hans": "已 {time} 没有信号 · 最后一步：{step}",
+   "hi": "{time} से कोई संकेत नहीं · आख़िरी कदम: {step}",
+   "es": "Sin señal desde hace {time} · último paso: {step}",
+   "ar": "لا إشارة منذ {time} · آخر خطوة: {step}",
+   "fr": "Aucun signal depuis {time} · dernière étape : {step}",
+   "bn": "{time} ধরে কোনো সাড়া নেই · শেষ ধাপ: {step}",
+   "pt-BR": "Sem sinal há {time} · último passo: {step}",
+   "ru": "Нет сигнала уже {time} · последний шаг: {step}",
+   "id": "Tanpa sinyal selama {time} · langkah terakhir: {step}",
+   "it": "Nessun segnale da {time} · ultimo passo: {step}"
+  },
+  "Waiting for your permission": {
+   "zh-Hans": "正在等待你的许可",
+   "hi": "आपकी अनुमति का इंतज़ार",
+   "es": "Espera tu permiso",
+   "ar": "ينتظر إذنك",
+   "fr": "Attend votre autorisation",
+   "bn": "আপনার অনুমতির অপেক্ষায়",
+   "pt-BR": "Aguardando sua permissão",
+   "ru": "Ждёт вашего разрешения",
+   "id": "Menunggu izin Anda",
+   "it": "Aspetta il tuo permesso"
+  },
+  "Waiting for the rate limit": {
+   "zh-Hans": "正在等待速率限制解除",
+   "hi": "रेट लिमिट हटने का इंतज़ार",
+   "es": "Espera a que pase el límite de uso",
+   "ar": "ينتظر انتهاء حد الاستخدام",
+   "fr": "Attend la fin de la limite d'utilisation",
+   "bn": "ব্যবহারের সীমা কাটার অপেক্ষায়",
+   "pt-BR": "Aguardando o limite de uso passar",
+   "ru": "Ждёт снятия лимита запросов",
+   "id": "Menunggu batas penggunaan berakhir",
+   "it": "Aspetta che passi il limite di richieste"
+  },
+  "done in {time}": {
+   "zh-Hans": "用时 {time}",
+   "hi": "{time} में पूरा",
+   "es": "listo en {time}",
+   "ar": "انتهى في {time}",
+   "fr": "terminé en {time}",
+   "bn": "{time}-এ শেষ",
+   "pt-BR": "concluído em {time}",
+   "ru": "готово за {time}",
+   "id": "selesai dalam {time}",
+   "it": "finito in {time}"
+  },
+  "agents|Wait": {
+   "zh-Hans": "等待",
+   "hi": "रुको",
+   "es": "Esperar",
+   "ar": "انتظر",
+   "fr": "Attendre",
+   "bn": "অপেক্ষা",
+   "pt-BR": "Esperar",
+   "ru": "Подождать",
+   "id": "Tunggu",
+   "it": "Aspetta"
+  },
+  "agents|Stop": {
+   "zh-Hans": "停止",
+   "hi": "रोकें",
+   "es": "Detener",
+   "ar": "أوقف",
+   "fr": "Arrêter",
+   "bn": "থামান",
+   "pt-BR": "Parar",
+   "ru": "Остановить",
+   "id": "Hentikan",
+   "it": "Ferma"
+  },
+  "agents|Ask": {
+   "zh-Hans": "询问",
+   "hi": "पूछें",
+   "es": "Preguntar",
+   "ar": "اسأل",
+   "fr": "Demander",
+   "bn": "জিজ্ঞাসা",
+   "pt-BR": "Perguntar",
+   "ru": "Спросить",
+   "id": "Tanya",
+   "it": "Chiedi"
+  },
+  "Asking {name}": {
+   "zh-Hans": "正在询问 {name}",
+   "hi": "{name} से पूछ रहे हैं",
+   "es": "Preguntando a {name}",
+   "ar": "سؤال {name}",
+   "fr": "Question à {name}",
+   "bn": "{name}-কে জিজ্ঞাসা",
+   "pt-BR": "Perguntando a {name}",
+   "ru": "Вопрос для {name}",
+   "id": "Bertanya ke {name}",
+   "it": "Chiedendo a {name}"
+  },
+  "Ask {name}…": {
+   "zh-Hans": "询问 {name}…",
+   "hi": "{name} से पूछें…",
+   "es": "Pregunta a {name}…",
+   "ar": "اسأل {name}…",
+   "fr": "Demander à {name}…",
+   "bn": "{name}-কে জিজ্ঞাসা করুন…",
+   "pt-BR": "Pergunte a {name}…",
+   "ru": "Спросить {name}…",
+   "id": "Tanya {name}…",
+   "it": "Chiedi a {name}…"
+  },
+  "Talking to {name}": {
+   "zh-Hans": "正在与 {name} 对话",
+   "hi": "{name} से बात हो रही है",
+   "es": "Hablando con {name}",
+   "ar": "يتحدث مع {name}",
+   "fr": "Parle avec {name}",
+   "bn": "{name}-এর সাথে কথা হচ্ছে",
+   "pt-BR": "Falando com {name}",
+   "ru": "Разговор с {name}",
+   "id": "Berbicara dengan {name}",
+   "it": "Parlo con {name}"
+  },
+  "waiting for the reply… {time}": {
+   "zh-Hans": "等待回复… {time}",
+   "hi": "जवाब का इंतज़ार… {time}",
+   "es": "esperando la respuesta… {time}",
+   "ar": "بانتظار الرد… {time}",
+   "fr": "en attente de la réponse… {time}",
+   "bn": "উত্তরের অপেক্ষা… {time}",
+   "pt-BR": "aguardando a resposta… {time}",
+   "ru": "жду ответа… {time}",
+   "id": "menunggu balasan… {time}",
+   "it": "aspetto la risposta… {time}"
+  },
+  "in conversation": {
+   "zh-Hans": "对话中",
+   "hi": "बातचीत में",
+   "es": "en conversación",
+   "ar": "في محادثة",
+   "fr": "en conversation",
+   "bn": "কথোপকথনে",
+   "pt-BR": "em conversa",
+   "ru": "в разговоре",
+   "id": "dalam percakapan",
+   "it": "in conversazione"
+  },
+  "The message did not reach {name}": {
+   "zh-Hans": "消息未送达 {name}",
+   "hi": "संदेश {name} तक नहीं पहुँचा",
+   "es": "El mensaje no llegó a {name}",
+   "ar": "لم تصل الرسالة إلى {name}",
+   "fr": "Le message n'est pas parvenu à {name}",
+   "bn": "বার্তা {name}-এর কাছে পৌঁছায়নি",
+   "pt-BR": "A mensagem não chegou a {name}",
+   "ru": "Сообщение не дошло до {name}",
+   "id": "Pesan tidak sampai ke {name}",
+   "it": "Il messaggio non è arrivato a {name}"
+  },
+  "No reply came": {
+   "zh-Hans": "没有收到回复",
+   "hi": "कोई जवाब नहीं आया",
+   "es": "No llegó ninguna respuesta",
+   "ar": "لم يصل أي رد",
+   "fr": "Aucune réponse n'est venue",
+   "bn": "কোনো উত্তর আসেনি",
+   "pt-BR": "Nenhuma resposta chegou",
+   "ru": "Ответа не было",
+   "id": "Tidak ada balasan",
+   "it": "Nessuna risposta"
+  },
+  "Sending a message": {
+   "zh-Hans": "正在发送消息",
+   "hi": "संदेश भेज रहे हैं",
+   "es": "Enviando un mensaje",
+   "ar": "يرسل رسالة",
+   "fr": "Envoi d'un message",
+   "bn": "বার্তা পাঠানো হচ্ছে",
+   "pt-BR": "Enviando uma mensagem",
+   "ru": "Отправка сообщения",
+   "id": "Mengirim pesan",
+   "it": "Invio un messaggio"
+  },
+  "See request": {
+   "zh-Hans": "查看请求",
+   "hi": "अनुरोध देखें",
+   "es": "Ver solicitud",
+   "ar": "عرض الطلب",
+   "fr": "Voir la demande",
+   "bn": "অনুরোধ দেখুন",
+   "pt-BR": "Ver pedido",
+   "ru": "Показать запрос",
+   "id": "Lihat permintaan",
+   "it": "Vedi richiesta"
+  },
+  "{name} ended: {count} agents stopped halfway": {
+   "zh-Hans": {
+    "other": "{name} 已退出：{count} 个代理中途停止"
+   },
+   "hi": {
+    "one": "{name} बंद हो गया: {count} एजेंट बीच में रुक गया",
+    "other": "{name} बंद हो गया: {count} एजेंट बीच में रुक गए"
+   },
+   "es": {
+    "one": "{name} se cerró: {count} agente se detuvo a medias",
+    "other": "{name} se cerró: {count} agentes se detuvieron a medias"
+   },
+   "ar": {
+    "zero": "أُغلق {name}: لم يتوقف أي وكيل",
+    "one": "أُغلق {name}: توقف وكيل واحد في منتصف عمله",
+    "two": "أُغلق {name}: توقف وكيلان في منتصف عملهما",
+    "few": "أُغلق {name}: توقف {count} وكلاء في منتصف عملهم",
+    "many": "أُغلق {name}: توقف {count} وكيلًا في منتصف عملهم",
+    "other": "أُغلق {name}: توقف {count} وكيل في منتصف عملهم"
+   },
+   "fr": {
+    "one": "{name} s'est fermé : {count} agent s'est arrêté en cours de route",
+    "other": "{name} s'est fermé : {count} agents se sont arrêtés en cours de route"
+   },
+   "bn": {
+    "one": "{name} বন্ধ হয়ে গেছে: {count}টি এজেন্ট মাঝপথে থেমে গেছে",
+    "other": "{name} বন্ধ হয়ে গেছে: {count}টি এজেন্ট মাঝপথে থেমে গেছে"
+   },
+   "pt-BR": {
+    "one": "{name} fechou: {count} agente parou no meio do caminho",
+    "other": "{name} fechou: {count} agentes pararam no meio do caminho"
+   },
+   "ru": {
+    "one": "{name} закрылся: {count} агент остановился на полпути",
+    "few": "{name} закрылся: {count} агента остановились на полпути",
+    "many": "{name} закрылся: {count} агентов остановились на полпути",
+    "other": "{name} закрылся: {count} агента остановились на полпути"
+   },
+   "id": {
+    "other": "{name} tertutup: {count} agen berhenti di tengah jalan"
+   },
+   "it": {
+    "one": "{name} si è chiuso: {count} agente si è fermato a metà",
+    "other": "{name} si è chiuso: {count} agenti si sono fermati a metà"
+   }
+  },
+  "{name} ended while these agents were still working. Please resume their tasks where they stopped:": {
+   "zh-Hans": "{name} 在这些代理仍在工作时退出了。请从它们停下的地方继续它们的任务：",
+   "hi": "ये एजेंट अभी काम कर ही रहे थे कि {name} बंद हो गया। कृपया इनके काम वहीं से फिर शुरू करें जहाँ ये रुके थे:",
+   "es": "{name} se cerró mientras estos agentes seguían trabajando. Retoma sus tareas donde se quedaron:",
+   "ar": "أُغلق {name} بينما كان هؤلاء الوكلاء لا يزالون يعملون. يُرجى استئناف مهامهم من حيث توقفت:",
+   "fr": "{name} s'est fermé alors que ces agents travaillaient encore. Reprends leurs tâches là où elles se sont arrêtées :",
+   "bn": "এই এজেন্টগুলো কাজ করার সময়ই {name} বন্ধ হয়ে গেছে। যেখানে থেমেছিল সেখান থেকে এদের কাজ আবার শুরু করুন:",
+   "pt-BR": "{name} fechou enquanto estes agentes ainda trabalhavam. Retome as tarefas deles de onde pararam:",
+   "ru": "{name} закрылся, пока эти агенты ещё работали. Продолжи их задачи с того места, где они остановились:",
+   "id": "{name} tertutup saat agen-agen ini masih bekerja. Lanjutkan tugas mereka dari tempat mereka berhenti:",
+   "it": "{name} si è chiuso mentre questi agenti lavoravano ancora. Riprendi i loro compiti da dove si sono fermati:"
+  },
+  "{count} agents finished": {
+   "zh-Hans": {
+    "other": "{count} 个代理已完成"
+   },
+   "hi": {
+    "one": "{count} एजेंट ने काम पूरा किया",
+    "other": "{count} एजेंटों ने काम पूरा किया"
+   },
+   "es": {
+    "one": "{count} agente terminó",
+    "other": "{count} agentes terminaron"
+   },
+   "ar": {
+    "zero": "لم ينتهِ أي وكيل",
+    "one": "انتهى وكيل واحد",
+    "two": "انتهى وكيلان",
+    "few": "انتهى {count} وكلاء",
+    "many": "انتهى {count} وكيلًا",
+    "other": "انتهى {count} وكيل"
+   },
+   "fr": {
+    "one": "{count} agent a terminé",
+    "other": "{count} agents ont terminé"
+   },
+   "bn": {
+    "one": "{count}টি এজেন্ট শেষ করেছে",
+    "other": "{count}টি এজেন্ট শেষ করেছে"
+   },
+   "pt-BR": {
+    "one": "{count} agente terminou",
+    "other": "{count} agentes terminaram"
+   },
+   "ru": {
+    "one": "{count} агент закончил",
+    "few": "{count} агента закончили",
+    "many": "{count} агентов закончили",
+    "other": "{count} агента закончили"
+   },
+   "id": {
+    "other": "{count} agen selesai"
+   },
+   "it": {
+    "one": "{count} agente ha finito",
+    "other": "{count} agenti hanno finito"
+   }
+  },
+  "in {time}": {
+   "zh-Hans": "用时 {time}",
+   "hi": "{time} में",
+   "es": "en {time}",
+   "ar": "في {time}",
+   "fr": "en {time}",
+   "bn": "{time}-এ",
+   "pt-BR": "em {time}",
+   "ru": "за {time}",
+   "id": "dalam {time}",
+   "it": "in {time}"
+  },
+  "last signal {time} ago": {
+   "zh-Hans": "最后信号 {time}前",
+   "hi": "आख़िरी संकेत {time} पहले",
+   "es": "última señal hace {time}",
+   "ar": "آخر إشارة منذ {time}",
+   "fr": "dernier signal il y a {time}",
+   "bn": "শেষ সাড়া {time} আগে",
+   "pt-BR": "último sinal há {time}",
+   "ru": "последний сигнал {time} назад",
+   "id": "sinyal terakhir {time} yang lalu",
+   "it": "ultimo segnale {time} fa"
+  },
+  "{count} agents have given no sign for {time}": {
+   "zh-Hans": {
+    "other": "{count} 个代理已 {time} 没有动静"
+   },
+   "hi": {
+    "one": "{count} एजेंट ने {time} से कोई संकेत नहीं दिया",
+    "other": "{count} एजेंटों ने {time} से कोई संकेत नहीं दिया"
+   },
+   "es": {
+    "one": "{count} agente no da señales desde hace {time}",
+    "other": "{count} agentes no dan señales desde hace {time}"
+   },
+   "ar": {
+    "zero": "لا وكلاء صامتون",
+    "one": "وكيل واحد لم يُعطِ أي إشارة منذ {time}",
+    "two": "وكيلان لم يُعطيا أي إشارة منذ {time}",
+    "few": "{count} وكلاء لم يُعطوا أي إشارة منذ {time}",
+    "many": "{count} وكيلًا لم يُعطوا أي إشارة منذ {time}",
+    "other": "{count} وكيل لم يُعطوا أي إشارة منذ {time}"
+   },
+   "fr": {
+    "one": "{count} agent ne donne plus signe de vie depuis {time}",
+    "other": "{count} agents ne donnent plus signe de vie depuis {time}"
+   },
+   "bn": {
+    "one": "{count}টি এজেন্ট {time} ধরে কোনো সাড়া দেয়নি",
+    "other": "{count}টি এজেন্ট {time} ধরে কোনো সাড়া দেয়নি"
+   },
+   "pt-BR": {
+    "one": "{count} agente não dá sinal há {time}",
+    "other": "{count} agentes não dão sinal há {time}"
+   },
+   "ru": {
+    "one": "{count} агент не подаёт признаков уже {time}",
+    "few": "{count} агента не подают признаков уже {time}",
+    "many": "{count} агентов не подают признаков уже {time}",
+    "other": "{count} агента не подают признаков уже {time}"
+   },
+   "id": {
+    "other": "{count} agen tidak memberi tanda selama {time}"
+   },
+   "it": {
+    "one": "{count} agente non dà segni da {time}",
+    "other": "{count} agenti non danno segni da {time}"
+   }
+  },
+  "the others are working": {
+   "zh-Hans": "其余的在工作",
+   "hi": "बाक़ी काम कर रहे हैं",
+   "es": "los demás trabajan",
+   "ar": "البقية يعملون",
+   "fr": "les autres travaillent",
+   "bn": "বাকিরা কাজ করছে",
+   "pt-BR": "os outros estão trabalhando",
+   "ru": "остальные работают",
+   "id": "yang lain bekerja",
+   "it": "gli altri lavorano"
+  },
+  "{count} steps": {
+   "zh-Hans": {
+    "other": "{count} 步"
+   },
+   "hi": {
+    "one": "{count} कदम",
+    "other": "{count} कदम"
+   },
+   "es": {
+    "one": "{count} paso",
+    "other": "{count} pasos"
+   },
+   "ar": {
+    "zero": "لا خطوات",
+    "one": "خطوة واحدة",
+    "two": "خطوتان",
+    "few": "{count} خطوات",
+    "many": "{count} خطوة",
+    "other": "{count} خطوة"
+   },
+   "fr": {
+    "one": "{count} étape",
+    "other": "{count} étapes"
+   },
+   "bn": {
+    "one": "{count}টি ধাপ",
+    "other": "{count}টি ধাপ"
+   },
+   "pt-BR": {
+    "one": "{count} passo",
+    "other": "{count} passos"
+   },
+   "ru": {
+    "one": "{count} шаг",
+    "few": "{count} шага",
+    "many": "{count} шагов",
+    "other": "{count} шага"
+   },
+   "id": {
+    "other": "{count} langkah"
+   },
+   "it": {
+    "one": "{count} passo",
+    "other": "{count} passi"
+   }
+  },
+  "{tokens} tokens": {
+   "zh-Hans": "{tokens} 个令牌",
+   "hi": "{tokens} टोकन",
+   "es": "{tokens} tokens",
+   "ar": "{tokens} رمز",
+   "fr": "{tokens} jetons",
+   "bn": "{tokens} টোকেন",
+   "pt-BR": "{tokens} tokens",
+   "ru": "{tokens} токенов",
+   "id": "{tokens} token",
+   "it": "{tokens} token"
+  },
+  "Stop this agent": {
+   "zh-Hans": "停止这个代理",
+   "hi": "इस एजेंट को रोकें",
+   "es": "Detener este agente",
+   "ar": "أوقف هذا الوكيل",
+   "fr": "Arrêter cet agent",
+   "bn": "এই এজেন্টটি থামান",
+   "pt-BR": "Parar este agente",
+   "ru": "Остановить этого агента",
+   "id": "Hentikan agen ini",
+   "it": "Ferma questo agente"
+  },
+  "Show the agents": {
+   "zh-Hans": "显示代理",
+   "hi": "एजेंट दिखाएँ",
+   "es": "Mostrar los agentes",
+   "ar": "إظهار الوكلاء",
+   "fr": "Afficher les agents",
+   "bn": "এজেন্টগুলো দেখান",
+   "pt-BR": "Mostrar os agentes",
+   "ru": "Показать агентов",
+   "id": "Tampilkan agen",
+   "it": "Mostra gli agenti"
+  },
+  "Hide the agents": {
+   "zh-Hans": "隐藏代理",
+   "hi": "एजेंट छिपाएँ",
+   "es": "Ocultar los agentes",
+   "ar": "إخفاء الوكلاء",
+   "fr": "Masquer les agents",
+   "bn": "এজেন্টগুলো লুকান",
+   "pt-BR": "Ocultar os agentes",
+   "ru": "Скрыть агентов",
+   "id": "Sembunyikan agen",
+   "it": "Nascondi gli agenti"
+  },
+  "no signal for {time}": {
+   "zh-Hans": "已 {time} 没有信号",
+   "hi": "{time} से कोई संकेत नहीं",
+   "es": "sin señal desde hace {time}",
+   "ar": "لا إشارة منذ {time}",
+   "fr": "aucun signal depuis {time}",
+   "bn": "{time} ধরে কোনো সাড়া নেই",
+   "pt-BR": "sem sinal há {time}",
+   "ru": "нет сигнала уже {time}",
+   "id": "tanpa sinyal selama {time}",
+   "it": "nessun segnale da {time}"
+  },
+  "waiting for your permission": {
+   "zh-Hans": "正在等待你的许可",
+   "hi": "आपकी अनुमति का इंतज़ार",
+   "es": "espera tu permiso",
+   "ar": "ينتظر إذنك",
+   "fr": "attend votre autorisation",
+   "bn": "আপনার অনুমতির অপেক্ষায়",
+   "pt-BR": "aguardando sua permissão",
+   "ru": "ждёт вашего разрешения",
+   "id": "menunggu izin Anda",
+   "it": "aspetta il tuo permesso"
+  },
+  "{agent} ended": {
+   "zh-Hans": "{agent} 已退出",
+   "hi": "{agent} बंद हो गया",
+   "es": "{agent} se cerró",
+   "ar": "أُغلق {agent}",
+   "fr": "{agent} s'est fermé",
+   "bn": "{agent} বন্ধ হয়ে গেছে",
+   "pt-BR": "{agent} fechou",
+   "ru": "{agent} закрылся",
+   "id": "{agent} tertutup",
+   "it": "{agent} si è chiuso"
   }
  }
 }

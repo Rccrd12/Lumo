@@ -83,8 +83,9 @@ import { forgetCardsFrom } from "./rich/index";
 import { Ink, inkWorks } from "./ink";
 import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
+import { invoke } from "@tauri-apps/api/core";
 import {
-  Bridge, isDialogOpen, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
+  Bridge, isDialogOpen, onEvent, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
@@ -96,6 +97,14 @@ import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../c
 import {
   chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, savedWarning, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
+import {
+  agentAsk, applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
+  noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents,
+  type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry,
+} from "../core/chat-agents";
+import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, talkBox, type AgentsCardHost } from "./agents-card";
+import { askQuoteOf, updateChatTurns, type AskQuote } from "../core/chats";
+import type { AgentsPeek } from "../core/compact";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
 } from "../core/checklists";
@@ -138,6 +147,10 @@ const MAX_LISTEN_ASKS = 6;
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
   placeholderNext: N_("Continue…"),
+  /** The field, while a question is asked of one agent (Ask). */
+  askPlaceholder: N_("Ask {name}…"),
+  /** Over the field and in the queued question: who the question goes to. */
+  asking: N_("Asking {name}"),
   planKeep: N_("Keep planning"),
   planApprove: N_("Approve the plan"),
   listenAsk: N_("Start listening?"),
@@ -401,6 +414,8 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     const edit = onEdit ? msgAction("msg-edit", STRINGS.edit, svg(ICONS.pencil, 12, { stroke: 1.8 }), () => onEdit(message)) : null;
     bar.append(...[when, retry, edit, copy].filter((x): x is HTMLElement => x != null));
     const sent = sentBubble(message.content);
+    // Asked of an agent: that agent on top of the question, as WhatsApp's quoted Reply.
+    if (message.ask) sent.insertBefore(askQuote(message.ask), sent.firstChild);
     foldLong(sent, message.id);
     row = h("div", { class: `chat-row user${state}` }, sent, bar);
   } else {
@@ -444,6 +459,15 @@ const openWarnings = new WeakSet<ChatMessage>();
 export function failedParts(text: string): [string, string] {
   const at = text.indexOf("\u2063");
   return at < 0 ? [text, ""] : [text.slice(0, at).trim(), text.slice(at + 1).trim()];
+}
+
+/** The agent a question was asked of, inside its bubble: who, and its line then. */
+function askQuote(quote: AskQuote): HTMLElement {
+  const el = h("div", { class: "bubble-quote" },
+    h("b", { text: t(STRINGS.asking, { name: quote.title }), title: quote.title }),
+    h("span", { text: quote.line, title: quote.line }));
+  el.dataset.look = quote.look;
+  return el;
 }
 
 /**
@@ -714,6 +738,9 @@ const ACTIVITY_STRINGS = {
   editingFile: N_("Editing a file"),
   web: N_("Searching the web"),
   subtask: N_("Working on a sub-task"),
+  /** Claude Code's SendMessage to one of its agents (claude_code.rs activity_for). */
+  talking: N_("Talking to {name}"),
+  message: N_("Sending a message"),
   plan: N_("Planning"),
   screen: N_("Looking at the screen"),
   computer: COMPUTER_TEXT.using,
@@ -840,6 +867,8 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.web);
     case "subtask":
       return t(ACTIVITY_STRINGS.subtask);
+    case "talk":
+      return detail ? t(ACTIVITY_STRINGS.talking, { name: detail }) : t(ACTIVITY_STRINGS.message);
     case "plan":
       return t(ACTIVITY_STRINGS.plan);
     case "screen":
@@ -910,6 +939,7 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "read":
     case "edit":
     case "web":
+    case "talk":
     case "plan":
     case "screen":
     case "computer":
@@ -1864,6 +1894,14 @@ export function buildPrompt(
   );
   queueEl.hidden = true;
 
+  // Ask on an agent's row: that agent over the field, as a quote (WhatsApp's
+  // Reply), until the question goes or × takes it away.
+  const askWho = h("span", { class: "ask-who" });
+  const askLine = h("span", { class: "ask-line" });
+  const askClose = h("button", { class: "ask-close", title: tl(SCREEN_STRINGS.remove), "aria-label": tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 9));
+  const askEl = h("div", { class: "chat-ask" }, h("i", { class: "ask-bar" }), h("div", { class: "ask-text" }, askWho, askLine), askClose);
+  askEl.hidden = true;
+
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
   const modelBtn = h(
@@ -2179,7 +2217,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, askEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -2236,6 +2274,12 @@ export function buildPrompt(
   const runs = new Map<string, Run>();
   /** The answer of the chat on screen, while it is written. */
   const answering = (): Run | undefined => runs.get(State.chatId);
+  /** The agents each chat's CLI started, and each chat's sign of life (core/chat-agents.ts). */
+  const agentStore = newAgentStore();
+  /** The Agents cards in the log now, by card (views/agents-card.ts agentsCardKey): drawn again alone. */
+  const shownCards = new Map<string, { el: HTMLElement; batch: AgentBatch }>();
+  /** The "Talking to …" boxes in the log now, by the call that sent the message. */
+  const shownTalks = new Map<string, { el: HTMLElement; talk: TalkEntry }>();
   /** A question is being made ready (its folder, its file) before it goes. */
   let preparing = false;
   /** The chat the log shows, to notice another one coming on screen. */
@@ -2537,6 +2581,11 @@ export function buildPrompt(
     State.chatSession = null;
     // The cards of the dropped messages (a quiz's answers) are not the next answer's.
     forgetCardsFrom(State.chatId, kept.filter((m) => !m.failed).length);
+    // So are the agents the dropped answers started: the next answer's start a card of their own.
+    rewindAgents(agentStore, State.chatId, kept.filter((m) => m.role === "assistant" && !m.failed).length);
+    // An agent quoted over the field may have gone with them: the quote goes too.
+    askFor.delete(State.chatId);
+    drawAsk();
     renderedCount = -1;
     // The files of the dropped turns leave the chat's files, and Rust forgets them too.
     rewindChatFiles(State.chatId, keep);
@@ -3363,6 +3412,9 @@ export function buildPrompt(
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
         deleteChat(c.id);
+        forgetChat(agentStore, c.id);
+        askFor.delete(c.id);
+        queuedAsk.delete(c.id);
         // What it heard goes with it, and no longer waits to be seen.
         dropHeard(c.id);
         seen(c.id);
@@ -3381,8 +3433,11 @@ export function buildPrompt(
           run.forgotten = true;
           if (!run.stopping) void Bridge.chatStop(c.id);
           run.stopping = true;
-          drawIslandActivity();
         }
+        // Its CLI, waiting for a message, ends, and the agents it still runs
+        // with it (a run being stopped closes it as it ends).
+        void Bridge.chatClose(c.id);
+        drawIslandActivity();
         // The chat on screen is gone: so is it from the screen.
         if (c.id === State.chatId) {
           newChat();
@@ -3446,9 +3501,11 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined, warning: savedWarning(turn.warning) }));
+      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined, warning: savedWarning(turn.warning), ask: askQuoteOf(turn.ask) }));
       State.chatSession = c.session;
       void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
+      // Its answers' agents come back under them, unless the island still holds them.
+      restoreAgents(agentStore, c.id, c.turns, c.provider);
     }
     State.chatId = c.id;
     // The picker shows the provider and model this chat is on (as it was left).
@@ -3644,7 +3701,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}), ...(m.warning ? { warning: m.warning } : {}) }));
+    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}), ...(m.warning ? { warning: m.warning } : {}), ...(m.ask ? { ask: m.ask } : {}) }));
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -3653,7 +3710,8 @@ export function buildPrompt(
       provider: run.provider,
       model: run.model,
       session: run.session,
-      turns,
+      // Each answer with the agents it started that ended.
+      turns: withAgents(agentStore.get(run.chatId), turns),
     });
     if (body.classList.contains("browsing")) drawHistory();
   }
@@ -3760,6 +3818,8 @@ export function buildPrompt(
   /** The chat is being compacted: what the closed island says meanwhile. */
   let compactingLabel: string | null = null;
   let activeChatsKey = "";
+  /** The agents' segments last given to the closed island. */
+  let islandPeekKey = "";
   /** How long a finished chat stays on the home with "Done" before leaving the list (matches hooks.ts). */
   const CHAT_DONE_HOLD_MS = 5200;
   const finishedChats = new Map<string, { provider: string; model: string; title: string; timer: ReturnType<typeof setTimeout> }>();
@@ -3787,9 +3847,24 @@ export function buildPrompt(
     const liveRuns = [...runs.values()].filter((r) => !r.forgotten);
     const current = answering();
     const run = (current && !current.forgotten ? current : undefined) ?? liveRuns.at(-1);
+    // A chat whose answer is done while its agents still work: the one on screen first.
+    const working: { chat: ActiveChatRun; island: { who: string; label: string }; peek: AgentsPeek }[] = [];
+    // Past chats are read once, and only when a chat at work is in none of the open slots.
+    let saved: SavedChat[] | null = null;
+    const savedChats = () => (saved ??= loadChats());
+    for (const [chatId, c] of agentStore) {
+      if (runs.has(chatId)) continue;
+      const one = agentsActivity(chatId, c, savedChats);
+      if (one) working[chatId === State.chatId ? "unshift" : "push"](one);
+    }
+    const agentChats = working.map((w) => w.chat);
+    const agentsLine = run || compactingLabel != null ? undefined : working[0];
+    // The closed island draws its segments after the words (island/compact.ts).
+    setIslandAgents(agentsLine?.peek ?? null);
     const next = run
       ? { ...runSpeaker(run), label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null }
-      : compactingLabel != null ? { ...chatSpeaker(), label: compactingLabel } : null;
+      : compactingLabel != null ? { ...chatSpeaker(), label: compactingLabel }
+      : agentsLine ? { who: agentsLine.island.who, color: agentsLine.chat.color, label: agentsLine.island.label } : null;
     const nextChats: ActiveChatRun[] = liveRuns.map((r) => {
       const { who, color } = runSpeaker(r);
       return {
@@ -3810,6 +3885,7 @@ export function buildPrompt(
         line: compactingLabel,
       });
     }
+    for (const working of agentChats) if (!nextChats.some((c) => c.chatId === working.chatId)) nextChats.push(working);
     for (const [chatId, fin] of finishedChats) {
       if (nextChats.some((c) => c.chatId === chatId)) continue;
       const { who, color } = runSpeaker(fin);
@@ -3825,7 +3901,9 @@ export function buildPrompt(
     const nextKey = nextChats.map((c) => `${c.chatId}\t${c.who}\t${c.color}\t${c.title}\t${c.line}\t${c.done ? 1 : 0}`).join("\n");
     const now = State.chatActivity;
     const sameActivity = next == null ? now == null : now != null && now.label === next.label && now.who === next.who && now.color === next.color;
-    if (sameActivity && nextKey === activeChatsKey) return;
+    const peekKey = agentsLine ? `${agentsLine.peek.looks.join(",")}:${agentsLine.peek.done}/${agentsLine.peek.total}` : "";
+    if (sameActivity && nextKey === activeChatsKey && peekKey === islandPeekKey) return;
+    islandPeekKey = peekKey;
     activeChatsKey = nextKey;
     State.chatActivity = next;
     State.activeChats = nextChats;
@@ -3835,6 +3913,8 @@ export function buildPrompt(
   void onEvent<{ chat: string; text: string }>("chat-delta", ({ chat, text }) => {
     const run = runs.get(chat);
     if (!run || !text) return; // nothing visible yet: the dots stay
+    // Text that comes is a sign of life too.
+    noteSignal(agentStore, chat);
     const fresh = !run.text;
     run.text = text;
     run.dots = false;
@@ -3846,7 +3926,8 @@ export function buildPrompt(
     log.querySelector(".typing")?.parentElement?.remove();
     if (!live) {
       live = h("div", { class: "reply" });
-      log.append(h("div", { class: "chat-row" }, live));
+      // Above the agents it already started, if any: they go under the answer.
+      log.insertBefore(h("div", { class: "chat-row" }, live), liveCards(run));
     }
     noteChecklists(chat, run.history, text);
     writeAnswer(chat, live, text, fresh, messageScope(chat, nextMessage(run.history)));
@@ -3918,25 +3999,338 @@ export function buildPrompt(
     const run = runs.get(chat);
     if (!run || !activity) return;
     clearTimeout(run.timer);
+    noteSignal(agentStore, chat);
     showActivity(run, activity, true);
+    drawStall();
   });
+
+  // ── The agents a CLI started, and the sign of life ────────────────────────
+  //
+  // Concept: concepts/sotto-agenti. The store (core/chat-agents.ts) keeps each
+  // chat's agents and when its answer last moved; the chat on screen draws its
+  // Agents cards (views/agents-card.ts) under the answers that started them,
+  // and only those cards again when an agent changes. The closed island and
+  // the home list a chat whose answer is done while its agents still work.
+
+  /** The words for the chat's answer waiting or giving no sign, after the dots' line. */
+  const STALL_TEXT = {
+    noSignal: N_("no signal for {time}"),
+    waiting: N_("waiting for your permission"),
+  };
+
+  /** Which answer of `chatId` a new batch of agents goes under: the one being written, else the last. */
+  function anchorFor(chatId: string): number {
+    const run = runs.get(chatId);
+    const history = run?.history ?? (chatId === State.chatId ? State.chatHistory : null);
+    const answers = history
+      ? history.filter((m) => m.role === "assistant" && !m.failed).length
+      : (loadChats().find((c) => c.id === chatId)?.turns.filter((x) => x.role === "assistant").length ?? 0);
+    return run ? answers : Math.max(0, answers - 1);
+  }
+
+  /** The permission cards waiting for the user, from the island's own chat. */
+  function chatCards(): PendingCard[] {
+    return [State.pendingApproval, ...State.approvalQueue]
+      .filter((a) => a?.fromChat)
+      // The agent that asked, when the hook said (Claude Code's `agent_id`).
+      .map((a) => ({ sessionId: a!.sessionId, agentId: a!.subagentId, fromChat: true }));
+  }
+
+  /** What the cards up wait on in `chatId`: its answer itself, or some of its agents. `chats`: Past chats, read once by the caller. */
+  function permissionOf(chatId: string, chats: () => SavedChat[] = loadChats): { main: boolean; agents: Set<string> } {
+    const cards = chatCards();
+    if (!cards.length) return { main: false, agents: new Set() };
+    const run = runs.get(chatId);
+    const session = run ? run.session : chatId === State.chatId ? State.chatSession : chats().find((c) => c.id === chatId)?.session ?? null;
+    // A card with no session is the chat on screen's only for a CLI before
+    // its first answer: an API or a local model's chat has no session ever,
+    // and Rust says itself when one of its cards is up (`waiting`).
+    const onScreen = chatId === State.chatId && (!run || isCliProvider(run.provider));
+    return permissionMatch(cards, session, onScreen, agentStore.get(chatId)?.rows.keys() ?? []);
+  }
+
+  /**
+   * The chat's answer waits for the user: a card is up for it, or for one of
+   * its agents the answer waits on (not one in the background), or Rust said so.
+   */
+  function turnWaiting(chatId: string): boolean {
+    const c = agentStore.get(chatId);
+    if (c?.waiting === "permission") return true;
+    const permission = permissionOf(chatId);
+    return permission.main || [...permission.agents].some((id) => c?.rows.get(id)?.row.background === false);
+  }
+
+  /**
+   * The line next to the dots of the answer on screen says when it has given
+   * no sign for too long for who answers and what it does, in amber, or that
+   * it waits for the user's permission (concept 3). The dots and their words
+   * stay as they are.
+   */
+  function drawStall() {
+    const label = log.querySelector(".typing-label");
+    const row = label?.parentElement;
+    if (!row) return;
+    const run = answering();
+    let text = "";
+    let tone = "";
+    if (run && turnWaiting(run.chatId)) {
+      text = ` · ${t(STALL_TEXT.waiting)}`;
+      tone = "waiting";
+    } else if (run) {
+      const lastSignalAt = Math.max(agentStore.get(run.chatId)?.lastSignalAt ?? 0, run.since);
+      const stall = stallOf({ kind: "turn", provider: run.provider, activity: run.activity, lastSignalAt });
+      if (stall) {
+        text = ` · ${t(STALL_TEXT.noSignal, { time: durationText(stall.seconds * 1000) })}`;
+        tone = "stalled";
+      }
+    }
+    let span = row.querySelector(".typing-stall");
+    if (!text) {
+      span?.remove();
+      return;
+    }
+    if (!span) {
+      span = h("span", { class: "typing-stall" });
+      row.append(span);
+    }
+    span.className = `typing-stall ${tone}`;
+    if (span.textContent !== text) span.textContent = text;
+  }
+
+  /** Who the agents of `c` belong to ("Claude Code"), in its colour. */
+  function agentsSpeaker(chatId: string, c: ChatAgents): { who: string; color: string } {
+    let source = "";
+    for (const e of c.rows.values()) if (e.row.source) source = e.row.source;
+    const run = runs.get(chatId);
+    if (!source) return run ? runSpeaker(run) : chatSpeaker();
+    const p = providerDef(source);
+    return { who: t(p.name), color: p.accent };
+  }
+
+  /** What one Agents card of the chat on screen needs from the chat. */
+  function agentsHost(chatId: string): AgentsCardHost {
+    return {
+      label: activityLabel,
+      // Stops that one agent alone; its CLI says how it ended (a `chat-agent` event).
+      stop: (agentId) => {
+        void invoke("chat_stop_agent", { chatId, agentId }).catch((err) => {
+          compactNotice(String(err).replace(/^Error:\s*/, ""), "#f4505e");
+          void Bridge.log(`[agents] stop ${agentId}: ${String(err)}`);
+        });
+        Sound.play("pop");
+      },
+      // Resume: a message to the chat, only on that click; it waits if an answer is being written.
+      // False when it could not go (a question being edited): the card keeps offering it.
+      send: (text) => sendFromCard?.(text) ?? false,
+      requestOnTop: requestOnTop(chatId),
+      // The card the agent asks on comes to the front, if it is still the one on top.
+      seeRequest: (agentId) => {
+        const pending = State.pendingApproval;
+        if (!pending?.fromChat || requestOnTop(chatId) !== agentId) return;
+        State.view = State.requestView(pending);
+        State.notify();
+      },
+      // Ask: the agent over the field, as a quote; what is typed then goes to it.
+      ask: editing == null ? (quote) => askAgent(chatId, quote) : undefined,
+      changed: () => onHeightChange(),
+    };
+  }
+
+  /**
+   * The agent of `chatId` the permission card on top asks for (Claude Code's
+   * `agent_id`); null when that card is not one of its agents' (the answer's
+   * own, another chat's, or no card: Claude Code checking a call in auto mode).
+   */
+  function requestOnTop(chatId: string): string | null {
+    const pending = State.pendingApproval;
+    const id = pending?.fromChat ? pending.subagentId : undefined;
+    return id && agentStore.get(chatId)?.rows.has(id) ? id : null;
+  }
+
+  /** Draws the chat on screen's Agents cards again, where they are; a new card draws the log again. */
+  function drawAgents(chatId: string, onlyOpen = false, redraw = true) {
+    if (chatId !== State.chatId) return;
+    const c = agentStore.get(chatId);
+    if (!c) return;
+    const unseen = c.batches.some((b) => !shownCards.has(agentsCardKey(chatId, b))) || c.talks.some((x) => !shownTalks.has(x.call));
+    if (redraw && unseen) {
+      // The log is drawn again on its next sync; it syncs now only when it shows.
+      renderedCount = -1;
+      if (State.view === "prompt") State.notify();
+      return;
+    }
+    const permission = permissionOf(chatId).agents;
+    for (const { el, batch } of shownCards.values()) {
+      // Each second, only the cards whose agents are still at work.
+      if (onlyOpen && !batch.ids.some((id) => { const e = c.rows.get(id); return e && !isFinal(e.row.state); })) continue;
+      fillAgentsCard(el, { chatId, chat: c, batch, permission }, agentsHost(chatId));
+    }
+    const who = agentsSpeaker(chatId, c).who;
+    for (const { el, talk } of shownTalks.values()) {
+      // Each second, only those still waiting for their answer.
+      if (onlyOpen && !talkWaits(talk)) continue;
+      fillTalkBox(el, talk, who);
+    }
+  }
+
+  /** The "Talking to …" boxes of the answer `answer`, or of those past the last when `after`. */
+  function talkBoxesFor(chatId: string, answer: number, after = false): HTMLElement[] {
+    const c = agentStore.get(chatId);
+    if (!c?.talks.length) return [];
+    const who = agentsSpeaker(chatId, c).who;
+    return c.talks.filter((x) => (after ? x.anchor >= answer : x.anchor === answer)).map((talk) => {
+      const el = talkBox(talk, who);
+      shownTalks.set(talk.call, { el, talk });
+      return el;
+    });
+  }
+
+  /** The Agents cards of the answer `answer` (its place among the answers), or of those past the last when `after`. */
+  function agentCardsFor(chatId: string, answer: number, after = false): HTMLElement[] {
+    const c = agentStore.get(chatId);
+    if (!c?.batches.length) return [];
+    const permission = permissionOf(chatId).agents;
+    const host = agentsHost(chatId);
+    return c.batches.filter((b) => (after ? b.anchor >= answer : b.anchor === answer)).map((batch) => {
+      const el = agentsCard({ chatId, chat: c, batch, permission }, host);
+      shownCards.set(agentsCardKey(chatId, batch), { el, batch });
+      return el;
+    });
+  }
+
+  /** The permission cards last drawn on the agents (`chatCards`), to notice when one comes or goes. */
+  let pendingCardsKey = "";
+
+  /** The first Agents card under the answer `run` is writing, in the log; null for none. */
+  function liveCards(run: Run): HTMLElement | null {
+    const answers = run.history.filter((m) => m.role === "assistant" && !m.failed).length;
+    for (const { el, batch } of shownCards.values()) if (batch.anchor >= answers && el.parentElement === log) return el;
+    return null;
+  }
+
+  /** The agents of `chatId` that ended are kept with the chat, under their answers. */
+  function saveAgents(chatId: string) {
+    const run = runs.get(chatId);
+    if (run) remember(run);
+    else updateChatTurns(chatId, (turns) => withAgents(agentStore.get(chatId), turns));
+  }
+
+  /**
+   * What the closed island and the home say of a chat whose answer is done
+   * while its agents still work (concept 5); null for none.
+   */
+  function agentsActivity(chatId: string, c: ChatAgents, chats: () => SavedChat[]): { chat: ActiveChatRun; island: { who: string; label: string }; peek: AgentsPeek } | null {
+    if (openCount(c) === 0) return null;
+    const now = Date.now();
+    // The batches at work only, as their cards count: not the agents of earlier answers.
+    const entries = c.batches.map((b) => batchEntries(c, b)).filter((es) => es.some((e) => !isFinal(e.row.state))).flat();
+    const permission = permissionOf(chatId, chats).agents;
+    const line = islandAgentsLine(entries, now, permission);
+    if (!line) return null;
+    const { who, color } = agentsSpeaker(chatId, c);
+    const counts = countAgents(entries, now, permission);
+    const title = chatNamed(chatId, chats) || t("Chat");
+    return {
+      // The home's list: who answers, the chat's title, and how far they are after the words.
+      chat: { chatId, who, color: line.stalled ? "#f5a524" : color, title, line: line.stalled ? line.text : `${line.text} · ${counts.done}/${counts.total}` },
+      // The closed island: the chat's name, then the words; "3/8" comes after the segments (island/compact.ts).
+      island: { who: `«${title}»`, label: line.text },
+      peek: { looks: looksOf(entries, now, permission), done: counts.done, total: counts.total, stalled: line.stalled },
+    };
+  }
+
+  void onEvent<ChatAgentEvent>("chat-agent", (ev) => {
+    if (!ev?.chat || !ev.agent) return;
+    const before = agentStore.get(ev.chat)?.rows.get(ev.agent.id)?.row.state;
+    if (!applyAgent(agentStore, ev, () => anchorFor(ev.chat))) return;
+    drawAgents(ev.chat);
+    drawIslandActivity();
+    tickAgents();
+    // An agent that just ended is kept with the chat.
+    if (isFinal(ev.agent.state) && before !== ev.agent.state) saveAgents(ev.chat);
+  });
+
+  void onEvent<ChatSignalEvent>("chat-signal", (ev) => {
+    if (!ev?.chat) return;
+    const waiting = agentStore.get(ev.chat)?.waiting ?? null;
+    applySignal(agentStore, ev);
+    if (ev.chat !== State.chatId) return;
+    drawStall();
+    // Waiting for the user starts or stops: the cards say so too.
+    if ((agentStore.get(ev.chat)?.waiting ?? null) !== waiting) drawAgents(ev.chat);
+    tickAgents();
+  });
+
+  /**
+   * The times on the cards, the sign of life next to the dots and the closed
+   * island's line move once a second while the chat on screen shows them,
+   * every 5 s while only the closed island has agents at work to say, and
+   * not at all otherwise (0 % CPU while nothing goes on).
+   */
+  let agentsTimer: ReturnType<typeof setInterval> | null = null;
+  let agentsEvery = 0;
+  function agentsPace(): number {
+    // The island hidden: nothing to draw, nothing runs (0 % CPU).
+    if (State.mode === "hidden") return 0;
+    const shown = State.mode === "expanded" && State.view === "prompt";
+    const c = agentStore.get(State.chatId);
+    if (shown && (answering() || openCount(c) > 0 || waitingTalk(c))) return 1000;
+    for (const c of agentStore.values()) if (openCount(c) > 0) return 5000;
+    return 0;
+  }
+  function tickAgents() {
+    const every = agentsPace();
+    if (every === agentsEvery) return;
+    if (agentsTimer != null) clearInterval(agentsTimer);
+    agentsTimer = null;
+    agentsEvery = every;
+    if (!every) return;
+    agentsTimer = setInterval(() => {
+      drawAgents(State.chatId, true);
+      drawStall();
+      drawIslandActivity();
+      tickAgents();
+    }, every);
+    // Under Node (the tests), agents left at work don't keep the process alive.
+    (agentsTimer as { unref?: () => void }).unref?.();
+  }
+  // The island hides or shows again, the chat leaves the screen or comes back:
+  // the pace follows (a pace unchanged costs nothing).
+  State.subscribe(() => tickAgents());
 
   /** The answers a queued question waits for (`sendAfter`). */
   const waitingFor = new Set<Run>();
   /** The question sent while its chat was answered, by chat: it waits above the field. */
   const queued = new Map<string, string>();
+  /** The agent a queued question is asked of (Ask), by chat. */
+  const queuedAsk = new Map<string, AskQuote>();
   let queueShown = "";
 
-  /** The question leaves the field and waits above it; a second one joins it. */
-  function enqueue(run: Run, text: string, typed: boolean) {
+  /**
+   * The question leaves the field and waits above it; a second one joins it.
+   * One asked of an agent never joins another, which would go to that agent
+   * too, or to none: it stays in the field (false).
+   */
+  function enqueue(run: Run, text: string, typed: boolean): boolean {
     const before = queued.get(run.chatId);
+    const quote = typed ? askFor.get(run.chatId) : undefined;
+    if (before != null && (quote || queuedAsk.has(run.chatId))) {
+      Sound.play("error");
+      return false;
+    }
     queued.set(run.chatId, before ? `${before}\n${text}` : text);
+    if (quote) {
+      queuedAsk.set(run.chatId, quote);
+      askFor.delete(run.chatId);
+      drawAsk();
+    }
     // A card's button leaves what is being typed in the field.
     if (typed) setInput("");
     Sound.play("blip");
     drawQueue();
     drawSend();
     sendAfter(run);
+    return true;
   }
 
   /** The queued question of the chat on screen, back in the field (before what is typed there now). */
@@ -3944,6 +4338,12 @@ export function buildPrompt(
     const text = queued.get(State.chatId);
     if (text == null) return;
     queued.delete(State.chatId);
+    const quote = queuedAsk.get(State.chatId);
+    queuedAsk.delete(State.chatId);
+    if (quote) {
+      askFor.set(State.chatId, quote);
+      drawAsk();
+    }
     const typed = input.value.trim();
     setInput(typed ? `${text}\n${typed}` : text);
     drawQueue();
@@ -3951,13 +4351,53 @@ export function buildPrompt(
   }
 
   function drawQueue() {
-    const shown = queued.get(State.chatId) ?? "";
+    const text = queued.get(State.chatId) ?? "";
+    const quote = text ? queuedAsk.get(State.chatId) : undefined;
+    // Asked of an agent: its name before the question.
+    const shown = quote ? `${t(STRINGS.asking, { name: quote.title })} · ${text}` : text;
     if (shown === queueShown) return;
     queueShown = shown;
     queueEl.hidden = !shown;
     queueText.textContent = shown;
     queueText.title = shown;
   }
+
+  /** The quote over the field, by chat: the agent Ask was clicked on. */
+  const askFor = new Map<string, AskQuote>();
+  let askShown: AskQuote | undefined;
+
+  /** Ask on a row of `chatId`'s agents: the agent over the field; nothing is sent. */
+  function askAgent(chatId: string, quote: AskQuote) {
+    if (chatId !== State.chatId || editing != null) return;
+    askFor.set(chatId, quote);
+    drawAsk();
+    Sound.play("blip");
+    input.focus();
+  }
+
+  function drawAsk() {
+    const quote = askFor.get(State.chatId);
+    if (quote === askShown) return;
+    askShown = quote;
+    askEl.hidden = !quote;
+    if (quote) {
+      askEl.dataset.look = quote.look;
+      askWho.textContent = t(STRINGS.asking, { name: quote.title });
+      askLine.textContent = quote.line;
+      askLine.title = quote.line;
+    }
+    // The field's words say who the question goes to (sync).
+    State.notify();
+    onHeightChange();
+  }
+
+  askClose.addEventListener("click", (e) => {
+    e.stopPropagation();
+    askFor.delete(State.chatId);
+    drawAsk();
+    Sound.play("pop");
+    input.focus();
+  });
 
   queueEdit.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -3970,6 +4410,7 @@ export function buildPrompt(
   queueCancel.addEventListener("click", (e) => {
     e.stopPropagation();
     queued.delete(State.chatId);
+    queuedAsk.delete(State.chatId);
     drawQueue();
     Sound.play("pop");
     input.focus();
@@ -4001,8 +4442,10 @@ export function buildPrompt(
     if (text == null || preparing || answering() || editing != null || stoppedAway.has(chatId)) return;
     for (const r of waitingFor) if (r.chatId === chatId) return;
     queued.delete(chatId);
+    const quote = queuedAsk.get(chatId);
+    queuedAsk.delete(chatId);
     drawQueue();
-    void submit(undefined, text);
+    void submit(undefined, text, undefined, quote);
   }
 
   /**
@@ -4016,8 +4459,8 @@ export function buildPrompt(
     if (editing != null || preparing) return false;
     // While an answer is written, it waits above the field like a question typed.
     const current = answering();
-    if (current) enqueue(current, text, false);
-    else void submit(text);
+    if (current) return enqueue(current, text, false);
+    void submit(text);
     return true;
   };
 
@@ -4026,10 +4469,13 @@ export function buildPrompt(
    * waits above that chat's field and goes once it is back. A question that
    * waited already gives way to one queued since.
    */
-  function waitAgain(chatId: string, text: string, wasQueued: boolean) {
+  function waitAgain(chatId: string, text: string, wasQueued: boolean, quote?: AskQuote) {
     const before = queued.get(chatId);
     if (before != null && wasQueued) return;
     queued.set(chatId, before ? `${before}\n${text}` : text);
+    // Joined to another, it is asked of no agent: going to one, the other would too.
+    if (before != null) queuedAsk.delete(chatId);
+    else if (quote) queuedAsk.set(chatId, quote);
     drawQueue();
   }
 
@@ -4037,7 +4483,7 @@ export function buildPrompt(
    * `away`: Lumo's own message goes to that chat, not the one on screen
    * (submitAway): its conversation, already loaded in Rust.
    */
-  async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }) {
+  async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }, queuedQuote?: AskQuote) {
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
     if (!query || preparing) return;
@@ -4053,7 +4499,12 @@ export function buildPrompt(
     // "/pdfcraft merge them": the AI is asked to use that tool for what follows;
     // the chat shows what was typed.
     const called = auto ? null : toolCommand(query, State.settings.chatProvider, State.tools);
-    const asked = called ? toolAsk(called.tool, called.rest) : query;
+    // Asked of one agent (Ask, the quote over the field): the CLI passes it on.
+    // Not a command the CLI runs ("/compact"), which the quote leaves waiting.
+    const quote = auto || away || editing != null ? undefined : queuedText != null ? queuedQuote : askFor.get(State.chatId);
+    const command = !called && query.trim().startsWith("/");
+    const quoted = quote && !command ? quote : undefined;
+    const asked = quoted ? agentAsk(quoted, called ? toolAsk(called.tool, called.rest) : query) : called ? toolAsk(called.tool, called.rest) : query;
     // "/new", "/model"…: Lumo's own, run here like a pick in the menu.
     const own = auto || editing != null ? null : lumoCommand(query, State.settings.chatProvider);
     if (own) {
@@ -4095,7 +4546,7 @@ export function buildPrompt(
       if (State.chatId !== askedIn) {
         // A question that waited, or a message Lumo wrote itself (a watch
         // that fired), waits above that chat's field; what is typed stays there.
-        if (!typed) waitAgain(askedIn, query, queuedText != null);
+        if (!typed) waitAgain(askedIn, query, queuedText != null, quoted);
         return;
       }
     }
@@ -4134,7 +4585,7 @@ export function buildPrompt(
         if (typed && !input.value.trim()) setInput(query);
         // A question that waited above the field, or Lumo's own message,
         // waits there again.
-        else if (!typed) waitAgain(askedIn, query, queuedText != null);
+        else if (!typed) waitAgain(askedIn, query, queuedText != null, quoted);
         return;
       }
 
@@ -4153,6 +4604,13 @@ export function buildPrompt(
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: nextId++, role: "user", content: query, at: Date.now() };
+      // The bubble shows the quote and what was typed; Rust's conversation holds what went.
+      if (quoted) {
+        question.ask = quoted;
+        question.kept = asked;
+        if (askFor.get(chatId) === quoted) askFor.delete(chatId);
+        drawAsk();
+      }
       history.push(question);
 
       // What went with it leaves the field, which is ready for the next question.
@@ -4199,6 +4657,8 @@ export function buildPrompt(
       if (activity !== THINKING) run.timer = setTimeout(() => showActivity(started, THINKING), FIRST_ACTIVITY_MS);
       clearFinishedChat(chatId);
       runs.set(chatId, run);
+      // The answer's sign of life is counted from now.
+      noteSignal(agentStore, chatId);
     } finally {
       preparing = false;
     }
@@ -4216,7 +4676,6 @@ export function buildPrompt(
       // unseen. Not with a command the CLI runs (Claude Code's "/compact",
       // agy's "/usage"), which would take it as its own words: it goes with
       // the next question.
-      const command = !called && asked.trim().startsWith("/");
       const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
       const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model });
       // Stopped before anything was written: the question stays, unanswered,
@@ -4272,6 +4731,8 @@ export function buildPrompt(
       clearTimeout(run.timer);
       runs.delete(run.chatId);
       if (outcome === "finished" && !run.forgotten) noteFinishedChat(run);
+      // Its chat was deleted meanwhile: its CLI, back to waiting, ends now.
+      if (run.forgotten) void Bridge.chatClose(run.chatId);
       // A local model the answer loaded: what it can do (reasoning, context) is known only now.
       const caps = localCapsOf(run.provider);
       if (providerDef(run.provider).urlField && run.provider === State.settings.chatProvider && (!caps || caps.loadedContext === 0)) {
@@ -4358,11 +4819,14 @@ export function buildPrompt(
     const history = run?.history ?? (onScreen ? State.chatHistory : null);
     const known = run ? run.session : onScreen ? State.chatSession : saved?.session ?? null;
     if (session && known && known !== session) return;
+    // While the chat's agents work, what it writes (a result that came in)
+    // is an answer like any other: it joins the chat's, with Markdown.
+    const agents = agentStore.get(chatId);
     if (history) {
       if (!joinOwnAnswer(history, content)) return;
-      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
+      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}), ...(m.ask ? { ask: m.ask } : {}) }));
       if (run) remember(run);
-      else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns });
+      else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns: withAgents(agents, turns) });
       if (onScreen) renderedCount = -1;
     } else {
       if (!saved) return;
@@ -4422,9 +4886,10 @@ export function buildPrompt(
     // Rust takes every turn back as it is: each one's place there is its place here (as openChat).
     const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => ({
       id: nextId++, role: turn.role, content: turn.content, turn: i,
-      at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined, warning: savedWarning(turn.warning),
+      at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined, warning: savedWarning(turn.warning), ask: askQuoteOf(turn.ask),
     }));
     const session = saved?.session ?? null;
+    if (saved) restoreAgents(agentStore, chatId, saved.turns, saved.provider);
     loadingAway.add(chatId);
     try {
       await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId));
@@ -4449,7 +4914,7 @@ export function buildPrompt(
   }
 
   /** A chat's name, wherever it is: on screen, being answered, or in Past chats. */
-  function chatNamed(chatId: string): string | null {
+  function chatNamed(chatId: string, chats: () => SavedChat[] = loadChats): string | null {
     // The chat on screen, even still empty (a watch started from the panel),
     // or the one the other slot put aside.
     if (chatId === State.chatId) return chatTitle(State.chatHistory);
@@ -4457,7 +4922,7 @@ export function buildPrompt(
     if (parked && chatId === parked.chatId) return chatTitle(parked.chatHistory);
     const run = runs.get(chatId);
     if (run) return chatTitle(run.history);
-    const saved = loadChats().find((c) => c.id === chatId);
+    const saved = chats().find((c) => c.id === chatId);
     return saved ? saved.title : null;
   }
 
@@ -5080,6 +5545,7 @@ export function buildPrompt(
       // The queued question shows with its chat, and goes if it ended meanwhile.
       if (!run && stoppedAway.delete(State.chatId)) unqueue();
       drawQueue();
+      drawAsk();
       if (!run) queueMicrotask(sendQueued);
 
       const count = State.chatHistory.length + (run ? 0.5 : 0);
@@ -5104,6 +5570,12 @@ export function buildPrompt(
         const unanswered = asked != null && (lastAsked === history.length - 1 || !!history[lastAsked + 1]?.failed);
         // What Lumo heard for the chat, between its messages by time.
         const heardLines = placeHeard(history, workshop ? [] : heardIn(State.chatId));
+        // The Agents cards go under the answers that started them (views/agents-card.ts).
+        shownCards.clear();
+        shownTalks.clear();
+        const answers = history.filter((m) => m.role === "assistant" && !m.failed).length;
+        let answer = 0;
+        let lastBubble: HTMLElement | null = null;
         history.forEach((m, i) => {
           for (const line of heardLines.before[i]) log.append(heardRow(line));
           // A message's scope is its place among those kept with the chat, as the checklists count them.
@@ -5111,28 +5583,43 @@ export function buildPrompt(
           const retries = asked != null && (i === lastAsked || (i === lastAsked + 1 && !m.failed));
           const last = i === history.length - 1 && m.role === "assistant" && !run;
           const shown = editing == null && (unanswered ? i === lastAsked : last);
-          log.append(bubble(m, {
+          lastBubble = bubble(m, {
             onEdit: startEdit, onRetry: retries && asked ? () => retry(asked) : undefined, shown,
             editing: i === at, dropped: at >= 0 && i > at, workshop, scope,
-          }));
+          });
+          // The messages the CLI sent its agents meanwhile, before its answer.
+          if (m.role === "assistant" && !m.failed) log.append(...talkBoxesFor(State.chatId, answer));
+          log.append(lastBubble);
+          if (m.role === "assistant" && !m.failed) {
+            log.append(...agentCardsFor(State.chatId, answer));
+            answer++;
+          }
         });
+        // The agents of an answer that never came (stopped, failed) go after
+        // its question, and its failed answer.
+        if (!run) log.append(...talkBoxesFor(State.chatId, answers, true), ...agentCardsFor(State.chatId, answers, true));
         // An answer just finished: the ink goes on in its bubble until all is uncovered.
         const last = State.chatHistory[State.chatHistory.length - 1];
         const inked = ink && !run && inkChat === State.chatId && ink.behind ? ink : null;
-        const lastReply = log.lastElementChild?.querySelector<HTMLElement>(".reply");
+        const lastReply = (lastBubble as HTMLElement | null)?.querySelector<HTMLElement>(".reply");
         if (inked && last?.role === "assistant" && !last.failed && lastReply) {
           inked.update(last.content, true);
           const scope = messageScope(State.chatId, place - 1);
           inked.mount(lastReply, (el, words) => drawReply(el, words, workshop, scope, words.length < last.content.length));
         } else if (!run) dropInk();
         for (const line of heardLines.after) log.append(heardRow(line));
+        // The messages sent to agents by the answer being written, before its text.
+        if (run) log.append(...talkBoxesFor(State.chatId, answers, true));
         // The answer being written: its text so far, then the dots while it works.
         if (run?.text) {
           live = h("div", { class: "reply" });
           log.append(h("div", { class: "chat-row" }, live));
           writeAnswer(run.chatId, live, run.text, false, messageScope(State.chatId, place));
         }
+        // The agents of the answer being written.
+        if (run) log.append(...agentCardsFor(State.chatId, answers, true));
         if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
+        drawStall();
         // The chat stays where it was read, or at its end when it is stuck
         // there; one just opened shows its end.
         if (openedChat) stuck = true;
@@ -5141,6 +5628,14 @@ export function buildPrompt(
         openedChat = false;
         drawToEnd();
       } else refreshTimes();
+      // A permission card came or went: the agents and the dots' line say whether they wait for it.
+      const cardsKey = chatCards().map((c) => `${c.sessionId}:${c.agentId ?? ""}`).join(",");
+      if (cardsKey !== pendingCardsKey) {
+        pendingCardsKey = cardsKey;
+        drawAgents(State.chatId, false, false);
+        drawStall();
+      }
+      tickAgents();
 
       micBtn.classList.toggle("lit", State.liveActive);
       drawModelButton();
@@ -5157,6 +5652,7 @@ export function buildPrompt(
       input.placeholder = workshop
         ? t(FORGE_STRINGS.placeholder)
         : planAsking() ? t(STRINGS.planChange)
+        : askFor.has(State.chatId) ? t(STRINGS.askPlaceholder, { name: askFor.get(State.chatId)!.title })
         : t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
     },
     focus() {

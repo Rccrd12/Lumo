@@ -2,7 +2,7 @@
 
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
-import { newChatId } from "./chats";
+import { newChatId, type AskQuote } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../character/engine";
 import {
@@ -93,6 +93,8 @@ export interface ApprovalInfo {
   questions?: AskedQuestion[];
   /** Asked by the island's own chat (Claude Code provider): no session pill, and the chat comes back after. */
   fromChat?: boolean;
+  /** Asked from inside one of the chat's agents (Claude Code's `agent_id`): that agent's row says it waits (core/chat-agents.ts). */
+  subagentId?: string;
   /** "Allow for this session" can be offered: the same request is then allowed without a card until the session ends (session_rules.rs). */
   sessionAllow?: boolean;
   /** Allow is kept for the rest of the chat (Copilot CLI and Cursor CLI in Auto): the new look's card says so under its buttons. */
@@ -161,8 +163,10 @@ export interface ChatMessage {
   warning?: { line: string; detail: string };
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
-  /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing). */
+  /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing, a question asked of an agent). */
   kept?: string;
+  /** A question's: the agent it was asked of (Ask), shown as a quote over it. */
+  ask?: AskQuote;
   /** The files a local model changed or made in its folder of copies while
    * answering (workspace.rs), listed under the answer to open or put back. */
   copies?: { chat: string; path: string; made?: boolean }[];
