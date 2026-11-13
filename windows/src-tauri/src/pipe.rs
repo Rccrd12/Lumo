@@ -221,6 +221,16 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // tools (lumo-hook --mcp): one answer line.
     let answer = if let Some(request) = payload.get("lumo_computer") {
         Some(crate::computer::serve(&app, request).await)
+    } else if let Some(request) = payload.get("lumo_computer_turn") {
+        // A computer tool's turn (computer_turns.rs): waited for while the
+        // relay is there; gone, its place is kept a while for the next try.
+        let request = request.clone();
+        Some(first_of(Box::pin(crate::computer::queue(&app, &request)), async {
+            client_gone(&mut pipe).await;
+            "closed".to_string()
+        })
+        .await
+        .into())
     } else if let Some(request) = payload.get("lumo_mail") {
         Some(in_chat(&app, request, Box::pin(crate::mail::serve(&app, request))).await)
     } else if let Some(request) = payload.get("lumo_tool") {
@@ -338,6 +348,12 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
             Err(Unanswered::Released)
         }
     };
+    // A card of one of the computer tools: its holder kept the computer while
+    // it waited, and keeps it a while from the click for the call it allowed
+    // (before the card leaves the count, so nobody takes it in between).
+    if tool_name.as_deref().is_some_and(crate::claude_code::is_computer_tool) {
+        crate::computer_turns::card_answered();
+    }
     crate::computer::card_down(&app);
     // A request the relay had to cut (lumo_input_cut) is allowed like any
     // other: its card says it shows the beginning, the user decides, and in

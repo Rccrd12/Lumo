@@ -1116,6 +1116,20 @@ plan, with no API key.
   mouse and that Esc pauses. Esc gives it back at once, and so does the end of
   the answer. Should Lumo close meanwhile, the hook goes with it, and the
   usual arrow comes back at the next start (or at once on quitting).
+- **One agent at a time**: when the agents Claude Code started want the
+  computer too, the first to ask gets it, and the others wait in line on the
+  chat's Agents card: "uses the computer" on the one that has it, "Waiting
+  for the computer · 2 of 3 · 20 s" on the others (never "no signal"), and
+  **Give it the turn** to put one first. The computer passes on when the
+  agent that has it ends, or leaves it unused for 20 s with someone waiting
+  (the card of its computer tool waiting for your click counts as use, and
+  the 20 s start again from the click).
+  Before each of its computer tools, the chat's own PreToolUse hook
+  (`lumo-hook --chat-guard PreToolUse --computer-turn`, in the chat's
+  `--settings` file, never in `~/.claude/settings.json`) asks Lumo for the
+  turn: given, nothing more is said and Claude Code's own card still asks for
+  the click; not given within 90 s, the call is denied with its place in
+  line, and the agent keeps that place while it tries again.
 - **A recap under the answer**: "Used the computer · 5 steps · 41 s", which a
   click opens on the plan's steps as they ended, each with a small picture of
   the screen taken when it was done. Stopped before the end, an amber line

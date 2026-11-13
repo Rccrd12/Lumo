@@ -9589,6 +9589,16 @@ button.bg-row:hover {
   color: var(--ag-working);
 }
 
+/* The agent that has the computer now (computer_turns.rs): one at a time. */
+.agents-badge.computer {
+  background: rgba(45, 212, 191, 0.14);
+  color: #2dd4bf;
+}
+
+.agents-btn.first {
+  color: var(--ag-waiting);
+}
+
 /* "Talking to …": a message of the chat's CLI to one of its agents, and the answer (views/agents-card.ts). */
 .agents-talk {
   display: flex;
