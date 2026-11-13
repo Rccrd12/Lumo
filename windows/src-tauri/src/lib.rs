@@ -1573,7 +1573,7 @@ pub fn run() {
             computer::recover();
             // Antigravity CLI's plan tool, its email tools following the Email pill
             // and the user's tools while any is on (set again before each run).
-            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled());
+            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled(), false);
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             energy::start(handle.clone());

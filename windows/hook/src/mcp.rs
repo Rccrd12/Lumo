@@ -46,6 +46,9 @@ use serde_json::{json, Value};
 /// The longest a call may take: `wait` asks for up to a minute, and a typed
 /// text or a drag needs a little more.
 const CALL_BUDGET: Duration = Duration::from_secs(90);
+/// A computer action of another agent waits for Lumo's card first (108 s at
+/// most, pipe.rs DECISION_TIMEOUT), then runs within CALL_BUDGET.
+const COMPUTER_CALL_BUDGET: Duration = Duration::from_secs(108 + 90 + 12);
 /// A call of one of the user's tools waits for the island's card (108 s at
 /// most, pipe.rs) and then runs up to its own time limit (600 s, tools.rs).
 const TOOL_CALL_BUDGET: Duration = Duration::from_secs(108 + 600 + 12);
@@ -766,6 +769,8 @@ fn call_lumo(request: &Value) -> Result<Value, String> {
         TOOL_CALL_BUDGET
     } else if request["lumo_mail"]["tool"].as_str().is_some_and(|t| MAIL_SEND_NAMES.contains(&t) || MAIL_MANAGE_NAMES.contains(&t)) {
         MAIL_SEND_BUDGET
+    } else if request.get("lumo_computer").is_some() {
+        COMPUTER_CALL_BUDGET
     } else {
         CALL_BUDGET
     };
@@ -892,7 +897,7 @@ mod tests {
         assert_eq!(ask(line, &never)["result"]["isError"], true);
 
         assert_eq!(lumo_tool("mcp_lumo_mail_read"), Some("mail_read"));
-        assert!(!crate::reply::island_card("mcp_lumo_mail_search", None) && crate::reply::island_card("mcp_lumo_left_click", None));
+        assert!(!crate::reply::island_card("mcp_lumo_mail_search", None) && !crate::reply::island_card("mcp_lumo_left_click", None));
     }
 
     #[test]
@@ -994,12 +999,14 @@ mod tests {
         // Another server's call whose arguments (an object) name Lumo's server and tool.
         let posing = json!({ "name": "github__delete_repo", "arguments": { "server": "lumo", "tool": "update_plan" } });
         assert_eq!(lumo_call("call_mcp_tool", Some(&posing)), None);
-        // Another server's tool, or a computer tool, still asks.
+        // Another server's tool still asks; a computer tool has Lumo's own card (computer.rs).
         let github = json!({ "ServerName": "github", "ToolName": "update_plan" });
         assert_eq!(lumo_call("call_mcp_tool", Some(&github)), None);
         assert!(crate::reply::island_card("call_mcp_tool", Some(&github)));
         let click = json!({ "ServerName": "lumo", "ToolName": "left_click" });
-        assert!(crate::reply::island_card("call_mcp_tool", Some(&click)));
+        assert!(!crate::reply::island_card("call_mcp_tool", Some(&click)));
+        let posing_click = json!({ "ServerName": "github", "ToolName": "left_click" });
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&posing_click)), "only Lumo's own server");
         assert_eq!(lumo_call("view_file", Some(&call)), None, "only an MCP call");
         // Another server's tool whose arguments or summary name one of Lumo's: still a card.
         let disguised = json!({ "ServerName": "github", "ToolName": "delete_repo", "Arguments": "mcp_lumo_update_plan", "toolSummary": "lumo update_plan" });

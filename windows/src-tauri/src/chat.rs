@@ -1100,16 +1100,18 @@ async fn send_to(
                 chat.cli_dirs(Some(dir.to_string_lossy().to_string()));
             }
         }
+        // Computer use: Claude Code's as it always was; the other CLIs'
+        // experimental, each action asked for by Lumo (computer.rs OtherTurn).
+        let computer = settings.chat_computer_use;
         if provider == antigravity_cli::PROVIDER {
-            return antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), query, context, folder).await;
+            return antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), computer, query, context, folder).await;
         }
         if provider == codex_chat::PROVIDER {
-            return codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder).await;
+            return codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder).await;
         }
         if acp_chat::Agent::of(provider).is_some() {
-            return acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder).await;
+            return acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder).await;
         }
-        let computer = settings.chat_computer_use;
         return claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)
             .await;
     }

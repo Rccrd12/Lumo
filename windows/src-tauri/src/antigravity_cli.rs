@@ -889,11 +889,13 @@ pub async fn models() -> Result<Vec<ModelInfo>, String> {
 // ── One turn ──────────────────────────────────────────────────────────────────
 
 /// One chat turn through Antigravity CLI.
+#[allow(clippy::too_many_arguments)]
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     model: &str,
     mode: &str,
+    computer: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -915,6 +917,9 @@ pub async fn send(
         None if chat.is_workshop() => with_workshop_instructions(&text),
         None => with_instructions(&text),
     };
+    // Computer use (experimental): the note in front of every question.
+    let computer = computer && cfg!(windows);
+    let text = if computer { crate::computer::with_note(&text) } else { text };
     let input = user_event(&text);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let work = claude_code::work_dir();
@@ -922,8 +927,10 @@ pub async fn send(
     // Lumo's plan tool, its email tools while the Email pill is on and Security
     // lets the AI read it (only during this turn), and the user's tools that are on (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
-    crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools);
+    crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer);
     let _mail = crate::mail::agent_turn();
+    // The computer usable while this turn runs, each action asked for by Lumo.
+    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, "antigravity", mode));
 
     let app2 = app.clone();
     let events = chat.events();
@@ -1200,7 +1207,7 @@ pub(crate) fn help(
     let work = claude_code::work_dir();
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
-    crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
+    crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled(), false);
     let _mail = crate::mail::agent_turn();
     let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {})?;
     if state.stopped {
