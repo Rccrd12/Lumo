@@ -790,7 +790,9 @@ export interface ChatAgent {
   title: string;
   state: ChatAgentState;
   /** With "waiting": what it waits for. */
-  waitingFor?: "permission" | "rate_limit";
+  waitingFor?: "permission" | "rate_limit" | "queue";
+  /** Waiting for "queue": its place in line (a local model's agents run one at a time). */
+  queue?: number;
   /** What it is doing now, worded as the typing line is (activityLabel). */
   now?: ChatActivity;
   /** The CLI's own one-line account of its progress. */

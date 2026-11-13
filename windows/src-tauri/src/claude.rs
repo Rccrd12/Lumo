@@ -157,6 +157,7 @@ async fn run_user_tools(
     offered: &[(String, String, Value)],
     asking: crate::tools::Asking,
     sandbox_high: bool,
+    launch: &Launch,
 ) -> Vec<Value> {
     let mut results = Vec::new();
     for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
@@ -165,6 +166,15 @@ async fn run_user_tools(
         // Only a tool offered in this turn runs (its web search is the API's own).
         if name == "web_search" || !crate::tools::offered_in(offered, name) {
             results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": crate::tools::not_offered(name), "is_error": true }));
+            continue;
+        }
+        // Agents of its own (api_agents.rs): they run here, and their reports are the result.
+        if name == crate::api_agents::RUN {
+            chat.events().activity(app, crate::claude_code::Activity::new("subtask", ""));
+            let turn: crate::api_agents::Turn = Box::new(move |task, sink| Box::pin(agent_turn(app, chat.id(), launch, task, sink)));
+            let run = Box::pin(crate::api_agents::run(app, chat.id(), chat::ANTHROPIC, &b["input"], crate::api_agents::MAX_AGENTS, turn));
+            let (text, failed) = crate::chat_agents::alive_while(app, chat.id(), run).await;
+            results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
             continue;
         }
         // The island says which tool runs, in place of Thinking….
@@ -179,6 +189,95 @@ async fn run_user_tools(
     }
     results
 }
+
+/// What an agent of the chat runs with (api_agents.rs): the chat's model, key and tools.
+struct Launch {
+    endpoint: Url,
+    key: String,
+    model: String,
+    max_tokens: u64,
+    effort: Option<String>,
+    tools: Vec<(String, String, Value)>,
+    asking: crate::tools::Asking,
+    sandbox_high: bool,
+}
+
+/// One agent's whole turn: its task alone, the chat's tools (no more
+/// agents), its rounds of tools, and its last word as the report.
+async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api_agents::Task, sink: crate::api_agents::Sink) -> Result<String, String> {
+    let user = json!({ "role": "user", "content": task.task });
+    let mut body = with_user_tools(request_body(&l.model, crate::api_agents::SYSTEM, &[], &user, l.max_tokens), &l.tools);
+    if let Some(effort) = &l.effort {
+        body["output_config"] = json!({ "effort": effort });
+    }
+    let mut said: Vec<String> = Vec::new();
+    let (mut rounds, mut smaller, mut retried, mut limited) = (0, false, false, 0);
+    loop {
+        let response = match stream_call(&l.endpoint, &l.key, &body, &mut None, |_| sink.chunk(), || sink.chunk()).await {
+            Ok(response) => response,
+            Err(Failed::Status(400, e)) if !smaller && e.contains("max_tokens") => {
+                smaller = true;
+                body["max_tokens"] = json!(SMALL_MAX_TOKENS);
+                continue;
+            }
+            Err(Failed::Status(400, e)) if body.get("output_config").is_some() && e.contains("effort") => {
+                body.as_object_mut().map(|b| b.remove("output_config"));
+                continue;
+            }
+            // Agents at once may meet the rate limit: each waits it out a few times.
+            Err(Failed::Status(429, _)) if limited < AGENT_BACKOFF.len() => {
+                sink.rate_limited(true);
+                tokio::time::sleep(AGENT_BACKOFF[limited]).await;
+                limited += 1;
+                sink.rate_limited(false);
+                continue;
+            }
+            Err(Failed::Status(500 | 502 | 503 | 504 | 529, _)) if !retried => {
+                retried = true;
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+        if let Some(n) = chat_usage::context_tokens(&response["usage"]) {
+            sink.tokens(n);
+        }
+        let stop = response["stop_reason"].as_str().unwrap_or_default();
+        let blocks = response["content"].as_array().cloned().unwrap_or_default();
+        let for_tools = stop == "tool_use" && !l.tools.is_empty();
+        if !(for_tools || stop == "pause_turn") {
+            said.extend(response_text(&blocks));
+            let report = said.join("\n\n");
+            return if report.trim().is_empty() { Err(t("No response text.")) } else { Ok(report) };
+        }
+        if rounds == crate::api_agents::MAX_AGENT_ROUNDS {
+            return Ok(capped_answer(said, response_text(&blocks), rounds));
+        }
+        rounds += 1;
+        said.extend(response_text(&blocks));
+        let mut results = Vec::new();
+        for b in blocks.iter().filter(|b| for_tools && b["type"] == "tool_use") {
+            let id = b["id"].as_str().unwrap_or_default();
+            let name = b["name"].as_str().unwrap_or_default();
+            if name == "web_search" || !crate::tools::offered_in(&l.tools, name) {
+                results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": crate::tools::not_offered(name), "is_error": true }));
+                continue;
+            }
+            sink.step(crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)));
+            let (text, failed) = sink.alive_while(Box::pin(crate::tools::call_for_chat(app, chat_id, name, b["input"].clone(), l.asking, l.sandbox_high))).await;
+            results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
+        }
+        if let Some(messages) = body["messages"].as_array_mut() {
+            messages.push(json!({ "role": "assistant", "content": blocks }));
+            if !results.is_empty() {
+                messages.push(json!({ "role": "user", "content": results }));
+            }
+        }
+    }
+}
+
+/// How long an agent waits each time it meets the rate limit, before it fails.
+const AGENT_BACKOFF: [Duration; 3] = [Duration::from_secs(5), Duration::from_secs(15), Duration::from_secs(30)];
 
 /// The assistant's full text from a Messages API content array. Web search
 /// answers interleave text with tool blocks, and citations split a sentence
@@ -277,10 +376,22 @@ pub async fn send(
     let asking = crate::tools::Asking::for_local(mode);
     let sandbox_high = sandbox != "low";
     let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, false, false)).await.unwrap_or_default();
-    let tools = crate::tools::tools_for_mode(all, mode);
+    let mut tools = crate::tools::tools_for_mode(all, mode);
     let plan = if mode == "plan" { crate::tools::PLAN_ONLY_NOTE } else { "" };
-    let system = format!("{}{}{plan}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail));
     let known = model_facts(&endpoint, &key, model).await;
+    // Agents of its own, with the chat's tools but none that start more (api_agents.rs).
+    let launch = Launch {
+        endpoint: endpoint.clone(),
+        key: key.clone(),
+        model: model.to_string(),
+        max_tokens: known.max_tokens,
+        effort: known.efforts.iter().any(|e| e == effort).then(|| effort.to_string()),
+        tools: crate::api_agents::sub_tools(&tools),
+        asking,
+        sandbox_high,
+    };
+    tools.push(crate::api_agents::tool());
+    let system = format!("{}{}{plan}{}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail), crate::api_agents::NOTE);
     let mut body = with_user_tools(request_body(model, &system, &turn.history, &user, known.max_tokens), &tools);
     // The effort picked, when the model takes it (its list says which; one
     // that refuses it after all is asked again at its own). One picked for
@@ -350,7 +461,7 @@ pub async fn send(
             if let Some(text) = response_text(&blocks) {
                 said.push(text);
             }
-            let results = if stopped_for_tools { run_user_tools(app, chat, &blocks, &tools, asking, sandbox_high).await } else { Vec::new() };
+            let results = if stopped_for_tools { Box::pin(run_user_tools(app, chat, &blocks, &tools, asking, sandbox_high, &launch)).await } else { Vec::new() };
             if let Some(messages) = body["messages"].as_array_mut() {
                 messages.push(json!({ "role": "assistant", "content": blocks }));
                 if !results.is_empty() {

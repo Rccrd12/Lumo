@@ -20264,6 +20264,18 @@
    "ru": "Только пока он отвечает и только после того, как он покажет вам свой план: экран, которым он пользуется, светится, а Esc ставит его на паузу. С «Спрашивать каждый раз» каждый его щелчок ждёт вашего.",
    "id": "Hanya saat menjawab, dan hanya setelah ia menunjukkan rencananya: layar yang dipakainya menyala, dan Esc menjedanya. Dengan Selalu tanya, setiap kliknya menunggu klik Anda.",
    "it": "Solo mentre risponde, e solo dopo averti mostrato il suo piano: lo schermo che usa si illumina ed Esc lo mette in pausa. Con Chiedi ogni volta, ogni suo clic aspetta il tuo."
+  },
+  "Waiting its turn · {place} in line": {
+   "zh-Hans": "等待轮到它 · 第 {place} 位",
+   "hi": "अपनी बारी का इंतज़ार · कतार में {place}",
+   "es": "Esperando su turno · {place}.º en la cola",
+   "ar": "ينتظر دوره · {place} في الصف",
+   "fr": "Attend son tour · {place}e dans la file",
+   "bn": "নিজের পালার অপেক্ষায় · লাইনে {place}",
+   "pt-BR": "Aguardando a vez · {place}º na fila",
+   "ru": "Ждёт очереди · {place}-й",
+   "id": "Menunggu giliran · urutan {place}",
+   "it": "Aspetta il suo turno · {place}° in coda"
   }
  }
 }

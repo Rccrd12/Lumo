@@ -483,6 +483,116 @@ struct Island<'a, P> {
     context: u64,
     /// The model puts its plan right after its answer: its tools say nothing.
     hushed: bool,
+    /// What its agents run with (run_agents, api_agents.rs).
+    launch: &'a Launch<'a>,
+}
+
+/// What an agent of a local model's chat runs with (api_agents.rs): the
+/// chat's server, model and tools. Its agents run one at a time: a local
+/// server answers one request at a time, or splits the machine between them.
+struct Launch<'a> {
+    server: &'a Server,
+    base: &'a Url,
+    to: &'a Endpoint,
+    model: &'a str,
+    effort: Option<&'static str>,
+    context: u64,
+    workspace: bool,
+    tools: Vec<(String, String, Value)>,
+    asking: crate::tools::Asking,
+    sandbox_high: bool,
+}
+
+/// One agent's whole turn: its task alone, the chat's tools (no more
+/// agents), its rounds of tools, and its last word as the report.
+async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate::api_agents::Task, sink: crate::api_agents::Sink) -> Result<String, String> {
+    let user = json!({ "role": "user", "content": task.task });
+    let mut body = request_body(l.model, crate::api_agents::SYSTEM, &[], &user);
+    let tools = if l.tools.is_empty() { Value::Null } else { crate::openai_compat::function_tools(&l.tools) };
+    let prompt_chars = crate::api_agents::SYSTEM.len() + task.task.len() + if tools.is_null() { 0 } else { tools.to_string().len() };
+    body["max_tokens"] = json!(answer_room(l.context, (prompt_chars / 3) as u64));
+    if !tools.is_null() {
+        body["tools"] = tools;
+    }
+    if let Some(level) = l.effort {
+        body["reasoning_effort"] = json!(level);
+        if l.server.id == "unsloth" {
+            body["enable_thinking"] = json!(level != "none");
+        }
+    }
+    if matches!(l.server.id, "ollama" | "lmstudio" | "unsloth") {
+        body["stream_options"] = json!({ "include_usage": true });
+    }
+    let rules = lumo_local::Rules {
+        key: format!("{}\u{0}{}", l.server.id, l.model),
+        query: &task.task,
+        workspace: l.workspace,
+        changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
+        max_rounds: crate::api_agents::MAX_AGENT_ROUNDS,
+        pause: Duration::from_secs(1),
+        text_only: None,
+        plan: None,
+    };
+    let names: Vec<String> = l.tools.iter().map(|(id, _, _)| id.clone()).collect();
+    let mut hooks = AgentHooks { app, chat_id, names, asking: l.asking, sandbox_high: l.sandbox_high, sink };
+    let outcome = lumo_local::run(l.to, &mut body, &rules, &mut hooks).await.map_err(|f| failure(l.server, l.model, l.base, f))?;
+    let answer = without_note(&outcome.answer());
+    if answer.trim().is_empty() {
+        return Err(t("No response text."));
+    }
+    Ok(answer)
+}
+
+/// An agent's turn, as lumo-local runs it: its signs of life and steps go to its row.
+struct AgentHooks<'a> {
+    app: &'a AppHandle,
+    chat_id: &'a str,
+    names: Vec<String>,
+    asking: crate::tools::Asking,
+    sandbox_high: bool,
+    sink: crate::api_agents::Sink,
+}
+
+impl lumo_local::Hooks for AgentHooks<'_> {
+    fn shown(&mut self, _text: &str) {
+        self.sink.chunk();
+    }
+
+    fn doing(&mut self, _doing: Doing) {
+        self.sink.chunk();
+    }
+
+    fn used(&mut self, tokens: u64) {
+        self.sink.tokens(tokens);
+    }
+
+    fn without_tools(&mut self) -> String {
+        crate::api_agents::SYSTEM.to_string()
+    }
+
+    fn load(&mut self, _name: &str, _input: &Value, _offered: &[String]) -> Option<Loaded> {
+        None
+    }
+
+    fn known(&self) -> Vec<String> {
+        self.names.clone()
+    }
+
+    fn signal(&mut self) {
+        self.sink.chunk();
+    }
+
+    fn call(&mut self, name: &str, input: Value) -> impl std::future::Future<Output = (String, bool)> + Send {
+        self.sink.step(if crate::web_search::NAMES.contains(&name) {
+            crate::web_search::activity(name)
+        } else if crate::workspace::NAMES.contains(&name) {
+            crate::workspace::activity(name, &input)
+        } else {
+            Activity::new("tool", crate::claude_code::pretty_tool(name))
+        });
+        let (app, chat, asking, high, name, sink) = (self.app, self.chat_id.to_string(), self.asking, self.sandbox_high, name.to_string(), self.sink.clone());
+        async move { sink.alive_while(Box::pin(crate::tools::call_for_chat(app, &chat, &name, input, asking, high))).await }
+    }
 }
 
 impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P> {
@@ -579,7 +689,20 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
             name.to_string()
         });
         let (app, chat, asking, high, name) = (self.app, self.chat.id().to_string(), self.asking, self.sandbox_high, name.to_string());
-        async move { crate::tools::call_for_chat(app, &chat, &name, input, asking, high).await }
+        let launch = self.launch;
+        async move {
+            // Agents of its own (api_agents.rs), one at a time: their reports are the result.
+            if name == crate::api_agents::RUN {
+                let chat_id = chat.clone();
+                let turn: crate::api_agents::Turn = Box::new(move |task, sink| {
+                    let chat_id = chat_id.clone();
+                    Box::pin(async move { agent_turn(app, &chat_id, launch, task, sink).await })
+                });
+                let run = Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, 1, turn));
+                return crate::chat_agents::alive_while(app, &chat, run).await;
+            }
+            crate::tools::call_for_chat(app, &chat, &name, input, asking, high).await
+        }
     }
 }
 
@@ -668,7 +791,10 @@ pub async fn send(
         Vec::new()
     } else {
         let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, true)).await.unwrap_or_default();
-        tools_for_mode(all, mode)
+        let mut all = tools_for_mode(all, mode);
+        // Agents of its own, one at a time (api_agents.rs).
+        all.push(crate::api_agents::tool());
+        all
     };
     let user_tools: Vec<_> = all.iter().filter(|(id, _, _)| profile::group_of(id) == Some(profile::Group::User)).cloned().collect();
     let mut named = profile::named_groups(&query, &user_tools);
@@ -807,7 +933,20 @@ pub async fn send(
             text_only: (text_only != user).then_some(text_only),
             plan: open_plan.clone(),
         };
-        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, asking, sandbox_high, server: server.id, context: context_size, hushed: false };
+        let effort_level = crate::local_models::reasoning_effort(&caps, effort);
+        let launch = Launch {
+            server,
+            base: &base,
+            to: &to,
+            model,
+            effort: effort_level,
+            context: context_size,
+            workspace,
+            tools: crate::api_agents::sub_tools(&tools).into_iter().filter(|(id, _, _)| id != profile::MORE).collect(),
+            asking,
+            sandbox_high,
+        };
+        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, asking, sandbox_high, server: server.id, context: context_size, hushed: false, launch: &launch };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
         log_turn(server, model, prompt_chars / 3, tools.len(), &outcome);
         outcome.map_err(|f| failure(server, model, &base, f))

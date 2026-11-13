@@ -15,7 +15,7 @@
 import type { ChatActivity, ChatAgent, ChatAgentEvent, ChatSignalEvent } from "./bridge";
 import type { AskQuote, SavedAgent, SavedTalk, SavedTurn } from "./chats";
 import type { AgentsPeek } from "./compact";
-import { isApiProvider, isCliProvider } from "./providers";
+import { isApiProvider, isCliProvider, usesLumoTools } from "./providers";
 import { N_, t, tn } from "../i18n/i18n";
 
 // ── Thresholds ────────────────────────────────────────────────────────────────
@@ -274,12 +274,18 @@ export function batchEntries(c: ChatAgents, batch: AgentBatch): AgentEntry[] {
 
 /** What is checked for a sign of life: one agent, or the answer being written. */
 export type Liveness =
-  | { kind: "agent"; lastSignalAt: number; snoozedUntil?: number; waiting?: boolean }
+  | { kind: "agent"; lastSignalAt: number; snoozedUntil?: number; waiting?: boolean; source?: string }
   | { kind: "turn"; provider: string; activity: ChatActivity | null; lastSignalAt: number; waiting?: boolean };
 
 /** How long (s) `l` may go without a sign of life before it is said. */
 export function stallAfter(l: Liveness): number {
-  if (l.kind === "agent") return AGENT_STALL_S;
+  if (l.kind === "agent") {
+    // Lumo's own agents of a model called by its API, or of a model server
+    // (api_agents.rs): as their chat's answer would; a CLI's, its own threshold.
+    if (l.source && isApiProvider(l.source)) return CLOUD_STALL_S;
+    if (l.source && usesLumoTools(l.source)) return LOCAL_START_STALL_S;
+    return AGENT_STALL_S;
+  }
   const kind = l.activity?.kind ?? "";
   if (isCliProvider(l.provider)) return CLI_LONG.has(kind) ? CLI_TOOL_STALL_S : CLI_STALL_S;
   if (isApiProvider(l.provider)) return CLOUD_STALL_S;
@@ -313,12 +319,12 @@ export function lookOf(e: AgentEntry, now = Date.now(), permission?: ReadonlySet
 /** An agent at work with no sign of life for too long (not one waiting in line for the computer). */
 export function agentStall(e: AgentEntry, now = Date.now()): { seconds: number } | null {
   if (isFinal(e.row.state) || e.row.state === "waiting" || computerOf(e.row.id)?.waits) return null;
-  return stallOf({ kind: "agent", lastSignalAt: e.row.lastSignalAt, snoozedUntil: e.snoozedUntil }, now);
+  return stallOf({ kind: "agent", lastSignalAt: e.row.lastSignalAt, snoozedUntil: e.snoozedUntil, source: e.row.source }, now);
 }
 
 /** The user said Wait on an agent with no sign: no warning for another threshold. */
 export function snooze(e: AgentEntry, now = Date.now()) {
-  e.snoozedUntil = now + AGENT_STALL_S * 1000;
+  e.snoozedUntil = now + stallAfter({ kind: "agent", lastSignalAt: 0, source: e.row.source }) * 1000;
 }
 
 export interface AgentCounts {

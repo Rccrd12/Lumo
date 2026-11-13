@@ -73,6 +73,7 @@ export const AGENTS_CARD_TEXT = {
   waitingReply: N_("waiting for the reply… {time}"),
   notReached: N_("The message did not reach {name}"),
   noReply: N_("No reply came"),
+  queued: N_("Waiting its turn · {place} in line"),
   usesComputer: N_("uses the computer"),
   waitingComputer: N_("Waiting for the computer · {place} of {total} · {time}"),
   inLineComputer: N_("Waiting for the computer"),
@@ -326,6 +327,7 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
     case "failed":
       return r.error || t(r.state === "stopped" ? AGENTS_CARD_TEXT.stopped : AGENTS_CARD_TEXT.failed);
     case "waiting": {
+      if (r.waitingFor === "queue") return t(AGENTS_CARD_TEXT.queued, { place: r.queue ?? 1 });
       const pc = computerOf(r.id);
       if (pc?.waits && r.state !== "waiting") {
         return t(AGENTS_CARD_TEXT.waitingComputer, { place: pc.place, total: pc.of, time: durationText(now - pc.since) });
