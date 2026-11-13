@@ -249,8 +249,9 @@ impl Asks {
 }
 
 /// Another agent's chat turns using the computer: their id, the agent's tag
-/// (`lumo_agent`, for the card) and how Lumo asks.
-static OTHERS: Mutex<Vec<(usize, &'static str, Asks)>> = Mutex::new(Vec::new());
+/// (`lumo_agent`, for the card), how Lumo asks, and whether its model writes
+/// points on a 0–999 grid (`uses_grid`).
+static OTHERS: Mutex<Vec<(usize, &'static str, Asks, bool)>> = Mutex::new(Vec::new());
 static OTHER_IDS: AtomicUsize = AtomicUsize::new(1);
 
 /// Another agent's chat turn that may use the computer: the computer is
@@ -262,9 +263,9 @@ pub struct OtherTurn {
 }
 
 impl OtherTurn {
-    pub fn begin(app: &AppHandle, agent: &'static str, mode: &str) -> OtherTurn {
+    pub fn begin(app: &AppHandle, agent: &'static str, mode: &str, grid: bool) -> OtherTurn {
         let id = OTHER_IDS.fetch_add(1, Ordering::SeqCst);
-        OTHERS.lock().unwrap_or_else(|e| e.into_inner()).push((id, agent, Asks::of(mode)));
+        OTHERS.lock().unwrap_or_else(|e| e.into_inner()).push((id, agent, Asks::of(mode), grid));
         begin_turn();
         OtherTurn { id, app: app.clone() }
     }
@@ -272,7 +273,7 @@ impl OtherTurn {
 
 impl Drop for OtherTurn {
     fn drop(&mut self) {
-        OTHERS.lock().unwrap_or_else(|e| e.into_inner()).retain(|(id, _, _)| *id != self.id);
+        OTHERS.lock().unwrap_or_else(|e| e.into_inner()).retain(|(id, _, _, _)| *id != self.id);
         end_turn(&self.app);
     }
 }
@@ -286,7 +287,96 @@ fn others_ask() -> Option<(Asks, &'static str)> {
         Asks::Card => 1,
         Asks::Free => 0,
     };
-    others.iter().max_by_key(|(_, _, a)| rank(*a)).map(|(_, agent, a)| (*a, *agent))
+    others.iter().max_by_key(|(_, _, a, _)| rank(*a)).map(|(_, agent, a, _)| (*a, *agent))
+}
+
+// ── Gemini's grid ───────────────────────────────────────────────────────────
+//
+// Gemini models count points on a 0–999 grid over an image, whatever its size
+// in pixels (Google's own computer use does). Asked for the screenshot's
+// pixels, they mix the two, x one way and y the other (recorded on this
+// branch). For them Lumo asks for the grid outright and turns its points into
+// the screenshot's pixels itself, and the points it answers with back into
+// the grid.
+
+/// The model writes points on the 0–999 grid: a Gemini model, or Antigravity
+/// CLI's own default (Gemini).
+pub fn uses_grid(provider: &str, model: &str) -> bool {
+    let m = model.trim().to_ascii_lowercase();
+    m.contains("gemini") || (provider == crate::antigravity_cli::PROVIDER && (m.is_empty() || m == "default"))
+}
+
+/// The turns using the computer now all write points on the grid.
+fn grid_now() -> bool {
+    let others = OTHERS.lock().unwrap_or_else(|e| e.into_inner());
+    !others.is_empty() && others.iter().all(|o| o.3) && TURN.load(Ordering::SeqCst) == others.len()
+}
+
+/// A grid value (0–999) on an axis `size` pixels long, as a pixel of it.
+fn grid_to_px(v: i64, size: u32) -> i64 {
+    let size = size.max(1) as f64;
+    (((v.clamp(0, 999) as f64) + 0.5) * size / 1000.0).floor().min(size - 1.0) as i64
+}
+
+/// A pixel of an axis `size` pixels long, on the grid.
+fn px_to_grid(v: i64, size: u32) -> i64 {
+    ((v as f64 + 0.5) * 1000.0 / size.max(1) as f64).floor().clamp(0.0, 999.0) as i64
+}
+
+/// The call's points (`coordinate`, `start_coordinate`, `region`), written on
+/// the grid, in `view`'s screenshot pixels. Without a screenshot yet, as they came.
+fn from_grid(input: &Value, view: Option<View>) -> Value {
+    let Some(v) = view else { return input.clone() };
+    let mut out = input.clone();
+    for key in ["coordinate", "start_coordinate"] {
+        if let Ok(Some((x, y))) = point(input, key) {
+            out[key] = json!([grid_to_px(x, v.w), grid_to_px(y, v.h)]);
+        }
+    }
+    if let Some(r) = input.get("region").and_then(Value::as_array).filter(|a| a.len() == 4) {
+        let n: Vec<i64> = r.iter().filter_map(|n| n.as_f64().map(|f| f.round() as i64)).collect();
+        if n.len() == 4 {
+            out["region"] = json!([grid_to_px(n[0], v.w), grid_to_px(n[1], v.h), grid_to_px(n[2], v.w), grid_to_px(n[3], v.h)]);
+        }
+    }
+    out
+}
+
+/// What the screenshot's answer says about the points, for a model on the grid.
+const GRID_SHOT: &str = "Give points for the other tools as [x, y] on a 0–999 grid over this screenshot: [0, 0] is its top-left corner, [999, 999] its bottom-right, whatever its size in pixels.";
+
+/// An answer's text for a model on the grid: its points `[x, y]` (the
+/// screenshot's pixels) on the grid, and the screenshot's word on them.
+fn to_grid_text(text: &str, view: View) -> String {
+    let text = text
+        .replace("Coordinates for the other tools are in these pixels.", GRID_SHOT)
+        .replace("Coordinates stay those of the full screenshot.", "Points stay on the 0–999 grid of the full screenshot.");
+    // Every "[x, y]" pair of whole numbers.
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text.as_str();
+    while let Some(open) = rest.find('[') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let pair = after.find(']').and_then(|close| {
+            let inside = &after[..close];
+            let mut parts = inside.split(',').map(str::trim);
+            let x = parts.next()?.parse::<i64>().ok()?;
+            let y = parts.next()?.parse::<i64>().ok()?;
+            parts.next().is_none().then_some((x, y, close))
+        });
+        match pair {
+            Some((x, y, close)) => {
+                out.push_str(&format!("[{}, {}]", px_to_grid(x, view.w), px_to_grid(y, view.h)));
+                rest = &after[close + 1..];
+            }
+            None => {
+                out.push('[');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The tools that only look: no card, even for another agent.
@@ -297,12 +387,16 @@ pub fn only_looks(tool: &str) -> bool {
 /// In front of each question to another agent while computer use is on:
 /// none of them takes a system prompt for it, and the conversation may have
 /// started with it off.
-pub fn with_note(text: &str) -> String {
+pub fn with_note(text: &str, grid: bool) -> String {
+    let points = if grid {
+        "Give every point as [x, y] on a 0–999 grid over the last screenshot, both numbers on the grid: [0, 0] is its top-left corner, [999, 999] its bottom-right, whatever its size in pixels. Lumo answers with points on the same grid. "
+    } else {
+        "Coordinates are always [x, y] in pixels of the last screenshot, counted from its top-left corner: never normalized, never fractions. "
+    };
     format!(
-        "<lumo_computer>\n{}{}\n</lumo_computer>\n\n{text}",
+        "<lumo_computer>\n{}{points}{}\n</lumo_computer>\n\n{text}",
         computer_note!(),
-        "Coordinates are always [x, y] in pixels of the last screenshot, counted from its top-left corner: never normalized, never fractions. \
-After each click Lumo says where it landed; if that is not where you meant, take a screenshot and try again. \
+        "After each click Lumo says where it landed; if that is not where you meant, take a screenshot and try again. \
 This replaces what Lumo said before about never taking a screenshot yourself."
     )
 }
@@ -1087,6 +1181,15 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     // test page covers whole.
     crate::computer_test::record_start();
     crate::computer_test::note_call(&tool, &input);
+    // A model on the grid: its points in the screenshot's pixels from here on.
+    let grid = grid_now();
+    let input = if grid {
+        let px = from_grid(&input, VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied());
+        crate::computer_test::note_pixels(&px);
+        px
+    } else {
+        input
+    };
     let testing = crate::computer_test::testing();
     let refused = |why: String| {
         crate::computer_test::note_refused(&why);
@@ -1151,6 +1254,18 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     })
     .await
     .unwrap_or_else(|e| Err(e.to_string()));
+    // A model on the grid reads the points of the answer on the grid too.
+    let view_now = VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied();
+    let answer = match (answer, view_now) {
+        (Ok(mut v), Some(view)) if grid => {
+            if let Some(text) = v.get("text").and_then(Value::as_str).map(|t| to_grid_text(t, view)) {
+                v["text"] = json!(text);
+            }
+            Ok(v)
+        }
+        (Err(e), Some(view)) if grid => Err(to_grid_text(&e, view)),
+        (answer, _) => answer,
+    };
     match answer {
         Ok(v) => v,
         Err(e) if STOPPED.load(Ordering::SeqCst) => refuse(format!("{e} {STOPPED_TEXT}")),
@@ -2146,10 +2261,33 @@ mod tests {
         assert_eq!(kit("plan", true, "mail,mailsend"), "--tools=plan,computer,mail,mailsend,island");
         assert_eq!(kit("", true, ""), "--tools=computer,island");
         assert_eq!(kit("", false, "mail"), "--tools=mail,island");
-        let text = with_note("click Send");
+        let text = with_note("click Send", false);
         assert!(text.starts_with("<lumo_computer>\n") && text.ends_with("</lumo_computer>\n\nclick Send"));
         assert!(text.contains("lumo MCP server") && text.contains("Esc") && text.contains("never normalized"));
         assert!(text.contains("replaces what Lumo said before"));
+    }
+
+    #[test]
+    fn a_gemini_model_gives_and_reads_points_on_the_grid() {
+        assert!(uses_grid("antigravity-cli", "default") && uses_grid("antigravity-cli", ""));
+        assert!(uses_grid("antigravity-cli", "gemini-3.8-flash-low") && uses_grid("copilot-cli", "Gemini 3 Pro"));
+        assert!(!uses_grid("antigravity-cli", "claude-sonnet-4.5") && !uses_grid("codex", "default") && !uses_grid("cursor-cli", "gpt-5"));
+        // The screenshot of a 2560×1440 screen, 1430×804 pixels (recorded on this branch).
+        let v = View { display: 0, rect: (0, 0, 2560, 1440), w: 1430, h: 804 };
+        // «Apri»: [515, 591] on the grid is [736, 475] in the screenshot.
+        let px = from_grid(&json!({ "coordinate": [515, 591] }), Some(v));
+        assert_eq!(px["coordinate"], json!([737, 475]));
+        assert_eq!(from_grid(&json!({ "x": 0, "y": 999 }), Some(v))["coordinate"], json!([0, 803]), "the corners stay inside");
+        assert_eq!(from_grid(&json!({ "coordinate": [1200, 240] }), Some(v))["coordinate"], json!([1429, 193]), "past the grid: its edge");
+        assert_eq!(from_grid(&json!({ "region": [0, 0, 500, 500] }), Some(v))["region"], json!([0, 0, 715, 402]));
+        assert_eq!(from_grid(&json!({ "coordinate": [10, 10] }), None), json!({ "coordinate": [10, 10] }), "no screenshot yet");
+        // Back on the grid: the answers' points and the screenshot's word.
+        assert_eq!(to_grid_text("Clicked at [737, 475]. Take a screenshot to see what changed.", v), "Clicked at [515, 591]. Take a screenshot to see what changed.");
+        assert_eq!(to_grid_text("Clicked at [1429, 803], not at [0, 0] as asked", v), "Clicked at [999, 999], not at [0, 0] as asked");
+        let shot = to_grid_text("Screen 1 of 2, 1430×804 pixels (Lumo's island and Settings are left out). Coordinates for the other tools are in these pixels.", v);
+        assert!(shot.contains("0–999 grid") && !shot.contains("in these pixels"), "{shot}");
+        assert_eq!(to_grid_text("The region [1, 2, 3, 4], enlarged. [a, b] [7]", v), "The region [1, 2, 3, 4], enlarged. [a, b] [7]", "only pairs of numbers");
+        assert!(with_note("x", true).contains("0–999 grid") && !with_note("x", false).contains("0–999 grid"));
     }
 
     #[test]
@@ -2179,11 +2317,11 @@ mod tests {
         others.clear();
         drop(others);
         assert_eq!(others_ask(), None, "Claude Code's turns ask themselves");
-        OTHERS.lock().unwrap().push((1000, "codex", Asks::Free));
+        OTHERS.lock().unwrap().push((1000, "codex", Asks::Free, false));
         assert_eq!(others_ask(), Some((Asks::Free, "codex")));
-        OTHERS.lock().unwrap().push((1001, "antigravity", Asks::Card));
+        OTHERS.lock().unwrap().push((1001, "antigravity", Asks::Card, true));
         assert_eq!(others_ask(), Some((Asks::Card, "antigravity")));
-        OTHERS.lock().unwrap().push((1002, "cursor", Asks::LookOnly));
+        OTHERS.lock().unwrap().push((1002, "cursor", Asks::LookOnly, false));
         assert_eq!(others_ask(), Some((Asks::LookOnly, "cursor")));
         OTHERS.lock().unwrap().clear();
     }

@@ -1470,6 +1470,7 @@ pub async fn send(
     let agent = Agent::of(provider).ok_or_else(|| format!("Unknown chat provider: {provider}"))?;
     let exe = agent.exe().ok_or_else(|| agent.not_installed())?;
     let computer = computer && cfg!(windows);
+    let grid = crate::computer::uses_grid(provider, model);
 
     let turn = chat.begin(agent.provider());
     // Only this CLI's session: never another CLI's.
@@ -1513,7 +1514,7 @@ pub async fn send(
         let carried: &[Value] = if fresh { &history } else { &[] };
         let text = claude_code::prompt(context2.as_ref(), carried, &files, &query2);
         // Computer use (experimental): the note in front of every question.
-        let text = if computer { crate::computer::with_note(&text) } else { text };
+        let text = if computer { crate::computer::with_note(&text, grid) } else { text };
         if !fresh {
             return text;
         }
@@ -1521,7 +1522,7 @@ pub async fn send(
         format!("<lumo_instructions>\n{}{workshop}\n</lumo_instructions>\n\n{text}", INSTRUCTIONS.trim())
     };
     // The computer usable while this turn runs, each action asked for by Lumo.
-    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, agent.tag(), mode));
+    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, agent.tag(), mode, grid));
 
     let app2 = app.clone();
     let app3 = app.clone();

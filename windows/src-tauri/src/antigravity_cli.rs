@@ -919,7 +919,8 @@ pub async fn send(
     };
     // Computer use (experimental): the note in front of every question.
     let computer = computer && cfg!(windows);
-    let text = if computer { crate::computer::with_note(&text) } else { text };
+    let grid = crate::computer::uses_grid(PROVIDER, model);
+    let text = if computer { crate::computer::with_note(&text, grid) } else { text };
     let input = user_event(&text);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let work = claude_code::work_dir();
@@ -930,7 +931,7 @@ pub async fn send(
     crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer);
     let _mail = crate::mail::agent_turn();
     // The computer usable while this turn runs, each action asked for by Lumo.
-    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, "antigravity", mode));
+    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, "antigravity", mode, grid));
 
     let app2 = app.clone();
     let events = chat.events();

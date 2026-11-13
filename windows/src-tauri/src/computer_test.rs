@@ -44,9 +44,9 @@ pub const TARGETS: [(f64, f64); 9] = [
 /// A circle's radius, as a fraction of the screen's shorter side (main.ts RADIUS).
 const RADIUS: f64 = 0.018;
 
-/// What the agent is asked.
+/// What the agent is asked; `{points}`: how it gives the points.
 const PROMPT: &str = "This is a test of Lumo's computer tools, asked for by the user. Lumo is showing a test screen with 9 red circles numbered 1 to 9, each with a small white cross in its centre. \
-Take one screenshot, then click the centre of each circle exactly once with left_click, in order from 1 to 9, giving coordinate: [x, y] in that screenshot's pixels. \
+Take one screenshot, then click the centre of each circle exactly once with left_click, in order from 1 to 9, giving coordinate: [x, y] {points}. \
 Don't take another screenshot between the clicks, don't correct a click that missed, and use no other tool. \
 When you are done, answer with the 9 coordinates you clicked, one per line, as \"n: [x, y]\".";
 
@@ -136,7 +136,7 @@ fn page_url<R: Runtime>(app: &AppHandle<R>) -> WebviewUrl {
 
 /// The test starts: the page over the screen under the mouse, and the
 /// question for the agent. Err with what is missing.
-pub fn begin(app: &AppHandle, computer_on: bool, provider_can: bool) -> Result<String, String> {
+pub fn begin(app: &AppHandle, computer_on: bool, provider_can: bool, grid: bool) -> Result<String, String> {
     if !cfg!(windows) {
         return Err("Il test del computer use c'è solo su Windows.".into());
     }
@@ -181,7 +181,8 @@ pub fn begin(app: &AppHandle, computer_on: bool, provider_can: bool) -> Result<S
     // A recording left by a turn before is written first; the test replaces it.
     record_stop();
     *TEST.lock().unwrap_or_else(|e| e.into_inner()) = Some(Test { test: true, rect, dir, calls: Vec::new(), shots: 0, clicks: 0 });
-    Ok(PROMPT.to_string())
+    let points = if grid { "on a 0–999 grid over that screenshot ([0, 0] top left, [999, 999] bottom right)" } else { "in that screenshot's pixels" };
+    Ok(PROMPT.replace("{points}", points))
 }
 
 /// A call of the computer tools during the test, as the model wrote it.
@@ -189,6 +190,14 @@ pub fn note_call(tool: &str, input: &Value) {
     let mut test = TEST.lock().unwrap_or_else(|e| e.into_inner());
     let Some(t) = test.as_mut() else { return };
     t.calls.push(json!({ "tool": tool, "input": input }));
+}
+
+/// The call just noted, its points turned from the 0–999 grid into the screenshot's pixels.
+pub fn note_pixels(input: &Value) {
+    let mut test = TEST.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(call) = test.as_mut().and_then(|t| t.calls.last_mut()) else { return };
+    call["grid"] = json!(true);
+    call["as_pixels"] = input.clone();
 }
 
 /// The call just noted was refused, with `why`.

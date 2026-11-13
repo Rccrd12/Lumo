@@ -950,7 +950,8 @@ async fn dispatch(
     // /test (experimental branch): how well the chat's agent clicks (computer_test.rs).
     if crate::computer_test::is_test(&query) {
         let provider = settings.chat_provider.as_str();
-        let prompt = crate::computer_test::begin(app, settings.chat_computer_use, is_cli(provider))?;
+        let grid = provider != claude_code::PROVIDER && crate::computer::uses_grid(provider, &model_for(settings, provider));
+        let prompt = crate::computer_test::begin(app, settings.chat_computer_use, is_cli(provider), grid)?;
         let reply = send_to(app, chat, settings, prompt, None, None, usage).await;
         let answer = reply.as_ref().map(|r| r.text.clone()).unwrap_or_else(|e| e.clone());
         let report = crate::computer_test::finish(app, &answer);

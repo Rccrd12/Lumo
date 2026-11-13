@@ -957,6 +957,7 @@ pub async fn send(
 ) -> Result<ChatReply, String> {
     let exe = platform::codex_candidates().into_iter().next().ok_or_else(not_installed)?;
     let computer = computer && cfg!(windows);
+    let grid = crate::computer::uses_grid(PROVIDER, model);
 
     let turn = chat.begin(PROVIDER);
     // Only a Codex thread: never another CLI's session.
@@ -994,10 +995,10 @@ pub async fn send(
             text
         };
         // Computer use (experimental): the note in front of every question.
-        if computer { crate::computer::with_note(&text) } else { text }
+        if computer { crate::computer::with_note(&text, grid) } else { text }
     };
     // The computer usable while this turn runs, each action asked for by Lumo.
-    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, "codex", mode));
+    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, "codex", mode, grid));
 
     let app2 = app.clone();
     let app3 = app.clone();
