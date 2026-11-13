@@ -10,10 +10,10 @@ import { installFakeDom } from "./fakedom.mjs";
 installFakeDom();
 const {
   AGENT_STALL_S, CLI_STALL_S, CLI_TOOL_STALL_S, CLOUD_STALL_S, LOCAL_START_STALL_S, LOCAL_STREAM_STALL_S, MAX_AGENT_STEPS, MAX_SAVED_AGENTS,
-  addUpdate, applyAgent, applySignal, batchEntries, countAgents, durationText, foldsOwnAnswer, forgetChat, islandAgentsLine, lookOf, newAgentStore,
+  applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, islandAgentsLine, lookOf, newAgentStore,
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, savedAgents, snooze, stallOf, withAgents,
 } = await import("../src/core/chat-agents.ts");
-const { foldOwnAnswer, joinOwnAnswer } = await import("../src/core/chats.ts");
+const { joinOwnAnswer } = await import("../src/core/chats.ts");
 const { conversationTurn } = await import("../src/views/chat.ts");
 const { agentsCard, fillAgentsCard } = await import("../src/views/agents-card.ts");
 
@@ -166,42 +166,23 @@ test("a permission card is the chat's answer's, or the agent's that asked", () =
 
 // ── Progress updates, and what is saved ───────────────────────────────────────
 
-test("an answer of its own while agents work is folded under them; with none at work it joins", () => {
-  const store = newAgentStore();
-  assert.equal(foldsOwnAnswer(store.get("c")), false);
-  send(store, "c", agent("a1"));
-  send(store, "c", agent("a2", { state: "done" }));
-  const c = store.get("c");
-  assert.equal(foldsOwnAnswer(c), true);
-  assert.equal(addUpdate(c, "L15 is ready, 7 to go."), true);
-  assert.deepEqual(c.batches[0].updates, ["L15 is ready, 7 to go."]);
-  send(store, "c", agent("a1", { state: "done" }));
-  assert.equal(foldsOwnAnswer(c), false);
-
-  // Rust's conversation has it all the same: what goes back to it holds it.
+test("an answer of its own joins the chat's last answer, and what goes back to Rust too", () => {
   const turns = [{ role: "user", content: "go" }, { role: "assistant", content: "Launched 8 agents." }];
-  assert.equal(foldOwnAnswer(turns, "L15 is ready."), true);
-  assert.equal(turns[1].content, "Launched 8 agents.");
-  assert.equal(turns[1].kept, "Launched 8 agents.\n\nL15 is ready.");
-  foldOwnAnswer(turns, "L16 too.");
-  assert.equal(turns[1].kept, "Launched 8 agents.\n\nL15 is ready.\n\nL16 too.");
-  assert.equal(foldOwnAnswer([{ role: "user", content: "a" }], "x"), false);
-
-  // The last agent done, the final report joins the answer's text, and what goes back to Rust too.
-  assert.equal(joinOwnAnswer(turns, "All merged, compiled OK."), true);
-  assert.equal(turns[1].content, "Launched 8 agents.\n\nAll merged, compiled OK.");
-  assert.equal(conversationTurn(turns[1]).content, "Launched 8 agents.\n\nL15 is ready.\n\nL16 too.\n\nAll merged, compiled OK.");
-  // An answer with no updates keeps no `kept`.
-  const plain = [{ role: "assistant", content: "Hi." }];
-  joinOwnAnswer(plain, "More.");
-  assert.deepEqual(plain, [{ role: "assistant", content: "Hi.\n\nMore." }]);
+  assert.equal(joinOwnAnswer(turns, "L15 is ready."), true);
+  assert.equal(turns[1].content, "Launched 8 agents.\n\nL15 is ready.");
+  assert.equal(turns[1].kept, undefined, "an answer with no `kept` keeps none");
+  // An answer whose conversation is not its text: Rust's has the new text too.
+  const kept = [{ role: "assistant", content: "Hi.", kept: "Hi. (and more)" }];
+  joinOwnAnswer(kept, "All merged.");
+  assert.equal(kept[0].content, "Hi.\n\nAll merged.");
+  assert.equal(conversationTurn(kept[0]).content, "Hi. (and more)\n\nAll merged.");
+  assert.equal(joinOwnAnswer([{ role: "user", content: "a" }], "x"), false);
 });
 
 test("an edited question takes the agents of the answers it drops with it", () => {
   const store = newAgentStore();
   send(store, "c", agent("old1", { state: "done" }), 0);
   send(store, "c", agent("old2"), 1);
-  addUpdate(store.get("c"), "half way");
   const c = store.get("c");
   assert.deepEqual(c.batches.map((b) => b.anchor), [0, 1]);
   // The second question is edited: one answer stays.
@@ -214,7 +195,7 @@ test("an edited question takes the agents of the answers it drops with it", () =
   assert.equal(c.batches.length, 1);
   // The new answer's agents start a batch of their own.
   send(store, "c", agent("new1"), 1);
-  assert.deepEqual(c.batches.map((b) => [b.anchor, b.ids, b.updates]), [[0, ["old1"], []], [1, ["new1"], []]]);
+  assert.deepEqual(c.batches.map((b) => [b.anchor, b.ids]), [[0, ["old1"]], [1, ["new1"]]]);
   // Nothing to drop: nothing changes.
   rewindAgents(store, "c", 5);
   rewindAgents(store, "none", 0);
@@ -227,7 +208,6 @@ test("the agents that ended are saved with their answer, in short, and come back
     send(store, "c", agent(`a${i}`, { state: "done", summary: "ok", steps: 4, tokens: 1200, endedAt: T0 + S, now: { kind: "read", detail: "x" } }), 1);
   }
   send(store, "c", agent("open"), 1);
-  addUpdate(store.get("c"), "half way");
   const c = store.get("c");
   const kept = savedAgents(batchEntries(c, c.batches[0]));
   assert.equal(kept.length, MAX_SAVED_AGENTS, "at most this many, the open one left out");
@@ -240,19 +220,18 @@ test("the agents that ended are saved with their answer, in short, and come back
   const saved = withAgents(c, turns);
   assert.equal(saved[1].agents, undefined);
   assert.equal(saved[3].agents.length, MAX_SAVED_AGENTS);
-  assert.deepEqual(saved[3].updates, ["half way"]);
   assert.equal(turns[3].agents, undefined, "the turns given are left as they were");
 
   const back = newAgentStore();
   restoreAgents(back, "c", saved);
   const again = back.get("c");
-  assert.deepEqual(again.batches.map((b) => [b.anchor, b.ids.length, b.updates]), [[1, MAX_SAVED_AGENTS, ["half way"]]]);
+  assert.deepEqual(again.batches.map((b) => [b.anchor, b.ids.length]), [[1, MAX_SAVED_AGENTS]]);
   assert.equal(again.rows.get(kept[0].id).row.state, "done");
   // The island's own, still at work, win over what was saved.
   restoreAgents(store, "c", [{ role: "assistant", content: "x", agents: [] }]);
   assert.equal(store.get("c").batches.length, 1);
   // Nonsense is left out.
-  restoreAgents(back, "d", [{ role: "assistant", agents: [{ id: 1 }, { id: "w", title: "t", state: "working" }], updates: [3] }]);
+  restoreAgents(back, "d", [{ role: "assistant", agents: [{ id: 1 }, { id: "w", title: "t", state: "working" }] }]);
   assert.equal(back.get("d").batches.length, 0);
 });
 
@@ -337,7 +316,7 @@ test("the card: how many are done, a segment each, a row each with what it does"
   const c = store.get("card1");
   const { host: h, log } = host({ requestOnTop: "L10" });
   const now = T0 + 14 * 60 * S;
-  const el = agentsCard({ chatId: "card1", chat: c, batch: c.batches[0], who: "Claude Code", permission: new Set(["L10"]), now }, h);
+  const el = agentsCard({ chatId: "card1", chat: c, batch: c.batches[0], permission: new Set(["L10"]), now }, h);
   assert.equal(el.querySelector(".agents-title").textContent, "Agents");
   assert.equal(el.querySelector(".agents-status").textContent, "1 of 4 done · 1 with no signal");
   assert.deepEqual(el.querySelector(".agents-segs").children.map((i) => i.className), ["done", "working", "stalled", "waiting"]);
@@ -360,7 +339,7 @@ test("the card: how many are done, a segment each, a row each with what it does"
   assert.equal(el.querySelector(".agents-live-text").textContent, "3 agents working · last signal 0 s ago");
 
   // The card up is another's (the answer's own, another chat's), or there is none (Claude Code checking a call): no See request.
-  const other = agentsCard({ chatId: "card1", chat: c, batch: c.batches[0], who: "Claude Code", permission: new Set(["L10"]), now }, host().host);
+  const other = agentsCard({ chatId: "card1", chat: c, batch: c.batches[0], permission: new Set(["L10"]), now }, host().host);
   assert.equal(other.find(".agents-row")[3].querySelector(".agents-btn.see"), null);
   assert.equal(other.find(".agents-row")[3].className.includes("waiting"), true, "the row still says it waits");
 });
@@ -371,7 +350,7 @@ test("as each second goes only the card's words change: its buttons stay under t
   send(store, "card5", agent("b", { lastSignalAt: T0 }));
   const c = store.get("card5");
   const { host: h } = host();
-  const input = { chatId: "card5", chat: c, batch: c.batches[0], who: "Claude Code", now: T0 + 400 * S };
+  const input = { chatId: "card5", chat: c, batch: c.batches[0], now: T0 + 400 * S };
   const el = agentsCard(input, h);
   const wait = el.find(".agents-row")[0].querySelector(".agents-btn.wait");
   const line = el.find(".agents-line")[0];
@@ -394,7 +373,7 @@ test("a row opens on its summary, its last steps and its numbers, with Stop this
   send(store, "card2", agent("a", { now: { kind: "edit", detail: "L04.tex" }, summary: "L03 done, on L04", steps: 87, tokens: 212_000, lastSignalAt: T0 + 60 * S }));
   const c = store.get("card2");
   const { host: h, log } = host();
-  const el = agentsCard({ chatId: "card2", chat: c, batch: c.batches[0], who: "Claude Code", now: T0 + 62 * S }, h);
+  const el = agentsCard({ chatId: "card2", chat: c, batch: c.batches[0], now: T0 + 62 * S }, h);
   el.querySelector(".agents-row-head").fire("click");
   assert.equal(el.querySelector(".agents-summary").textContent, "L03 done, on L04");
   assert.deepEqual(texts(el, ".agents-step-what"), ["edit L04.tex", "read pag-036.png"]);
@@ -406,21 +385,16 @@ test("a row opens on its summary, its last steps and its numbers, with Stop this
   assert.equal(el.querySelector(".agents-detail"), null);
 });
 
-test("all over, the card folds into one line that opens again; updates fold into one line too", () => {
+test("all over, the card folds into one line that opens again", () => {
   const store = newAgentStore();
   for (const id of ["a", "b"]) send(store, "card3", agent(id, { state: "done", endedAt: T0 + 31 * 60 * S }));
   const c = store.get("card3");
-  addUpdate(c, "first");
-  c.batches[0].updates.push("L03 and L04 are ready: 19 lessons of 19.");
   const { host: h } = host();
-  const el = agentsCard({ chatId: "card3", chat: c, batch: c.batches[0], who: "Claude", now: T0 + 32 * 60 * S }, h);
+  const el = agentsCard({ chatId: "card3", chat: c, batch: c.batches[0], now: T0 + 32 * 60 * S }, h);
   const folded = el.querySelector(".agents-folded");
   assert.equal(folded.querySelector(".agents-title").textContent, "2 agents finished");
   assert.equal(folded.querySelector(".agents-status").textContent, "in 31 min");
   assert.equal(el.querySelector(".agents-live"), null, "no dots once all are over");
-  assert.equal(el.querySelector(".agents-updates-text").textContent, "2 updates from Claude · latest: «L03 and L04 are ready: 19 lessons of 19.»");
-  el.querySelector(".agents-updates-head").fire("click");
-  assert.deepEqual(texts(el, ".agents-update"), ["first", "L03 and L04 are ready: 19 lessons of 19."]);
   el.querySelector(".agents-folded").fire("click");
   assert.equal(el.find(".agents-row").length, 2, "opened again");
 });
@@ -432,7 +406,7 @@ test("the CLI ended under its agents: a red line, and Resume sends a message onl
   send(store, "card4", agent("c", { title: "Transcribe L16", state: "failed", error: "Claude Code ended" }));
   const c = store.get("card4");
   const { host: h, log } = host();
-  const el = agentsCard({ chatId: "card4", chat: c, batch: c.batches[0], who: "Claude Code", now: T0 }, h);
+  const el = agentsCard({ chatId: "card4", chat: c, batch: c.batches[0], now: T0 }, h);
   assert.equal(el.querySelector(".agents-ended-text").textContent, "Claude Code ended: 2 agents stopped halfway");
   assert.deepEqual(log.sent, []);
   el.querySelector(".agents-btn.resume").fire("click");
@@ -445,7 +419,7 @@ test("the CLI ended under its agents: a red line, and Resume sends a message onl
   const store2 = newAgentStore();
   send(store2, "card6", agent("b", { state: "failed", error: "Claude Code ended" }));
   const c2 = store2.get("card6");
-  const refused = agentsCard({ chatId: "card6", chat: c2, batch: c2.batches[0], who: "Claude Code", now: T0 }, host({ send: () => false }).host);
+  const refused = agentsCard({ chatId: "card6", chat: c2, batch: c2.batches[0], now: T0 }, host({ send: () => false }).host);
   refused.querySelector(".agents-btn.resume").fire("click");
   assert.equal(c2.batches[0].resumed, undefined);
   assert.ok(refused.querySelector(".agents-ended"));

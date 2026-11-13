@@ -37,8 +37,6 @@ export const CLI_TOOL_STALL_S = 300;
 export const MAX_AGENT_STEPS = 5;
 /** The agents kept with a saved answer. */
 export const MAX_SAVED_AGENTS = 24;
-/** The progress updates kept per batch. */
-export const MAX_UPDATES = 40;
 
 /** What a local model does before its first word: slow, but alive (a retry reads the prompt again). */
 const LOCAL_STARTING = new Set(["starting", "loading", "prompt", "retry"]);
@@ -70,8 +68,6 @@ export interface AgentEntry {
 export interface AgentBatch {
   anchor: number;
   ids: string[];
-  /** What the CLI wrote by itself while they worked (concept 4), oldest first. */
-  updates: string[];
   /** Resume was sent for its agents that stopped halfway. */
   resumed?: boolean;
 }
@@ -151,7 +147,7 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
     const last = c.batches.at(-1);
     const lastOpen = last ? last.ids.some((id) => { const r = c.rows.get(id); return r && !isFinal(r.row.state); }) : false;
     if (last && (lastOpen || last.anchor === anchor)) last.ids.push(agent.id);
-    else c.batches.push({ anchor, ids: [agent.id], updates: [] });
+    else c.batches.push({ anchor, ids: [agent.id] });
     c.rows.set(agent.id, entry);
   }
   entry.row = agent;
@@ -191,31 +187,6 @@ export function noteSignal(store: AgentStore, chat: string, at = Date.now()) {
 /** A batch's agents, in the order they started. */
 export function batchEntries(c: ChatAgents, batch: AgentBatch): AgentEntry[] {
   return batch.ids.map((id) => c.rows.get(id)).filter((e): e is AgentEntry => !!e);
-}
-
-/** The batch still at work, else the newest: where a progress update goes. */
-export function currentBatch(c: ChatAgents): AgentBatch | undefined {
-  for (let i = c.batches.length - 1; i >= 0; i--) {
-    if (batchEntries(c, c.batches[i]).some((e) => !isFinal(e.row.state))) return c.batches[i];
-  }
-  return c.batches.at(-1);
-}
-
-/**
- * An answer the CLI wrote by itself while the chat still has an agent at
- * work is a progress update ("L15 is ready, 7 to go"): it folds into one
- * line under the agents (concept 4) rather than joining the answer's text.
- */
-export function foldsOwnAnswer(c: ChatAgents | undefined): boolean {
-  return openCount(c) > 0;
-}
-
-/** Keeps a progress update with the batch at work. False when there is none. */
-export function addUpdate(c: ChatAgents, text: string): boolean {
-  const batch = currentBatch(c);
-  if (!batch) return false;
-  batch.updates = [...batch.updates, text].slice(-MAX_UPDATES);
-  return true;
 }
 
 // ── Liveness ──────────────────────────────────────────────────────────────────
@@ -357,10 +328,10 @@ export function savedAgents(entries: AgentEntry[]): SavedAgent[] {
 }
 
 /**
- * The turns to save, each answer with its agents and updates: an answer's
+ * The turns to save, each answer with its agents: an answer's
  * place among the answers is its batches' anchor.
  */
-export function withAgents<T extends { role: string }>(c: ChatAgents | undefined, turns: T[]): (T & Pick<SavedTurn, "agents" | "updates">)[] {
+export function withAgents<T extends { role: string }>(c: ChatAgents | undefined, turns: T[]): (T & Pick<SavedTurn, "agents">)[] {
   if (!c || c.batches.length === 0) return turns;
   let answer = -1;
   const answers = turns.filter((x) => x.role === "assistant").length;
@@ -379,8 +350,7 @@ export function withAgents<T extends { role: string }>(c: ChatAgents | undefined
     }
     if (!mine.length) return turn;
     const agents = savedAgents(mine.flatMap((b) => batchEntries(c, b)));
-    const updates = mine.flatMap((b) => b.updates).slice(-MAX_UPDATES);
-    return { ...turn, ...(agents.length ? { agents } : {}), ...(updates.length ? { updates } : {}) };
+    return agents.length ? { ...turn, agents } : turn;
   });
 }
 
@@ -390,10 +360,10 @@ function isSavedAgent(a: unknown): a is SavedAgent {
 }
 
 /**
- * A chat opened from Past chats: its answers' agents and updates come back,
+ * A chat opened from Past chats: its answers' agents come back,
  * unless the island still holds them (agents still at work there).
  */
-export function restoreAgents(store: AgentStore, chat: string, turns: readonly Pick<SavedTurn, "role" | "agents" | "updates">[], source = "") {
+export function restoreAgents(store: AgentStore, chat: string, turns: readonly Pick<SavedTurn, "role" | "agents">[], source = "") {
   const known = store.get(chat);
   if (known && known.batches.length > 0) return;
   const c = chatAgentsOf(store, chat);
@@ -402,8 +372,7 @@ export function restoreAgents(store: AgentStore, chat: string, turns: readonly P
     // A question's: the agents of its answer that never came, past the last answer.
     const anchor = turn.role === "assistant" ? ++answer : answer + 1;
     const agents = Array.isArray(turn.agents) ? turn.agents.filter(isSavedAgent) : [];
-    const updates = Array.isArray(turn.updates) ? turn.updates.filter((u): u is string => typeof u === "string") : [];
-    if (!agents.length && !updates.length) continue;
+    if (!agents.length) continue;
     for (const a of agents) {
       c.rows.set(a.id, {
         row: {
@@ -414,7 +383,7 @@ export function restoreAgents(store: AgentStore, chat: string, turns: readonly P
         steps: [],
       });
     }
-    c.batches.push({ anchor, ids: agents.map((a) => a.id), updates, resumed: true });
+    c.batches.push({ anchor, ids: agents.map((a) => a.id), resumed: true });
   }
 }
 

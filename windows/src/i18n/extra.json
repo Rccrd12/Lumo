@@ -19523,64 +19523,6 @@
    "id": "yang lain bekerja",
    "it": "gli altri lavorano"
   },
-  "{count} updates from {who}": {
-   "zh-Hans": {
-    "other": "{who} 的 {count} 条更新"
-   },
-   "hi": {
-    "one": "{who} से {count} अपडेट",
-    "other": "{who} से {count} अपडेट"
-   },
-   "es": {
-    "one": "{count} actualización de {who}",
-    "other": "{count} actualizaciones de {who}"
-   },
-   "ar": {
-    "zero": "لا تحديثات من {who}",
-    "one": "تحديث واحد من {who}",
-    "two": "تحديثان من {who}",
-    "few": "{count} تحديثات من {who}",
-    "many": "{count} تحديثًا من {who}",
-    "other": "{count} تحديث من {who}"
-   },
-   "fr": {
-    "one": "{count} mise à jour de {who}",
-    "other": "{count} mises à jour de {who}"
-   },
-   "bn": {
-    "one": "{who}-এর {count}টি আপডেট",
-    "other": "{who}-এর {count}টি আপডেট"
-   },
-   "pt-BR": {
-    "one": "{count} atualização de {who}",
-    "other": "{count} atualizações de {who}"
-   },
-   "ru": {
-    "one": "{count} обновление от {who}",
-    "few": "{count} обновления от {who}",
-    "many": "{count} обновлений от {who}",
-    "other": "{count} обновления от {who}"
-   },
-   "id": {
-    "other": "{count} pembaruan dari {who}"
-   },
-   "it": {
-    "one": "{count} aggiornamento di {who}",
-    "other": "{count} aggiornamenti di {who}"
-   }
-  },
-  "latest: «{text}»": {
-   "zh-Hans": "最新：«{text}»",
-   "hi": "नवीनतम: «{text}»",
-   "es": "la última: «{text}»",
-   "ar": "الأحدث: «{text}»",
-   "fr": "la dernière : «{text}»",
-   "bn": "সর্বশেষ: «{text}»",
-   "pt-BR": "a última: «{text}»",
-   "ru": "последнее: «{text}»",
-   "id": "terbaru: «{text}»",
-   "it": "l'ultimo: «{text}»"
-  },
   "{count} steps": {
    "zh-Hans": {
     "other": "{count} 步"

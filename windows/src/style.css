@@ -9368,10 +9368,6 @@ button.bg-row:hover {
   transform: rotate(180deg);
 }
 
-.agents-chev.open {
-  transform: rotate(90deg);
-}
-
 .agents-rows {
   display: flex;
   flex-direction: column;
@@ -9533,41 +9529,6 @@ button.bg-row:hover {
 .agents-actions {
   display: flex;
   gap: 6px;
-}
-
-/* What the CLI wrote by itself meanwhile, folded into one line. */
-.agents-updates-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 0 2px;
-  cursor: pointer;
-}
-
-.agents-updates-text {
-  min-width: 0;
-  font: 400 11px var(--font);
-  color: var(--dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.agents-updates-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 4px 0 0 18px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.agents-update {
-  font: 400 11.5px var(--font);
-  color: #b0b5be;
-  white-space: pre-wrap;
-  user-select: text;
 }
 
 /* Under the card while agents work: the dots, in the worst case's colour, and the last sign. */

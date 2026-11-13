@@ -98,11 +98,11 @@ import {
   chatChecklists, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
-  addUpdate, applyAgent, applySignal, batchEntries, countAgents, durationText, foldsOwnAnswer, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
+  applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, withAgents, type AgentBatch, type ChatAgents, type PendingCard,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, type AgentsCardHost } from "./agents-card";
-import { foldOwnAnswer, updateChatTurns } from "../core/chats";
+import { updateChatTurns } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
@@ -3625,7 +3625,7 @@ export function buildPrompt(
       updatedAt: Date.now(),
       provider: run.provider,
       session: run.session,
-      // Each answer with the agents it started that ended, and the updates folded under them.
+      // Each answer with the agents it started that ended.
       turns: withAgents(agentStore.get(run.chatId), turns),
     });
     if (body.classList.contains("browsing")) drawHistory();
@@ -4072,11 +4072,10 @@ export function buildPrompt(
       return;
     }
     const permission = permissionOf(chatId).agents;
-    const who = agentsSpeaker(chatId, c).who;
     for (const { el, batch } of shownCards.values()) {
       // Each second, only the cards whose agents are still at work.
       if (onlyOpen && !batch.ids.some((id) => { const e = c.rows.get(id); return e && !isFinal(e.row.state); })) continue;
-      fillAgentsCard(el, { chatId, chat: c, batch, who, permission }, agentsHost(chatId));
+      fillAgentsCard(el, { chatId, chat: c, batch, permission }, agentsHost(chatId));
     }
   }
 
@@ -4085,10 +4084,9 @@ export function buildPrompt(
     const c = agentStore.get(chatId);
     if (!c?.batches.length) return [];
     const permission = permissionOf(chatId).agents;
-    const who = agentsSpeaker(chatId, c).who;
     const host = agentsHost(chatId);
     return c.batches.filter((b) => (after ? b.anchor >= answer : b.anchor === answer)).map((batch) => {
-      const el = agentsCard({ chatId, chat: c, batch, who, permission }, host);
+      const el = agentsCard({ chatId, chat: c, batch, permission }, host);
       shownCards.set(agentsCardKey(chatId, batch), { el, batch });
       return el;
     });
@@ -4629,21 +4627,9 @@ export function buildPrompt(
     const history = run?.history ?? (onScreen ? State.chatHistory : null);
     const known = run ? run.session : onScreen ? State.chatSession : saved?.session ?? null;
     if (session && known && known !== session) return;
-    // While the chat's agents still work, it is a progress update ("L15 is
-    // ready, 7 to go"): one line under the agents, not more of the answer
-    // (concept 4). Rust's conversation joined it all the same (chat.rs add_own).
+    // While the chat's agents work, what it writes (a result that came in)
+    // is an answer like any other: it joins the chat's, with Markdown.
     const agents = agentStore.get(chatId);
-    if (foldsOwnAnswer(agents) && agents && addUpdate(agents, content)) {
-      if (history) foldOwnAnswer(history, content);
-      if (run) remember(run);
-      else updateChatTurns(chatId, (turns) => {
-        foldOwnAnswer(turns, content);
-        return withAgents(agents, turns);
-      });
-      drawAgents(chatId);
-      if (body.classList.contains("browsing")) drawHistory();
-      return;
-    }
     if (history) {
       if (!joinOwnAnswer(history, content)) return;
       const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}) }));

@@ -14,8 +14,6 @@ export interface SavedTurn {
   kept?: string;
   /** An answer's: the agents it started that ended, in short (core/chat-agents.ts savedAgents). */
   agents?: SavedAgent[];
-  /** An answer's: what its CLI wrote by itself while those agents worked, folded under them. */
-  updates?: string[];
 }
 
 /** One agent an answer started, as the chat keeps it once it ended (bridge.ts ChatAgent, in short). */
@@ -63,10 +61,26 @@ export function loadChats(): SavedChat[] {
   try {
     const raw = storage()?.getItem(KEY);
     const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list.filter(isChat) : [];
+    return Array.isArray(list) ? list.filter(isChat).map(unfoldUpdates) : [];
   } catch {
     return [];
   }
+}
+
+/**
+ * The 0.22.2 betas folded what Claude Code wrote by itself while agents worked
+ * into one line under them (`updates`), out of the answer's text but in what
+ * the conversation holds (`kept`). It shows as the answer's text again.
+ */
+function unfoldUpdates(chat: SavedChat): SavedChat {
+  if (!chat.turns.some((turn) => "updates" in turn)) return chat;
+  const turns = chat.turns.map((turn) => {
+    if (!("updates" in turn)) return turn;
+    const { updates, ...rest } = turn as SavedTurn & { updates?: unknown };
+    const folded = Array.isArray(updates) && updates.length > 0 && rest.role === "assistant" && typeof rest.kept === "string";
+    return folded ? { ...rest, content: rest.kept! } : rest;
+  });
+  return { ...chat, turns };
 }
 
 function isChat(c: unknown): c is SavedChat {
@@ -117,27 +131,9 @@ export function joinOwnAnswer(turns: { role: string; content: string; kept?: str
     const turn = turns[i];
     if (turn.role !== "assistant" || turn.failed) continue;
     turn.content = turn.content.trim() ? `${turn.content}\n\n${text}` : text;
-    // An answer that holds progress updates gives Rust its `kept` (chat_restore):
+    // An answer whose conversation is not its text gives Rust its `kept` (chat_restore):
     // the text joins it too, or Claude would not see this answer when the chat comes back.
     if (typeof turn.kept === "string") turn.kept = turn.kept.trim() ? `${turn.kept}\n\n${text}` : text;
-    return true;
-  }
-  return false;
-}
-
-/**
- * The same answer, as a progress update while the chat's agents work
- * (core/chat-agents.ts foldsOwnAnswer): it shows folded under the agents, not
- * in the answer's text, but Rust's conversation joined it all the same, so
- * what the chat gives back to Rust (`kept`, chat_restore) holds it too.
- * False with no answer to join.
- */
-export function foldOwnAnswer(turns: { role: string; content: string; kept?: string; failed?: boolean }[], text: string): boolean {
-  for (let i = turns.length - 1; i >= 0; i--) {
-    const turn = turns[i];
-    if (turn.role !== "assistant" || turn.failed) continue;
-    const before = turn.kept ?? turn.content;
-    turn.kept = before.trim() ? `${before}\n\n${text}` : text;
     return true;
   }
   return false;

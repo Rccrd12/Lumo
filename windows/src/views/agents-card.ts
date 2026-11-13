@@ -58,8 +58,6 @@ export const AGENTS_CARD_TEXT = {
   lastSignal: N_("last signal {time} ago"),
   noSign: N_("{count} agents have given no sign for {time}"),
   others: N_("the others are working"),
-  updates: N_("{count} updates from {who}"),
-  latest: N_("latest: «{text}»"),
   steps: N_("{count} steps"),
   tokens: N_("{tokens} tokens"),
   stopThis: N_("Stop this agent"),
@@ -95,8 +93,6 @@ export interface AgentsCardInput {
   chatId: string;
   chat: ChatAgents;
   batch: AgentBatch;
-  /** Who wrote the progress updates ("Claude Code"). */
-  who: string;
   /** The agents a permission card waits on (core/chat-agents.ts permissionMatch). */
   permission?: ReadonlySet<string>;
   now?: number;
@@ -110,7 +106,6 @@ interface CardUi {
   unfolded: boolean;
   /** The rows opened on their details. */
   open: Set<string>;
-  updatesOpen: boolean;
 }
 
 const uis = new Map<string, CardUi>();
@@ -121,7 +116,7 @@ const latest = new WeakMap<HTMLElement, { input: AgentsCardInput; host: AgentsCa
 function uiOf(key: string): CardUi {
   let ui = uis.get(key);
   if (!ui) {
-    ui = { collapsed: false, unfolded: false, open: new Set(), updatesOpen: false };
+    ui = { collapsed: false, unfolded: false, open: new Set() };
     uis.set(key, ui);
     // The island lives for days: the oldest cards' state goes.
     if (uis.size > 200) uis.delete(uis.keys().next().value!);
@@ -254,12 +249,10 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
     fillAgentsCard(el, last.input, last.host);
     last.host.changed();
   };
-  if (entries.length === 0 && input.batch.updates.length === 0) return;
+  if (entries.length === 0) return;
 
   const ended = allOver ? endedByCli(entries) : null;
-  if (entries.length === 0) {
-    // Only updates kept (an old chat): their line alone.
-  } else if (ended && !input.batch.resumed) {
+  if (ended && !input.batch.resumed) {
     into.append(endedBanner(ended, () => current().input, host, ui, redraw));
     if (ui.unfolded) into.append(h("div", { class: "agents-card" }, rows(entries, input, host, ui, now, redraw)));
   } else if (allOver && !ui.unfolded) {
@@ -270,7 +263,6 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
   } else {
     into.append(fullCard(entries, input, host, ui, now, redraw));
   }
-  if (input.batch.updates.length) into.append(updatesLine(input, ui, redraw));
   if (!allOver) into.append(liveLine(entries, now, input.permission));
 }
 
@@ -445,29 +437,6 @@ function endedBanner(ended: { name: string; entries: AgentEntry[] }, current: ()
     redraw();
   });
   return el;
-}
-
-/** What the CLI wrote by itself while its agents worked: one line, the list under it once opened. */
-function updatesLine(input: AgentsCardInput, ui: CardUi, redraw: () => void): HTMLElement {
-  const updates = input.batch.updates;
-  const latest = oneLine(updates[updates.length - 1]);
-  const text = `${tn("{count} update from {who}", AGENTS_CARD_TEXT.updates, updates.length, { who: input.who })} · ${t(AGENTS_CARD_TEXT.latest, { text: latest })}`;
-  const head = h("div", { class: "agents-updates-head" },
-    h("span", { class: ui.updatesOpen ? "agents-chev open" : "agents-chev right" }, svg(ICONS.chevronRight, 11, { stroke: 1.8 })),
-    h("span", { class: "agents-updates-text", text, title: text }));
-  head.addEventListener("click", () => {
-    ui.updatesOpen = !ui.updatesOpen;
-    redraw();
-  });
-  const el = h("div", { class: "agents-updates" }, head);
-  if (ui.updatesOpen) el.append(h("div", { class: "agents-updates-list" }, ...updates.map((u) => h("div", { class: "agents-update", text: u }))));
-  return el;
-}
-
-/** An update on one line, cut short. */
-function oneLine(text: string | undefined): string {
-  const line = (text ?? "").replace(/\s+/g, " ").trim();
-  return line.length > 90 ? `${line.slice(0, 89)}…` : line;
 }
 
 /**

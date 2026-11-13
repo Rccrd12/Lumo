@@ -119,28 +119,31 @@ test("the agents' card goes under the answer that started them, and stays there 
   assert.deepEqual(sent("chat_stop_agent"), [{ chatId: chat, agentId: "a2" }]);
 });
 
-test("what the CLI writes by itself while agents work folds under them; once they are done it joins the answer", async () => {
+test("what the CLI writes by itself while agents work is an answer like any other, in Markdown, above their card", async () => {
   const answer = await ask("go");
   const chat = State.chatId;
   emit("chat-agent", { chat, agent: agent("b1") });
   await answer({ text: "Launched.", turns: 2 });
   assert.deepEqual(rows(), ["question", "answer", "agents"]);
 
-  emit("chat-own-answer", { chat, text: "L15 is ready, 7 to go.", session: null });
+  emit("chat-own-answer", { chat, text: "The **first result** came in.", session: null });
   await flush();
-  assert.equal(State.chatHistory.at(-1).content, "Launched.");
-  assert.equal(State.chatHistory.at(-1).kept, "Launched.\n\nL15 is ready, 7 to go.", "Rust's conversation has it all the same");
-  assert.equal($(".agents-updates-text").textContent, "1 update from Claude Code · latest: «L15 is ready, 7 to go.»");
-  assert.deepEqual(loadChats().find((c) => c.id === chat).turns[1].updates, ["L15 is ready, 7 to go."]);
+  view.sync();
+  assert.equal(State.chatHistory.at(-1).content, "Launched.\n\nThe **first result** came in.");
+  assert.equal($(".agents-updates"), null, "nothing folded");
+  // Drawn as an answer is: the Markdown is read, and the card stays under it.
+  const reply = $(".chat-log").find(".reply").at(-1);
+  assert.deepEqual(reply.find("strong").map((b) => b.textContent), ["first result"]);
+  assert.deepEqual(rows(), ["question", "answer", "agents"]);
+  assert.equal(loadChats().find((c) => c.id === chat).turns[1].content, "Launched.\n\nThe **first result** came in.");
 
   emit("chat-agent", { chat, agent: agent("b1", { state: "done", endedAt: now + 5000 }) });
   emit("chat-own-answer", { chat, text: "All done.", session: null });
   await flush();
   view.sync();
-  assert.equal(State.chatHistory.at(-1).content, "Launched.\n\nAll done.");
-  // Saved with what Rust's conversation holds: the updates and the final report, for when the chat comes back.
+  assert.equal(State.chatHistory.at(-1).content, "Launched.\n\nThe **first result** came in.\n\nAll done.");
   const back = loadChats().find((c) => c.id === chat).turns[1];
-  assert.equal(back.kept, "Launched.\n\nL15 is ready, 7 to go.\n\nAll done.");
+  assert.equal(back.content, "Launched.\n\nThe **first result** came in.\n\nAll done.");
   assert.equal(typeof back.at, "number");
   assert.equal(State.chatActivity, null, "nothing at work any more");
   assert.equal(islandAgents(), null);
