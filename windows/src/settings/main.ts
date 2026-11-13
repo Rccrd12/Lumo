@@ -846,7 +846,7 @@ function securitySection(): HTMLElement {
   mailImages.hidden = settings.webImages === false;
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
-    // Experimental: Codex, Antigravity CLI, Copilot CLI and Cursor CLI use it too.
+    // Codex, Antigravity CLI, Copilot CLI and Cursor CLI use it too.
     const cli = ["claude-code", "codex", "antigravity-cli", "copilot-cli", "cursor-cli"].includes(settings.chatProvider);
     note.hidden = !(settings.chatComputerUse && !cli);
   };

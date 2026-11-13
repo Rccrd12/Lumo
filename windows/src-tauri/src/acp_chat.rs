@@ -262,7 +262,7 @@ fn server(args: &[&str]) -> Value {
 /// (`lumo`, island_tools.rs) with the email's as Security lets the AI have
 /// them (mail.rs ai_tools), and the user's tools while one of them is on
 /// (`lumo_tools`, tools.rs), with the computer while the turn may use it
-/// (experimental: each action asked for by Lumo, computer.rs `OtherTurn`).
+/// (each action asked for by Lumo, computer.rs `OtherTurn`).
 /// By name.
 fn servers(tools: bool, mail: &str, computer: bool) -> Vec<(String, Value)> {
     let kit = crate::computer::kit("", computer, mail);

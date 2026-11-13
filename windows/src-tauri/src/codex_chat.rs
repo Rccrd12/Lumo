@@ -139,7 +139,7 @@ const _: () = assert!(TOOL_TIMEOUT_SECS > crate::pipe::MAIL_CARD_TIMEOUT.as_secs
 /// tools while one of them is on (`lumo_tools`, which ask on the island
 /// themselves, tools.rs), with the email's tools as Security lets the AI have
 /// them (`mail`, mail.rs ai_tools; sending and changing an email ask on Lumo's own card), and
-/// the computer while the turn may use it (`computer`, experimental: each
+/// the computer while the turn may use it (`computer`: each
 /// action asked for by Lumo, computer.rs `OtherTurn`). Codex calls Lumo's own
 /// tools without asking.
 fn mcp_config(chat_id: &str, tools: bool, mail: &str, computer: bool) -> Value {
@@ -1005,7 +1005,7 @@ pub async fn send(
         } else {
             text
         };
-        // Computer use (experimental): the note in front of every question.
+        // Computer use: the note in front of every question.
         if computer { crate::computer::with_note(&text, grid) } else { text }
     };
     // The computer usable while this turn runs, each action asked for by Lumo.

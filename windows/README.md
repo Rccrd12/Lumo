@@ -1054,6 +1054,19 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
 `mouse_move`, `left_click_drag`, `scroll`, `type`, `key`, `wait` and
 `cursor_position`. It runs on your plan, with no API key.
 
+- **Codex, Antigravity CLI, Copilot CLI and Cursor CLI** get the same tools
+  when they are the chat's provider (in their own MCP configuration for the
+  chat's runs, as for the email's tools). They call Lumo's tools without
+  asking, so Lumo asks itself: with *Ask every time* each click, key or text
+  is the same Allow / Deny card, under the agent's name; in *Plan* mode they
+  may only look; in *Auto* (or the CLI's own auto mode) they act without a
+  card. Same glow, mouse, Esc and rules as Claude Code's. A note in front of
+  every question tells them how the tools work. Gemini models (Antigravity
+  CLI's, or a Gemini model in another CLI) give and read points on a
+  0–999 grid over the screenshot, the way Gemini counts them: Lumo turns them
+  into the screenshot's pixels and back, so a click lands where the model
+  meant.
+
 - **Gemini Live** hands what is to be done on the screen ("click Send", "open
   the display settings and turn on night light") to Claude Code with its own
   tool, `use_computer`: always Claude Code on Haiku 5.5 at medium effort,

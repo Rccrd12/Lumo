@@ -928,7 +928,7 @@ pub async fn send(
         None if chat.is_workshop() => with_workshop_instructions(&text),
         None => with_instructions(&text),
     };
-    // Computer use (experimental): the note in front of every question.
+    // Computer use: the note in front of every question.
     let computer = computer && cfg!(windows);
     let grid = crate::computer::uses_grid(PROVIDER, model);
     let text = if computer { crate::computer::with_note(&text, grid) } else { text };

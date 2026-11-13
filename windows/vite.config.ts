@@ -91,7 +91,6 @@ export default defineConfig({
         settings: resolve(__dirname, "settings.html"),
         computer: resolve(__dirname, "computer.html"),
         // The computer use test (/test, experimental branch only).
-        calibrate: resolve(__dirname, "calibrate.html"),
       },
     },
   },

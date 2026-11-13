@@ -144,7 +144,7 @@ pub fn kit(first: &str, computer: bool, mail: &str) -> String {
 /// tools while the Email pill is on (`mail`, mail.rs); the user's own tools
 /// as a server of their own while any is on (`tools`, tools.rs, which asks
 /// for each call itself); the computer only for a chat turn that may use it
-/// (`computer`, experimental: Lumo asks for each action itself, `OtherTurn`;
+/// (`computer`: Lumo asks for each action itself, `OtherTurn`;
 /// Gemini Live's screen work stays Claude Code's). An entry an earlier build
 /// put there is replaced. Whatever else the file holds is kept, and the
 /// user's global configuration is never touched.
@@ -202,8 +202,6 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
     if TURN.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))) != Ok(1) {
         return;
     }
-    // The chat's use of the computer, recorded, is written out (computer_test.rs).
-    crate::computer_test::record_stop();
     // An action still under way (typing, a wait, a drag) stops as with Esc:
     // the chat's Stop ended the turn, not only Esc does.
     STOPPED.store(true, Ordering::SeqCst);
@@ -215,7 +213,7 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
     disengage(app);
 }
 
-// ── The other agents (experimental) ─────────────────────────────────────────
+// ── The other agents ─────────────────────────────────────────
 //
 // Codex, Antigravity CLI, Copilot CLI and Cursor CLI get the same tools in the
 // chat, while computer use is on. They call Lumo's tools without asking
@@ -1175,39 +1173,15 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     if STOPPED.load(Ordering::SeqCst) {
         return refuse(STOPPED_TEXT);
     }
-    // Every call of the turn recorded (experimental branch, computer_test.rs):
-    // the click test's (/test), or the chat's own use of the computer. The
-    // test allows only looking and left clicks on its own screen, which the
-    // test page covers whole.
-    crate::computer_test::record_start();
-    crate::computer_test::note_call(&tool, &input);
     // A model on the grid: its points in the screenshot's pixels from here on.
     let grid = grid_now();
-    let input = if grid {
-        let px = from_grid(&input, VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied());
-        crate::computer_test::note_pixels(&px);
-        px
-    } else {
-        input
-    };
-    let testing = crate::computer_test::testing();
-    let refused = |why: String| {
-        crate::computer_test::note_refused(&why);
-        refuse(why)
-    };
-    if testing && !crate::computer_test::allows(&tool) {
-        return refused("During Lumo's click test only screenshot, zoom, left_click and mouse_move are allowed.".into());
-    }
+    let input = if grid { from_grid(&input, VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied()) } else { input };
     let action = match parse(&tool, &input) {
         Ok(a) => a,
-        Err(e) => return refused(e),
+        Err(e) => return refuse(e),
     };
-    if testing && !only_looks(&tool) && !crate::computer_test::on_test_screen(VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied()) {
-        return refused("During Lumo's click test, click only on the screen with the test page: take a screenshot of it first.".into());
-    }
-    // Another agent's turn (experimental): Lumo asks, or refuses, itself.
-    // Not during the test: nothing but the test page can be clicked.
-    let others = if only_looks(&tool) || testing { None } else { others_ask() };
+    // Another agent's turn: Lumo asks, or refuses, itself.
+    let others = if only_looks(&tool) { None } else { others_ask() };
     if matches!(others, Some((Asks::LookOnly, _))) {
         return refuse(PLAN_TEXT);
     }
@@ -1235,7 +1209,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         });
         match crate::pipe::ask(app, card).await.as_deref() {
             Some("allow") => {}
-            Some(_) => return refused(DENIED_TEXT.into()),
+            Some(_) => return refuse(DENIED_TEXT),
             None => return refuse("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment."),
         }
         // Esc, or the chat's Stop, while the card waited.
@@ -1290,7 +1264,7 @@ fn base64(bytes: &[u8]) -> String {
 /// and which screenshots leave out. The island and the glow let the mouse
 /// through then, so they are never what is under it.
 fn not_on_lumo(app: &AppHandle, p: (i32, i32)) -> Result<(), String> {
-    let mine: Vec<isize> = [crate::island::WINDOW_LABEL, OVERLAY, crate::computer_test::WINDOW]
+    let mine: Vec<isize> = [crate::island::WINDOW_LABEL, OVERLAY]
         .iter()
         .filter_map(|label| app.get_webview_window(label))
         .filter_map(|w| w.hwnd().ok().map(|h| h.0 as isize))
@@ -1373,7 +1347,6 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             };
             let view = View::new(index, rect);
             let png = crate::screen::unseen_by_claude(app, |hidden| crate::screen::grab_png(rect, view.w, view.h, hidden))?;
-            crate::computer_test::note_shot(&png, &view);
             let moved = VIEW.lock().unwrap_or_else(|e| e.into_inner()).replace(view).is_none_or(|v| v.rect != rect);
             // Another screen: the glow goes with Claude.
             if moved {
@@ -1425,7 +1398,6 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
                 imp::click(button, count, &hold)?;
                 Ok(here)
             })?;
-            crate::computer_test::note_click(at, here, &view);
             let (x, y) = view.point_in_shot(here.0, here.1);
             Ok(json!({ "text": click_text(at, (x, y)) }))
         }
@@ -2229,7 +2201,7 @@ mod tests {
         assert!(v["mcpServers"].get(crate::tools::SERVER).is_none());
 
         // The user's tools, as a server of their own while any is on.
-        // A chat turn that may use the computer (experimental), and the next without.
+        // A chat turn that may use the computer, and the next without.
         agy_workspace(&dir, "mail", false, true);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,computer,mail,island"]));
         agy_workspace(&dir, "", false, false);
