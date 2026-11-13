@@ -671,6 +671,13 @@ fn all_tools(kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>) -> Vec<Va
     all
 }
 
+/// The island chat the agent was started for (`LUMO_CHAT_ID`, set by the app),
+/// or "" when none: a `${env:…}` Cursor's mcp.json left as it was (acp_chat.rs)
+/// names no chat.
+fn chat_id() -> String {
+    std::env::var("LUMO_CHAT_ID").ok().filter(|c| !c.starts_with("${")).unwrap_or_default()
+}
+
 /// A tool's result as MCP gives it: Lumo's image first when there is one, then its words.
 fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>) -> Value {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
@@ -699,13 +706,6 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         return answer(lumo(&json!({ "lumo_mail": { "tool": name, "input": input, "chat": chat_id() } })));
     }
     answer(lumo(&json!({ "lumo_computer": { "tool": name, "input": input } })))
-}
-
-/// The island chat the agent that started this server answers in
-/// (`LUMO_CHAT_ID`, set by the app), or "" for none. A `${env:…}` Cursor's
-/// mcp.json left as it was (acp_chat.rs) names no chat.
-fn chat_id() -> String {
-    std::env::var("LUMO_CHAT_ID").ok().filter(|c| !c.starts_with("${")).unwrap_or_default()
 }
 
 /// What Lumo answered to a call, as MCP gives it.
