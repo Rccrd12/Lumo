@@ -395,7 +395,7 @@ pub async fn send(
             let sent = if streaming {
                 stream_post(p, &endpoint, &key, &body, usage, show, || events.signal(app)).await
             } else {
-                crate::chat_agents::alive_while(app, events.chat_id(), post(p, &endpoint, &key, &body, usage)).await
+                crate::chat_agents::alive_while(app, events.chat_id(), Box::pin(post(p, &endpoint, &key, &body, usage))).await
             };
             // A whole answer, or a refusal, is news too.
             events.signal(app);

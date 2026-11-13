@@ -627,7 +627,7 @@ fn log_turn(server: &Server, model: &str, prompt: usize, tools: usize, outcome: 
 /// chat_agents::HEARTBEAT while it runs: Ollama's load answers nothing until the model
 /// is in, which can take minutes, and the island would take it for stuck. The
 /// timer lives only as long as the load (no CPU while the island is idle).
-async fn alive_while<T>(app: &AppHandle, events: &chat::ChatEvents, work: impl std::future::Future<Output = T>) -> T {
+async fn alive_while<T>(app: &AppHandle, events: &chat::ChatEvents, work: impl std::future::Future<Output = T> + Unpin) -> T {
     crate::chat_agents::alive_while(app, events.chat_id(), work).await
 }
 
@@ -728,20 +728,20 @@ pub async fn send(
         if let Some(load) = crate::local_models::picker_load(server, model) {
             events.signal(app);
             events.activity(app, Activity::new("loading", ""));
-            let waited = crate::local_models::wait_for_picker(load, |percent| {
+            let waited = Box::pin(crate::local_models::wait_for_picker(load, |percent| {
                 events.signal(app);
                 events.activity(app, Activity::new("loading", percent.to_string()));
-            });
+            }));
             alive_while(app, &events, waited).await;
             caps = crate::local_models::caps(server, model).await;
         }
         if caps.loaded == Some(false) {
             events.signal(app);
             events.activity(app, Activity::new("loading", ""));
-            let loading = crate::local_models::load(server, model, |percent| {
+            let loading = Box::pin(crate::local_models::load(server, model, |percent| {
                 events.signal(app);
                 events.activity(app, Activity::new("loading", percent.to_string()));
-            });
+            }));
             let loaded = alive_while(app, &events, loading).await;
             if let Err(e) = loaded {
                 crate::log::line(format!("[local] loading {model}: {e}"));

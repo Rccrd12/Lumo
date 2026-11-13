@@ -313,11 +313,12 @@ pub const HEARTBEAT: Duration = Duration::from_secs(10);
 /// `work`, with a sign of life for the chat `chat` every HEARTBEAT while it
 /// runs: it is working, not stuck, and the island must not say "no signal".
 /// The timer lives only as long as `work`, which ends by itself (its own
-/// timeout, the user's Stop).
-pub async fn alive_while<T>(app: &AppHandle, chat: &str, work: impl std::future::Future<Output = T>) -> T {
-    let mut work = std::pin::pin!(work);
+/// timeout, the user's Stop). `work` comes boxed (`Box::pin`): a call or a
+/// request is a large future, and held here by value it made the chat's
+/// whole answer twice as large, past what the debug build's stack holds.
+pub async fn alive_while<T>(app: &AppHandle, chat: &str, mut work: impl std::future::Future<Output = T> + Unpin) -> T {
     loop {
-        match tokio::time::timeout(HEARTBEAT, work.as_mut()).await {
+        match tokio::time::timeout(HEARTBEAT, &mut work).await {
             Ok(done) => return done,
             Err(_) => signal(app, chat),
         }

@@ -222,9 +222,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     let answer = if let Some(request) = payload.get("lumo_computer") {
         Some(crate::computer::serve(&app, request).await)
     } else if let Some(request) = payload.get("lumo_mail") {
-        Some(in_chat(&app, request, crate::mail::serve(&app, request)).await)
+        Some(in_chat(&app, request, Box::pin(crate::mail::serve(&app, request))).await)
     } else if let Some(request) = payload.get("lumo_tool") {
-        Some(in_chat(&app, request, crate::tools::serve_call(&app, request)).await)
+        Some(in_chat(&app, request, Box::pin(crate::tools::serve_call(&app, request))).await)
     } else if payload.get("lumo_tools").is_some() {
         Some(crate::tools::serve_list())
     } else if let Some(request) = payload.get("lumo_island").filter(|r| r.is_object()) {
@@ -365,9 +365,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
 /// "waiting for your permission", and it says the chat is alive while it
 /// runs (the CLI writes nothing meanwhile). A call that names no chat (a CLI
 /// in the user's terminal, a lumo-hook from before) just runs.
-async fn in_chat<T>(app: &AppHandle, request: &Value, work: impl std::future::Future<Output = T>) -> T {
+async fn in_chat<T>(app: &AppHandle, request: &Value, work: impl std::future::Future<Output = T> + Unpin) -> T {
     match request.get("chat").and_then(Value::as_str).filter(|c| !c.is_empty()) {
-        Some(chat) => crate::chat_agents::alive_while(app, chat, CHAT.scope(chat.to_string(), work)).await,
+        Some(chat) => crate::chat_agents::alive_while(app, chat, Box::pin(CHAT.scope(chat.to_string(), work))).await,
         None => work.await,
     }
 }

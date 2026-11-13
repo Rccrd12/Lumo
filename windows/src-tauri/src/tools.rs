@@ -1446,8 +1446,9 @@ pub fn not_offered(name: &str) -> String {
 /// for your permission" (pipe.rs `CHAT`, chat_agents.rs).
 pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
     crate::chat_agents::signal(app, chat_id);
-    let call = call_in_chat(app, chat_id, id, input, asking, sandbox_high);
-    let answer = crate::chat_agents::alive_while(app, chat_id, crate::pipe::CHAT.scope(chat_id.to_string(), call)).await;
+    // Boxed: the call is a large future, and the chat's answer holds this one.
+    let call = Box::pin(crate::pipe::CHAT.scope(chat_id.to_string(), call_in_chat(app, chat_id, id, input, asking, sandbox_high)));
+    let answer = crate::chat_agents::alive_while(app, chat_id, call).await;
     crate::chat_agents::signal(app, chat_id);
     answer
 }
