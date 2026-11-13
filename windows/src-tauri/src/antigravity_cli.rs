@@ -917,7 +917,10 @@ pub async fn send(
     // Turns this conversation has not seen (another provider answered them, or
     // a message was edited) are carried over once, as text, with the instructions.
     let carried: Vec<Value> = if conversation.is_none() { turn.history.clone() } else { Vec::new() };
-    let text = claude_code::prompt(context.as_ref(), &carried, &chat.files(), &query);
+    // The turns another provider answered since this conversation last did:
+    // they go in front of the question, and the conversation goes on.
+    let unseen = chat.cli_unseen(PROVIDER);
+    let text = format!("{}{}", claude_code::catch_up(&unseen), claude_code::prompt(context.as_ref(), &carried, &chat.files(), &query));
     let text = match conversation {
         Some(_) => text,
         None if chat.is_workshop() => with_workshop_instructions(&text),
@@ -1137,6 +1140,10 @@ async fn command(
             // A new conversation would take it for a question.
             return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen this conversation yet."), chat.cli_session()));
         };
+        if !chat.cli_unseen(PROVIDER).is_empty() {
+            // It would sum up the conversation without the turns another provider answered.
+            return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen the latest answers in this chat yet."), chat.cli_session()));
+        }
         let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
         let mut args = args(model, mode, Some(conversation.as_str()), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
         args.retain(|a| a != "--disable-slash-commands");
