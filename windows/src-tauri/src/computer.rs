@@ -68,9 +68,9 @@ Call update_plan first with the plan for this job (one step is enough, for examp
 Keep it updated as you go: mark a step completed as soon as it is done and the next one in_progress. You may change or add steps at any time.";
 
 /// How long the island shows the plan when computer use starts, and the first action waits (ms).
-const START_MS: u64 = 3000;
+const START_MS: u64 = 2000;
 /// How long the island shows the plan when a step is done (ms).
-const STEP_MS: u64 = 3000;
+const STEP_MS: u64 = 2000;
 /// A call held while the user has paused waits at most this long, then
 /// answers and is made again: lumo-hook gives a call 90 s (CALL_BUDGET), and
 /// some agents give up on a tool after 60.

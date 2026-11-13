@@ -771,7 +771,7 @@ export class Island {
       // Resumed: back to the closed island, out of the agent's way, whatever was open.
       this.leaveComputerPlan(true);
     } else if (move === "reveal" && s.reveal) {
-      const ms = Number.isFinite(s.revealMs) && (s.revealMs ?? 0) > 0 ? s.revealMs! : 3000;
+      const ms = Number.isFinite(s.revealMs) && (s.revealMs ?? 0) > 0 ? s.revealMs! : 2000;
       setComputerReveal(s.reveal, ms);
       this.openComputerPlan();
       if (this.computerTimer != null) window.clearTimeout(this.computerTimer);
@@ -1481,10 +1481,12 @@ export class Island {
         const fit = this.views.get("approval")?.fitHeight?.(w, this.islandEl.offsetWidth, this.islandEl.offsetHeight);
         if (fit != null) h = Math.max(h, Math.min(APPROVAL_MAX_H, fit));
       }
-      // The computer use plan: as tall as its steps and what is under them (layout.ts computerViewHeight).
+      // The computer use plan: as tall as its steps and what is under them
+      // (layout.ts computerViewHeight), never the height dragged for the other
+      // views, which would leave an empty box over the screen the agent works on.
       if (State.view === "computer") {
         const fit = this.views.get("computer")?.fitHeight?.(w, this.islandEl.offsetWidth, this.islandEl.offsetHeight);
-        if (fit != null) h = Math.max(fit, pickedHeight(this.shape));
+        if (fit != null) h = fit;
       }
       if (State.view === "overview" && planCardOpen()) h = Math.max(h, NEW_LOOK_PLAN_CARD_H);
       if (State.view === "overview" && overviewDetailFor() === "integration_github" && gitHubListSection()) h = Math.max(h, NEW_LOOK_GH_LIST_H);
