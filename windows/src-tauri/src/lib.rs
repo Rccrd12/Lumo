@@ -11,6 +11,7 @@ mod antigravity_plan;
 mod autostart;
 mod calendar;
 mod chat;
+mod chat_agents;
 mod chat_files;
 mod chat_usage;
 mod claude;
@@ -864,11 +865,27 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     acp_chat::close(&chat_id);
 }
 
+/// A deleted chat: its CLI, waiting for its next message, ends, and the
+/// agents it started with it (each provider tells the island they ended).
+#[tauri::command]
+fn chat_close(chat_id: String) {
+    claude_code::close(&chat_id);
+    codex_chat::close(&chat_id);
+    acp_chat::close(&chat_id);
+}
+
 /// The chat's Stop button: ends the answer being written. `chat_send` then
 /// returns what was written so far, marked stopped.
 #[tauri::command]
 fn chat_stop(chats: State<Chats>, chat_id: String) {
     chats.stop(&chat_id);
+}
+
+/// "Stop this agent" on the chat's Agents card: stops that one agent the
+/// chat's CLI started (Claude Code's `stop_task`), the others go on.
+#[tauri::command]
+fn chat_stop_agent(chat_id: String, agent_id: String) -> Result<(), String> {
+    chat_agents::stop(&chat_id, &agent_id)
 }
 
 /// An edited message: the conversation goes back to its first `keep` turns
@@ -1437,11 +1454,13 @@ pub fn run() {
             unsloth_studio_start,
             unsloth_studio_stop,
             chat_reset,
+            chat_close,
             chat_restore,
             chat_load,
             chat_compact,
             chat_commands,
             chat_stop,
+            chat_stop_agent,
             chat_rewind,
             chat_forget_file,
             island_drag,
@@ -1482,6 +1501,10 @@ pub fn run() {
             live::live_help,
             live::live_help_stop,
             live::live_computer,
+            computer::computer_resume,
+            computer::computer_stop,
+            computer::computer_ask,
+            computer::computer_peek,
             live::live_computer_ready,
             live::live_microphone,
             typing::live_type,

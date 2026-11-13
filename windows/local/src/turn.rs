@@ -81,7 +81,16 @@ pub trait Hooks {
     /// While on, the tools called say nothing on the island: the model is
     /// putting its plan right after its answer, which stays as it was.
     fn hush(&mut self, _on: bool) {}
+    /// The answer moved just now: a piece of the stream came (even one with
+    /// nothing to show), a request went, a tool started or ended, and every
+    /// WHOLE_HEARTBEAT while a whole answer is awaited. Called often: the app
+    /// keeps it cheap (the island's sign of life).
+    fn signal(&mut self) {}
 }
+
+/// How often a request answered whole (no stream: nothing comes until the
+/// whole answer does, a minute or more on a slow model) says it is alive.
+pub const WHOLE_HEARTBEAT: Duration = Duration::from_secs(10);
 
 /// What a turn goes by.
 pub struct Rules<'a> {
@@ -206,13 +215,22 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         // the island as it was, with nothing said about it.
         let hushed = plan.checking.is_some();
         let doing = next.take().unwrap_or(if whole { Doing::Thinking } else { Doing::Prompt });
+        // Each request is news, hushed or not (a retry, a model sent back, the round after the tools).
+        hooks.signal();
         if !hushed {
             hooks.doing(doing);
         }
         let before = said.join("\n\n");
         let after_before = |visible: &str| if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") };
         let answer = if whole {
-            let answer = ask_whole(to, body).await;
+            let mut asked = std::pin::pin!(ask_whole(to, body));
+            let answer = loop {
+                match tokio::time::timeout(WHOLE_HEARTBEAT, asked.as_mut()).await {
+                    Ok(answer) => break answer,
+                    // The model is at work: alive, though nothing came yet.
+                    Err(_) => hooks.signal(),
+                }
+            };
             if let Ok(a) = &answer {
                 if !a.text.is_empty() && !hushed {
                     hooks.shown(&after_before(&progressive_filter(&a.text)));
@@ -221,6 +239,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             answer
         } else {
             stream(to, body, |seen| match seen {
+                // Still moving, even while nothing shows.
+                Seen::Chunk => hooks.signal(),
                 // Nothing new yet in this round: the text so far isn't sent
                 // again, or the island would drop the dots that say what the
                 // answer is doing.
@@ -232,6 +252,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             })
             .await
         };
+        // The answer came (a whole one, at once), or the server said no: news too.
+        hooks.signal();
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
         }
@@ -477,7 +499,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 continue;
             }
             let given = (name == plan::TOOL).then(|| Plan::from_input(&input)).flatten();
+            hooks.signal();
             let (text, failed) = hooks.call(name, input).await;
+            hooks.signal();
             if name == plan::TOOL {
                 if let Some(p) = given.filter(|_| !failed) {
                     plan.shown = Some(p);
