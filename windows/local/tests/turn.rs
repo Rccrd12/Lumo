@@ -759,7 +759,7 @@ fn every_piece_of_the_stream_is_a_sign_of_life() {
     // reasoning is read before the text is written, 200 ms after it. The
     // answer is one more sign after the text.
     let before_text = island.signals_before_text.unwrap();
-    assert!(before_text >= 1 + 2, "{before_text}");
+    assert!(before_text >= 3, "{before_text}");
     assert!(island.signals > before_text, "{}", island.signals);
 
     // A tool starting and ending is one too, and so is the whole answer of a
