@@ -1597,7 +1597,7 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
         events.file(app, &file);
     }
     for (tool, input) in run.take_plans() {
-        let _ = app.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
+        let _ = app.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": chat_id, "tool": tool, "input": input }));
     }
     let text = match run.result.take() {
         Some(Ok(text)) => chat::keep_lumo_lines(text, &run.said),
@@ -1708,6 +1708,8 @@ pub async fn send(
     let stop = chat.stopper();
     let chat_id = chat.id().to_string();
     let usage_chat = chat_id.clone();
+    // The chat its plan belongs to, whichever chat is on screen when it comes.
+    let plan_chat = chat_id.clone();
     let resumed = session.clone();
     // What Claude Code writes by itself after this turn, until the next message.
     let own = {
@@ -1729,7 +1731,7 @@ pub async fn send(
             |file| events.file(&app2, file),
             // The plan Claude writes in the chat, for the Plan island.
             |tool, input| {
-                let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
+                let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": plan_chat, "tool": tool, "input": input }));
             },
             own,
         )

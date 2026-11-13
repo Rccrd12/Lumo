@@ -1519,6 +1519,8 @@ pub async fn send(
     let app3 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
+    // The chat its plan belongs to, whichever chat is on screen when it comes.
+    let plan_chat = chat.id().to_string();
     let (state, session) = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             spec,
@@ -1539,7 +1541,7 @@ pub async fn send(
                 let _ = app2.emit_to(
                     crate::island::WINDOW_LABEL,
                     "chat-plan",
-                    json!({ "tool": "update_plan", "input": plan, "agent": agent.name(), "color": agent.color() }),
+                    json!({ "chat": plan_chat, "tool": "update_plan", "input": plan, "agent": agent.name(), "color": agent.color() }),
                 );
             },
         )
