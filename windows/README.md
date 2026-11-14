@@ -1057,15 +1057,21 @@ plan, with no API key.
 
 - **Antigravity CLI** gets the same tools when it is the chat's provider
   (in its own MCP configuration for the chat's runs, as for the email's
-  tools). It calls Lumo's tools without asking, so Lumo asks itself: with
-  *Ask every time* each click, key or text is the same Allow / Deny card,
-  under Antigravity's name; in *Plan* mode it may only look; in *Auto* (or
-  Antigravity's own auto mode) it acts without a card. Same glow, mouse, Esc
-  and rules as Claude Code's. A note in front of every question tells it how
-  the tools work. Its Gemini models give and read points on a 0–999 grid
-  over the screenshot, the way Gemini counts them: Lumo turns them into the
-  screenshot's pixels and back, so a click lands where the model meant.
-  Codex, Copilot CLI and Cursor CLI don't get the computer.
+  tools). It calls Lumo's tools without asking, so Lumo asks itself, as the
+  chat's mode says: with *Ask every time* each click, key or text is the same
+  Allow / Deny card, under Antigravity's name; in *Plan* mode it may only
+  look; in *Auto* (or Antigravity's own auto mode) the chat's first action is
+  still a card, which says Allow counts for the rest of the chat, and then it
+  acts without one (until Lumo quits). A mode that asks more, picked while it
+  works, counts from its next action; one that asks less, from the next
+  question. Each chat by its own mode: a Claude Code chat using the computer
+  at the same time asks as it always does. Same glow, mouse, Esc, rules and
+  recap under the answer as Claude Code's. A note in front of the question
+  tells it how the tools work, whole the first time its conversation hears
+  it, then as a short reminder. Its Gemini models give and read points on a
+  0–999 grid over the screenshot, the way Gemini counts them: Lumo turns them
+  into the screenshot's pixels and back, so a click lands where the model
+  meant. Codex, Copilot CLI and Cursor CLI don't get the computer.
 
 - **Gemini Live** hands what is to be done on the screen ("click Send", "open
   the display settings and turn on night light") to Claude Code with its own

@@ -1088,6 +1088,19 @@ test("in Auto, every request of the chat's Antigravity CLI run goes through with
   assert.deepEqual(asked, []);
 });
 
+test("in Auto, the first computer action of the chat's Antigravity CLI is still a card, and it says Allow counts for the rest", () => {
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionModeAgy: "auto" };
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "a10", lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [640, 320] },
+    lumo_remembered: true, lumo_computer_consent: true,
+  });
+  assert.deepEqual(sent("approval_auto_allow"), [], "never answered by the island itself");
+  assert.equal(State.pendingApproval?.requestId, "a10");
+  assert.equal(State.pendingApproval?.remembered, true, "the card says Allow counts for the rest of the chat");
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "a10" }]);
+});
+
 test("Claude Code's Auto is not Antigravity's: its own mode, which asks until picked", () => {
   State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto" };
   hook({
