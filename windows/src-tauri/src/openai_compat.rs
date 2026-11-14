@@ -478,7 +478,7 @@ pub async fn send(
                     continue;
                 }
                 chat.events().activity(app, act);
-                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, asking, sandbox_high).await;
+                let (text, _) = crate::tools::call_for_chat(app, chat.id(), p.id, name, input, asking, sandbox_high).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
             }
             if let Some(messages) = body["messages"].as_array_mut() {

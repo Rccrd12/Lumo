@@ -1437,18 +1437,20 @@ pub fn not_offered(name: &str) -> String {
 
 /// A call from the chat `chat_id`'s API providers (claude.rs,
 /// openai_compat.rs, local_chat.rs): what goes back to the model, and whether
-/// it failed. `asking`: when one of the user's tools needs a card (a local
-/// model's chat asks as its permission mode says); `sandbox_high`: they run
-/// in the Windows sandbox when they can (the local chat's Sandbox High).
-pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
+/// it failed. `provider`: the one answering this turn (the chat's own, which
+/// is not always the one the settings name: chat.rs with_pick), for the
+/// plan's name and the web search. `asking`: when one of the user's tools
+/// needs a card (a local model's chat asks as its permission mode says);
+/// `sandbox_high`: they run in the Windows sandbox when they can (the local
+/// chat's Sandbox High).
+pub async fn call_for_chat(app: &AppHandle, chat_id: &str, provider: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
     }
     if id == crate::island_tools::UPDATE_PLAN {
         let (text, failed) = crate::island_tools::plan_answer(&input);
         if !failed {
-            let provider = tauri::async_runtime::spawn_blocking(|| crate::settings::load().chat_provider).await.unwrap_or_default();
-            show_plan(app, chat_id, &provider, &input);
+            show_plan(app, chat_id, provider, &input);
         }
         return (text, failed);
     }
@@ -1480,8 +1482,7 @@ pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Valu
                 return (e, true);
             }
         }
-        let provider = tauri::async_runtime::spawn_blocking(|| crate::settings::load().chat_provider).await.unwrap_or_default();
-        return crate::web_search::call(id, &input, &provider).await;
+        return crate::web_search::call(id, &input, provider).await;
     }
     // Lumo's email tools: what Security lets the AI do, each send or change on its card (mail.rs).
     let answer = if is_mail_tool(id) {

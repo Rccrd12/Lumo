@@ -174,7 +174,7 @@ async fn run_user_tools(
             crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
         };
         chat.events().activity(app, act);
-        let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, b["input"].clone(), asking, sandbox_high).await;
+        let (text, failed) = crate::tools::call_for_chat(app, chat.id(), crate::chat::ANTHROPIC, name, b["input"].clone(), asking, sandbox_high).await;
         results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
     }
     results

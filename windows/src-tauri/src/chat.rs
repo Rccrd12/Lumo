@@ -857,9 +857,14 @@ pub fn model_for(settings: &Settings, provider: &str) -> String {
 
 /// `settings` with the provider and model a chat is on (the page keeps them
 /// by chat, chats.ts): that chat is answered by them, whatever the picker
-/// shows for another chat meanwhile. None, or empty, leaves the settings' own.
+/// shows for another chat meanwhile. None, or empty, leaves the settings' own;
+/// so does a provider the user took out of the chat (Settings → Chat → Show
+/// in the chat), as the page does (providers.ts onChatModel).
 pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>) -> Settings {
     let Some(provider) = provider.map(str::trim).filter(|p| !p.is_empty()) else { return settings };
+    if provider != settings.chat_provider && settings.hidden_chat_providers.iter().any(|h| h == provider) {
+        return settings;
+    }
     settings.chat_provider = provider.to_string();
     if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
         if provider == ANTHROPIC {
@@ -1869,6 +1874,10 @@ mod tests {
         // Nothing named: the settings as they are.
         let d = with_pick(settings.clone(), None, Some("x"));
         assert_eq!((d.chat_provider.as_str(), model_for(&d, "openai").as_str()), ("openai", "gpt-4o"));
-        assert_eq!(with_pick(settings, Some(" "), None).chat_provider, "openai");
+        assert_eq!(with_pick(settings.clone(), Some(" "), None).chat_provider, "openai");
+        // A provider taken out of the chat: the settings' own answers.
+        let hidden = Settings { hidden_chat_providers: vec!["codex".into()], ..settings };
+        let e = with_pick(hidden.clone(), Some("codex"), Some("gpt-5"));
+        assert_eq!((e.chat_provider.as_str(), model_for(&e, "codex").as_str()), ("openai", model_for(&hidden, "codex").as_str()));
     }
 }

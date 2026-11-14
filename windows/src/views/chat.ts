@@ -89,7 +89,7 @@ import {
 } from "../core/bridge";
 import {
   activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps, storedPermissionMode, withPermissionMode,
-  anyProviderReady, modelFor, onChatModel, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
+  anyProviderReady, modelFor, onChatModel, visibleProviders, withModel, type PermissionMode, type ProviderId, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
@@ -750,6 +750,8 @@ interface Run {
 
 /** A provider that streams no tools shows the screenshots or the file this long, then Thinking…. */
 const FIRST_ACTIVITY_MS = 1200;
+/** How long a question waits for its chat's model to be checked (checkChatModel). */
+const MODEL_CHECK_WAIT_MS = 3000;
 
 /** How long Lumo shows that an answer came (his hop) or went wrong (his shake). */
 export const SETTLE_MS = 2000;
@@ -1216,6 +1218,11 @@ interface Picker {
   close(): void;
   /** Asks a local model's server what the model picked can do, when it changed (or `force`d). */
   refreshCaps(force?: boolean): void;
+  /**
+   * The model to use in place of `model` with provider `id` when its list no
+   * longer offers it (a model retired since a chat was on it), else null.
+   */
+  replacementFor(id: string, model: string): Promise<string | null>;
   readonly isOpen: boolean;
 }
 
@@ -1647,11 +1654,31 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     onChange();
   }
 
+  async function replacementFor(id: string, model: string): Promise<string | null> {
+    const p = providerDef(id);
+    if (p.id !== id || !model) return null;
+    let models = p.urlField ? undefined : cache.get(p.id);
+    if (!models) {
+      // The list is asked only where that costs nothing more than the picker
+      // opening on it: a provider called by its API with its key, or Claude
+      // Code's own list. No CLI or model server is started for it.
+      if (!isApiProvider(p.id) && p.id !== "claude-code") return null;
+      if (p.key && !(await Bridge.secretPresent(p.key))) return null;
+      const listed = await Bridge.chatModels(p.id);
+      if (!Array.isArray(listed)) return null;
+      models = listed;
+      cache.set(p.id, models);
+    }
+    const keep = pickModel(p, models.map((m) => m.id), model);
+    return keep && keep !== model ? keep : null;
+  }
+
   return {
     el,
     open,
     close,
     refreshCaps,
+    replacementFor,
     get isOpen() {
       return isOpen;
     },
@@ -3419,8 +3446,10 @@ export function buildPrompt(
       void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
     }
     State.chatId = c.id;
-    // The picker shows the provider and model this chat is on (as it was left).
-    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model } : { provider: c.provider, model: c.model }));
+    // The picker shows the provider and model this chat is on (as it was left);
+    // a voice call's transcript has none, and leaves the picker as it is.
+    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model } : null));
+    void checkChatModel(c.id);
     State.droppedFile = null;
     State.promptContext = null;
     if (picker.isOpen) picker.close();
@@ -3440,6 +3469,48 @@ export function buildPrompt(
     if (next === State.settings) return;
     State.settings = next;
     saveSettings();
+  }
+
+  /** The model check of a chat still under way, by chat: its question waits for it. */
+  const modelChecks = new Map<string, Promise<void>>();
+
+  /**
+   * Chat `id`'s model, checked against its provider's list: one no longer
+   * offered (retired since the chat was on it) gives way to the one the
+   * picker would pick, in the chat and, where it is the provider's model in
+   * the settings, there too, so a new chat does not start on it either.
+   */
+  function checkChatModel(id: string): Promise<void> {
+    const known = modelChecks.get(id);
+    if (known) return known;
+    const on = chatModelOf(id);
+    if (!on?.model) return Promise.resolve();
+    const { provider, model } = on;
+    const check = picker.replacementFor(provider, model)
+      .then((next) => {
+        if (!next) return;
+        // Picked again meanwhile: that pick stands.
+        const now = chatModelOf(id);
+        if (now?.provider === provider && now.model === model) setChatModel(id, provider, next);
+        if (modelFor(State.settings, provider) === model) {
+          State.settings = withModel(State.settings, provider as ProviderId, next);
+          saveSettings();
+          State.notify();
+        }
+      })
+      // No list (offline, the key refused): the model stays, and says so itself if it fails.
+      .catch(() => {})
+      .finally(() => modelChecks.delete(id));
+    modelChecks.set(id, check);
+    return check;
+  }
+
+  /** The check of chat `id`'s model, waited for at most `MODEL_CHECK_WAIT_MS`. */
+  function modelChecked(id: string): Promise<void> {
+    const check = modelChecks.get(id) ?? checkChatModel(id);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, MODEL_CHECK_WAIT_MS)));
+    return Promise.race([check, late]).finally(() => clearTimeout(timer));
   }
 
   /** A new chat; an answer still being written in the one before goes on in the background. */
@@ -4096,6 +4167,8 @@ export function buildPrompt(
       const waiting = screen;
       const shared = auto ? waiting : await withAuto(waiting);
       if (!auto && (shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], query);
+      // A chat's model that may be retired is checked first: just opened, or not on screen.
+      if (away || modelChecks.has(askedIn)) await modelChecked(askedIn);
       // Another chat came on screen meanwhile: the question goes back to the
       // field rather than into it.
       if (!away && State.chatId !== askedIn) {
