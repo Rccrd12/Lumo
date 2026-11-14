@@ -398,7 +398,7 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     const edit = onEdit ? msgAction("msg-edit", STRINGS.edit, svg(ICONS.pencil, 12, { stroke: 1.8 }), () => onEdit(message)) : null;
     bar.append(...[when, retry, edit, copy].filter((x): x is HTMLElement => x != null));
     const sent = sentBubble(message.content);
-    foldLong(sent, message.id);
+    foldLong(sent, message.content);
     row = h("div", { class: `chat-row user${state}` }, sent, bar);
   } else {
     const reply = h("div", { class: "reply" });
@@ -428,8 +428,13 @@ function sentBubble(text: string): HTMLElement {
 
 /** Taller than this (page px), a question is folded to its first lines (style.css `.bubble-body.folded`), with Show more in it. */
 const FOLD_OVER = 240;
-/** The long questions opened with Show more, by chat and message: a redrawn log keeps them open. */
+/**
+ * The long questions opened with Show more, by chat and text: a redrawn log
+ * keeps them open, and so does a chat opened again, whose messages are given
+ * new ids (openChat). The oldest go past UNFOLDED_KEPT.
+ */
 const unfolded = new Set<string>();
+const UNFOLDED_KEPT = 100;
 /** Each bubble's own measure, once it is laid out and whenever its width changes. */
 const foldMeasures = new WeakMap<Element, () => void>();
 let foldObserver: ResizeObserver | null = null;
@@ -440,9 +445,9 @@ let foldObserver: ResizeObserver | null = null;
  * one is left as it is drawn. Measured once laid out, so it never depends on
  * how many characters it has.
  */
-function foldLong(bubble: HTMLElement, id: number): void {
+function foldLong(bubble: HTMLElement, text: string): void {
   if (typeof ResizeObserver === "undefined") return;
-  const key = `${State.chatId}:${id}`;
+  const key = `${State.chatId}\n${text}`;
   // Made the first time the question is found long: its text goes in `body`, the button under it.
   let body: HTMLElement | null = null;
   let btn: HTMLElement | null = null;
@@ -456,10 +461,16 @@ function foldLong(bubble: HTMLElement, id: number): void {
         e.stopPropagation();
         const closing = unfolded.has(key);
         if (closing) unfolded.delete(key);
-        else unfolded.add(key);
+        else unfold(key);
         paint();
         // Folded again from far down: the question's top comes back in sight.
         if (closing) bubble.scrollIntoView?.({ block: "nearest" });
+      });
+      // Tab reaching a link in the hidden lines opens the question, so what has the keyboard is in sight.
+      body.addEventListener("focusin", () => {
+        if (!body?.classList.contains("folded")) return;
+        unfold(key);
+        paint();
       });
       bubble.append(body, btn);
     }
@@ -467,14 +478,23 @@ function foldLong(bubble: HTMLElement, id: number): void {
     const open = unfolded.has(key);
     btn.hidden = !long;
     body.classList.toggle("folded", long && !open);
-    btn.textContent = t(open ? STRINGS.showLess : STRINGS.showMore);
-    btn.setAttribute("aria-expanded", String(open));
+    // Only what changed: the island resizing measures every bubble at each frame,
+    // and a rewritten label is a change in the log that its observers act on.
+    const label = t(open ? STRINGS.showLess : STRINGS.showMore);
+    if (btn.textContent !== label) btn.textContent = label;
+    if (btn.getAttribute("aria-expanded") !== String(open)) btn.setAttribute("aria-expanded", String(open));
   };
   foldObserver ??= new ResizeObserver((entries) => {
     for (const entry of entries) foldMeasures.get(entry.target)?.();
   });
   foldMeasures.set(bubble, paint);
   foldObserver.observe(bubble);
+}
+
+/** Opened with Show more: kept, the oldest one going past UNFOLDED_KEPT. */
+function unfold(key: string): void {
+  unfolded.add(key);
+  if (unfolded.size > UNFOLDED_KEPT) unfolded.delete(unfolded.values().next().value as string);
 }
 
 /** Takes plainQuestion's marks back out of the drawn text, so a selection copies what was written. */
@@ -1758,6 +1778,11 @@ export function buildPrompt(
     stuck = fromEnd() <= STUCK_PX;
     drawToEnd();
   }, { passive: true });
+  // Show more opens a question downwards, from where it is read: the log lets
+  // go of its end, so it is not carried to the question's last line.
+  log.addEventListener("click", (e) => {
+    if ((e.target as Element | null)?.closest?.(".msg-fold")) stuck = false;
+  }, true);
   // A turn of the wheel upwards lets go at once, before the scroll it starts.
   log.addEventListener("wheel", (e) => {
     if (e.deltaY < 0 && !e.ctrlKey && !e.shiftKey) stuck = false;
