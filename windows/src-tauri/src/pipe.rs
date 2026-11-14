@@ -296,6 +296,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     }
     payload["request_id"] = json!(id);
     let payload_cut = payload.get("lumo_input_cut") == Some(&json!(true));
+    // Arguments the relay couldn't read (lumo-hook normalize.rs): the agent
+    // reads them one way, Lumo another, so nothing allows them from here.
+    let payload_unread = payload.get("lumo_input_unread") == Some(&json!(true));
     log::line(format!("hook PermissionRequest id={id}"));
     let tool_name = payload.get("tool_name").and_then(Value::as_str).map(str::to_string);
     let tool_input = payload.get("tool_input").cloned().unwrap_or(Value::Null);
@@ -325,8 +328,18 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // the chat's Auto nothing waits for them. Only "Allow for this session"
     // never remembers it (session_rules.rs).
     if payload_cut {
-        log::line(format!("hook id={id} was cut on its way: the card showed its beginning"));
+        log::line(format!("hook id={id} was cut on its way: the card showed its beginning and its end"));
     }
+    // What Lumo couldn't read is never allowed from here, whatever came back
+    // (a mistake in the page, a key): the agent asks in its own window, as if
+    // Lumo were closed; the island chat's Antigravity run is told why.
+    let reply = match reply {
+        Ok(d) if payload_unread && is_allow(&d) => {
+            log::line(format!("hook id={id} allow refused: Lumo couldn't read its arguments"));
+            Err(Unanswered::Unread)
+        }
+        other => other,
+    };
     let decision = reply.as_ref().ok().cloned();
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     with_auto_allowable(|set| set.remove(&id));
@@ -368,6 +381,13 @@ enum Unanswered {
     TimedOut,
     /// Taken down before anyone answered: Lumo paused, the turn moved on.
     Released,
+    /// Allowed, but its arguments are ones Lumo couldn't read: refused.
+    Unread,
+}
+
+/// A decision that lets the request run.
+fn is_allow(decision: &str) -> bool {
+    matches!(decision.trim(), "allow" | "always" | "edits")
 }
 
 impl Unanswered {
@@ -376,6 +396,7 @@ impl Unanswered {
             Unanswered::NotShown => "busy",
             Unanswered::TimedOut => "timeout",
             Unanswered::Released => "released",
+            Unanswered::Unread => "unread",
         }
     }
 }
@@ -728,6 +749,9 @@ mod tests {
             assert_eq!(Unanswered::TimedOut.word(), "timeout");
             assert_eq!(Unanswered::NotShown.word(), "busy");
             assert_eq!(Unanswered::Released.word(), "released");
+            assert_eq!(Unanswered::Unread.word(), "unread");
+            assert!(is_allow("allow") && is_allow("always") && is_allow(" edits\n"));
+            assert!(!is_allow("deny") && !is_allow(r#"{"answers":{}}"#));
         });
     }
 }

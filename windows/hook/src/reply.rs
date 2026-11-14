@@ -376,6 +376,7 @@ fn unanswered_reason(word: &str, why: Unanswered, secs: u64) -> String {
             "Nobody answered Lumo's card within {secs} s: the user may be away. Don't retry this on your own: say in your answer what you wanted to do, and wait for their reply."
         ),
         ("busy", _) => "Lumo couldn't show this request: it is paused, or other requests are already waiting. Try again in a moment; if it happens again, tell the user.".to_string(),
+        ("unread", _) => "Lumo couldn't read this request's arguments, so it can't be allowed from Lumo. Write the call again with plain arguments, or say in your answer what you wanted to do.".to_string(),
         ("released", _) => "Lumo took this request down before anyone answered (it was paused, or the request was withdrawn). Say in your answer what you wanted to do.".to_string(),
         ("", Unanswered::NotRunning) => "Lumo isn't running, so nobody could approve this. Say in your answer what you wanted to do.".to_string(),
         _ => "Nobody answered this request in Lumo, so it was not done. Don't retry it on your own: say in your answer what you wanted to do.".to_string(),
@@ -648,6 +649,7 @@ mod tests {
         assert!(reason(antigravity_island(None, Unanswered::TimedOut, 60)).contains("within 60 s"));
         assert!(reason(island(Some("unanswered busy"))).contains("other requests are already waiting"));
         assert!(reason(island(Some("unanswered released"))).contains("before anyone answered"));
+        assert!(reason(island(Some("unanswered unread"))).starts_with("Lumo couldn't read this request's arguments"));
         assert!(reason(antigravity_island(None, Unanswered::NotRunning, 100)).starts_with("Lumo isn't running"));
         for r in [island(Some("deny")), island(None), island(Some("unanswered timeout"))] {
             assert!(!r.contains("Nobody approved it"), "{r}");
