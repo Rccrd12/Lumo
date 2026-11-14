@@ -540,13 +540,12 @@ pub fn server_entry() -> Value {
     })
 }
 
-/// `--tools=…` for Lumo's server: `first` (agy's plan), the computer
-/// (`computer`, while a chat turn may use it), the email as Security lets the
-/// AI have it (`mail`), and the island's tools.
-pub fn kit(first: &str, computer: bool, mail: &str) -> String {
-    // The computer always with Lumo's plan tool: no plan, no computer (`gate`).
-    let plan = if computer && first != "plan" { "computer,plan" } else if computer { "computer" } else { "" };
-    let parts: Vec<&str> = [first, plan, mail, "island"].into_iter().filter(|p| !p.is_empty()).collect();
+/// `--tools=…` for Lumo's server in agy's workspace: its plan tool, always
+/// (no plan, no computer: `gate`), the computer while a chat turn may use it
+/// (`computer`), the email as Security lets the AI have it (`mail`), and the
+/// island's tools.
+fn kit(computer: bool, mail: &str) -> String {
+    let parts: Vec<&str> = ["plan", if computer { "computer" } else { "" }, mail, "island"].into_iter().filter(|p| !p.is_empty()).collect();
     format!("--tools={}", parts.join(","))
 }
 
@@ -576,7 +575,7 @@ pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool, computer: 
         None => json!({}),
     };
     let mut entry = server_entry();
-    entry["args"] = json!(["--mcp", kit("plan", computer, mail)]);
+    entry["args"] = json!(["--mcp", kit(computer, mail)]);
     let Some(root) = config.as_object_mut() else { return };
     let servers = root.entry("mcpServers").or_insert_with(|| json!({}));
     let Some(servers) = servers.as_object_mut() else { return };
@@ -666,21 +665,23 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>, chat: &str, stopped: bool) -> Op
 
 // ── The other agents ─────────────────────────────────────────
 //
-// Codex, Antigravity CLI, Copilot CLI and Cursor CLI get the same tools in the
-// chat, while computer use is on. They call Lumo's tools without asking
-// (Lumo lets them: `default_tools_approval_mode`, `--allow-tool lumo`,
-// `Mcp(lumo:*)`, and agy's own card leaves the computer to Lumo), so Lumo asks
-// here, before each action, as the chat's permission mode says: Ask every
-// time is a card for each action that does something (looking never asks),
-// Auto none, Plan only refuses them. The state is Lumo's: nothing the agent
-// writes in its own configuration asks less.
+// Antigravity CLI gets the same tools in the chat while computer use is on.
+// It calls Lumo's tools without asking (agy's own card leaves the computer
+// to Lumo, hook/src/reply.rs), so Lumo asks here, before each action, as the
+// chat's permission mode says: Ask every time is a card for each action that
+// does something (looking never asks), Auto none once the user said yes on
+// the first one of the chat (`CONSENTED`), Plan only refuses them. Each chat
+// by its own turn (the `chat` lumo-hook sends, its LUMO_CHAT_ID): a Claude
+// Code chat using the computer at the same time asks for itself, as always.
+// The state is Lumo's: nothing the agent writes in its own configuration
+// asks less.
 
 /// How Lumo asks for another agent's actions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Asks {
     /// Ask every time: a card for each action.
     Card,
-    /// Auto: none.
+    /// Auto: none, after the chat's first (`CONSENTED`).
     Free,
     /// Plan only: only looking.
     LookOnly,
@@ -695,73 +696,152 @@ impl Asks {
             _ => Asks::Card,
         }
     }
+
+    fn rank(self) -> u8 {
+        match self {
+            Asks::LookOnly => 2,
+            Asks::Card => 1,
+            Asks::Free => 0,
+        }
+    }
+
+    /// The stricter of the two: the mode the turn started in, and the one
+    /// picked since. Asking more takes effect at once (the very next action);
+    /// asking less waits for the next turn, which the agent starts in it.
+    pub fn stricter(self, other: Asks) -> Asks {
+        if other.rank() > self.rank() { other } else { self }
+    }
 }
 
-/// Another agent's chat turns using the computer: their id, the agent's tag
-/// (`lumo_agent`, for the card), how Lumo asks, and whether its model writes
-/// points on a 0–999 grid (`uses_grid`).
-static OTHERS: Mutex<Vec<(usize, &'static str, Asks, bool)>> = Mutex::new(Vec::new());
+/// Another agent's chat turn using the computer.
+#[derive(Clone, Debug)]
+struct Other {
+    id: usize,
+    /// The island chat it answers (LUMO_CHAT_ID).
+    chat: String,
+    /// The chat provider, for its permission mode now (settings.rs permission_mode_for).
+    provider: &'static str,
+    /// The agent's tag (`lumo_agent`), for the card.
+    agent: &'static str,
+    /// How Lumo asked when the turn started.
+    started: Asks,
+    /// Its model writes points on the 0–999 grid (`uses_grid`).
+    grid: bool,
+}
+
+static OTHERS: Mutex<Vec<Other>> = Mutex::new(Vec::new());
 static OTHER_IDS: AtomicUsize = AtomicUsize::new(1);
 
+/// The chats whose agent the user let use the computer without cards in
+/// Auto, on the first card of the chat (until Lumo quits).
+static CONSENTED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn others() -> MutexGuard<'static, Vec<Other>> {
+    OTHERS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The other agent's turn the chat `chat` is in, if it is in one.
+fn other_of(chat: &str) -> Option<Other> {
+    others().iter().find(|o| o.chat == chat).cloned()
+}
+
+/// The user said yes, on the first card, to the chat's agent acting in Auto.
+fn consented(chat: &str) -> bool {
+    CONSENTED.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|c| c == chat)
+}
+
+fn consent(chat: &str) {
+    let mut all = CONSENTED.lock().unwrap_or_else(|e| e.into_inner());
+    if !all.iter().any(|c| c == chat) {
+        all.push(chat.to_string());
+    }
+}
+
 /// Another agent's chat turn that may use the computer: the computer is
-/// usable from `begin`, and let go when it is dropped (an answer, an error,
-/// Stop alike). As Claude Code's turn, it is the chat `chat`'s, for the
+/// usable from `begin`, and let go by `finish` (or when it is dropped: an
+/// error, a panic). As Claude Code's turn, it is the chat `chat`'s, for the
 /// provider `provider` (the island's name and colour), and its agent gives
 /// its plan before anything is done (`gate`).
 pub struct OtherTurn {
     id: usize,
     app: AppHandle,
     chat: String,
+    done: bool,
 }
 
 impl OtherTurn {
-    pub fn begin(app: &AppHandle, provider: &str, chat: &str, agent: &'static str, mode: &str, grid: bool) -> OtherTurn {
+    pub fn begin(app: &AppHandle, provider: &'static str, chat: &str, agent: &'static str, mode: &str, grid: bool) -> OtherTurn {
         let id = OTHER_IDS.fetch_add(1, Ordering::SeqCst);
-        OTHERS.lock().unwrap_or_else(|e| e.into_inner()).push((id, agent, Asks::of(mode), grid));
+        others().push(Other { id, chat: chat.to_string(), provider, agent, started: Asks::of(mode), grid });
         begin_turn(Who::of(provider), chat);
-        OtherTurn { id, app: app.clone(), chat: chat.to_string() }
+        OtherTurn { id, app: app.clone(), chat: chat.to_string(), done: false }
+    }
+
+    /// The turn is over (`stopped`: the chat's Stop ended it): what it leaves
+    /// under its answer when it used the computer, as Claude Code's (`end_turn`).
+    pub fn finish(mut self, stopped: bool) -> Option<Value> {
+        self.done = true;
+        others().retain(|o| o.id != self.id);
+        end_turn(&self.app, &self.chat, stopped)
     }
 }
 
 impl Drop for OtherTurn {
     fn drop(&mut self) {
-        OTHERS.lock().unwrap_or_else(|e| e.into_inner()).retain(|(id, _, _, _)| *id != self.id);
+        if self.done {
+            return;
+        }
+        others().retain(|o| o.id != self.id);
         let _ = end_turn(&self.app, &self.chat, false);
     }
 }
 
-/// How Lumo asks while other agents' turns run, the strictest of them, with
-/// the agent a card names; None while only Claude Code's run (it asks itself).
-fn others_ask() -> Option<(Asks, &'static str)> {
-    let others = OTHERS.lock().unwrap_or_else(|e| e.into_inner());
-    let rank = |a: Asks| match a {
-        Asks::LookOnly => 2,
-        Asks::Card => 1,
-        Asks::Free => 0,
-    };
-    others.iter().max_by_key(|(_, _, a, _)| rank(*a)).map(|(_, agent, a, _)| (*a, *agent))
+/// How Lumo asks for the action of another agent's turn now: as the turn
+/// started, or stricter if the chat's mode asks more since.
+fn asks_now(app: &AppHandle, other: &Other) -> Asks {
+    let mode = app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).permission_mode_for(other.provider);
+    other.started.stricter(Asks::of(&mode))
+}
+
+/// What Lumo does before an action of another agent's turn, from how it asks
+/// and whether the user already said yes to it in Auto (`consented`).
+#[derive(Debug, PartialEq, Eq)]
+enum Before {
+    /// Nothing: the action goes.
+    Go,
+    /// A card for this action.
+    Card,
+    /// The chat's first card in Auto: a yes counts for the rest of the chat.
+    Consent,
+    /// Plan only: refused.
+    Refuse,
+}
+
+fn before(asks: Asks, consented: bool) -> Before {
+    match asks {
+        Asks::LookOnly => Before::Refuse,
+        Asks::Card => Before::Card,
+        Asks::Free if consented => Before::Go,
+        Asks::Free => Before::Consent,
+    }
 }
 
 // ── Gemini's grid ───────────────────────────────────────────────────────────
 //
 // Gemini models count points on a 0–999 grid over an image, whatever its size
 // in pixels (Google's own computer use does). Asked for the screenshot's
-// pixels, they mix the two, x one way and y the other (recorded on this
-// branch). For them Lumo asks for the grid outright and turns its points into
-// the screenshot's pixels itself, and the points it answers with back into
-// the grid.
+// pixels, they mix the two, x one way and y the other (seen with Gemini in
+// Antigravity CLI). For them Lumo asks for the grid outright and turns its
+// points into the screenshot's pixels itself, and the points it answers with
+// back into the grid. Only for the chat whose turn writes on the grid: another
+// chat using the computer at the same time (Claude Code, Gemini Live's
+// helper) keeps the pixels.
 
 /// The model writes points on the 0–999 grid: a Gemini model, or Antigravity
 /// CLI's own default (Gemini).
 pub fn uses_grid(provider: &str, model: &str) -> bool {
     let m = model.trim().to_ascii_lowercase();
     m.contains("gemini") || (provider == crate::antigravity_cli::PROVIDER && (m.is_empty() || m == "default"))
-}
-
-/// The turns using the computer now all write points on the grid.
-fn grid_now() -> bool {
-    let others = OTHERS.lock().unwrap_or_else(|e| e.into_inner());
-    !others.is_empty() && others.iter().all(|o| o.3) && TURN.load(Ordering::SeqCst) == others.len()
 }
 
 /// A grid value (0–999) on an axis `size` pixels long, as a pixel of it.
@@ -836,21 +916,55 @@ pub fn only_looks(tool: &str) -> bool {
     matches!(tool, "screenshot" | "zoom" | "cursor_position" | "wait")
 }
 
-/// In front of each question to another agent while computer use is on:
-/// none of them takes a system prompt for it, and the conversation may have
-/// started with it off.
-pub fn with_note(text: &str, grid: bool) -> String {
+/// The sentence of `computer_note!` about the points, which a model on the
+/// grid is told otherwise (`with_note`): never both.
+const NOTE_PIXELS: &str = "; give coordinates in that screenshot's pixels.";
+
+/// In front of a question to another agent while computer use is on: none of
+/// them takes a system prompt for it, and the conversation may have started
+/// with it off. The whole note the first time its conversation hears it
+/// (`full`), then a short reminder (`note_heard`).
+pub fn with_note(text: &str, grid: bool, full: bool) -> String {
     let points = if grid {
         "Give every point as [x, y] on a 0–999 grid over the last screenshot, both numbers on the grid: [0, 0] is its top-left corner, [999, 999] its bottom-right, whatever its size in pixels. Lumo answers with points on the same grid. "
     } else {
         "Coordinates are always [x, y] in pixels of the last screenshot, counted from its top-left corner: never normalized, never fractions. "
     };
+    if !full {
+        return format!(
+            "<lumo_computer>\nComputer use is still on, with the tools and rules Lumo gave earlier in this conversation: your plan with update_plan first, a screenshot before acting. {points}\n</lumo_computer>\n\n{text}"
+        );
+    }
+    let note = if grid { computer_note!().replace(NOTE_PIXELS, ".") } else { computer_note!().to_string() };
     format!(
-        "<lumo_computer>\n{}{points}{}\n</lumo_computer>\n\n{text}",
-        computer_note!(),
+        "<lumo_computer>\n{note}{points}{}\n</lumo_computer>\n\n{text}",
         "After each click Lumo says where it landed; if that is not where you meant, take a screenshot and try again. \
 This replaces what Lumo said before about never taking a screenshot yourself."
     )
+}
+
+/// The conversations (chat, the CLI's own id, points on the grid) that heard
+/// the whole note since Lumo started: the next question there needs only the
+/// reminder. A new conversation, another way of giving points, or Lumo
+/// started again, and the whole note comes again.
+static NOTE_HEARD: Mutex<Vec<(String, String, bool)>> = Mutex::new(Vec::new());
+/// The conversations kept in NOTE_HEARD, at most.
+const MAX_NOTE_HEARD: usize = 64;
+
+/// The conversation `conversation` of the chat `chat` heard the whole note, for `grid`.
+pub fn note_heard(chat: &str, conversation: Option<&str>, grid: bool) -> bool {
+    let Some(conversation) = conversation else { return false };
+    NOTE_HEARD.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(c, s, g)| c == chat && s == conversation && *g == grid)
+}
+
+/// The conversation `conversation` of the chat `chat` has the whole note now, for `grid`.
+pub fn note_given(chat: &str, conversation: &str, grid: bool) {
+    let mut heard = NOTE_HEARD.lock().unwrap_or_else(|e| e.into_inner());
+    heard.retain(|(c, _, _)| c != chat);
+    heard.push((chat.to_string(), conversation.to_string(), grid));
+    if heard.len() > MAX_NOTE_HEARD {
+        heard.remove(0);
+    }
 }
 
 /// The input as the card reads it (core/computer.ts): its points as `[x, y]`
@@ -1948,18 +2062,26 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     if STOPPED.load(Ordering::SeqCst) {
         return refuse(STOPPED_TEXT);
     }
+    // Another agent's turn in this chat (none for Claude Code's, which asks
+    // for itself): how Lumo asks for its action, and how its model gives points.
+    let other = other_of(&chat);
     // A model on the grid: its points in the screenshot's pixels from here on.
-    let grid = grid_now();
+    let grid = other.as_ref().is_some_and(|o| o.grid);
     let input = if grid { from_grid(&input, VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied()) } else { input };
     let action = match parse(&tool, &input) {
         Ok(a) => a,
         Err(e) => return refuse(e),
     };
     // Another agent's turn: Lumo asks, or refuses, itself.
-    let others = if only_looks(&tool) { None } else { others_ask() };
-    if matches!(others, Some((Asks::LookOnly, _))) {
-        return refuse(PLAN_TEXT);
-    }
+    let ask = match &other {
+        Some(o) if !only_looks(&tool) => match before(asks_now(app, o), consented(&chat)) {
+            Before::Refuse => return refuse(PLAN_TEXT),
+            Before::Go => None,
+            Before::Card => Some((o.agent, false)),
+            Before::Consent => Some((o.agent, true)),
+        },
+        _ => None,
+    };
     {
         let mut job = job();
         // No plan of its own, no computer: nothing is taken (no glow, no mouse) before it.
@@ -1995,16 +2117,26 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         mouse_to_user();
         return refuse(STOPPED_TEXT);
     }
-    if let Some((Asks::Card, agent)) = others {
-        let card = json!({
+    if let Some((agent, first)) = ask {
+        let mut card = json!({
             "hook_event_name": "PermissionRequest",
             "lumo_island": true,
             "lumo_agent": agent,
             "tool_name": format!("mcp__lumo__{tool}"),
             "tool_input": card_input(&input),
         });
+        // The chat's first action in Auto: the card says Allow counts for the
+        // rest of the chat, and the island never answers it by itself (hooks.ts).
+        if first {
+            card["lumo_remembered"] = json!(true);
+            card["lumo_computer_consent"] = json!(true);
+        }
         match crate::pipe::ask(app, card).await.as_deref() {
-            Some("allow") => {}
+            Some("allow") => {
+                if first {
+                    consent(&chat);
+                }
+            }
             Some(_) => return refuse(DENIED_TEXT),
             None => return refuse("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment."),
         }
@@ -3197,25 +3329,49 @@ mod tests {
     }
 
     #[test]
-    fn the_other_agents_get_the_computer_in_their_kit_and_a_note_in_front() {
-        assert_eq!(kit("plan", false, ""), "--tools=plan,island");
-        assert_eq!(kit("plan", true, "mail,mailsend"), "--tools=plan,computer,mail,mailsend,island");
-        assert_eq!(kit("", true, ""), "--tools=computer,plan,island", "the computer always with Lumo's plan tool");
-        assert_eq!(kit("", false, "mail"), "--tools=mail,island");
-        let text = with_note("click Send", false);
+    fn antigravity_gets_the_computer_in_its_kit_and_a_note_in_front() {
+        assert_eq!(kit(false, ""), "--tools=plan,island");
+        assert_eq!(kit(true, "mail,mailsend"), "--tools=plan,computer,mail,mailsend,island");
+        assert_eq!(kit(true, ""), "--tools=plan,computer,island", "the computer always with Lumo's plan tool");
+        let text = with_note("click Send", false, true);
         assert!(text.starts_with("<lumo_computer>\n") && text.ends_with("</lumo_computer>\n\nclick Send"));
         assert!(text.contains("lumo MCP server") && text.contains("Esc") && text.contains("never normalized"));
         assert!(text.contains("replaces what Lumo said before"));
+        // Then a short reminder, with the same rule for the points.
+        let again = with_note("click Send", false, false);
+        assert!(again.len() < text.len() / 3 && again.contains("still on") && again.contains("never normalized") && again.ends_with("\n\nclick Send"));
+    }
+
+    #[test]
+    fn a_model_on_the_grid_is_never_told_pixels_too() {
+        assert!(computer_note!().contains(NOTE_PIXELS), "the sentence the grid's note takes out");
+        let grid = with_note("x", true, true);
+        assert!(grid.contains("0–999 grid") && !grid.contains("screenshot's pixels"), "{grid}");
+        assert!(with_note("x", false, true).contains("screenshot's pixels") && !with_note("x", false, true).contains("0–999 grid"));
+        assert!(with_note("x", true, false).contains("0–999 grid"));
+    }
+
+    #[test]
+    fn the_whole_note_once_per_conversation() {
+        assert!(!note_heard("note-a", None, true), "a new conversation hears it whole");
+        assert!(!note_heard("note-a", Some("s1"), true));
+        note_given("note-a", "s1", true);
+        assert!(note_heard("note-a", Some("s1"), true));
+        assert!(!note_heard("note-a", Some("s1"), false), "the points given another way: whole again");
+        assert!(!note_heard("note-a", Some("s2"), true), "another conversation of the chat");
+        assert!(!note_heard("note-b", Some("s1"), true), "another chat");
+        note_given("note-a", "s2", true);
+        assert!(!note_heard("note-a", Some("s1"), true), "one conversation per chat");
     }
 
     #[test]
     fn a_gemini_model_gives_and_reads_points_on_the_grid() {
         assert!(uses_grid("antigravity-cli", "default") && uses_grid("antigravity-cli", ""));
-        assert!(uses_grid("antigravity-cli", "gemini-3.8-flash-low") && uses_grid("copilot-cli", "Gemini 3 Pro"));
-        assert!(!uses_grid("antigravity-cli", "claude-sonnet-4.5") && !uses_grid("codex", "default") && !uses_grid("cursor-cli", "gpt-5"));
-        // The screenshot of a 2560×1440 screen, 1430×804 pixels (recorded on this branch).
+        assert!(uses_grid("antigravity-cli", "gemini-3.8-flash-low") && uses_grid("antigravity-cli", "Gemini 3 Pro"));
+        assert!(!uses_grid("antigravity-cli", "claude-sonnet-4.5") && !uses_grid("claude-code", "default"));
+        // The screenshot of a 2560×1440 screen, 1430×804 pixels.
         let v = View { display: 0, rect: (0, 0, 2560, 1440), w: 1430, h: 804 };
-        // «Apri»: [515, 591] on the grid is [736, 475] in the screenshot.
+        // «Apri»: [515, 591] on the grid is [737, 475] in the screenshot.
         let px = from_grid(&json!({ "coordinate": [515, 591] }), Some(v));
         assert_eq!(px["coordinate"], json!([737, 475]));
         assert_eq!(from_grid(&json!({ "x": 0, "y": 999 }), Some(v))["coordinate"], json!([0, 803]), "the corners stay inside");
@@ -3228,7 +3384,6 @@ mod tests {
         let shot = to_grid_text("Screen 1 of 2, 1430×804 pixels (Lumo's island and Settings are left out). Coordinates for the other tools are in these pixels.", v);
         assert!(shot.contains("0–999 grid") && !shot.contains("in these pixels"), "{shot}");
         assert_eq!(to_grid_text("The region [1, 2, 3, 4], enlarged. [a, b] [7]", v), "The region [1, 2, 3, 4], enlarged. [a, b] [7]", "only pairs of numbers");
-        assert!(with_note("x", true).contains("0–999 grid") && !with_note("x", false).contains("0–999 grid"));
     }
 
     #[test]
@@ -3253,18 +3408,39 @@ mod tests {
         for acts in ["left_click", "type", "key", "scroll", "left_click_drag", "mouse_move", "double_click"] {
             assert!(!only_looks(acts), "{acts}");
         }
-        // The strictest of the turns running wins (the state alone: OtherTurn needs the app).
-        let mut others = OTHERS.lock().unwrap();
-        others.clear();
-        drop(others);
-        assert_eq!(others_ask(), None, "Claude Code's turns ask themselves");
-        OTHERS.lock().unwrap().push((1000, "codex", Asks::Free, false));
-        assert_eq!(others_ask(), Some((Asks::Free, "codex")));
-        OTHERS.lock().unwrap().push((1001, "antigravity", Asks::Card, true));
-        assert_eq!(others_ask(), Some((Asks::Card, "antigravity")));
-        OTHERS.lock().unwrap().push((1002, "cursor", Asks::LookOnly, false));
-        assert_eq!(others_ask(), Some((Asks::LookOnly, "cursor")));
-        OTHERS.lock().unwrap().clear();
+        // Asking more counts at once, asking less from the next turn.
+        assert_eq!(Asks::Free.stricter(Asks::Card), Asks::Card, "Ask every time picked mid-turn: a card for the next action");
+        assert_eq!(Asks::Card.stricter(Asks::Free), Asks::Card, "Auto picked mid-turn: from the next turn");
+        assert_eq!(Asks::Free.stricter(Asks::LookOnly), Asks::LookOnly);
+        assert_eq!(Asks::LookOnly.stricter(Asks::Free), Asks::LookOnly);
+        // Auto: the chat's first action is a card whose Allow counts for the rest of it.
+        assert_eq!(before(Asks::Free, false), Before::Consent);
+        assert_eq!(before(Asks::Free, true), Before::Go);
+        assert_eq!(before(Asks::Card, true), Before::Card, "a yes in Auto never skips Ask every time's cards");
+        assert_eq!(before(Asks::LookOnly, true), Before::Refuse);
+    }
+
+    #[test]
+    fn each_chat_by_its_own_turn() {
+        // The state alone: OtherTurn needs the app.
+        let other = |id, chat: &str, started, grid| Other { id, chat: chat.to_string(), provider: "antigravity-cli", agent: "antigravity", started, grid };
+        others().retain(|o| !o.chat.starts_with("own-"));
+        others().push(other(2000, "own-agy", Asks::LookOnly, true));
+        others().push(other(2001, "own-agy2", Asks::Free, false));
+        // A Claude Code chat at the same time: no rule of Lumo's, its points in pixels.
+        assert!(other_of("own-claude").is_none(), "Claude Code's turns ask for themselves");
+        let agy = other_of("own-agy").unwrap();
+        assert!(agy.grid && agy.started == Asks::LookOnly);
+        let agy2 = other_of("own-agy2").unwrap();
+        assert!(!agy2.grid && agy2.started == Asks::Free, "another Antigravity chat keeps its own");
+        // The yes of the first card is the chat's alone.
+        assert!(!consented("own-agy2"));
+        consent("own-agy2");
+        consent("own-agy2");
+        assert!(consented("own-agy2") && !consented("own-agy"));
+        assert_eq!(CONSENTED.lock().unwrap().iter().filter(|c| *c == "own-agy2").count(), 1);
+        others().retain(|o| !o.chat.starts_with("own-"));
+        assert!(other_of("own-agy").is_none());
     }
 
     #[test]

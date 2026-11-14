@@ -1449,10 +1449,15 @@ pub async fn send(
         None if chat.is_workshop() => with_workshop_instructions(&text),
         None => with_instructions(&text),
     };
-    // Computer use: the note in front of every question.
+    // Computer use: the note in front of the question, whole the first time
+    // this conversation hears it, then a short reminder.
     let computer = computer && cfg!(windows);
     let grid = crate::computer::uses_grid(PROVIDER, model);
-    let text = if computer { crate::computer::with_note(&text, grid) } else { text };
+    let text = if computer {
+        crate::computer::with_note(&text, grid, !crate::computer::note_heard(chat.id(), conversation.as_deref(), grid))
+    } else {
+        text
+    };
     let input = user_event(&text);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let work = claude_code::work_dir();
@@ -1463,7 +1468,7 @@ pub async fn send(
     crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer);
     let _mail = crate::mail::agent_turn();
     // The computer usable while this turn runs, each action asked for by Lumo.
-    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
+    let computer_turn = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
 
     let app2 = app.clone();
     let events = chat.events();
@@ -1505,7 +1510,22 @@ pub async fn send(
         )
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string());
+    // What the turn did on the computer, for under its answer (as Claude Code's).
+    let recap = computer_turn.and_then(|t| t.finish(matches!(&state, Ok(Ok(s)) if s.stopped)));
+    let plain = chat::plain_question(true, context.as_ref(), &query);
+    // It failed after using the computer: the turn is kept as an empty answer
+    // that says why, so the recap of what was done on the screen is shown and
+    // saved under it (and the next turn knows it was done).
+    let failed = |error: String, recap: Option<Value>| -> Result<ChatReply, String> {
+        let Some(recap) = recap else { return Err(error) };
+        chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+        Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
+    };
+    let state = match state {
+        Ok(Ok(state)) => state,
+        Ok(Err(e)) | Err(e) => return failed(e, recap),
+    };
 
     // About how full the conversation is, for the chat's usage menu: agy does
     // not say its model's context window, the island knows it by the model's name.
@@ -1521,14 +1541,23 @@ pub async fn send(
     }
     if let Some(id) = &state.conversation {
         chat.set_cli_session(&turn, id);
+        // The conversation has the whole note of computer use now.
+        if computer {
+            crate::computer::note_given(chat.id(), id, grid);
+        }
     }
-    let plain = chat::plain_question(true, context.as_ref(), &query);
     if state.stopped {
         let shown = state.visible.trim().to_string();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
+        } else if recap.is_some() {
+            // Stopped before it wrote anything, but it used the computer: the
+            // turn is kept, as an empty answer, so the recap has an answer to
+            // go under and the next turn knows what was done.
+            chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+            return Ok(ChatReply { computer: recap, kept: Some(chat::NO_ANSWER.into()), ..ChatReply::stopped(String::new(), chat.cli_session()) });
         }
-        return Ok(ChatReply::stopped(shown, chat.cli_session()));
+        return Ok(ChatReply { computer: recap, ..ChatReply::stopped(shown, chat.cli_session()) });
     }
     let mut warning = None;
     let answer = match state.result {
@@ -1541,7 +1570,7 @@ pub async fn send(
         Some(Err(e)) => {
             let written = if state.failed_response.trim().is_empty() { state.visible.trim().to_string() } else { state.failed_response.clone() };
             if is_auth_error(&e) || written.trim().is_empty() {
-                return Err(result_error(&e));
+                return failed(result_error(&e), recap);
             }
             warning = Some(answer_warning(&e));
             written
@@ -1556,7 +1585,7 @@ pub async fn send(
         answer
     };
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply { warning, ..ChatReply::answer(answer, chat.cli_session()) })
+    Ok(ChatReply { warning, computer: recap, ..ChatReply::answer(answer, chat.cli_session()) })
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────

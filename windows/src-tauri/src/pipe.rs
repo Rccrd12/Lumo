@@ -220,7 +220,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // plan tool, of the island's timer and GitHub tools or of the user's own
     // tools (lumo-hook --mcp): one answer line.
     let answer = if let Some(request) = payload.get("lumo_computer") {
-        Some(crate::computer::serve(&app, request).await)
+        // As the chat's own: a card Lumo raises for another agent's action
+        // puts the chat in "waiting for your permission" (computer.rs serve).
+        Some(in_chat(&app, request, Box::pin(crate::computer::serve(&app, request))).await)
     } else if let Some(request) = payload.get("lumo_mail") {
         Some(in_chat(&app, request, Box::pin(crate::mail::serve(&app, request))).await)
     } else if let Some(request) = payload.get("lumo_tool") {

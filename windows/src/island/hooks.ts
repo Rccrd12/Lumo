@@ -316,6 +316,8 @@ interface HookPayload {
   lumo_session_allow?: boolean;
   /** A card of the chat's Copilot CLI or Cursor CLI in Auto: Allow is answered with the CLI's "always allow" (acp_chat.rs card). */
   lumo_remembered?: boolean;
+  /** The first computer action of the chat's Antigravity CLI in Auto: Allow lets it act without cards for the rest of the chat (computer.rs serve), so it is always a click. */
+  lumo_computer_consent?: boolean;
   /** The relay had to cut what the card shows of the request (lumo-hook's truncate_payload): it says it shows the beginning. */
   lumo_input_cut?: boolean;
   /** With lumo_input_cut: the size of the whole input, before the cut. */
@@ -354,6 +356,7 @@ const TEXT_FIELDS = [
 ] as const;
 const FLAG_FIELDS = [
   "lumo_diff_truncated", "lumo_island", "lumo_session_allow", "lumo_remembered", "lumo_agy_gate", "lumo_background",
+  "lumo_computer_consent",
 ] as const;
 const NUMBER_FIELDS = ["lumo_card_secs", "lumo_batch_total"] as const;
 const OBJECT_FIELDS = ["tool_input", "lumo_user_tool", "lumo_mail_send", "lumo_mail_action", "lumo_live_file"] as const;
@@ -1035,8 +1038,10 @@ function handleHook(island: Island, payload: HookPayload) {
       const liveFile = email ? null : liveFileChange(payload.lumo_live_file, payload.tool_input ?? {});
       const change = email ? null : mailChange(payload.lumo_mail_action) ?? liveFile;
       // The chat's Antigravity CLI run in Auto, agy's own Turbo preset: everything runs.
+      // But the first computer action of the chat: the user says yes to the rest of them.
       const agyMode = chatAgy ? parsePermissionMode(storedPermissionMode(State.settings, "antigravity-cli"), "antigravity-cli") : "default";
-      if (chatAgy && requestId && !email && !change && agyMode === "auto") {
+      const consent = payload.lumo_computer_consent === true;
+      if (chatAgy && requestId && !email && !change && !consent && agyMode === "auto") {
         void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by ${agyMode})`);
         void Bridge.approvalAutoAllow(requestId);
         break;

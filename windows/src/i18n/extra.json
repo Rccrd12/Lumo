@@ -7645,17 +7645,17 @@
    "id": "Gulir ke kanan",
    "it": "Scorri a destra"
   },
-  "In the chat, pick Claude Code as the provider to use it.": {
-   "zh-Hans": "在聊天中，请将 Claude Code 设为提供方以使用它。",
-   "hi": "चैट में इसे इस्तेमाल करने के लिए प्रदाता के रूप में Claude Code चुनें।",
-   "es": "En el chat, elige Claude Code como proveedor para usarlo.",
-   "ar": "في الدردشة، اختر Claude Code كمزوّد لاستخدامه.",
-   "fr": "Dans le chat, choisissez Claude Code comme fournisseur pour l'utiliser.",
-   "bn": "চ্যাটে এটি ব্যবহার করতে প্রদানকারী হিসেবে Claude Code বেছে নিন।",
-   "pt-BR": "No chat, escolha o Claude Code como provedor para usá-lo.",
-   "ru": "Чтобы пользоваться этим в чате, выберите поставщиком Claude Code.",
-   "id": "Di chat, pilih Claude Code sebagai penyedia untuk memakainya.",
-   "it": "Nella chat, scegli Claude Code come provider per usarlo."
+  "In the chat, pick Claude Code or Antigravity CLI as the provider to use it.": {
+   "zh-Hans": "在聊天中，请将 Claude Code 或 Antigravity CLI 设为提供方以使用它。",
+   "hi": "चैट में इसे इस्तेमाल करने के लिए प्रदाता के रूप में Claude Code या Antigravity CLI चुनें।",
+   "es": "En el chat, elige Claude Code o Antigravity CLI como proveedor para usarlo.",
+   "ar": "في الدردشة، اختر Claude Code أو Antigravity CLI كمزوّد لاستخدامه.",
+   "fr": "Dans le chat, choisissez Claude Code ou Antigravity CLI comme fournisseur pour l'utiliser.",
+   "bn": "চ্যাটে এটি ব্যবহার করতে প্রদানকারী হিসেবে Claude Code বা Antigravity CLI বেছে নিন।",
+   "pt-BR": "No chat, escolha o Claude Code ou o Antigravity CLI como provedor para usá-lo.",
+   "ru": "Чтобы пользоваться этим в чате, выберите поставщиком Claude Code или Antigravity CLI.",
+   "id": "Di chat, pilih Claude Code atau Antigravity CLI sebagai penyedia untuk memakainya.",
+   "it": "Nella chat, scegli Claude Code o Antigravity CLI come provider per usarlo."
   },
   "No page is open in Edge or Chrome.": {
    "zh-Hans": "Edge 或 Chrome 中没有打开的网页。",
