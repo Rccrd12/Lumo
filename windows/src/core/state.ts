@@ -362,11 +362,11 @@ export interface Settings {
   webImages: boolean;
   /** An email's images shown at once in the Email view, with no click on Load images (its tracking pixels never). Settings → Security, off by default, only with webImages. */
   mailImagesAlways: boolean;
-  /** What the AI may do with the email, from Settings → Security: "manage" (the first start), "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
+  /** What the AI may do with the email, from Settings → Security: "read" (the first start), "send" (read, and send with a click on each email's card), "manage" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
   aiCalendarAccess: string;
-  /** Whether the chat's AI may read the GitHub account set in Lumo: "read" (the first start) or "none" (github_tools.rs). */
+  /** Whether the chat's AI may read the GitHub account set in Lumo: "read" or "none" (github_tools.rs). Off until turned on: the token's card asks once, when it is saved. */
   aiGithubAccess: string;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
@@ -488,9 +488,9 @@ export const DEFAULT_SETTINGS: Settings = {
   chatAutoCompact: true,
   webImages: false,
   mailImagesAlways: false,
-  aiMailAccess: "manage",
+  aiMailAccess: "read",
   aiCalendarAccess: "read",
-  aiGithubAccess: "read",
+  aiGithubAccess: "none",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",

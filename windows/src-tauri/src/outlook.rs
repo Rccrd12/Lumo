@@ -345,7 +345,7 @@ pub async fn folders() -> Result<String, String> {
 }
 
 /// `mail_attachment`: one of the email's files, saved with the chat's files.
-pub async fn save_attachment(id: String, which: Option<serde_json::Value>) -> Result<String, String> {
+pub async fn save_attachment(id: String, which: Option<serde_json::Value>) -> Result<crate::files::DroppedFile, String> {
     let (name, bytes) = with_outlook(SLOW_STEP, move |s| {
         let app = s.running()?;
         let item = item_of(&app, &id)?;
@@ -365,12 +365,8 @@ pub async fn save_attachment(id: String, which: Option<serde_json::Value>) -> Re
     .await?;
     let saved = crate::files::write_in(&name, &bytes)?;
     log::line(format!("[outlook] a file of an email saved for the chat ({} bytes)", saved.size));
-    Ok(format!(
-        "Saved {} ({}) with the files attached to the chat: {}. Read it from there.",
-        saved.name,
-        crate::mail::size_text(saved.size as usize),
-        saved.path
-    ))
+    // What the agent is told: mail.rs saved_text, in its chat's folder.
+    Ok(saved)
 }
 
 /// Which file the agent asked for: its number in mail_read's list, or its name.

@@ -319,20 +319,31 @@ pub fn for_chat(chat: &str, path: &str) -> String {
         return path.to_string();
     }
     let dest = dir.join(name);
-    // A link of the same name is this file's (the inbox never reuses a name
-    // while the file is there): made again, so it is never another's.
+    // Made again each time: the inbox gives a name again once its file is
+    // gone, so a link of the same name may be an older file's.
     let _ = std::fs::remove_file(&dest);
-    if std::fs::hard_link(source, &dest).is_ok() || std::fs::copy(source, &dest).is_ok() || dest.is_file() {
+    let made = std::fs::hard_link(source, &dest).is_ok() || std::fs::copy(source, &dest).is_ok();
+    // Where it could not be made again (the old one open in another app),
+    // the one there is good only if it is this very file.
+    if made || same_file(source, &dest) {
         dest.to_string_lossy().to_string()
     } else {
         path.to_string()
     }
 }
 
+/// `a` and `b` hold the same file: a link of it, or a copy (same size, same
+/// time written, which a copy keeps).
+fn same_file(a: &Path, b: &Path) -> bool {
+    let (Ok(a), Ok(b)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
+    a.is_file() && b.is_file() && a.len() == b.len() && a.modified().ok().is_some() && a.modified().ok() == b.modified().ok()
+}
+
 /// The inbox folder the CLI of `chat` may read without asking: its own, or
 /// the whole inbox with "Other chats' files" on (`others`). Created if
 /// needed; the chats' folders are swept like the inbox.
 pub fn cli_inbox(chat: &str, others: bool) -> String {
+    drop_orphans(&chats_dir(), &inbox_dir());
     sweep_chats(&chats_dir(), UNNAMED_FOR);
     let dir = if others { inbox_dir() } else { chat_dir(chat) };
     if ready_inbox().is_ok() {
@@ -348,6 +359,28 @@ pub fn forget_chat(chat: &str) {
     // Never the inbox itself, whatever the id.
     if dir.parent() == Some(chats_dir().as_path()) {
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+/// A link whose file left the inbox goes too: the inbox no longer has a file
+/// of its name, or has another one. So a chat that left the history without
+/// being deleted (past the 40 kept, chats.ts MAX_CHATS) keeps none of its
+/// files once `tidy` takes them out of the inbox.
+fn drop_orphans(chats: &Path, inbox: &Path) {
+    let Ok(folders) = std::fs::read_dir(chats) else { return };
+    for folder in folders.flatten() {
+        let Ok(meta) = std::fs::symlink_metadata(folder.path()) else { continue };
+        if !meta.is_dir() {
+            continue;
+        }
+        let Ok(files) = std::fs::read_dir(folder.path()) else { continue };
+        for file in files.flatten() {
+            let link = file.path();
+            let is_file = std::fs::symlink_metadata(&link).is_ok_and(|m| m.is_file());
+            if is_file && !same_file(&inbox.join(file.file_name()), &link) {
+                let _ = std::fs::remove_file(&link);
+            }
+        }
     }
 }
 
@@ -407,7 +440,11 @@ pub fn release(paths: &[String], keep: &[String]) -> usize {
 /// deleted: the copies of chats deleted before Lumo did this, or gone past the history's
 /// end, and attachments taken out of the field before they went.
 pub fn tidy(keep: &[String]) -> usize {
-    tidy_in(&inbox_dir(), keep, UNNAMED_FOR)
+    let gone = tidy_in(&inbox_dir(), keep, UNNAMED_FOR);
+    // The chats' links of what just went, and the folders left empty.
+    drop_orphans(&chats_dir(), &inbox_dir());
+    sweep_chats(&chats_dir(), UNNAMED_FOR);
+    gone
 }
 
 fn tidy_in(dir: &Path, keep: &[String], older_than: Duration) -> usize {
@@ -483,6 +520,30 @@ mod tests {
             let _ = std::fs::remove_file(p);
         }
         let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn a_link_whose_file_left_the_inbox_goes_and_a_stale_one_is_never_given() {
+        let dir = std::env::temp_dir().join(format!("lumo-orphans-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (inbox, chat) = (dir.join("inbox"), dir.join("inbox").join("chats").join("a"));
+        std::fs::create_dir_all(&chat).unwrap();
+        std::fs::write(inbox.join("kept.txt"), b"kept").unwrap();
+        std::fs::hard_link(inbox.join("kept.txt"), chat.join("kept.txt")).unwrap();
+        std::fs::write(inbox.join("gone.txt"), b"gone").unwrap();
+        std::fs::hard_link(inbox.join("gone.txt"), chat.join("gone.txt")).unwrap();
+        std::fs::write(chat.join("other.txt"), b"an older file").unwrap();
+        std::fs::write(inbox.join("other.txt"), b"a new one, same name").unwrap();
+        // Tidied out of the inbox: its link goes with it.
+        std::fs::remove_file(inbox.join("gone.txt")).unwrap();
+        drop_orphans(&inbox.join("chats"), &inbox);
+        assert!(chat.join("kept.txt").exists(), "its file is still in the inbox");
+        assert!(!chat.join("gone.txt").exists(), "its file left the inbox");
+        assert!(!chat.join("other.txt").exists(), "another file now has its name");
+        assert_eq!(std::fs::read(inbox.join("other.txt")).unwrap(), b"a new one, same name", "the inbox's own stays");
+        assert!(same_file(&inbox.join("kept.txt"), &chat.join("kept.txt")));
+        assert!(!same_file(&inbox.join("kept.txt"), &inbox.join("other.txt")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
