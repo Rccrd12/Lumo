@@ -374,42 +374,59 @@ fn error_text(error: &Value) -> Option<String> {
     }
 }
 
-/// A `result` event as agy wrote it, for the log: its answer (the user's
-/// work, maybe long) only as its length, wherever agy put it.
-fn without_response(frame: &Value) -> String {
-    let mut f = frame.clone();
-    let cut = |v: &mut Value| {
-        if let Some(text) = v.get("response").and_then(Value::as_str) {
-            let n = text.chars().count();
-            v["response"] = json!(format!("<{n} characters>"));
-        }
+/// The fields of a `result` that go to the log: never its answer (the user's
+/// work, maybe long), only its length. Only these, so a field agy adds one
+/// day (its steps, an output) stays out of the log.
+const LOGGED_FIELDS: [&str; 4] = ["status", "error", "usage", "conversation_id"];
+
+/// A `result` event as agy wrote it, for the log: the fields above, and its
+/// answer only as its length, wherever agy put it.
+fn logged_result(frame: &Value) -> String {
+    let v = match frame.get("event").and_then(Value::as_str).and_then(|e| frame.get(e)) {
+        Some(inner) if inner.is_object() => inner,
+        _ => frame,
     };
-    cut(&mut f);
-    if let Some(inner) = f.get_mut("result").filter(|r| r.is_object()) {
-        cut(inner);
+    let mut out = serde_json::Map::new();
+    for key in LOGGED_FIELDS {
+        if let Some(x) = v.get(key) {
+            out.insert(key.to_string(), x.clone());
+        }
     }
-    f.to_string()
+    if let Some(text) = v.get("response").and_then(Value::as_str) {
+        out.insert("response".to_string(), json!(format!("<{} characters>", text.chars().count())));
+    }
+    Value::Object(out).to_string()
 }
 
 /// agy's words when the model sent a tool call it could not read (Gemini's
 /// MALFORMED_FUNCTION_CALL): agy has the model try again, but may still end
 /// the turn with them.
 fn is_malformed_call(error: &str) -> bool {
-    let l = error.to_lowercase();
+    let l = error.to_ascii_lowercase();
     l.contains("malformed function call") || l.contains("improperly formatted function call")
 }
 
+/// At most this many characters of agy's error are shown (a stack trace would
+/// fill the island).
+const ERROR_WORDS_MAX: usize = 600;
+
 /// The part of agy's error worth showing: for a malformed call, its line
-/// that says so, without what agy tells the model ("Please retry…").
+/// that says so, without what agy tells the model ("Please retry…"); at most
+/// ERROR_WORDS_MAX characters.
 fn error_words(error: &str) -> String {
     let error = error.trim();
-    if is_malformed_call(error) {
-        let lower = error.to_lowercase();
-        if let Some(at) = lower.find("malformed function call") {
-            return error[at..].lines().next().unwrap_or("").trim().to_string();
-        }
+    // ASCII lowercase keeps every byte where it was, so the place found is
+    // a place in `error` too (to_lowercase can change a character's length).
+    let at = error.to_ascii_lowercase().find("malformed function call");
+    let words = match at {
+        Some(at) => error[at..].lines().next().unwrap_or("").trim(),
+        None => error,
+    };
+    if words.chars().count() <= ERROR_WORDS_MAX {
+        return words.to_string();
     }
-    error.to_string()
+    let cut: String = words.chars().take(ERROR_WORDS_MAX).collect();
+    format!("{}…", cut.trim_end())
 }
 
 /// What agy said, after what Lumo says about it (chat::ERROR_DETAIL).
@@ -417,16 +434,29 @@ fn with_agy_words(said: String, error: &str) -> String {
     format!("{said}\n{}{}", crate::chat::ERROR_DETAIL, tf("Antigravity CLI's message: {error}", &[("error", &error_words(error))]))
 }
 
-/// The answer came, but agy ended the turn with `error`: said under it.
+/// The answer to keep when agy ended the turn with `error`: the one its
+/// result still carried, or, for a malformed tool call only, what was
+/// streamed. Any other error with only streamed text (a quota, the network)
+/// is said as an error, as that text may be a step's words ("Now I read…"),
+/// not an answer.
+fn kept_answer(error: &str, response: &str, streamed: &str) -> Option<String> {
+    if is_auth_error(error) {
+        return None;
+    }
+    if !response.trim().is_empty() {
+        return Some(response.to_string());
+    }
+    let streamed = streamed.trim();
+    (is_malformed_call(error) && !streamed.is_empty()).then(|| streamed.to_string())
+}
+
+/// The answer came, but agy ended the turn with `error`: said under it. The
+/// island writes the words in its language (src/views/chat.ts warningWords),
+/// so a chat opened later in another language reads in that one.
 fn answer_warning(error: &str) -> crate::chat::ChatWarning {
-    let why = if is_malformed_call(error) {
-        t("While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”.")
-    } else {
-        t("Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”.")
-    };
     crate::chat::ChatWarning {
-        line: t("Antigravity CLI reported a problem at the end"),
-        detail: format!("{why}\n\n{}", tf("Antigravity CLI's message: {error}", &[("error", &error_words(error))])),
+        kind: if is_malformed_call(error) { "malformed" } else { "error" }.to_string(),
+        message: error_words(error),
     }
 }
 
@@ -894,7 +924,7 @@ impl Run {
                 self.result = Some(match (status.as_str(), error) {
                     ("SUCCESS", _) | ("", None) => Ok(response),
                     (s, error) => {
-                        self.failed_line = Some(without_response(&frame));
+                        self.failed_line = Some(logged_result(&frame));
                         self.failed_response = response;
                         Err(error.unwrap_or_else(|| s.to_string()))
                     }
@@ -1529,12 +1559,11 @@ pub async fn send(
         Some(Ok(text)) if text.trim().is_empty() => state.visible.trim().to_string(),
         Some(Ok(text)) => text,
         // An error with an answer written: the answer stays, the error is
-        // said under it. Without one, or signed out, the error alone.
+        // said under it (kept_answer). Without one, or signed out, the error alone.
         Some(Err(e)) => {
-            let written = if state.failed_response.trim().is_empty() { state.visible.trim().to_string() } else { state.failed_response.clone() };
-            if is_auth_error(&e) || written.trim().is_empty() {
+            let Some(written) = kept_answer(&e, &state.failed_response, &state.visible) else {
                 return Err(result_error(&e));
-            }
+            };
             warning = Some(answer_warning(&e));
             written
         }
@@ -2089,6 +2118,12 @@ mod tests {
         // The log has what agy said, never the answer itself.
         let logged = run.failed_line.unwrap();
         assert!(logged.contains("Retries remaining") && logged.contains("<29 characters>") && !logged.contains("appunti"));
+        // Only the fields it lists: one agy adds (its steps, an output) stays out.
+        let mut more = Run::default();
+        let line = json!({ "event": "result", "result": { "status": "ERROR", "error": "boom", "response": "ok", "output": "il testo degli appunti" } }).to_string();
+        more.feed(line.as_bytes());
+        let logged = more.failed_line.unwrap();
+        assert!(logged.contains("boom") && logged.contains("<2 characters>") && !logged.contains("appunti"));
 
         // A result that went well leaves nothing for the log.
         let mut ok = Run::default();
@@ -2111,11 +2146,35 @@ mod tests {
         // Other errors are said as before.
         assert_eq!(result_error("quota exceeded"), "Antigravity CLI: quota exceeded");
 
-        // With an answer: one line under it, and what to know on a click.
+        // With an answer: its kind and agy's words, the island says them in its language.
         let w = answer_warning(MALFORMED);
-        assert_eq!(w.line, "Antigravity CLI reported a problem at the end");
-        assert!(w.detail.contains("empty tool call") && w.detail.ends_with(&error_words(MALFORMED)));
-        assert!(answer_warning("internal error").detail.contains("ended this turn with an error"));
+        assert_eq!((w.kind.as_str(), w.message.as_str()), ("malformed", error_words(MALFORMED).as_str()));
+        assert_eq!(answer_warning("internal error").kind, "error");
+    }
+
+    #[test]
+    fn an_error_keeps_agys_answer_and_streamed_words_only_after_a_malformed_call() {
+        // agy's result carried the answer: kept, whatever the error.
+        assert_eq!(kept_answer("quota exceeded", "Ecco gli appunti.", "Ora leggo…"), Some("Ecco gli appunti.".into()));
+        assert_eq!(kept_answer(MALFORMED, "Ecco gli appunti.", ""), Some("Ecco gli appunti.".into()));
+        // Only streamed words: an answer after a malformed call, a step's words otherwise.
+        assert_eq!(kept_answer(MALFORMED, "", "  Fatto: 109 pagine.\n"), Some("Fatto: 109 pagine.".into()));
+        assert_eq!(kept_answer("quota exceeded", "", "Ora leggo il file…"), None);
+        // Nothing written, or signed out: the error alone.
+        assert_eq!(kept_answer(MALFORMED, " ", " "), None);
+        assert_eq!(kept_answer("authentication required", "Ecco.", "Ecco."), None);
+    }
+
+    #[test]
+    fn agys_words_are_found_whatever_comes_before_them_and_kept_short() {
+        // Characters whose lowercase takes more or fewer bytes (Kelvin sign, dotted I) before them.
+        assert_eq!(error_words("\u{212A}\u{212A}Malformed function call: empty\nPlease retry"), "Malformed function call: empty");
+        assert_eq!(error_words("İ İ: Malformed function call: empty"), "Malformed function call: empty");
+        // A long error is cut, on a character.
+        let long = "é".repeat(ERROR_WORDS_MAX + 50);
+        let words = error_words(&long);
+        assert_eq!(words.chars().count(), ERROR_WORDS_MAX + 1);
+        assert!(words.ends_with('…'));
     }
 
     #[test]

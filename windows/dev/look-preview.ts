@@ -140,6 +140,21 @@ State.chatHistory = lang === "it" ? [
   { id: 2, role: "assistant", content: "Node's built-in test runner on `tests/**/*.test.mjs`: 54 test files, done in about ten seconds. The TypeScript check is separate: `npx tsc --noEmit`." },
 ];
 
+// ?warn: an answer agy ended with an error (antigravity_cli.rs answer_warning),
+// its warning under it, then the next question and its answer.
+if (params.has("warn")) {
+  const it = lang === "it";
+  State.chatHistory = [
+    { id: 1, role: "user", content: it ? "Trasforma gli appunti in LaTeX" : "Turn the notes into LaTeX" },
+    {
+      id: 2, role: "assistant", content: it ? "Ecco gli appunti: 109 pagine, capitoli 1–7 in `appunti.tex`." : "Here are the notes: 109 pages, chapters 1–7 in `notes.tex`.",
+      warning: { kind: "malformed", message: "Malformed function call: Failed to parse function call: Function call is empty - no input to parse." },
+    },
+    { id: 3, role: "user", content: it ? "Aggiungi l'indice analitico" : "Add the index" },
+    { id: 4, role: "assistant", content: it ? "Fatto: l'indice è in fondo, 212 voci." : "Done: the index is at the end, 212 entries." },
+  ];
+}
+
 const PLAN_MD = lang === "it"
   ? "1. Leggi la pagina delle impostazioni\n2. Aggiungi l'interruttore\n3. Salvalo con gli altri\n4. Esegui i test"
   : "1. Read the settings page\n2. Add the toggle\n3. Save it with the others\n4. Run the tests";

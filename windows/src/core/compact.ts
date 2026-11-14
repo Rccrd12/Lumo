@@ -214,6 +214,8 @@ export const COMPACT_TEXT = {
   question: N_("Has a question"),
   // The same words as under a Gemini Live call (live/strings.ts).
   answered: N_("{helper} answered"),
+  // The answer came, but its CLI ended the turn with an error (ChatReply.warning).
+  answeredWithProblem: N_("{helper} answered, with a problem"),
   failed: N_("{helper} · Error"),
   finished: N_("{helper} finished"),
   timerDone: N_("Time's up"),

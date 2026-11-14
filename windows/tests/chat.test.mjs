@@ -692,6 +692,103 @@ test("a question whose answer failed keeps its Retry in sight", async () => {
   assert.deepEqual(State.chatHistory.map((m) => m.content), ["hello", "hi"]);
 });
 
+test("an answer agy ended with an error keeps its warning in sight under it, its detail on a click", async () => {
+  const words = "Malformed function call: Function call is empty - no input to parse.";
+  answers.chat_send = { text: "Ecco gli appunti.", turns: 2, warning: { kind: "malformed", message: words } };
+  await ask("appunti in LaTeX");
+  answers.chat_send = { text: "Fatto.", turns: 4 };
+  await ask("e l'indice?");
+  const answer = rows()[1];
+  const line = answer.find(".msg-warning")[0];
+  assert.equal(line.textContent, "Antigravity CLI reported a problem at the end");
+  // Not on the actions' bar, which shows only on hover: in sight under a past answer too.
+  assert.equal(answer.find(".msg-actions")[0].find(".msg-warning").length, 0);
+  assert.ok(!answer.find(".msg-actions")[0].classList.contains("shown"), "the bar of a past answer hides");
+  const detail = answer.find(".msg-warning-detail")[0];
+  assert.equal(detail.hidden, true);
+  line.fire("click");
+  assert.equal(detail.hidden, false);
+  assert.match(detail.textContent, /empty tool call/);
+  assert.ok(detail.textContent.endsWith(`Antigravity CLI's message: ${words}`));
+  assert.equal(rows()[3].find(".msg-warning").length, 0, "an answer without one has none");
+});
+
+test("away from the chat, an answer with a warning is noted in amber, with a problem", async () => {
+  const { Feed } = await import("../src/core/compact.ts");
+  const pending = heldAnswers();
+  await ask("appunti");
+  const before = { mode: State.mode, view: State.view };
+  State.view = "home";
+  try {
+    pending[0]({ text: "Ecco.", turns: 2, warning: { kind: "error", message: "boom" } });
+    await flush();
+    await flush();
+    const note = Feed.notices.at(-1);
+    assert.match(note.text, /answered, with a problem$/);
+    assert.equal(note.color, "#f5a524");
+  } finally {
+    Object.assign(State, before);
+  }
+});
+
+test("a warning is said in the island's language when shown; one saved by a beta keeps its words", async () => {
+  const { warningWords, failedParts } = await import("../src/views/chat.ts");
+  const { savedWarning } = await import("../src/core/chats.ts");
+  const { setLanguage } = await import("../src/i18n/i18n.ts");
+  const saved = savedWarning({ kind: "error", message: "quota exceeded" });
+  assert.deepEqual(saved, { kind: "error", message: "quota exceeded" });
+  setLanguage("it");
+  try {
+    const w = warningWords(saved);
+    assert.equal(w.line, "Antigravity CLI ha segnalato un problema alla fine");
+    assert.match(w.detail, /ha chiuso questo turno con un errore/);
+    assert.ok(w.detail.endsWith("Messaggio di Antigravity CLI: quota exceeded"));
+  } finally {
+    setLanguage("en");
+  }
+  // Saved by the 0.22.2 betas: the words as they were.
+  const beta = savedWarning({ line: "L", detail: "D" });
+  assert.deepEqual(warningWords(beta), { line: "L", detail: "D" });
+  // Anything else is no warning.
+  assert.equal(savedWarning({ kind: "other", message: "x" }), undefined);
+  assert.equal(savedWarning("x"), undefined);
+  assert.equal(savedWarning(null), undefined);
+  // A failed answer's words: Lumo's, then the CLI's after U+2063.
+  assert.deepEqual(failedParts("Stopped.\n\u2063Antigravity CLI's message: x"), ["Stopped.", "Antigravity CLI's message: x"]);
+  assert.deepEqual(failedParts("offline"), ["offline", ""]);
+});
+
+test("a failed answer shows the CLI's own words apart, the note only Lumo's", async () => {
+  answers.chat_send = () => Promise.reject(new Error("Antigravity CLI stopped.\n\u2063Antigravity CLI's message: Malformed function call"));
+  await ask("hello");
+  const failed = rows()[1];
+  assert.equal(failed.find(".msg-failed")[0].textContent, "Antigravity CLI stopped.");
+  assert.equal(failed.find(".msg-warning-detail")[0].textContent, "Antigravity CLI's message: Malformed function call");
+});
+
+test("Past chats keep an answer's warning, also when Claude Code adds to the chat by itself", async (t) => {
+  if (!globalThis.localStorage) {
+    t.after(() => delete globalThis.localStorage);
+    const mem = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+      setItem: (k, v) => mem.set(k, String(v)),
+      removeItem: (k) => mem.delete(k),
+    };
+  }
+  const { loadChats } = await import("../src/core/chats.ts");
+  const warning = { kind: "malformed", message: "Malformed function call" };
+  answers.chat_send = { text: "Ecco.", turns: 2, session: "s1", warning };
+  await ask("appunti");
+  const saved = () => loadChats().find((c) => c.id === State.chatId);
+  assert.deepEqual(saved().turns[1].warning, warning);
+  // Claude Code writes by itself into the chat on screen: the chat is saved again, its warning with it.
+  emit("chat-own-answer", { chat: State.chatId, text: "E poi.", session: "s1" });
+  await flush();
+  await flush();
+  assert.deepEqual(saved().turns[1].warning, warning);
+});
+
 test("each message says when it was sent or answered", async () => {
   const { sentAgo } = await import("../src/views/chat.ts");
   answers.chat_send = { text: "ok", turns: 2 };

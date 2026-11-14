@@ -19127,6 +19127,18 @@
    "id": "Antigravity CLI berhenti: model mengirim panggilan alat yang kosong dan tidak berhasil memperbaikinya. Yang sudah dikerjakan sejauh ini tersimpan: tulis “lanjutkan” untuk melanjutkan dari sana.",
    "it": "Antigravity CLI si è fermato: il modello ha mandato una chiamata a strumento vuota e non è riuscito a correggerla. Quello che ha fatto finora è salvato: scrivi «continua» per riprendere da lì."
   },
+  "{helper} answered, with a problem": {
+   "zh-Hans": "{helper} 已回复，但有问题",
+   "hi": "{helper} ने जवाब दिया, एक समस्या के साथ",
+   "es": "{helper} respondió, con un problema",
+   "ar": "ردّ {helper}، مع مشكلة",
+   "fr": "{helper} a répondu, avec un problème",
+   "bn": "{helper} উত্তর দিয়েছে, একটি সমস্যাসহ",
+   "pt-BR": "{helper} respondeu, com um problema",
+   "ru": "{helper} ответил, но с проблемой",
+   "id": "{helper} menjawab, dengan masalah",
+   "it": "{helper} ha risposto, con un problema"
+  },
   "{minutes} min": {
    "zh-Hans": "{minutes} 分钟",
    "hi": "{minutes} मिनट",
