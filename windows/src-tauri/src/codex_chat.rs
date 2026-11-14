@@ -885,6 +885,18 @@ fn lives<T>(f: impl FnOnce(&mut HashMap<String, Live>) -> T) -> T {
     f(LIVES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default))
 }
 
+/// The agents at work that answering with `key` would end: the chat's Codex
+/// is alive with another key, so a new one would take its place and end
+/// them. None when none would end, or the user said to send all the same.
+fn agents_in_the_way(chat_id: &str, key: &str) -> Option<usize> {
+    let open = lives(|all| {
+        let live = all.get_mut(chat_id)?;
+        let other = live.key != key && matches!(live.child.try_wait(), Ok(None));
+        Some(if other { live.agents.agents.open() } else { 0 })
+    })?;
+    chat_agents::in_the_way(chat_id, open)
+}
+
 /// A request of a thread that is not `main` (an agent's).
 fn is_other_thread(params: &Value, main: &str) -> bool {
     params["threadId"].as_str().is_some_and(|t| t != main)
@@ -1033,6 +1045,11 @@ fn live_turn(
     tell: Tell,
 ) -> Result<(Run, Option<String>), String> {
     let key = format!("{}\n{}", spec.exe.to_string_lossy(), spec.config);
+    // Another model, effort or mode would end the agents it left at work:
+    // not without the user (chat_agents.rs WOULD_STOP).
+    if let Some(open) = agents_in_the_way(&spec.chat_id, &key) {
+        return Err(chat_agents::would_stop(open));
+    }
     let mut live = live_for(&spec.chat_id, &key, &spec.exe, &spec.dir)?;
     let fresh = match live.open_thread(spec.thread.as_deref(), &spec.dir, &spec.config) {
         Ok(fresh) => fresh,

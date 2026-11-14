@@ -493,6 +493,15 @@ fn transcript_args(args: &Value) -> Value {
     )
 }
 
+/// Whether a call's result says it failed: it begins so ("Error: file
+/// already exists", "Failed to write…", "Permission denied"), or says it was
+/// refused. Not a word in a name it gives back ("Created file errors.log").
+fn call_failed(content: &str) -> bool {
+    let text = content.trim_start().to_ascii_lowercase();
+    ["error", "failed", "failure", "denied", "permission denied", "access is denied", "not allowed", "refused"].iter().any(|w| text.starts_with(w))
+        || [" was denied", " is not allowed", " not permitted", "access is denied", "permission denied"].iter().any(|w| text.contains(w))
+}
+
 /// One line of a subagent's transcript on its row: its steps, what it does
 /// now, its tokens, its report, and the files it wrote (`pending` until the
 /// call's result says it went through). True once it is done: its answer,
@@ -505,8 +514,7 @@ fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mu
     }
     // A call's result: the files it wrote, unless it failed.
     if line["type"] == "GENERIC" && !pending.is_empty() {
-        let text = line["content"].as_str().unwrap_or("").to_ascii_lowercase();
-        let failed = line["status"].as_str().is_some_and(|s| s != "DONE") || ["error", "failed", "denied", "not allowed"].iter().any(|w| text.contains(w));
+        let failed = line["status"].as_str().is_some_and(|s| s != "DONE") || call_failed(line["content"].as_str().unwrap_or(""));
         for touch in pending.drain(..) {
             if !failed && !files.contains(&touch) {
                 files.push(touch);
@@ -2208,11 +2216,23 @@ mod tests {
             let mut feed = |l: &str| transcript_line(&mut row, &mut report, &mut pending, &mut files, &serde_json::from_str(l).unwrap());
             assert!(!feed(&lines_of(1)));
             assert!(!feed(r#"{"source":"MODEL","type":"GENERIC","status":"DONE","content":"Error: file already exists"}"#));
+            assert!(!feed(&lines_of(1)));
+            assert!(!feed(r#"{"source":"MODEL","type":"GENERIC","status":"DONE","content":"Permission denied: C:\\work\\a.txt"}"#));
             assert!(!feed(r#"{"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"I'll write the renderer now.","truncated_fields":["tool_calls"]}"#));
         }
         assert!(files.is_empty());
-        assert_eq!(row.steps, 2);
+        assert_eq!(row.steps, 3);
         assert!(!row.state.is_final());
+    }
+
+    #[test]
+    fn a_file_with_error_in_its_name_is_written_all_the_same() {
+        assert!(!call_failed("Created file C:\\work\\error-handler.ts."));
+        assert!(!call_failed("Wrote errors.log"));
+        assert!(call_failed("Error: file already exists"));
+        assert!(call_failed("  failed to write C:\\a.txt"));
+        assert!(call_failed("The write to C:\\a.txt was denied by the user."));
+        assert!(call_failed("Access is denied."));
     }
 
     fn lines_of(i: usize) -> String {

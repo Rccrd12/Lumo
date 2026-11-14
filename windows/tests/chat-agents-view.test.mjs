@@ -4,7 +4,7 @@
 // saved with the chat, the closed island keeps saying they work, and the
 // typing line says when an answer gives no sign or waits for the user.
 
-import { beforeEach, test } from "node:test";
+import { beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeDom } from "./fakedom.mjs";
 import { emit, internals, sent } from "./tauri.mjs";
@@ -21,6 +21,7 @@ const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { loadChats } = await import("../src/core/chats.ts");
 const { islandAgents } = await import("../src/core/chat-agents.ts");
 const { activityLine } = await import("../src/core/compact.ts");
+const { STOP_UNDO_MS } = await import("../src/views/agents-card.ts");
 
 let answers;
 const plainInvoke = internals.invoke;
@@ -98,9 +99,10 @@ test("the agents' card goes under the answer that started them, and stays there 
   await answer({ text: "I launched 2 agents.", turns: 2 });
   assert.deepEqual(rows(), ["question", "answer", "agents"]);
   assert.equal($(".agents-live-text").textContent.startsWith("1 agent working"), true);
-  // The agent that ended is saved with its answer.
+  // The agent that ended is saved with its answer; the one at work as Lumo
+  // closing would leave it (ended halfway, Resume), until its end is saved over it.
   const saved = loadChats().find((c) => c.id === chat);
-  assert.deepEqual(saved.turns[1].agents.map((a) => [a.id, a.state, a.summary]), [["a1", "done", "L01 ready"]]);
+  assert.deepEqual(saved.turns[1].agents.map((a) => [a.id, a.state, a.summary, a.endedBy]), [["a1", "done", "L01 ready", undefined], ["a2", "failed", undefined, "lumo"]]);
 
   // Its answer is done, its agents still work: the closed island and the home say so.
   // The closed island names the chat; how far they are comes after the segments.
@@ -113,10 +115,96 @@ test("the agents' card goes under the answer that started them, and stays there 
   assert.equal(island.text, "«transcribe the lessons» · 1 agent working");
   assert.deepEqual(island.agents.looks, ["done", "working"]);
 
-  // Stop this one agent: Rust is asked, by chat and agent.
-  $(".chat-log").find(".agents-row-head")[1].fire("click");
-  $(".agents-detail").querySelector(".agents-btn.stop").fire("click");
+  // Stop this one agent: Rust is asked, by chat and agent, once Undo had its time.
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    $(".chat-log").find(".agents-row-head")[1].fire("click");
+    $(".agents-detail").querySelector(".agents-btn.stop").fire("click");
+    assert.deepEqual(sent("chat_stop_agent"), []);
+    assert.match($(".chat-log").find(".agents-line")[1].textContent, /^Stopping in \d s…$/);
+    mock.timers.tick(STOP_UNDO_MS);
+  } finally {
+    mock.timers.reset();
+  }
   assert.deepEqual(sent("chat_stop_agent"), [{ chatId: chat, agentId: "a2" }]);
+});
+
+test("a message that would start Claude Code again under its agents at work is held, and goes as the user says", async () => {
+  const answer = await ask("transcribe the lessons");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("a1") });
+  emit("chat-agent", { chat, agent: agent("a2") });
+  await answer({ text: "I launched 2 agents.", turns: 2 });
+  assert.deepEqual(rows(), ["question", "answer", "agents"]);
+
+  // Another model: Rust would end them, and says so instead of answering.
+  answers.chat_send = () => Promise.reject(new Error("lumo-agents-would-stop:2"));
+  $(".chat-input").value = "now in English";
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  view.sync();
+  assert.deepEqual(rows(), ["question", "answer", "agents"], "no question, no error left in the chat");
+  assert.equal($(".chat-input").value, "now in English", "back in the field");
+  assert.equal($(".chat-hold").hidden, false);
+  assert.equal($(".hold-text").textContent, "Claude Code starts again with the new settings and stops the 2 agents still working.");
+  assert.equal(loadChats().find((c) => c.id === chat).turns.length, 2, "nor in the saved chat");
+
+  // Send when they finish: it leaves the field and waits for them.
+  $(".chat-hold").find(".agents-btn")[0].fire("click");
+  assert.equal($(".chat-input").value, "");
+  assert.equal($(".hold-text").textContent, "Your message goes when the 2 agents still working finish.");
+  assert.equal($(".hold-sub").textContent, "now in English");
+  let asked = null;
+  answers.chat_send = (args) => { asked = args.query; return new Promise(() => {}); };
+  emit("chat-agent", { chat, agent: agent("a1", { state: "done", endedAt: now + 1 }) });
+  await flush();
+  assert.equal(asked, null, "one is still at work");
+  assert.equal($(".hold-text").textContent, "Your message goes when the agent still working finishes.");
+  emit("chat-agent", { chat, agent: agent("a2", { state: "done", endedAt: now + 2 }) });
+  await flush();
+  assert.equal(asked, "now in English", "both done: it goes");
+  assert.equal($(".chat-hold").hidden, true);
+});
+
+test("send now and stop them: Rust is told first, then the message goes", async () => {
+  const answer = await ask("go");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("b1") });
+  await answer({ text: "Launched.", turns: 2 });
+  answers.chat_send = () => Promise.reject(new Error("lumo-agents-would-stop:1"));
+  $(".chat-input").value = "faster please";
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  assert.equal($(".hold-text").textContent, "Claude Code starts again with the new settings and stops the agent still working.");
+  let asked = null;
+  answers.chat_send = (args) => { asked = args.query; return new Promise(() => {}); };
+  $(".chat-hold").find(".agents-btn")[1].fire("click");
+  await flush();
+  await flush();
+  assert.deepEqual(sent("chat_allow_restart").at(-1), { chatId: chat });
+  assert.equal(asked, "faster please");
+  assert.equal($(".chat-hold").hidden, true);
+});
+
+test("cancel: the held message stays in the field, or comes back to it from waiting", async () => {
+  const allowed = sent("chat_allow_restart").length;
+  const answer = await ask("go");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("c1") });
+  await answer({ text: "Launched.", turns: 2 });
+  answers.chat_send = () => Promise.reject(new Error("lumo-agents-would-stop:1"));
+  $(".chat-input").value = "later";
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  $(".chat-hold").find(".agents-btn")[0].fire("click");
+  assert.equal($(".chat-input").value, "");
+  $(".chat-hold").find(".agents-btn")[2].fire("click");
+  assert.equal($(".chat-hold").hidden, true);
+  assert.equal($(".chat-input").value, "later");
+  assert.equal(sent("chat_allow_restart").length, allowed, "Rust is never told to end them");
 });
 
 test("what the CLI writes by itself while agents work is an answer like any other, in Markdown, above their card", async () => {

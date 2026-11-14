@@ -9815,3 +9815,79 @@ button.bg-row:hover {
 #compact .cp-stalled {
   color: #f5a524;
 }
+
+/* A message held because it would start the chat's CLI again under the
+   agents it left at work (views/chat.ts holdForAgents): amber, as an agent
+   with no sign of life; a message waiting for them, in their blue. */
+.chat-hold {
+  --ask: #f5a524;
+  display: flex;
+  gap: 8px;
+  padding: 7px 8px 8px 6px;
+  border-radius: 10px;
+  background: rgba(245, 165, 36, 0.07);
+  border: 1px solid rgba(245, 165, 36, 0.32);
+  animation: queue-in 0.18s ease-out;
+}
+
+.chat-hold.waiting {
+  --ask: #3b9eff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+.chat-hold[hidden],
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .chat-hold {
+  display: none;
+}
+
+.hold-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hold-text {
+  font: 600 11.5px var(--font);
+  color: #f7c66a;
+}
+
+.chat-hold.waiting .hold-text {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.hold-sub {
+  font: 400 11px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hold-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.hold-acts .agents-btn[hidden] {
+  display: none;
+}
+
+.hold-acts .agents-btn.primary {
+  background: #3b9eff;
+  color: #fff;
+}
+
+.hold-acts .agents-btn.primary:hover {
+  background: #5aaeff;
+}
+
+/* Stop clicked on an agent: Undo until it goes (views/agents-card.ts). */
+.agents-btn.undo {
+  color: var(--ag-working);
+}

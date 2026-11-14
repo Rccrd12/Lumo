@@ -60,6 +60,10 @@ export interface SavedAgent {
   tokens?: number;
   startedAt: number;
   endedAt?: number;
+  /** Ended under its work: its CLI ended ("cli"), or Lumo closed while it worked ("lumo"). */
+  endedBy?: "cli" | "lumo";
+  /** Resume was sent for it: the card no longer offers it. */
+  resumed?: boolean;
 }
 
 export interface SavedChat {

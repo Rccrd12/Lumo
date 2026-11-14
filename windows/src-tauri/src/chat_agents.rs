@@ -115,6 +115,11 @@ pub struct AgentRow {
     /// The last message its CLI sent it, and its answer once it came.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub talk: Option<AgentTalk>,
+    /// What ended it under its work: "cli" when its CLI ended while it was
+    /// still at work (`Agents::end_open`). The island offers Resume for those,
+    /// read from this field, never from the words of `error`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_by: Option<&'static str>,
 }
 
 /// A message the chat's CLI sent one of its agents (Claude Code's SendMessage),
@@ -191,6 +196,7 @@ impl AgentRow {
             can_ask: false,
             round: 0,
             talk: None,
+            ended_by: None,
         }
     }
 
@@ -205,6 +211,7 @@ impl AgentRow {
         self.now = None;
         self.ended_at = None;
         self.error = None;
+        self.ended_by = None;
         self.heard();
     }
 
@@ -292,12 +299,16 @@ impl Agents {
         self.rows.iter().filter(|r| !r.state.is_final()).count()
     }
 
-    /// Every agent still open ends as `state` (its CLI ended under it).
+    /// Every agent still open ends as `state` (its CLI ended under it):
+    /// failed ones say so in `ended_by`, for the island's Resume.
     pub fn end_open(&mut self, state: AgentState, error: &str) {
         let ids: Vec<String> = self.rows.iter().filter(|r| !r.state.is_final()).map(|r| r.id.clone()).collect();
         for id in ids {
             if let Some(row) = self.touch(&id) {
                 row.end(state, Some(error.to_string()));
+                if state == AgentState::Failed {
+                    row.ended_by = Some("cli");
+                }
             }
         }
     }
@@ -415,6 +426,49 @@ pub fn signal_waiting(app: &AppHandle, chat: &str, waiting: Option<&str>) {
         return;
     }
     let _ = app.emit_to(WINDOW_LABEL, "chat-signal", json!({ "chat": chat, "at": now_ms(), "waiting": waiting }));
+}
+
+// ── A CLI started again under its agents ──────────────────────────────────────
+//
+// A chat's CLI lives between two turns, and so do the agents it started in
+// the background. A message with another model, effort, permission mode,
+// folder or set of tools needs a new CLI, and ending the old one ends them.
+// That message is not sent while agents are at work: its turn fails with
+// WOULD_STOP and the number of agents, and the island asks the user (wait
+// for them, or send now and stop them: `allow_restart`).
+
+/// What a turn fails with when it would end agents at work: then their number.
+pub const WOULD_STOP: &str = "lumo-agents-would-stop:";
+
+/// The error a turn ends with when starting its CLI again would end `open` agents.
+pub fn would_stop(open: usize) -> String {
+    format!("{WOULD_STOP}{open}")
+}
+
+/// The chats whose next message may start their CLI again all the same, and since when.
+static RESTART_OK: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+
+/// How long the user's "send now" holds: the message goes at once, so a
+/// stale one never ends agents without asking.
+const RESTART_OK_FOR: Duration = Duration::from_secs(120);
+
+/// The user said to send now: the chat's next message may end its agents.
+pub fn allow_restart(chat: &str) {
+    let mut all = RESTART_OK.lock().unwrap_or_else(|e| e.into_inner());
+    all.get_or_insert_with(HashMap::new).insert(chat.to_string(), Instant::now());
+}
+
+/// Whether the chat's CLI may be started again under its agents: once, and
+/// only shortly after the user said so.
+pub fn restart_allowed(chat: &str) -> bool {
+    let mut all = RESTART_OK.lock().unwrap_or_else(|e| e.into_inner());
+    all.as_mut().and_then(|all| all.remove(chat)).is_some_and(|at| at.elapsed() < RESTART_OK_FOR)
+}
+
+/// `Some(open)` when a chat's CLI that answers with another key would end
+/// `open` agents at work, unless the user allowed it (taken then).
+pub fn in_the_way(chat: &str, open: usize) -> Option<usize> {
+    (open > 0 && !restart_allowed(chat)).then_some(open)
 }
 
 // ── Stopping one agent ────────────────────────────────────────────────────────
@@ -570,6 +624,35 @@ mod tests {
         let long = summary_of(&"word ".repeat(200));
         assert_eq!(long.chars().count(), MAX_SUMMARY);
         assert!(long.ends_with('…'));
+    }
+
+    #[test]
+    fn an_agent_its_cli_ended_under_says_so_and_one_taken_up_again_no_more() {
+        let mut agents = Agents::default();
+        agents.upsert("a1", || AgentRow::new("a1", "claude-code", "x"));
+        agents.upsert("a2", || AgentRow::new("a2", "claude-code", "y"));
+        agents.touch("a2").unwrap().end(AgentState::Done, None);
+        agents.end_open(AgentState::Failed, "Claude Code ended");
+        assert_eq!(agents.get("a1").unwrap().ended_by, Some("cli"));
+        assert_eq!(agents.get("a2").unwrap().ended_by, None, "it had finished");
+        assert_eq!(serde_json::to_value(agents.get("a1").unwrap()).unwrap()["endedBy"], "cli");
+        let mut stopped = Agents::default();
+        stopped.upsert("s", || AgentRow::new("s", "claude-code", "x"));
+        stopped.end_open(AgentState::Stopped, "");
+        assert_eq!(stopped.get("s").unwrap().ended_by, None, "the user's Stop");
+        let mut row = agents.get("a1").unwrap().clone();
+        row.reopen();
+        assert_eq!(row.ended_by, None);
+    }
+
+    #[test]
+    fn a_cli_is_started_again_under_its_agents_only_once_the_user_said_so() {
+        assert_eq!(in_the_way("restart-test", 0), None, "no agent at work");
+        assert_eq!(in_the_way("restart-test", 3), Some(3));
+        assert!(would_stop(3).starts_with(WOULD_STOP) && would_stop(3).ends_with('3'));
+        allow_restart("restart-test");
+        assert_eq!(in_the_way("restart-test", 3), None, "send now");
+        assert_eq!(in_the_way("restart-test", 3), Some(3), "once");
     }
 
     #[test]
