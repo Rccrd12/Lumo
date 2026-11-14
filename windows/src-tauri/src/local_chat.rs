@@ -67,6 +67,10 @@ pub fn key_entry(id: &str) -> Option<&'static str> {
     }
 }
 
+/// What a model that takes no tools is told while the Email pill lets the AI
+/// read the mailbox: Lumo's email tools are how the AI reads it, and it has none.
+const NO_MAIL_TOOLS: &str = "\n\nYou can't read the user's email: this model takes no tools, and Lumo's email tools are how the AI reads it. If they ask about their email, say so plainly and suggest a model that uses tools; never say there is no email.";
+
 const MAX_TOKENS: u32 = 4096;
 /// Rounds of tools one answer may take before it must answer.
 const MAX_TOOL_ROUNDS: usize = 25;
@@ -692,7 +696,12 @@ pub async fn send(
             workshop: chat.is_workshop(),
         })
     };
-    let system = prompt_for(&loaded, !tools.is_empty());
+    let mut system = prompt_for(&loaded, !tools.is_empty());
+    // No email goes with the question by itself (mail.rs): a model that takes
+    // no tools can't read it, and says so instead of finding no email.
+    if caps.tools == Some(false) && !crate::mail::ai_tools(app).is_empty() {
+        system.push_str(NO_MAIL_TOOLS);
+    }
     // Built once the model is in memory, when its server says what it can do.
     let mut user = Value::Null;
     let mut body = Value::Null;

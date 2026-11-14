@@ -197,17 +197,19 @@ pub struct Settings {
     /// and only with `web_images` on.
     pub mail_images_always: bool,
     /// What the AI may do with the user's email (Settings → General →
-    /// Security): "manage" (read, send and manage: each change is a card the
-    /// user clicks), "send", "read" (the chat and Gemini Live read it, Lumo's
-    /// email tools for Antigravity CLI) or "none" (nothing of the mailbox
-    /// reaches any AI). "manage" at the first start. Kept as it comes; mail.rs
-    /// reads anything else as "read".
+    /// Security): "read" (the chat and Gemini Live read it with Lumo's email
+    /// tools), "send", "manage" (read, send and manage: each change is a card
+    /// the user clicks) or "none" (nothing of the mailbox reaches any AI).
+    /// "read" until the user allows more. Kept as it comes; mail.rs reads
+    /// anything else as "read".
     pub ai_mail_access: String,
     /// The same for the calendar's events: "read" or "none".
     pub ai_calendar_access: String,
     /// The same for the GitHub account set in Lumo (github_tools.rs): "read"
-    /// (the chat's providers get the read-only GitHub tools) or "none". "read"
-    /// at the first start; Security shows it only once a GitHub token is saved.
+    /// (the chat's providers get the read-only GitHub tools) or "none". Off
+    /// until the user turns it on: a token saved for the GitHub pill is not a
+    /// yes to hand its private repositories to an AI. The token's card asks
+    /// once, when it is saved; Security shows it only once a token is saved.
     pub ai_github_access: String,
     /// Gemini Live, the voice conversation (live.rs, src/live): the model,
     /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
@@ -380,9 +382,9 @@ impl Default for Settings {
             chat_auto_compact: true,
             web_images: false,
             mail_images_always: false,
-            ai_mail_access: "manage".into(),
+            ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
-            ai_github_access: "read".into(),
+            ai_github_access: "none".into(),
             live_model: "gemini-3.8-live".into(),
             live_thinking: "medium".into(),
             live_voice: String::new(),
@@ -508,8 +510,6 @@ const LEGACY_DEFAULTS: &[LegacyDefault] = &[
     ("webImages", || Value::Bool(true)),
     ("chatShareOpen", || Value::Bool(true)),
     ("outlookStart", || Value::Bool(false)),
-    ("aiMailAccess", || Value::String("read".into())),
-    ("aiGithubAccess", || Value::String("none".into())),
 ];
 
 /// Settings from the fields of a settings.json that does not load as a whole.
@@ -781,7 +781,7 @@ mod tests {
   "mailImagesAlways": true,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
-  "aiGithubAccess": "none",
+  "aiGithubAccess": "read",
   "liveModel": "gemini-3.8-live-extended-thinking",
   "liveThinking": "high",
   "liveVoice": "Kore",
@@ -1050,9 +1050,9 @@ mod tests {
         assert!(!first.chat_share_open);
         assert!(!first.chat_other_files);
         assert!(first.outlook_start);
-        assert_eq!(first.ai_mail_access, "manage");
+        assert_eq!(first.ai_mail_access, "read", "the AI only reads until the user allows more");
         assert_eq!(first.ai_calendar_access, "read");
-        assert_eq!(first.ai_github_access, "read");
+        assert_eq!(first.ai_github_access, "none", "a saved token is not a yes to the AI");
         assert_eq!(first.chat_permission_mode, "default");
         // A settings.json written before these were settings: what Lumo did then.
         let mut object = custom().as_object().unwrap().clone();

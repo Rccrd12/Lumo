@@ -2248,7 +2248,7 @@ fn pick<'a>(files: &'a [Attached], which: Option<&serde_json::Value>) -> Result<
 
 /// `mail_attachment`: a file attached to an email, saved with the files
 /// attached to the chat, where the agent can read it.
-async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<crate::files::DroppedFile, String> {
     let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let (acct, plain) = account_for(app, id)?;
     let (folder, uid) = parse_id(&plain).ok_or_else(|| bad_id(id))?;
@@ -2267,7 +2267,15 @@ async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<S
     let (file, bytes) = got?;
     let saved = crate::files::write_in(&file.name, &bytes)?;
     log::line(format!("[mail] a file of an email saved for the chat ({} bytes)", saved.size));
-    Ok(format!("Saved {} ({}) with the files attached to the chat: {}. Read it from there.", saved.name, size_text(saved.size as usize), saved.path))
+    Ok(saved)
+}
+
+/// What `mail_attachment` answers: where the file is, in the folder of the
+/// chat that asked (files.rs for_chat), the one its CLI reads without asking.
+/// No chat (a provider of the island's own, a task of Gemini Live): in the inbox.
+pub(crate) fn saved_text(saved: &crate::files::DroppedFile, chat: &str) -> String {
+    let path = if chat.trim().is_empty() { saved.path.clone() } else { crate::files::for_chat(chat, &saved.path) };
+    format!("Saved {} ({}) with the files attached to the chat: {}. Read it from there.", saved.name, size_text(saved.size as usize), path)
 }
 
 /// "120 KB", "3.4 MB".
@@ -2392,11 +2400,13 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         "mail_folders" => folders_anywhere(app).await,
         "mail_attachment" => {
             let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if crate::outlook::is_id(&id) {
+            let saved = if crate::outlook::is_id(&id) {
                 crate::outlook::save_attachment(id, input.get("attachment").cloned()).await
             } else {
                 save_attachment(app, &input).await
-            }
+            };
+            let chat = request.get("chat").and_then(|v| v.as_str()).unwrap_or("");
+            saved.map(|saved| saved_text(&saved, chat))
         }
         _ => Err(format!("Lumo has no email tool called {tool}.")),
     };
@@ -4808,8 +4818,7 @@ mod tests {
 
     #[test]
     fn the_ai_reads_the_email_unless_security_says_none() {
-        assert_eq!(access(&Settings::default()), "manage", "the first start: each change waits for a click");
-        assert_eq!(access(&Settings { ai_mail_access: "read".into(), ..Settings::default() }), "read");
+        assert_eq!(access(&Settings::default()), "read", "the first start: read only until the user allows more");
         assert_eq!(access(&Settings { ai_mail_access: "none".into(), ..Settings::default() }), "none");
         assert_eq!(access(&Settings { ai_mail_access: "send".into(), ..Settings::default() }), "send");
         assert_eq!(access(&Settings { ai_mail_access: "manage".into(), ..Settings::default() }), "manage");
@@ -4880,6 +4889,21 @@ mod tests {
         assert!(concerned(&before, &filtered), "its filter");
         let italian = Settings { language: "it".into(), ..before.clone() };
         assert!(concerned(&before, &italian), "its errors' language");
+    }
+
+    #[test]
+    fn an_emails_file_is_told_in_the_folder_of_the_chat_that_asked() {
+        let saved = crate::files::write_in("saved-text-test.pdf", b"%PDF").unwrap();
+        let chat = "saved-text-test-chat";
+        crate::files::forget_chat(chat);
+        let told = saved_text(&saved, chat);
+        let linked = crate::files::chat_dir(chat).join(&saved.name);
+        assert!(told.contains(&linked.to_string_lossy().to_string()), "{told}");
+        assert_eq!(std::fs::read(&linked).unwrap(), b"%PDF");
+        // No chat (an API provider, a task of Gemini Live): the inbox's own path.
+        assert!(saved_text(&saved, "").contains(&saved.path));
+        crate::files::forget_chat(chat);
+        let _ = std::fs::remove_file(&saved.path);
     }
 
     #[test]

@@ -769,13 +769,13 @@ const SECURITY = {
   get tabs() { return t("Browser tabs"); },
   get tabsHint() { return t("The tabs open in your browsers."); },
   get accounts() { return t("Your accounts"); },
-  get mailHint() { return t("Each email sent, moved or trashed waits for your click on its card. Nothing is ever deleted for good."); },
+  get mailHint() { return t("At first the AI may only read. If you let it send, each email waits for your click on its card. Nothing is ever deleted for good."); },
   get calendarHint() { return t("Read your coming events, or nothing."); },
   get outlookStart() { return t("Open Outlook if it's closed"); },
   get outlookStartHint() { return t("When Lumo starts, it opens classic Outlook in the background, with no window. If you close it yourself, Lumo doesn't open it again until it next starts."); },
-  get githubHint() { return t("Read your pull requests, issues and checks when you ask."); },
+  get githubHint() { return t("Read your pull requests, issues and checks when you ask. Off until you turn it on."); },
   get otherFiles() { return t("Other chats' files"); },
-  get otherFilesHint() { return t("Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: also those of the other chats from the last 7 days."); },
+  get otherFilesHint() { return t("Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: every file Lumo received in the last 7 days. Gemini Live can read them either way."); },
   get readAndSend() { return t("Read and send"); },
   get readSendManage() { return t("Read, send and manage"); },
   get readOnly() { return t("Read only"); },
@@ -865,6 +865,8 @@ function securitySection(): HTMLElement {
     ]);
     calendarAccessRow.hidden = !(ics === true || google?.signedIn === true);
     githubRow.hidden = github !== true;
+    // Allowed from the token's card (githubAskRow) meanwhile.
+    githubAccess.value = settings.aiGithubAccess === "read" ? "read" : "none";
   };
   void showAccounts();
   declaredViews.push(() => void showAccounts());
@@ -1482,6 +1484,10 @@ function integrationsSection(
           input.value = "";
           refresh();
           keyChanged(field.key, true);
+          // A token saved for the pill is not a yes to the AI: asked once, here.
+          if (field.key === "github-token" && settings.aiGithubAccess !== "read" && !rows.querySelector(".github-ask")) {
+            rows.append(githubAskRow());
+          }
         } catch {
           dotEl.style.background = "#f5a524";
         }
@@ -1521,6 +1527,28 @@ function integrationsSection(
 
   updateNote();
   return h("section", {}, ...sectionHead(t("Integrations")), note, list);
+}
+
+/**
+ * Under the GitHub token, once it is saved: may the chat's AI read the
+ * account too (Settings → Security → GitHub, `aiGithubAccess`)? Off until
+ * the user says yes here or in Security; the row goes either way.
+ */
+function githubAskRow(): HTMLElement {
+  const later = h("button", { text: t("Not now") });
+  const allow = h("button", { text: t("Allow read") });
+  const row = h("div", { class: "field-row github-ask" },
+    h("span", { text: t("Let the AI read your pull requests, issues and checks?"), style: "flex:1 1 auto;min-width:0" }),
+    later, allow,
+  );
+  later.addEventListener("click", () => row.remove());
+  allow.addEventListener("click", () => {
+    settings.aiGithubAccess = "read";
+    row.remove();
+    // Security's menu shows it at once.
+    declaredChanged();
+  });
+  return row;
 }
 
 const MAIL_SOURCES = {

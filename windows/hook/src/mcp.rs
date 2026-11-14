@@ -14,7 +14,7 @@
 //!
 //! `lumo-hook --mcp --tools=mail` offers Lumo's email tools instead (or
 //! `--tools=computer,mail` both): the user's mailbox, as the Email pill reads
-//! it (`{"lumo_mail": {"tool": …, "input": …}}`, mail.rs). With `mailsend`
+//! it (`{"lumo_mail": {"tool": …, "input": …, "chat": …}}`, mail.rs). With `mailsend`
 //! also sending, replying, forwarding and drafts, with `mailmanage` marking,
 //! moving, archiving and trashing: what Settings → Security lets
 //! the AI do, each email sent and each change on a card of Lumo's first.
@@ -702,8 +702,12 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
     if ISLAND_NAMES.contains(&name) {
         return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat_id() } })));
     }
-    let key = if mail_tool(name) { "lumo_mail" } else { "lumo_computer" };
-    answer(lumo(&json!({ key: { "tool": name, "input": input } })))
+    if mail_tool(name) {
+        // With the chat it came from (`LUMO_CHAT_ID`): an email's file is
+        // saved in that chat's folder of the inbox, the one its CLI reads.
+        return answer(lumo(&json!({ "lumo_mail": { "tool": name, "input": input, "chat": chat_id() } })));
+    }
+    answer(lumo(&json!({ "lumo_computer": { "tool": name, "input": input } })))
 }
 
 /// What Lumo answered to a call, as MCP gives it.
@@ -887,6 +891,8 @@ mod tests {
         let lumo = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_mail"]["tool"], "mail_search");
             assert_eq!(req["lumo_mail"]["input"]["query"], "from:amazon");
+            // With the chat it came from, for an email's files (mail.rs serve).
+            assert!(req["lumo_mail"]["chat"].is_string());
             Ok(json!({ "text": "1 email." }))
         };
         let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mail_search","arguments":{"query":"from:amazon"}}}"#;
