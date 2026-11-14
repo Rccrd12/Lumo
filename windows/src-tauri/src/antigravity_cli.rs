@@ -1132,7 +1132,9 @@ async fn command(
     mode: &str,
     folder: Option<String>,
 ) -> Result<ChatReply, String> {
-    let turn = chat.begin(PROVIDER);
+    // A command's turn tells the conversation nothing it missed (/usage
+    // never goes to it): that waits for its next question.
+    let turn = chat.begin_aside(PROVIDER);
     let query = format!("/{name}");
     let work = claude_code::work_dir();
     let answer = if name == COMPACT {
@@ -1140,10 +1142,6 @@ async fn command(
             // A new conversation would take it for a question.
             return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen this conversation yet."), chat.cli_session()));
         };
-        if !chat.cli_unseen(PROVIDER).is_empty() {
-            // It would sum up the conversation without the turns another provider answered.
-            return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen the latest answers in this chat yet."), chat.cli_session()));
-        }
         let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
         let mut args = args(model, mode, Some(conversation.as_str()), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
         args.retain(|a| a != "--disable-slash-commands");

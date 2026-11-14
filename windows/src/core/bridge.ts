@@ -390,16 +390,19 @@ export const Bridge = {
   /** Double click on a grip: the usual width, height, or both, for that view's slot. */
   islandResetSize: (width: boolean, height: boolean, view: string | null = null) =>
     call<void>("island_reset_size", { width, height, view }),
-  /** Reopens a chat from the history, and the Claude Code session that answered it. */
-  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
-    call<void>("chat_restore", { chatId, turns, session, compact }),
+  /**
+   * Reopens a chat from the history, and the Claude Code session that answered it.
+   * `cli`: its CLI sessions and what each saw (ChatReply.cli), null for a chat saved before.
+   */
+  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null, cli: string | null = null) =>
+    call<void>("chat_restore", { chatId, turns, session, cli, compact }),
   /**
    * The same for a chat that is not on screen (a watch's task answered in its
    * own chat): Rust keeps the conversation on screen too, which chat_restore
    * would let go.
    */
-  chatLoad: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
-    call<void>("chat_load", { chatId, turns, session, compact }),
+  chatLoad: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null, cli: string | null = null) =>
+    call<void>("chat_load", { chatId, turns, session, cli, compact }),
   /** /compact with a provider called by its API: the summary that now stands for the chat's turns; null with nothing new. */
   /** The summary, and the history sent to the model before and after it (characters). */
   chatCompact: (chatId: string) => callOrThrow<(ChatCompact & { before: number; after: number }) | null>("chat_compact", { chatId }),
@@ -790,6 +793,8 @@ export interface ChatReply {
   turns?: number;
   /** What Rust's conversation kept for it, when not `text` ("(No answer.)"): given back as that by `chatRestore`. */
   kept?: string;
+  /** The chat's CLI sessions and what each saw, kept with the chat (chats.ts `setChatCli`); none without one. */
+  cli?: string;
 }
 
 /** A display the screen button can capture; `index` is its place in the menu. */

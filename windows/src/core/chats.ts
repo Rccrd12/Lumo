@@ -190,6 +190,7 @@ export function deleteChat(id: string): SavedChat[] {
   const list = loadChats().filter((c) => c.id !== id);
   store(list);
   setCompact(id, null);
+  setChatCli(id, null);
   return list;
 }
 
@@ -229,6 +230,45 @@ export function setCompact(id: string, compact: ChatCompact | null) {
     storage()?.setItem(COMPACT_KEY, JSON.stringify(all));
   } catch {
     // Storage full: the summary lasts while the app is open.
+  }
+}
+
+const CLI_KEY = "lumo.chats.cli.v1";
+
+function clis(): Record<string, string> {
+  try {
+    const raw = storage()?.getItem(CLI_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    return all && typeof all === "object" && !Array.isArray(all) ? all : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * A chat's CLI sessions (Claude Code's, Codex's…) and how much of the chat
+ * each has seen, as Rust gave them last (chat.rs `Chat::cli_state`, opaque
+ * here): given back when the chat is opened again, so a session still gets
+ * the turns another provider answered meanwhile.
+ */
+export function cliOf(id: string): string | null {
+  const c = clis()[id];
+  return typeof c === "string" && c ? c : null;
+}
+
+/** Keeps (or with null forgets) a chat's CLI sessions; only chats still in the history keep them. */
+export function setChatCli(id: string, cli: string | null) {
+  const all = clis();
+  if (all[id] === (cli ?? undefined)) return;
+  if (cli) all[id] = cli;
+  else delete all[id];
+  const kept = new Set(loadChats().map((c) => c.id));
+  kept.add(cli ? id : "");
+  for (const key of Object.keys(all)) if (!kept.has(key)) delete all[key];
+  try {
+    storage()?.setItem(CLI_KEY, JSON.stringify(all));
+  } catch {
+    // Storage full: the sessions are taken as having seen every turn, as before.
   }
 }
 

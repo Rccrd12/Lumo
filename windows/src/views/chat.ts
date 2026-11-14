@@ -94,7 +94,7 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
+  chatChecklists, chatModelOf, chatTitle, cliOf, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatCli, setChatModel, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
@@ -2503,6 +2503,7 @@ export function buildPrompt(
     if (file?.sent && file.sentWith === id) file.sent = false;
     State.chatHistory = kept;
     State.chatSession = null;
+    setChatCli(State.chatId, null);
     // The cards of the dropped messages (a quiz's answers) are not the next answer's.
     forgetCardsFrom(State.chatId, kept.filter((m) => !m.failed).length);
     renderedCount = -1;
@@ -3416,7 +3417,7 @@ export function buildPrompt(
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
       State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined }));
       State.chatSession = c.session;
-      void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
+      void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id), cliOf(c.id));
     }
     State.chatId = c.id;
     // The picker shows the provider and model this chat is on (as it was left).
@@ -3549,7 +3550,7 @@ export function buildPrompt(
       State.chatSession = going.session;
     } else if (State.chatHistory.length > 0) {
       State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, turn: i }));
-      void Bridge.chatRestore(State.chatId, State.chatHistory.map(conversationTurn), State.chatSession, compactOf(State.chatId));
+      void Bridge.chatRestore(State.chatId, State.chatHistory.map(conversationTurn), State.chatSession, compactOf(State.chatId), cliOf(State.chatId));
     }
     const workshop = State.chatSlot === "forge";
     cardEl.classList.toggle("forge", workshop);
@@ -3598,6 +3599,7 @@ export function buildPrompt(
       { role: "assistant", content: `${t(FORGE_STRINGS.editHere, { name: tool.name })}\n\n${blocksOf(seed)}` },
     ];
     State.chatHistory = turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
+    setChatCli(State.chatId, null);
     void Bridge.chatRestore(State.chatId, turns, null);
     const parsed = latestDraft(State.chatHistory);
     if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
@@ -4210,6 +4212,8 @@ export function buildPrompt(
         giveBack(false);
       }
       if (reply.session) run.session = reply.session;
+      // What each CLI session of the chat saw, for opening it again (chat.rs cli_state).
+      if (!run.forgotten) setChatCli(run.chatId, reply.cli ?? null);
       if (State.chatId === run.chatId) {
         State.chatSession = run.session;
         void peekExplorer(true);
@@ -4342,7 +4346,8 @@ export function buildPrompt(
     State.notify();
   }
 
-  void onEvent<{ chat: string; text: string; session: string | null }>("chat-own-answer", (own) => {
+  void onEvent<{ chat: string; text: string; session: string | null; cli?: string | null }>("chat-own-answer", (own) => {
+    if (own?.chat && typeof own.cli === "string") setChatCli(own.chat, own.cli);
     if (own?.chat && own.text) void ownAnswer(own.chat, own.text, own.session ?? null);
   });
 
@@ -4393,7 +4398,7 @@ export function buildPrompt(
     const session = saved?.session ?? null;
     loadingAway.add(chatId);
     try {
-      await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId));
+      await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId), cliOf(chatId));
     } finally {
       loadingAway.delete(chatId);
     }

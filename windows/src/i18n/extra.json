@@ -9985,18 +9985,6 @@
    "id": "Kirim pesan dulu: Claude Code belum melihat percakapan ini.",
    "it": "Invia prima un messaggio: Claude Code non ha ancora visto questa conversazione."
   },
-  "Send a message first: Claude Code hasn't seen the latest answers in this chat yet.": {
-   "zh-Hans": "请先发送一条消息：Claude Code 还没有看到这段对话中最新的回答。",
-   "hi": "पहले एक संदेश भेजें: Claude Code ने अभी तक इस चैट के नए जवाब नहीं देखे हैं।",
-   "es": "Envía primero un mensaje: Claude Code aún no ha visto las últimas respuestas de este chat.",
-   "ar": "أرسل رسالة أولًا: لم يطّلع Claude Code على آخر الإجابات في هذه المحادثة بعد.",
-   "fr": "Envoyez d'abord un message : Claude Code n'a pas encore vu les dernières réponses de ce chat.",
-   "bn": "আগে একটি বার্তা পাঠান: Claude Code এখনও এই চ্যাটের সর্বশেষ উত্তরগুলো দেখেনি।",
-   "pt-BR": "Envie uma mensagem primeiro: o Claude Code ainda não viu as últimas respostas deste chat.",
-   "ru": "Сначала отправьте сообщение: Claude Code ещё не видел последние ответы в этом чате.",
-   "id": "Kirim pesan dulu: Claude Code belum melihat jawaban terbaru di obrolan ini.",
-   "it": "Invia prima un messaggio: Claude Code non ha ancora visto le ultime risposte di questa chat."
-  },
   "Claude Code compacted the conversation.": {
    "zh-Hans": "Claude Code 已压缩对话。",
    "hi": "Claude Code ने बातचीत को संक्षिप्त कर दिया।",
@@ -10738,18 +10726,6 @@
    "ru": "Сначала отправьте сообщение: Antigravity CLI ещё не видел этот разговор.",
    "id": "Kirim pesan dulu: Antigravity CLI belum melihat percakapan ini.",
    "it": "Prima invia un messaggio: Antigravity CLI non ha ancora visto questa conversazione."
-  },
-  "Send a message first: Antigravity CLI hasn't seen the latest answers in this chat yet.": {
-   "zh-Hans": "请先发送一条消息：Antigravity CLI 还没有看到这段对话中最新的回答。",
-   "hi": "पहले एक संदेश भेजें: Antigravity CLI ने अभी तक इस चैट के नए जवाब नहीं देखे हैं।",
-   "es": "Envía primero un mensaje: Antigravity CLI aún no ha visto las últimas respuestas de este chat.",
-   "ar": "أرسل رسالة أولًا: لم يطّلع Antigravity CLI على آخر الإجابات في هذه المحادثة بعد.",
-   "fr": "Envoyez d'abord un message : Antigravity CLI n'a pas encore vu les dernières réponses de ce chat.",
-   "bn": "আগে একটি বার্তা পাঠান: Antigravity CLI এখনও এই চ্যাটের সর্বশেষ উত্তরগুলো দেখেনি।",
-   "pt-BR": "Envie uma mensagem primeiro: o Antigravity CLI ainda não viu as últimas respostas deste chat.",
-   "ru": "Сначала отправьте сообщение: Antigravity CLI ещё не видел последние ответы в этом чате.",
-   "id": "Kirim pesan dulu: Antigravity CLI belum melihat jawaban terbaru di obrolan ini.",
-   "it": "Invia prima un messaggio: Antigravity CLI non ha ancora visto le ultime risposte di questa chat."
   },
   "Antigravity CLI compacted the conversation.": {
    "zh-Hans": "Antigravity CLI 已压缩对话。",

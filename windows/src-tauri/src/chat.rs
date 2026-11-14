@@ -54,15 +54,20 @@ pub struct ChatReply {
     /// opened again from the history (NO_ANSWER, never Lumo's words as the agent's).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kept: Option<String>,
+    /// Every CLI session of the chat and what each saw (`Chat::cli_state`):
+    /// the island keeps it with the chat and gives it back to `Chat::restore`.
+    /// None (left out): no CLI session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cli: Option<String>,
 }
 
 impl ChatReply {
     pub fn answer(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: false, turns: 0, kept: None }
+        ChatReply { text, session, stopped: false, turns: 0, kept: None, cli: None }
     }
 
     pub fn stopped(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: true, turns: 0, kept: None }
+        ChatReply { text, session, stopped: true, turns: 0, kept: None, cli: None }
     }
 
     /// The CLI answered with nothing: the island shows `why`, the
@@ -146,15 +151,10 @@ struct Conversation {
     native: Vec<Value>,
     /// `{"role", "content": text}` turns, the same whoever answered.
     plain: Vec<Value>,
-    /// The Claude Code session (or Antigravity CLI conversation) the island's
-    /// chat continues (claude_code.rs, antigravity_cli.rs).
-    cli_session: Option<String>,
-    /// The provider `cli_session` belongs to: one CLI never resumes the other's.
-    cli_owner: Option<String>,
-    /// How many of `plain`'s turns `cli_session` has seen: the ones after it
-    /// were answered by another provider (an API one, which leaves the session
-    /// as it is), and go to the session as text when its CLI answers again.
-    cli_seen: usize,
+    /// The CLI sessions the chat continues (Claude Code's, Antigravity CLI's,
+    /// Codex's, Copilot's…), one for each CLI: going back to one resumes its
+    /// own, never another CLI's.
+    cli: CliState,
     /// Folders the user shared from File Explorer in this chat: Claude Code
     /// keeps reading them on the turns after (explorer.rs). Each with the turn
     /// it came with, so an edit before that turn takes it back.
@@ -188,6 +188,76 @@ fn compacted(turns: &[Value], compact: &Option<(usize, String)>) -> Vec<Value> {
     }
 }
 
+/// One CLI's session in a chat, and what of the chat it has seen.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+struct CliSession {
+    /// The CLI (claude_code::PROVIDER, antigravity_cli::PROVIDER…).
+    provider: String,
+    id: String,
+    /// How many of `plain`'s turns it has seen: the ones after were answered
+    /// by another provider, and go to it as text when its CLI answers again.
+    seen: usize,
+    /// Turns after `seen` it took part in itself, by their question's place:
+    /// one of its commands (/context, /usage), which never tells it what it
+    /// missed. Left out when it is told.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    aside: Vec<usize>,
+    /// What it wrote by itself between two turns (`Chat::add_own`) once
+    /// another provider had answered: joined to that answer, by its place.
+    /// Left out of that answer when it is told: it knows its own words.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    own: Vec<(usize, String)>,
+}
+
+/// The chat's CLI sessions, as the island keeps them with the chat
+/// (`Chat::cli_state`, given back to `Chat::restore`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+struct CliState {
+    /// The CLI that answered last: its session is `Chat::cli_session`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last: Option<String>,
+    #[serde(default)]
+    sessions: Vec<CliSession>,
+}
+
+impl CliState {
+    fn of(&self, provider: &str) -> Option<&CliSession> {
+        self.sessions.iter().find(|s| s.provider == provider)
+    }
+
+    fn of_mut(&mut self, provider: &str) -> Option<&mut CliSession> {
+        self.sessions.iter_mut().find(|s| s.provider == provider)
+    }
+
+    /// A saved state that fits `turns` turns: places past them dropped, a
+    /// count past them cut. None for anything else (a chat saved before, a
+    /// state that is not one).
+    fn parse(saved: &str, turns: usize) -> Option<CliState> {
+        let mut state: CliState = serde_json::from_str(saved).ok()?;
+        state.sessions.retain(|s| is_cli(&s.provider) && !s.id.is_empty());
+        let mut seen_providers = std::collections::HashSet::new();
+        state.sessions.retain(|s| seen_providers.insert(s.provider.clone()));
+        for s in &mut state.sessions {
+            s.seen = s.seen.min(turns) & !1;
+            let seen = s.seen;
+            s.aside.retain(|q| *q >= seen && q + 1 < turns && q.is_multiple_of(2));
+            s.own.retain(|(a, text)| *a >= seen && *a < turns && a % 2 == 1 && !text.is_empty());
+        }
+        if state.last.as_deref().is_some_and(|last| state.of(last).is_none()) {
+            state.last = None;
+        }
+        Some(state)
+    }
+}
+
+/// `answer` without the words its CLI wrote by itself at its end (`CliSession::own`).
+fn without_own(answer: &str, own: &str) -> String {
+    match answer.strip_suffix(own) {
+        Some(before) => before.trim_end().to_string(),
+        None => answer.to_string(),
+    }
+}
+
 /// What a provider needs to build one turn.
 pub struct Turn {
     epoch: u64,
@@ -196,6 +266,9 @@ pub struct Turn {
     pub first: bool,
     /// The earlier turns, in this provider's format.
     pub history: Vec<Value>,
+    /// One of the CLI's commands, not a question (`Chat::begin_aside`): it
+    /// tells its session nothing of what the session missed.
+    aside: bool,
 }
 
 impl Chat {
@@ -240,12 +313,21 @@ impl Chat {
             provider: provider.to_string(),
             first: c.plain.is_empty(),
             history: compacted(&c.native, &c.compact),
+            aside: false,
         }
     }
 
+    /// `begin` for one of the CLI's commands (/context, /usage): its turn is
+    /// kept in the chat, and its session is still told, with its next
+    /// question, the turns another provider answered before it.
+    pub fn begin_aside(&self, provider: &str) -> Turn {
+        Turn { aside: true, ..self.begin(provider) }
+    }
+
     /// Puts a chat from the history back: its turns as plain text, and the
-    /// session to continue, if a CLI answered it (as `cli_session` gave it).
-    pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>, compact: Option<(usize, String)>) {
+    /// session to continue, if a CLI answered it (as `cli_session` gave it),
+    /// with each CLI's session and what it saw (as `cli_state` gave it).
+    pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>, cli: Option<String>, compact: Option<(usize, String)>) {
         crate::island_tools::forget_plan(&self.id);
         crate::local_profile::forget(&self.id);
         let mut c = self.inner.lock().unwrap();
@@ -255,14 +337,19 @@ impl Chat {
             .filter(|(role, _)| role == "user" || role == "assistant")
             .map(|(role, content)| json!({ "role": role, "content": content }))
             .collect();
-        let (cli_owner, cli_session) = match cli_session.as_deref().map(untag_session) {
-            Some((owner, id)) => (Some(owner.to_string()), Some(id.to_string())),
-            None => (None, None),
-        };
+        let cli = cli.as_deref().and_then(|saved| CliState::parse(saved, plain.len())).unwrap_or_else(|| {
+            // A chat saved before its sessions were: its last session only,
+            // which saw every turn.
+            match cli_session.as_deref().map(untag_session) {
+                Some((owner, id)) => CliState {
+                    last: Some(owner.to_string()),
+                    sessions: vec![CliSession { provider: owner.to_string(), id: id.to_string(), seen: plain.len(), ..Default::default() }],
+                },
+                None => CliState::default(),
+            }
+        });
         let compact = compact.filter(|(upto, summary)| upto.is_multiple_of(2) && *upto <= plain.len() && !summary.trim().is_empty());
-        // A saved chat does not say which turns its session saw: all of them.
-        let cli_seen = plain.len();
-        *c = Conversation { epoch, plain, cli_session, cli_owner, cli_seen, compact, ..Default::default() };
+        *c = Conversation { epoch, plain, cli, compact, ..Default::default() };
     }
 
     /// An edited message: the conversation goes back to its first `keep` turns
@@ -286,9 +373,7 @@ impl Chat {
         if c.native.len() != c.plain.len() {
             c.owner = None; // rebuilt from the plain turns on the next one
         }
-        c.cli_session = None;
-        c.cli_owner = None;
-        c.cli_seen = 0;
+        c.cli = CliState::default();
     }
 
     /// /compact: what the model would be sent now, as text to sum up, and
@@ -426,28 +511,46 @@ impl Chat {
     /// is, as chats were saved before; another CLI's tagged with its provider.
     pub fn cli_session(&self) -> Option<String> {
         let c = self.inner.lock().unwrap();
-        let id = c.cli_session.as_deref()?;
-        Some(match c.cli_owner.as_deref() {
-            Some(owner) if owner != claude_code::PROVIDER => format!("{owner}:{id}"),
-            _ => id.to_string(),
-        })
+        let session = c.cli.of(c.cli.last.as_deref()?)?;
+        Some(if session.provider == claude_code::PROVIDER { session.id.clone() } else { format!("{}:{}", session.provider, session.id) })
+    }
+
+    /// Every CLI session of the chat and what each saw, as the island keeps
+    /// it with the chat (`restore` takes it back); None without one.
+    pub fn cli_state(&self) -> Option<String> {
+        let c = self.inner.lock().unwrap();
+        (!c.cli.sessions.is_empty()).then(|| serde_json::to_string(&c.cli).unwrap_or_default())
     }
 
     /// The session `provider` resumes: its own only, never another CLI's.
     pub fn cli_session_for(&self, provider: &str) -> Option<String> {
         let c = self.inner.lock().unwrap();
-        c.cli_session.clone().filter(|_| c.cli_owner.as_deref() == Some(provider))
+        c.cli.of(provider).map(|s| s.id.clone())
     }
 
     /// The turns `provider`'s own session has not seen, as plain text turns:
-    /// those another provider answered since that CLI last did. None without
+    /// those another provider (an API one, another CLI) answered since that
+    /// CLI last did, without its own commands and its own words. None without
     /// a session of its own (it then gets the whole conversation, `Turn::history`).
     pub fn cli_unseen(&self, provider: &str) -> Vec<Value> {
         let c = self.inner.lock().unwrap();
-        if c.cli_session.is_none() || c.cli_owner.as_deref() != Some(provider) {
-            return Vec::new();
+        let Some(session) = c.cli.of(provider) else { return Vec::new() };
+        let mut turns = Vec::new();
+        for (at, turn) in c.plain.iter().enumerate().skip(session.seen) {
+            let question = at - at % 2;
+            if session.aside.contains(&question) {
+                continue;
+            }
+            let mut turn = turn.clone();
+            for (_, own) in session.own.iter().filter(|(a, _)| *a == at) {
+                let text = turn["content"].as_str().map(|t| without_own(t, own));
+                if let Some(text) = text {
+                    turn["content"] = Value::String(text);
+                }
+            }
+            turns.push(turn);
         }
-        c.plain.get(c.cli_seen..).map(<[Value]>::to_vec).unwrap_or_default()
+        turns
     }
 
     /// The folders Claude Code may read in this chat, with `shared` added.
@@ -465,11 +568,17 @@ impl Chat {
     /// Remembers the CLI session of `turn`, unless the chat was reset since.
     pub fn set_cli_session(&self, turn: &Turn, id: &str) {
         let mut c = self.inner.lock().unwrap();
-        if c.epoch == turn.epoch {
-            c.cli_session = Some(id.to_string());
-            c.cli_owner = Some(turn.provider.clone());
+        if c.epoch != turn.epoch {
+            return;
+        }
+        c.cli.last = Some(turn.provider.clone());
+        let seen = c.plain.len();
+        match c.cli.of_mut(&turn.provider) {
+            // A command in the same session: it was told nothing new.
+            Some(session) if turn.aside && session.id == id => {}
             // It was given every turn before this one (as text, those it had not seen).
-            c.cli_seen = c.plain.len();
+            Some(session) => *session = CliSession { provider: turn.provider.clone(), id: id.to_string(), seen, ..Default::default() },
+            None => c.cli.sessions.push(CliSession { provider: turn.provider.clone(), id: id.to_string(), seen, ..Default::default() }),
         }
     }
 
@@ -480,8 +589,13 @@ impl Chat {
     /// that session (a new chat, an edited message) or `provider`.
     pub fn add_own(&self, provider: &str, session: Option<&str>, answer: &str) {
         let mut c = self.inner.lock().unwrap();
-        if session.is_none() || c.cli_session.as_deref() != session || c.cli_owner.as_deref() != Some(provider) {
-            return;
+        let turns = c.plain.len();
+        let Some(own) = c.cli.of_mut(provider).filter(|s| session == Some(s.id.as_str())) else { return };
+        // Another provider answered last: its session knows its own words,
+        // and is not told them again as that provider's.
+        let last_is_its_own = own.seen == turns || own.aside.contains(&turns.saturating_sub(2));
+        if !last_is_its_own && turns > 0 {
+            own.own.push((turns - 1, answer.to_string()));
         }
         join_own(&mut c.plain, answer);
         if c.owner.as_deref() == Some(provider) {
@@ -499,10 +613,17 @@ impl Chat {
         }
         c.native.push(user);
         c.native.push(assistant);
+        let question = c.plain.len();
         c.plain.push(json!({ "role": "user", "content": user_text }));
         c.plain.push(json!({ "role": "assistant", "content": answer }));
-        if c.cli_owner.as_deref() == Some(turn.provider.as_str()) {
-            c.cli_seen = c.plain.len();
+        let turns = c.plain.len();
+        if let Some(session) = c.cli.of_mut(&turn.provider) {
+            if !turn.aside || session.seen == question {
+                session.seen = turns;
+            } else {
+                // A command while it still misses turns: they go with its next question.
+                session.aside.push(question);
+            }
         }
     }
 }
@@ -1062,6 +1183,7 @@ async fn dispatch(
         chat.note_file(name, path, at);
     }
     reply.turns = chat.turns();
+    reply.cli = chat.cli_state();
     Ok(reply)
 }
 
@@ -1069,6 +1191,7 @@ async fn dispatch(
 fn stopped_before_sent(chat: &Chat) -> ChatReply {
     let mut reply = ChatReply::stopped(String::new(), chat.cli_session());
     reply.turns = chat.turns();
+    reply.cli = chat.cli_state();
     reply
 }
 
@@ -1278,7 +1401,7 @@ mod tests {
     #[test]
     fn a_restored_chat_continues_as_plain_turns() {
         let chat = Chat::default();
-        chat.restore(vec![("user".into(), "hi".into()), ("system".into(), "x".into()), ("assistant".into(), "hello".into())], Some("s".into()), None);
+        chat.restore(vec![("user".into(), "hi".into()), ("system".into(), "x".into()), ("assistant".into(), "hello".into())], Some("s".into()), None, None);
         assert_eq!(chat.cli_session().as_deref(), Some("s"));
         assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("s"));
         assert_eq!(chat.cli_session_for("antigravity-cli"), None, "never another CLI's session");
@@ -1316,11 +1439,100 @@ mod tests {
         let t = chat.begin("claude-code");
         chat.set_cli_session(&t, "s");
         assert!(chat.cli_unseen("claude-code").is_empty());
-        // A saved chat comes back as all seen; an edit starts a new session.
-        chat.restore(vec![("user".into(), "x".into()), ("assistant".into(), "y".into())], Some("s".into()), None);
+        // A chat saved before its sessions were comes back as all seen; an edit starts a new session.
+        chat.restore(vec![("user".into(), "x".into()), ("assistant".into(), "y".into())], Some("s".into()), None, None);
         assert!(chat.cli_unseen("claude-code").is_empty());
         chat.rewind(0);
         assert!(chat.cli_unseen("claude-code").is_empty());
+    }
+
+    #[test]
+    fn a_chat_opened_again_still_gives_its_session_the_turns_it_missed() {
+        let chat = Chat::default();
+        let q = |text: &str| json!({ "role": "user", "content": text });
+        let a = |text: &str| json!({ "role": "assistant", "content": text });
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("one"), a("1"), "one", "1");
+        let t = chat.begin("anthropic");
+        chat.commit(&t, q("two"), a("2"), "two", "2");
+        // The island keeps what each session saw, and gives it back (another
+        // chat opened in between, the workshop, Lumo started again).
+        let saved = chat.cli_state().unwrap();
+        let session = chat.cli_session();
+        let turns = vec![("user".into(), "one".into()), ("assistant".into(), "1".into()), ("user".into(), "two".into()), ("assistant".into(), "2".into())];
+        chat.restore(turns.clone(), session.clone(), Some(saved.clone()), None);
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("s"));
+        assert_eq!(chat.cli_unseen("claude-code"), vec![q("two"), a("2")]);
+        // A saved state that is not one, or past the turns, is made to fit.
+        chat.restore(turns.clone(), session.clone(), Some("not json".into()), None);
+        assert!(chat.cli_unseen("claude-code").is_empty(), "as chats saved before: all seen");
+        chat.restore(turns[..2].to_vec(), session.clone(), Some(saved), None);
+        assert!(chat.cli_unseen("claude-code").is_empty());
+        let odd = r#"{"last":"claude-code","sessions":[{"provider":"claude-code","id":"s","seen":3,"aside":[1,3,8],"own":[[2,"x"],[3,""],[3,"y"]]},{"provider":"openai","id":"o","seen":0},{"provider":"claude-code","id":"twice","seen":0}]}"#;
+        chat.restore(turns, session, Some(odd.into()), None);
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("s"));
+        assert_eq!(chat.cli_session_for("openai"), None, "not a CLI");
+        assert_eq!(chat.cli_unseen("claude-code"), vec![q("two"), a("2")], "seen 3 is 2, and the places that don't fit go");
+    }
+
+    #[test]
+    fn a_command_keeps_what_its_session_missed_for_the_next_question() {
+        let chat = Chat::default();
+        let q = |text: &str| json!({ "role": "user", "content": text });
+        let a = |text: &str| json!({ "role": "assistant", "content": text });
+        let t = chat.begin("antigravity-cli");
+        chat.set_cli_session(&t, "c");
+        chat.commit(&t, q("one"), a("1"), "one", "1");
+        let t = chat.begin("openai");
+        chat.commit(&t, q("two"), a("2"), "two", "2");
+        // /usage runs on its own: the conversation is still owed "two".
+        let t = chat.begin_aside("antigravity-cli");
+        chat.commit(&t, q("/usage"), a("80% left"), "/usage", "80% left");
+        assert_eq!(chat.cli_unseen("antigravity-cli"), vec![q("two"), a("2")], "and not the command");
+        // A command in the session itself (Claude Code's /context) the same.
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("three"), a("3"), "three", "3");
+        let t = chat.begin("openai");
+        chat.commit(&t, q("four"), a("4"), "four", "4");
+        let t = chat.begin_aside("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("/context"), a("40%"), "/context", "40%");
+        assert_eq!(chat.cli_unseen("claude-code"), vec![q("four"), a("4")]);
+        // With nothing missed, a command is simply seen.
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("five"), a("5"), "five", "5");
+        let t = chat.begin_aside("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("/cost"), a("$1"), "/cost", "$1");
+        assert!(chat.cli_unseen("claude-code").is_empty());
+        // Kept with the chat.
+        let saved = chat.cli_state().unwrap();
+        assert!(saved.contains(r#""aside":[4]"#), "{saved}");
+    }
+
+    #[test]
+    fn what_claude_code_wrote_by_itself_after_another_answer_is_not_told_it_again() {
+        let chat = Chat::default();
+        let q = |text: &str| json!({ "role": "user", "content": text });
+        let a = |text: &str| json!({ "role": "assistant", "content": text });
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("measure it"), a("started"), "measure it", "started");
+        let t = chat.begin("openai");
+        chat.commit(&t, q("two"), a("2"), "two", "2");
+        // Its background command ends: the chat shows it under the last answer.
+        chat.add_own("claude-code", Some("s"), "Done: 42 ms.");
+        assert_eq!(chat.begin("gemini").history[3]["content"], "2\n\nDone: 42 ms.", "the other providers are told it");
+        // Claude Code is told "two" and its answer, without its own words.
+        assert_eq!(chat.cli_unseen("claude-code"), vec![q("two"), a("2")]);
+        // So after the chat is opened again, as the island joined it.
+        let saved = chat.cli_state();
+        let turns = vec![("user".into(), "measure it".into()), ("assistant".into(), "started".into()), ("user".into(), "two".into()), ("assistant".into(), "2\n\nDone: 42 ms.".into())];
+        chat.restore(turns, chat.cli_session(), saved, None);
+        assert_eq!(chat.cli_unseen("claude-code"), vec![q("two"), a("2")]);
     }
 
     #[test]
@@ -1333,28 +1545,33 @@ mod tests {
         // Another provider answering in between keeps it.
         let _ = chat.begin("openai");
         assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("claude-session"));
-        // Antigravity CLI takes over: its conversation is the one kept now.
+        // Antigravity CLI answers too: each keeps its own, for going back to it.
         let t = chat.begin("antigravity-cli");
         chat.set_cli_session(&t, "agy-conversation");
         assert_eq!(chat.cli_session_for("antigravity-cli").as_deref(), Some("agy-conversation"));
-        assert_eq!(chat.cli_session_for("claude-code"), None);
-        // The island keeps it tagged, and gets it back to the right CLI.
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("claude-session"));
+        // The island keeps the last one tagged, and gets it back to the right CLI.
         let saved = chat.cli_session().unwrap();
         assert_eq!(saved, "antigravity-cli:agy-conversation");
+        let both = chat.cli_state();
         chat.rewind(0);
         assert_eq!(chat.cli_session_for("antigravity-cli"), None);
         assert_eq!(chat.cli_session(), None);
-        chat.restore(vec![], Some(saved), None);
+        assert_eq!(chat.cli_state(), None);
+        chat.restore(vec![], Some(saved.clone()), None, None);
         assert_eq!(chat.cli_session_for("antigravity-cli").as_deref(), Some("agy-conversation"));
-        assert_eq!(chat.cli_session_for("claude-code"), None);
+        assert_eq!(chat.cli_session_for("claude-code"), None, "a chat saved before keeps its last only");
+        chat.restore(vec![], Some(saved), both, None);
+        assert_eq!(chat.cli_session().as_deref(), Some("antigravity-cli:agy-conversation"));
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("claude-session"));
         // A Claude Code session goes untagged, as chats were saved before.
         let t = chat.begin("claude-code");
         chat.set_cli_session(&t, "0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b");
         assert_eq!(chat.cli_session().as_deref(), Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"));
-        chat.restore(vec![], Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b".into()), None);
+        chat.restore(vec![], Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b".into()), None, None);
         assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"));
         assert_eq!(chat.cli_session_for("antigravity-cli"), None);
-        chat.restore(vec![], None, None);
+        chat.restore(vec![], None, None, None);
         assert_eq!(chat.cli_session(), None);
     }
 
@@ -1454,22 +1671,22 @@ mod tests {
         assert_eq!(chat.begin("ollama").history.len(), 2);
         assert!(chat.begin("ollama").history[0]["content"] == "one");
         // A saved chat comes back with its summary; a bad one is ignored.
-        chat.restore(vec![("user".into(), "a".into()), ("assistant".into(), "b".into())], None, Some((2, "S".into())));
+        chat.restore(vec![("user".into(), "a".into()), ("assistant".into(), "b".into())], None, None, Some((2, "S".into())));
         assert_eq!(chat.begin("ollama").history.len(), 2);
         assert!(chat.begin("ollama").history[0]["content"].as_str().unwrap().contains('S'));
-        chat.restore(vec![("user".into(), "a".into())], None, Some((4, "S".into())));
+        chat.restore(vec![("user".into(), "a".into())], None, None, Some((4, "S".into())));
         assert_eq!(chat.begin("ollama").history[0]["content"], "a");
     }
 
     #[test]
     fn a_summary_of_a_conversation_that_changed_meanwhile_is_not_kept() {
         let chat = Chat::default();
-        chat.restore(vec![("user".into(), "a".into()), ("assistant".into(), "b".into())], None, None);
+        chat.restore(vec![("user".into(), "a".into()), ("assistant".into(), "b".into())], None, None, None);
         let epoch = chat.epoch();
         let (upto, _) = chat.to_compact().unwrap();
         // An edit (or a new chat) while the model sums up.
         chat.rewind(0);
-        chat.restore(vec![("user".into(), "x".into()), ("assistant".into(), "y".into())], None, None);
+        chat.restore(vec![("user".into(), "x".into()), ("assistant".into(), "y".into())], None, None, None);
         assert!(!chat.set_compact_since(epoch, upto, "about a and b".into()));
         assert_eq!(chat.begin("ollama").history[0]["content"], "x");
         // Unchanged: kept.
@@ -1596,7 +1813,7 @@ mod tests {
         let chats = Chats::default();
         let (loaded, made) = chats.load("away");
         assert!(made);
-        loaded.restore(vec![("user".into(), "q".into()), ("assistant".into(), "a".into())], None, None);
+        loaded.restore(vec![("user".into(), "q".into()), ("assistant".into(), "a".into())], None, None, None);
         drop(loaded);
         // Another chat comes on screen before the message goes: "away" stays.
         chats.focus("here");

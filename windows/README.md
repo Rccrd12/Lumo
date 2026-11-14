@@ -637,7 +637,13 @@ add their keys in **Settings… → Chat → Chat providers**, then click the mo
 above the chat box to switch provider and model. The model list
 is fetched from the provider only once you pick it and it has a key. Switching
 mid-conversation carries the conversation over as plain text, so nothing in one
-provider's format is ever sent to another. These providers get the island's
+provider's format is ever sent to another. Back on a CLI (Claude Code,
+Antigravity CLI, Codex, Copilot CLI, Cursor CLI), the chat continues that CLI's
+own session, one for each, and its next question carries the turns the others
+answered meanwhile, as a record of what was said; that holds after the chat is
+opened again from Past chats too. With an Anthropic API key, Lumo's
+instructions, its tools and the conversation so far are read from Claude's
+prompt cache when the next request comes within five minutes. These providers get the island's
 tools, the email and listening tools and your own tools. With **Lumo's web search** turned on they can also
 search the web (Bing, with Bing News for the latest, and Wikipedia only when neither answers; with Unsloth Studio, its own web search when Lumo has its key) and read a page; it is off
 until you turn it on. `/compact` summarises a long chat into a short one.
