@@ -4,6 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { CHAT_LISTENING, CHAT_PANEL_OPEN, DEFAULT_SHAPE, chatHeight, gripFactors, islandSize, parseDock } from "../src/core/layout.ts";
 
 test("the default shape gives the island its usual sizes", () => {
@@ -104,4 +105,11 @@ test("the closed island width narrows the closed island alone, and what it says 
   assert.equal(islandSize("hidden", "overview", 0, DEFAULT_SHAPE, "top", null, 72).w, 72);
   assert.equal(islandSize("hidden", "overview", 0, DEFAULT_SHAPE, "top", null, COMPACT_W).w, NOTCH_W);
   assert.deepEqual(islandSize("expanded", "overview", 0, DEFAULT_SHAPE, "top", null, 72), { w: 640, h: 160 });
+});
+
+test("a dragged file opens the island at the same distance in the page and in Rust", () => {
+  const rust = readFileSync(new URL("../src-tauri/src/island.rs", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/island/island.ts", import.meta.url), "utf8");
+  const near = (source, pattern) => Number(source.match(pattern)[1]);
+  assert.equal(near(rust, /const DRAG_NEAR: f64 = ([0-9.]+);/), near(page, /const DRAG_NEAR = ([0-9.]+);/));
 });

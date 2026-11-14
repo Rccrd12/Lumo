@@ -28,10 +28,11 @@ use ::windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindow,
-    GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
-    SetWindowLongPtrW, SetWindowPos, ShowWindow, EVENT_SYSTEM_FOREGROUND, GWL_EXSTYLE, GW_OWNER, HWND_TOPMOST,
-    SM_SWAPBUTTON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
+    EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetGUIThreadInfo,
+    GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+    IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, WindowFromPoint,
+    EVENT_SYSTEM_FOREGROUND, GUITHREADINFO, GUI_INMOVESIZE, GWL_EXSTYLE, GW_OWNER, HWND_TOPMOST, SM_SWAPBUTTON,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
     WINEVENT_SKIPOWNPROCESS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
 
@@ -569,6 +570,34 @@ pub fn left_button_down() -> bool {
     let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0;
     let button = if swapped { VK_RBUTTON } else { VK_LBUTTON };
     unsafe { (GetAsyncKeyState(button.0 as i32) as u16 & 0x8000) != 0 }
+}
+
+/// The thread of the window under a point (physical pixels), read as a press
+/// starts. The island is click-through there (WS_EX_TRANSPARENT), so
+/// WindowFromPoint finds the window the press was meant for. 0 for none.
+pub fn thread_under(x: f64, y: f64) -> u32 {
+    let hwnd = unsafe { WindowFromPoint(POINT { x: x as i32, y: y as i32 }) };
+    if hwnd.0.is_null() {
+        return 0;
+    }
+    unsafe { GetWindowThreadProcessId(hwnd, None) }
+}
+
+/// Whether a press held in that thread may be carrying a file (island.rs
+/// `came_near`): the thread holds the mouse capture, as an OLE drag does for
+/// its whole length, and is not moving or sizing a window. A press with no
+/// capture gets its release only from the window under the cursor, so the
+/// island must not be that window (audit 33); a window being moved is never a
+/// file.
+pub fn may_carry_file(thread: u32) -> bool {
+    if thread == 0 {
+        return false;
+    }
+    let mut info = GUITHREADINFO { cbSize: std::mem::size_of::<GUITHREADINFO>() as u32, ..Default::default() };
+    if unsafe { GetGUIThreadInfo(thread, &mut info) }.is_err() {
+        return false;
+    }
+    !info.hwndCapture.0.is_null() && info.flags.0 & GUI_INMOVESIZE.0 == 0
 }
 
 /// Waits for the display's next frame (DwmFlush), so a window moved once per

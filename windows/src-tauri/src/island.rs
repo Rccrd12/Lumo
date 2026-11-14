@@ -1358,7 +1358,10 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
     std::thread::spawn(move || {
         let mut pressed_in_panel = false;
         let mut pressed_at = (0.0, 0.0);
-        // That press, carried near the island: from then on it is a file drag.
+        // The thread of the window that press was meant for (platform::thread_under).
+        let mut pressed_thread = 0u32;
+        // That press, carried near the island as a drag that may hold a file
+        // (platform::may_carry_file): from then on the island takes the mouse.
         let mut came_near = false;
         let mut was_down = false;
         // Remembered across wakes so a display change while hidden is noticed the
@@ -1457,6 +1460,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 if down && !was_down {
                     pressed_in_panel = in_panel && !on_island;
                     pressed_at = (x, y);
+                    pressed_thread = if pressed_in_panel { platform::thread_under(cx, cy) } else { 0 };
                     came_near = false;
                 }
                 if down && !was_down && !acting {
@@ -1489,19 +1493,20 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // Not for a press that began on the panel's empty part: that
                 // is a click or a drag in the window under it, and taking the
                 // mouse half way through left that window without its release.
-                // Unless it moved and came near the island: a file picked up
-                // right under the panel (on the desktop, in a maximised File
-                // Explorer) opens the island as one picked up anywhere else.
-                // Whatever the window under it was doing holds the capture, so
-                // its release still reaches it.
+                // Unless it moved and came near the island as a drag that may
+                // carry a file: a file picked up right under the panel (on the
+                // desktop, in a maximised File Explorer) opens the island as one
+                // picked up anywhere else. Only while the window it was meant
+                // for holds the mouse capture, as an OLE drag does, so its
+                // release still reaches it; never for a window being moved.
                 let near = r.w > 0.0
                     && x >= r.x - DRAG_NEAR
                     && x <= r.x + r.w + DRAG_NEAR
                     && y >= r.y - DRAG_NEAR
                     && y <= r.y + r.h + DRAG_NEAR;
                 let moved = (x - pressed_at.0).hypot(y - pressed_at.1) > DRAG_START;
-                if down && pressed_in_panel && moved && near {
-                    came_near = true;
+                if down && pressed_in_panel && !came_near && moved && near {
+                    came_near = platform::may_carry_file(pressed_thread);
                 }
                 let dragging = down && in_panel && (!pressed_in_panel || came_near);
 

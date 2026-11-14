@@ -559,13 +559,25 @@ test("plain words in a question are one paragraph, as they were written", async 
   assert.equal(bubble.textContent, "fix the export button\non Safari");
 });
 
-test("a long question folds to its first lines, with Show more and Show less in its bubble", async () => {
-  let measure = null;
+/** The chat's one ResizeObserver (made once, with the first long question): the tests call its measures. */
+let foldMeasure = null;
+
+/** A ResizeObserver whose measures the test calls, while `run` lasts; without one, questions are never folded. */
+async function withMeasure(run) {
   globalThis.ResizeObserver = class {
-    constructor(cb) { measure = cb; }
+    constructor(cb) { foldMeasure ??= cb; }
     observe() {}
   };
   try {
+    await run((...targets) => foldMeasure(targets.map((target) => ({ target }))));
+  } finally {
+    delete globalThis.ResizeObserver;
+  }
+}
+
+test("a long question folds to its first lines, with Show more and Show less in its bubble", async () => {
+  await withMeasure(async (measureOf) => {
+    const measure = (entries) => measureOf(...entries.map((e) => e.target));
     answers.chat_send = { text: "ok", turns: 2 };
     await ask("a short one");
     await ask("a long one\n".repeat(40));
@@ -599,9 +611,63 @@ test("a long question folds to its first lines, with Show more and Show less in 
     fold(again).fire("click");
     assert.ok(again.querySelector(".bubble-body").classList.contains("folded"));
     assert.equal(fold(again).textContent, "Show more");
-  } finally {
-    delete globalThis.ResizeObserver;
-  }
+  });
+});
+
+const userRows = () => rows().filter((r) => r.classList.contains("user"));
+
+test("a question opened with Show more stays open when its chat comes back with new ids", async () => {
+  await withMeasure(async (measure) => {
+    answers.chat_send = { text: "ok", turns: 2 };
+    const text = "a question opened, then its chat left\n".repeat(40);
+    await ask(text);
+    const bubble = userRows()[0].querySelector(".bubble");
+    bubble.scrollHeight = 600;
+    measure(bubble);
+    userRows()[0].querySelector(".bubble-body").scrollHeight = 600;
+    userRows()[0].querySelector(".msg-fold").fire("click");
+    assert.equal(userRows()[0].querySelector(".msg-fold").textContent, "Show less");
+
+    // Opened again, a saved chat's messages are given new ids (openChat).
+    State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, id: 10_000 + i }));
+    await ask("and now");
+    const again = userRows()[0].querySelector(".bubble");
+    again.scrollHeight = 600;
+    measure(again);
+    assert.equal(userRows()[0].querySelector(".msg-fold").textContent, "Show less");
+  });
+});
+
+test("measured again at the same size, Show more's label is left as it is", async () => {
+  await withMeasure(async (measure) => {
+    answers.chat_send = { text: "ok", turns: 2 };
+    await ask("a question measured at each frame\n".repeat(40));
+    const bubble = userRows()[0].querySelector(".bubble");
+    bubble.scrollHeight = 600;
+    measure(bubble);
+    const btn = userRows()[0].querySelector(".msg-fold");
+    const label = btn.firstChild;
+    userRows()[0].querySelector(".bubble-body").scrollHeight = 600;
+    measure(bubble);
+    measure(bubble);
+    assert.equal(btn.firstChild, label, "the same text, not written again");
+  });
+});
+
+test("the keyboard reaching a folded question's hidden lines opens it", async () => {
+  await withMeasure(async (measure) => {
+    answers.chat_send = { text: "ok", turns: 2 };
+    await ask("a question with a link further down\n".repeat(40));
+    const bubble = userRows()[0].querySelector(".bubble");
+    bubble.scrollHeight = 600;
+    measure(bubble);
+    const body = userRows()[0].querySelector(".bubble-body");
+    body.scrollHeight = 600;
+    assert.ok(body.classList.contains("folded"));
+    body.fire("focusin");
+    assert.ok(!body.classList.contains("folded"));
+    assert.equal(userRows()[0].querySelector(".msg-fold").textContent, "Show less");
+  });
 });
 
 test("Edit puts a question back; sending it replaces it and drops what followed", async () => {
