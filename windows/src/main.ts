@@ -81,7 +81,8 @@ async function main() {
       case "open":
         setPaused(false);
         island.takeKeyboard();
-        island.alert(State.defaultView());
+        // Settings the island folded on its own come back here too, as on a click.
+        island.alert(State.openingView());
         break;
       case "recap":
         setPaused(false);

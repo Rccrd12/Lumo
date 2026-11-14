@@ -156,7 +156,11 @@ pub async fn run(app: AppHandle) {
                 let running = with_outlook(STEP, |s| Ok(s.app()?.is_some())).await.unwrap_or(false);
                 if !running {
                     // Then round again: the switches may have changed meanwhile.
-                    tokio::time::sleep(left).await;
+                    // Meanwhile it looks as often as usual, so an Outlook opened
+                    // by hand is read at once, and Refresh or a change of
+                    // settings (wake) is heard rather than after the minute.
+                    let every = Duration::from_secs(crate::energy::pick(5, 20, 60));
+                    let _ = tokio::time::timeout(left.min(every), WAKE.notified()).await;
                     continue;
                 }
             }
