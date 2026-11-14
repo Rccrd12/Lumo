@@ -285,7 +285,8 @@ function sampleMail() {
 }
 sampleMail();
 
-// Computer use with a plan, with ?computer=start|step|work|paused|ask|reply|card|recap
+// Computer use with a plan, with ?computer=start|step|work|paused|ask|reply|card|consent|recap
+// (consent: Antigravity CLI's first action of the chat in Auto, computer.rs serve)
 // (computer.rs computer-state; main.ts would pass these events on).
 const computerScene = params.get("computer");
 if (computerScene) await computerPreview(computerScene);
@@ -298,9 +299,12 @@ async function computerPreview(scene: string) {
     : ["Click in Notepad's text", "Open the File menu", "Choose “Save as…”", "Type “notes.txt” and press Enter", "Check the file is on the Desktop"];
   const plan = (done: number, list = texts) => list.map((text, i) => ({ text, status: i < done ? "done" : i === done ? "active" : "pending" } as const));
   const since = Date.now() - 24_000;
-  const base = { engaged: true, paused: false, stopped: false, agent: "Claude Code", color: "#d97757", since };
+  const consent = scene === "consent";
+  const base = { engaged: true, paused: false, stopped: false, agent: consent ? "Antigravity CLI" : "Claude Code", color: consent ? "#E879F9" : "#d97757", since };
   const state = (extra: Partial<ComputerState>) => island.onComputerState({ ...base, steps: plan(1), ...extra } as ComputerState);
-  State.settings = { ...State.settings, chatProvider: "claude-code" } as typeof State.settings;
+  State.settings = consent
+    ? { ...State.settings, chatProvider: "antigravity-cli", chatPermissionModeAgy: "auto" } as typeof State.settings
+    : { ...State.settings, chatProvider: "claude-code" } as typeof State.settings;
   if (scene === "recap") return computerRecapChat(it);
   island.setView("prompt");
   island.holdOpen();
@@ -315,7 +319,7 @@ async function computerPreview(scene: string) {
   state({ steps: plan(2) });
   if (scene === "work") return;
   await wait(200);
-  if (scene === "card") {
+  if (scene === "card" || consent) {
     const c = document.createElement("canvas");
     c.width = 360; c.height = 200;
     const g = c.getContext("2d")!;
@@ -336,7 +340,10 @@ async function computerPreview(scene: string) {
     const mocks = window as unknown as { __lumoMock: Record<string, unknown> };
     mocks.__lumoMock = { ...mocks.__lumoMock, computer_peek: () => ({ image: btoa(bin), width: 360, height: 200, at: [80, 152],
       name: it ? "Salva con nome…" : "Save as…", role: it ? "voce di menu" : "menu item", app: it ? "Blocco note" : "Notepad" }) };
-    hook({ hook_event_name: "PermissionRequest", cwd, request_id: "rc", tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [207, 236] }, lumo_island: true });
+    hook({
+      hook_event_name: "PermissionRequest", cwd, request_id: "rc", tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [207, 236] }, lumo_island: true,
+      ...(consent ? { lumo_agent: "antigravity", lumo_remembered: true, lumo_computer_consent: true } : {}),
+    });
     island.holdOpen();
     State.notify();
     return;
