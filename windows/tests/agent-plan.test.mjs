@@ -352,6 +352,8 @@ test("a chat at work while another is on screen keeps its own plan: one row on t
     chat: "agy-chat", tool: "update_plan", agent: "Antigravity CLI", color: "#E879F9",
     input: { plan: ["Check Downloads", "Read the file", "Fix the formula", "Save and check LaTeX"].map((step, i) => ({ step, status: statuses[i] })) },
   });
+  const at = (id, who) => ({ chatId: id, who, color: "#fff", title: "Chat", line: "Writing" });
+  State.activeChats = [at("agy-chat", "Antigravity CLI"), at("opus-chat", "Claude Code")];
   State.chatId = "agy-chat";
   agy(["completed", "in_progress", "pending", "pending"]);
   State.chatId = "opus-chat";
@@ -367,6 +369,36 @@ test("a chat at work while another is on screen keeps its own plan: one row on t
   assert.deepEqual(homeChatPlans().map((p) => [p.key, p.agent]).sort(), [["chat|agy-chat", "Antigravity CLI"], ["chat|opus-chat", "Claude Code"]]);
   island.plan.forgetChat("agy-chat");
   island.plan.forgetChat("opus-chat");
+  State.activeChats = [];
+});
+
+test("a chat no longer at work leaves the home's In progress: its plan stays in its own chat", () => {
+  const plan = (chat, statuses) => emit("chat-plan", {
+    chat, tool: "update_plan", agent: "Codex", color: "#2DD4BF",
+    input: { plan: ["Find the test", "Fix it", "Run the tests", "Sum up"].map((step, i) => ({ step, status: statuses[i] })) },
+  });
+  State.activeChats = [{ chatId: "stopped-chat", who: "Codex", color: "#2DD4BF", title: "Fix the flaky test", line: "Writing" }];
+  plan("stopped-chat", ["completed", "in_progress", "pending", "pending"]);
+  assert.deepEqual(homeChatPlans().map((p) => p.key), ["chat|stopped-chat"]);
+  // Stopped half way (or done without ticking its last step): no longer at work.
+  State.activeChats = [];
+  assert.deepEqual(homeChatPlans(), [], "not In progress on the home");
+  assert.equal(island.plan.book.get("chat|stopped-chat")?.steps.length, 4, "still the chat's own plan");
+  // At work again: back on the home, where it was.
+  State.activeChats = [{ chatId: "stopped-chat", who: "Codex", color: "#2DD4BF", title: "Fix the flaky test", line: "Writing" }];
+  assert.deepEqual(homeChatPlans().map((p) => p.key), ["chat|stopped-chat"]);
+  island.plan.forgetChat("stopped-chat");
+  State.activeChats = [];
+});
+
+test("a deleted chat's plan that comes as its agent is stopped never brings it back", () => {
+  const plan = () => emit("chat-plan", { chat: "deleted-chat", tool: "update_plan", input: { plan: [{ step: "Read", status: "in_progress" }] } });
+  plan();
+  assert.ok(island.plan.book.get("chat|deleted-chat"));
+  island.plan.forgetChat("deleted-chat");
+  plan();
+  assert.equal(island.plan.book.get("chat|deleted-chat"), undefined);
+  assert.equal(island.plan.plans().some((p) => p.key === "chat|deleted-chat"), false);
 });
 
 test("a local or API model's update_plan carries its own chat id and speaker", () => {

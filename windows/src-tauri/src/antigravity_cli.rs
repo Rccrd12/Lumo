@@ -35,7 +35,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -599,18 +599,58 @@ fn plan_event(chat: &str, tool: &str, input: Value) -> Value {
     json!({ "chat": chat, "tool": tool, "input": input, "agent": "Antigravity CLI", "color": "#E879F9" })
 }
 
+/// The island chats agy is answering now (`send`), for a plan that names none.
+static AT_WORK: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Island chat `chat` has agy at work until this is dropped (the turn's end,
+/// stopped or failed too).
+struct AtWork(String);
+
+impl AtWork {
+    fn start(chat: &str) -> AtWork {
+        AT_WORK.lock().unwrap_or_else(|e| e.into_inner()).push(chat.to_string());
+        AtWork(chat.to_string())
+    }
+}
+
+impl Drop for AtWork {
+    fn drop(&mut self) {
+        let mut all = AT_WORK.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(i) = all.iter().position(|c| *c == self.0) {
+            all.remove(i);
+        }
+    }
+}
+
+/// The chat an update_plan from lumo-hook belongs to: the one it names
+/// (`LUMO_CHAT_ID`), else the only chat agy is answering. With none named and
+/// several (or none) at work, nobody: the plan never lands in the chat on
+/// screen, and agy's stream still brings it with its chat.
+fn plan_chat(named: &str, at_work: &[String]) -> Option<String> {
+    if !named.is_empty() {
+        return Some(named.to_string());
+    }
+    let first = at_work.first()?;
+    at_work.iter().all(|c| c == first).then(|| first.clone()).filter(|c| !c.is_empty())
+}
+
 /// A call of Lumo's update_plan tool, handed over by lumo-hook's MCP server
 /// (`{"lumo_plan": {"input": …, "chat": …}}`, pipe.rs): its plan goes to the
 /// Plan island, as the plan of the chat agy was started for (`LUMO_CHAT_ID`).
 /// agy's stream says the same of its tool steps, but not of every build's
-/// MCP calls: this is the way that always comes.
+/// MCP calls: this is the way that always comes. A lumo-hook that got no
+/// `LUMO_CHAT_ID` from agy names no chat (`plan_chat`).
 pub fn serve_plan(app: &AppHandle, request: &Value) -> Value {
     let input = &request["input"];
     if !input["plan"].as_array().is_some_and(|p| !p.is_empty()) {
         return json!({ "error": "The plan needs at least one step." });
     }
-    let chat = request["chat"].as_str().unwrap_or("");
-    emit_plan(app, chat, "update_plan", input.clone());
+    let named = request["chat"].as_str().unwrap_or("");
+    let at_work = AT_WORK.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    match plan_chat(named, &at_work) {
+        Some(chat) => emit_plan(app, &chat, "update_plan", input.clone()),
+        None => crate::log::line("antigravity: a plan naming no chat, with no single chat at work, left out"),
+    }
     json!({ "text": "Plan shown to the user." })
 }
 
@@ -941,6 +981,8 @@ pub async fn send(
     let stop = chat.stopper();
     let chat_id = chat.id().to_string();
     let usage_chat = chat_id.clone();
+    // For a plan of Lumo's update_plan that names no chat (serve_plan).
+    let _at_work = AtWork::start(&chat_id);
     let state = tauri::async_runtime::spawn_blocking(move || {
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
@@ -1251,6 +1293,30 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_plan_naming_no_chat_goes_to_the_only_chat_agy_answers_or_to_none() {
+        let at = |c: &[&str]| c.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // Named (LUMO_CHAT_ID reached lumo-hook): that chat, whatever runs.
+        assert_eq!(plan_chat("chat-a", &at(&["chat-b", "chat-c"])), Some("chat-a".into()));
+        // Not named: the one chat agy is answering.
+        assert_eq!(plan_chat("", &at(&["chat-a"])), Some("chat-a".into()));
+        // Not named, two chats at work or none: nobody, never the chat on screen.
+        assert_eq!(plan_chat("", &at(&["chat-a", "chat-b"])), None);
+        assert_eq!(plan_chat("", &at(&[])), None);
+        assert_eq!(plan_chat("", &at(&[""])), None);
+    }
+
+    #[test]
+    fn a_chat_is_at_work_until_its_turn_ends() {
+        let id = "at-work-test-chat";
+        let count = || AT_WORK.lock().unwrap().iter().filter(|c| *c == id).count();
+        {
+            let _turn = AtWork::start(id);
+            assert_eq!(count(), 1);
+        }
+        assert_eq!(count(), 0);
+    }
 
     #[test]
     fn agys_plan_names_the_chat_it_runs_for() {

@@ -676,7 +676,12 @@ fn all_tools(kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>) -> Vec<Va
 /// or "" when none: a `${env:…}` Cursor's mcp.json left as it was (acp_chat.rs)
 /// names no chat.
 fn chat_id() -> String {
-    std::env::var("LUMO_CHAT_ID").ok().filter(|c| !c.starts_with("${")).unwrap_or_default()
+    chat_from(std::env::var("LUMO_CHAT_ID").ok())
+}
+
+/// `chat_id` of the value `LUMO_CHAT_ID` has, if any.
+fn chat_from(value: Option<String>) -> String {
+    value.map(|c| c.trim().to_string()).filter(|c| !c.starts_with("${")).unwrap_or_default()
 }
 
 /// A tool's result as MCP gives it: Lumo's image first when there is one, then its words.
@@ -957,6 +962,16 @@ mod tests {
     }
 
     #[test]
+    fn the_chat_is_lumo_chat_id_or_none() {
+        assert_eq!(chat_from(Some("chat-1".into())), "chat-1");
+        assert_eq!(chat_from(Some(" chat-1\r\n".into())), "chat-1");
+        // Not set, or a `${env:…}` Cursor's mcp.json left as it was: no chat.
+        assert_eq!(chat_from(None), "");
+        assert_eq!(chat_from(Some("${env:LUMO_CHAT_ID}".into())), "");
+        assert_eq!(chat_from(Some(String::new())), "");
+    }
+
+    #[test]
     fn the_plan_tool_answers_on_its_own() {
         let kit = Kit::from_args(["--mcp", "--tools=plan,mail"].iter().map(|s| s.to_string()));
         assert_eq!(kit, Kit { computer: false, mail: true, plan: true, user: false, island: false, mail_send: false, mail_manage: false });
@@ -970,8 +985,8 @@ mod tests {
         let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_plan","arguments":{"plan":[{"step":"Read","status":"in_progress"}]}}}"#;
         let shown = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_plan"]["input"]["plan"][0]["step"], "Read");
-            // With the chat it came from (`LUMO_CHAT_ID`), whatever chat is on screen.
-            assert!(req["lumo_plan"]["chat"].is_string());
+            // With the chat it came from (`LUMO_CHAT_ID`, chat_from), whatever chat is on screen.
+            assert_eq!(req["lumo_plan"]["chat"], json!(chat_id()));
             Ok(json!({ "text": "Plan shown to the user." }))
         };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &shown).unwrap()).unwrap();
