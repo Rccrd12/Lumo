@@ -104,9 +104,9 @@ test("the first read lists the calendars and reads the next days of each shown o
   assert.deepEqual(g.asked, [
     "/users/me/calendarList ?maxResults",
     "/calendars/me%40gmail.com/events ?maxResults,showDeleted,updatedMin",
-    "/calendars/me%40gmail.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin",
+    "/calendars/me%40gmail.com/events ?maxAttendees,maxResults,orderBy,singleEvents,timeMax,timeMin",
     "/calendars/uni%40group.calendar.google.com/events ?maxResults,showDeleted,updatedMin",
-    "/calendars/uni%40group.calendar.google.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin",
+    "/calendars/uni%40group.calendar.google.com/events ?maxAttendees,maxResults,orderBy,singleEvents,timeMax,timeMin",
   ]);
 });
 
@@ -130,7 +130,7 @@ test("then each minute asks only what changed, and reads the next days again onl
   assert.deepEqual(events.map((e) => e.title), ["Call con Marco", "Lezione Sistemi Operativi", "Esame"]);
   assert.deepEqual(g.asked, [
     "/calendars/me%40gmail.com/events ?maxResults,showDeleted,updatedMin",
-    "/calendars/me%40gmail.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin",
+    "/calendars/me%40gmail.com/events ?maxAttendees,maxResults,orderBy,singleEvents,timeMax,timeMin",
     "/calendars/uni%40group.calendar.google.com/events ?maxResults,showDeleted,updatedMin",
   ]);
 
@@ -173,7 +173,7 @@ test("a last look too long ago for Google (410) reads that calendar's next days 
   await sync.refresh({}, NOW + 60_000);
   assert.deepEqual(g.asked.slice(1), [
     "/calendars/uni%40group.calendar.google.com/events ?maxResults,showDeleted,updatedMin",
-    "/calendars/uni%40group.calendar.google.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin",
+    "/calendars/uni%40group.calendar.google.com/events ?maxAttendees,maxResults,orderBy,singleEvents,timeMax,timeMin",
   ]);
   // And then looks from now on.
   g.asked = [];
@@ -196,6 +196,34 @@ test("where the user works today is not an event", () => {
   assert.equal(googleEvent({ eventType: "outOfOffice", summary: "Ferie", start: { date: "2026-11-12" } }).title, "Ferie");
 });
 
+test("an invitation the user declined is left out, one they accepted or not answered yet stays", () => {
+  const start = { dateTime: "2026-11-12T14:00:00+01:00" };
+  const end = { dateTime: "2026-11-12T15:00:00+01:00" };
+  const answer = (responseStatus) => googleEvent({ summary: "Budget", start, end, attendees: [{ self: true, responseStatus }] });
+  assert.equal(answer("declined"), null);
+  assert.equal(answer("accepted").title, "Budget");
+  assert.equal(answer("needsAction").title, "Budget");
+  assert.equal(answer("tentative").title, "Budget");
+  // Someone else declining is not the user's answer.
+  assert.equal(googleEvent({ summary: "Budget", start, end, attendees: [{ responseStatus: "declined" }] }).title, "Budget");
+  // The user's own event, without guests.
+  assert.equal(googleEvent({ summary: "Budget", start, end }).title, "Budget");
+});
+
+test("the next days ask only for the user's own answer to an invitation", async () => {
+  const g = fakeGoogle();
+  const queries = [];
+  const get = g.get;
+  g.get = (path, query) => {
+    queries.push(Object.fromEntries(query));
+    return get(path, query);
+  };
+  await new GoogleSync(g.get).refresh({}, NOW);
+  const window = queries.find((q) => q.singleEvents === "true");
+  assert.equal(window.maxAttendees, "1");
+  assert.match(window.fields, /attendees\(self,responseStatus\)/);
+});
+
 test("one calendar that fails keeps its last events and lets the others go on; all failing throws", async () => {
   const g = fakeGoogle();
   const sync = new GoogleSync(g.get);
@@ -213,7 +241,7 @@ test("one calendar that fails keeps its last events and lets the others go on; a
   g.failing.clear();
   g.asked = [];
   await sync.refresh({}, NOW + 120_000);
-  assert.ok(g.asked.includes("/calendars/uni%40group.calendar.google.com/events ?maxResults,orderBy,singleEvents,timeMax,timeMin"));
+  assert.ok(g.asked.includes("/calendars/uni%40group.calendar.google.com/events ?maxAttendees,maxResults,orderBy,singleEvents,timeMax,timeMin"));
   assert.equal(sync.partialError, null);
   // Both failing: the refresh fails.
   g.failing.add("uni@group.calendar.google.com").add("me@gmail.com");

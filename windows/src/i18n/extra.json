@@ -18791,6 +18791,42 @@
    "id": "Proses masuk dibatalkan.",
    "it": "Accesso annullato."
   },
+  "You can no longer read this calendar.": {
+   "zh-Hans": "你已无法再读取此日历。",
+   "hi": "अब आप यह कैलेंडर नहीं पढ़ सकते।",
+   "es": "Ya no puedes leer este calendario.",
+   "ar": "لم يعد بإمكانك قراءة هذا التقويم.",
+   "fr": "Vous ne pouvez plus lire cet agenda.",
+   "bn": "আপনি আর এই ক্যালেন্ডারটি পড়তে পারবেন না।",
+   "pt-BR": "Você não pode mais ler esta agenda.",
+   "ru": "Вы больше не можете читать этот календарь.",
+   "id": "Anda tidak bisa lagi membaca kalender ini.",
+   "it": "Non puoi più leggere questo calendario."
+  },
+  "Remove client": {
+   "zh-Hans": "移除客户端",
+   "hi": "क्लाइंट हटाएँ",
+   "es": "Quitar cliente",
+   "ar": "إزالة العميل",
+   "fr": "Supprimer le client",
+   "bn": "ক্লায়েন্ট সরান",
+   "pt-BR": "Remover cliente",
+   "ru": "Удалить клиент",
+   "id": "Hapus klien",
+   "it": "Rimuovi client"
+  },
+  "Google could not be reached: Lumo no longer uses the access, but to end it at Google too, remove Lumo in your Google account (Security → Third-party connections).": {
+   "zh-Hans": "无法连接 Google：Lumo 已不再使用该访问权限，但要在 Google 那边也结束它，请在你的 Google 账号中移除 Lumo（安全 → 第三方连接）。",
+   "hi": "Google तक नहीं पहुँचा जा सका: Lumo अब इस एक्सेस का उपयोग नहीं करता, लेकिन इसे Google पर भी समाप्त करने के लिए अपने Google खाते में Lumo को हटाएँ (सुरक्षा → तृतीय-पक्ष कनेक्शन)।",
+   "es": "No se pudo contactar con Google: Lumo ya no usa el acceso, pero para cerrarlo también en Google, quita Lumo en tu cuenta de Google (Seguridad → Conexiones de terceros).",
+   "ar": "تعذّر الوصول إلى Google: لم يعد Lumo يستخدم الوصول، لكن لإنهائه لدى Google أيضًا، أزِل Lumo من حسابك على Google (الأمان ← اتصالات الجهات الخارجية).",
+   "fr": "Google est injoignable : Lumo n'utilise plus l'accès, mais pour y mettre fin chez Google aussi, retirez Lumo de votre compte Google (Sécurité → Connexions tierces).",
+   "bn": "Google-এ পৌঁছানো যায়নি: Lumo আর এই অ্যাক্সেস ব্যবহার করে না, কিন্তু Google-এও এটি শেষ করতে আপনার Google অ্যাকাউন্ট থেকে Lumo সরান (নিরাপত্তা → তৃতীয় পক্ষের সংযোগ)।",
+   "pt-BR": "Não foi possível contatar o Google: o Lumo não usa mais o acesso, mas para encerrá-lo também no Google, remova o Lumo da sua Conta do Google (Segurança → Conexões de terceiros).",
+   "ru": "Не удалось связаться с Google: Lumo больше не использует доступ, но чтобы закрыть его и в Google, удалите Lumo в своём аккаунте Google (Безопасность → Сторонние подключения).",
+   "id": "Google tidak dapat dihubungi: Lumo tidak lagi memakai akses ini, tetapi untuk mengakhirinya juga di Google, hapus Lumo di Akun Google Anda (Keamanan → Koneksi pihak ketiga).",
+   "it": "Google non è raggiungibile: Lumo non usa più l'accesso, ma per chiuderlo anche su Google rimuovi Lumo dal tuo account Google (Sicurezza → Connessioni di terze parti)."
+  },
   "The browser did not come back: sign in again.": {
    "zh-Hans": "浏览器没有返回：请重新登录。",
    "hi": "ब्राउज़र वापस नहीं आया: फिर से साइन इन करें।",

@@ -65,7 +65,7 @@ fn google_id(url: &Url) -> Option<String> {
     (!id.is_empty()).then_some(id)
 }
 
-fn percent_decode(s: &str) -> Option<String> {
+pub(crate) fn percent_decode(s: &str) -> Option<String> {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

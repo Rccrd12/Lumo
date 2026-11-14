@@ -91,6 +91,10 @@ export function googleEvent(raw: unknown): CalEvent | null {
   if (e.status === "cancelled") return null;
   // Where the user works today ("Home", "Office"): a mark on the day in Google Calendar, not an event.
   if (e.eventType === "workingLocation") return null;
+  // An invitation the user declined: Google still lists it, Google Calendar hides it, and so does the island
+  // (no tile, no reminder while listening, not among the AI's coming events).
+  const attendees = Array.isArray(e.attendees) ? e.attendees.map(obj) : [];
+  if (attendees.some((a) => a.self === true && a.responseStatus === "declined")) return null;
   const start = when(e.start);
   if (!start) return null;
   const end = when(e.end)?.time ?? start.time + (start.allDay ? DAY : 0);
@@ -276,7 +280,10 @@ export class GoogleSync {
           ["timeMin", new Date(now - DAY).toISOString()],
           ["timeMax", new Date(now + 8 * DAY).toISOString()],
           ["maxResults", "250"],
-          ["fields", "items(status,eventType,summary,location,start,end),nextPageToken"],
+          // Only the user's own answer to an invitation (declined ones are left out): with more
+          // guests than one, Google gives just the user, so no other guest's address comes in.
+          ["maxAttendees", "1"],
+          ["fields", "items(status,eventType,summary,location,start,end,attendees(self,responseStatus)),nextPageToken"],
         ];
         if (page) query.push(["pageToken", page]);
         const body = await this.ask(path, query);

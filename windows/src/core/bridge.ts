@@ -637,8 +637,8 @@ export const Bridge = {
   googleCalendarSignIn: () => callOrThrow<void>("google_calendar_sign_in"),
   /** Ends a sign-in still waiting for the browser. */
   googleCalendarCancel: () => call<void>("google_calendar_cancel"),
-  /** Forgets the account: Google is told, the client and the permission leave the credential store. */
-  googleCalendarSignOut: () => callOrThrow<void>("google_calendar_sign_out"),
+  /** Forgets the account: Google is told, the permission leaves the credential store (the client stays). False when Google could not be reached. */
+  googleCalendarSignOut: () => callOrThrow<boolean>("google_calendar_sign_out"),
   /** A GET to the Calendar API (the calendar list or a calendar's events); null when not signed in; throws "paused" while Lumo is paused. */
   googleCalendarGet: (path: string, query: [string, string][] = []) =>
     callOrThrow<{ status: number; body: unknown } | null>("google_calendar_get", { path, query }),
@@ -1019,6 +1019,8 @@ export interface GoogleCalendarStatus {
   needsSignIn: boolean;
   /** A sign-in waits for the browser. */
   signingIn: boolean;
+  /** The calendars Google no longer lets the account read (no longer shared, deleted), by ID, with why. */
+  unreadable: Record<string, string>;
 }
 
 export interface DragDropPayload {

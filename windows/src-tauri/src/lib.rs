@@ -1194,6 +1194,10 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn secret_clear(app: AppHandle, key: String) -> Result<(), String> {
+    // Google's permission leaves only through google_calendar_sign_out, which tells Google too.
+    if key == google_calendar::REFRESH_KEY {
+        return Err("use google_calendar_sign_out".into());
+    }
     let had = key == "github-token" && secrets::present(&key);
     secrets::clear(&key)?;
     secret_changed(&app, &key);
