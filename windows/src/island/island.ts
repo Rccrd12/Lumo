@@ -364,6 +364,8 @@ export class Island {
       setView: (v) => this.setView(v),
       collapse: () => this.collapse(),
       closeSettings: () => {
+        // As Escape in the island: a pinned island stays open (a waiting card is folded).
+        if (State.isPinned && !State.pendingApproval) return;
         this.collapse();
         State.settingsLeftOpen = false;
       },
