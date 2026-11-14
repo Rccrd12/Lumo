@@ -256,8 +256,13 @@ default, the ones Google Calendar shows; 20 at most). With both set, the
 events of the iCal address and of Google join, each once; when the iCal
 address is one of the calendars Google sign-in reads, its copy (hours behind)
 is left out. A calendar that can't be read keeps its last events while the
-others go on; when Google ends the access, the tile says to sign in again. Disconnect tells Google to forget the access and
-removes all three from the keychain. Lumo talks only to Google
+others go on; one Google no longer lets the account read (no longer shared,
+or deleted) says so on its row in Settings. Invitations you declined are left
+out, as Google Calendar does. When Google ends the access, the tile says to
+sign in again. Disconnect tells Google to forget the access (and says so when
+Google can't be reached) and removes it from the keychain; the client's ID
+and secret stay, since Google Cloud Console may not show the secret again,
+and go with Remove client. Lumo talks only to Google
 (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`), only
 once you signed in.
 

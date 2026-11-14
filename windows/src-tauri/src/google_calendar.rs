@@ -18,7 +18,8 @@
 // the next days; never a calendar whole. It asks through `google_calendar_get`, which reaches only the
 // Calendar API's calendar list and events, with the token added here.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -61,6 +62,12 @@ static NEEDS_SIGN_IN: AtomicBool = AtomicBool::new(false);
 /// A sign-in waiting for the browser, and the Cancel that ends it.
 static SIGNING_IN: AtomicBool = AtomicBool::new(false);
 static CANCEL: AtomicBool = AtomicBool::new(false);
+/// Bumped by each sign-out: a sign-in begun before it keeps nothing it gets.
+static SESSION: AtomicU64 = AtomicU64::new(0);
+/// The calendars Google no longer lets this account read (403 or 404 on their
+/// events), by ID, with why: Settings says so on their row, here or in the
+/// other window. A good answer takes one off.
+static UNREADABLE: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
 /// Google asked to wait (429, or a rate limit's 403): nothing is asked before then.
 static NOT_BEFORE: Mutex<Option<Instant>> = Mutex::new(None);
 /// How long Lumo waits after Google limits the requests, unless it says how long.
@@ -84,6 +91,11 @@ pub fn client_changed() {
     *lock(&ACCESS) = None;
     NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
     *lock(&NOT_BEFORE) = None;
+    lock(&UNREADABLE).clear();
+}
+
+fn unreadable() -> String {
+    t("You can no longer read this calendar.")
 }
 
 fn limited() -> String {
@@ -108,6 +120,8 @@ pub struct Status {
     needs_sign_in: bool,
     /// A sign-in is waiting for the browser.
     signing_in: bool,
+    /// The calendars Google no longer lets the account read, by ID, with why.
+    unreadable: BTreeMap<String, String>,
 }
 
 #[tauri::command(async)]
@@ -117,6 +131,7 @@ pub fn google_calendar_status() -> Status {
         signed_in: secrets::present(REFRESH_KEY),
         needs_sign_in: NEEDS_SIGN_IN.load(Ordering::Relaxed),
         signing_in: SIGNING_IN.load(Ordering::Relaxed),
+        unreadable: lock(&UNREADABLE).clone(),
     }
 }
 
@@ -131,11 +146,13 @@ pub async fn google_calendar_sign_in(app: AppHandle) -> Result<(), String> {
         return Err(t("A sign-in is already waiting in the browser."));
     }
     CANCEL.store(false, Ordering::SeqCst);
-    let result = sign_in(client_id.trim(), client_secret.trim()).await;
+    let session = SESSION.load(Ordering::SeqCst);
+    let result = sign_in(client_id.trim(), client_secret.trim(), session).await;
     SIGNING_IN.store(false, Ordering::SeqCst);
     if result.is_ok() {
         NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
         *lock(&NOT_BEFORE) = None;
+        lock(&UNREADABLE).clear();
         let _ = app.emit_to(crate::island::WINDOW_LABEL, CHANGED_EVENT, ());
     }
     result
@@ -150,24 +167,44 @@ pub fn google_calendar_cancel() {
 }
 
 /// Removes the access: Google is told to forget it (when it can be reached),
-/// and the permission, the client's ID and its secret leave the credential store.
+/// and the permission leaves the credential store. The client's ID and secret
+/// stay (Google Cloud Console may not show the secret again): Settings removes
+/// them apart, with Remove client. A sign-in still waiting for the browser
+/// ends, and keeps nothing it gets. Answers whether Google heard it: false
+/// when it could not be reached, and the access still holds at Google until
+/// the user removes it from their Google account.
 #[tauri::command]
-pub async fn google_calendar_sign_out(app: AppHandle) -> Result<(), String> {
-    if let Some(token) = secrets::get(REFRESH_KEY) {
-        if let Ok(url) = Url::parse(REVOKE_URL) {
-            if let Ok(client) = net::client(&url, Duration::from_secs(10)) {
-                let _ = client.post(url).form(&[("token", token.as_str())]).send().await;
-            }
-        }
+pub async fn google_calendar_sign_out(app: AppHandle) -> Result<bool, String> {
+    SESSION.fetch_add(1, Ordering::SeqCst);
+    if SIGNING_IN.load(Ordering::SeqCst) {
+        CANCEL.store(true, Ordering::SeqCst);
     }
+    let revoked = match secrets::get(REFRESH_KEY) {
+        Some(token) => revoke(&token).await,
+        None => true,
+    };
     *lock(&ACCESS) = None;
     NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
     *lock(&NOT_BEFORE) = None;
-    for key in [REFRESH_KEY, CLIENT_ID_KEY, CLIENT_SECRET_KEY] {
-        secrets::clear(key)?;
-    }
+    lock(&UNREADABLE).clear();
+    secrets::clear(REFRESH_KEY)?;
     let _ = app.emit_to(crate::island::WINDOW_LABEL, CHANGED_EVENT, ());
-    Ok(())
+    Ok(revoked)
+}
+
+/// Asks Google to forget the permission. True once it did, or said there was
+/// nothing to forget (400: already revoked or expired).
+async fn revoke(token: &str) -> bool {
+    let Ok(url) = Url::parse(REVOKE_URL) else { return false };
+    let Ok(client) = net::client(&url, Duration::from_secs(10)) else { return false };
+    match client.post(url).form(&[("token", token)]).send().await {
+        Ok(response) => revoke_heard(response.status()),
+        Err(_) => false,
+    }
+}
+
+fn revoke_heard(status: StatusCode) -> bool {
+    status.is_success() || status == StatusCode::BAD_REQUEST
 }
 
 #[derive(Serialize)]
@@ -202,16 +239,32 @@ pub async fn google_calendar_get(path: String, query: Vec<(String, String)>) -> 
     let status = response.status();
     let retry_after = response.headers().get(reqwest::header::RETRY_AFTER).and_then(|v| v.to_str().ok()).map(str::to_owned);
     let body = net::read_capped(response, net::MAX_BODY).await?;
+    let calendar = calendar_of(&path);
     if status.is_success() || status == StatusCode::GONE {
         // Google answered with this token: whatever refused one before no longer holds.
         NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
+        if let Some(id) = &calendar {
+            lock(&UNREADABLE).remove(id);
+        }
         let body = serde_json::from_slice(&body).unwrap_or(Value::Null);
         return Ok(Some(Answer { status: status.as_u16(), body }));
     }
     if rate_limited(status, &error_reason(&body)) {
         *lock(&NOT_BEFORE) = Some(Instant::now() + limited_wait(retry_after.as_deref()));
     }
-    Err(api_error(status, &body))
+    let message = api_error(status, &body, calendar.is_some());
+    if let Some(id) = calendar {
+        if calendar_lost(status, &error_reason(&body)) {
+            lock(&UNREADABLE).insert(id, message.clone());
+        }
+    }
+    Err(message)
+}
+
+/// The calendar's ID in an events path ("/calendars/me%40gmail.com/events" → "me@gmail.com").
+fn calendar_of(path: &str) -> Option<String> {
+    let id = path.strip_prefix("/calendars/")?.strip_suffix("/events")?;
+    crate::calendar::percent_decode(id).filter(|id| !id.is_empty())
 }
 
 /// Waits between tries: a request that fails right after the computer wakes,
@@ -268,15 +321,29 @@ fn rate_limited(status: StatusCode, reason: &str) -> bool {
         || reason == "quotaexceeded"
 }
 
+/// One calendar's events refused for that calendar alone: 403 (no longer
+/// shared with the account) or 404 (deleted), not a limit, not the API off.
+fn calendar_lost(status: StatusCode, reason: &str) -> bool {
+    (status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND)
+        && !rate_limited(status, reason)
+        && reason != "accessNotConfigured"
+}
+
 /// What a refused request says. Google answers 403 with a reason when it
 /// limits the requests, and when the Calendar API is off in the user's project.
-fn api_error(status: StatusCode, body: &[u8]) -> String {
+/// On one calendar's events (`events`), a 403 or a 404 is that calendar's
+/// alone (no longer shared, or deleted): the access to the account still
+/// holds, and signing in again would not help.
+fn api_error(status: StatusCode, body: &[u8], events: bool) -> String {
     let reason = error_reason(body);
     if rate_limited(status, &reason) {
         return limited();
     }
     if reason == "accessNotConfigured" {
         return t("The Google Calendar API is off in your Google Cloud project: turn it on there.");
+    }
+    if events && calendar_lost(status, &reason) {
+        return unreadable();
     }
     if status == StatusCode::FORBIDDEN {
         return sign_in_again();
@@ -332,6 +399,12 @@ async fn access_token() -> Result<String, String> {
     .await;
     match answer {
         Ok(token) => {
+            // Only if it is still the permission that was sent: a sign-in
+            // (maybe with another account) may have stored a new one, and its
+            // token, while this request was on its way. Its token is the one.
+            if secrets::get(REFRESH_KEY).as_deref() != Some(refresh.as_str()) {
+                return lock(&ACCESS).as_ref().map(|(token, _)| token.clone()).ok_or_else(sign_in_again);
+            }
             NEEDS_SIGN_IN.store(false, Ordering::SeqCst);
             let value = token.access_token.clone();
             *lock(&ACCESS) = Some((token.access_token, Instant::now() + token.expires_in));
@@ -413,7 +486,7 @@ fn parse_token(v: &Value) -> Option<Token> {
 
 // ── Sign-in ──────────────────────────────────────────────────────────────────
 
-async fn sign_in(client_id: &str, client_secret: &str) -> Result<(), String> {
+async fn sign_in(client_id: &str, client_secret: &str, session: u64) -> Result<(), String> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     let redirect = format!("http://127.0.0.1:{port}");
@@ -430,7 +503,7 @@ async fn sign_in(client_id: &str, client_secret: &str) -> Result<(), String> {
 
     // The browser waits for the page until the exchange is done, so that it
     // says what really happened.
-    let result = exchange(client_id, client_secret, &code, &verifier, &redirect).await;
+    let result = exchange(client_id, client_secret, &code, &verifier, &redirect, session).await;
     match &result {
         Ok(()) => answer(&mut stream, "200 OK", &t("Done: Lumo can read your calendar."), &t("You can close this tab.")).await,
         Err(message) => answer(&mut stream, "200 OK", &t("Lumo did not get access to the calendar."), message).await,
@@ -439,7 +512,7 @@ async fn sign_in(client_id: &str, client_secret: &str) -> Result<(), String> {
 }
 
 /// The code for the permission, kept once both scopes and a lasting permission came with it.
-async fn exchange(client_id: &str, client_secret: &str, code: &str, verifier: &str, redirect: &str) -> Result<(), String> {
+async fn exchange(client_id: &str, client_secret: &str, code: &str, verifier: &str, redirect: &str, session: u64) -> Result<(), String> {
     let token = token_request(&[
         ("client_id", client_id),
         ("client_secret", client_secret),
@@ -459,6 +532,10 @@ async fn exchange(client_id: &str, client_secret: &str, code: &str, verifier: &s
     let Some(refresh) = token.refresh_token.as_deref() else {
         return Err(t("Google gave no lasting access: sign in again."));
     };
+    // Disconnect was pressed while the browser was on Google's page: nothing is kept.
+    if SESSION.load(Ordering::SeqCst) != session {
+        return Err(t("Sign-in cancelled."));
+    }
     secrets::set(REFRESH_KEY, refresh)?;
     *lock(&ACCESS) = Some((token.access_token, Instant::now() + token.expires_in));
     log::line("google calendar: signed in");
@@ -615,11 +692,42 @@ mod tests {
         for reason in ["rateLimitExceeded", "userRateLimitExceeded", "dailyLimitExceeded", "quotaExceeded"] {
             assert!(rate_limited(StatusCode::FORBIDDEN, reason), "{reason}");
             let body = format!(r#"{{"error":{{"errors":[{{"reason":"{reason}"}}]}}}}"#);
-            assert_eq!(api_error(StatusCode::FORBIDDEN, body.as_bytes()), limited());
+            assert_eq!(api_error(StatusCode::FORBIDDEN, body.as_bytes(), false), limited());
+            assert_eq!(api_error(StatusCode::FORBIDDEN, body.as_bytes(), true), limited());
         }
         assert!(rate_limited(StatusCode::TOO_MANY_REQUESTS, ""));
         assert!(!rate_limited(StatusCode::FORBIDDEN, "forbidden"));
-        assert_eq!(api_error(StatusCode::FORBIDDEN, b"{}"), sign_in_again());
+        assert_eq!(api_error(StatusCode::FORBIDDEN, b"{}", false), sign_in_again());
+    }
+
+    #[test]
+    fn a_calendar_no_longer_shared_is_its_own_not_a_sign_in() {
+        let forbidden = br#"{"error":{"errors":[{"reason":"forbidden"}]}}"#;
+        assert_eq!(api_error(StatusCode::FORBIDDEN, forbidden, true), unreadable());
+        assert_eq!(api_error(StatusCode::NOT_FOUND, b"{}", true), unreadable());
+        // The calendar list refused: the account's access is what is wrong.
+        assert_eq!(api_error(StatusCode::FORBIDDEN, forbidden, false), sign_in_again());
+        let off = br#"{"error":{"errors":[{"reason":"accessNotConfigured"}]}}"#;
+        assert_ne!(api_error(StatusCode::FORBIDDEN, off, true), unreadable());
+    }
+
+    #[test]
+    fn an_events_path_names_its_calendar() {
+        assert_eq!(calendar_of("/calendars/me%40gmail.com/events").as_deref(), Some("me@gmail.com"));
+        assert_eq!(
+            calendar_of("/calendars/it.italian%23holiday%40group.v.calendar.google.com/events").as_deref(),
+            Some("it.italian#holiday@group.v.calendar.google.com")
+        );
+        assert_eq!(calendar_of("/users/me/calendarList"), None);
+        assert_eq!(calendar_of("/calendars//events"), None);
+    }
+
+    #[test]
+    fn a_revoke_counts_once_google_heard_it() {
+        assert!(revoke_heard(StatusCode::OK));
+        // Already revoked or expired: nothing left to forget.
+        assert!(revoke_heard(StatusCode::BAD_REQUEST));
+        assert!(!revoke_heard(StatusCode::SERVICE_UNAVAILABLE));
     }
 
     #[test]
