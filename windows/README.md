@@ -441,18 +441,23 @@ marked read.
 An email with HTML is shown as its sender drew it (**Original**), on a white
 page shrunk to fit, or as its text (**Text only**), the choice kept for the
 next emails. It is shown in a frame where nothing of it runs (no scripts,
-forms or plug-ins) and nothing of it is fetched from the web: its links open
-in the browser only on a click, the corner saying where each really goes, and
-the pictures it links to stay hidden, so the sender can't tell it was opened,
-until **Load images** downloads them as the chat's images are (https, public
-sites, images only; **Images from the web** off in Settings → Security keeps
-them hidden). **Always load**, or **Email images always** in Settings →
-Security, shows every email's pictures at once. Either way the tracking
-pixels Lumo recognises (2 × 2 px or less, or from a service made to
-count openings) are never downloaded, and the email says how many were left
-out. The pictures inside the email itself come with it. From
-Outlook, the HTML is read through MAPI, with no prompt; where MAPI can't be
-had (a 32-bit Office), the text is shown.
+forms or plug-ins) and nothing of it is fetched from the web (the frame has a
+CSP of its own: its CSS, fonts, SVG and videos reach nowhere): its links open
+in the browser only on a click, as the corner shows them, the corner saying
+where each really goes (a mailto: link opens the mail program with its
+address only; a link to a place in the email scrolls there), and the pictures
+it links to and its backgrounds stay hidden, so the sender can't tell it was
+opened, until **Load images** downloads them as the chat's images are (https,
+an http picture asked on https, public sites, images only, the first 60;
+**Images from the web** off in Settings → Security keeps them hidden).
+**Always load**, or **Email images always** in Settings → Security, shows
+every email's pictures at once, and the email says so, with **Turn off**.
+Either way the tracking pixels Lumo recognises (2 × 2 px or less, or from a
+service made to count openings) are never downloaded, and the email says how
+many were left out. The pictures inside the email itself come with it. From
+Outlook, the HTML is read through MAPI, with no prompt, in the code page
+Outlook keeps it in when it doesn't say its own; where MAPI can't be had (a
+32-bit Office), the text is shown.
 
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
@@ -744,8 +749,8 @@ configure yourself, and to the sites of the images in chat answers: Lumo
 downloads such an image at once (https and public addresses only, image files
 only, 8 MB at most), so its site sees your IP address and the image's full
 address, which the AI writes and could fill with words from your chat. The
-pictures an email links to, in the Email view, are downloaded the same way
-only after a click on **Load images** (or at once with **Email images
+pictures an email links to (and its backgrounds), in the Email view, are
+downloaded the same way (an http one on https) only after a click on **Load images** (or at once with **Email images
 always**), and the sender's site then learns that you opened it; the tracking
 pixels Lumo recognises are never downloaded. **Settings → Security → Images from the web** turns both off.
 

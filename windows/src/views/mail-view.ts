@@ -16,9 +16,11 @@
 // text (Text only), the choice kept while Lumo runs. The HTML (mail.rs
 // mail_html) is asked when the email opens, and shown in a frame with no
 // scripts, forms or plug-ins, on a white page shrunk to fit; its links open in
-// the browser by a click, the corner saying where each goes. The images it
-// links to are hidden (the island's CSP would keep them out anyway): Load
-// images downloads them through web_image.rs, as the chat's Load image does,
+// the browser by a click, the corner saying where each goes (a mailto: link in
+// the mail program, a link to a place in the email scrolls there). The frame
+// has its own CSP: nothing of the email is fetched. The images it links to
+// and its backgrounds are hidden: Load images downloads them through
+// web_image.rs (an http one asked on https), as the chat's Load image does,
 // and Settings → Security → Images from the web off leaves them hidden. The
 // rules are core/mail-html.ts.
 
@@ -29,7 +31,8 @@ import { State } from "../core/state";
 import { askAboutMail } from "../island/compact";
 import { loadClickedImage, webImagesOn } from "./rich/image";
 import {
-  DROPPED_TAGS, EMAIL_FRAME_STYLE, droppedAttribute, fitZoom, hiddenBox, imageSource, imagesToLoad, linkParts, opensInBrowser, trackingPixel, webImageUrl,
+  DROPPED_TAGS, EMAIL_FRAME_CSP, EMAIL_FRAME_SANDBOX, EMAIL_FRAME_STYLE, MAX_EMAIL_IMAGES, anchorOf, backgroundUrl, browserUrl, droppedAttribute, fitZoom, hiddenBox,
+  httpsImage, imageSource, imagesLeftOut, imagesToLoad, isDataUrl, linkParts, mailtoUrl, trackingPixel,
 } from "../core/mail-html";
 import {
   ALL, accountColor, accountLabel, avatarColor, initials, keptFilter, mailWhen, neighbours, readMailView,
@@ -68,11 +71,16 @@ export const MAIL_VIEW_TEXT = {
   loadAlways: N_("Always load"),
   trackerBlocked: N_("1 tracking pixel blocked"),
   trackersBlocked: N_("{n} tracking pixels blocked"),
+  imagesAuto: N_("Images loaded automatically"),
+  turnOff: N_("Turn off"),
+  imagesLeftOut: N_("Only the first {max} images loaded"),
 };
 
-/** The HTML of the emails read lately, by id ("" for one with none); the oldest goes past MAX_HTML. */
+/** The HTML of the emails read lately, by id ("" for one with none); the oldest goes past MAX_HTML, or past MAX_HTML_CHARS all together. */
 const htmlOf = new Map<string, string>();
 const MAX_HTML = 12;
+/** An email's HTML may be 2 MB, and its pictures (cid:) 12 MB more as data: URLs (mail.rs): what the memory keeps, all together. */
+const MAX_HTML_CHARS = 32_000_000;
 /** The emails whose HTML is being asked for, and when it will have come. */
 const htmlAsked = new Map<string, Promise<void>>();
 /** When the HTML of an email couldn't be asked: not asked again before HTML_RETRY_MS. */
@@ -95,10 +103,21 @@ function frameDocument(html: string): { doc: string; images: string[]; trackers:
   for (const tag of DROPPED_TAGS) for (const el of Array.from(page.getElementsByTagName(tag))) el.remove();
   const images: string[] = [];
   for (const el of Array.from(page.querySelectorAll("*"))) {
+    // A place a link of the email goes to (<a name>): its name is taken out
+    // below, the place kept under Lumo's own mark.
+    const anchor = el.localName === "a" ? el.getAttribute("name") : null;
     for (const a of Array.from(el.attributes)) if (droppedAttribute(a.name, a.value)) el.removeAttribute(a.name);
-    // Backgrounds from the web: never loaded (the CSP would refuse them too).
+    if (anchor) el.setAttribute("data-lumo-anchor", anchor);
+    // Backgrounds from the web: kept for Load images (the frame's CSP refuses them until then).
     const bg = el.getAttribute("background");
-    if (bg && !bg.trim().startsWith("data:")) el.removeAttribute("background");
+    const back = backgroundUrl(bg, el.getAttribute("style") ?? "");
+    if (back) {
+      el.setAttribute("data-lumo-bg", back);
+      images.push(back);
+      // Not even asked of the CSP until then.
+      if (el instanceof HTMLElement || el instanceof SVGElement) el.style.backgroundImage = "none";
+    }
+    if (bg && !isDataUrl(bg)) el.removeAttribute("background");
     if (el.localName === "source") el.removeAttribute("srcset");
   }
   let trackers = 0;
@@ -106,16 +125,17 @@ function frameDocument(html: string): { doc: string; images: string[]; trackers:
     const src = imageSource(img.getAttribute("src") ?? "", img.getAttribute("srcset") ?? "");
     img.removeAttribute("srcset");
     img.removeAttribute("loading");
-    if (src.startsWith("data:")) continue;
+    if (isDataUrl(src)) continue;
+    const web = httpsImage(src);
     // A tracking pixel: never loaded, not even after Load images; its place stays empty.
     if (trackingPixel(src, img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("style") ?? "")) {
-      if (webImageUrl(src)) trackers++;
+      if (web) trackers++;
       img.setAttribute("src", PIXEL);
       img.setAttribute("data-lumo-tracker", "");
       continue;
     }
-    if (webImageUrl(src)) images.push(src);
-    img.setAttribute("data-lumo-src", src);
+    if (web) images.push(web);
+    img.setAttribute("data-lumo-src", web ?? src);
     img.setAttribute("src", PIXEL);
     const box = hiddenBox(img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("style") ?? "");
     if (box) img.setAttribute("data-lumo-box", box);
@@ -123,7 +143,19 @@ function frameDocument(html: string): { doc: string; images: string[]; trackers:
   const style = page.createElement("style");
   style.textContent = EMAIL_FRAME_STYLE;
   page.head.prepend(style);
+  // The frame's own CSP, before anything of the email.
+  const csp = page.createElement("meta");
+  csp.setAttribute("http-equiv", "Content-Security-Policy");
+  csp.setAttribute("content", EMAIL_FRAME_CSP);
+  page.head.prepend(csp);
   return { doc: `<!doctype html>${page.documentElement.outerHTML}`, images, trackers };
+}
+
+/** The link a click or the pointer is on in the email: an <a> or an image map's <area>, its href (an SVG link's xlink:href). */
+function linkAt(target: EventTarget | null): string | null {
+  const el = (target as Element | null)?.closest?.("a, area");
+  if (!el) return null;
+  return el.getAttribute("href") ?? el.getAttributeNS("http://www.w3.org/1999/xlink", "href");
 }
 
 /** How long what was listed stands before opening the view asks again. */
@@ -337,7 +369,8 @@ export function buildMailView(actions: ViewActions): ViewHost {
         htmlFailed.delete(id);
         htmlOf.set(id, html);
         // The oldest go, never the email open.
-        while (htmlOf.size > MAX_HTML) {
+        const chars = () => [...htmlOf.values()].reduce((n, v) => n + v.length, 0);
+        while (htmlOf.size > MAX_HTML || (htmlOf.size > 1 && chars() > MAX_HTML_CHARS)) {
           const old = [...htmlOf.keys()].find((k) => k !== openId);
           if (old == null) break;
           htmlOf.delete(old);
@@ -372,7 +405,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
     const { doc, images, trackers } = frameDocument(html);
     // Settings → Security → Email images always: loaded with no click.
     const loaded = () => webImagesOn() && (imagesLoaded.has(m.id) || State.settings.mailImagesAlways === true);
-    const frame = h("iframe", { class: "mv-html-frame", sandbox: "allow-same-origin", title: m.subject || t(MAIL_VIEW_TEXT.noSubject) }) as HTMLIFrameElement;
+    const frame = h("iframe", { class: "mv-html-frame", sandbox: EMAIL_FRAME_SANDBOX, title: m.subject || t(MAIL_VIEW_TEXT.noSubject) }) as HTMLIFrameElement;
     frame.setAttribute("referrerpolicy", "no-referrer");
     frame.srcdoc = doc;
     // The frame's document is the email's: its own names can't stand for these.
@@ -416,33 +449,61 @@ export function buildMailView(actions: ViewActions): ViewHost {
       // An image that comes (or fails) changes the height.
       on(page, "load", fit, true);
       on(page, "error", fit, true);
-      // A link opens in the browser, only on a click, and never in the frame.
+      // A link opens in the browser (a mailto: one in the mail program, with
+      // its address only), only on a click, and never in the frame; one to a
+      // place in the email scrolls there.
       on(page, "click", (e) => {
         e.preventDefault();
-        const a = (e.target as Element | null)?.closest?.("a[href]");
-        const href = a?.getAttribute("href") ?? "";
-        if (opensInBrowser(href)) {
+        const href = linkAt(e.target) ?? "";
+        const place = anchorOf(href);
+        if (place != null) {
+          scrollToPlace(frame, place);
+          return;
+        }
+        const url = browserUrl(href) ?? mailtoUrl(href);
+        if (url) {
           actions.blip();
-          void Bridge.openUrl(href.trim());
+          void Bridge.openUrl(url);
         }
       }, true);
       on(page, "auxclick", (e) => e.preventDefault(), true);
       on(page, "submit", (e) => e.preventDefault(), true);
       on(page, "dragstart", (e) => e.preventDefault(), true);
-      on(page, "mouseover", (e) => {
-        const a = (e.target as Element | null)?.closest?.("a[href]");
-        showTip(a ? a.getAttribute("href") : null);
-      });
+      on(page, "mouseover", (e) => showTip(linkAt(e.target)));
       on(page, "mouseleave", () => showTip(null), true);
       on(page, "keydown", (e) => {
         if ((e as KeyboardEvent).key === "Escape") back();
       });
       if (loaded()) void showImages(frame, m.id);
     });
-    // The tracking pixels left out, said once the images are there.
-    const blocked = () => h("div", { class: "mv-img-bar note" },
-      svg(ICONS.shield, 13, { stroke: 1.8 }),
-      h("span", { class: "mv-img-text", text: trackers === 1 ? t(MAIL_VIEW_TEXT.trackerBlocked) : t(MAIL_VIEW_TEXT.trackersBlocked, { n: trackers }) }));
+    // Once the images are there: the tracking pixels left out, and the images
+    // past MAX_EMAIL_IMAGES; with Email images always on, that they came by themselves.
+    const leftOut = imagesLeftOut(images);
+    const notes = () => [
+      trackers ? (trackers === 1 ? t(MAIL_VIEW_TEXT.trackerBlocked) : t(MAIL_VIEW_TEXT.trackersBlocked, { n: trackers })) : null,
+      leftOut ? t(MAIL_VIEW_TEXT.imagesLeftOut, { max: MAX_EMAIL_IMAGES }) : null,
+    ].filter((n): n is string => n != null);
+    const blocked = (): HTMLElement | null => {
+      const said = notes();
+      return said.length
+        ? h("div", { class: "mv-img-bar note" }, svg(ICONS.shield, 13, { stroke: 1.8 }), h("span", { class: "mv-img-text", text: said.join(" · ") }))
+        : null;
+    };
+    const automatic = (): HTMLElement => {
+      // Turned off here: the email is drawn again with its images hidden.
+      const off = h("button", { class: "mv-btn small ghost" }, t(MAIL_VIEW_TEXT.turnOff));
+      off.addEventListener("click", () => {
+        actions.blip();
+        State.settings = { ...State.settings, mailImagesAlways: false };
+        void Bridge.saveSettings(State.settings);
+        State.notify();
+      });
+      return h("div", { class: "mv-img-bar note" },
+        svg(ICONS.shield, 13, { stroke: 1.8 }),
+        h("span", { class: "mv-img-text", text: [t(MAIL_VIEW_TEXT.imagesAuto), ...notes()].join(" · ") }),
+        h("span", { class: "mv-space" }),
+        off);
+    };
     let bar: HTMLElement | null = null;
     if (images.length && !loaded()) {
       if (webImagesOn()) {
@@ -454,7 +515,7 @@ export function buildMailView(actions: ViewActions): ViewHost {
             void Bridge.saveSettings(State.settings);
           }
           imagesLoaded.add(m.id);
-          const note = trackers ? blocked() : null;
+          const note = always ? automatic() : blocked();
           if (note) bar?.replaceWith(note);
           else bar?.remove();
           void showImages(frame, m.id);
@@ -474,7 +535,9 @@ export function buildMailView(actions: ViewActions): ViewHost {
           svg(ICONS.shield, 13, { stroke: 1.8 }),
           h("span", { class: "mv-img-text", text: t(MAIL_VIEW_TEXT.imagesOff) }));
       }
-    } else if (trackers && (loaded() || !images.length)) {
+    } else if (images.length && State.settings.mailImagesAlways === true) {
+      bar = automatic();
+    } else {
       bar = blocked();
     }
     return h("div", { class: "mv-html-wrap" }, bar, h("div", { class: "mv-html" }, frame));
@@ -485,7 +548,11 @@ export function buildMailView(actions: ViewActions): ViewHost {
     const page = frame.contentDocument;
     if (!page) return;
     const hidden = Array.from(Document.prototype.querySelectorAll.call(page, "img[data-lumo-src]:not([data-lumo-tracker])") as NodeListOf<HTMLImageElement>);
-    const urls = imagesToLoad(hidden.map((img) => img.getAttribute("data-lumo-src") ?? ""));
+    const backs = Array.from(Document.prototype.querySelectorAll.call(page, "[data-lumo-bg]") as NodeListOf<HTMLElement>);
+    const urls = imagesToLoad([
+      ...hidden.map((img) => img.getAttribute("data-lumo-src") ?? ""),
+      ...backs.map((el) => el.getAttribute("data-lumo-bg") ?? ""),
+    ]);
     await Promise.all(urls.map(async (url) => {
       const blob = await loadClickedImage(url);
       if (!blob || openId !== id || !frame.isConnected) return;
@@ -495,7 +562,23 @@ export function buildMailView(actions: ViewActions): ViewHost {
         img.removeAttribute("data-lumo-box");
         img.src = blob;
       }
+      for (const el of backs) {
+        if (el.getAttribute("data-lumo-bg") !== url) continue;
+        el.removeAttribute("data-lumo-bg");
+        el.style.backgroundImage = `url("${blob}")`;
+      }
     }));
+  }
+
+  /** A link to a place in the email (#offerte): the reader scrolled to it (its id, or its <a name>). */
+  function scrollToPlace(frame: HTMLIFrameElement, place: string) {
+    const page = frame.contentDocument;
+    if (!page) return;
+    const target = Document.prototype.getElementById.call(page, place)
+      ?? Document.prototype.querySelector.call(page, `[data-lumo-anchor="${CSS.escape(place)}"]`);
+    if (!target) return;
+    const top = reader.scrollTop + frame.getBoundingClientRect().top - reader.getBoundingClientRect().top + target.getBoundingClientRect().top;
+    reader.scrollTo({ top: Math.max(0, top - 8), behavior: "smooth" });
   }
 
   function chip(key: MailFilter, label: string, color: string | null, tail: Node | string, title?: string): HTMLElement {
