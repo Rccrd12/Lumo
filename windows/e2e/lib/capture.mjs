@@ -12,7 +12,7 @@
 // -OutputAssembly): no dependency, nothing to install.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { OUT } from "./app.mjs";
@@ -33,6 +33,9 @@ public static class LumoE2eCapture {
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int index);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
 
   // Shown without taking the keyboard, as a capture's overlay first is.
   class Quiet : Form {
@@ -72,8 +75,36 @@ public static class LumoE2eCapture {
     return f.Handle.ToInt64().ToString();
   }
 
+  // "front", or what is in front instead (hwnd:pid:class), to tell why.
   static string Front(Form f) {
-    return GetForegroundWindow() == f.Handle ? "front" : "not-front";
+    IntPtr h = GetForegroundWindow();
+    if (h == f.Handle) return "front";
+    uint pid = 0;
+    GetWindowThreadProcessId(h, out pid);
+    System.Text.StringBuilder c = new System.Text.StringBuilder(256);
+    GetClassName(h, c, 256);
+    return "not-front:" + h.ToInt64() + ":" + pid + ":" + c.ToString().Replace(" ", "_");
+  }
+
+  // To the front, as a tool already in front brings a window of its own. If
+  // Windows says no (it may, to a program started by a test), an Alt press
+  // first, which lets the next SetForegroundWindow through.
+  static void ToFront(Form f) {
+    f.Activate();
+    if (GetForegroundWindow() == f.Handle) return;
+    keybd_event(0x12, 0, 0, UIntPtr.Zero);
+    keybd_event(0x12, 0, 2, UIntPtr.Zero);
+    SetForegroundWindow(f.Handle);
+  }
+
+  // Waits up to a second for f to be in front.
+  static string Settled(Form f) {
+    for (int i = 0; i < 10; i++) {
+      string front = On(delegate { return Front(f); });
+      if (front == "front") return front;
+      Thread.Sleep(100);
+    }
+    return On(delegate { return Front(f); });
   }
 
   // Visible always-on-top windows, front to back: "hwnd:pid".
@@ -104,22 +135,23 @@ public static class LumoE2eCapture {
           // The overlay comes up first, then one of the tool's ordinary
           // windows comes to the front (Lumo climbs above every window on top,
           // the overlay included), then the overlay comes to the front.
-          On(delegate { overlay.Show(); other.Show(); other.Activate(); return ""; });
+          On(delegate { overlay.Show(); other.Show(); ToFront(other); return ""; });
+          string otherFront = Settled(other);
           Thread.Sleep(800);
-          answer = On(delegate { overlay.Activate(); return ""; });
-          Thread.Sleep(300);
-          answer = On(delegate { return Hwnd(overlay) + " " + Front(overlay); });
+          On(delegate { ToFront(overlay); return ""; });
+          answer = Hwnd(overlay) + " " + Settled(overlay) + " other:" + otherFront;
           break;
         case "end":
-          answer = On(delegate { overlay.Hide(); other.Hide(); main.Activate(); return Front(main); });
+          On(delegate { overlay.Hide(); other.Hide(); ToFront(main); return ""; });
+          answer = Settled(main);
           break;
         case "pin":
-          On(delegate { pin.Show(); pin.Activate(); return ""; });
-          Thread.Sleep(300);
-          answer = On(delegate { return Hwnd(pin) + " " + Front(pin); });
+          On(delegate { pin.Show(); ToFront(pin); return ""; });
+          answer = Hwnd(pin) + " " + Settled(pin);
           break;
         case "unpin":
-          answer = On(delegate { pin.Hide(); main.Activate(); return Front(main); });
+          On(delegate { pin.Hide(); ToFront(main); return ""; });
+          answer = Settled(main);
           break;
         case "order":
           answer = On(Order);
@@ -139,9 +171,11 @@ const DIR = join(OUT, "fake-capture");
 const EXE = join(DIR, "Greenshot.exe");
 
 function build() {
-  if (existsSync(EXE)) return;
-  mkdirSync(DIR, { recursive: true });
   const source = join(DIR, "capture.cs");
+  // Built again when its source changed since.
+  if (existsSync(EXE) && existsSync(source) && readFileSync(source, "utf8") === SOURCE) return;
+  mkdirSync(DIR, { recursive: true });
+  rmSync(EXE, { force: true });
   writeFileSync(source, SOURCE);
   const ps = `Add-Type -TypeDefinition ([IO.File]::ReadAllText('${source.replace(/'/g, "''")}')) ` +
     `-ReferencedAssemblies System.Windows.Forms,System.Drawing -OutputAssembly '${EXE.replace(/'/g, "''")}' -OutputType ConsoleApplication`;
@@ -189,8 +223,8 @@ export class FakeCapture {
 
   /** Opens the capture as a tool that brings its own window first does; { hwnd, front }. */
   async capture() {
-    const [hwnd, front] = (await this.send("capture")).split(" ");
-    return { hwnd, front: front === "front" };
+    const [hwnd, front, other] = (await this.send("capture")).split(" ");
+    return { hwnd, front: front === "front", seen: `${front} ${other}` };
   }
 
   /** Closes the capture: the tool's ordinary window comes to the front. */
@@ -201,7 +235,7 @@ export class FakeCapture {
   /** Pins an image to the screen, in front; { hwnd, front }. */
   async pin() {
     const [hwnd, front] = (await this.send("pin")).split(" ");
-    return { hwnd, front: front === "front" };
+    return { hwnd, front: front === "front", seen: front };
   }
 
   unpin() {
