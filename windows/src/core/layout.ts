@@ -259,10 +259,11 @@ export const DEFAULT_SHAPE: IslandShape = { width: EXPANDED_W, height: 0 };
  * The slot a view's size is kept under (island.rs SIZE_SLOTS): the chat and a
  * Gemini Live call (which takes the chat's room) share one, every other view
  * has its own, so resizing the chat leaves the home as it was. Null for the
- * launch greeting, which keeps its own size whatever was dragged.
+ * launch greeting, the drop zone and the upload, which keep their own size
+ * whatever was dragged (islandSize).
  */
 export function sizeSlot(view: IslandViewName): string | null {
-  if (view === "greeting") return null;
+  if (view === "greeting" || view === "upload" || view === "uploading") return null;
   return view === "prompt" || view === "live" ? "chat" : view;
 }
 
