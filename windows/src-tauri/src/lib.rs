@@ -888,6 +888,13 @@ fn chat_stop_agent(chat_id: String, agent_id: String) -> Result<(), String> {
     chat_agents::stop(&chat_id, &agent_id)
 }
 
+/// "Send now and stop them": the chat's next message may start its CLI again
+/// with other settings, ending the agents still at work (chat_agents.rs WOULD_STOP).
+#[tauri::command]
+fn chat_allow_restart(chat_id: String) {
+    chat_agents::allow_restart(&chat_id);
+}
+
 /// An edited message: the conversation goes back to its first `keep` turns
 /// (as `chat_send` counted them) before the edited one is sent.
 #[tauri::command]
@@ -1461,6 +1468,7 @@ pub fn run() {
             chat_commands,
             chat_stop,
             chat_stop_agent,
+            chat_allow_restart,
             chat_rewind,
             chat_forget_file,
             island_drag,

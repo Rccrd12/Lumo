@@ -803,6 +803,12 @@ export interface ChatAgent {
   round?: number;
   /** The last message its CLI sent it, and its answer once it came. */
   talk?: ChatAgentTalk;
+  /**
+   * What ended it while it was still at work: "cli", its CLI ended under it
+   * (Rust says so); "lumo", Lumo closed under it (a saved chat, core/chat-agents.ts).
+   * The Agents card offers Resume for those.
+   */
+  endedBy?: "cli" | "lumo";
 }
 
 /** A message the chat's CLI sent one of its agents, and the agent's answer (the "Talking to …" box). */

@@ -19515,18 +19515,6 @@
     "other": "{name} si è chiuso: {count} agenti si sono fermati a metà"
    }
   },
-  "{name} ended while these agents were still working. Please resume their tasks where they stopped:": {
-   "zh-Hans": "{name} 在这些代理仍在工作时退出了。请从它们停下的地方继续它们的任务：",
-   "hi": "ये एजेंट अभी काम कर ही रहे थे कि {name} बंद हो गया। कृपया इनके काम वहीं से फिर शुरू करें जहाँ ये रुके थे:",
-   "es": "{name} se cerró mientras estos agentes seguían trabajando. Retoma sus tareas donde se quedaron:",
-   "ar": "أُغلق {name} بينما كان هؤلاء الوكلاء لا يزالون يعملون. يُرجى استئناف مهامهم من حيث توقفت:",
-   "fr": "{name} s'est fermé alors que ces agents travaillaient encore. Reprends leurs tâches là où elles se sont arrêtées :",
-   "bn": "এই এজেন্টগুলো কাজ করার সময়ই {name} বন্ধ হয়ে গেছে। যেখানে থেমেছিল সেখান থেকে এদের কাজ আবার শুরু করুন:",
-   "pt-BR": "{name} fechou enquanto estes agentes ainda trabalhavam. Retome as tarefas deles de onde pararam:",
-   "ru": "{name} закрылся, пока эти агенты ещё работали. Продолжи их задачи с того места, где они остановились:",
-   "id": "{name} tertutup saat agen-agen ini masih bekerja. Lanjutkan tugas mereka dari tempat mereka berhenti:",
-   "it": "{name} si è chiuso mentre questi agenti lavoravano ancora. Riprendi i loro compiti da dove si sono fermati:"
-  },
   "{count} agents finished": {
    "zh-Hans": {
     "other": "{count} 个代理已完成"
@@ -19784,6 +19772,158 @@
    "ru": "{agent} закрылся",
    "id": "{agent} tertutup",
    "it": "{agent} si è chiuso"
+  },
+  "Stopping in {time}…": {
+   "zh-Hans": "{time} 后停止…",
+   "hi": "{time} में रुकेगा…",
+   "es": "Se detiene en {time}…",
+   "ar": "يتوقف خلال {time}…",
+   "fr": "Arrêt dans {time}…",
+   "bn": "{time} পরে থামবে…",
+   "pt-BR": "Para em {time}…",
+   "ru": "Остановится через {time}…",
+   "id": "Berhenti dalam {time}…",
+   "it": "Si ferma tra {time}…"
+  },
+  "agents|Undo": {
+   "zh-Hans": "撤销",
+   "hi": "पूर्ववत करें",
+   "es": "Deshacer",
+   "ar": "تراجع",
+   "fr": "Annuler",
+   "bn": "পূর্বাবস্থায় ফেরান",
+   "pt-BR": "Desfazer",
+   "ru": "Отменить",
+   "id": "Urungkan",
+   "it": "Annulla"
+  },
+  "{name} starts again with the new settings and stops the {count} agents still working.": {
+   "zh-Hans": {
+    "other": "{name} 将以新设置重新启动，并停止仍在工作的 {count} 个代理。"
+   },
+   "hi": {
+    "one": "{name} नई सेटिंग्स के साथ फिर से शुरू होगा और अभी काम कर रहे {count} एजेंट को रोक देगा।",
+    "other": "{name} नई सेटिंग्स के साथ फिर से शुरू होगा और अभी काम कर रहे {count} एजेंटों को रोक देगा।"
+   },
+   "es": {
+    "one": "{name} se reinicia con los nuevos ajustes y detiene el agente que sigue trabajando.",
+    "other": "{name} se reinicia con los nuevos ajustes y detiene los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "يُعاد تشغيل {name} بالإعدادات الجديدة.",
+    "one": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف الوكيل الذي لا يزال يعمل.",
+    "two": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف الوكيلين اللذين لا يزالان يعملان.",
+    "few": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف {count} وكلاء لا يزالون يعملون.",
+    "many": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف {count} وكيلًا لا يزالون يعملون.",
+    "other": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "{name} redémarre avec les nouveaux réglages et arrête l'agent encore au travail.",
+    "other": "{name} redémarre avec les nouveaux réglages et arrête les {count} agents encore au travail."
+   },
+   "bn": {
+    "one": "{name} নতুন সেটিংসে আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।",
+    "other": "{name} নতুন সেটিংসে আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।"
+   },
+   "pt-BR": {
+    "one": "{name} reinicia com as novas configurações e para o agente que ainda está trabalhando.",
+    "other": "{name} reinicia com as novas configurações e para os {count} agentes que ainda estão trabalhando."
+   },
+   "ru": {
+    "one": "{name} перезапустится с новыми настройками и остановит {count} работающего агента.",
+    "few": "{name} перезапустится с новыми настройками и остановит {count} работающих агента.",
+    "many": "{name} перезапустится с новыми настройками и остановит {count} работающих агентов.",
+    "other": "{name} перезапустится с новыми настройками и остановит {count} работающих агента."
+   },
+   "id": {
+    "other": "{name} dimulai ulang dengan pengaturan baru dan menghentikan {count} agen yang masih bekerja."
+   },
+   "it": {
+    "one": "{name} riparte con le nuove impostazioni e ferma l'agente ancora al lavoro.",
+    "other": "{name} riparte con le nuove impostazioni e ferma i {count} agenti ancora al lavoro."
+   }
+  },
+  "Your message can wait for them to finish, or go now.": {
+   "zh-Hans": "你的消息可以等它们完成，或者现在就发送。",
+   "hi": "आपका संदेश उनके पूरा होने तक रुक सकता है, या अभी जा सकता है।",
+   "es": "Tu mensaje puede esperar a que terminen o enviarse ahora.",
+   "ar": "يمكن لرسالتك أن تنتظر حتى ينتهوا، أو أن تُرسل الآن.",
+   "fr": "Votre message peut attendre qu'ils aient fini, ou partir maintenant.",
+   "bn": "আপনার বার্তা তাদের শেষ হওয়া পর্যন্ত অপেক্ষা করতে পারে, বা এখনই যেতে পারে।",
+   "pt-BR": "Sua mensagem pode esperar que terminem ou ir agora.",
+   "ru": "Сообщение может подождать, пока они закончат, или уйти сейчас.",
+   "id": "Pesan Anda bisa menunggu mereka selesai, atau dikirim sekarang.",
+   "it": "Il messaggio può aspettare che finiscano, o partire subito."
+  },
+  "Your message goes when the {count} agents still working finish.": {
+   "zh-Hans": {
+    "other": "仍在工作的 {count} 个代理完成后，你的消息就会发送。"
+   },
+   "hi": {
+    "one": "अभी काम कर रहा {count} एजेंट पूरा होते ही आपका संदेश जाएगा।",
+    "other": "अभी काम कर रहे {count} एजेंट पूरे होते ही आपका संदेश जाएगा।"
+   },
+   "es": {
+    "one": "Tu mensaje se enviará cuando termine el agente que sigue trabajando.",
+    "other": "Tu mensaje se enviará cuando terminen los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "ستُرسل رسالتك الآن.",
+    "one": "ستُرسل رسالتك عندما ينتهي الوكيل الذي لا يزال يعمل.",
+    "two": "ستُرسل رسالتك عندما ينتهي الوكيلان اللذان لا يزالان يعملان.",
+    "few": "ستُرسل رسالتك عندما ينتهي {count} وكلاء لا يزالون يعملون.",
+    "many": "ستُرسل رسالتك عندما ينتهي {count} وكيلًا لا يزالون يعملون.",
+    "other": "ستُرسل رسالتك عندما ينتهي {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "Votre message partira quand l'agent encore au travail aura fini.",
+    "other": "Votre message partira quand les {count} agents encore au travail auront fini."
+   },
+   "bn": {
+    "one": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার বার্তা যাবে।",
+    "other": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার বার্তা যাবে।"
+   },
+   "pt-BR": {
+    "one": "Sua mensagem vai quando o agente que ainda está trabalhando terminar.",
+    "other": "Sua mensagem vai quando os {count} agentes que ainda estão trabalhando terminarem."
+   },
+   "ru": {
+    "one": "Сообщение уйдёт, когда закончит {count} работающий агент.",
+    "few": "Сообщение уйдёт, когда закончат {count} работающих агента.",
+    "many": "Сообщение уйдёт, когда закончат {count} работающих агентов.",
+    "other": "Сообщение уйдёт, когда закончат {count} работающих агента."
+   },
+   "id": {
+    "other": "Pesan Anda dikirim setelah {count} agen yang masih bekerja selesai."
+   },
+   "it": {
+    "one": "Il messaggio parte quando finisce l'agente ancora al lavoro.",
+    "other": "Il messaggio parte quando finiscono i {count} agenti ancora al lavoro."
+   }
+  },
+  "Send when they finish": {
+   "zh-Hans": "完成后发送",
+   "hi": "पूरा होने पर भेजें",
+   "es": "Enviar cuando terminen",
+   "ar": "أرسل عندما ينتهون",
+   "fr": "Envoyer quand ils ont fini",
+   "bn": "শেষ হলে পাঠান",
+   "pt-BR": "Enviar quando terminarem",
+   "ru": "Отправить, когда закончат",
+   "id": "Kirim setelah selesai",
+   "it": "Invia quando finiscono"
+  },
+  "Send now and stop them": {
+   "zh-Hans": "立即发送并停止它们",
+   "hi": "अभी भेजें और उन्हें रोकें",
+   "es": "Enviar ahora y detenerlos",
+   "ar": "أرسل الآن وأوقفهم",
+   "fr": "Envoyer maintenant et les arrêter",
+   "bn": "এখনই পাঠান এবং তাদের থামান",
+   "pt-BR": "Enviar agora e pará-los",
+   "ru": "Отправить сейчас и остановить их",
+   "id": "Kirim sekarang dan hentikan",
+   "it": "Invia ora e fermali"
   }
  }
 }

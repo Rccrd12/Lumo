@@ -221,6 +221,19 @@ const STRINGS = {
   queuedHint: N_("Sent as soon as this answer ends"),
 };
 
+/**
+ * A message held because it would start the chat's CLI again under the
+ * agents it left at work (another model, effort, mode, folder or tools:
+ * chat_agents.rs WOULD_STOP): the bar above the field.
+ */
+const HOLD_TEXT = {
+  stops: N_("{name} starts again with the new settings and stops the {count} agents still working."),
+  choose: N_("Your message can wait for them to finish, or go now."),
+  waiting: N_("Your message goes when the {count} agents still working finish."),
+  wait: N_("Send when they finish"),
+  now: N_("Send now and stop them"),
+};
+
 /** The commands' icons drawn filled (core/slash.ts); the others are strokes. */
 const FILLED_ICONS = new Set(["plus", "gear", "timer", "stack"]);
 
@@ -1870,6 +1883,27 @@ export function buildPrompt(
   const askEl = h("div", { class: "chat-ask" }, h("i", { class: "ask-bar" }), h("div", { class: "ask-text" }, askWho, askLine), askClose);
   askEl.hidden = true;
 
+  // A message that would start the chat's CLI again under its agents at
+  // work: held above the field until the user says to wait for them or to
+  // stop them (HOLD_TEXT, `holdForAgents`).
+  const holdText = h("div", { class: "hold-text" });
+  const holdSub = h("div", { class: "hold-sub" });
+  const holdWait = h("button", { class: "agents-btn primary", text: tl(HOLD_TEXT.wait) });
+  const holdNow = h("button", { class: "agents-btn stop", text: tl(HOLD_TEXT.now) });
+  const holdCancel = h("button", { class: "agents-btn", text: tl(STRINGS.cancel) });
+  const holdEl = h("div", { class: "chat-hold" },
+    h("i", { class: "ask-bar" }),
+    h("div", { class: "hold-body" }, holdText, holdSub, h("div", { class: "hold-acts" }, holdWait, holdNow, holdCancel)));
+  holdEl.hidden = true;
+  /**
+   * By chat: a message that would have started its CLI again under the
+   * agents it left at work. `waiting`: it goes once they finish; else it is
+   * back in the field and the bar asks. `stuck`: sent once they seemed done
+   * and held again, so it waits for news of an agent before it tries again.
+   */
+  const held = new Map<string, { text: string; quote?: AskQuote; count: number; name: string; waiting: boolean; stuck?: boolean }>();
+  let holdShown = "";
+
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
   const modelBtn = h(
@@ -2185,7 +2219,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, askEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, holdEl, askEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -4214,8 +4248,16 @@ export function buildPrompt(
     drawAgents(ev.chat);
     drawIslandActivity();
     tickAgents();
-    // An agent that just ended is kept with the chat.
-    if (isFinal(ev.agent.state) && before !== ev.agent.state) saveAgents(ev.chat);
+    // An agent that just started, or just ended, is kept with the chat: one
+    // at work as ended halfway, should Lumo close before it ends (savedAgents).
+    if (before === undefined || (isFinal(ev.agent.state) && before !== ev.agent.state)) saveAgents(ev.chat);
+    // A message held for the agents: their count, and it goes once they finish.
+    const hold = held.get(ev.chat);
+    if (hold?.stuck) hold.stuck = false;
+    if (ev.chat === State.chatId) {
+      drawHold();
+      releaseHeld();
+    }
   });
 
   void onEvent<ChatSignalEvent>("chat-signal", (ev) => {
@@ -4264,7 +4306,12 @@ export function buildPrompt(
   }
   // The island hides or shows again, the chat leaves the screen or comes back:
   // the pace follows (a pace unchanged costs nothing).
-  State.subscribe(() => tickAgents());
+  State.subscribe(() => {
+    tickAgents();
+    // Another chat on screen: its own held message, if any; a chat back on screen sends one whose agents finished.
+    drawHold();
+    releaseHeld();
+  });
 
   /** The answers a queued question waits for (`sendAfter`). */
   const waitingFor = new Set<Run>();
@@ -4364,6 +4411,117 @@ export function buildPrompt(
     askFor.delete(State.chatId);
     drawAsk();
     Sound.play("pop");
+    input.focus();
+  });
+
+  // ── A message held for the agents at work ─────────────────────────────────
+
+
+  /** The number of agents a turn's error says it would have ended (chat_agents.rs WOULD_STOP), or null. */
+  function agentsInTheWay(err: unknown): number | null {
+    const m = /lumo-agents-would-stop:(\d+)/.exec(String(err));
+    return m ? Number(m[1]) : null;
+  }
+
+  /**
+   * The message `text` of `chatId` did not go: it would have ended `count`
+   * agents at work. Typed, it goes back in the field (with its agent's quote)
+   * and the bar asks; Lumo's own, or one that waited, waits for them.
+   */
+  function holdForAgents(chatId: string, text: string, quote: AskQuote | undefined, count: number, typed: boolean, name: string) {
+    const before = held.get(chatId);
+    if (typed && chatId === State.chatId) {
+      const now = input.value.trim();
+      setInput(now ? `${text}\n${now}` : text);
+      if (quote) {
+        askFor.set(chatId, quote);
+        drawAsk();
+      }
+      held.set(chatId, { text: "", count, name, waiting: false });
+    } else {
+      held.set(chatId, { text, quote, count, name, waiting: true, stuck: before?.waiting === true || !typed });
+    }
+    Sound.play("pop");
+    drawHold();
+  }
+
+  function drawHold() {
+    const entry = held.get(State.chatId);
+    const open = openCount(agentStore.get(State.chatId));
+    const count = open || entry?.count || 0;
+    const key = entry ? `${State.chatId}:${entry.waiting}:${count}:${entry.text}` : "";
+    if (key === holdShown) return;
+    holdShown = key;
+    holdEl.hidden = !entry;
+    if (entry) {
+      holdEl.classList.toggle("waiting", entry.waiting);
+      holdText.textContent = entry.waiting
+        ? tn("Your message goes when the agent still working finishes.", HOLD_TEXT.waiting, count)
+        : tn("{name} starts again with the new settings and stops the agent still working.", HOLD_TEXT.stops, count, { name: entry.name });
+      holdSub.textContent = entry.waiting ? entry.text : t(HOLD_TEXT.choose);
+      holdSub.title = holdSub.textContent;
+      holdWait.hidden = entry.waiting;
+    }
+    onHeightChange();
+  }
+
+  /** The chat on screen's held message goes, once the agents it waited for finished. */
+  function releaseHeld() {
+    const chatId = State.chatId;
+    const entry = held.get(chatId);
+    if (!entry?.waiting || entry.stuck || preparing || editing != null || answering()) return;
+    if (openCount(agentStore.get(chatId)) > 0) return;
+    held.delete(chatId);
+    drawHold();
+    void submit(undefined, entry.text, undefined, entry.quote);
+  }
+
+  holdWait.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const entry = held.get(State.chatId);
+    const text = input.value.trim();
+    if (!entry || !text) return;
+    const quote = askFor.get(State.chatId);
+    askFor.delete(State.chatId);
+    drawAsk();
+    setInput("");
+    held.set(State.chatId, { ...entry, text, quote, waiting: true, stuck: false });
+    Sound.play("blip");
+    drawHold();
+    releaseHeld();
+  });
+
+  holdNow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const chatId = State.chatId;
+    const entry = held.get(chatId);
+    if (!entry) return;
+    held.delete(chatId);
+    drawHold();
+    // The next message may start the CLI again: its agents stop with the old one.
+    void invoke("chat_allow_restart", { chatId }).then(() => {
+      if (State.chatId !== chatId) return;
+      if (entry.waiting) void submit(undefined, entry.text, undefined, entry.quote);
+      else void submit();
+    });
+  });
+
+  holdCancel.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const entry = held.get(State.chatId);
+    if (!entry) return;
+    held.delete(State.chatId);
+    // A message that waited goes back in the field, its quote with it.
+    if (entry.waiting && entry.text) {
+      const now = input.value.trim();
+      setInput(now ? `${entry.text}\n${now}` : entry.text);
+      if (entry.quote) {
+        askFor.set(State.chatId, entry.quote);
+        drawAsk();
+      }
+    }
+    Sound.play("pop");
+    drawHold();
     input.focus();
   });
 
@@ -4682,6 +4840,16 @@ export function buildPrompt(
       if (!reply.stopped) noticeAway(COMPACT_TEXT.answered, runSpeaker(run));
     } catch (err) {
       giveBack(true);
+      // It would have ended the agents the chat's CLI left at work: the
+      // question leaves the chat, and the bar above the field asks what to do.
+      const inTheWay = agentsInTheWay(err);
+      if (inTheWay != null) {
+        const at = run.history.indexOf(question);
+        if (at >= 0) run.history.splice(at, 1);
+        remember(run);
+        holdForAgents(run.chatId, query, quoted, inTheWay, typed && !away, runSpeaker(run).who);
+        return;
+      }
       outcome = "error";
       noticeAway(COMPACT_TEXT.failed, runSpeaker(run));
       const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who });
