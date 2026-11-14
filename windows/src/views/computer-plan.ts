@@ -29,6 +29,7 @@ export const COMPUTER_PLAN_TEXT = {
   closesIn: N_("Closes in {seconds} s"),
   paused: N_("Paused"),
   mouseYours: N_("the mouse is yours, {agent} is waiting"),
+  awayIn: N_("stops by itself in {time}"),
   stop: N_("Stop"),
   ask: N_("Ask {agent}"),
   resume: N_("Resume"),
@@ -100,7 +101,9 @@ export function buildComputerView(actions: ComputerViewActions): ViewHost {
   const plan = h("div", { class: "cu-plan" }, head, list);
 
   const bannerRest = h("span", { class: "cu-banner-rest" });
-  const banner = h("div", { class: "cu-banner" }, svg(ICONS.pause, 12), h("b", { text: tl(COMPUTER_PLAN_TEXT.paused) }), bannerRest);
+  // A pause left on stops by itself (computer.rs AWAY): how long until then.
+  const bannerAway = h("span", { class: "cu-banner-away" });
+  const banner = h("div", { class: "cu-banner" }, svg(ICONS.pause, 12), h("b", { text: tl(COMPUTER_PLAN_TEXT.paused) }), bannerRest, bannerAway);
   const note = h("div", { class: "cu-note" });
 
   // Writing to the agent: only a click on Ask or in the field gives the island the keyboard.
@@ -216,6 +219,9 @@ export function buildComputerView(actions: ComputerViewActions): ViewHost {
     const clock = clockText(Date.now() - c.since);
     const text = total ? `${t(COMPUTER_PLAN_TEXT.stepOf, { done: step, total })} · ${clock}` : clock;
     if (place.textContent !== text) place.textContent = text;
+    const away = c.paused && Number.isFinite(c.awayAt) ? t(COMPUTER_PLAN_TEXT.awayIn, { time: clockText((c.awayAt ?? 0) - Date.now()) }) : "";
+    if (bannerAway.textContent !== away) bannerAway.textContent = away;
+    bannerAway.hidden = !away;
     if (reveal) {
       const now = performance.now();
       const words = t(reveal.kind === "start" ? COMPUTER_PLAN_TEXT.startsIn : COMPUTER_PLAN_TEXT.closesIn, { seconds: secondsLeft(reveal.until, now) });

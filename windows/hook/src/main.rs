@@ -336,6 +336,11 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     }
     if is_island_run(env) {
         map.insert("lumo_island".into(), Value::Bool(true));
+        // Which of the island's chats asks (LUMO_CHAT_ID): a computer use
+        // card says the step of that chat's plan only (computer.rs).
+        if let Some(chat) = env(CHAT_ID_VAR).filter(|c| !c.is_empty() && !c.starts_with("${")) {
+            map.insert("lumo_chat".into(), Value::String(chat));
+        }
     } else if background::is_background(&args.agent, env) {
         // Started by another program, on its own (background.rs): the island
         // groups it under that program. The process chain is only read in the
@@ -470,6 +475,8 @@ fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
 
 /// Set by the app on the `claude -p` and headless `agy` runs of its chat; hooks inherit it.
 const ISLAND_RUN_VAR: &str = "LUMO_ISLAND_RUN";
+/// The island chat such a run answers, set beside it.
+const CHAT_ID_VAR: &str = "LUMO_CHAT_ID";
 
 /// Set by the app, with ISLAND_RUN_VAR, on the CLIs its chat talks to over ACP.
 const ACP_RUN_VAR: &str = "LUMO_ACP_RUN";
@@ -760,6 +767,15 @@ mod tests {
         let raw = br#"{"hook_event_name":"PermissionRequest","tool_name":"Write"}"#;
         let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1")]), "/p").unwrap();
         assert!(ev.line.contains(r#""lumo_island":true"#));
+        assert!(!ev.line.contains("lumo_chat"), "no chat said: none sent");
+        // With the chat it answers, for the computer use card's step.
+        let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1"), ("LUMO_CHAT_ID", "chat-7")]), "/p").unwrap();
+        assert!(ev.line.contains(r#""lumo_chat":"chat-7""#));
+        let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1"), ("LUMO_CHAT_ID", "${env:LUMO_CHAT_ID}")]), "/p").unwrap();
+        assert!(!ev.line.contains("lumo_chat"), "a placeholder left unfilled is no chat");
+        // Never outside the island's own runs.
+        let ev = prepare(raw, &args, &env_of(&[("LUMO_CHAT_ID", "chat-7")]), "/p").unwrap();
+        assert!(!ev.line.contains("lumo_chat"));
         assert!(is_island_run(&env_of(&[("LUMO_ISLAND_RUN", "1")])));
         assert!(is_acp_run(&env_of(&[("LUMO_ACP_RUN", "1")])));
         assert!(!is_acp_run(&env_of(&[("LUMO_ISLAND_RUN", "1")])));

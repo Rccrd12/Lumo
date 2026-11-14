@@ -55,6 +55,19 @@
   color: color-mix(in srgb, var(--amber) 75%, var(--dim));
 }
 
+/* How long until a pause left on stops by itself, at the banner's end. */
+.cu-banner .cu-banner-away {
+  margin-left: auto;
+  padding-left: 8px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--amber) 75%, var(--dim));
+}
+
+.cu-banner .cu-banner-away[hidden] {
+  display: none;
+}
+
 /* The agent's answer to the question, or that it is reading it. */
 .cu-note {
   flex: none;
