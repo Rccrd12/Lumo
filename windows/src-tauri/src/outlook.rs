@@ -555,7 +555,12 @@ pub async fn revise(made: &mut Made, change: Revision) -> Result<(), String> {
         // The files left out go, found by name and size, from the last one so the places hold.
         let attachments = item.obj("Attachments")?;
         let listed: Vec<Option<(String, usize)>> = (1..=attachments.int("Count")?.max(0)).map(|i| file_at(&attachments, i).map(|f| (f.name, f.size))).collect();
-        for place in places_to_remove(&listed, &change.drop) {
+        // One the user took off that Outlook no longer lists as it was: the
+        // email doesn't go with it, it doesn't go at all.
+        let places = places_to_remove(&listed, &change.drop).map_err(|missing| {
+            format!("Outlook couldn't take {} out of the email.", missing.join(", "))
+        })?;
+        for place in places {
             attachments.call("Remove", vec![place.into()])?;
         }
         for path in &change.add {
@@ -1507,8 +1512,10 @@ fn file_at(list: &Disp, place: i32) -> Option<File> {
 /// can't), `drop` the files the user took off the card, by name and size.
 /// Found by what they are, not by their place on the card, which one Outlook
 /// couldn't give when the card was made would have shifted; that one is never
-/// taken out, and of two alike only as many go as were taken off.
-fn places_to_remove(listed: &[Option<(String, usize)>], drop: &[(String, usize)]) -> Vec<i32> {
+/// taken out, and of two alike only as many go as were taken off. Err with
+/// the names of the files taken off that aren't there as they were (another
+/// size, renamed): the email must not go with them.
+fn places_to_remove(listed: &[Option<(String, usize)>], drop: &[(String, usize)]) -> Result<Vec<i32>, Vec<String>> {
     let mut left: Vec<&(String, usize)> = drop.iter().collect();
     let mut places = Vec::new();
     for (i, file) in listed.iter().enumerate().rev() {
@@ -1518,7 +1525,11 @@ fn places_to_remove(listed: &[Option<(String, usize)>], drop: &[(String, usize)]
             places.push(i as i32 + 1);
         }
     }
-    places
+    if left.is_empty() {
+        Ok(places)
+    } else {
+        Err(left.into_iter().map(|(name, _)| name.clone()).collect())
+    }
 }
 
 // ── Ids ───────────────────────────────────────────────────────────────────────
@@ -1724,16 +1735,19 @@ mod tests {
         let f = |name: &str, size: usize| Some((name.to_string(), size));
         let off = |name: &str, size: usize| (name.to_string(), size);
         // The second of three taken off: its place, whatever the card's order.
-        assert_eq!(places_to_remove(&[f("a.pdf", 10), f("b.png", 20), f("c.txt", 30)], &[off("b.png", 20)]), [2]);
+        assert_eq!(places_to_remove(&[f("a.pdf", 10), f("b.png", 20), f("c.txt", 30)], &[off("b.png", 20)]), Ok(vec![2]));
         // Outlook couldn't give the first when the card was made (so the card
         // listed two): b.png is still found, and the one it can't give stays.
-        assert_eq!(places_to_remove(&[None, f("b.png", 20), f("c.txt", 30)], &[off("b.png", 20)]), [2]);
+        assert_eq!(places_to_remove(&[None, f("b.png", 20), f("c.txt", 30)], &[off("b.png", 20)]), Ok(vec![2]));
         // Two alike, one taken off: one goes. The last first, so the places hold.
-        assert_eq!(places_to_remove(&[f("logo.png", 5), f("a.pdf", 10), f("logo.png", 5)], &[off("logo.png", 5)]), [3]);
-        assert_eq!(places_to_remove(&[f("a.pdf", 10), f("b.png", 20), f("c.txt", 30)], &[off("a.pdf", 10), off("c.txt", 30)]), [3, 1]);
-        // Nothing taken off, or a name with another size: nothing goes.
-        assert!(places_to_remove(&[f("a.pdf", 10)], &[]).is_empty());
-        assert!(places_to_remove(&[f("a.pdf", 10)], &[off("a.pdf", 11)]).is_empty());
+        assert_eq!(places_to_remove(&[f("logo.png", 5), f("a.pdf", 10), f("logo.png", 5)], &[off("logo.png", 5)]), Ok(vec![3]));
+        assert_eq!(places_to_remove(&[f("a.pdf", 10), f("b.png", 20), f("c.txt", 30)], &[off("a.pdf", 10), off("c.txt", 30)]), Ok(vec![3, 1]));
+        // Nothing taken off: nothing goes.
+        assert_eq!(places_to_remove(&[f("a.pdf", 10)], &[]), Ok(vec![]));
+        // One taken off that Outlook lists with another size, or not at all:
+        // the email must not go with it, so nothing is taken out and it says which.
+        assert_eq!(places_to_remove(&[f("a.pdf", 10)], &[off("a.pdf", 11)]), Err(vec!["a.pdf".to_string()]));
+        assert_eq!(places_to_remove(&[None, f("b.png", 20)], &[off("a.pdf", 10), off("b.png", 20)]), Err(vec!["a.pdf".to_string()]));
     }
 
     #[test]

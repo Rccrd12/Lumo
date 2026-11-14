@@ -240,6 +240,12 @@ test("an address on the web in the text is a link with its site's name", () => {
     { kind: "link", url: "https://en.wikipedia.org/wiki/Pi_(letter)", label: "en.wikipedia.org" },
     { kind: "text", text: ")!" },
   ]);
+  // Between < and >, the address ends where they say, its ")" kept.
+  assert.deepEqual(mailPieces("Unsubscribe <https://example.com/u?id=a)>."), [
+    { kind: "text", text: "Unsubscribe " },
+    { kind: "link", url: "https://example.com/u?id=a)", label: "example.com" },
+    { kind: "text", text: "." },
+  ]);
 });
 
 test("an email's time: the hour today, the day before, nothing when unreadable", () => {

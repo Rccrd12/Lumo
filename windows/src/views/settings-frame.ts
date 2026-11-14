@@ -27,16 +27,27 @@ export function onSettingsFieldChanged(fn: () => void) {
 /** Fields that are written in, as opposed to ticked or pressed. */
 const WRITTEN = new Set(["", "text", "password", "search", "url", "email", "number", "tel"]);
 
+/** What each field of the frame held when the cursor came into it (focusin). */
+const entered = new WeakMap<object, string>();
+
 /**
  * What a mouse leave waits for with the cursor in this field of Settings, as
- * with the chat's (island.ts leaveHold): something written in it keeps the
- * island open (a key half pasted), an empty one or a list gives it a while.
+ * with the chat's (island.ts leaveHold): something written in it since the
+ * cursor came in (`before`, what it held then) keeps the island open (a key
+ * half pasted); a field only clicked in (a saved model's name), an empty one,
+ * the search or a list give it a while.
  */
-export function fieldHold(field: Element | null | undefined): "keep" | "linger" | "none" {
+export function fieldHold(field: Element | null | undefined, before = ""): "keep" | "linger" | "none" {
   if (!field) return "none";
   const tag = field.tagName.toUpperCase();
-  const typed = tag === "TEXTAREA" || (tag === "INPUT" && WRITTEN.has(((field as HTMLInputElement).type ?? "").toLowerCase()));
-  if (typed) return ((field as HTMLInputElement).value ?? "").trim() !== "" ? "keep" : "linger";
+  const type = ((field as HTMLInputElement).type ?? "").toLowerCase();
+  const typed = tag === "TEXTAREA" || (tag === "INPUT" && WRITTEN.has(type));
+  if (typed) {
+    const value = (field as HTMLInputElement).value ?? "";
+    // The search only finds: nothing is lost when the island folds.
+    if (value.trim() === "" || type === "search") return "linger";
+    return value !== before ? "keep" : "linger";
+  }
   return tag === "SELECT" ? "linger" : "none";
 }
 
@@ -45,7 +56,8 @@ export function settingsHold(): "keep" | "linger" | "none" {
   const frame = shownFrame;
   if (!frame || document.activeElement !== frame || !document.hasFocus()) return "none";
   try {
-    return fieldHold(frame.contentDocument?.activeElement);
+    const field = frame.contentDocument?.activeElement;
+    return fieldHold(field, field ? entered.get(field) : undefined);
   } catch {
     return "none";
   }
@@ -57,6 +69,10 @@ function watchFields(frame: HTMLIFrameElement) {
   const inner = frame.contentWindow;
   if (!page || !inner) return;
   const changed = () => fieldChanged?.();
+  // First, so the hold asked just after knows what the field held as the cursor came in.
+  page.addEventListener("focusin", (e) => {
+    if (e.target) entered.set(e.target, (e.target as HTMLInputElement).value ?? "");
+  }, true);
   for (const type of ["input", "change", "focusin", "focusout"]) page.addEventListener(type, changed, true);
   // The island losing the keyboard to another app while the cursor is in the frame.
   inner.addEventListener("focus", changed);

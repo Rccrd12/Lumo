@@ -130,9 +130,9 @@ fn policy(mode: &str) -> (&'static str, Value) {
 /// (MAIL_SEND_BUDGET, 442 s in all); one of the user's tools waits for its
 /// card and runs up to 600 s (TOOL_CALL_BUDGET, 720 s). lumo-hook then
 /// answers that Lumo may still have done it; cut off sooner by Codex, the AI
-/// would hear "failed" for an email that still goes.
+/// would hear "failed" for an email that still goes. The test
+/// `lumo_hook_gives_up_before_codex` reads those budgets in hook/src/mcp.rs.
 const TOOL_TIMEOUT_SECS: u64 = 750;
-const _: () = assert!(TOOL_TIMEOUT_SECS > crate::pipe::MAIL_CARD_TIMEOUT.as_secs() + 130 + 12 && TOOL_TIMEOUT_SECS > 108 + 600 + 12);
 
 /// Lumo's MCP servers for the chat's thread, as Codex configuration: the
 /// island's timer and GitHub tools (`lumo`, island_tools.rs), and the user's
@@ -1104,6 +1104,23 @@ mod tests {
     fn feed(run: &mut Run, line: &str) -> bool {
         let v: Value = serde_json::from_str(line).unwrap();
         run.feed(v["method"].as_str().unwrap(), &v["params"])
+    }
+
+    /// lumo-hook's budgets as written in hook/src/mcp.rs (another crate):
+    /// each starts from Lumo's own waits, and Codex waits longer than all.
+    #[test]
+    fn lumo_hook_gives_up_before_codex() {
+        let source = include_str!("../../hook/src/mcp.rs");
+        let budget = |name: &str| -> Vec<u64> {
+            let line = source.lines().find(|l| l.contains(&format!("const {name}: Duration"))).unwrap_or_else(|| panic!("{name} in mcp.rs"));
+            let inner = line.split("from_secs(").nth(1).and_then(|r| r.split(')').next()).unwrap_or_else(|| panic!("{name}'s seconds"));
+            inner.split('+').map(|n| n.trim().parse().unwrap_or_else(|_| panic!("{name}: {inner}"))).collect()
+        };
+        let mail = budget("MAIL_SEND_BUDGET");
+        let tool = budget("TOOL_CALL_BUDGET");
+        assert_eq!(mail[0], crate::pipe::MAIL_CARD_TIMEOUT.as_secs(), "an email's card, as pipe.rs waits for it");
+        assert_eq!(tool[..2], [crate::pipe::DECISION_TIMEOUT.as_secs(), crate::tools::MAX_TIMEOUT_S], "a tool's card and its run");
+        assert!(TOOL_TIMEOUT_SECS > mail.iter().sum::<u64>() && TOOL_TIMEOUT_SECS > tool.iter().sum::<u64>());
     }
 
     #[test]
