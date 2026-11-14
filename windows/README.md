@@ -1273,7 +1273,8 @@ grey.
   Edit keeps the watch (a webhook keeps its address). A watch says on its
   card when GitHub stops accepting the token (it keeps listening; Update opens
   Settings) or when it was paused for firing too often (Resume).
-- **History** keeps what Lumo heard, and whether it happened or no longer can.
+- **History** keeps what Lumo heard, and whether it happened or no longer can,
+  and a watch that ended because an edited one now listens to the same thing.
 - **Listen for something** picks a source, then what to listen to, the event,
   once or every time, and what Lumo should do then.
 
@@ -1284,7 +1285,12 @@ something to do, the AI gets a message in that chat saying what happened and
 what it meant to do, and answers it there, even when another chat is on
 screen: the chat on screen stays as it is. When the event is not the one
 waited for (the pull request was closed instead of merged), the AI is told
-not to do what was planned.
+not to do what was planned. A task that was still waiting for its chat to be
+free when Lumo closed is not sent by itself when Lumo opens again: its line
+says the task did not start, and **Ask** is back. When the chat that asked
+was deleted, the task is done in a new chat, and the next events of a watch
+that listens every time go to that same chat; a task still waiting for a
+chat you delete goes with it.
 
 Until that chat is opened, the closed island names it («chat» · what
 happened, +N when more chats wait), a bar over the field of the chat on screen

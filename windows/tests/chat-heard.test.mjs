@@ -271,3 +271,72 @@ test("a deleted chat's task lands in a new chat, whose line can still stop the w
   finish({ text: "Sorted.", turns: 2 });
   await flush();
 });
+
+test("a task that waited for its busy chat when Lumo closed says so when it opens, and Ask sends it", async () => {
+  answers.chat_send = () => new Promise(() => {});
+  emit("listen-fired", { watch: watch(11, State.chatId, "sort it"), met: true, summary: "New email A", ended: true });
+  await flush();
+  await flush();
+  emit("listen-fired", { watch: watch(12, State.chatId, "file it"), met: true, summary: "New email B", ended: true });
+  await flush();
+  await flush();
+  assert.equal(sent("chat_send").length, 1, "the second waits for the first answer");
+  // Lumo closes and opens again: what waited in memory is gone.
+  calls.length = 0;
+  answers.chat_send = { text: "Filed.", turns: 6 };
+  view = buildPrompt(() => {});
+  $(".chat-input").value = "";
+  view.sync();
+  const rows = view.el.find(".heard-row");
+  assert.equal(rows.length, 2);
+  assert.doesNotMatch(rows[0].textContent, /did not start/);
+  assert.match(rows[1].textContent, /The task did not start/);
+  const ask = rows[1].find(".listen-head-btn").find((b) => /^Ask /.test(b.textContent));
+  assert.ok(ask, "Ask is back on the task that never went");
+  ask.fire("click");
+  await flush();
+  await flush();
+  assert.match(sent("chat_send")[0].query, /file it/);
+  view.sync();
+  assert.doesNotMatch(view.el.find(".heard-row")[1].textContent, /did not start/);
+});
+
+test("a deleted chat's watch listening every time: its next events go to the same new chat", async () => {
+  answers.chat_send = { text: "Sorted.", turns: 2 };
+  const w = watch(13, "gone", "sort it", { mode: "every" });
+  emit("listen-changed", [w]);
+  emit("listen-fired", { watch: w, met: true, summary: "New email 1", ended: false });
+  await flush();
+  await flush();
+  const made = sent("chat_send")[0].chatId;
+  assert.deepEqual(sent("listen_move"), [{ id: 13, chatId: made }], "the watch answers to the new chat from now on");
+  // Before Rust's list says so, another event of it comes with the old chat.
+  emit("listen-fired", { watch: w, met: true, summary: "New email 2", ended: false });
+  await flush();
+  await flush();
+  assert.deepEqual(sent("chat_send").map((a) => a.chatId), [made, made], "no second new chat");
+  assert.equal(sent("listen_move").length, 1);
+});
+
+test("deleting a chat drops the task still waiting to go to it", async () => {
+  let finish;
+  answers.chat_send = () => new Promise((resolve) => (finish = resolve));
+  emit("listen-fired", { watch: watch(14, "release", "merge it"), met: true, summary: "#1 is ready", ended: true });
+  await flush();
+  await flush();
+  emit("listen-fired", { watch: watch(15, "release", "tag it"), met: true, summary: "#2 is ready", ended: true });
+  await flush();
+  assert.equal(sent("chat_send").length, 1);
+  // Past chats: the chat goes.
+  $(".history-btn").fire("click");
+  view.sync();
+  const row = view.el.find(".history-delete").find((b) => b.parentNode?.textContent?.includes("Release 0.23"));
+  assert.ok(row, "Release 0.23 can be deleted");
+  row.fire("click");
+  finish({ text: "Merged.", turns: 4 });
+  await flush();
+  await flush();
+  await flush();
+  assert.equal(sent("chat_send").length, 1, "its waiting task went with it");
+  assert.ok(!loadChats().some((c) => c.id === "release"), "and it does not come back");
+});

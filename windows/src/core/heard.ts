@@ -35,6 +35,13 @@ export interface HeardLine {
   ended: boolean;
   /** The user asked the AI about it already (its button goes). */
   asked?: boolean;
+  /**
+   * Its task waits for its chat to be free (chat.ts runHeard): asked, not
+   * sent yet. Kept, so a task Lumo closed on before it went is known.
+   */
+  queued?: boolean;
+  /** Its task never went (Lumo closed first): it says so, and Ask is back. */
+  unsent?: boolean;
 }
 
 const KEY = "lumo.listen.heard.v1";
@@ -79,11 +86,18 @@ function storeAll(map: Record<string, HeardLine[]>) {
   }
 }
 
+/** The last id given, and how many lines had it: two events of a watch in the same millisecond each keep their line. */
+let lastId = "";
+let sameId = 0;
+
 /** The line for an event a watch heard, in the chat called `chatTitle`. */
 export function heardLine(fired: ListenFired, chatTitle: string, at = Date.now()): HeardLine {
   const summary = fired.summary.replace(/\s+/g, " ").trim();
+  const base = `${fired.watch.id}:${at}`;
+  sameId = base === lastId ? sameId + 1 : 1;
+  lastId = base;
   return {
-    id: `${fired.watch.id}:${at}`,
+    id: sameId > 1 ? `${base}:${sameId}` : base,
     chatId: fired.watch.chatId,
     chatTitle,
     at,
@@ -122,7 +136,38 @@ export function markAsked(chatId: string, id: string) {
   const line = map[chatId]?.find((l) => l.id === id);
   if (!line) return;
   line.asked = true;
+  delete line.unsent;
   storeAll(map);
+}
+
+/** A line's task went to its chat: it no longer waits. */
+export function markSent(chatId: string, id: string) {
+  const map = loadAll();
+  const line = map[chatId]?.find((l) => l.id === id);
+  if (!line?.queued) return;
+  delete line.queued;
+  storeAll(map);
+}
+
+/**
+ * Lumo opens: a task still waiting was never sent (what waited was only in
+ * memory). Its line says so and offers Ask again; nothing is sent by itself,
+ * since a task acts without asking. How many there were.
+ */
+export function unsentOnOpen(): number {
+  const map = loadAll();
+  let n = 0;
+  for (const lines of Object.values(map)) {
+    for (const line of lines) {
+      if (!line.queued) continue;
+      delete line.queued;
+      line.asked = false;
+      line.unsent = true;
+      n++;
+    }
+  }
+  if (n) storeAll(map);
+  return n;
 }
 
 /** A chat deleted: its lines go with it. */

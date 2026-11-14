@@ -340,6 +340,8 @@ export const Bridge = {
   listenList: () => call<ListenWatch[]>("listen_list"),
   /** Stops one watch, by its id. */
   listenStop: (id: number) => call<boolean>("listen_stop", { id }),
+  /** The chat a watch answers to was deleted: its events go to `chatId` from now on. */
+  listenMove: (id: number, chatId: string) => call<boolean>("listen_move", { id, chatId }),
   /** Pauses or resumes one watch (`id` null: every one). */
   listenPause: (id: number | null, paused: boolean) => call<number>("listen_pause", { id, paused }),
   /** What fired, oldest first. */
