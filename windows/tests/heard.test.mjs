@@ -5,7 +5,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_LINES_PER_CHAT, addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, placeHeard, seenChat, waitingElsewhere, wavesLit,
+  MAX_LINES_PER_CHAT, addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, markSent, placeHeard, seenChat, unsentOnOpen, waitingElsewhere, wavesLit,
 } from "../src/core/heard.ts";
 
 const mem = new Map();
@@ -98,4 +98,35 @@ test("the waves light for this chat's watches, or another chat waiting", () => {
   assert.equal(wavesLit([{ ...w, paused: true }], [], "a"), false);
   assert.equal(wavesLit([], [line("b", 1)], "a"), true);
   assert.equal(wavesLit([], [line("a", 1)], "a"), false, "this chat's own line is seen here");
+});
+
+test("two events of a watch in the same millisecond each keep their line", () => {
+  const w = watch(7, "c1", { source: "webhook", mode: "every" });
+  const a = heardLine({ watch: w, met: true, summary: "deploys was called: A", ended: false }, "Chat", 5000);
+  const b = heardLine({ watch: w, met: true, summary: "deploys was called: B", ended: false }, "Chat", 5000);
+  assert.notEqual(a.id, b.id);
+  addHeard(a);
+  addHeard(b);
+  assert.deepEqual(heardIn("c1").map((l) => l.summary), ["deploys was called: A", "deploys was called: B"]);
+  // Another millisecond: the plain id again.
+  assert.equal(heardLine({ watch: w, met: true, summary: "C" }, "Chat", 5001).id, "7:5001");
+});
+
+test("a task that still waited when Lumo closed says so when it opens, with Ask back", () => {
+  const sent = { ...line("c1", 100, 1), asked: true, queued: true };
+  const waiting = { ...line("c1", 200, 2), asked: true, queued: true };
+  addHeard(sent);
+  addHeard(waiting);
+  addHeard(line("c2", 300, 3));
+  markSent("c1", sent.id);
+  assert.equal(unsentOnOpen(), 1);
+  const [went, never] = heardIn("c1");
+  assert.equal(went.asked, true);
+  assert.ok(!went.unsent && !went.queued);
+  assert.equal(never.asked, false, "Ask is back");
+  assert.equal(never.unsent, true);
+  assert.ok(!never.queued);
+  assert.equal(unsentOnOpen(), 0, "said once");
+  markAsked("c1", never.id);
+  assert.ok(!heardIn("c1")[1].unsent, "asked: no longer unsent");
 });

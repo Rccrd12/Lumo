@@ -11051,6 +11051,30 @@
    "id": "Berhenti mendengarkan {what} untuk memberi ruang: paling banyak {count} sekaligus",
    "it": "Smesso di ascoltare {what} per fare spazio: al massimo {count} alla volta"
   },
+  "Stopped listening to {what}: an edited watch listens to it now": {
+   "zh-Hans": "已停止监听 {what}：现在由一个修改过的监听代替",
+   "hi": "{what} को सुनना बंद किया: अब एक बदला हुआ वॉच इसे सुनता है",
+   "es": "Se dejó de escuchar {what}: ahora lo escucha una escucha editada",
+   "ar": "توقف الاستماع إلى {what}: يستمع إليه الآن استماع معدَّل",
+   "fr": "Arrêt de l'écoute de {what} : une écoute modifiée l'écoute désormais",
+   "bn": "{what} শোনা বন্ধ করা হয়েছে: এখন একটি সম্পাদিত শোনা এটি শোনে",
+   "pt-BR": "Parou de ouvir {what}: agora uma escuta editada ouve isso",
+   "ru": "Прослушивание {what} остановлено: теперь его слушает изменённое прослушивание",
+   "id": "Berhenti mendengarkan {what}: kini didengarkan oleh pemantauan yang diubah",
+   "it": "Smesso di ascoltare {what}: ora lo ascolta un ascolto modificato"
+  },
+  "The task did not start": {
+   "zh-Hans": "任务没有开始",
+   "hi": "काम शुरू नहीं हुआ",
+   "es": "La tarea no se inició",
+   "ar": "لم تبدأ المهمة",
+   "fr": "La tâche n'a pas démarré",
+   "bn": "কাজটি শুরু হয়নি",
+   "pt-BR": "A tarefa não começou",
+   "ru": "Задача не запустилась",
+   "id": "Tugas tidak dimulai",
+   "it": "Il compito non è partito"
+  },
   "{what} no longer shows “{text}”": {
    "zh-Hans": "{what} 不再显示「{text}」",
    "hi": "{what} अब “{text}” नहीं दिखाता",

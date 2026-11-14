@@ -121,7 +121,7 @@ import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNews, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, listeningLine, takeListens, untilText, watchColor, watchLabel, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { LISTENING_STRINGS, buildListeningPanel, listeningButtonTitle, neededText, watchTile } from "./listening";
-import { addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, placeHeard, seenChat, waitingElsewhere, wavesLit, type HeardLine } from "../core/heard";
+import { addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, markSent, placeHeard, seenChat, unsentOnOpen, waitingElsewhere, wavesLit, type HeardLine } from "../core/heard";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
@@ -152,6 +152,7 @@ const STRINGS = {
   heardClose: N_("Close"),
   heardIn: N_("Heard in the chat «{chat}»"),
   heardDoing: N_("{helper} takes care of it in its chat, «{chat}»"),
+  heardUnsent: N_("The task did not start"),
   planChange: N_("Or write what to change…"),
   send: N_("Send"),
   toEnd: N_("Go to the bottom"),
@@ -3331,8 +3332,10 @@ export function buildPrompt(
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
         deleteChat(c.id);
-        // What it heard goes with it, and no longer waits to be seen.
+        // What it heard goes with it, and no longer waits to be seen; a task
+        // still waiting to go to it goes too, or it would bring the chat back.
         dropHeard(c.id);
+        forgetHeard(c.id);
         seen(c.id);
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
@@ -4348,10 +4351,31 @@ export function buildPrompt(
 
   // ── Listening to GitHub ───────────────────────────────────────────────────
 
-  /** Events with something for Claude to do, each with its chat, waiting for that chat to be free. */
-  const heard: { text: string; chatId: string }[] = [];
+  /**
+   * Events with something for Claude to do, each with its chat and its line
+   * (core/heard.ts, `queued` there until it goes), waiting for that chat to be free.
+   */
+  const heard: { text: string; chatId: string; lineId: string }[] = [];
   /** Chats whose conversation Rust is loading for such a message (submitAway). */
   const loadingAway = new Set<string>();
+  /**
+   * A deleted chat's watch: the chat its task was done in instead, so its next
+   * events go there too rather than to a new chat each time (until Rust's
+   * list says the watch moved, listen_move).
+   */
+  const movedChat = new Map<string, { id: string; title: string }>();
+  // Tasks that still waited when Lumo closed never went: their lines say so, with Ask.
+  unsentOnOpen();
+
+  /** A chat was deleted: what still waited to go to it goes too. */
+  function forgetHeard(chatId: string) {
+    for (let i = heard.length - 1; i >= 0; i--) if (heard[i].chatId === chatId) heard.splice(i, 1);
+  }
+
+  /** A message of `heard` goes to its chat now: its line no longer waits. */
+  function handOver(next: { chatId: string; lineId: string }) {
+    markSent(next.chatId, next.lineId);
+  }
 
   /**
    * The next one goes to Claude in the chat that asked for it, where that
@@ -4372,8 +4396,10 @@ export function buildPrompt(
       }
       heard.splice(i, 1);
       held.add(next.chatId);
-      if (next.chatId === State.chatId) void submit(next.text);
-      else void submitAway(next.chatId, next.text);
+      if (next.chatId === State.chatId) {
+        handOver(next);
+        void submit(next.text);
+      } else void submitAway(next);
     }
   }
 
@@ -4383,7 +4409,8 @@ export function buildPrompt(
    * in the background, as a chat left while it is answered is. Opened
    * meanwhile, it goes there as on screen.
    */
-  async function submitAway(chatId: string, text: string) {
+  async function submitAway(next: { text: string; chatId: string; lineId: string }) {
+    const { chatId, text } = next;
     const saved = loadChats().find((c) => c.id === chatId);
     // Rust takes every turn back as it is: each one's place there is its place here (as openChat).
     const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => ({
@@ -4397,14 +4424,17 @@ export function buildPrompt(
     } finally {
       loadingAway.delete(chatId);
     }
+    // Deleted while it loaded: the message goes with it, rather than bring it back.
+    if (saved && !loadChats().some((c) => c.id === chatId)) return;
     if (preparing || runs.has(chatId)) {
       // Something else went first: it waits for its turn again, before its
       // chat's next ones (an answer that ends calls for it; a moment later in any case).
       const at = heard.findIndex((h) => h.chatId === chatId);
-      heard.splice(at < 0 ? heard.length : at, 0, { text, chatId });
+      heard.splice(at < 0 ? heard.length : at, 0, next);
       window.setTimeout(() => runHeard(), 2000);
       return;
     }
+    handOver(next);
     if (State.chatId === chatId) void submit(text);
     else void submit(text, undefined, { chatId, history, session });
   }
@@ -4443,12 +4473,30 @@ export function buildPrompt(
         compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
         return;
       }
-      chatId = newChatId();
-      name = chatTitle([{ role: "user", content: listenMessage(fired) }]);
+      // That chat was deleted, and an earlier event of it made a new one,
+      // still there (saved, answered, or waiting to be): it goes there too.
+      const moved = chatId ? movedChat.get(chatId) : undefined;
+      const there = moved && (chatNamed(moved.id) != null || runs.has(moved.id) || loadingAway.has(moved.id) || heard.some((x) => x.chatId === moved.id));
+      if (moved && there) {
+        chatId = moved.id;
+        name = chatNamed(moved.id) ?? moved.title;
+      } else {
+        const gone = chatId;
+        chatId = newChatId();
+        name = chatTitle([{ role: "user", content: listenMessage(fired) }]);
+        if (gone) movedChat.set(gone, { id: chatId, title: name });
+        // Listening every time: its next events go to this new chat, not to another new one each.
+        if (fired.ended === false) void Bridge.listenMove(fired.watch.id, chatId);
+      }
     }
     const line = heardLine({ ...fired, watch: { ...fired.watch, chatId } }, name);
-    // With a task, Claude is asked already: no Ask button.
-    if (asks) line.asked = true;
+    // With a task, Claude is asked already: no Ask button. Until the message
+    // goes, the line waits (`queued`): a task Lumo closed on before it went
+    // says so when Lumo opens again, and Ask is back (core/heard.ts unsentOnOpen).
+    if (asks) {
+      line.asked = true;
+      line.queued = true;
+    }
     // Lines of chats not saved yet stay: on screen, being answered, waiting to be seen or to be answered.
     const kept = [...loadChats().map((c) => c.id), State.chatId, State.parkedChatId() ?? "", chatId, ...runs.keys(), ...loadingAway, ...heard.map((x) => x.chatId), ...State.listenPending.map((p) => p.chatId)];
     addHeard(line, new Set(kept));
@@ -4464,7 +4512,7 @@ export function buildPrompt(
     drawHistoryBadge();
     if (body.classList.contains("browsing")) drawHistory();
     if (asks) {
-      heard.push({ text: listenMessage({ ...fired, watch: line.watch }), chatId });
+      heard.push({ text: listenMessage({ ...fired, watch: line.watch }), chatId, lineId: line.id });
       runHeard();
     }
     State.notify();
@@ -4502,6 +4550,9 @@ export function buildPrompt(
         Sound.play("pop");
       },
     }, h("span", { text: t(LISTENING_STRINGS.stop) })) : null;
+    // Its task never went (Lumo closed first): said under the line, in the Listening panel's warning.
+    const unsent = line.unsent ? h("span", { class: "listen-warn heard-unsent" },
+      h("span", { class: "listen-warn-text" }, h("span", { class: "listen-warn-dot" }), t(STRINGS.heardUnsent))) : null;
     return h("div", { class: "chat-row heard-row" },
       h("div", { class: line.met ? "heard-pill" : "heard-pill not-met", style: `--watch:${line.color}` },
         watchTile(line.watch),
@@ -4510,6 +4561,7 @@ export function buildPrompt(
           h("span", { class: "heard-summary", text: line.summary }),
           h("span", { class: "heard-dot", text: " · " }),
           when)),
+      unsent,
       ask || stop ? h("div", { class: "heard-actions" }, ask, stop) : null);
   }
 
