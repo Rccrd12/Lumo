@@ -27,6 +27,12 @@ export interface SavedChat {
   provider: string;
   /** Its model, with `provider`; none in chats saved before each chat kept its own. */
   model?: string;
+  /**
+   * A voice call's transcript (live/session.ts): `provider` names the call's,
+   * not one picked in the chat, so reopening it leaves the picker as it is,
+   * until a question asked in it in writing is answered (it has a `model` then).
+   */
+  call?: boolean;
   /** The CLI session that answered (Claude Code, Antigravity CLI), so reopening continues it. */
   session: string | null;
   turns: SavedTurn[];
@@ -141,12 +147,13 @@ export function setChatModel(id: string, provider: string, model: string) {
   store(list);
 }
 
-/** The provider and model chat `id` is on, if it has any yet. */
+/** The provider and model chat `id` is on, if it has any yet (a voice call's has none). */
 export function chatModelOf(id: string): ChatModel | null {
   const picked = picks.get(id);
   if (picked) return picked;
   const chat = loadChats().find((c) => c.id === id);
   if (!chat || typeof chat.provider !== "string" || !chat.provider) return null;
+  if (chat.call === true && !chat.model) return null;
   return typeof chat.model === "string" && chat.model ? { provider: chat.provider, model: chat.model } : { provider: chat.provider };
 }
 

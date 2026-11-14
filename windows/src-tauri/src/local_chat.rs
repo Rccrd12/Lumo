@@ -572,8 +572,8 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         } else {
             name.to_string()
         });
-        let (app, chat, asking, high, name) = (self.app, self.chat.id().to_string(), self.asking, self.sandbox_high, name.to_string());
-        async move { crate::tools::call_for_chat(app, &chat, &name, input, asking, high).await }
+        let (app, chat, server, asking, high, name) = (self.app, self.chat.id().to_string(), self.server, self.asking, self.sandbox_high, name.to_string());
+        async move { crate::tools::call_for_chat(app, &chat, server, &name, input, asking, high).await }
     }
 }
 
