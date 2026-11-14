@@ -138,23 +138,32 @@ test("a change of any size shows the relay's numbers, never the size of what is 
   assert.deepEqual(editStat("Write", { file_path: "C:/p/a.txt", content: "a\nb\n" }), { added: 2, removed: 0, bytes: 4 });
 });
 
-test("a request cut short keeps Allow and says it shows its beginning; only the session's Allow goes", async () => {
+test("a request cut short is allowed by holding Allow; arguments Lumo can't read never are", async () => {
   const { approvalOffer } = await import("../src/core/approvals.ts");
   const plan = [{ text: "Read the settings page" }, { text: "Add the toggle" }];
+  const offer = (o) => ({ allow: true, holdToAllow: false, cutNote: false, unreadNote: false, sessionAllow: false, planEdits: false, answerThere: null, ...o });
   // Whole: Allow, and what the request can have besides.
-  assert.deepEqual(approvalOffer({ sessionAllow: true }), { allow: true, cutNote: false, sessionAllow: true, planEdits: false, answerThere: null });
-  assert.deepEqual(approvalOffer({ plan }), { allow: true, cutNote: false, sessionAllow: false, planEdits: true, answerThere: null });
-  assert.deepEqual(approvalOffer({ plan, fromChat: true }), { allow: true, cutNote: false, sessionAllow: false, planEdits: false, answerThere: null });
-  // Cut: Allow stays (the user decides), the note says what is shown; never kept for the session.
-  assert.deepEqual(approvalOffer({ cut: true, sessionAllow: true }), { allow: true, cutNote: true, sessionAllow: false, planEdits: false, answerThere: null });
-  assert.deepEqual(approvalOffer({ cut: true, fromChat: true }), { allow: true, cutNote: true, sessionAllow: false, planEdits: false, answerThere: null });
-  // A plan cut short: approved like any other.
-  assert.deepEqual(approvalOffer({ plan, cut: true }), { allow: true, cutNote: true, sessionAllow: false, planEdits: true, answerThere: null });
+  assert.deepEqual(approvalOffer({ sessionAllow: true }), offer({ sessionAllow: true }));
+  assert.deepEqual(approvalOffer({ plan }), offer({ planEdits: true }));
+  assert.deepEqual(approvalOffer({ plan, fromChat: true }), offer({}));
+  // Cut: Allow is held down, the note says what is shown, its own window takes it whole; never kept for the session.
+  assert.deepEqual(approvalOffer({ cut: true, sessionAllow: true }), offer({ holdToAllow: true, cutNote: true, answerThere: "elsewhere" }));
+  // The chat's own run has no window of its own.
+  assert.deepEqual(approvalOffer({ cut: true, fromChat: true }), offer({ holdToAllow: true, cutNote: true }));
+  // A plan cut short: approved by holding, never "and let it edit files" on a plan seen in part.
+  assert.deepEqual(approvalOffer({ plan, cut: true }), offer({ holdToAllow: true, cutNote: true, answerThere: "elsewhere" }));
+  // Arguments the relay couldn't read: no Allow at all, only Deny and the agent's own window.
+  assert.deepEqual(approvalOffer({ unread: true, sessionAllow: true }), offer({ allow: false, unreadNote: true, answerThere: "elsewhere" }));
+  assert.deepEqual(approvalOffer({ unread: true, cut: true }), offer({ allow: false, unreadNote: true, answerThere: "elsewhere" }));
+  assert.deepEqual(approvalOffer({ unread: true, fromChat: true }), offer({ allow: false, unreadNote: true }));
   // An agent that answers in its own window says so by name, on any card but a plan's.
   assert.equal(approvalOffer({ answerIn: "Antigravity" }).answerThere, "agent");
+  assert.equal(approvalOffer({ answerIn: "Antigravity", cut: true }).answerThere, "agent");
   assert.equal(approvalOffer({ answerIn: "Antigravity", plan }).answerThere, null);
   // An email is never "cut": its card has its own buttons.
   assert.equal(approvalOffer({ email: { to: ["a@b.c"] }, cut: true }).allow, true);
+  assert.equal(approvalOffer({ email: { to: ["a@b.c"] }, cut: true }).holdToAllow, false);
+  assert.equal(approvalOffer({ email: { to: ["a@b.c"] }, unread: true }).allow, true);
 });
 
 test("a lone carriage return ends a command: what comes after it is looked at too", () => {

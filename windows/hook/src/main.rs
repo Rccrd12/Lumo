@@ -103,11 +103,18 @@ const CONTENT_FIELDS: &[&str] = &[
     "file_text", "old_str", "new_str", "oldString", "newString",
 ];
 /// Per target string of a permission request: the card shows the whole of it,
-/// so a long script reaches the island whole. Past this the request carries
-/// `lumo_input_cut` (and `lumo_input_bytes`, its whole size): the card says it
-/// shows the beginning, and "Allow for this session" never remembers it. Allow
-/// itself stays: the user decides, and in Auto nothing waits for them.
+/// so a long script reaches the island whole. Past this it keeps its beginning
+/// and its end (`cut_ends`: what is added at the end of a long command is
+/// always on the card) and the request carries `lumo_input_cut`, with
+/// `lumo_input_bytes` (the whole string's size) and `lumo_input_hidden` (what
+/// the card doesn't show). The card says so in amber, Allow is held down to
+/// allow it, the agent's own window can take it whole, and "Allow for this
+/// session" never remembers it. In the chat's Auto nothing waits for them.
 const MAX_TARGET_LEN: usize = 64 * 1024;
+/// How long the relay may spend reading a file tool's file on disk for its
+/// numbers (write_stat.rs) before it gives up on them: the agent never waits
+/// on a slow disk, a network share or Lumo being closed for more than this.
+const STAT_BUDGET: Duration = Duration::from_millis(200);
 
 mod win;
 use win::{ancestry, connect, parent};
@@ -512,7 +519,7 @@ fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
         let input = payload.as_object_mut().and_then(|map| map.remove("tool_input"));
         // Only the relay says how big a change is: never what came in.
         if let Some(map) = payload.as_object_mut() {
-            for key in ["lumo_write_bytes", "lumo_write_lines", "lumo_write_added", "lumo_write_removed", "lumo_input_bytes", "lumo_text_cut"] {
+            for key in ["lumo_write_bytes", "lumo_write_lines", "lumo_write_added", "lumo_write_removed", "lumo_input_bytes", "lumo_input_hidden", "lumo_text_cut"] {
                 map.remove(key);
             }
         }
@@ -523,14 +530,16 @@ fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
         if let Some(mut input) = input {
             // What a file tool changes, read before its text is cut: the card
             // shows these numbers, never the text, so the text's size never matters.
-            let stat = if CONTENT_TOOLS.contains(&tool.as_str()) { write_stat::of_request(&input, &cwd) } else { None };
-            let whole_size = input.to_string().len();
+            // Within STAT_BUDGET: past it, no numbers rather than a waiting agent.
+            let stat = if CONTENT_TOOLS.contains(&tool.as_str()) { stat_within(&input, &cwd, STAT_BUDGET) } else { None };
             let cut = cap_request_strings(&mut input, &tool);
             if let Some(map) = payload.as_object_mut() {
                 map.insert("tool_input".into(), input);
                 if cut.input {
                     map.insert("lumo_input_cut".into(), Value::Bool(true));
-                    map.insert("lumo_input_bytes".into(), Value::from(whole_size));
+                    // The string the card shows only in part: its own size, and what is not shown of it.
+                    map.insert("lumo_input_bytes".into(), Value::from(cut.whole));
+                    map.insert("lumo_input_hidden".into(), Value::from(cut.hidden));
                 }
                 if cut.text {
                     map.insert("lumo_text_cut".into(), Value::Bool(true));
@@ -572,6 +581,19 @@ fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
     }
 }
 
+/// `write_stat::of_request` on a thread of its own, given up after `budget`:
+/// reading a file can block (a network drive gone, a disk asleep), and the
+/// relay never makes the agent wait for numbers. The thread left behind ends
+/// with the process.
+fn stat_within(input: &Value, cwd: &str, budget: Duration) -> Option<write_stat::Stat> {
+    let (tx, rx) = mpsc::channel();
+    let (input, cwd) = (input.clone(), cwd.to_string());
+    std::thread::spawn(move || {
+        let _ = tx.send(write_stat::of_request(&input, &cwd));
+    });
+    rx.recv_timeout(budget).ok().flatten()
+}
+
 /// `tool_input` of a diff tool: edit strings share MAX_DIFF_TOTAL, each capped at
 /// MAX_DIFF_FIELD_LEN; any other string gets the ordinary cap.
 fn cap_diff_strings(value: &mut serde_json::Value, budget: &mut usize, cut_any: &mut bool) {
@@ -609,6 +631,23 @@ struct Cut {
     input: bool,
     /// Only the text a file tool writes, which the card never shows (write_stat.rs counts it).
     text: bool,
+    /// The size of the biggest string the card shows only in part (`lumo_input_bytes`).
+    whole: usize,
+    /// The bytes of those strings the card doesn't show (`lumo_input_hidden`).
+    hidden: usize,
+    /// A question's: answered, never allowed, so its long text simply ends in "…".
+    question: bool,
+}
+
+impl Cut {
+    /// A string the card shows was cut by `cut_ends`.
+    fn shown(&mut self, ends: Option<(usize, usize)>) {
+        if let Some((whole, hidden)) = ends {
+            self.input = true;
+            self.whole = self.whole.max(whole);
+            self.hidden += hidden;
+        }
+    }
 }
 
 /// `tool_input` of a permission request: its target (TARGET_FIELDS, at the
@@ -617,8 +656,7 @@ struct Cut {
 /// string the ordinary cap. Says what was cut: the island then knows the
 /// input it got is not the whole.
 fn cap_request_strings(input: &mut Value, tool: &str) -> Cut {
-    let mut cut_any = false;
-    let mut text_cut = false;
+    let mut out = Cut { question: tool == "AskUserQuestion", ..Cut::default() };
     let writes = CONTENT_TOOLS.contains(&tool);
     // The card of a Type shows every character it will type: the text is its
     // target, never cut within what the tool accepts (5,000 characters).
@@ -628,47 +666,43 @@ fn cap_request_strings(input: &mut Value, tool: &str) -> Cut {
         for (key, v) in map.iter_mut() {
             match v {
                 Value::String(s) if TARGET_FIELDS.contains(&key.as_str()) || (types && key == "text") => {
-                    cut_any |= cut(s, MAX_TARGET_LEN)
+                    out.shown(cut_ends(s, MAX_TARGET_LEN))
                 }
-                _ if writes => {
-                    let (other, text) = cap_content(v, key, &mut budget);
-                    cut_any |= other;
-                    text_cut |= text;
-                }
-                _ => cut_any |= cap_all(v),
+                _ if writes => cap_content(v, key, &mut budget, &mut out),
+                _ => cap_all(v, &mut out),
             }
         }
     } else {
-        cut_any |= cap_all(input);
+        cap_all(input, &mut out);
     }
-    Cut { input: cut_any, text: text_cut }
+    out
 }
 
 /// Part of a file tool's input (MultiEdit's `edits` included): the text it
 /// writes or replaces shares MAX_DIFF_TOTAL, each piece at most
-/// MAX_DIFF_FIELD_LEN; any other string the ordinary cap. Says whether any
-/// other string was cut, and whether any of the text was.
-fn cap_content(value: &mut Value, key: &str, budget: &mut usize) -> (bool, bool) {
-    let either = |(a, b): (bool, bool), (c, d): (bool, bool)| (a | c, b | d);
+/// MAX_DIFF_FIELD_LEN (`text`: the card never shows it); any other string the
+/// ordinary cap, its beginning and its end.
+fn cap_content(value: &mut Value, key: &str, budget: &mut usize, out: &mut Cut) {
     match value {
         Value::String(s) if CONTENT_FIELDS.contains(&key) => {
-            let was_cut = cut(s, MAX_DIFF_FIELD_LEN.min(*budget));
+            out.text |= cut(s, MAX_DIFF_FIELD_LEN.min(*budget));
             *budget = budget.saturating_sub(s.len());
-            (false, was_cut)
         }
-        Value::Object(map) => map.iter_mut().fold((false, false), |any, (k, v)| either(any, cap_content(v, k, budget))),
-        Value::Array(items) => items.iter_mut().fold((false, false), |any, v| either(any, cap_content(v, key, budget))),
-        other => (cap_all(other), false),
+        Value::Object(map) => map.iter_mut().for_each(|(k, v)| cap_content(v, k, budget, out)),
+        Value::Array(items) => items.iter_mut().for_each(|v| cap_content(v, key, budget, out)),
+        other => cap_all(other, out),
     }
 }
 
-/// `truncate_strings`, saying whether anything was cut.
-fn cap_all(value: &mut Value) -> bool {
+/// Every string of a request's input to the ordinary cap, keeping its
+/// beginning and its end, and saying what was cut.
+fn cap_all(value: &mut Value, out: &mut Cut) {
     match value {
-        Value::String(s) => cut(s, MAX_FIELD_LEN),
-        Value::Array(items) => items.iter_mut().fold(false, |any, v| cap_all(v) | any),
-        Value::Object(map) => map.values_mut().fold(false, |any, v| cap_all(v) | any),
-        _ => false,
+        Value::String(s) if out.question => out.input |= cut(s, MAX_FIELD_LEN),
+        Value::String(s) => out.shown(cut_ends(s, MAX_FIELD_LEN)),
+        Value::Array(items) => items.iter_mut().for_each(|v| cap_all(v, out)),
+        Value::Object(map) => map.values_mut().for_each(|v| cap_all(v, out)),
+        _ => {}
     }
 }
 
@@ -682,6 +716,34 @@ fn truncate_strings(value: &mut Value) {
         Value::Object(map) => map.values_mut().for_each(truncate_strings),
         _ => {}
     }
+}
+
+/// What stands where the middle of a long string was taken out (`cut_ends`):
+/// the card splits the string there (core/approvals.ts CUT_GAP).
+const GAP: &str = "\n⋯ ✂ ⋯\n";
+
+/// Shortens `s` to at most `max` bytes keeping its beginning (three quarters)
+/// and its end, GAP between them: what a long command ends with, where an
+/// addition hides best, stays on the card. Its whole size and the bytes taken
+/// out when it was cut.
+fn cut_ends(s: &mut String, max: usize) -> Option<(usize, usize)> {
+    if s.len() <= max {
+        return None;
+    }
+    let whole = s.len();
+    let keep = max.saturating_sub(GAP.len());
+    let mut head = keep * 3 / 4;
+    while head > 0 && !s.is_char_boundary(head) {
+        head -= 1;
+    }
+    let mut tail = whole - (keep - head);
+    while tail < whole && !s.is_char_boundary(tail) {
+        tail += 1;
+    }
+    let shown = format!("{}{GAP}{}", &s[..head], &s[tail..]);
+    let hidden = tail - head;
+    *s = shown;
+    Some((whole, hidden))
 }
 
 /// Shortens `s` to at most `max` bytes plus an ellipsis; true if it was cut.
@@ -1024,7 +1086,7 @@ mod tests {
         let huge = "x".repeat(MAX_TARGET_LEN + 10);
         let mut v = serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": huge } });
         truncate_payload(&mut v, "PermissionRequest");
-        assert!(v["tool_input"]["command"].as_str().unwrap().len() <= MAX_TARGET_LEN + 4);
+        assert!(v["tool_input"]["command"].as_str().unwrap().len() <= MAX_TARGET_LEN);
         assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
         // Any other field cut counts too: the input is not the whole one.
         let mut v = serde_json::json!({ "tool_name": "mcp__x__y", "tool_input": { "body": "y".repeat(MAX_FIELD_LEN + 1) } });
@@ -1202,6 +1264,52 @@ mod tests {
         assert_eq!(v["lumo_text_cut"], serde_json::Value::Bool(true));
         assert_eq!((v["lumo_write_added"].as_u64(), v["lumo_write_removed"].as_u64()), (Some(MAX_DIFF_FIELD_LEN as u64), Some(1)));
         assert!(v.get("lumo_write_bytes").is_none(), "a size only for a whole-file write");
+    }
+
+    #[test]
+    fn a_command_too_long_for_the_card_keeps_its_beginning_and_its_end() {
+        // 200 KB of data, and what an injected prompt would add at the end.
+        let tail = "; Remove-Item -Recurse -Force ~";
+        let command = format!("$data = @'\n{}'@ | Set-Content data.json{tail}", "{\"id\":1},\n".repeat(20_000));
+        let mut v = serde_json::json!({ "tool_name": "PowerShell", "tool_input": { "command": command, "description": "Data" } });
+        truncate_payload(&mut v, "PermissionRequest");
+        let shown = v["tool_input"]["command"].as_str().unwrap();
+        assert!(shown.len() <= MAX_TARGET_LEN, "{}", shown.len());
+        assert!(shown.starts_with("$data = @'"), "its beginning");
+        assert!(shown.ends_with(tail), "its end, where an addition hides best");
+        assert!(shown.contains(GAP), "the place the middle was taken from");
+        assert_eq!(v["lumo_input_cut"], serde_json::Value::Bool(true));
+        // The command's own size, not the JSON's around it; and what is not on the card.
+        assert_eq!(v["lumo_input_bytes"].as_u64(), Some(command.len() as u64));
+        assert_eq!(v["lumo_input_hidden"].as_u64(), Some((command.len() + GAP.len() - shown.len()) as u64));
+        // Never sizes that came in with the request.
+        let mut v = serde_json::json!({ "tool_name": "Bash", "tool_input": { "command": "ls" }, "lumo_input_bytes": 9, "lumo_input_hidden": 9 });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v.get("lumo_input_bytes").is_none() && v.get("lumo_input_hidden").is_none());
+    }
+
+    #[test]
+    fn cut_ends_keeps_whole_characters() {
+        let mut s = "è".repeat(100);
+        let (whole, hidden) = cut_ends(&mut s, 50).unwrap();
+        assert_eq!(whole, 200);
+        assert!(s.len() <= 50 && s.contains(GAP) && s.starts_with('è') && s.ends_with('è'));
+        assert_eq!(hidden, 200 - (s.len() - GAP.len()));
+        let mut short = "ls".to_string();
+        assert_eq!(cut_ends(&mut short, 50), None);
+        assert_eq!(short, "ls");
+    }
+
+    #[test]
+    fn a_file_tools_numbers_never_hold_the_agent_up() {
+        let s = stat_within(&serde_json::json!({ "file_path": "a.txt", "old_string": "a", "new_string": "b\nc" }), "", STAT_BUDGET);
+        assert_eq!(s.map(|s| (s.added, s.removed)), Some((2, 1)));
+        // A file on another computer is never touched: no numbers, at once.
+        let started = Instant::now();
+        let mut v = serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": "\\\\lumo-test-none.invalid\\share\\a.txt", "content": "a\n" } });
+        truncate_payload(&mut v, "PermissionRequest");
+        assert!(v.get("lumo_write_added").is_none());
+        assert!(started.elapsed() < STAT_BUDGET + Duration::from_millis(100));
     }
 
     #[test]

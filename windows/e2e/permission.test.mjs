@@ -142,6 +142,32 @@ flow(G, "Write of 400 KB: the whole Write's numbers, and Allow tells Claude Code
   assert.equal(behavior(await told(req)), "allow", "a big change is allowed like any other (pipe.rs no longer refuses it)");
 });
 
+flow(G, "Command of 200 KB: its beginning and its end, a click does nothing, holding Allow allows", app, async () => {
+  const agent = app.agent("command-huge");
+  await agent.start();
+  // Past the 64 KB a card's command carries: the relay keeps its beginning and its end.
+  const command = `$data = @'\n${'{"id":1},\n'.repeat(20_000)}'@ | Set-Content data.json; Write-Output end-of-command`;
+  const req = ask(agent, "PowerShell", { command, description: "Write the data" });
+  await d.visible(".allow-btn", 10_000, "the full card (never the closed island's)");
+  const note = (await d.text(await d.visible(".approval-cut", 5_000, "the line that says it is cut"))).trim();
+  step(`the card says: ${note}`);
+  const tail = (await d.text(await d.visible(".approval-code-tail", 5_000, "the command's end"))).trim();
+  assert.ok(tail.endsWith("Write-Output end-of-command"), `its end is on the card: ${tail.slice(-80)}`);
+  await d.visible(".approval-gap", 5_000, "how much is not shown");
+  const allow = await d.visible(".allow-btn.hold", 5_000, "Allow, held down");
+  await sleep(GUARD);
+  step("clicks Allow: nothing happens");
+  await app.click(allow);
+  await sleep(600);
+  assert.ok(await d.find(".allow-btn.hold"), "a click never allows what the card shows only in part");
+  step("holds Allow down");
+  await app.aim(allow);
+  await app.mouse.down();
+  await sleep(1_300);
+  await app.mouse.up();
+  assert.equal(behavior(await told(req)), "allow");
+});
+
 flow(G, "Long plan: the card fits on screen and Allow works", app, async () => {
   const agent = app.agent("plan");
   await agent.start();

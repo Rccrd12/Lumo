@@ -11,7 +11,8 @@
 // same method, or the same whole input (always, for an MCP server's tool: what
 // its fields mean is its own). Anything else needs a card again. A
 // request the relay had to cut (`lumo_input_cut`) is never remembered: two
-// commands that only start alike are not the same request.
+// commands that only start and end alike are not the same request; nor one
+// whose arguments the relay couldn't read (`lumo_input_unread`).
 //
 // These rules are the whole of it, for every agent. Claude Code gets the click
 // as a plain allow: the rules it suggests itself (`npm run:*`, a whole MCP
@@ -49,10 +50,12 @@ pub fn scope(payload: &Value) -> Option<String> {
 
 /// What "the same request" is for this one: the tool and its command, file or
 /// URL; the tool and its whole input otherwise. None for a question, which is
-/// answered, not allowed, and for a request the relay had to cut.
+/// answered, not allowed, for a request the relay had to cut, and for one
+/// whose arguments it couldn't read.
 pub fn rule(payload: &Value) -> Option<String> {
     let tool = payload.get("tool_name").and_then(Value::as_str).filter(|t| !t.is_empty())?;
-    if tool == "AskUserQuestion" || payload.get("lumo_input_cut").and_then(Value::as_bool) == Some(true) {
+    let flag = |key: &str| payload.get(key).and_then(Value::as_bool) == Some(true);
+    if tool == "AskUserQuestion" || flag("lumo_input_cut") || flag("lumo_input_unread") {
         return None;
     }
     // No input to look at (an agent's arguments the relay couldn't read are
@@ -83,7 +86,7 @@ pub fn rule(payload: &Value) -> Option<String> {
             })
             .unwrap_or_default();
         format!("command\n{command}\nin\n{dir}\nwith\n{}", Value::Object(rest))
-    } else if let Some(path) = field(&["file_path", "notebook_path", "path"]) {
+    } else if let Some(path) = field(FILE_FIELDS) {
         format!("file\n{path}")
     } else if let Some(url) = field(&["url"]) {
         // GET allowed is not DELETE allowed.
@@ -106,10 +109,15 @@ const BUILT_IN: &[&str] = &[
     // Files
     "read", "write", "edit", "multiedit", "notebookedit", "view", "create", "str_replace", "str_replace_editor",
     "read_file", "write_file", "edit_file", "replace", "read_many_files", "write_to_file", "replace_file_content",
-    "multi_replace_file_content", "view_file", "list_dir", "glob", "grep", "ls",
+    "multi_replace_file_content", "create_file", "view_file", "list_dir", "glob", "grep", "ls",
     // Pages
     "webfetch", "web_fetch", "read_url_content", "fetch", "http",
 ];
+
+/// Where the agents' file tools name their file: Claude Code's, Codex's and
+/// Gemini CLI's, Antigravity's (`TargetFile`, its CLI's `Path`, its
+/// `view_file`'s `AbsolutePath`), OpenCode's (`filePath`).
+const FILE_FIELDS: &[&str] = &["file_path", "notebook_path", "path", "TargetFile", "Path", "AbsolutePath", "filePath"];
 
 /// A command's fields that don't change what it does: the command itself and
 /// its folder (in the rule on their own), what describes it, how long to wait.
@@ -280,12 +288,24 @@ mod tests {
         // The agents' own tools keep their rules, in any case.
         assert!(r("RUN_COMMAND", json!({ "command": "ls" })).unwrap().starts_with("RUN_COMMAND\ncommand\nls\n"));
         assert_eq!(r("write_to_file", json!({ "path": "C:/a", "content": "1" })), r("write_to_file", json!({ "path": "C:/a", "content": "2" })));
+        // Antigravity's and OpenCode's file tools: the same file, whatever they write there.
+        assert_eq!(r("edit_file", json!({ "Path": "C:/a.tex", "Target": "x", "Replacement": "1" })), r("edit_file", json!({ "Path": "C:/a.tex", "Target": "y", "Replacement": "2" })));
+        assert_ne!(r("edit_file", json!({ "Path": "C:/a.tex", "Target": "x", "Replacement": "1" })), r("edit_file", json!({ "Path": "C:/b.tex", "Target": "x", "Replacement": "1" })));
+        assert_eq!(r("write_to_file", json!({ "TargetFile": "C:/a", "CodeContent": "1" })), Some("write_to_file\nfile\nC:/a".into()));
+        assert_eq!(r("create_file", json!({ "Path": "C:/n.md", "Content": "1" })), r("create_file", json!({ "Path": "C:/n.md", "Content": "2" })));
+        assert_eq!(r("edit", json!({ "filePath": "C:/a.ts", "oldString": "a", "newString": "b" })), Some("edit\nfile\nC:/a.ts".into()));
         // A command the relay had to cut: never "the same" as another.
         let mut cut = request("s", "Bash", json!({ "command": "npm run build && …" }));
         cut["lumo_input_cut"] = json!(true);
         assert_eq!(rule(&cut), None);
         assert!(!arrive("c1", &cut));
         assert!(!can_remember("c1"));
+        // Nor arguments the relay couldn't read.
+        let mut unread = request("s", "bash", json!({ "arguments": "{\"command\":\"ls\",\"x\":\"\\ud800\"}" }));
+        unread["lumo_input_unread"] = json!(true);
+        assert_eq!(rule(&unread), None);
+        assert!(!arrive("u1", &unread));
+        assert!(!can_remember("u1"));
         // No session id: nothing can be remembered.
         assert!(!arrive("n1", &json!({ "tool_name": "Bash", "tool_input": { "command": "ls" } })));
         assert!(!can_remember("n1"));

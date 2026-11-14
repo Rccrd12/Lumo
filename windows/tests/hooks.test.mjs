@@ -833,6 +833,8 @@ test("a plan the chat asks to start brings the chat back over the tool workshop"
   assert.equal(State.requestView(plan), "prompt");
   assert.equal(State.chatSlot, "chat");
   assert.equal(State.requestView({ ...plan, fromChat: undefined }), "approval");
+  // A plan too long to show whole goes on the card, where Approve is held down.
+  assert.equal(State.requestView({ ...plan, cut: true }), "approval");
   assert.equal(State.requestView({ ...plan, fromChat: undefined, questions: [] }), "question");
 });
 
@@ -1015,10 +1017,27 @@ test("Claude Code's Auto is not Antigravity's: its own mode, which asks until pi
 });
 
 test("a request the relay had to cut is never offered Allow for this session, and says so", () => {
-  ask("c1", { tool_name: "Bash", tool_input: { command: "npm run build && …" }, lumo_input_cut: true, lumo_input_bytes: 210 * 1024, lumo_session_allow: true });
+  ask("c1", { tool_name: "Bash", tool_input: { command: "npm run build && …" }, lumo_input_cut: true, lumo_input_bytes: 210 * 1024, lumo_input_hidden: 148 * 1024, lumo_session_allow: true });
   assert.equal(State.pendingApproval.cut, true);
   assert.equal(State.pendingApproval.cutBytes, 210 * 1024);
+  assert.equal(State.pendingApproval.cutHidden, 148 * 1024);
   assert.equal(State.pendingApproval.sessionAllow, undefined);
+  assert.equal(State.pendingApproval.unread, undefined);
+});
+
+test("arguments the relay couldn't read are shown as they came, marked unread, and never on the closed island", () => {
+  // Copilot CLI's toolArgs that serde refuses (a lone surrogate): lumo-hook normalize.rs.
+  const raw = '{"command":"Remove-Item -Recurse C:\\\\Users\\\\me\\\\proj","x":"\\ud800"}';
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "u1", session_id: "s1", cwd: "C:\\p", lumo_agent: "copilot",
+    tool_name: "bash", tool_input: { arguments: raw }, lumo_input_unread: true, lumo_session_allow: true,
+  });
+  const p = State.pendingApproval;
+  assert.equal(p.unread, true);
+  assert.equal(p.command, `bash · ${raw}`, "the arguments as they came, not JSON around them");
+  assert.equal(p.sessionAllow, undefined);
+  assert.equal(p.quick, undefined);
+  assert.deepEqual(asked, ["alert:approval"]);
 });
 
 test("a big change whose text the relay cut is an ordinary card, with the relay's numbers", () => {

@@ -111,10 +111,23 @@ export interface ApprovalInfo {
   plan?: import("./agent-plan").PlanStep[];
   /** A file tool's request: the lines it adds and removes, and a Write's size (core/approvals.ts editStat), under the file on the card. */
   edit?: import("./approvals").EditStat;
-  /** Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`): the card shows its beginning and says so; Allow stays, "Allow for this session" doesn't. */
+  /**
+   * Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`):
+   * the card shows its beginning and its end and says so in amber; Allow is
+   * held down, the agent's own window can take it whole, and "Allow for this
+   * session" is not offered.
+   */
   cut?: boolean;
-  /** With `cut`: the whole request's size (`lumo_input_bytes`), for the line that says so. */
+  /** With `cut`: the size of the string shown only in part (`lumo_input_bytes`), for the line that says so. */
   cutBytes?: number;
+  /** With `cut`: how much of it the card doesn't show (`lumo_input_hidden`). */
+  cutHidden?: number;
+  /**
+   * Arguments the relay couldn't read (lumo-hook's `lumo_input_unread`): the
+   * agent reads them one way, Lumo another. Never allowed from the island
+   * (pipe.rs refuses it too): only Deny, and the agent's own window.
+   */
+  unread?: boolean;
 }
 
 /**
@@ -122,7 +135,8 @@ export interface ApprovalInfo {
  * the field, rather than on the permission card.
  */
 export function planAskInChat(req: ApprovalInfo | null | undefined): boolean {
-  return req?.fromChat === true && (req.plan?.length ?? 0) > 0;
+  // A plan too long to show whole goes on the card, where Approve is held down.
+  return req?.fromChat === true && (req.plan?.length ?? 0) > 0 && req.cut !== true && req.unread !== true;
 }
 
 /** An email on its card: from the Email pill's account, to whom, what. */

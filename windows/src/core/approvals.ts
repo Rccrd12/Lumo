@@ -243,32 +243,61 @@ export function editStat(tool: string, input: Record<string, unknown>, sent: Sen
 export interface ApprovalOffer {
   /** Allow, or Approve on a plan. */
   allow: boolean;
-  /** "Too long to show here whole: this is its beginning": the request was cut. Allow stays. */
+  /** Allow is held down, never a click or a key: the request was cut, and the card shows only its ends. */
+  holdToAllow: boolean;
+  /** "Too long to show here whole: its beginning and its end": the request was cut. */
   cutNote: boolean;
+  /** "Lumo can't read these arguments": no Allow at all. */
+  unreadNote: boolean;
   sessionAllow: boolean;
   /** "Approve and let it edit files without asking", on a plan from a session. */
   planEdits: boolean;
-  /** The line that sends the request back to the agent named on the card. */
-  answerThere: "agent" | null;
+  /** The line that sends the request back: to the agent named on the card, or to its own window. */
+  answerThere: "agent" | "elsewhere" | null;
 }
 
 /**
  * The buttons of a permission card. A request the relay had to cut (`cut`)
- * is allowed like any other: the card says it shows its beginning, and the
- * user decides. Only "Allow for this session" is never offered for it: two
- * requests that only start alike are not the same request (session_rules.rs).
+ * shows its beginning and its end, and the card says so in amber: Allow is
+ * held down to allow it (never a click that was meant for something else,
+ * never Y), its own window can take it whole, and nothing wider than this
+ * one request is offered: no "Allow for this session" (two requests that
+ * only start and end alike are not the same request, session_rules.rs), no
+ * free edits after a plan seen in part. Arguments the relay couldn't read
+ * (`unread`) are never allowed from here (pipe.rs refuses them anyway): only
+ * Deny, and the agent's own window.
  */
-export function approvalOffer(req: Pick<ApprovalInfo, "cut" | "email" | "plan" | "sessionAllow" | "fromChat" | "answerIn"> | null | undefined): ApprovalOffer {
+export function approvalOffer(req: Pick<ApprovalInfo, "cut" | "unread" | "email" | "plan" | "sessionAllow" | "fromChat" | "answerIn"> | null | undefined): ApprovalOffer {
   const email = !!req?.email;
   const plan = !email && (req?.plan?.length ?? 0) > 0;
-  const cut = req?.cut === true && !email;
+  const unread = req?.unread === true && !email;
+  const cut = req?.cut === true && !email && !unread;
+  const elsewhere = (cut || unread) && !req?.fromChat;
   return {
-    allow: true,
+    allow: !unread,
+    holdToAllow: cut,
     cutNote: cut,
-    sessionAllow: req?.sessionAllow === true && !plan && !cut,
-    planEdits: plan && !req?.fromChat,
-    answerThere: req?.answerIn && !plan ? "agent" : null,
+    unreadNote: unread,
+    sessionAllow: req?.sessionAllow === true && !plan && !cut && !unread,
+    planEdits: plan && !req?.fromChat && !cut && !unread,
+    answerThere: req?.answerIn && !plan ? "agent" : elsewhere ? "elsewhere" : null,
   };
+}
+
+/** How long Allow is held down on a card whose request was cut. */
+export const HOLD_TO_ALLOW_MS = 900;
+
+/** Where lumo-hook took the middle out of a string too long for the card (main.rs GAP, cut_ends). */
+export const CUT_GAP = "\n⋯ ✂ ⋯\n";
+
+/**
+ * A target the relay cut, split where it took the middle out: the card shows
+ * its beginning, then how much is not shown, then its end, so the end is
+ * always in sight. Null when it has no gap (whole, or cut elsewhere).
+ */
+export function cutEnds(target: string): { head: string; tail: string } | null {
+  const at = target.indexOf(CUT_GAP);
+  return at < 0 ? null : { head: target.slice(0, at), tail: target.slice(at + CUT_GAP.length) };
 }
 
 /**
