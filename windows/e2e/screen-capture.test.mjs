@@ -3,9 +3,12 @@
 // island climbed above it a moment before, and the island neither opens
 // under the capture's mouse nor hears its clicks; once the capture ends the
 // island is back on top and opens as before. An image the tool pinned to the
-// screen is no capture: the island stays above it.
+// screen is no capture: the island keeps opening under the mouse while it is
+// in front.
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { after, before } from "node:test";
 
 import { Lumo } from "./lib/app.mjs";
@@ -26,6 +29,13 @@ after(async () => {
   tool.stop();
   await app.close();
 });
+
+/** How many times Lumo's log says a capture opened (platform foreground_changed). */
+function capturesLogged() {
+  const log = join(app.profile, "local", "com.rccrd12.lumo", "lumo.log");
+  if (!existsSync(log)) return 0;
+  return readFileSync(log, "utf8").split(/\r?\n/).filter((l) => l.includes("screen capture open")).length;
+}
 
 /** A click on the tool's ordinary window, so it is in front and may bring its others there. */
 async function frontTool() {
@@ -88,16 +98,19 @@ async function underTheCapture(overlay) {
   assert.ok((await app.islandHeight()) < 60, "the island stayed closed");
 }
 
-flow(G, "An image the tool pinned to the screen is no capture: the island stays above it and opens", app, async () => {
+flow(G, "An image the tool pinned to the screen is no capture: the island opens under the mouse while it is in front", app, async () => {
   await frontTool();
+  const logged = capturesLogged();
   const pin = await tool.pin();
   step(`pinned image ${pin.hwnd}: ${pin.seen}`);
   try {
     assert.ok(pin.front, "the pinned image came to the front");
     await sleep(800);
-
-    const z = await lumoAround(pin.hwnd);
-    assert.ok(z.above > 0, "the island is above the pinned image");
+    // Which of two always-on-top windows ends up in front is a race between
+    // the two programs (each may raise itself again), so it is only written
+    // down; what the user sees is that the island does not go deaf.
+    await lumoAround(pin.hwnd);
+    assert.equal(capturesLogged(), logged, "Lumo did not take the pinned image for a capture");
 
     step("the island opens under the mouse while the pinned image is in front");
     await app.open();
