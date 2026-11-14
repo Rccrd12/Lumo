@@ -379,10 +379,24 @@ fn open_url(url: String) {
         outlook::open(&url);
         return;
     }
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
+    if !(url.starts_with("http://") || url.starts_with("https://") || plain_mailto(&url)) {
         return;
     }
     platform::open_url(&url);
+}
+
+/// A mailto: link the mail program may be handed: an address and nothing
+/// else (no `?subject=`, no `?attach=` a mail program could read a file
+/// with). The island's Email view sends these (views/mail-view.ts).
+fn plain_mailto(url: &str) -> bool {
+    let Some(address) = url.strip_prefix("mailto:") else { return false };
+    let Some((user, domain)) = address.split_once('@') else { return false };
+    !user.is_empty()
+        && user.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '%' | '+' | '-'))
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && domain.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
 }
 
 /// "Open terminal" opens the working folder in VS Code when `code` is on PATH,
@@ -1602,8 +1616,22 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{diff_file, keep_size};
+    use super::{diff_file, keep_size, plain_mailto};
     use crate::settings::{Settings, ViewSize};
+
+    #[test]
+    fn only_a_plain_mailto_address_goes_to_the_mail_program() {
+        assert!(plain_mailto("mailto:ada@example.com"));
+        assert!(plain_mailto("mailto:ada.l+news@mail.example.co.uk"));
+        assert!(!plain_mailto("mailto:ada@example.com?attach=C:\\Users\\a\\secret.txt"));
+        assert!(!plain_mailto("mailto:ada@example.com?subject=hi"));
+        assert!(!plain_mailto("mailto:ada@localhost"));
+        assert!(!plain_mailto("mailto:@example.com"));
+        assert!(!plain_mailto("mailto:a b@example.com"));
+        assert!(!plain_mailto("mailto:ada@example..com"));
+        assert!(!plain_mailto("file:///C:/Windows"));
+        assert!(!plain_mailto("mailto:ada@example.com\" & calc"));
+    }
 
     #[test]
     fn a_resized_view_keeps_its_size_and_leaves_the_others_alone() {

@@ -200,10 +200,27 @@ function shopHtml(it: boolean): string {
 </table><img src="https://track.libreria-aurora.example/open.gif?u=48213" width="1" height="1" alt="">`;
 }
 
+// A newsletter as many still are: its logo on http, its banner a background,
+// a link to a place in it and a mailto: one (shown after Load images).
+function newsHtml(it: boolean): string {
+  const tr = (en: string, itText: string) => (it ? itText : en);
+  return `<table width="600" cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;color:#1f2a44;background:#fff">
+<tr><td style="padding:22px 28px"><img src="http://img.libreria-aurora.example/logo.png" width="180" height="40" alt="" style="display:block"></td></tr>
+<tr><td background="https://img.libreria-aurora.example/banner.png" style="background-image:url('https://img.libreria-aurora.example/banner.png');background-size:cover;height:170px;padding:0 40px;color:#fff">
+<div style="font-size:28px;font-weight:700">${tr("New in November", "Novità di novembre")}</div><div style="font-size:15px;color:#c9d3ea;margin-top:6px">${tr("Ten books our booksellers picked", "Dieci libri scelti dai nostri librai")}</div></td></tr>
+<tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.5">${tr("Hi Riccardo,<br>this month we suggest a classic that never goes out of style.", "Ciao Riccardo,<br>questo mese ti consigliamo un classico che non passa mai di moda.")} <a href="#libro" style="color:#3b4f7d">${tr("See it", "Guardalo")}</a></td></tr>
+<tr><td style="padding:14px 28px"><a name="libro"></a><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e6e8ee;border-radius:10px"><tr>
+<td width="96" style="padding:14px"><img src="https://img.libreria-aurora.example/book.png" width="80" height="116" alt="" style="display:block;border-radius:4px"></td>
+<td style="padding:14px 14px 14px 0;font-size:14px;line-height:1.5"><b>Il nome della rosa</b><br><span style="color:#6b7385">Umberto Eco</span></td>
+<td align="right" style="padding:14px;font-size:15px;font-weight:700;white-space:nowrap">14,90 €</td></tr></table></td></tr>
+<tr><td style="padding:22px 28px;font-size:12px;color:#9aa1b0;line-height:1.5;border-top:1px solid #eef0f3">${tr("Write to us:", "Scrivici:")} <a href="mailto:aiuto@libreria-aurora.example?subject=Newsletter" style="color:#3b4f7d">aiuto@libreria-aurora.example</a></td></tr>
+</table><img src="https://track.libreria-aurora.example/open.gif?u=48213" width="1" height="1" alt="">`;
+}
+
 // The shop's pictures, drawn here as Rust's web_image would hand them over (PNG bytes).
 async function pictureFor(url: string): Promise<ArrayBuffer> {
   const name = url.split("/").pop()?.replace(".png", "") ?? "";
-  const size: Record<string, [number, number]> = { logo: [360, 80], hero: [1200, 340], book: [160, 232] };
+  const size: Record<string, [number, number]> = { logo: [360, 80], hero: [1200, 340], book: [160, 232], banner: [1200, 340] };
   const [w, hh] = size[name] ?? [2, 2];
   const c = document.createElement("canvas");
   c.width = w;
@@ -214,6 +231,13 @@ async function pictureFor(url: string): Promise<ArrayBuffer> {
     g.fillStyle = "#e8743b"; g.beginPath(); g.arc(40, 40, 26, 0, 7); g.fill();
     g.fillStyle = "#fff"; g.beginPath(); g.arc(40, 40, 12, 0, 7); g.fill();
     g.fillStyle = "#1f2a44"; g.font = "40px Georgia, serif"; g.fillText("Libreria Aurora", 84, 54);
+  } else if (name === "banner") {
+    const grad = g.createLinearGradient(0, 0, w, hh);
+    grad.addColorStop(0, "#1f2a44"); grad.addColorStop(1, "#5b3f7d");
+    g.fillStyle = grad; g.fillRect(0, 0, w, hh);
+    g.fillStyle = "#e8743b"; g.fillRect(900, 60, 110, 200);
+    g.fillStyle = "#c8913f"; g.fillRect(1030, 110, 90, 150);
+    g.fillStyle = "#7a2e2e"; g.fillRect(1140, 90, 40, 170);
   } else if (name === "hero") {
     const grad = g.createLinearGradient(0, 0, w, 0);
     grad.addColorStop(0, "#1f2a44"); grad.addColorStop(1, "#3b4f7d");
@@ -258,6 +282,7 @@ function sampleMail() {
     mail("2", "outlook", "Luca Verdi", "luca@example.com", it ? "Foto del weekend" : "Weekend photos", it ? "Ecco le foto della gita!" : "Here are the photos from the trip!", at(1, 12, 40)),
     mail("3", "imap:2", "Sara Neri", "sara@example.com", it ? "Re: Bozza contratto" : "Re: Draft contract", it ? "Ho aggiunto i commenti nel documento." : "I added my comments in the document.", at(1, 9, 12), false),
     mail("6", "imap:1", "Spotify", "no-reply@example.com", it ? "La tua playlist della settimana" : "Your weekly playlist", it ? "Nuovi brani scelti per te." : "New songs picked for you.", at(3, 8, 0), false),
+    mail("10", "imap:1", "Libreria Aurora", "news@libreria-aurora.example", it ? "Novità di novembre" : "New in November", it ? "Dieci libri scelti dai nostri librai." : "Ten books our booksellers picked.", at(2, 8, 0), false),
   ].filter((m) => !(failing && m.account === "imap:2"));
   (window as unknown as { __lumoMock: Record<string, (args: { unreadOnly: boolean }) => unknown> }).__lumoMock = {
     ...(window as unknown as { __lumoMock?: Record<string, unknown> }).__lumoMock,
@@ -277,7 +302,7 @@ function sampleMail() {
       messages: all.filter((m) => !unreadOnly || m.unread),
     }),
     // The shop's email has HTML, its pictures on its own site (shown after Load images).
-    mail_html: ({ id }: { id: string }) => ({ html: id === "imap:1/inbox:7" ? shopHtml(it) : "" }),
+    mail_html: ({ id }: { id: string }) => ({ html: id === "imap:1/inbox:7" ? shopHtml(it) : id === "imap:1/inbox:10" ? newsHtml(it) : "" }),
     web_image: ({ url }: { url: string }) => pictureFor(url),
   } as unknown as Record<string, (args: { unreadOnly: boolean }) => unknown>;
   State.settings = { ...State.settings, activeIntegrations: [...new Set([...State.settings.activeIntegrations, "integration_mail"])] };

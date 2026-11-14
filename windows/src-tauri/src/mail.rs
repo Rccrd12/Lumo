@@ -845,8 +845,9 @@ pub async fn mail_html(app: AppHandle, id: String) -> Result<MailHtml, String> {
         if !crate::outlook::on(&app) {
             return Ok(MailHtml::default());
         }
-        let (html, pictures) = crate::outlook::html(own.to_string(), HTML_PART_BYTES, INLINE_IMAGE_BYTES, INLINE_IMAGES_BYTES).await?;
-        return Ok(assemble(vec![(html, String::new())], pictures));
+        let (html, pictures, codepage) = crate::outlook::html(own.to_string(), HTML_PART_BYTES, INLINE_IMAGE_BYTES, INLINE_IMAGES_BYTES).await?;
+        let charset = outlook_charset(&html, codepage);
+        return Ok(assemble(vec![(html, charset)], pictures));
     }
     let slot: usize = key.strip_prefix("imap:").and_then(|n| n.parse().ok()).ok_or_else(|| bad_id(&id))?;
     let acct = live_accounts(&app).into_iter().find(|a| a.slot == slot).ok_or_else(|| gone(&id))?;
@@ -1144,6 +1145,50 @@ pub(crate) fn html_charset(bytes: &[u8]) -> String {
         .unwrap_or_default()
 }
 
+/// The charset of an Outlook email's HTML: the one its own bytes say (a
+/// byte-order mark, its `<meta>`), else the code page Outlook keeps it in
+/// (`InternetCodepage`); "" when neither says (read as UTF-8, else Windows-1252).
+fn outlook_charset(html: &[u8], codepage: u32) -> String {
+    if !html_charset(html).is_empty() {
+        return String::new();
+    }
+    codepage_charset(codepage).to_string()
+}
+
+/// The charset a Windows code page stands for, as a browser's TextDecoder
+/// knows it; "" for one Lumo doesn't know.
+fn codepage_charset(codepage: u32) -> &'static str {
+    match codepage {
+        65001 => "utf-8",
+        1200 => "utf-16le",
+        1201 => "utf-16be",
+        20127 => "us-ascii",
+        874 => "windows-874",
+        1250..=1258 => ["windows-1250", "windows-1251", "windows-1252", "windows-1253", "windows-1254", "windows-1255", "windows-1256", "windows-1257", "windows-1258"][(codepage - 1250) as usize],
+        28591 => "iso-8859-1",
+        28592 => "iso-8859-2",
+        28593 => "iso-8859-3",
+        28594 => "iso-8859-4",
+        28595 => "iso-8859-5",
+        28596 => "iso-8859-6",
+        28597 => "iso-8859-7",
+        28598 => "iso-8859-8",
+        28599 => "iso-8859-9",
+        28603 => "iso-8859-13",
+        28605 => "iso-8859-15",
+        20866 => "koi8-r",
+        21866 => "koi8-u",
+        932 => "shift_jis",
+        50220..=50222 => "iso-2022-jp",
+        51932 => "euc-jp",
+        936 => "gbk",
+        54936 => "gb18030",
+        949 | 51949 => "euc-kr",
+        950 => "big5",
+        _ => "",
+    }
+}
+
 /// The view's HTML from the email's HTML parts (their bytes and charset, ""
 /// when the part names none) and its pictures (Content-ID, bytes): the parts
 /// one after the other, cut at HTML_KEPT_BYTES, the pictures put in for their
@@ -1170,8 +1215,22 @@ pub(crate) fn assemble(parts: Vec<(Vec<u8>, String)>, pictures: Vec<(String, Vec
         }
         (text.as_bytes()[..end].to_vec(), None)
     } else {
-        let (b, cs) = parts.into_iter().find(|(_, cs)| !read_here(cs)).unwrap_or_default();
-        (b[..b.len().min(HTML_KEPT_BYTES)].to_vec(), Some(cs))
+        // The island reads one charset: the first Lumo doesn't read, with every
+        // part in it and every part in plain ASCII (the same in all but UTF-16),
+        // in their order; a part in yet another charset is left out.
+        let cs = parts.iter().find(|(_, cs)| !read_here(cs)).map(|(_, cs)| cs.clone()).unwrap_or_default();
+        let wide = cs.to_ascii_lowercase().contains("16") || cs.eq_ignore_ascii_case("ucs-2") || cs.eq_ignore_ascii_case("unicode");
+        let mut b: Vec<u8> = Vec::new();
+        for (bytes, part_cs) in &parts {
+            if part_cs.eq_ignore_ascii_case(&cs) || (!wide && bytes.is_ascii()) {
+                if !b.is_empty() {
+                    b.push(b'\n');
+                }
+                b.extend_from_slice(bytes);
+            }
+        }
+        b.truncate(HTML_KEPT_BYTES);
+        (b, Some(cs))
     };
     let mut urls: BTreeMap<String, String> = BTreeMap::new();
     let mut total = 0;
@@ -4868,6 +4927,42 @@ mod tests {
         assert_eq!(assemble(vec![], vec![]), MailHtml::default());
         assert_eq!(html_charset(b"\xff\xfe<\0"), "utf-16le");
         assert_eq!(html_charset(b"<meta http-equiv=Content-Type content='text/html; charset=windows-1251'>"), "windows-1251");
+    }
+
+    #[test]
+    fn every_html_part_in_the_islands_charset_is_kept() {
+        // Apple Mail's parts around a picture, in Shift_JIS, and one in plain ASCII between them.
+        let a = b"<p>\x82\xa0</p>".to_vec();
+        let b = b"<p>ok</p>".to_vec();
+        let c = b"<p>\x82\xa2</p>".to_vec();
+        let out = assemble(vec![(a.clone(), "Shift_JIS".into()), (b.clone(), "us-ascii".into()), (c.clone(), "shift_jis".into())], vec![]);
+        assert_eq!(out.charset.as_deref(), Some("Shift_JIS"));
+        assert_eq!(out.bytes, Some(crate::claude::base64_for(&[a.clone(), b"\n".to_vec(), b, b"\n".to_vec(), c].concat())));
+        // A part in yet another charset (and not ASCII) is left out.
+        let cyr = b"<p>\xcf\xf0</p>".to_vec();
+        let out = assemble(vec![(a.clone(), "Shift_JIS".into()), (cyr, "windows-1251".into())], vec![]);
+        assert_eq!(out.bytes, Some(crate::claude::base64_for(&a)));
+    }
+
+    #[test]
+    fn an_outlook_email_without_its_charset_is_read_in_its_code_page() {
+        // Its <meta> says: that one (assemble reads it).
+        assert_eq!(outlook_charset(b"<meta charset=\"utf-8\"><p>ciao</p>", 1252), "");
+        // None: Outlook's code page.
+        assert_eq!(outlook_charset(b"<p>Perch\xe8</p>", 1252), "windows-1252");
+        assert_eq!(outlook_charset(b"<p>x</p>", 932), "shift_jis");
+        assert_eq!(outlook_charset(b"<p>x</p>", 0), "");
+        assert_eq!(codepage_charset(1250), "windows-1250");
+        assert_eq!(codepage_charset(1258), "windows-1258");
+        assert_eq!(codepage_charset(28605), "iso-8859-15");
+        assert_eq!(codepage_charset(65001), "utf-8");
+        assert_eq!(codepage_charset(12345), "");
+        // Windows-1252 bytes are read here, as Lumo reads that charset.
+        let out = assemble(vec![(b"<p>Perch\xe8</p>".to_vec(), outlook_charset(b"<p>Perch\xe8</p>", 1252))], vec![]);
+        assert!(out.html.contains("Perchè"), "{}", out.html);
+        // Windows-1251 goes to the island with its charset.
+        let out = assemble(vec![(b"<p>\xcf</p>".to_vec(), outlook_charset(b"<p>\xcf</p>", 1251))], vec![]);
+        assert_eq!(out.charset.as_deref(), Some("windows-1251"));
     }
 
     #[test]

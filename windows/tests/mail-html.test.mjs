@@ -5,8 +5,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
-  DROPPED_TAGS, MAX_EMAIL_IMAGES, droppedAttribute, fitZoom, hiddenBox, imageSource, imagesToLoad, linkParts, opensInBrowser, readMailHtml, trackingPixel, webImageUrl,
+  DROPPED_TAGS, EMAIL_FRAME_CSP, EMAIL_FRAME_SANDBOX, MAX_EMAIL_IMAGES, anchorOf, backgroundUrl, browserUrl, droppedAttribute, fitZoom, hiddenBox, httpsImage,
+  imageSource, imagesLeftOut, imagesToLoad, isDataUrl, linkParts, mailtoUrl, opensInBrowser, readMailHtml, trackingPixel, webImageUrl,
 } from "../src/core/mail-html.ts";
 
 test("only http and https links open, in the browser", () => {
@@ -130,4 +132,72 @@ test("an image given only by srcset still has an address to load", () => {
   assert.equal(imageSource("", "https://a.example/a.jpg, https://a.example/b.jpg 2x"), "https://a.example/a.jpg");
   assert.equal(imageSource("", "  "), "");
   assert.equal(imageSource("", ""), "");
+});
+
+test("the email's frame runs nothing and fetches nothing, whatever the island's CSP lets in", () => {
+  // Same origin without scripts: with allow-scripts too, the email would be the island (its IPC).
+  assert.equal(EMAIL_FRAME_SANDBOX, "allow-same-origin");
+  const view = readFileSync(new URL("../src/views/mail-view.ts", import.meta.url), "utf8");
+  assert.ok(!view.includes("allow-scripts"), "the Email view never allows scripts");
+  assert.ok(view.includes("sandbox: EMAIL_FRAME_SANDBOX"), "the frame takes EMAIL_FRAME_SANDBOX");
+  assert.ok(view.includes("EMAIL_FRAME_CSP"), "the frame's document carries its own CSP");
+  // Its own CSP: nothing from anywhere but what Lumo hands over (data:, blob:).
+  assert.match(EMAIL_FRAME_CSP, /default-src 'none'/);
+  assert.match(EMAIL_FRAME_CSP, /img-src data: blob:(;|$)/);
+  assert.doesNotMatch(EMAIL_FRAME_CSP, /https?:|'self'|\*|script-src/);
+});
+
+test("Load images asks an http image, or a //site one, on https; nothing else", () => {
+  assert.equal(httpsImage("https://img.example/a.png"), "https://img.example/a.png");
+  assert.equal(httpsImage(" http://img.example/a.png "), "https://img.example/a.png");
+  assert.equal(httpsImage("HTTP://img.example/a.png"), "https://img.example/a.png");
+  assert.equal(httpsImage("//cdn.example/a.png"), "https://cdn.example/a.png");
+  assert.equal(httpsImage("//"), null);
+  assert.equal(httpsImage("cid:logo"), null);
+  assert.equal(httpsImage("/img/a.png"), null);
+  assert.equal(httpsImage("ftp://img.example/a.png"), null);
+  assert.equal(isDataUrl("DATA:image/png;base64,AA"), true);
+  assert.equal(isDataUrl(" data:image/gif;base64,AA"), true);
+  assert.equal(isDataUrl("https://data.example/a.png"), false);
+  // A tracking pixel given as //site is known as one too.
+  assert.equal(trackingPixel("//us5.list-manage.com/track/open.php?u=1", null, null, ""), true);
+});
+
+test("an email's background waits for Load images: its attribute, or the url() of its style", () => {
+  assert.equal(backgroundUrl("https://img.example/hero.png", ""), "https://img.example/hero.png");
+  assert.equal(backgroundUrl("http://img.example/hero.png", ""), "https://img.example/hero.png");
+  assert.equal(backgroundUrl(null, "background-image:url('https://img.example/a.png');background-size:cover"), "https://img.example/a.png");
+  assert.equal(backgroundUrl(null, "color:#fff; background: #123 url(\"http://img.example/b.jpg\") no-repeat"), "https://img.example/b.jpg");
+  assert.equal(backgroundUrl(null, "background:url(//cdn.example/c.png)"), "https://cdn.example/c.png");
+  assert.equal(backgroundUrl(null, "background-color:#fff"), null);
+  assert.equal(backgroundUrl(null, "background-image:url(data:image/png;base64,AA)"), null);
+  assert.equal(backgroundUrl(null, "border-image:url(https://img.example/x.png)"), null);
+  assert.equal(backgroundUrl("data:image/png;base64,AA", ""), null);
+  assert.equal(backgroundUrl("", ""), null);
+});
+
+test("a click opens the address the corner shows; a mailto: only its address; #place stays in the email", () => {
+  assert.equal(browserUrl("https://shop.example/a b"), "https://shop.example/a%20b");
+  assert.equal(browserUrl(" https://shop.example/\ttrack "), "https://shop.example/track");
+  assert.equal(browserUrl("https://evil.example\\@paypal.com/"), "https://evil.example/@paypal.com/");
+  assert.equal(linkParts("https://evil.example\\@paypal.com/").host, "evil.example");
+  assert.equal(browserUrl("https://shop.example/x\" & calc"), "https://shop.example/x%22%20&%20calc");
+  assert.equal(browserUrl("javascript:alert(1)"), null);
+  assert.equal(browserUrl("https://"), null);
+  assert.equal(mailtoUrl("mailto:ada@example.com"), "mailto:ada@example.com");
+  assert.equal(mailtoUrl("MAILTO:ada%40example.com?subject=Ciao&attach=C:\\secret.txt"), "mailto:ada@example.com");
+  assert.equal(mailtoUrl("mailto:ada@example.com,bob@example.com"), null);
+  assert.equal(mailtoUrl("mailto:"), null);
+  assert.equal(mailtoUrl("mailto:%E0%A4%A"), null);
+  assert.equal(mailtoUrl("https://example.com"), null);
+  assert.equal(anchorOf("#offerte"), "offerte");
+  assert.equal(anchorOf("#sezione%201"), "sezione 1");
+  assert.equal(anchorOf("#"), null);
+  assert.equal(anchorOf("https://shop.example/#a"), null);
+});
+
+test("past the images Load images asks for, how many are left out is said", () => {
+  assert.equal(imagesLeftOut(["https://a/1.png", "https://a/1.png", "http://a/2.png"]), 0);
+  const many = Array.from({ length: MAX_EMAIL_IMAGES + 7 }, (_, i) => `https://a/${i}.png`);
+  assert.equal(imagesLeftOut([...many, many[0]]), 7);
 });

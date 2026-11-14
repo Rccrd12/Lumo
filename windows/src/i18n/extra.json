@@ -97,6 +97,42 @@
    "id": "{n} piksel pelacak diblokir",
    "it": "{n} pixel di tracciamento bloccati"
   },
+  "Images loaded automatically": {
+   "zh-Hans": "图片已自动加载",
+   "hi": "इमेज अपने-आप लोड हुईं",
+   "es": "Imágenes cargadas automáticamente",
+   "ar": "تم تحميل الصور تلقائيًا",
+   "fr": "Images chargées automatiquement",
+   "bn": "ছবি স্বয়ংক্রিয়ভাবে লোড হয়েছে",
+   "pt-BR": "Imagens carregadas automaticamente",
+   "ru": "Изображения загружены автоматически",
+   "id": "Gambar dimuat otomatis",
+   "it": "Immagini caricate in automatico"
+  },
+  "Turn off": {
+   "zh-Hans": "关闭",
+   "hi": "बंद करें",
+   "es": "Desactivar",
+   "ar": "إيقاف",
+   "fr": "Désactiver",
+   "bn": "বন্ধ করুন",
+   "pt-BR": "Desativar",
+   "ru": "Выключить",
+   "id": "Matikan",
+   "it": "Disattiva"
+  },
+  "Only the first {max} images loaded": {
+   "zh-Hans": "只加载了前 {max} 张图片",
+   "hi": "सिर्फ़ पहली {max} इमेज लोड हुईं",
+   "es": "Solo se cargaron las primeras {max} imágenes",
+   "ar": "تم تحميل أول {max} صورة فقط",
+   "fr": "Seules les {max} premières images ont été chargées",
+   "bn": "শুধু প্রথম {max}টি ছবি লোড হয়েছে",
+   "pt-BR": "Só as primeiras {max} imagens foram carregadas",
+   "ru": "Загружены только первые {max} изображений",
+   "id": "Hanya {max} gambar pertama yang dimuat",
+   "it": "Caricate solo le prime {max} immagini"
+  },
   "Email images always": {
    "zh-Hans": "始终显示邮件图片",
    "hi": "ईमेल की छवियाँ हमेशा",

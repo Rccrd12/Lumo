@@ -311,16 +311,19 @@ pub async fn read(id: String, chars: usize) -> Result<(Found, Vec<File>), String
 }
 
 /// The HTML of email `id` for the island's Email view, through MAPI (no
-/// prompt), with the pictures its attachments hold for it (`cid:`): nothing
+/// prompt), with the pictures its attachments hold for it (`cid:`) and the
+/// code page Outlook keeps it in (`InternetCodepage`, 0 when unknown): no HTML
 /// when it has none, or MAPI can't be had (the view keeps the text).
-pub async fn html(id: String, bytes: usize, picture: usize, pictures: usize) -> Result<(Vec<u8>, crate::outlook_mapi::Pictures), String> {
+pub async fn html(id: String, bytes: usize, picture: usize, pictures: usize) -> Result<(Vec<u8>, crate::outlook_mapi::Pictures, u32), String> {
     with_outlook(STEP, move |s| {
         let app = s.running()?;
         let item = item_of(&app, &id)?;
         let store = item.obj("Parent").map(|p| p.text("StoreID")).unwrap_or_default();
         let entry = item.text("EntryID");
+        let codepage = item.int("InternetCodepage").ok().and_then(|n| u32::try_from(n).ok()).unwrap_or(0);
         let mapi = s.mapi.get_or_insert_with(Mapi::logon).as_mut();
-        Ok(mapi.and_then(|m| m.html(&store, &entry, bytes, picture, pictures)).unwrap_or_default())
+        let (html, inline) = mapi.and_then(|m| m.html(&store, &entry, bytes, picture, pictures)).unwrap_or_default();
+        Ok((html, inline, codepage))
     })
     .await
 }
