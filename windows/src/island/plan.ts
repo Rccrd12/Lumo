@@ -39,6 +39,8 @@ export class IslandPlan {
   /** Folded into its icon, or once its plan was done. */
   private folded = false;
   private doneTimer: number | null = null;
+  /** The chats deleted: a plan their agent sends as it is stopped never brings them back. */
+  private gone = new Set<string>();
   private host: IslandPlanHost;
 
   constructor(host: IslandPlanHost) {
@@ -48,8 +50,9 @@ export class IslandPlan {
     // Antigravity CLI's runs send the checklist it writes as its plan.
     // Each carries the chat it runs for: a chat at work while another is on
     // screen keeps its plan, never the chat shown (only an event naming no
-    // chat falls back to it).
+    // chat falls back to it). A deleted chat's comes too late: it is dropped.
     void onEvent<{ tool: string; input: Record<string, unknown>; agent?: string; color?: string; chat?: string }>("chat-plan", ({ tool, input, agent, color, chat }) => {
+      if (chat && this.gone.has(chat)) return;
       this.onTool({
         pillId: "chat", sessionId: chat || String(State.chatId ?? ""),
         agent: agent ?? "Claude Code", color: color ?? "#F5F6F8", project: t("Chat"),
@@ -105,6 +108,7 @@ export class IslandPlan {
    * and are not kept to go back to.
    */
   forgetChat(chatId: string) {
+    if (chatId) this.gone.add(chatId);
     const key = planKey("chat", chatId);
     const had = this.book.drop(key);
     const kept = this.past.filter((p) => p.key !== key);
