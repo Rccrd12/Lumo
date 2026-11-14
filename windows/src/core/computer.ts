@@ -43,25 +43,6 @@ export const COMPUTER_TEXT = {
   using: N_("Using the computer"),
 };
 
-/**
- * The permission card's line when Windows says what is at the point
- * (views/computer-card.ts): the action and the thing it acts on. `{name}` is
- * what Windows calls it (UI Automation), drawn apart from the words.
- */
-export const COMPUTER_ON_TEXT = {
-  left_click: N_("Click on «{name}»"),
-  right_click: N_("Right click on «{name}»"),
-  middle_click: N_("Middle click on «{name}»"),
-  double_click: N_("Double click on «{name}»"),
-  triple_click: N_("Triple click on «{name}»"),
-  mouse_move: N_("Move the mouse to «{name}»"),
-  left_click_drag: N_("Drag to «{name}»"),
-  scroll_up: N_("Scroll up on «{name}»"),
-  scroll_down: N_("Scroll down on «{name}»"),
-  scroll_left: N_("Scroll left on «{name}»"),
-  scroll_right: N_("Scroll right on «{name}»"),
-};
-
 /** Each way of scrolling, in full: a direction alone is also a value elsewhere ("left"). */
 const SCROLLS: Record<string, string> = {
   up: N_("Scroll up"),
@@ -103,40 +84,6 @@ const POINTED = new Set(["left_click", "right_click", "middle_click", "double_cl
 export function computerPoint(tool: string, input: Record<string, unknown>): [number, number] | null {
   const name = computerToolName(tool);
   return name != null && POINTED.has(name) ? pointOf(input.coordinate) : null;
-}
-
-/**
- * The card's words for an action on a thing Windows named ("Click on «Save
- * as…»"), in three parts so the name can be drawn apart: the words before it,
- * the name, the words after it (the order is the language's). Null for an
- * action with no point, or no name.
- */
-export function computerActionOn(tool: string, input: Record<string, unknown>, name: string): { before: string; name: string; after: string } | null {
-  const tool_ = computerToolName(tool);
-  const named = name.replace(/\s+/g, " ").trim();
-  if (tool_ == null || !POINTED.has(tool_) || !named) return null;
-  // A scroll that does not say which way is not said on the thing: the card
-  // keeps its plain line rather than a way it may not go.
-  const dir = scrollDirection(input);
-  if (tool_ === "scroll" && dir == null) return null;
-  const key = (tool_ === "scroll" ? `scroll_${dir}` : tool_) as keyof typeof COMPUTER_ON_TEXT;
-  const words = t(COMPUTER_ON_TEXT[key]);
-  const at = words.indexOf("{name}");
-  if (at < 0) return { before: words, name: "", after: "" };
-  // The quotes go with the name: the words around it are what is done.
-  const open = /[«“„"'‘「『][\s\u00a0]*$/.exec(words.slice(0, at))?.[0] ?? "";
-  const close = /^[\s\u00a0]*[»”"'’」』]/.exec(words.slice(at + 6))?.[0] ?? "";
-  return { before: words.slice(0, at - open.length), name: `${open}${named}${close}`, after: words.slice(at + 6 + close.length) };
-}
-
-/**
- * Which way a scroll goes, from the request's own input (its
- * scroll_direction), null when it says none of the four. The card takes it
- * from there, never from its translated line.
- */
-export function scrollDirection(input: Record<string, unknown>): "up" | "down" | "left" | "right" | null {
-  const dir = input.scroll_direction;
-  return dir === "up" || dir === "down" || dir === "left" || dir === "right" ? dir : null;
 }
 
 /**

@@ -208,3 +208,23 @@ test("Esc in the field cancels it: nothing sent, the keyboard back, the agent st
   assert.equal(sent("computer_ask").length, asks, "nothing sent");
   assert.equal(sent("computer_resume").length, resumes, "Esc never resumes");
 });
+
+test("paused: the banner says when a pause left on stops by itself; nothing while it runs", () => {
+  open();
+  const awayAt = Date.now() + 9 * 60_000 + 12_500;
+  State.computer = state({ paused: true, awayAt });
+  const { host, el } = view();
+  host.sync();
+  const away = one(el, ".cu-banner-away");
+  assert.ok(shown(away));
+  assert.match(away.textContent, /^stops by itself in 9:1[23]$/);
+  // Resumed: no countdown.
+  State.computer = state({ paused: false, awayAt });
+  host.sync();
+  assert.ok(!shown(one(el, ".cu-banner-away")));
+  // Paused without a time (an older Lumo): nothing made up.
+  State.computer = state({ paused: true });
+  host.sync();
+  assert.ok(!shown(one(el, ".cu-banner-away")));
+  State.computer = null;
+});

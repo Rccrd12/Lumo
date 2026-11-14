@@ -125,8 +125,8 @@ export interface ApprovalInfo {
    * move, a scroll, a drag's end). The card shows the screen around it.
    */
   computerAt?: [number, number];
-  /** A computer use scroll's way, from its request (core/computer.ts scrollDirection). */
-  computerScroll?: "up" | "down" | "left" | "right";
+  /** The island chat that asks (lumo-hook's `lumo_chat`, its LUMO_CHAT_ID): a computer use card says the step of that chat's plan only. */
+  chat?: string;
 }
 
 /**

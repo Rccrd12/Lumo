@@ -1075,13 +1075,20 @@ plan, with no API key.
 - **Every action asks first**, with the chat set to *Ask every time*: a click,
   a key or a text is an Allow / Deny card on the island. It says who asks, in
   the provider's name and colour, at which step of the plan ("wants to use the
-  computer · step 3 of 5"), why (the step under way), and what: for a click, a
-  move, a scroll or a drag, the screen around the point with the point ringed
-  and what Windows calls the thing there ("Click on «Save as…»", "Menu item ·
-  Notepad"), the coordinates still under it, small; for typing and keys, the
-  whole text (each Enter and Tab shown where it falls) and the keys, since
-  that is what Allow allows. Screenshots, zooms and waits don't ask. In *Auto*
-  mode Claude Code decides, as for its other tools.
+  computer · step 3 of 5"), why (the step under way of that chat's own plan,
+  never of another chat using the computer at the same time), and what: for
+  a click, a move, a scroll or a drag, the action on the point ("Click · at
+  the marked point") beside the screen around it with the point ringed (a
+  click on the picture, or on Enlarge, shows it at its own size), then, apart
+  and in grey, what the app says the thing is ("The app calls it «Save
+  as…»", "Menu item · Notepad"): the app or the web page chooses that name,
+  so it is never what the card says will be done; the coordinates stay under
+  it, small. For typing and keys, the whole text (each Enter and Tab shown
+  where it falls) and the keys, since that is what Allow allows. A card
+  waiting while computer use is paused says that its action won't be done:
+  after Resume, Claude looks at the screen again and asks again. Screenshots,
+  zooms and waits don't ask. In *Auto* mode Claude Code decides, as for its
+  other tools.
 - **Esc, anywhere, pauses it**: the mouse is yours again at once, the glow
   turns grey, and Claude waits at its next action. The island stays open on
   the plan with **Stop** (nothing more is done in this answer), **Ask Claude
@@ -1090,7 +1097,10 @@ plan, with no API key.
   again; Esc in the field closes it, nothing sent) and **Resume**. Only
   Resume gives Claude the mouse back: Esc pressed again, by a panic double
   press or in another app, never does. While it is paused, Esc is yours
-  again, for your apps and the island.
+  again, for your apps and the island. A pause left on for 10 minutes stops
+  it by itself, as Stop does (the banner counts it down): Claude says where
+  it got to, rather than waking every 40 seconds for as long as you are away.
+  No picture for the recap is taken while it is paused.
 - **You can see it work**: the screen it uses glows softly around its edges
   (on whichever display it is), the mouse turns into an orange arrow and
   glides from point to point instead of jumping, and each action shows where

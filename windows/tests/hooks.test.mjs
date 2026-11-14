@@ -594,6 +594,28 @@ test("a computer use action's card says why (the plan's step) and where (the poi
     assert.equal(card("mcp__lumo__key", { text: "ctrl+s" }).computerAt, undefined);
     assert.equal(card("mcp__lumo__left_click", {}).computerAt, undefined);
     assert.equal(card("mcp__lumo__left_click", { coordinate: ["1", 2] }).computerAt, undefined);
+    // Two chats using the computer at once: the step said is the asking chat's
+    // own plan's, never the other chat's shown on the island.
+    const chatCard = (chat) => {
+      State.pendingApproval = null;
+      ask("c1", { tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [1, 1] }, lumo_island: true, ...(chat ? { lumo_chat: chat } : {}) });
+      return State.pendingApproval;
+    };
+    State.computer = { ...State.computer, chat: "chat-2" };
+    c = chatCard("chat-1");
+    assert.equal(c.reason, undefined, "another chat's plan");
+    assert.equal(c.chat, "chat-1");
+    assert.equal(chatCard(undefined).reason, undefined, "Gemini Live's helper asks: not the chat's plan");
+    c = chatCard("chat-2");
+    assert.equal(c.reason, "Save the text on the Desktop", "its own plan");
+    State.computer = { ...State.computer, chat: "" };
+    assert.equal(chatCard(undefined).reason, "Save the text on the Desktop", "the helper's own plan (no chat)");
+    assert.equal(chatCard("chat-1").reason, undefined);
+    // A session's card (not the island's chat) never carries a chat.
+    State.pendingApproval = null;
+    ask("c1", { tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [1, 1] }, lumo_chat: "chat-2" });
+    assert.equal(State.pendingApproval.chat, undefined);
+    State.computer = { ...State.computer, chat: undefined };
     // Every step done: nothing under way, nothing said.
     State.computer = { ...State.computer, steps: [{ text: "Open Notepad", status: "done" }] };
     assert.equal(card("mcp__lumo__left_click", { coordinate: [1, 1] }).reason, undefined);
