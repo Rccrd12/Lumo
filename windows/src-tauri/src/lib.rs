@@ -905,8 +905,8 @@ struct SavedTurn {
 /// or Antigravity CLI conversation that answered it, if any, so the next
 /// question continues it.
 #[tauri::command]
-fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
-    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, cli: Option<String>, compact: Option<SavedCompact>) {
+    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, cli, compact.map(|c| (c.upto, c.summary)));
 }
 
 /// chat_restore for a chat that is not on screen: the Listening events use it
@@ -917,10 +917,10 @@ fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, ses
 /// chat on screen, or an answer to an earlier event still being written) its
 /// own is the newer one, and restoring would drop that answer.
 #[tauri::command]
-fn chat_load(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
+fn chat_load(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, cli: Option<String>, compact: Option<SavedCompact>) {
     let (chat, fresh) = chats.load(&chat_id);
     if fresh {
-        chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+        chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, cli, compact.map(|c| (c.upto, c.summary)));
     }
 }
 

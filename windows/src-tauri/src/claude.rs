@@ -9,6 +9,7 @@
 // ANTHROPIC_BASE_URL may name a proxy the user never meant to hand this key to.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -119,22 +120,45 @@ fn image_blocks(images: &[String]) -> Vec<Value> {
     images.iter().filter_map(|path| file_block(path)).collect()
 }
 
+/// The gateway in LUMO_ANTHROPIC_BASE_URL refused `cache_control`: no
+/// request asks for the cache again until Lumo starts again.
+static NO_CACHE: AtomicBool = AtomicBool::new(false);
+
 fn request_body(model: &str, system: &str, history: &[Value], user: &Value, max_tokens: u64) -> Value {
     let mut messages = history.to_vec();
     messages.push(user.clone());
     json!({
         "model": model,
         "max_tokens": max_tokens,
-        "system": system,
+        // The tools and Lumo's instructions are the same in every chat: read
+        // from the cache by any chat that asks within its five minutes, a
+        // new one too, instead of being written again with each conversation.
+        "system": [{ "type": "text", "text": system, "cache_control": { "type": "ephemeral" } }],
         "tools": [{ "type": "web_search_20260209", "name": "web_search", "max_uses": 5 }],
         "fallbacks": "default",
         "messages": messages,
         // Prompt caching: the conversation so far is read from the cache on
-        // the next message (and the next round of tools), at a tenth of the
-        // price, instead of being paid for again in full. The API moves the
-        // breakpoint to the last block by itself.
+        // the next message (and the next round of tools), at a fraction of
+        // the price (a tenth, a twentieth on the newest models), instead of
+        // being paid for again in full. The API moves this breakpoint to the
+        // last block by itself.
         "cache_control": { "type": "ephemeral" },
     })
+}
+
+/// `body` without the cache: a gateway that doesn't take it, or a question
+/// asked once (nothing to read back from a cache, which costs more to write).
+fn without_cache(body: &mut Value) {
+    let Some(b) = body.as_object_mut() else { return };
+    b.remove("cache_control");
+    if let Some(text) = b.get("system").and_then(|s| s.pointer("/0/text")).and_then(Value::as_str).map(str::to_string) {
+        b.insert("system".into(), json!(text));
+    }
+}
+
+/// The request asks for the cache.
+fn cached(body: &Value) -> bool {
+    body.get("cache_control").is_some() || body.pointer("/system/0/cache_control").is_some()
 }
 
 /// The island's tools (island_tools.rs) and the user's that are on and
@@ -282,6 +306,9 @@ pub async fn send(
     let system = format!("{}{}{plan}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail));
     let known = model_facts(&endpoint, &key, model).await;
     let mut body = with_user_tools(request_body(model, &system, &turn.history, &user, known.max_tokens), &tools);
+    if NO_CACHE.load(Ordering::Relaxed) {
+        without_cache(&mut body);
+    }
     // The effort picked, when the model takes it (its list says which; one
     // that refuses it after all is asked again at its own). One picked for
     // another provider (Claude Code's) that this model doesn't take: its own.
@@ -318,6 +345,13 @@ pub async fn send(
                 // A model that takes no effort, or not this one: at its own.
                 Err(Failed::Status(400, e)) if body.get("output_config").is_some() && e.contains("effort") => {
                     body.as_object_mut().map(|b| b.remove("output_config"));
+                    continue;
+                }
+                // A gateway (LUMO_ANTHROPIC_BASE_URL) that doesn't take the cache: without it, from now on.
+                Err(Failed::Status(400, e)) if cached(&body) && e.contains("cache_control") => {
+                    NO_CACHE.store(true, Ordering::Relaxed);
+                    crate::log::line("chat: the Claude endpoint refused cache_control: asked without the cache");
+                    without_cache(&mut body);
                     continue;
                 }
                 // The API failed on its side, or is overloaded (529): asked once more, a moment later.
@@ -417,10 +451,8 @@ pub async fn summarize(model: &str, system: &str, prompt: &str) -> Result<String
     let user = json!({ "role": "user", "content": prompt });
     let mut body = request_body(model, system, &[], &user, known.max_tokens);
     // Asked once: nothing to read back from a cache, which costs more to write.
-    if let Some(b) = body.as_object_mut() {
-        b.remove("tools");
-        b.remove("cache_control");
-    }
+    without_cache(&mut body);
+    body.as_object_mut().map(|b| b.remove("tools"));
     let mut smaller = false;
     let mut retried = false;
     let response = loop {
@@ -1135,13 +1167,27 @@ mod tests {
         let user = json!({"role":"user","content":[{"type":"text","text":"c"}]});
         let body = request_body("claude-x", "sys", &history, &user, 64_000);
         assert_eq!(body["model"], "claude-x");
-        assert_eq!(body["system"], "sys");
+        assert_eq!(body["system"], json!([{ "type": "text", "text": "sys", "cache_control": { "type": "ephemeral" } }]));
         assert_eq!(body["max_tokens"], 64_000);
         assert_eq!(body["tools"][0]["name"], "web_search");
         assert_eq!(body["messages"].as_array().unwrap().len(), 3);
         assert_eq!(body["messages"][2], user);
         // The conversation is cached for the next message.
         assert_eq!(body["cache_control"], json!({ "type": "ephemeral" }));
+        assert!(cached(&body));
+    }
+
+    #[test]
+    fn a_request_without_the_cache_asks_for_none_and_keeps_its_instructions() {
+        let user = json!({"role":"user","content":"c"});
+        let mut body = request_body("claude-x", "sys", &[], &user, 1_000);
+        without_cache(&mut body);
+        assert_eq!(body["system"], "sys");
+        assert!(body.get("cache_control").is_none());
+        assert!(!cached(&body));
+        // Twice changes nothing.
+        without_cache(&mut body);
+        assert_eq!(body["system"], "sys");
     }
 
     #[test]
