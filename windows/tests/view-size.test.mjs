@@ -16,6 +16,9 @@ test("the chat and a Live call share a slot, every other view has its own", () =
   assert.equal(sizeSlot("settings"), "settings");
   // The launch greeting keeps its own 640 × 150 whatever was dragged.
   assert.equal(sizeSlot("greeting"), null);
+  // The drop zone and the upload keep their own 640 × 176 the same way.
+  assert.equal(sizeSlot("upload"), null);
+  assert.equal(sizeSlot("uploading"), null);
 });
 
 test("before any view has a size of its own, every view takes the shared one", () => {

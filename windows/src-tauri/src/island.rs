@@ -160,10 +160,12 @@ impl Placement {
 }
 
 /// The views whose size is kept on its own (src/core/layout.ts sizeSlot): the
-/// chat and a Gemini Live call share "chat", every other view has its own.
+/// chat and a Gemini Live call share "chat", every other view has its own. Not
+/// the drop zone and the upload, which keep their own 640 × 176 whatever was
+/// dragged, as the launch greeting keeps its 640 × 150.
 const SIZE_SLOTS: &[&str] = &[
-    "home", "chat", "tools", "settings", "overview", "approval", "question", "error", "finished", "upload",
-    "uploading", "note", "recap", "wardrobe", "mail",
+    "home", "chat", "tools", "settings", "overview", "approval", "question", "error", "finished", "note",
+    "recap", "wardrobe", "mail",
 ];
 
 /// The slot a view's size is kept under, or `None` for a name that is not one.
@@ -1268,6 +1270,9 @@ mod placement_tests {
         assert_eq!((p.width, p.height), (1100.0, 600.0));
         // A name that is not a view's slot, from the page or the file, counts for nothing.
         assert_eq!(size_slot(Some("prompt")), None);
+        // The drop zone and the upload keep their own 640 × 176: no size is kept for them.
+        assert_eq!(size_slot(Some("upload")), None);
+        assert_eq!(size_slot(Some("uploading")), None);
         assert_eq!(size_slot(Some("../x")), None);
         assert_eq!(size_slot(None), None);
         s.island_sizes.insert("huge".into(), ViewSize { width: 5000.0, height: 5000.0 });
