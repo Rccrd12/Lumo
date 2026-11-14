@@ -682,6 +682,9 @@ pub enum Checks {
     Passed,
     /// The names of the ones that failed.
     Failed(Vec<String>),
+    /// Stopped before they said anything, and nothing else failed: the names
+    /// of the ones cancelled. Not green, as a failure, but said as it is.
+    Cancelled(Vec<String>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -725,6 +728,7 @@ impl PrState {
 pub fn checks_of(runs: Option<&Value>, status: Option<&Value>) -> Checks {
     let mut pending = false;
     let mut failed = Vec::new();
+    let mut cancelled = Vec::new();
     let mut any = false;
     for run in runs.and_then(|r| r["check_runs"].as_array()).into_iter().flatten() {
         any = true;
@@ -733,8 +737,10 @@ pub fn checks_of(runs: Option<&Value>, status: Option<&Value>) -> Checks {
             pending = true;
             continue;
         }
-        if matches!(run["conclusion"].as_str(), Some("failure" | "cancelled" | "timed_out" | "action_required" | "startup_failure")) {
-            failed.push(name);
+        match run["conclusion"].as_str() {
+            Some("failure" | "timed_out" | "action_required" | "startup_failure") => failed.push(name),
+            Some("cancelled" | "stale") => cancelled.push(name),
+            _ => {}
         }
     }
     for st in status.and_then(|s| s["statuses"].as_array()).into_iter().flatten() {
@@ -751,6 +757,8 @@ pub fn checks_of(runs: Option<&Value>, status: Option<&Value>) -> Checks {
         Checks::Failed(failed)
     } else if pending {
         Checks::Pending
+    } else if !cancelled.is_empty() {
+        Checks::Cancelled(cancelled)
     } else if any {
         Checks::Passed
     } else {
@@ -795,7 +803,7 @@ pub fn actions_of(checks: Checks, actions: Option<&Value>) -> Checks {
     } else if pending {
         Checks::Pending
     } else if !ran && !cancelled.is_empty() {
-        Checks::Failed(cancelled)
+        Checks::Cancelled(cancelled)
     } else if any {
         Checks::Passed
     } else {
@@ -838,13 +846,15 @@ fn head_age(heads: &mut HashMap<u64, (String, u64)>, id: u64, sha: &str, now: u6
 pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
     let label = w.label();
     let pr_var = [("pr", label.as_str())];
-    let failed_names = |names: &[String]| {
+    let listed = |names: &[String]| {
         let mut list = names.iter().take(4).cloned().collect::<Vec<_>>().join(", ");
         if names.len() > 4 {
             list.push_str(", …");
         }
-        tf("Checks failed on {pr}: {checks}", &[("pr", &label), ("checks", &list)])
+        list
     };
+    let failed_names = |names: &[String]| tf("Checks failed on {pr}: {checks}", &[("pr", &label), ("checks", &listed(names))]);
+    let cancelled_names = |names: &[String]| tf("Checks were cancelled on {pr}: {checks}", &[("pr", &label), ("checks", &listed(names))]);
     if pr.merged {
         return Some((matches!(w.until.as_str(), "merged" | "closed"), tf("{pr} was merged", &pr_var)));
     }
@@ -858,17 +868,19 @@ pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
     let settled = |c: &Checks| match c {
         Checks::Passed => Some(true),
         Checks::None if age_ms >= NO_CHECKS_GRACE_MS => Some(true),
-        Checks::Failed(_) => Some(false),
+        Checks::Failed(_) | Checks::Cancelled(_) => Some(false),
         _ => None,
     };
     match w.until.as_str() {
         "checks" => match &pr.checks {
             Checks::Failed(names) => Some((true, failed_names(names))),
+            Checks::Cancelled(names) => Some((true, cancelled_names(names))),
             c if settled(c) == Some(true) => Some((true, tf("Checks passed on {pr}", &pr_var))),
             _ => None,
         },
         "green" => match &pr.checks {
             Checks::Failed(names) => Some((false, failed_names(names))),
+            Checks::Cancelled(names) => Some((false, cancelled_names(names))),
             c if settled(c) == Some(true) => Some((true, tf("Checks passed on {pr}", &pr_var))),
             _ => None,
         },
@@ -878,8 +890,10 @@ pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
             Review::None => None,
         },
         "ready" => {
-            if let Checks::Failed(names) = &pr.checks {
-                return Some((false, failed_names(names)));
+            match &pr.checks {
+                Checks::Failed(names) => return Some((false, failed_names(names))),
+                Checks::Cancelled(names) => return Some((false, cancelled_names(names))),
+                _ => {}
             }
             if pr.mergeable == Some(false) || pr.mergeable_state == "dirty" {
                 return Some((false, tf("{pr} has merge conflicts", &pr_var)));
@@ -1924,6 +1938,19 @@ mod tests {
         let status = json!({ "statuses": [{ "context": "vercel", "state": "failure" }] });
         assert_eq!(checks_of(Some(&running), Some(&status)), Checks::Failed(vec!["vercel".into()]));
         assert_eq!(checks_of(Some(&json!({ "check_runs": [] })), Some(&json!({ "statuses": [] }))), Checks::None);
+        // A check cancelled (its run stopped half way): not green, said as cancelled;
+        // beside one that failed, a failure; beside one still running, wait for it.
+        let stopped = json!({ "check_runs": [
+            { "name": "build", "status": "completed", "conclusion": "success" },
+            { "name": "e2e", "status": "completed", "conclusion": "cancelled" },
+        ]});
+        assert_eq!(checks_of(Some(&stopped), None), Checks::Cancelled(vec!["e2e".into()]));
+        assert_eq!(checks_of(Some(&stopped), Some(&status)), Checks::Failed(vec!["vercel".into()]));
+        let still = json!({ "check_runs": [
+            { "name": "e2e", "status": "completed", "conclusion": "cancelled" },
+            { "name": "test", "status": "in_progress", "conclusion": null },
+        ]});
+        assert_eq!(checks_of(Some(&still), None), Checks::Pending);
     }
 
     #[test]
@@ -1981,8 +2008,12 @@ mod tests {
             { "name": "Windows E2E", "status": "completed", "conclusion": "cancelled" },
         ]});
         let stopped = actions_of(Checks::None, Some(&stopped));
-        assert_eq!(stopped, Checks::Failed(vec!["Windows CI".into(), "Windows E2E".into()]));
-        assert_ne!(judge(&watch("green"), &open(stopped), 10 * NO_CHECKS_GRACE_MS).map(|j| j.0), Some(true), "never green");
+        assert_eq!(stopped, Checks::Cancelled(vec!["Windows CI".into(), "Windows E2E".into()]));
+        assert_ne!(judge(&watch("green"), &open(stopped.clone()), 10 * NO_CHECKS_GRACE_MS).map(|j| j.0), Some(true), "never green");
+        // Said as cancelled, not as failed.
+        let said = judge(&watch("green"), &open(stopped), 0).expect("it ends the wait").1;
+        let as_failed = judge(&watch("green"), &open(Checks::Failed(vec!["Windows CI".into(), "Windows E2E".into()])), 0).unwrap().1;
+        assert!(said.contains("Windows CI") && said != as_failed, "{said}");
     }
 
     #[test]

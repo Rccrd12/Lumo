@@ -126,8 +126,16 @@ test("a tracking pixel is never loaded: 2 × 2 px or less, or from a service mad
 
 test("an image given only by srcset still has an address to load", () => {
   assert.equal(imageSource(" https://a.example/x.png ", "https://a.example/x@2x.png 2x"), "https://a.example/x.png", "its src first");
-  assert.equal(imageSource("", "https://a.example/s.jpg 480w, https://a.example/l.jpg 1080w"), "https://a.example/s.jpg");
-  assert.equal(imageSource("", "https://a.example/a.jpg, https://a.example/b.jpg 2x"), "https://a.example/a.jpg");
+  // By widths: the smallest wide enough for the frame on a sharp screen, else the widest.
+  assert.equal(imageSource("", "https://a.example/s.jpg 480w, https://a.example/l.jpg 1080w"), "https://a.example/l.jpg");
+  assert.equal(imageSource("", "https://a.example/t.jpg 20w, https://a.example/m.jpg 1200w, https://a.example/xl.jpg 2400w"), "https://a.example/m.jpg");
+  // By densities: 2x at most (no 3x picture fetched for nothing), else the lowest.
+  assert.equal(imageSource("", "https://a.example/a.jpg, https://a.example/b.jpg 2x"), "https://a.example/b.jpg");
+  assert.equal(imageSource("", "https://a.example/a.jpg 1x, https://a.example/b.jpg 2x, https://a.example/c.jpg 3x"), "https://a.example/b.jpg");
+  assert.equal(imageSource("", "https://a.example/c.jpg 3x"), "https://a.example/c.jpg");
+  // An address with commas of its own (an image service's options) stays whole.
+  assert.equal(imageSource("", "https://res.example/w_400,h_300/p.jpg 400w, https://res.example/w_1600,h_1200/p.jpg 1600w"), "https://res.example/w_1600,h_1200/p.jpg");
+  assert.equal(imageSource("", " , https://a.example/a.jpg 1x"), "https://a.example/a.jpg");
   assert.equal(imageSource("", "  "), "");
   assert.equal(imageSource("", ""), "");
 });
