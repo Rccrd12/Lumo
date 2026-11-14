@@ -10,7 +10,9 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use tauri::{AppHandle, Manager, WebviewWindow};
 
 use ::windows::core::{BOOL, PCWSTR, PWSTR};
-use ::windows::Win32::Foundation::{CloseHandle, HANDLE, HLOCAL, HWND, LPARAM, LocalFree, POINT};
+use ::windows::Win32::Foundation::{CloseHandle, HANDLE, HLOCAL, HWND, LPARAM, LocalFree, POINT, RECT};
+use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+use ::windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
 use ::windows::Win32::Security::Authorization::ConvertSidToStringSidW;
 use ::windows::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
 use ::windows::Win32::System::ApplicationInstallationAndServicing::MsiEnumRelatedProductsW;
@@ -29,7 +31,7 @@ use ::windows::Win32::UI::Input::KeyboardAndMouse::{
 use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use ::windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindow,
-    GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
+    GetWindowLongPtrW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
     SetWindowLongPtrW, SetWindowPos, ShowWindow, EVENT_SYSTEM_FOREGROUND, GWL_EXSTYLE, GW_OWNER, HWND_TOPMOST,
     SM_SWAPBUTTON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
     WINEVENT_SKIPOWNPROCESS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
@@ -699,6 +701,12 @@ unsafe extern "system" fn foreground_changed(_: HWINEVENTHOOK, _: u32, hwnd: HWN
         if CAPTURE_WINDOW.swap(hwnd.0 as isize, Ordering::Relaxed) != hwnd.0 as isize {
             crate::log::line(format!("screen capture open ({tool}): the island stays under it"));
         }
+        // Not climbing is not enough: an island that climbed a moment before
+        // (the tool's own window came first, or that event came late) goes
+        // under it now.
+        if let Some(app) = FOREGROUND_APP.get() {
+            crate::island::stay_under(app, hwnd.0 as isize);
+        }
         return;
     }
     CAPTURE_WINDOW.store(0, Ordering::Relaxed);
@@ -709,9 +717,12 @@ unsafe extern "system" fn foreground_changed(_: HWINEVENTHOOK, _: u32, hwnd: HWN
 
 /// The capture tool's name, when `hwnd` is the always-on-top window of one.
 /// Its other windows (ShareX's or Snipping Tool's own window, an editor) are
-/// ordinary ones the island is above anyway.
+/// ordinary ones the island is above anyway. Of a tool other than Windows'
+/// own, an always-on-top window counts only while the tool covers a whole
+/// display with one (its overlay, or the toolbar over it): an image it pinned
+/// to the screen is no capture (`island::capture_is_any_window`).
 unsafe fn capture_overlay(hwnd: HWND) -> Option<String> {
-    if hwnd.0.is_null() || unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0 == 0 {
+    if hwnd.0.is_null() || !unsafe { is_topmost(hwnd) } {
         return None;
     }
     let mut pid = 0u32;
@@ -720,15 +731,102 @@ unsafe fn capture_overlay(hwnd: HWND) -> Option<String> {
         return None;
     }
     let name = crate::screen::exe_name(pid);
-    crate::island::is_capture_tool(&name).then_some(name)
+    if !crate::island::is_capture_tool(&name) {
+        return None;
+    }
+    if crate::island::capture_is_any_window(&name) || unsafe { covers_a_display(hwnd) } || covers_with_another(pid) {
+        return Some(name);
+    }
+    None
+}
+
+unsafe fn is_topmost(hwnd: HWND) -> bool {
+    (unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32) & WS_EX_TOPMOST.0 != 0
+}
+
+/// `hwnd` is on screen, always on top, and covers the whole display it is on.
+unsafe fn covers_a_display(hwnd: HWND) -> bool {
+    unsafe {
+        if !IsWindowVisible(hwnd).as_bool() || !is_topmost(hwnd) || is_cloaked(hwnd) {
+            return false;
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return false;
+        }
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+        if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return false;
+        }
+        let m = info.rcMonitor;
+        crate::island::covers_display((rect.left, rect.top, rect.right, rect.bottom), (m.left, m.top, m.right, m.bottom))
+    }
+}
+
+/// A window hidden by the system (another virtual desktop, a suspended app):
+/// visible to IsWindowVisible, never on screen.
+unsafe fn is_cloaked(hwnd: HWND) -> bool {
+    let mut cloaked = 0u32;
+    let ok = unsafe {
+        DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &mut cloaked as *mut u32 as *mut _, std::mem::size_of::<u32>() as u32)
+    };
+    ok.is_ok() && cloaked != 0
+}
+
+/// Another window of process `pid` covers a whole display: a capture's
+/// toolbar is in front, its overlay under it.
+fn covers_with_another(pid: u32) -> bool {
+    struct Search {
+        pid: u32,
+        found: bool,
+    }
+    unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let search = unsafe { &mut *(lparam.0 as *mut Search) };
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid == search.pid && unsafe { covers_a_display(hwnd) } {
+            search.found = true;
+            return false.into();
+        }
+        true.into()
+    }
+    let mut search = Search { pid, found: false };
+    unsafe {
+        let _ = EnumWindows(Some(each), LPARAM(&mut search as *mut _ as isize));
+    }
+    search.found
 }
 
 /// A screen capture's overlay is in front now. Asked of the window in front
 /// each time rather than remembered, so a capture that ended without another
-/// app coming to the front (Lumo's own Settings did) never leaves it set.
+/// app coming to the front (Lumo's own Settings did) never leaves it set; and
+/// an overlay the tool only hid is no capture either.
 pub fn capturing() -> bool {
     let overlay = CAPTURE_WINDOW.load(Ordering::Relaxed);
-    overlay != 0 && unsafe { GetForegroundWindow() }.0 as isize == overlay
+    overlay != 0
+        && unsafe { GetForegroundWindow() }.0 as isize == overlay
+        && unsafe { IsWindowVisible(HWND(overlay as *mut _)) }.as_bool()
+}
+
+/// Puts the window right under `overlay` (a screen capture's, `capturing`),
+/// still always on top, without activating it.
+pub fn place_under(win: &WebviewWindow, overlay: isize) {
+    let Some(hwnd) = hwnd_of(win) else { return };
+    if overlay == 0 || hwnd.0 as isize == overlay {
+        return;
+    }
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND(overlay as *mut _)),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+        );
+    }
 }
 
 /// Calls `island::keep_on_top` each time a window of another app comes to the
