@@ -132,6 +132,10 @@ test("a \\big bracket that carries scripts keeps its size", () => {
   for (const tex of ["\\Big( x \\Big)^2", "\\bigg\\rangle_n", "\\big]^b_a"]) {
     assert.equal(renderMath(tex).find(".mx-script")[0].children[0].tagName, "MROW", tex);
   }
+  // F(x) \big|_a^b: no space between F(x) and the bar, as in TeX.
+  const bar = renderMath("F(x)\\big|_a^b").find(".mx-script")[0].children[0].children[0];
+  assert.equal(bar.getAttribute("lspace"), "0");
+  assert.equal(bar.getAttribute("rspace"), "0");
   // A bracket as written, with no \big, stays as it was.
   assert.equal(renderMath("[x]_0^1").find(".mx-script")[0].children[0].tagName, "MO");
 });

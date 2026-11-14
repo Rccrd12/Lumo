@@ -829,6 +829,13 @@ function accent(node: Extract<Node, { t: "accent" }>): Element {
   return m("mover", { accent: "true", class: node.mark === "→" ? "mx-vecover" : "" }, draw(node.body), mark);
 }
 
+/** A \big bracket under scripts, with no space of its own either side. */
+function noSpace(mo: Element): Element {
+  mo.setAttribute("lspace", "0");
+  mo.setAttribute("rspace", "0");
+  return mo;
+}
+
 function draw(node: Node): Element {
   switch (node.t) {
     case "sym":
@@ -841,7 +848,9 @@ function draw(node: Node): Element {
       // \Big]_0^{2π}: the WebView sizes a bracket only as a child of a row,
       // and as the base of the scripts it fell back to the text's own size,
       // smaller and lower than its \Big[. In a row of its own it keeps it.
-      const base = !node.base ? m("mrow") : node.base.t === "big" ? m("mrow", {}, draw(node.base)) : draw(node.base);
+      // Alone in its row the WebView reads the bracket as infix and spaces a
+      // | apart from what precedes it (F(x) |_a^b): \big takes none, as in TeX.
+      const base = !node.base ? m("mrow") : node.base.t === "big" ? m("mrow", {}, noSpace(draw(node.base))) : draw(node.base);
       // ∑, \lim: limits above and below on a line of its own, beside it in the text.
       if (isBigOperator(node.base)) {
         const b = node.base!;
