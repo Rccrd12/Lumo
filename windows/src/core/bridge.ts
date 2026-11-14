@@ -867,10 +867,14 @@ export interface ChatReply {
   warning?: ChatWarning;
 }
 
-/** A problem under an answer: one short line, and what to know, opened with a click. */
+/**
+ * A problem under an answer (chat.rs ChatWarning): its kind ("malformed": the
+ * model sent a tool call the CLI could not read; "error": any other) and the
+ * CLI's own words. The island says it in its language (views/chat.ts warningWords).
+ */
 export interface ChatWarning {
-  line: string;
-  detail: string;
+  kind: "malformed" | "error";
+  message: string;
 }
 
 /** A display the screen button can capture; `index` is its place in the menu. */

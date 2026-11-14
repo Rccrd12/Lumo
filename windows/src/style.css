@@ -9249,19 +9249,26 @@ button.bg-row:hover {
 }
 
 /* Under an answer the CLI ended with an error (views/chat.ts bubble): one
-   line on its bar, in amber, and what to know under it once clicked. The
-   same box holds a failed answer's own words from the CLI (failedParts). */
+   line under it, in amber, in sight without the mouse (the actions' bar
+   shows only on hover), and what to know under it once clicked. The same box
+   holds a failed answer's own words from the CLI (failedParts). */
 .msg-warning {
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 4px;
-  padding: 0 4px;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 3px 8px;
   border: 0;
-  background: none;
-  font: 400 10.5px var(--font);
+  border-inline-start: 2px solid var(--amber);
+  border-radius: 0;
+  border-start-end-radius: 6px;
+  border-end-end-radius: 6px;
+  background: rgba(245, 165, 36, 0.07);
+  font: 400 11px/1.35 var(--font);
   color: var(--amber);
-  white-space: nowrap;
+  text-align: start;
   cursor: pointer;
 }
 

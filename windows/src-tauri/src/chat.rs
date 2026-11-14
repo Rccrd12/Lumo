@@ -60,11 +60,13 @@ pub struct ChatReply {
     pub warning: Option<ChatWarning>,
 }
 
-/// A problem under an answer: one short line, and what to know, shown on a click.
+/// A problem under an answer: what kind ("malformed": the model sent a tool
+/// call the CLI could not read; "error": any other), and the CLI's own words.
+/// The island says it in its language (src/views/chat.ts warningWords).
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct ChatWarning {
-    pub line: String,
-    pub detail: String,
+    pub kind: String,
+    pub message: String,
 }
 
 /// Between what an error says to the user and the words the CLI gave for it,

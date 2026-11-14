@@ -2,7 +2,7 @@
 
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
-import { newChatId, type AskQuote } from "./chats";
+import { newChatId, type AnswerWarning, type AskQuote } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../character/engine";
 import {
@@ -160,7 +160,7 @@ export interface ChatMessage {
   /** No answer: what went wrong, said in the chat where it was asked (never saved). */
   failed?: boolean;
   /** The answer came, but the CLI ended its turn with an error: said under it (ChatReply.warning). */
-  warning?: { line: string; detail: string };
+  warning?: AnswerWarning;
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
   /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing, a question asked of an agent). */
