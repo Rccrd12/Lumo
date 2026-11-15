@@ -4128,13 +4128,16 @@ export function buildPrompt(
   }
 
   /**
-   * The seconds next to the dots move once a second while something timed is
-   * on show (a local model reading the prompt, reasoning, asked again); the
-   * timer stops as soon as nothing is.
+   * The seconds next to the dots, and on the closed island, move once a
+   * second while something timed is on show (thinking, a local model reading
+   * the prompt, asked again), from the moment the question goes: a CLI that
+   * thinks without a word (agy) sends no activity to start them. The timer
+   * stops as soon as nothing is timed, and while the island is hidden (0 %
+   * CPU); it starts again when the island shows.
    */
   let secondsTimer: ReturnType<typeof setInterval> | null = null;
+  const timed = () => State.mode !== "hidden" && [...runs.values()].some((r) => (!r.text || r.dots) && TIMED.has(r.activity.kind));
   function tickSeconds() {
-    const timed = () => [...runs.values()].some((r) => (!r.text || r.dots) && TIMED.has(r.activity.kind));
     if (secondsTimer != null || !timed()) return;
     secondsTimer = setInterval(() => {
       if (!timed()) {
@@ -4150,6 +4153,13 @@ export function buildPrompt(
     // Under Node (the tests), an answer left going doesn't keep the process alive.
     (secondsTimer as { unref?: () => void }).unref?.();
   }
+  // The island shows again: the seconds go on from where they are, not from
+  // the number left while it was hidden.
+  State.subscribe(() => {
+    if (secondsTimer != null || !timed()) return;
+    tickSeconds();
+    queueMicrotask(drawIslandActivity);
+  });
 
   // A file the answer read, edited or created: the chat's files list it.
   void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
@@ -4961,6 +4971,8 @@ export function buildPrompt(
     remember(run);
     State.stateOverride = "thinking";
     drawIslandActivity();
+    // Thinking… counts its seconds from now, on the chat and the closed island.
+    tickSeconds();
     drawModelButton();
     State.notify();
     onHeightChange();
