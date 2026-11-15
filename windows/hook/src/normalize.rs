@@ -98,13 +98,16 @@ pub fn fields(map: &mut Map<String, Value>, env: &dyn Fn(&str) -> Option<String>
             // Arguments the relay can't read as fields: JSON text serde
             // refuses (a lone surrogate, nesting past 128 levels) though the
             // agent's own parser takes it and runs the call. The card shows
-            // them as they came, and they are cut: never allowed from Lumo,
-            // never a rule for the session (a card with only the tool's name
-            // would allow what nobody saw).
+            // them as they came, and says Lumo can't read them
+            // (`lumo_input_unread`): never allowed from Lumo (pipe.rs refuses
+            // it whatever comes back), never a rule for the session (a card
+            // with only the tool's name would allow what nobody saw). Unlike a
+            // request too long to show whole (`lumo_input_cut`), which the user
+            // may allow: these are what the agent reads one way and Lumo another.
             let mut shown = Map::new();
             shown.insert("arguments".into(), Value::String(raw));
             map.insert("tool_input".into(), Value::Object(shown));
-            map.insert("lumo_input_cut".into(), Value::Bool(true));
+            map.insert("lumo_input_unread".into(), Value::Bool(true));
         }
     }
 
@@ -225,33 +228,33 @@ mod tests {
     }
 
     #[test]
-    fn arguments_the_relay_cant_read_are_shown_raw_and_cut() {
+    fn arguments_the_relay_cant_read_are_shown_raw_and_marked_unread() {
         // JSON text serde refuses (a lone surrogate) but JavaScript's parser takes.
         let raw = r#"{"command":"Remove-Item -Recurse C:\\Users\\me\\proj","x":"\ud800"}"#;
         assert!(serde_json::from_str::<Value>(raw).is_err());
         let mut m = obj(json!({ "toolName": "bash", "toolArgs": raw }));
         fields(&mut m, &no_env);
         assert_eq!(m["tool_input"]["arguments"], raw);
-        assert_eq!(m["lumo_input_cut"], true);
+        assert_eq!(m["lumo_input_unread"], true);
         // Nesting past serde's 128 levels.
         let deep = format!("{}1{}", "[".repeat(200), "]".repeat(200));
         let mut m = obj(json!({ "toolName": "bash", "toolArgs": format!(r#"{{"command":"ls","x":{deep}}}"#) }));
         fields(&mut m, &no_env);
-        assert_eq!(m["lumo_input_cut"], true);
+        assert_eq!(m["lumo_input_unread"], true);
         // Not an object at all.
         let mut m = obj(json!({ "toolName": "bash", "toolArgs": ["rm", "-rf", "x"] }));
         fields(&mut m, &no_env);
         assert_eq!(m["tool_input"]["arguments"], r#"["rm","-rf","x"]"#);
-        assert_eq!(m["lumo_input_cut"], true);
+        assert_eq!(m["lumo_input_unread"], true);
         let mut m = obj(json!({ "toolCall": { "name": "run_command", "args": "rm -rf x" } }));
         fields(&mut m, &no_env);
         assert_eq!(m["tool_input"]["arguments"], "rm -rf x");
-        assert_eq!(m["lumo_input_cut"], true);
+        assert_eq!(m["lumo_input_unread"], true);
         // No arguments at all: nothing to show, nothing cut.
         for payload in [json!({ "toolName": "bash" }), json!({ "toolName": "bash", "toolArgs": "" }), json!({ "toolName": "bash", "toolArgs": null })] {
             let mut m = obj(payload);
             fields(&mut m, &no_env);
-            assert!(m.get("tool_input").is_none() && m.get("lumo_input_cut").is_none());
+            assert!(m.get("tool_input").is_none() && m.get("lumo_input_unread").is_none());
         }
     }
 
@@ -311,9 +314,9 @@ mod tests {
         assert!(!m.contains_key("tool_name"));
         assert!(!m.contains_key("cwd"));
         // Arguments that can't be read are not trusted as fields: shown as they
-        // came, and cut (arguments_the_relay_cant_read_are_shown_raw_and_cut).
+        // came, and marked unread (arguments_the_relay_cant_read_are_shown_raw_and_marked_unread).
         assert_eq!(m["tool_input"], json!({ "arguments": "not json" }));
-        assert_eq!(m["lumo_input_cut"], true);
+        assert_eq!(m["lumo_input_unread"], true);
     }
 
     #[test]
