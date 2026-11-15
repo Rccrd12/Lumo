@@ -769,11 +769,13 @@ const SECURITY = {
   get tabs() { return t("Browser tabs"); },
   get tabsHint() { return t("The tabs open in your browsers."); },
   get accounts() { return t("Your accounts"); },
-  get mailHint() { return t("At first the AI may only read. If you let it send, each email waits for your click on its card. Nothing is ever deleted for good."); },
+  get mailHint() { return t("Each email sent, moved or trashed waits for your click on its card. Nothing is ever deleted for good."); },
   get calendarHint() { return t("Read your coming events, or nothing."); },
   get outlookStart() { return t("Open Outlook if it's closed"); },
   get outlookStartHint() { return t("When Lumo starts, it opens classic Outlook in the background, with no window. If you close it yourself, Lumo doesn't open it again until it next starts."); },
-  get githubHint() { return t("Read your pull requests, issues and checks when you ask. Off until you turn it on."); },
+  get githubHint() { return t("Read your pull requests, issues and checks when you ask."); },
+  get otherFiles() { return t("Other chats' files"); },
+  get otherFilesHint() { return t("Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: also those of the other chats from the last 7 days."); },
   get readAndSend() { return t("Read and send"); },
   get readSendManage() { return t("Read, send and manage"); },
   get readOnly() { return t("Read only"); },
@@ -815,7 +817,10 @@ const COMPUTER_SETTINGS = {
  * Settings → Security: what the chat's agents may do on their own (the
  * permissions, computer use, web search), what goes with every message,
  * what the AI may do with the email, the calendar and GitHub, and what Lumo
- * always does without a switch.
+ * always does without a switch. "Open Outlook if it's closed" shows only
+ * while Outlook is an Email source of the Email pill, the calendar's row only
+ * with a calendar set (Google Calendar or an iCal address, Settings →
+ * Island), GitHub's only with its token saved.
  */
 function securitySection(): HTMLElement {
   // The one mode every CLI starts from (Antigravity CLI keeps its own, picked in the chat).
@@ -843,7 +848,27 @@ function securitySection(): HTMLElement {
   const mailImages = setting(MAIL_IMAGES.label, MAIL_IMAGES.hint,
     toggle(settings.mailImagesAlways === true, (on) => { settings.mailImagesAlways = on; void save(); }),
   );
-  mailImages.hidden = settings.webImages === false;
+  mailImages.hidden = settings.webImages !== true;
+  const outlookRow = setting(SECURITY.outlookStart, SECURITY.outlookStartHint,
+    toggle(settings.outlookStart === true, (on) => { settings.outlookStart = on; void save(); }),
+  );
+  const calendarAccessRow = setting(t("Calendar"), SECURITY.calendarHint, calendarAccess);
+  const githubRow = setting("GitHub", SECURITY.githubHint, githubAccess);
+  calendarAccessRow.hidden = true;
+  githubRow.hidden = true;
+  const showAccounts = async () => {
+    outlookRow.hidden = !(settings.mailOutlook && settings.activeIntegrations.includes("integration_mail"));
+    const [ics, google, github] = await Promise.all([
+      Bridge.secretPresent("calendar-ics-url"),
+      Bridge.googleCalendarStatus(),
+      Bridge.secretPresent("github-token"),
+    ]);
+    calendarAccessRow.hidden = !(ics === true || google?.signedIn === true);
+    githubRow.hidden = github !== true;
+  };
+  void showAccounts();
+  declaredViews.push(() => void showAccounts());
+  whileShown(githubRow, "focus", () => void showAccounts());
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
     note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
@@ -867,17 +892,20 @@ function securitySection(): HTMLElement {
       toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
     ),
     setting(WEB_IMAGES.label, WEB_IMAGES.hint,
-      toggle(settings.webImages !== false, (on) => {
+      toggle(settings.webImages === true, (on) => {
         settings.webImages = on;
         mailImages.hidden = !on;
         void save();
       }),
     ),
     mailImages,
+    setting(SECURITY.otherFiles, SECURITY.otherFilesHint,
+      toggle(settings.chatOtherFiles === true, (on) => { settings.chatOtherFiles = on; void save(); }),
+    ),
     group(SECURITY.sees),
     h("p", { class: "hint group-hint", text: SECURITY.seesHint }),
     setting(SECURITY.windows, SECURITY.windowsHint,
-      toggle(settings.chatShareOpen !== false, (on) => { settings.chatShareOpen = on; void save(); }),
+      toggle(settings.chatShareOpen === true, (on) => { settings.chatShareOpen = on; void save(); }),
     ),
     setting(SECURITY.folders, SECURITY.foldersHint,
       toggle(settings.chatShareExplorer, (on) => { settings.chatShareExplorer = on; void save(); }),
@@ -887,11 +915,9 @@ function securitySection(): HTMLElement {
     ),
     group(SECURITY.accounts),
     setting(t("Email"), SECURITY.mailHint, mailAccess),
-    setting(SECURITY.outlookStart, SECURITY.outlookStartHint,
-      toggle(settings.outlookStart === true, (on) => { settings.outlookStart = on; void save(); }),
-    ),
-    setting(t("Calendar"), SECURITY.calendarHint, calendarAccess),
-    setting("GitHub", SECURITY.githubHint, githubAccess),
+    outlookRow,
+    calendarAccessRow,
+    githubRow,
     group(SECURITY.alwaysOn),
     h("ul", { class: "always-on" },
       h("li", { text: SECURITY.keys }),
@@ -2054,6 +2080,8 @@ function googleCalendarRow(): HTMLElement {
     try {
       await Bridge.googleCalendarSignIn();
       sync.reset();
+      // Security shows the calendar's row from now on.
+      for (const redraw of declaredViews) redraw();
     } catch (err) {
       problem = errorText(err);
     } finally {
@@ -2105,6 +2133,7 @@ function googleCalendarRow(): HTMLElement {
         await Bridge.googleCalendarSignOut();
         sync.reset();
         problem = "";
+        for (const redraw of declaredViews) redraw();
       } catch (err) {
         problem = errorText(err);
       }
@@ -2246,6 +2275,8 @@ function calendarRow(): HTMLElement {
       await Bridge.secretSet(key, value);
       input.value = "";
       show(true);
+      // Security shows the calendar's row from now on.
+      for (const redraw of declaredViews) redraw();
     } catch {
       dotEl.style.background = "#f5a524";
     }
@@ -2254,6 +2285,7 @@ function calendarRow(): HTMLElement {
     try {
       await Bridge.secretClear(key);
       show(false);
+      for (const redraw of declaredViews) redraw();
     } catch {
       dotEl.style.background = "#f5a524";
     }
