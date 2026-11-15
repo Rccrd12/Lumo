@@ -327,12 +327,20 @@ export const Bridge = {
    * One chat turn. The API key and any file bytes never leave Rust. `screen`
    * is what the user added from the screen button, sent with this turn only.
    * `pick`: the provider and model the chat is on (chats.ts chatModelOf),
-   * which answer it in place of the ones in the settings.
+   * which answer it in place of the ones in the settings; `permissions`, what
+   * it may do without asking (chats.ts permissionsFor), the same.
    */
-  chatSend: (chatId: string, query: string, context: ChatContext | null, screen?: ScreenContext | null, pick?: { provider: string; model: string }) =>
+  chatSend: (
+    chatId: string, query: string, context: ChatContext | null, screen?: ScreenContext | null, pick?: { provider: string; model: string },
+    permissions?: { chatPermissionMode: string; chatPermissionModeAgy: string },
+  ) =>
     callOrThrow<ChatReply>("chat_send", {
       chatId, query, context, ...(screen ? { screen } : {}), ...(pick ? { provider: pick.provider, model: pick.model } : {}),
+      ...(permissions ? { permissionMode: permissions.chatPermissionMode, permissionModeAgy: permissions.chatPermissionModeAgy } : {}),
     }),
+  /** The shield picked another mode in chat `chatId`: a turn of it still at work goes by it too (computer use). */
+  chatPermissions: (chatId: string, permissions: { chatPermissionMode: string; chatPermissionModeAgy: string }) =>
+    call<void>("chat_permissions", { chatId, permissionMode: permissions.chatPermissionMode, permissionModeAgy: permissions.chatPermissionModeAgy }),
   /** A new chat on screen; an answer still written in another one goes on. */
   chatReset: (chatId: string) => call<void>("chat_reset", { chatId }),
   /** The chat `chatId` was deleted: its CLI (and the agents it started) ends. */

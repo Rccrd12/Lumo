@@ -757,7 +757,7 @@ const SECURITY = {
   get intro() { return t("What the AI may see and do on its own. Lumo never approves a permission or sends anything for you without your click."); },
   get onItsOwn() { return t("What it may do on its own"); },
   get permissions() { return t("Default permissions"); },
-  get permissionsHint() { return t("How free Claude Code, Codex and Antigravity CLI are in the chat. The shield in the chat changes it too."); },
+  get permissionsHint() { return t("How free Claude Code, Codex and Antigravity CLI are in a new chat. The shield in a chat changes it for that chat only."); },
   get computerHint() { return t("Only while it answers, and only once it has shown you its plan: the screen it uses glows, and Esc pauses it. With Ask every time, each click waits for yours."); },
   get webHint() { return t("For the models that can't search on their own. Free, no account: only the useful passages reach the model."); },
   get sees() { return t("What it sees with every message"); },
@@ -823,7 +823,7 @@ const COMPUTER_SETTINGS = {
  * Island), GitHub's only with its token saved.
  */
 function securitySection(): HTMLElement {
-  // The one mode every CLI starts from (Antigravity CLI keeps its own, picked in the chat).
+  // The mode every new chat starts from (Antigravity CLI keeps its own; the shield in a chat changes that chat's).
   const mode = parsePermissionMode(settings.chatPermissionMode, "claude-code");
   const permissions = select(
     permissionModesFor("claude-code").map((m): [string, string] => [m, t(PERMISSION_NAMES[m])]),

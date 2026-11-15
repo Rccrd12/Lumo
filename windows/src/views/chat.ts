@@ -96,7 +96,7 @@ import { groupByEffort, groupOf, levelOf, splitEffort, variantFor } from "../cor
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists,
+  chatChecklists, chatModelOf, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, permissionsFor, saveChat, searchChats, setChatChecklists, setChatPermissions,
   setChatModel, setCompact, toSavedTurn, type AnswerWarning, type ChatHit, type SavedChat,
 } from "../core/chats";
 // The chat's CLI sessions, kept with it: apart, so the list above stays as other changes edit it.
@@ -107,7 +107,7 @@ import {
   type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, talkBox, type AgentsCardHost } from "./agents-card";
-import { updateChatTurns, type AskQuote } from "../core/chats";
+import { updateChatTurns, type AskQuote, type ChatPermissions } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
 import {
   PICTURE_NAME, THUMB_EDGE, comingBack, groupKey, joinScreen, keptItems, leaveScreen, readSent, restored, sentAgain, sentGroups, sentItems,
@@ -126,7 +126,7 @@ import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUs
 import {
   ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, itemPreview, keepShots,
   afterSent, autoShare, folderPicks, foldersByThemselves, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short,
-  shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type PickEntry,
+  screenWaits, shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type PickEntry,
   type PendingScreen, type PreviewBlock, type ScreenItem,
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
@@ -991,6 +991,8 @@ interface Run {
   session: string | null;
   provider: string;
   model: string;
+  /** What the chat may do without asking, as it was when the question went (chats.ts permissionsFor). */
+  permissions: ChatPermissions;
   /** The turn the question is in Rust's conversation (chat.rs), for the files it uses. */
   turn: number;
   /** The answer's text so far: "" until it shows. */
@@ -2065,9 +2067,26 @@ const TO_END_ARROW_SCREENS = 1;
 // ── View ──────────────────────────────────────────────────────────────────────
 
 /** `openSettings`: the island's Settings view (the window where there is no island, as in tests). */
-/** The copies waiting in the field, not sent yet: never deleted from under it. */
+/**
+ * What was written and attached in a chat and not sent yet, put aside while
+ * another chat is on screen (views/chat.ts parkDraft): the field's text, the
+ * files waiting, and what the screen button added. It comes back with its chat.
+ */
+interface ChatDraft {
+  text: string;
+  droppedFile: typeof State.droppedFile;
+  moreFiles: typeof State.moreFiles;
+  promptContext: typeof State.promptContext;
+  screen: PendingScreen;
+}
+
+/** Each chat's draft, by chat id, while another chat is on screen. Lost when Lumo closes, as the field is. */
+const drafts = new Map<string, ChatDraft>();
+
+/** The copies waiting in the field, not sent yet, and in the drafts of the other chats: never deleted from under them. */
 function fieldCopies(): string[] {
-  return [State.droppedFile?.path ?? "", ...State.moreFiles.map((f) => f.path)].filter(Boolean);
+  const parked = [...drafts.values()].flatMap((d) => [d.droppedFile?.path ?? "", ...d.moreFiles.map((f) => f.path)]);
+  return [State.droppedFile?.path ?? "", ...State.moreFiles.map((f) => f.path), ...parked].filter(Boolean);
 }
 
 export function buildPrompt(
@@ -3117,7 +3136,7 @@ export function buildPrompt(
       return;
     }
     drawPermHead(p);
-    const current = parsePermissionMode(storedPermissionMode(State.settings, p.id), p.id);
+    const current = parsePermissionMode(storedPermissionMode(chatPermissions(), p.id), p.id);
     for (const mode of permissionModesFor(p.id)) {
       const on = mode === current;
       const text = modeText(p, mode);
@@ -3133,12 +3152,15 @@ export function buildPrompt(
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
       row.addEventListener("click", () => {
-        // The stored mode, not the one shown: one setting serves every provider
+        // The stored mode, not the one shown: one mode serves every provider
         // but Antigravity CLI, which keeps its own, and a CLI shows a local
-        // model's "off" as "default".
-        if (storedPermissionMode(State.settings, p.id) !== mode) {
-          State.settings = withPermissionMode(State.settings, p.id, mode);
-          saveSettings();
+        // model's "off" as "default". It is this chat's alone: another chat,
+        // and a new one, keep theirs (Settings → Security's default for a new one).
+        const own = chatPermissions();
+        if (storedPermissionMode(own, p.id) !== mode) {
+          const next = withPermissionMode(own, p.id, mode);
+          setChatPermissions(State.chatId, next);
+          void Bridge.chatPermissions(State.chatId, next);
           Sound.play("blip");
         }
         closePermissions();
@@ -3146,6 +3168,27 @@ export function buildPrompt(
       });
       permList.append(row);
     }
+  }
+
+  /**
+   * What chat `id` may do without asking, from its first question on: a chat
+   * that never had the shield picked keeps the default it was asked with, so
+   * a later change in Settings → Security goes for new chats only.
+   */
+  function keptPermissions(id: string): ChatPermissions {
+    const own = chatPermissionsOf(id);
+    if (own) return own;
+    const now = permissionsFor(id, State.settings);
+    setChatPermissions(id, now);
+    return now;
+  }
+
+  /**
+   * What the chat on screen may do without asking: what was picked in it,
+   * else Settings → Security → Default permissions, which a new chat starts with.
+   */
+  function chatPermissions() {
+    return permissionsFor(State.chatId, State.settings);
   }
 
   /** The panel's title: with a local model or an API provider, the sandbox's chip beside it. */
@@ -3222,7 +3265,7 @@ export function buildPrompt(
     const cli = hasPermissions(State.settings.chatProvider);
     permBtn.hidden = !cli;
     if (!cli) closePermissions();
-    const mode = parsePermissionMode(storedPermissionMode(State.settings, State.settings.chatProvider), State.settings.chatProvider);
+    const mode = parsePermissionMode(storedPermissionMode(chatPermissions(), State.settings.chatProvider), State.settings.chatProvider);
     permBtn.classList.toggle("lit", mode !== "default");
     permBtn.title = `${t(STRINGS.permissions)} · ${t(modeText(providerDef(State.settings.chatProvider), mode).name)}`;
     permBtn.setAttribute("aria-label", permBtn.title);
@@ -3461,12 +3504,6 @@ export function buildPrompt(
     body.classList.remove("screening");
     screenBtn.classList.remove("open");
     panelChanged();
-  }
-
-  /** Forgets what the screen button or a shortcut added and was not sent yet (a new chat). */
-  function clearScreen() {
-    dropShots(shotPaths(screen));
-    screen = nextScreen(screen);
   }
 
   /** Remove all: every attachment waiting goes, the screenshots' files with them. */
@@ -3946,11 +3983,14 @@ export function buildPrompt(
         // with it (a run being stopped closes it as it ends).
         void Bridge.chatClose(c.id);
         drawIslandActivity();
-        // The chat on screen is gone: so is it from the screen.
+        // The chat on screen is gone: so is it from the screen, and what was
+        // written in it and not sent with it.
         if (c.id === State.chatId) {
           newChat();
+          dropDraft(c.id);
           return;
         }
+        dropDraft(c.id);
         Sound.play("pop");
         drawHistory();
       });
@@ -4002,8 +4042,11 @@ export function buildPrompt(
 
   function openChat(c: SavedChat) {
     // What an edit put back in the attachments was this chat's.
+    const wasEditing = editing != null;
     takeBackAgain();
     editing = null;
+    // What was written and attached here waits for this chat to come back.
+    parkDraft(wasEditing);
     const run = runs.get(c.id);
     if (run) {
       // Still being answered: it comes back as it is, its answer still coming.
@@ -4022,17 +4065,65 @@ export function buildPrompt(
     // a voice call's transcript has none, and leaves the picker as it is.
     useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model } : null));
     void checkChatModel(c.id);
-    State.droppedFile = null;
-    State.promptContext = null;
     if (picker.isOpen) picker.close();
     closeScreen();
-    clearScreen();
+    closePermissions();
+    // What was written and attached in it before, as it was left.
+    restoreDraft(c.id);
     closeHistory();
     Sound.play("blip");
     renderedCount = -1;
     State.notify();
     onHeightChange();
     input.focus();
+  }
+
+  /**
+   * The chat on screen goes off screen: what its field and its attachments
+   * hold waits for it in `drafts`, and the field is empty for the next one.
+   * The text of an edit given up (`editing`) is not a draft: it goes. The
+   * screenshots stay on disk with their draft (clearScreen deletes the others).
+   */
+  function parkDraft(editing: boolean) {
+    const text = editing ? "" : input.value ?? "";
+    const file = State.droppedFile && !State.droppedFile.sent ? State.droppedFile : null;
+    const waiting = { ...screen, autoFolders: [], autoTabs: [] };
+    const draft: ChatDraft = {
+      text,
+      droppedFile: file,
+      moreFiles: State.moreFiles,
+      promptContext: file || State.promptContext?.kind !== "file" ? State.promptContext : null,
+      screen: waiting,
+    };
+    const holds = text.trim() !== "" || file != null || draft.moreFiles.length > 0 || draft.promptContext != null || screenWaits(waiting);
+    if (holds) drafts.set(State.chatId, draft);
+    else drafts.delete(State.chatId);
+    setInput("");
+    State.droppedFile = null;
+    State.moreFiles = [];
+    State.promptContext = null;
+    screen = nextScreen(screen);
+  }
+
+  /** Chat `id` is on screen: its draft back in the field and the attachments, else an empty field. */
+  function restoreDraft(id: string) {
+    const draft = drafts.get(id);
+    drafts.delete(id);
+    if (!draft) return;
+    setInput(draft.text);
+    State.droppedFile = draft.droppedFile;
+    State.moreFiles = draft.moreFiles;
+    State.promptContext = draft.promptContext;
+    // What rides along by itself is what it is now, not what it was then.
+    screen = { ...draft.screen, autoFolders: screen.autoFolders ?? [], autoTabs: screen.autoTabs ?? [] };
+  }
+
+  /** A deleted chat's draft goes with it, its screenshots' files too. */
+  function dropDraft(id: string) {
+    const draft = drafts.get(id);
+    if (!draft) return;
+    drafts.delete(id);
+    dropShots(shotPaths(draft.screen));
   }
 
   /** The picker on a chat's provider and model, saved as the ones to start the next new chat with. */
@@ -4085,16 +4176,20 @@ export function buildPrompt(
     return Promise.race([check, late]).finally(() => clearTimeout(timer));
   }
 
-  /** A new chat; an answer still being written in the one before goes on in the background. */
+  /**
+   * A new chat; an answer still being written in the one before goes on in
+   * the background. It starts empty, with the default permissions; what was
+   * written and attached in the one before waits for it.
+   */
   function newChat() {
-    if (editing != null) setInput("");
+    const wasEditing = editing != null;
     takeBackAgain();
     editing = null;
+    parkDraft(wasEditing);
     State.startChat();
-    State.droppedFile = null;
-    State.promptContext = null;
     closeScreen();
-    clearScreen();
+    closePermissions();
+    restoreDraft(State.chatId);
     void Bridge.chatReset(State.chatId);
     if (picker.isOpen) picker.close();
     closeHistory();
@@ -5370,6 +5465,7 @@ export function buildPrompt(
         session: away ? away.session : State.chatSession,
         provider: own.chatProvider,
         model: modelFor(own, own.chatProvider),
+        permissions: keptPermissions(chatId),
         turn,
         text: "",
         activity,
@@ -5404,7 +5500,7 @@ export function buildPrompt(
       // agy's "/usage"), which would take it as its own words: it goes with
       // the next question.
       const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
-      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model });
+      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model }, run.permissions);
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one). Unless
       // it used the computer meanwhile: Rust kept the turn ("(No answer.)",
