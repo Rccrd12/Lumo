@@ -160,7 +160,7 @@ function scrollOf(read) {
 /** A window of this machine found by its exact title: a picture of it, as the user sees it. */
 function windowShot(title, file) {
   const ps = `${WIN32}
-$h = [LumoE2eWin]::FindWindow($null, '${title.replace(/'/g, "''")}')
+$h = [LumoE2eWin]::FindWindow([NullString]::Value, '${title.replace(/'/g, "''")}')
 $r = New-Object LumoE2eWin+R
 [void][LumoE2eWin]::GetWindowRect($h, [ref]$r)
 $w = $r.Ri - $r.L; $ht = $r.B - $r.T
@@ -174,7 +174,7 @@ $bmp.Save('${file.replace(/'/g, "''")}')`;
 /** The window's own X: WM_CLOSE, as a click on it sends. */
 function closeWindow(title) {
   const ps = `${WIN32}
-$h = [LumoE2eWin]::FindWindow($null, '${title.replace(/'/g, "''")}')
+$h = [LumoE2eWin]::FindWindow([NullString]::Value, '${title.replace(/'/g, "''")}')
 [void][LumoE2eWin]::PostMessage($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)`;
   spawnSync("powershell", ["-NoProfile", "-Command", ps], { stdio: "ignore", timeout: 15_000 });
 }
