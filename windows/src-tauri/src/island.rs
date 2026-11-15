@@ -408,9 +408,14 @@ fn effective_offset(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> f64
 const HIT_MARGIN: f64 = 14.0;
 
 #[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct CursorPayload {
     pub x: f64,
     pub y: f64,
+    /// A window is being moved or sized (platform::window_moving): the cursor
+    /// passing over the island is carrying it, so it does not open the island
+    /// (src/island/window-move.ts).
+    pub window_moving: bool,
 }
 
 /// The island shape in window-logical coordinates, pushed by the front end.
@@ -1593,7 +1598,9 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     });
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y });
+                // Asked only near the island, where a hover could open it.
+                let window_moving = !far && platform::window_moving();
+                let _ = win.emit("cursor", CursorPayload { x, y, window_moving });
             }
         }
     });
