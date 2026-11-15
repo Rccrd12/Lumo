@@ -1094,10 +1094,7 @@ function handleHook(island: Island, payload: HookPayload) {
         tool,
         // One of the user's tools: its name and what it is given, and the
         // supervisor's words for what it does.
-        command: email ? email.to.join(", ") : change ? change.command : userTool ? userToolTarget(userTool.name ?? tool, input)
-          // Arguments the relay couldn't read: as they came, not as JSON around them.
-          : payload.lumo_input_unread === true && typeof input.arguments === "string" ? `${tool} · ${input.arguments}`
-          : approvalTarget(tool, input),
+        command: email ? email.to.join(", ") : change ? change.command : userTool ? userToolTarget(userTool.name ?? tool, input) : approvalTarget(tool, input),
         ...(email ? { email } : change ? { reason: change.reason } : userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
@@ -1113,6 +1110,9 @@ function handleHook(island: Island, payload: HookPayload) {
           } : {}),
         // Never "not for me" for an email or a question: Lumo's own, never through normalize.rs.
         ...(payload.lumo_input_unread === true && !email && !change ? { unread: true } : {}),
+        // Arguments the relay couldn't read: as they came, not as JSON around them.
+        ...(payload.lumo_input_unread === true && !email && !change && !userTool && typeof input.arguments === "string"
+          ? { command: `${tool} · ${input.arguments}` } : {}),
         ...(agyGate ? { answerIn: agentName("antigravity") } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
