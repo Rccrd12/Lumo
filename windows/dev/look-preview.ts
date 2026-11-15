@@ -338,14 +338,12 @@ async function computerPreview(scene: string) {
       name: it ? "Salva con nome…" : "Save as…", role: it ? "voce di menu" : "menu item", app: it ? "Blocco note" : "Notepad" }) };
     hook({ hook_event_name: "PermissionRequest", cwd, request_id: "rc", tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [207, 236] }, lumo_island: true });
     // ?computer=card&paused: the card waiting while computer use is paused.
-    if (params.has("paused")) state({ steps: plan(2), paused: true, awayAt: Date.now() + 552_000 });
+    if (params.has("paused")) state({ steps: plan(2), paused: true });
     island.holdOpen();
     State.notify();
     return;
   }
-  // Paused: it stops by itself if left on (computer.rs AWAY), the banner counts down.
-  const awayAt = Date.now() + 552_000;
-  state({ steps: plan(2), paused: true, awayAt });
+  state({ steps: plan(2), paused: true });
   if (scene === "paused" || scene === "ask") return;
   if (scene === "reply") {
     // The question went (Rust sends it back as `asked`), then the agent's new plan answers it.
@@ -355,11 +353,11 @@ async function computerPreview(scene: string) {
     input.value = it ? "Salvalo in Documenti, non sul Desktop" : "Save it in Documents, not on the Desktop";
     input.dispatchEvent(new Event("input"));
     (document.querySelector(".cu-send") as HTMLButtonElement).click();
-    state({ steps: plan(2), paused: true, awayAt, asked: input.value });
+    state({ steps: plan(2), paused: true, asked: input.value });
     await wait(300);
     const changed = [...texts.slice(0, 4), it ? "Controllo che il file sia in Documenti" : "Check the file is in Documents"];
     changed.splice(3, 0, it ? "Apro la cartella Documenti" : "Open the Documents folder");
-    state({ steps: plan(2, changed), paused: true, awayAt, explanation: it
+    state({ steps: plan(2, changed), paused: true, explanation: it
       ? "Va bene: prima di salvare apro la cartella Documenti, e alla fine controllo lì. Riprendi quando vuoi."
       : "Sure: before saving I open the Documents folder, and check there at the end. Resume when you like." });
   }

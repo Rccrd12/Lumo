@@ -20156,18 +20156,6 @@
    "ru": "Пауза: это действие не будет выполнено. После «Продолжить» {agent} снова посмотрит на экран и спросит ещё раз.",
    "id": "Dijeda: tindakan ini tidak akan dilakukan. Setelah Lanjutkan, {agent} melihat layar lagi dan meminta lagi.",
    "it": "In pausa: questa azione non verrà fatta. Dopo Riprendi, {agent} guarda di nuovo lo schermo e la chiede ancora."
-  },
-  "stops by itself in {time}": {
-   "zh-Hans": "{time} 后自动停止",
-   "hi": "{time} में अपने आप रुकेगा",
-   "es": "se detiene solo en {time}",
-   "ar": "يتوقف تلقائيًا بعد {time}",
-   "fr": "s'arrête tout seul dans {time}",
-   "bn": "{time} পরে নিজে থেকে থামবে",
-   "pt-BR": "para sozinho em {time}",
-   "ru": "остановится сам через {time}",
-   "id": "berhenti sendiri dalam {time}",
-   "it": "si ferma da solo tra {time}"
   }
  }
 }

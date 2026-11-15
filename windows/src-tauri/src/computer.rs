@@ -59,10 +59,6 @@ const MAX_WAIT_SECS: f64 = 60.0;
 /// What the agent reads when the user stopped it for good (the plan's Stop, or the chat's).
 const STOPPED_TEXT: &str = "The user stopped you using the computer. Don't use Lumo's computer tools again in this turn: say briefly what you did and stop.";
 
-/// What the agent reads when a pause lasted AWAY: the user is away, and the
-/// computer is let go for the turn rather than waited for on and on.
-const AWAY_TEXT: &str = "The user paused you and has been away for a while, so Lumo stopped your use of the computer for this turn. Don't use Lumo's computer tools again in this turn: say briefly where you got to, so the user can ask you to go on.";
-
 /// What the agent reads while it has given no plan: nothing on the screen before it.
 const PLAN_FIRST: &str = "Nothing was done: Lumo lets you use the computer only once you have given the user your plan. \
 Call update_plan first with the plan for this job (one step is enough, for example Look at the screen): Lumo shows it to the user, and only then lets you use the computer. \
@@ -81,10 +77,6 @@ const HOLD_CHUNK: Duration = Duration::from_secs(40);
 /// lumo-hook's 90 s, with room for a screenshot and the pipe. An answer
 /// later than that is read by no one.
 const CALL_LIMIT: Duration = Duration::from_secs(80);
-/// A pause this long and the user is away: computer use stops for the turn
-/// (`stop_away`). Each call held meanwhile is a round of the model every
-/// HOLD_CHUNK: a pause left on for an hour would be about 90 of them.
-const AWAY: Duration = Duration::from_secs(10 * 60);
 /// The user's question to the agent while paused, at most (characters).
 const MAX_ASK: usize = 2000;
 /// Pictures of the screen kept for the recap, one per step done, at most.
@@ -214,10 +206,6 @@ struct Job {
     images: Vec<(String, String)>,
     /// The user stopped it for good (the plan's Stop).
     stopped: bool,
-    /// It stopped by itself after a pause of AWAY: the user is away.
-    away: bool,
-    /// When the pause under way stops computer use by itself (epoch ms).
-    away_at: Option<u64>,
 }
 
 impl Job {
@@ -233,8 +221,6 @@ impl Job {
         actions: 0,
         images: Vec::new(),
         stopped: false,
-        away: false,
-        away_at: None,
     };
 
     fn who(&self) -> Who {
@@ -363,13 +349,6 @@ fn state_value(job: &Job, engaged: bool, paused: bool, reveal: Option<&str>, now
     // permission card says its step only to a request of the same chat.
     if let Some(c) = &job.shown {
         v["chat"] = json!(c);
-    }
-    // Paused: when it stops by itself, should the user not come back.
-    if let (true, Some(at)) = (paused, job.away_at) {
-        v["awayAt"] = json!(at);
-    }
-    if job.away {
-        v["away"] = json!(true);
     }
     if let Some(r) = reveal {
         v["reveal"] = json!(r);
@@ -865,51 +844,13 @@ fn pause<R: Runtime>(app: &AppHandle<R>) {
     if !(TURN.load(Ordering::SeqCst) > 0) || STOPPED.load(Ordering::SeqCst) || PAUSED.swap(true, Ordering::SeqCst) {
         return;
     }
-    let pause = PAUSES.fetch_add(1, Ordering::SeqCst) + 1;
+    PAUSES.fetch_add(1, Ordering::SeqCst);
     crate::log::line("computer use: paused with Esc");
-    job().away_at = Some(now_ms() + AWAY.as_millis() as u64);
     release_stop_key_later(app);
     mouse_to_user();
     fx(app, json!({ "kind": "pause" }));
     emit_state(app, None);
     wake();
-    watch_away(app, pause);
-}
-
-/// The pause `pause` left on for AWAY: the user is away, and computer use
-/// stops for the turn (with AWAY_TEXT for the agent) rather than holding its
-/// calls, a round of the model each, for as long as they are gone. Asleep
-/// meanwhile, woken by every change (Resume, Stop, the turn's end).
-fn watch_away<R: Runtime>(app: &AppHandle<R>, pause: u64) {
-    let app = app.clone();
-    let turn = TURNS_STARTED.load(Ordering::SeqCst);
-    std::thread::spawn(move || {
-        if still_paused_at(Instant::now() + AWAY, pause, turn) {
-            crate::log::line("computer use: paused for too long, stopped");
-            stop_as(&app, true);
-        }
-    });
-}
-
-/// Waits while the pause `pause` of the turns started as `turn` goes on, until
-/// `until`: true when it still does then (not resumed, stopped or over).
-fn still_paused_at(until: Instant, pause: u64, turn: usize) -> bool {
-    let mut job = job();
-    loop {
-        let same = PAUSED.load(Ordering::SeqCst)
-            && PAUSES.load(Ordering::SeqCst) == pause
-            && TURNS_STARTED.load(Ordering::SeqCst) == turn
-            && TURN.load(Ordering::SeqCst) > 0
-            && !STOPPED.load(Ordering::SeqCst);
-        if !same {
-            return false;
-        }
-        let now = Instant::now();
-        if now >= until {
-            return true;
-        }
-        job = WAKE.wait_timeout(job, until - now).unwrap_or_else(|e| e.into_inner()).0;
-    }
 }
 
 /// Resumed (the island's Resume, never Esc): the agent has the mouse again,
@@ -919,11 +860,7 @@ fn resume<R: Runtime>(app: &AppHandle<R>) {
         return;
     }
     crate::log::line("computer use: resumed");
-    {
-        let mut job = job();
-        job.asked = None;
-        job.away_at = None;
-    }
+    job().asked = None;
     // Not from the shortcut's handler (the island's command): Esc may be taken here.
     if TURN.load(Ordering::SeqCst) > 0 && !STOPPED.load(Ordering::SeqCst) && ENGAGED.load(Ordering::SeqCst) {
         hold_stop_key(app);
@@ -937,23 +874,14 @@ fn resume<R: Runtime>(app: &AppHandle<R>) {
 
 /// Stopped for good (the plan's Stop): every later call of this turn is refused.
 pub fn stop<R: Runtime>(app: &AppHandle<R>) {
-    stop_as(app, false);
-}
-
-/// Stopped for good: by the user, or (`away`) by a pause left on for AWAY.
-fn stop_as<R: Runtime>(app: &AppHandle<R>, away: bool) {
     if !(TURN.load(Ordering::SeqCst) > 0) || STOPPED.swap(true, Ordering::SeqCst) {
         return;
     }
-    if !away {
-        crate::log::line("computer use: stopped by the user");
-    }
+    crate::log::line("computer use: stopped by the user");
     PAUSED.store(false, Ordering::SeqCst);
     {
         let mut job = job();
         job.stopped = true;
-        job.away = away;
-        job.away_at = None;
         job.asked = None;
         job.message = None;
     }
@@ -1697,8 +1625,6 @@ enum Held {
     Waited,
     /// Stopped for good, or the turn is over.
     Stopped,
-    /// Stopped by itself: the pause lasted AWAY.
-    Away,
 }
 
 /// What a call answers after it was `held` while paused, or None when it
@@ -1722,7 +1648,6 @@ fn held_text(held: &Held, looking: bool, cut: Option<&str>) -> Option<String> {
     let answer = "Answer them in update_plan's explanation, in their language, in one short sentence, and change the plan if needed";
     let text = match held {
         Held::Stopped => format!("{first}{STOPPED_TEXT}"),
-        Held::Away => format!("{first}{AWAY_TEXT}"),
         Held::Resumed if looking && cut.is_none() => return None,
         Held::Resumed if cut.is_some() => format!("{first}They have resumed: take a screenshot first to see where it got to, then go on."),
         Held::Resumed => format!("{nothing}The user paused you and then resumed: the screen may have changed meanwhile. Take a screenshot first, then go on."),
@@ -1752,7 +1677,7 @@ fn hold(until: Instant, chat: &str) -> Held {
     let mut job = job();
     loop {
         if stopped() || !(TURN.load(Ordering::SeqCst) > 0) {
-            return if job.away { Held::Away } else { Held::Stopped };
+            return Held::Stopped;
         }
         let now = Instant::now();
         if now < until && job.asks(chat) {
@@ -1816,7 +1741,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         return refuse("Lumo lets you use the computer only while you answer in the island's chat.");
     }
     if STOPPED.load(Ordering::SeqCst) {
-        return refuse(stopped_text());
+        return refuse(STOPPED_TEXT);
     }
     let action = match parse(&tool, &input) {
         Ok(a) => a,
@@ -1855,7 +1780,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         release_stop_key(app);
         disengage(app);
         mouse_to_user();
-        return refuse(stopped_text());
+        return refuse(STOPPED_TEXT);
     }
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || run(&app2, action, start, &chat, deadline))
@@ -1881,7 +1806,7 @@ fn run(app: &AppHandle, mut action: Action, start: bool, chat: &str, deadline: I
         }
         let Some(one) = one_at_a_time(deadline) else {
             if stopped() {
-                return refuse(format!("Stopped before it started. {}", stopped_text()));
+                return refuse(format!("Stopped before it started. {STOPPED_TEXT}"));
             }
             if PAUSED.load(Ordering::SeqCst) {
                 return refuse(held_text(&Held::Waited, looking, None).unwrap_or_default());
@@ -1890,7 +1815,7 @@ fn run(app: &AppHandle, mut action: Action, start: bool, chat: &str, deadline: I
         };
         // Waiting on an action that was stopped (the plan's Stop, the chat's): not done after it.
         if stopped() {
-            return refuse(format!("Stopped before it started. {}", stopped_text()));
+            return refuse(format!("Stopped before it started. {STOPPED_TEXT}"));
         }
         // Paused while it waited for the one before: held as any call, and
         // a look goes ahead once resumed.
@@ -1927,7 +1852,7 @@ fn run(app: &AppHandle, mut action: Action, start: bool, chat: &str, deadline: I
             }
             v
         }
-        Err(e) if STOPPED.load(Ordering::SeqCst) => refuse(format!("{e} {}", stopped_text())),
+        Err(e) if STOPPED.load(Ordering::SeqCst) => refuse(format!("{e} {STOPPED_TEXT}")),
         // Cut by a pause: held as any call while paused, then told what happened.
         Err(e) if PAUSED.load(Ordering::SeqCst) => {
             job().last = Some(now_ms());
@@ -1992,11 +1917,6 @@ fn keyboard_back(app: &AppHandle) {
         crate::platform::set_activating(&win, false);
     }
     imp::refocus_target();
-}
-
-/// What a call refused after the stop reads: the user's Stop, or a pause left on for AWAY.
-fn stopped_text() -> &'static str {
-    if job().away { AWAY_TEXT } else { STOPPED_TEXT }
 }
 
 fn stopped() -> bool {
@@ -3091,12 +3011,6 @@ mod tests {
         PAUSED.store(true, Ordering::SeqCst);
         assert!(interrupted() && !stopped());
         assert_eq!(hold(soon(30), "c2"), Held::Waited);
-        // A pause left on: still on at its end (the user is away), unless it
-        // is another pause, or another turn's.
-        let (pause, turn) = (PAUSES.load(Ordering::SeqCst), TURNS_STARTED.load(Ordering::SeqCst));
-        assert!(still_paused_at(soon(30), pause, turn));
-        assert!(!still_paused_at(soon(5000), pause + 1, turn), "a later pause has its own wait");
-        assert!(!still_paused_at(soon(5000), pause, turn + 1));
         // The user's question reaches a call of the chat whose plan they read, held meanwhile…
         job().message = Some("Use the other tab".into());
         assert_eq!(hold(soon(30), "c1"), Held::Waited, "not another chat's");
@@ -3152,12 +3066,6 @@ mod tests {
         drop(held);
         TURN.store(0, Ordering::SeqCst);
         assert_eq!(hold(soon(5000), "c1"), Held::Stopped, "no turn: nothing waits");
-        // Stopped by a pause left on: the held call says the user is away.
-        job().away = true;
-        assert_eq!(hold(soon(5000), "c1"), Held::Away);
-        assert_eq!(stopped_text(), AWAY_TEXT);
-        job().away = false;
-        assert_eq!(stopped_text(), STOPPED_TEXT);
         STOPPED.store(true, Ordering::SeqCst);
         let since = Instant::now();
         countdown(soon(10_000));
@@ -3242,13 +3150,6 @@ mod tests {
         assert_eq!(state_value(&job, true, false, Some("step"), 0)["revealMs"], STEP_MS);
         // Whose plan it is, for the permission card's step.
         assert_eq!(v["chat"], "c1");
-        // Paused: when it stops by itself; never said while it runs.
-        job.away_at = Some(600_042);
-        assert_eq!(state_value(&job, true, true, None, 42)["awayAt"], 600_042);
-        assert!(state_value(&job, true, false, None, 42).get("awayAt").is_none());
-        assert!(state_value(&job, true, true, None, 42).get("away").is_none());
-        job.away = true;
-        assert_eq!(state_value(&job, false, false, None, 42)["away"], true);
         // Another provider: its own name and colour, never Claude's.
         let codex = Job { who: Some(Who::of("codex")), ..Job::EMPTY };
         assert_eq!(state_value(&codex, false, false, None, 0)["agent"], "Codex");
@@ -3280,8 +3181,6 @@ mod tests {
         }
         assert!(!BUSY.contains("Paused"), "busy is not paused");
         assert_eq!(held_text(&Held::Stopped, true, None).unwrap(), STOPPED_TEXT);
-        assert_eq!(held_text(&Held::Away, false, None).unwrap(), AWAY_TEXT);
-        assert!(AWAY_TEXT.contains("away") && AWAY_TEXT.contains("where you got to") && AWAY_TEXT.contains("Don't use Lumo's computer tools"));
         // An action cut by the pause: what the error said, and never made again blindly.
         let cut = held_text(&Held::Resumed, false, Some("Stopped after 12 characters.")).unwrap();
         assert!(cut.contains("cut midway (Stopped after 12 characters)") && cut.contains("done only in part") && !cut.contains("Nothing was done"), "{cut}");

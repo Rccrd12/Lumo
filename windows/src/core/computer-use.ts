@@ -47,10 +47,6 @@ export interface ComputerState {
   since: number;
   /** The island chat whose plan this is ("" for Gemini Live's helper): a permission card says its step only to the same chat's request. */
   chat?: string;
-  /** Paused: when it stops by itself should the user not come back (epoch ms, computer.rs AWAY). */
-  awayAt?: number;
-  /** It stopped by itself: the pause lasted too long. */
-  away?: boolean;
 }
 
 /** A step of the recap: the plan's step, how it ended, and a small picture of the screen when it was done. */

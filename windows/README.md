@@ -1097,10 +1097,8 @@ plan, with no API key.
   again; Esc in the field closes it, nothing sent) and **Resume**. Only
   Resume gives Claude the mouse back: Esc pressed again, by a panic double
   press or in another app, never does. While it is paused, Esc is yours
-  again, for your apps and the island. A pause left on for 10 minutes stops
-  it by itself, as Stop does (the banner counts it down): Claude says where
-  it got to, rather than waking every 40 seconds for as long as you are away.
-  No picture for the recap is taken while it is paused.
+  again, for your apps and the island. The pause lasts until you resume or
+  stop it, or the answer ends; no picture for the recap is taken meanwhile.
 - **You can see it work**: the screen it uses glows softly around its edges
   (on whichever display it is), the mouse turns into an orange arrow and
   glides from point to point instead of jumping, and each action shows where
