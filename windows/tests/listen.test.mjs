@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  activeWatches, amountOf, answersInChat, calendarDue, calendarKey, firedTitle, listenMessage, listeningLine, readPullRequest, takeListens, untilText, watchColor, watchLabel,
+  activeWatches, amountOf, answersInChat, calendarDue, calendarKey, firedTitle, listenMessage, listeningLine, readGitHubTarget, readPullRequest, takeListens, takesText, untilText, watchColor, watchLabel,
 } from "../src/core/listen.ts";
 
 test("a listen line is taken out of the answer, with what to do then", () => {
@@ -262,4 +262,60 @@ test("a line for Lumo shown as code or quoted asks for nothing", () => {
   const wrapped = takeListens("Listening.\n```\n[[listen o/r#3 merged]]\n```");
   assert.equal(wrapped.listens.length, 1);
   assert.equal(wrapped.text, "Listening.");
+});
+
+// ── The rest of GitHub (listen_github.rs) ─────────────────────────────────────
+
+test("a line on the rest of GitHub is read like one on this PC, its text in quotes", () => {
+  const got = takeListens('ok\n[[listen github.workflow "Rccrd12/Lumo@main" every finished "Windows beta": tell me what got in]]\n[[listen github.stars Rccrd12/Lumo stars 500]]');
+  assert.equal(got.text, "ok");
+  assert.deepEqual(got.listens, [
+    { source: "github.workflow", target: "Rccrd12/Lumo@main", text: "Windows beta", amount: 0, until: "finished", mode: "every", task: "tell me what got in", repo: "", number: 0 },
+    { source: "github.stars", target: "Rccrd12/Lumo", text: "", amount: 500, until: "stars", mode: "once", task: "", repo: "", number: 0 },
+  ]);
+  assert.deepEqual(takeListens("[[listen github.branch o/r@main deployed]]").unread, ["[[listen github.branch o/r@main deployed]]"]);
+  assert.deepEqual(takeListens("[[unlisten github.branch o/r@main]]").stops, [{ source: "github.branch", repo: "", number: 0, target: "o/r@main" }]);
+});
+
+test("a pull request's new comments, reviews and commits can listen every time", () => {
+  const got = takeListens("[[listen o/r#3 every comment: answer it]]\n[[listen o/r#3 every pushed]]");
+  assert.deepEqual(got.listens.map((l) => [l.until, l.mode, l.task]), [["comment", "every", "answer it"], ["commit", "every", ""]]);
+});
+
+test("what a person writes for the rest of GitHub is kept as Rust keeps it", () => {
+  assert.equal(readGitHubTarget("github.branch", "commit", "Rccrd12/Lumo@main"), "Rccrd12/Lumo@main");
+  assert.equal(readGitHubTarget("github.branch", "commit", "https://github.com/Rccrd12/Lumo/tree/feature/x"), "Rccrd12/Lumo@feature/x");
+  assert.equal(readGitHubTarget("github.branch", "commit", "Rccrd12/Lumo"), null);
+  assert.equal(readGitHubTarget("github.branch", "commit", "o/r@../x"), null);
+  assert.equal(readGitHubTarget("github.workflow", "finished", "Rccrd12/Lumo"), "Rccrd12/Lumo");
+  assert.equal(readGitHubTarget("github.workflow", "finished", "o/r main"), "o/r@main");
+  assert.equal(readGitHubTarget("github.issue", "comment", "o/r#12"), "o/r#12");
+  assert.equal(readGitHubTarget("github.issue", "comment", "https://github.com/o/r/issues/12"), "o/r#12");
+  assert.equal(readGitHubTarget("github.issue", "opened", "o/r#12"), null);
+  assert.equal(readGitHubTarget("github.issue", "opened", "o/r.git"), "o/r");
+  assert.equal(readGitHubTarget("github.notifications", "any", ""), "all");
+  assert.equal(readGitHubTarget("github.notifications", "any", "o/r"), "o/r");
+  assert.equal(readGitHubTarget("github.stars", "star", "github.com/o/r/"), "o/r");
+  assert.equal(readGitHubTarget("github.stars", "star", "o/r/x"), null);
+  assert.equal(readGitHubTarget("github.release", "release", "o"), null);
+});
+
+test("a watch on the rest of GitHub is called by what it listens to, and speaks as GitHub", () => {
+  const w = (source, target, text = "", until = "finished") => ({ id: 1, repo: "", number: 0, until, task: "", chatId: "c", startedAt: 0, source, target, text });
+  assert.equal(watchLabel(w("github.workflow", "o/r@main", "Windows beta")), "Windows beta · main");
+  assert.equal(watchLabel(w("github.workflow", "o/r")), "Workflow · o/r");
+  assert.equal(watchLabel(w("github.branch", "o/r@main")), "o/r · main");
+  assert.equal(watchLabel(w("github.issue", "o/r#12")), "o/r#12");
+  assert.equal(watchLabel(w("github.issue", "o/r")), "Issues · o/r");
+  assert.equal(watchLabel(w("github.notifications", "all")), "Notifications");
+  assert.equal(watchLabel(w("github.deploy", "o/r", "production")), "Deploys · production");
+  const beta = w("github.workflow", "o/r@main", "Windows beta");
+  assert.equal(untilText(beta), "It finishes");
+  assert.equal(firedTitle(beta), "GitHub");
+  assert.equal(watchColor(beta), watchColor({ ...beta, source: "github.pr" }));
+  assert.ok(listenMessage({ watch: { ...beta, task: "x" }, met: true, summary: "Windows beta succeeded on main" }).startsWith("GitHub: «Windows beta succeeded on main»"));
+  assert.equal(listeningLine([beta]), "Listens to Windows beta · main");
+  assert.deepEqual(amountOf("github.stars", "stars"), { default: 100, max: 100_000_000 });
+  assert.equal(amountOf("github.stars", "star"), null);
+  assert.ok(takesText("github.workflow", "finished") && takesText("github.issue", "opened") && !takesText("github.issue", "comment") && !takesText("github.stars", "star"));
 });

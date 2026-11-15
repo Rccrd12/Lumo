@@ -19,12 +19,19 @@ import { pillDefinition } from "./pills";
 /** GitHub's colour (its pill's), for what the island says about listening. */
 export const LISTEN_COLOR = pillDefinition("integration_github")?.color ?? "#F4505E";
 
-/** What a watch on a pull request waits for (listen.rs UNTILS). */
-export type PrUntil = "checks" | "green" | "approved" | "ready" | "merged" | "closed";
-export const LISTEN_UNTILS: PrUntil[] = ["checks", "green", "approved", "ready", "merged", "closed"];
+/** What a watch on a pull request waits for (listen.rs UNTILS): its state, or what happens on it. */
+export type PrUntil = "checks" | "green" | "approved" | "ready" | "merged" | "closed" | "comment" | "review" | "changes" | "commit";
+export const LISTEN_UNTILS: PrUntil[] = ["checks", "green", "approved", "ready", "merged", "closed", "comment", "review", "changes", "commit"];
+
+/** The rest of GitHub (listen_github.rs SOURCES). */
+export const GITHUB_SOURCES = [
+  "github.issue", "github.branch", "github.workflow", "github.release", "github.deploy",
+  "github.notifications", "github.security", "github.discussion", "github.stars",
+] as const;
+export type GitHubSource = (typeof GITHUB_SOURCES)[number];
 
 /** Where a watch listens (listen.rs SOURCES): GitHub, this PC, or what Lumo hears. */
-export type ListenSource = "github.pr" | "fs" | "process" | "web" | "email" | "service" | "windows" | "agent" | "webhook" | "tool";
+export type ListenSource = "github.pr" | "fs" | "process" | "web" | "email" | "service" | "windows" | "agent" | "webhook" | "tool" | GitHubSource;
 export type LocalSource = Exclude<ListenSource, "github.pr">;
 
 /** What a watch on this PC waits for, by source (listen_local.rs). */
@@ -38,14 +45,28 @@ export const LOCAL_UNTILS = {
   agent: ["finished", "permission", "failed"],
   webhook: ["called"],
   tool: ["changed", "contains"],
+  "github.issue": ["opened", "comment", "labeled", "assigned", "closed", "reopened"],
+  "github.branch": ["commit", "checks", "green", "red"],
+  "github.workflow": ["finished", "succeeded", "failed", "started"],
+  "github.release": ["release", "prerelease", "tag"],
+  "github.deploy": ["started", "succeeded", "failed", "waiting"],
+  "github.notifications": ["mention", "review_requested", "assign", "comment", "any"],
+  "github.security": ["dependabot", "code_scanning", "secret", "critical"],
+  "github.discussion": ["opened", "answer", "answered"],
+  "github.stars": ["star", "fork", "watcher", "stars"],
 } as const;
 export type LocalUntil = (typeof LOCAL_UNTILS)[LocalSource][number];
+
+function LOCAL_UNTILS_OF(source: LocalSource): readonly string[] {
+  return LOCAL_UNTILS[source];
+}
 export type ListenUntil = PrUntil | LocalUntil;
 
 /** Each source's colour, for its tile and what the island says. */
 export const SOURCE_COLOR: Record<LocalSource, string> = {
   fs: "#F5A524", process: "#2DD4A7", web: "#60A5FA", email: "#EA4335", service: "#C9956A", windows: "#F5F6F8",
   agent: "#D97757", webhook: "#7DD3FC", tool: "#A78BFA",
+  ...Object.fromEntries(GITHUB_SOURCES.map((s) => [s, LISTEN_COLOR])) as Record<GitHubSource, string>,
 };
 
 /** The services a watch can listen to (listen_local.rs SERVICES): its name in a watch, as shown, its pill. */
@@ -80,13 +101,14 @@ export function amountOf(source: ListenSource, until: string): { default: number
   if (source === "windows" && until === "battery_low") return { default: 20, max: 99 };
   if (source === "windows" && until === "back") return { default: 5, max: 1440 };
   if (source === "tool") return { default: 15, max: 1440 };
+  if (source === "github.stars" && until === "stars") return { default: 100, max: 100_000_000 };
   return null;
 }
 
 /** Once: it ends when it fires. Every: once for each new commit (listen.rs MODES). */
 export type ListenMode = "once" | "every";
-/** What can listen every time (listen.rs EVERY_UNTILS). */
-export const EVERY_UNTILS: PrUntil[] = ["checks", "green"];
+/** What can listen every time on a pull request (listen.rs EVERY_UNTILS). */
+export const EVERY_UNTILS: PrUntil[] = ["checks", "green", "comment", "review", "changes", "commit"];
 
 /** A watch as Rust keeps it. */
 export interface ListenWatch {
@@ -169,12 +191,20 @@ export const LISTEN_TEXT = {
   ready: N_("Waits for {pr} to be ready"),
   merged: N_("Waits for the merge {pr}"),
   closed: N_("Waits for {pr} to close"),
+  comment: N_("Listens to {what}"),
+  review: N_("Listens to {what}"),
+  changes: N_("Listens to {what}"),
+  commit: N_("Listens to {what}"),
   many: N_("Listening ({count} PRs)"),
   manyThings: N_("Listening ({count})"),
 };
 
+/** The closed island's line for a watch on the rest of GitHub: what it listens to. */
+const GITHUB_LISTEN_TEXT = Object.fromEntries(GITHUB_SOURCES.map((s) => [s, Object.fromEntries(LOCAL_UNTILS_OF(s).map((u) => [u, N_("Listens to {what}")]))])) as Record<GitHubSource, Record<string, string>>;
+
 /** The closed island's line for a watch on this PC. */
 const LOCAL_LISTEN_TEXT: Record<LocalSource, Record<string, string>> = {
+  ...GITHUB_LISTEN_TEXT,
   fs: {
     created: N_("Waits for files in {what}"),
     changed: N_("Waits for changes in {what}"),
@@ -241,6 +271,10 @@ export const UNTIL_TEXT: Record<PrUntil, string> = {
   ready: N_("It is ready to merge"),
   merged: N_("It is merged"),
   closed: N_("It is closed"),
+  comment: N_("A new comment"),
+  review: N_("A new review"),
+  changes: N_("Changes are requested"),
+  commit: N_("A new commit"),
 };
 
 /** The same, for a watch on this PC. */
@@ -297,11 +331,143 @@ export const LOCAL_UNTIL_TEXT: Record<LocalSource, Record<string, string>> = {
     changed: N_("It says something new"),
     contains: N_("It says a text"),
   },
+  "github.issue": {
+    opened: N_("An issue is opened"),
+    comment: N_("A new comment"),
+    labeled: N_("A label is added"),
+    assigned: N_("It is assigned"),
+    closed: N_("It is closed"),
+    reopened: N_("It is reopened"),
+  },
+  "github.branch": {
+    commit: N_("A new commit"),
+    checks: N_("Its checks finish"),
+    green: N_("Its checks pass"),
+    red: N_("Its checks fail"),
+  },
+  "github.workflow": {
+    finished: N_("It finishes"),
+    succeeded: N_("It succeeds"),
+    failed: N_("It fails"),
+    started: N_("It starts"),
+  },
+  "github.release": {
+    release: N_("A release is published"),
+    prerelease: N_("A pre-release is published"),
+    tag: N_("A new tag"),
+  },
+  "github.deploy": {
+    started: N_("It starts"),
+    succeeded: N_("It succeeds"),
+    failed: N_("It fails"),
+    waiting: N_("It waits for approval"),
+  },
+  "github.notifications": {
+    mention: N_("I'm mentioned"),
+    review_requested: N_("My review is requested"),
+    assign: N_("Something is assigned to me"),
+    comment: N_("A comment where I take part"),
+    any: N_("Any notification"),
+  },
+  "github.security": {
+    dependabot: N_("A Dependabot alert"),
+    code_scanning: N_("A code scanning alert"),
+    secret: N_("A secret in the code"),
+    critical: N_("A critical alert"),
+  },
+  "github.discussion": {
+    opened: N_("A discussion is opened"),
+    answer: N_("A new answer"),
+    answered: N_("An answer is marked"),
+  },
+  "github.stars": {
+    star: N_("A new star"),
+    fork: N_("A new fork"),
+    watcher: N_("A new watcher"),
+    stars: N_("It reaches a number of stars"),
+  },
 };
 
-/** Whether the watch listens on GitHub (older files say no source). */
+/** Whether the watch listens to a pull request on GitHub (older files say no source). */
 export function onGitHub(w: { source?: ListenSource }): boolean {
   return !w.source || w.source === "github.pr";
+}
+
+/** Whether the watch listens anywhere on GitHub: a pull request, or the rest (listen_github.rs). */
+export function fromGitHub(w: { source?: ListenSource }): boolean {
+  return onGitHub(w) || (GITHUB_SOURCES as readonly string[]).includes(w.source ?? "");
+}
+
+/** Whether a source is one of the rest of GitHub's. */
+export function isGitHubSource(source: ListenSource): source is GitHubSource {
+  return (GITHUB_SOURCES as readonly string[]).includes(source);
+}
+
+/** Whether a watch on the rest of GitHub takes a text (listen_github.rs takes_text): a label, a workflow, an environment, a category. */
+export function takesText(source: ListenSource, until: string): boolean {
+  if (source === "github.issue") return until !== "comment";
+  if (source === "github.workflow" || source === "github.deploy") return true;
+  return source === "github.discussion" && until === "opened";
+}
+
+/** The repository a watch on GitHub names (`owner/repo@main`, `owner/repo#12`: owner/repo). */
+function repoOf(target: string): string {
+  return target.split(/[@#]/)[0];
+}
+
+/** How a watch on the rest of GitHub is called (listen_github.rs label). */
+function gitHubLabel(source: GitHubSource, target: string, text: string): string {
+  const repo = repoOf(target);
+  const branch = target.includes("@") ? target.slice(target.indexOf("@") + 1) : "";
+  const kind = (name: string, what: string) => `${t(name)} · ${what}`;
+  switch (source) {
+    case "github.issue": return target.includes("#") ? target : kind(N_("Issues"), repo);
+    case "github.branch": return target.replace("@", " · ");
+    case "github.workflow": return `${text || t(N_("Workflow"))} · ${branch || repo}`;
+    case "github.release": return kind(N_("Releases"), repo);
+    case "github.deploy": return kind(N_("Deploys"), text || repo);
+    case "github.notifications": return target === "all" ? t(N_("Notifications")) : kind(N_("Notifications"), repo);
+    case "github.security": return kind(N_("Security"), repo);
+    case "github.discussion": return kind(N_("Discussions"), repo);
+    case "github.stars": return kind(N_("Stars"), repo);
+  }
+}
+
+const GH_NAME = "[A-Za-z0-9_.-]+";
+const GH_REPO = new RegExp(`^(?:https?:\\/\\/)?(?:www\\.)?(?:github\\.com\\/)?(${GH_NAME})\\/(${GH_NAME}?)(?:\\.git)?\\/?$`, "i");
+
+/** `owner/repo`, from what a person wrote (a link too); null when it isn't one. */
+function readRepo(text: string): string | null {
+  const m = GH_REPO.exec(text.trim());
+  return m && m[1] !== "." && m[1] !== ".." && m[2] && m[2] !== "." && m[2] !== ".." ? `${m[1]}/${m[2]}` : null;
+}
+
+/**
+ * What a person wrote for a watch on the rest of GitHub, as listen_github.rs
+ * keeps it (`owner/repo`, `owner/repo@main`, `owner/repo#12`, `all`), or
+ * null when it isn't one. `until`: an issue's `opened` takes no number.
+ */
+export function readGitHubTarget(source: GitHubSource, until: string, text: string): string | null {
+  const given = text.trim().replace(/^["“]|["”]$/g, "").trim();
+  if (source === "github.notifications" && (given === "" || given.toLowerCase() === "all" || given === "*")) return "all";
+  const branch = /^(.+?)(?:@|\s+|\/tree\/)([A-Za-z0-9_.+/-]+)$/.exec(given);
+  if (source === "github.branch" || source === "github.workflow") {
+    if (branch) {
+      const repo = readRepo(branch[1]);
+      const name = branch[2].replace(/^refs\/heads\//, "");
+      const ok = repo && name && !name.includes("..") && !/^[/.-]/.test(name) && !/[/.]$/.test(name);
+      return ok ? `${repo}@${name}` : null;
+    }
+    return source === "github.workflow" ? readRepo(given) : null;
+  }
+  if (source === "github.issue") {
+    // `owner/repo#12`, or a link to the issue.
+    const one = /^(.+?)(?:\s*#\s*|\/issues\/)(\d+)\/?$/.exec(given);
+    const repo = one ? readRepo(one[1]) : null;
+    const number = one ? parseInt(one[2], 10) : 0;
+    if (repo && number > 0) return until === "opened" ? null : `${repo}#${number}`;
+  }
+  return readRepo(given);
 }
 
 /** What the event is called, as "when …", whatever the source. */
@@ -321,6 +487,7 @@ function lastPart(path: string): string {
 export function watchLabel(w: ListenWatch): string {
   if (onGitHub(w)) return `${w.repo}#${w.number}`;
   const target = w.target ?? "";
+  if (w.source && isGitHubSource(w.source)) return gitHubLabel(w.source, target, w.text ?? "");
   if (w.source === "fs") return lastPart(target);
   if (w.source === "process") return w.until.startsWith("port_") ? `:${target}` : target;
   if (w.source === "email") return w.until === "new" ? t("Email") : target;
@@ -346,6 +513,10 @@ const UNTIL_WORDS: Record<string, PrUntil> = {
   ready: "ready", mergeable: "ready",
   merged: "merged",
   closed: "closed",
+  comment: "comment", comments: "comment", commented: "comment",
+  review: "review", reviews: "review",
+  changes: "changes", changes_requested: "changes",
+  commit: "commit", commits: "commit", push: "commit", pushed: "commit",
 };
 
 /** Words before the event that mean listening every time. */
@@ -429,10 +600,11 @@ const SOURCE_WORDS: Record<string, LocalSource> = {
   agent: "agent", agents: "agent",
   webhook: "webhook", hook: "webhook",
   tool: "tool",
+  ...Object.fromEntries(GITHUB_SOURCES.map((s) => [s, s])) as Record<GitHubSource, GitHubSource>,
 };
 
 /** The source and its target: in quotes, or one word without spaces (`process node.exe`). */
-const TARGET_RE = /^\s*([a-z]+)\s+(?:["“]([^"”]+)["”]|([^\s"“”]+))/i;
+const TARGET_RE = /^\s*([a-z]+(?:\.[a-z]+)?)\s+(?:["“]([^"”]+)["”]|([^\s"“”]+))/i;
 
 /**
  * A watch on this PC: `fs "C:\path" every download: task`,
@@ -566,7 +738,7 @@ export function listenMessage(fired: ListenFired): string {
     ? planned || t(LISTEN_TELL)
     : planned ? t(LISTEN_NOT_MET_TASK, { task: planned }) : t(LISTEN_NOT_MET);
   const seen = fired.summary.replace(/[«»]/g, '"').replace(/\s+/g, " ").trim();
-  return `${onGitHub(fired.watch) ? "GitHub" : "Lumo"}: «${seen}»\n${t(LISTEN_QUOTED)}\n${task}`;
+  return `${fromGitHub(fired.watch) ? "GitHub" : "Lumo"}: «${seen}»\n${t(LISTEN_QUOTED)}\n${task}`;
 }
 
 /** Said under what a watch saw, before the user's task. */
@@ -592,7 +764,7 @@ export function answersInChat(fired: ListenFired): boolean {
 
 /** What the island says before an event's summary: "GitHub", or the watch's own name. */
 export function firedTitle(w: ListenWatch): string {
-  return onGitHub(w) ? "GitHub" : watchLabel(w);
+  return fromGitHub(w) ? "GitHub" : watchLabel(w);
 }
 
 /**
@@ -631,7 +803,7 @@ export function listeningLine(all: ListenWatch[]): string | null {
   if (watches.length === 0) return null;
   if (watches.length > 1) return t(watches.every(onGitHub) ? LISTEN_TEXT.many : LISTEN_TEXT.manyThings, { count: watches.length });
   const w = watches[0];
-  if (onGitHub(w)) return t(LISTEN_TEXT[w.until as PrUntil] ?? LISTEN_TEXT.merged, { pr: `#${w.number}` });
+  if (onGitHub(w)) return t(LISTEN_TEXT[w.until as PrUntil] ?? LISTEN_TEXT.merged, { pr: `#${w.number}`, what: `#${w.number}` });
   const text = LOCAL_LISTEN_TEXT[w.source as LocalSource]?.[w.until];
   const what = w.source === "process" && w.until.startsWith("port_") ? (w.target ?? "") : watchLabel(w);
   return text ? t(text, { what, text: w.text ?? "" }) : watchLabel(w);

@@ -157,7 +157,11 @@ time, then say in a few words that it is set.",
 process: a program running on this PC, or a port on it. web: a web page. email: the user's inbox (the Email pill). \
 service: one of the user's services (vercel, stripe, n8n, resend, notion, calcom) or their calendar. windows: Windows \
 itself. agent: a coding agent's session (Claude Code, Codex and the others). webhook: an address on this PC that other \
-programs can call. tool: one of the user's own tools, run now and then.",
+programs can call. tool: one of the user's own tools, run now and then. The rest of GitHub: github.issue (a repository's \
+issues, or one issue), github.branch (a branch's commits and checks), github.workflow (a GitHub Actions workflow's runs), \
+github.release (releases and tags), github.deploy (deployments), github.notifications (the user's own notifications: \
+mentions, review requests), github.security (Dependabot, code scanning and secret scanning alerts), github.discussion, \
+github.stars (stars, forks, watchers).",
             },
             "target": {
                 "type": "string",
@@ -166,7 +170,10 @@ for fs, the full path (C:\\Users\\name\\Downloads, or ~\\Downloads); for process
 with port_open or port_closed, the port number; for web, the link; for email, the sender (from) or words of the \
 subject (subject), nothing for new; for service, the service, or calendar; for windows, the app whose notifications \
 to wait for, else nothing; for agent, any or one of claude, codex, gemini, antigravity, cursor, copilot, opencode, \
-amp, hermes, muse; for webhook, a short name; for tool, the tool's id.",
+amp, hermes, muse; for webhook, a short name; for tool, the tool's id. For github.branch, owner/repository@branch; for \
+github.workflow, owner/repository, or owner/repository@branch for the runs on one branch; for github.issue, \
+owner/repository, or owner/repository#number for one issue; for github.notifications, all or owner/repository; for the \
+other github sources, owner/repository.",
             },
         });
         let mut watch = target.clone();
@@ -179,25 +186,35 @@ folder). process: started, exited, port_open, port_closed. web: changed (what th
 (the page shows text), gone (the page no longer shows text). email: new, from, subject. service: event, succeeded, failed, or soon for the calendar (an \
 event starts within amount minutes). windows: notification, battery_low, plugged, unplugged, offline, online, usb (a \
 drive is connected), back (the user is back after amount minutes away). agent: finished, permission (it asks for a \
-permission or a reply), failed. webhook: called. tool: changed (what it prints), contains.",
+permission or a reply), failed. webhook: called. tool: changed (what it prints), contains. github.pr also: comment, \
+review, changes (changes requested), commit (a new commit pushed). github.issue: opened, comment, labeled, assigned, \
+closed, reopened. github.branch: commit, checks, green, red (checks failed). github.workflow: finished, succeeded, \
+failed, started. github.release: release, prerelease, tag. github.deploy: started, succeeded, failed, waiting (for \
+approval). github.notifications: mention, review_requested, assign, comment, any. github.security: dependabot, \
+code_scanning, secret, critical. github.discussion: opened, answer, answered (an answer marked). github.stars: star, \
+fork, watcher, stars (amount stars reached).",
         });
         watch["mode"] = json!({
             "type": "string",
             "enum": crate::listen::MODES,
             "description": "once (the default): it ends when the event happens. every: it fires again each time; on \
-github.pr only for checks or green, once for each new commit, until the pull request is merged or closed.",
+github.pr for checks or green once for each new commit, and for comment, review, changes or commit each time, until \
+the pull request is merged or closed; on the rest of GitHub, each time it happens.",
         });
         watch["text"] = json!({
             "type": "string",
             "maxLength": 200,
-            "description": "contains and gone (web, tool): the text; soon (calendar): words the event's title must have.",
+            "description": "contains and gone (web, tool): the text; soon (calendar): words the event's title must have. \
+github.issue: the label the issues must have; github.workflow: the workflow's name or file (Windows CI, ci.yml); \
+github.deploy: the environment (production); github.discussion opened: the category. Leave it out for any.",
         });
         watch["amount"] = json!({
             "type": "integer",
             "minimum": 1,
-            "maximum": 1440,
+            "maximum": 100_000_000,
             "description": "service soon: the minutes before the event (10). windows battery_low: the percent (20); \
-back: the minutes away (5). tool: the minutes between two runs (15). Leave it out for the rest.",
+back: the minutes away (5). tool: the minutes between two runs (15), at most 1440. github.stars stars: the stars to \
+reach (100). Leave it out for the rest.",
         });
         watch["then"] = json!({
             "type": "string",
@@ -245,6 +262,15 @@ fn source_of(input: &Value) -> Result<&'static str, String> {
         "agent" | "agents" | "session" | "claude" | "codex" => Ok("agent"),
         "webhook" | "hook" => Ok("webhook"),
         "tool" | "own_tool" => Ok("tool"),
+        "github.issue" | "issue" | "issues" => Ok("github.issue"),
+        "github.branch" | "branch" | "commits" => Ok("github.branch"),
+        "github.workflow" | "workflow" | "actions" | "workflow_run" => Ok("github.workflow"),
+        "github.release" | "release" | "releases" | "tag" | "tags" => Ok("github.release"),
+        "github.deploy" | "deploy" | "deployment" | "deployments" => Ok("github.deploy"),
+        "github.notifications" | "github_notifications" => Ok("github.notifications"),
+        "github.security" | "dependabot" | "alerts" => Ok("github.security"),
+        "github.discussion" | "github.discussions" | "discussion" | "discussions" => Ok("github.discussion"),
+        "github.stars" | "stars" | "star" | "forks" => Ok("github.stars"),
         _ => Err(format!("source must be one of {}.", crate::listen::SOURCES.join(", "))),
     }
 }
@@ -264,21 +290,24 @@ fn local_line(source: &str, input: &Value) -> Result<(String, String), String> {
     // The text a page or a tool shows (or no longer shows), the words an
     // event's title has: the line carries them, or the watch would wait for
     // any event, or for nothing.
-    let mut words = if matches!(event.as_str(), "contains" | "gone" | "soon") && !text.is_empty() { format!(" \"{text}\"") } else { String::new() };
+    let takes_text = matches!(event.as_str(), "contains" | "gone" | "soon") || crate::listen_github::takes_text(source, &event);
+    let mut words = if takes_text && !text.is_empty() { format!(" \"{text}\"") } else { String::new() };
     if amount > 0 {
         words.push_str(&format!(" {amount}"));
     }
     let then = clean(input["then"].as_str().unwrap_or(""), MAX_TASK);
     let head = format!("[[listen {source} \"{target}\" {every}{event}{words}");
     let line = if then.is_empty() { format!("{head}]]") } else { format!("{head}: {then}]]") };
-    let after = if then.is_empty() {
-        "Lumo will tell the user."
-    } else {
-        "Lumo will tell the user and send you a message in this chat starting with Lumo: that says what happened; do \
-what you meant to then."
+    let github = crate::listen_github::is_source(source);
+    let after = match (then.is_empty(), github) {
+        (true, _) => "Lumo will tell the user.",
+        (false, false) => "Lumo will tell the user and send you a message in this chat starting with Lumo: that says what happened; do \
+what you meant to then.",
+        (false, true) => "Lumo will tell the user and send you a message in this chat starting with GitHub: that says what \
+happened; do what you meant to only if it is what you waited for.",
     };
     let after = if every.is_empty() { after.to_string() } else { format!("{after} It does so again each time.") };
-    let what = crate::listen_local::label(source, &event, &target);
+    let what = if github { crate::listen_github::label(source, &target, &text) } else { crate::listen_local::label(source, &event, &target) };
     Ok((line, format!("Once your answer ends, Lumo asks the user to start listening to {what}: it listens only if they say Listen. {after} Say in a few words that Lumo will listen once they confirm, and end your answer.")))
 }
 
@@ -399,7 +428,8 @@ pub fn line(tool: &str, input: &Value) -> Result<(String, String), String> {
                 "Lumo will tell the user and send you a message in this chat starting with GitHub: that says what \
 happened; do what you meant to only if it is what you waited for."
             };
-            let after = if every.is_empty() { after.to_string() } else { format!("{after} It does so again for each new commit.") };
+            let again = if crate::listen_github::PR_EVENTS.contains(&event.as_str()) { "each time" } else { "for each new commit" };
+            let after = if every.is_empty() { after.to_string() } else { format!("{after} It does so again {again}.") };
             Ok((line, format!("Once your answer ends, Lumo asks the user to start listening to {repo}#{number}: it listens only if they say Listen. {after} Say in a few words that Lumo will listen once they confirm, and end your answer.")))
         }
         UNLISTEN => {
