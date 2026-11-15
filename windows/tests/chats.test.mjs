@@ -112,3 +112,17 @@ test("with storage full, the oldest chats go and the newest is still saved", () 
   saveChat(long("e"));
   assert.deepEqual(loadChats().map((c) => c.id), ["e", "d"], "and it goes on saving");
 });
+
+test("a chat saved by a beta that folded the CLI's own answers under the agents shows them in the answer again", () => {
+  localStorage.setItem("lumo.chats.v1", JSON.stringify([{
+    id: "beta", title: "t", updatedAt: 1, provider: "claude-code", session: null,
+    turns: [
+      { role: "user", content: "go" },
+      { role: "assistant", content: "Launched.\n\nAll done.", kept: "Launched.\n\nFirst result.\n\nAll done.", updates: ["First result."] },
+      { role: "user", content: "thanks" },
+    ],
+  }]));
+  const [chat] = loadChats();
+  assert.deepEqual(chat.turns[1], { role: "assistant", content: "Launched.\n\nFirst result.\n\nAll done.", kept: "Launched.\n\nFirst result.\n\nAll done." });
+  assert.deepEqual(chat.turns[2], { role: "user", content: "thanks" });
+});

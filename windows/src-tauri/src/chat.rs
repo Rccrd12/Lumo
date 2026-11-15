@@ -557,6 +557,21 @@ impl ChatEvents {
         let _ = app.emit_to(WINDOW_LABEL, "chat-activity", json!({ "chat": self.chat, "activity": activity }));
     }
 
+    /// The island's id of the chat.
+    pub fn chat_id(&self) -> &str {
+        &self.chat
+    }
+
+    /// The answer moved just now: its sign of life (chat_agents.rs), once a second at most.
+    pub fn signal(&self, app: &AppHandle) {
+        crate::chat_agents::signal(app, &self.chat);
+    }
+
+    /// Every agent of the answer's CLI that changed (chat_agents.rs).
+    pub fn agents(&self, app: &AppHandle, agents: &mut crate::chat_agents::Agents) {
+        crate::chat_agents::emit_changed(app, &self.chat, agents);
+    }
+
     /// A file the answer read, edited or created (claude_code.rs FileTouch):
     /// the chat lists it, and may open it from now on (chat_files.rs).
     pub fn file(&self, app: &AppHandle, file: &claude_code::FileTouch) {
@@ -1114,9 +1129,12 @@ async fn send_to(
     // A local model sees unless its server says it doesn't (one that refuses is asked again without).
     let sees = local.is_some() && caps.vision != Some(false);
     let (query, images) = with_screen(provider, sees, screen.as_ref(), query)?;
+    // Each provider's answer is boxed: held here by value, the largest of
+    // them all made chat_send's future as large, and the debug build (the
+    // end-to-end tests') ran out of stack spawning it.
     if provider == ANTHROPIC || provider.is_empty() {
         let effort = settings.chat_effort.as_str();
-        return claude::send(app, chat, &model, effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage).await;
+        return Box::pin(claude::send(app, chat, &model, effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage)).await;
     }
     if is_cli(provider) {
         // A folder shared from File Explorer: the CLI may read the rest of it itself.
@@ -1140,24 +1158,23 @@ async fn send_to(
             }
         }
         if provider == antigravity_cli::PROVIDER {
-            return antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), query, context, folder).await;
+            return Box::pin(antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), query, context, folder)).await;
         }
         if provider == codex_chat::PROVIDER {
-            return codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder).await;
+            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
         }
         if acp_chat::Agent::of(provider).is_some() {
-            return acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder).await;
+            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
         }
         let computer = settings.chat_computer_use;
-        return claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)
-            .await;
+        return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
         let effort = settings.chat_effort.as_str();
-        return openai_compat::send(app, chat, p, &model, effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage).await;
+        return Box::pin(openai_compat::send(app, chat, p, &model, effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage)).await;
     }
     if let Some(server) = local {
-        return local_chat::send(app, chat, &server, &model, &caps, &settings.chat_effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage).await;
+        return Box::pin(local_chat::send(app, chat, &server, &model, &caps, &settings.chat_effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage)).await;
     }
     Err(format!("Unknown chat provider: {provider}"))
 }

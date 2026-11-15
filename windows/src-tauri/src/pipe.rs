@@ -69,6 +69,14 @@ pub struct Pending(pub Mutex<HashMap<String, mpsc::Sender<Reply>>>);
 
 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
+tokio::task_local! {
+    /// The island chat whose tool call is running (tools.rs `call_for_chat`
+    /// sets it for the call): a card raised during the call (`ask`: a tool's
+    /// Allow / Deny, a web search, an email to send) puts that chat in
+    /// "waiting for your permission" while it is up, not "no signal".
+    pub static CHAT: String;
+}
+
 /// Requests of the island chat's own Antigravity CLI run: the only ones Auto
 /// may allow without a click (src/island/hooks.ts). Kept here so a
 /// mistake in the page can never allow a Claude Code or Codex request.
@@ -214,9 +222,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     let answer = if let Some(request) = payload.get("lumo_computer") {
         Some(crate::computer::serve(&app, request).await)
     } else if let Some(request) = payload.get("lumo_mail") {
-        Some(crate::mail::serve(&app, request).await)
+        Some(in_chat(&app, request, Box::pin(crate::mail::serve(&app, request))).await)
     } else if let Some(request) = payload.get("lumo_tool") {
-        Some(crate::tools::serve_call(&app, request).await)
+        Some(in_chat(&app, request, Box::pin(crate::tools::serve_call(&app, request))).await)
     } else if payload.get("lumo_tools").is_some() {
         Some(crate::tools::serve_list())
     } else if let Some(request) = payload.get("lumo_island").filter(|r| r.is_object()) {
@@ -406,6 +414,19 @@ async fn first_of<T>(a: impl std::future::Future<Output = T>, b: impl std::futur
     .await
 }
 
+/// `work`, a call lumo-hook --mcp makes for a CLI that answers in the
+/// island's chat `request["chat"]` (its LUMO_CHAT_ID): run as that chat's
+/// own (tools.rs `call_for_chat`), a card it raises puts the chat in
+/// "waiting for your permission", and it says the chat is alive while it
+/// runs (the CLI writes nothing meanwhile). A call that names no chat (a CLI
+/// in the user's terminal, a lumo-hook from before) just runs.
+async fn in_chat<T>(app: &AppHandle, request: &Value, work: impl std::future::Future<Output = T> + Unpin) -> T {
+    match request.get("chat").and_then(Value::as_str).filter(|c| !c.is_empty()) {
+        Some(chat) => crate::chat_agents::alive_while(app, chat, Box::pin(CHAT.scope(chat.to_string(), work))).await,
+        None => work.await,
+    }
+}
+
 /// A new request id, waiting for the island's replies.
 fn pending_request(app: &AppHandle) -> (String, mpsc::Receiver<Reply>) {
     let id = format!("{}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed));
@@ -430,15 +451,22 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
         with_mail_cards(|set| set.insert(id.clone()));
     }
     log::line(format!("tool card id={id}"));
+    // "" outside a chat's tool call: signal_waiting then says nothing.
+    let chat = CHAT.try_with(String::clone).unwrap_or_default();
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
     let decision = with_card(
         // While Claude uses the computer, the hand gets its mouse back to
-        // answer, as for an agent's card.
-        || crate::computer::card_up(app),
+        // answer, as for an agent's card. The chat that asked (if any) is
+        // waiting for the user, not stuck (chat_agents.rs).
+        || {
+            crate::computer::card_up(app);
+            crate::chat_agents::signal_waiting(app, &chat, Some("permission"));
+        },
         // Also when Stop drops the turn that asked, mid-wait: else the count
         // stayed up and Claude never had the mouse again until Lumo restarted.
         |answered| {
             crate::computer::card_down(app);
+            crate::chat_agents::signal_waiting(app, &chat, None);
             app.state::<Pending>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
             with_mail_cards(|set| set.remove(&id));
             // Nobody answers it any more: it leaves the island.

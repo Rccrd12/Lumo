@@ -16,6 +16,9 @@
 //   `chat-activity` events say what agy is doing while no text shows, read off
 //   its `step_update` events (tool steps, by tool name).
 // - Stop ends agy and everything it started.
+// - A tool step that delegates (`browser_subagent`…) starts a subagent, whose
+//   own steps carry `subagent_info`: each is one of the chat's agents
+//   (`Subagents`, chat_agents.rs), done when the step that delegated is.
 //
 // Permissions: headless agy never prompts. Workspace files are read and
 // written freely; a tool that needs approval (a shell command, by default) is
@@ -32,6 +35,7 @@
 // not): everything runs without asking, and the island lets its cards
 // through (src/island/hooks.ts).
 
+use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -42,6 +46,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
+use crate::chat_agents::{self, AgentRow, AgentState, Agents, Tell};
 use crate::claude_code::{self, file_name, host, is_screenshot, kill_tree, pretty_tool, safe_dir, safe_session, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
@@ -306,7 +311,7 @@ fn touch_for(name: &str, params: &Value) -> Option<FileTouch> {
         .find(|s| !s.trim().is_empty())?;
     let n = name.to_ascii_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| n.contains(w));
-    if has(&["screenshot", "url", "fetch", "browser", "list_dir", "list_directory", "delete"]) || is_screenshot(&file_name(path)) {
+    if has(&["screenshot", "url", "fetch", "browser", "list_dir", "list_directory", "delete"]) || is_screenshot(&file_name(path)) || agy_own(path) {
         return None;
     }
     if has(&["write", "create_file"]) {
@@ -319,6 +324,13 @@ fn touch_for(name: &str, params: &Value) -> Option<FileTouch> {
         return FileTouch::new("read", path);
     }
     None
+}
+
+/// A file of agy's own (its `.gemini` folder: settings, logs, what Lumo's
+/// tools answered it), not one of the chat's.
+fn agy_own(path: &str) -> bool {
+    let p = path.replace('\\', "/").to_ascii_lowercase();
+    p.contains("/.gemini/antigravity") || p.starts_with(".gemini/antigravity")
 }
 
 /// A tool error that says a permission was not given.
@@ -362,6 +374,381 @@ fn error_text(error: &Value) -> Option<String> {
     }
 }
 
+// ── The subagents it delegates to ─────────────────────────────────────────────
+
+/// A tool's parameters: an object, or its JSON text.
+fn params_of(params: &Value) -> Value {
+    match params {
+        Value::String(s) => serde_json::from_str::<Value>(s).unwrap_or(Value::Null),
+        other => other.clone(),
+    }
+}
+
+/// The task a delegating step gives its subagent, as its parameters say it,
+/// else the tool's name in words ("browser subagent").
+fn delegated_title(name: &str, params: &Value) -> String {
+    let params = params_of(params);
+    ["TaskName", "TaskSummary", "Task", "Prompt", "Description", "task", "prompt", "description"]
+        .iter()
+        .filter_map(|k| params.get(*k).and_then(Value::as_str))
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| pretty_tool(name))
+}
+
+/// The subagents of a turn: one row for each, by its conversation.
+#[derive(Default, Debug)]
+struct Subagents {
+    agents: Agents,
+    /// The steps of the main conversation that delegate, still running:
+    /// step index, the title they give, and the row once its first step came.
+    delegating: Vec<(u64, String, Option<String>)>,
+    /// The subagents' steps already counted, as "row:step".
+    counted: HashSet<String>,
+    /// This turn's mark (chat_agents::run_mark), made when first needed: in
+    /// the ids of subagents named by their step, which a later turn reuses.
+    mark: Option<String>,
+    /// The subagents `invoke_subagent` started, each with its transcript.
+    spawns: Vec<Spawn>,
+    /// Files the subagents wrote, not passed on yet.
+    files: Vec<FileTouch>,
+}
+
+/// A subagent `invoke_subagent` started. agy's stream says nothing of its
+/// work: its own transcript (`log_uri`, a JSON line per step) does.
+#[derive(Debug)]
+struct Spawn {
+    /// The step that started it, and its place in that step's list.
+    step: u64,
+    n: usize,
+    /// Its row's id.
+    row: String,
+    /// Its transcript, once the step is done and names it.
+    log: Option<PathBuf>,
+    /// How far the transcript was read, and a line not yet whole.
+    read: u64,
+    partial: Vec<u8>,
+    /// What it sent its parent (`send_message`): its report.
+    report: Option<String>,
+    /// Files its last call writes, told once the call's result says it did.
+    pending: Vec<FileTouch>,
+    /// Inside a line past MAX_LINE: dropped up to its end.
+    skipping: bool,
+}
+
+/// How much of a transcript is read at a time.
+const TRANSCRIPT_CHUNK: u64 = 512 * 1024;
+/// How often the subagents' transcripts are looked at while they work.
+const TRANSCRIPT_POLL: Duration = Duration::from_millis(1500);
+
+/// The file a subagent's `log_uri` names: only agy's own transcript of it,
+/// in its `.gemini` folder, never any other file a stream might name.
+fn transcript_path(uri: &str) -> Option<PathBuf> {
+    let rest = uri.strip_prefix("file://")?;
+    let mut bytes = Vec::with_capacity(rest.len());
+    let raw = rest.as_bytes();
+    let mut i = 0;
+    while i < raw.len() {
+        if raw[i] == b'%' && i + 2 < raw.len() {
+            if let Ok(b) = u8::from_str_radix(std::str::from_utf8(&raw[i + 1..i + 3]).ok()?, 16) {
+                bytes.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        bytes.push(raw[i]);
+        i += 1;
+    }
+    let path = String::from_utf8(bytes).ok()?;
+    // file:///C:/… on Windows, file:///home/… elsewhere; never a host's
+    // (file://host/…, file:////host/share/…: a network share).
+    let local = path.strip_prefix('/')?;
+    let path = if local.as_bytes().get(1) == Some(&b':') && local.as_bytes().get(2) == Some(&b'/') {
+        local.replace('/', "\\")
+    } else if !local.starts_with('/') && !local.starts_with('\\') && !local.contains(':') {
+        format!("/{local}")
+    } else {
+        return None;
+    };
+    let lower = path.replace('\\', "/").to_ascii_lowercase();
+    let ours = lower.contains("/.gemini/antigravity") && lower.ends_with("/transcript.jsonl") && !lower.contains("/../");
+    ours.then(|| PathBuf::from(path))
+}
+
+/// A tool call's arguments, as a subagent's transcript writes them: each
+/// value is its JSON text ("\"C:\\\\a.txt\""), read back here.
+fn transcript_args(args: &Value) -> Value {
+    let Some(map) = args.as_object() else { return Value::Null };
+    Value::Object(
+        map.iter()
+            .map(|(k, v)| {
+                let v = match v.as_str() {
+                    Some(text) => serde_json::from_str::<Value>(text).unwrap_or_else(|_| v.clone()),
+                    None => v.clone(),
+                };
+                (k.clone(), v)
+            })
+            .collect(),
+    )
+}
+
+/// One line of a subagent's transcript on its row: its steps, what it does
+/// now, its tokens, its report, and the files it wrote (`pending` until the
+/// call's result says it went through). True once it is done: its answer,
+/// with no more calls.
+fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mut Vec<FileTouch>, files: &mut Vec<FileTouch>, line: &Value) -> bool {
+    let read = |k: &str| line[k].as_u64().unwrap_or(0);
+    let context = read("input_tokens") + read("cache_read_tokens");
+    if context > 0 {
+        row.tokens = Some(row.tokens.unwrap_or(0).max(context));
+    }
+    // A call's result: the files it wrote, unless it failed.
+    if line["type"] == "GENERIC" && !pending.is_empty() {
+        let text = line["content"].as_str().unwrap_or("").to_ascii_lowercase();
+        let failed = line["status"].as_str().is_some_and(|s| s != "DONE") || ["error", "failed", "denied", "not allowed"].iter().any(|w| text.contains(w));
+        for touch in pending.drain(..) {
+            if !failed && !files.contains(&touch) {
+                files.push(touch);
+            }
+        }
+    }
+    let calls = line["tool_calls"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    for call in calls {
+        let name = call["name"].as_str().unwrap_or("");
+        let args = transcript_args(&call["args"]);
+        row.steps += 1;
+        row.now = Some(activity_for(name, &args));
+        if name == "send_message" {
+            if let Some(text) = args["Message"].as_str().map(str::trim).filter(|t| !t.is_empty()) {
+                *report = Some(text.to_string());
+                row.summary = Some(crate::chat_agents::summary_of(text));
+            }
+        }
+        let lower = name.to_ascii_lowercase();
+        let path = ["Path", "TargetFile", "AbsolutePath", "FilePath", "File"].iter().filter_map(|k| args[*k].as_str()).find(|p| !p.trim().is_empty());
+        if let Some(path) = path.filter(|p| !agy_own(p)) {
+            let touch = if lower.contains("write") || lower.contains("create_file") {
+                FileTouch::new("created", path)
+            } else if lower.contains("replace") || lower.contains("edit") {
+                FileTouch::new("edited", path)
+            } else {
+                None
+            };
+            pending.extend(touch);
+        }
+    }
+    // Its calls cut from the line (a long one): a step all the same, never its answer.
+    let cut = line["truncated_fields"].as_array().is_some_and(|f| f.iter().any(|x| x == "tool_calls"));
+    if cut && calls.is_empty() {
+        row.steps += 1;
+        row.now = Some(Activity::new("tool", ""));
+        return false;
+    }
+    let answer = line["content"].as_str().map(str::trim).filter(|t| !t.is_empty());
+    match answer {
+        Some(answer) if calls.is_empty() && line["type"] == "PLANNER_RESPONSE" && line["source"] == "MODEL" => {
+            row.summary = Some(crate::chat_agents::summary_of(report.as_deref().unwrap_or(answer)));
+            true
+        }
+        _ => {
+            if calls.is_empty() && line["source"] == "MODEL" && line["type"] == "PLANNER_RESPONSE" {
+                row.now = Some(Activity::thinking());
+            }
+            false
+        }
+    }
+}
+
+impl Subagents {
+    /// A tool step of the main conversation that delegates began.
+    fn delegated(&mut self, index: u64, title: String) {
+        if !self.delegating.iter().any(|d| d.0 == index) {
+            self.delegating.push((index, title, None));
+        }
+    }
+
+    /// The step that delegated ended (`error`: as ERROR): its subagent with it.
+    fn delegation_ended(&mut self, index: u64, error: Option<Option<String>>) {
+        let Some(pos) = self.delegating.iter().position(|d| d.0 == index) else { return };
+        let (_, _, row) = self.delegating.remove(pos);
+        let Some(id) = row else { return };
+        if self.agents.get(&id).is_some_and(|r| r.state.is_final()) {
+            return;
+        }
+        if let Some(row) = self.agents.touch(&id) {
+            match error {
+                Some(error) => row.end(AgentState::Failed, error),
+                None => row.end(AgentState::Done, None),
+            }
+        }
+    }
+
+    /// A step that starts subagents (agy's `invoke_subagent`: step_type
+    /// "subagent", its `subagent_info.subagents`, in place of a tool's info):
+    /// one row each, named by its role, as soon as the step says it. The step
+    /// is done once they are started, and names each one's transcript: their
+    /// work is read there (`read_transcripts`), as agy's stream has no step
+    /// of theirs.
+    fn spawned(&mut self, index: u64, list: &[Value]) {
+        for (n, entry) in list.iter().enumerate() {
+            let text = |keys: &[&str]| keys.iter().filter_map(|k| entry[*k].as_str()).map(str::trim).find(|s| !s.is_empty()).map(str::to_string);
+            let log = text(&["log_uri", "logUri"]).and_then(|u| transcript_path(&u));
+            if let Some(spawn) = self.spawns.iter_mut().find(|s| s.step == index && s.n == n) {
+                if spawn.log.is_none() {
+                    spawn.log = log;
+                }
+                continue;
+            }
+            let row = format!("agy-{}-{index}-{}", self.mark(), n + 1);
+            let title = text(&["role", "name", "type_name"]).map(|s| if s.contains('_') { pretty_tool(&s) } else { s }).unwrap_or_else(|| t("Agent"));
+            let made = self.agents.upsert(&row, || AgentRow::new(row.as_str(), PROVIDER, &title));
+            made.now = Some(Activity::thinking());
+            self.spawns.push(Spawn { step: index, n, row, log, read: 0, partial: Vec::new(), report: None, pending: Vec::new(), skipping: false });
+        }
+    }
+
+    /// Whether a subagent `invoke_subagent` started is still at work.
+    fn spawns_open(&self) -> bool {
+        self.spawns.iter().any(|s| self.agents.get(&s.row).is_some_and(|r| !r.state.is_final()))
+    }
+
+    /// What the subagents still at work wrote in their transcripts since the
+    /// last look (a chunk each at most): whether a row changed, and whether
+    /// anything was read.
+    fn read_transcripts(&mut self) -> (bool, bool) {
+        use std::io::{Seek, SeekFrom};
+        let (mut changed, mut read_any) = (false, false);
+        for spawn in &mut self.spawns {
+            let Some(path) = spawn.log.as_ref() else { continue };
+            if self.agents.get(&spawn.row).is_none_or(|r| r.state.is_final()) {
+                continue;
+            }
+            let Ok(mut file) = std::fs::File::open(path) else { continue };
+            if file.seek(SeekFrom::Start(spawn.read)).is_err() {
+                continue;
+            }
+            let mut fresh = Vec::new();
+            let Ok(n) = (&mut file).take(TRANSCRIPT_CHUNK).read_to_end(&mut fresh) else { continue };
+            if n == 0 {
+                continue;
+            }
+            read_any = true;
+            spawn.read += n as u64;
+            // A line past MAX_LINE (a huge file written whole) is dropped up to its end.
+            let mut fresh = &fresh[..];
+            if spawn.skipping {
+                match fresh.iter().position(|b| *b == b'\n') {
+                    Some(end) => {
+                        spawn.skipping = false;
+                        fresh = &fresh[end + 1..];
+                    }
+                    None => continue,
+                }
+            }
+            spawn.partial.extend_from_slice(fresh);
+            let last = spawn.partial.iter().rposition(|b| *b == b'\n');
+            let whole: Vec<u8> = match last {
+                Some(last) => spawn.partial.drain(..=last).collect(),
+                None => Vec::new(),
+            };
+            if spawn.partial.len() > MAX_LINE {
+                spawn.partial.clear();
+                spawn.skipping = true;
+            }
+            let Some(row) = self.agents.touch(&spawn.row) else { continue };
+            changed = true;
+            for line in whole.split(|b| *b == b'\n').filter(|l| l.len() <= MAX_LINE) {
+                let Ok(v) = serde_json::from_slice::<Value>(line) else { continue };
+                if transcript_line(row, &mut spawn.report, &mut spawn.pending, &mut self.files, &v) {
+                    row.end(AgentState::Done, None);
+                    break;
+                }
+            }
+        }
+        (changed, read_any)
+    }
+
+    /// The step that started subagents failed: they never ran.
+    fn spawn_failed(&mut self, index: u64, error: Option<String>) {
+        for spawn in self.spawns.iter().filter(|s| s.step == index) {
+            if let Some(row) = self.agents.touch(&spawn.row) {
+                row.end(AgentState::Failed, error.clone());
+            }
+        }
+    }
+
+    /// This turn's mark.
+    fn mark(&mut self) -> String {
+        self.mark.get_or_insert_with(chat_agents::run_mark).clone()
+    }
+
+    /// The step that delegated to a subagent heard of now, by its place in
+    /// `delegating`: the oldest still without a subagent (agy starts them in
+    /// the order it delegated), or else the latest. agy's steps don't say,
+    /// so the one rule names a subagent, titles it and ends it.
+    fn delegation(&self) -> Option<usize> {
+        self.delegating.iter().position(|d| d.2.is_none()).or_else(|| self.delegating.len().checked_sub(1))
+    }
+
+    /// One step of a subagent (`subagent_info`).
+    fn step(&mut self, index: u64, done: bool, v: &Value) {
+        let info = &v["subagent_info"];
+        let conversation = ["conversation_id", "conversationId"].iter().filter_map(|k| info[*k].as_str()).map(str::trim).find(|s| !s.is_empty());
+        let delegation = self.delegation();
+        // Without its conversation, the step that delegated names it, with
+        // the turn's mark: the next turn has a step 5 of its own.
+        let id = match conversation {
+            Some(conversation) => conversation.to_string(),
+            None => {
+                let mark = self.mark();
+                match delegation {
+                    Some(pos) => format!("step-{}-{mark}", self.delegating[pos].0),
+                    None => format!("subagent-{mark}"),
+                }
+            }
+        };
+        if self.agents.get(&id).is_none() {
+            // The step that delegated, when it has no subagent yet, gives it its title.
+            let title = match delegation.map(|pos| &mut self.delegating[pos]).filter(|d| d.2.is_none()) {
+                Some(d) => {
+                    d.2 = Some(id.clone());
+                    d.1.clone()
+                }
+                None => t("Agent"),
+            };
+            self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title));
+        }
+        if self.agents.get(&id).is_some_and(|r| r.state.is_final()) {
+            return;
+        }
+        let first = !done && v["step_type"] == "tool" && self.counted.insert(format!("{id}:{index}"));
+        let Some(row) = self.agents.touch(&id) else { return };
+        if done {
+            return;
+        }
+        if first {
+            row.steps += 1;
+        }
+        row.now = Some(match v["step_type"].as_str() {
+            Some("tool") => {
+                let info = &v["tool_info"];
+                let name = info["name"].as_str().filter(|s| !s.is_empty()).or_else(|| v["tool_name"].as_str()).unwrap_or("");
+                activity_for(name, &info["parameters"])
+            }
+            _ => Activity::thinking(),
+        });
+    }
+
+    /// The run is over: the subagents still open end as it did.
+    fn run_ended(&mut self, state: AgentState) {
+        let error = if state == AgentState::Failed { tf("{agent} ended", &[("agent", "Antigravity CLI")]) } else { String::new() };
+        if self.agents.open() > 0 {
+            self.agents.end_open(state, &error);
+        }
+    }
+}
+
 // ── Reading the stream ────────────────────────────────────────────────────────
 
 /// What the stream-json output has told us so far.
@@ -400,6 +787,8 @@ struct Run {
     /// The tokens the turn's result says it used (read and written): about how
     /// full the conversation is, for the chat's usage menu.
     context_used: Option<u64>,
+    /// The subagents its steps delegated to.
+    subagents: Subagents,
 }
 
 /// The tokens a result's `usage` counts: what the model read (cached or not,
@@ -461,8 +850,26 @@ impl Run {
         let index = v["step_index"].as_u64().unwrap_or(u64::MAX);
         // A step ends DONE, or ERROR (a tool refused or failed).
         let done = matches!(v["state"].as_str(), Some("DONE" | "ERROR"));
-        // A subagent at work: its own steps are its business.
+        // A step that starts subagents: a row for each; the answer waits on them.
+        if let Some(list) = v["subagent_info"]["subagents"].as_array().filter(|_| v["step_type"] == "subagent" || v.get("tool_info").is_none()) {
+            self.subagents.spawned(index, list);
+            if v["state"] == "ERROR" {
+                self.subagents.spawn_failed(index, error_text(&v["error"]).or_else(|| error_text(&v["subagent_info"]["error"])));
+            }
+            if done {
+                self.finished_tool(index);
+                // Started, not finished: the answer waits on them.
+                if self.subagents.spawns_open() {
+                    self.set_activity(Activity::new("subtask", ""));
+                }
+            } else {
+                self.started_tool(index, Activity::new("subtask", ""));
+            }
+            return false;
+        }
+        // A subagent at work: its own steps are its row's, not the answer's.
         if v.get("subagent_info").is_some_and(|s| !s.is_null()) {
+            self.subagents.step(index, done, v);
             if done {
                 self.finished_tool(index);
             } else {
@@ -497,6 +904,9 @@ impl Run {
                 let info = &v["tool_info"];
                 let name = info["name"].as_str().filter(|s| !s.is_empty()).or_else(|| v["tool_name"].as_str()).unwrap_or("");
                 if done {
+                    // A step that delegated: its subagent is done, or failed with it.
+                    let failed = v["state"] == "ERROR" || error_text(&info["error"]).is_some();
+                    self.subagents.delegation_ended(index, failed.then(|| error_text(&info["error"])));
                     if is_denial(&info["error"]) {
                         self.denied += 1;
                     }
@@ -512,6 +922,9 @@ impl Run {
                     if is_plan_tool(name) {
                         self.saw_plan(&info["parameters"]);
                     }
+                    if activity_for(name, &Value::Null).kind == "subtask" {
+                        self.subagents.delegated(index, delegated_title(name, &info["parameters"]));
+                    }
                     if !self.touching.iter().any(|(i, _)| *i == index) {
                         if let Some(touch) = touch_for(name, &info["parameters"]) {
                             self.touching.push((index, touch));
@@ -522,6 +935,11 @@ impl Run {
                 false
             }
             Some("user_input" | "checkpoint") => false,
+            // A subagent's message woke the answer: it coordinates them.
+            Some("system_message") if self.subagents.spawns_open() => {
+                self.set_activity(Activity::new("subtask", ""));
+                false
+            }
             // Any other step agy is working on: it thinks.
             _ => {
                 if !done {
@@ -575,6 +993,7 @@ impl Run {
 
     /// The files used since the last time, oldest first.
     fn take_files(&mut self) -> Vec<FileTouch> {
+        self.touched.append(&mut self.subagents.files);
         std::mem::take(&mut self.touched)
     }
 
@@ -671,7 +1090,8 @@ fn result_error(error: &str) -> String {
 /// Runs agy headless once in `dir`, blocking. `on_text` gets the visible text as
 /// it grows, `on_activity` what agy is doing each time it changes, `on_file`
 /// each file a tool step read or wrote once it finished, `on_plan` each plan
-/// it gives Lumo's update_plan tool. Stop ends the CLI and its children; the
+/// it gives Lumo's update_plan tool, `tell` every line (a sign of life) and
+/// the subagents it delegates to. Stop ends the CLI and its children; the
 /// run so far is returned, `stopped`.
 #[allow(clippy::too_many_arguments)]
 fn run(
@@ -685,6 +1105,7 @@ fn run(
     mut on_activity: impl FnMut(&Activity),
     mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&Value),
+    tell: &Tell,
 ) -> Result<Run, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -754,6 +1175,7 @@ fn run(
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     let mut unsent = false;
     let mut state = Run::default();
+    let mut last_look = Instant::now();
     // When the turn's result came.
     let mut result_at: Option<Instant> = None;
     loop {
@@ -761,6 +1183,8 @@ fn run(
             drop(stdin.take());
             kill_tree(&mut child);
             state.stopped = true;
+            state.subagents.run_ended(AgentState::Stopped);
+            tell(&mut state.subagents.agents, false);
             return Ok(state);
         }
         // The answer is in: agy gets a moment to end, then it and what it
@@ -770,9 +1194,20 @@ fn run(
             kill_tree(&mut child);
             break;
         }
+        // The subagents' own work, from their transcripts.
+        if last_look.elapsed() >= TRANSCRIPT_POLL {
+            last_look = Instant::now();
+            if state.subagents.read_transcripts().0 {
+                tell(&mut state.subagents.agents, true);
+                for file in state.take_files() {
+                    on_file(&file);
+                }
+            }
+        }
         match rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
+                tell(&mut state.subagents.agents, true);
                 if state.result.is_some() && result_at.is_none() {
                     // The turn is over: agy may end.
                     drop(stdin.take());
@@ -799,6 +1234,18 @@ fn run(
         }
     }
     drop(stdin);
+    // What they wrote last (their answer comes a moment after their report), to the end.
+    for _ in 0..64 {
+        if !state.subagents.read_transcripts().1 {
+            break;
+        }
+    }
+    for file in state.take_files() {
+        on_file(&file);
+    }
+    // The turn is over: a subagent can't outlive it.
+    state.subagents.run_ended(if matches!(state.result, Some(Ok(_))) { AgentState::Done } else { AgentState::Failed });
+    tell(&mut state.subagents.agents, false);
     let status = if state.result.is_some() {
         // Ended already, or its output closed with the answer in: it may not
         // be gone yet, and is not waited for past AFTER_RESULT.
@@ -941,6 +1388,8 @@ pub async fn send(
     let stop = chat.stopper();
     let chat_id = chat.id().to_string();
     let usage_chat = chat_id.clone();
+    // The subagents agy delegates to, and the turn's sign of life.
+    let tell = chat_agents::teller(app, chat.id());
     let state = tauri::async_runtime::spawn_blocking(move || {
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
@@ -970,6 +1419,7 @@ pub async fn send(
                 by_tool.set(true);
                 emit("update_plan", plan.clone());
             },
+            &tell,
         )
     })
     .await
@@ -1152,8 +1602,9 @@ async fn command(
         let stop = chat.stopper();
         let chat_id = chat.id().to_string();
         let input = user_event(&query);
+        let tell = chat_agents::teller(app, chat.id());
         let state = tauri::async_runtime::spawn_blocking(move || {
-            run(exe, args, input, work, &chat_id, stop, |_| {}, |a| events.activity(&app2, a), |_| {}, |_| {})
+            run(exe, args, input, work, &chat_id, stop, |_| {}, |a| events.activity(&app2, a), |_| {}, |_| {}, &tell)
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -1217,7 +1668,7 @@ pub(crate) fn help(
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
     crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
     let _mail = crate::mail::agent_turn();
-    let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {})?;
+    let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {}, &chat_agents::silent())?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -1239,7 +1690,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
     let work = platform::local_dir().join("tool-review");
     let dir = work.to_string_lossy().to_string();
     let args = args_with_cards(model, "plan", None, &dir, &dir, &[], false);
-    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_| {})?;
+    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_| {}, &chat_agents::silent())?;
     match state.result {
         Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
         Some(Ok(text)) => Ok(text),
@@ -1676,5 +2127,232 @@ mod tests {
             ]
         );
         assert!(run.take_files().is_empty(), "once");
+    }
+
+    /// agy 1.5.8's stream for "start two subagents" (a probe run), and what
+    /// one of them wrote in its transcript.
+    const SPAWN_A: &str = r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":2,"state":"ACTIVE","step_type":"subagent","tool_name":"invoke_subagent","subagent_info":{"subagents":[{"type_name":"self","role":"Writer A","initial_prompt":"Create a.txt"}]}}}"#;
+    const SPAWN_B: &str = r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":3,"state":"ACTIVE","step_type":"subagent","tool_name":"invoke_subagent","subagent_info":{"subagents":[{"type_name":"self","role":"Writer B","initial_prompt":"Create b.txt"}]}}}"#;
+    const TRANSCRIPT_A: &str = concat!(
+        r#"{"step_index":0,"source":"SYSTEM","type":"SYSTEM_MESSAGE","status":"DONE","content":"[Message] sender=main-1 content=Create a.txt"}"#, "\n",
+        r#"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","input_tokens":10148,"output_tokens":290,"thinking":"Targeting file creation","tool_calls":[{"name":"write_file","args":{"Content":"\"hello\"","Overwrite":"true","Path":"\"C:\\\\work\\\\a.txt\""}}]}"#, "\n",
+        r#"{"step_index":2,"source":"MODEL","type":"GENERIC","status":"DONE","content":"Created file."}"#, "\n",
+        r#"{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","input_tokens":2408,"cache_read_tokens":8106,"tool_calls":[{"name":"send_message","args":{"Message":"\"File a.txt has been created.\"","Recipient":"\"main-1\""}}]}"#, "\n",
+        r#"{"step_index":4,"source":"MODEL","type":"GENERIC","status":"DONE","content":"Message sent to \"main-1\"."}"#, "\n",
+        r#"{"step_index":5,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","output_tokens":24,"content":"Completed creating a.txt and sent confirmation back to caller."}"#, "\n",
+    );
+
+    fn done_with(line: &str, log: &str) -> String {
+        line.replace(r#""state":"ACTIVE""#, r#""state":"DONE""#).replace(r#""initial_prompt""#, &format!(r#""log_uri":"{log}","conversation_id":"sub","initial_prompt""#))
+    }
+
+    #[test]
+    fn each_subagent_agy_starts_is_a_row_named_by_its_role() {
+        let mut run = Run::default();
+        assert!(!run.feed(SPAWN_A.as_bytes()));
+        assert_eq!(run.take_activity(), Some(Activity::new("subtask", "")));
+        run.feed(SPAWN_B.as_bytes());
+        run.feed(SPAWN_A.as_bytes());
+        let rows = run.subagents.agents.changed();
+        assert_eq!(rows.iter().map(|r| r.title.as_str()).collect::<Vec<_>>(), ["Writer A", "Writer B"]);
+        assert!(rows.iter().all(|r| r.state == AgentState::Working && r.source == PROVIDER && r.steps == 0));
+        // Done at once (they are started): the rows go on.
+        run.feed(done_with(SPAWN_A, "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub/.system_generated/logs/transcript.jsonl").as_bytes());
+        assert_eq!(run.subagents.agents.open(), 2);
+        assert_eq!(run.subagents.spawns[0].log, Some(PathBuf::from(r"C:\Users\me\.gemini\antigravity-cli\brain\sub\.system_generated\logs\transcript.jsonl")));
+        run.feed(done_with(SPAWN_B, "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub-b/.system_generated/logs/transcript.jsonl").as_bytes());
+        // Both started: the answer coordinates them, it doesn't think.
+        assert_eq!(run.take_activity(), Some(Activity::new("subtask", "")));
+        // A subagent's message wakes the answer: still so.
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":5,"state":"DONE","step_type":"system_message"}}"#);
+        assert_eq!(run.take_activity(), None, "unchanged");
+        // A start that failed: that row fails, never Done with the turn.
+        run.feed(SPAWN_B.replace(r#""step_index":3"#, r#""step_index":7"#).replace(r#""state":"ACTIVE""#, r#""state":"ERROR""#).replace("Writer B", "Writer C").as_bytes());
+        let c = run.subagents.agents.changed().into_iter().find(|r| r.title == "Writer C").unwrap();
+        assert_eq!(c.state, AgentState::Failed);
+        run.subagents.run_ended(AgentState::Done);
+        assert_eq!(run.subagents.agents.open(), 0);
+    }
+
+    #[test]
+    fn only_agys_own_transcript_is_read() {
+        assert_eq!(transcript_path("file:///C:/Users/me/.gemini/antigravity-cli/brain/x/.system_generated/logs/transcript.jsonl"), Some(PathBuf::from(r"C:\Users\me\.gemini\antigravity-cli\brain\x\.system_generated\logs\transcript.jsonl")));
+        assert_eq!(transcript_path("file:///home/me/.gemini/antigravity-cli/brain/x/logs/transcript.jsonl"), Some(PathBuf::from("/home/me/.gemini/antigravity-cli/brain/x/logs/transcript.jsonl")));
+        assert_eq!(transcript_path("file:///C:/Users/My%20Name/.gemini/antigravity-cli/b/transcript.jsonl"), Some(PathBuf::from(r"C:\Users\My Name\.gemini\antigravity-cli\b\transcript.jsonl")));
+        for other in ["file:////host/share/.gemini/antigravity-cli/x/transcript.jsonl", "file://host/.gemini/antigravity/x/transcript.jsonl", "file:///C:/Users/me/secrets.txt", "file:///C:/Users/me/.gemini/antigravity-cli/../../x/transcript.jsonl", "https://x/.gemini/antigravity/transcript.jsonl", "C:/a/.gemini/antigravity/transcript.jsonl"] {
+            assert_eq!(transcript_path(other), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn a_subagents_transcript_gives_its_steps_its_files_and_its_report() {
+        let mut row = AgentRow::new("r", PROVIDER, "Writer A");
+        let (mut report, mut pending, mut files) = (None, Vec::new(), Vec::new());
+        let lines: Vec<Value> = TRANSCRIPT_A.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let mut ended = Vec::new();
+        for (i, l) in lines.iter().enumerate() {
+            ended.push(transcript_line(&mut row, &mut report, &mut pending, &mut files, l));
+            if i == 1 {
+                assert!(files.is_empty(), "not before the call's result");
+            }
+        }
+        assert_eq!(ended, [false, false, false, false, false, true]);
+        assert_eq!(row.steps, 2);
+        assert_eq!(row.tokens, Some(10_514));
+        assert_eq!(files, vec![FileTouch { kind: "created", path: r"C:\work\a.txt".into() }]);
+        assert_eq!(report.as_deref(), Some("File a.txt has been created."));
+        assert_eq!(row.summary.as_deref(), Some("File a.txt has been created."), "what it told its parent");
+        // A write that failed lists nothing; a line whose calls were cut is a step, never its answer.
+        let (mut row, mut report, mut pending, mut files) = (AgentRow::new("r", PROVIDER, "W"), None, Vec::new(), Vec::new());
+        {
+            let mut feed = |l: &str| transcript_line(&mut row, &mut report, &mut pending, &mut files, &serde_json::from_str(l).unwrap());
+            assert!(!feed(&lines_of(1)));
+            assert!(!feed(r#"{"source":"MODEL","type":"GENERIC","status":"DONE","content":"Error: file already exists"}"#));
+            assert!(!feed(r#"{"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"I'll write the renderer now.","truncated_fields":["tool_calls"]}"#));
+        }
+        assert!(files.is_empty());
+        assert_eq!(row.steps, 2);
+        assert!(!row.state.is_final());
+    }
+
+    fn lines_of(i: usize) -> String {
+        TRANSCRIPT_A.lines().nth(i).unwrap().to_string()
+    }
+
+    #[test]
+    fn the_transcripts_are_read_as_they_grow_and_their_files_reach_the_chat() {
+        let dir = std::env::temp_dir().join(format!("lumo-agy-{}", chat_agents::run_mark())).join(".gemini").join("antigravity-cli").join("brain").join("sub");
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("transcript.jsonl");
+        let (first, rest) = TRANSCRIPT_A.split_at(TRANSCRIPT_A.find("{\"step_index\":3").unwrap());
+        // Half a line written yet: read once whole.
+        std::fs::write(&log, format!("{first}{}", &rest[..40])).unwrap();
+        let mut run = Run::default();
+        run.feed(SPAWN_A.as_bytes());
+        let uri = format!("file:///{}", log.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
+        run.feed(done_with(SPAWN_A, &uri).as_bytes());
+        assert!(run.subagents.read_transcripts().0);
+        let id = run.subagents.spawns[0].row.clone();
+        assert_eq!(run.subagents.agents.get(&id).unwrap().steps, 1);
+        assert_eq!(run.take_files(), vec![FileTouch { kind: "created", path: r"C:\work\a.txt".into() }]);
+        assert_eq!(run.subagents.read_transcripts(), (false, false), "nothing new");
+        std::fs::write(&log, TRANSCRIPT_A).unwrap();
+        assert!(run.subagents.read_transcripts().0);
+        let row = run.subagents.agents.get(&id).unwrap();
+        assert_eq!((row.state, row.steps), (AgentState::Done, 2));
+        assert!(!run.subagents.spawns_open());
+        assert!(run.take_files().is_empty(), "each file once");
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn agys_own_files_are_not_the_chats() {
+        let read = |p: &str| touch_for("view_file", &json!({ "AbsolutePath": p }));
+        assert_eq!(read(r"C:\Users\me\.gemini\antigravity-cli\mcp\lumo\update_plan.json"), None);
+        assert_eq!(read("/home/me/.gemini/antigravity/brain/x.md"), None);
+        assert!(read(r"C:\Users\me\slither-io\index.html").is_some());
+    }
+
+    #[test]
+    fn a_subagent_agy_delegates_to_is_a_row_done_when_its_step_is() {
+        let mut run = Run::default();
+        let lines = [
+            r#"{"event":"step_update","step_index":3,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"browser_subagent","parameters":"{\"TaskName\":\"Check the pricing page\",\"Task\":\"Open the site\"}"}}"#,
+            r#"{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"agent_response","subagent_info":{"conversation_id":"sub-1"}}"#,
+            r#"{"event":"step_update","step_index":1,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"sub-1"},"tool_info":{"name":"read_url_content","parameters":{"Url":"https://www.example.com/pricing"}}}"#,
+            // Said again, and done: one step.
+            r#"{"event":"step_update","step_index":1,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"sub-1"},"tool_info":{"name":"read_url_content","parameters":{"Url":"https://www.example.com/pricing"}}}"#,
+            r#"{"event":"step_update","step_index":1,"state":"DONE","step_type":"tool","subagent_info":{"conversation_id":"sub-1"},"tool_info":{"name":"read_url_content"}}"#,
+        ];
+        for l in lines {
+            run.feed(l.as_bytes());
+        }
+        let rows = run.subagents.agents.changed();
+        assert_eq!(rows.len(), 1);
+        let a = run.subagents.agents.get("sub-1").unwrap();
+        assert_eq!((a.title.as_str(), a.source.as_str(), a.state), ("Check the pricing page", PROVIDER, AgentState::Working));
+        assert_eq!(a.steps, 1);
+        assert_eq!(a.now, Some(Activity::new("read", "example.com")));
+        assert!(!a.can_stop);
+        // The step that delegated is done: so is its subagent.
+        run.feed(br#"{"event":"step_update","step_index":3,"state":"DONE","step_type":"tool","tool_info":{"name":"browser_subagent","output":"..."}}"#);
+        assert_eq!(run.subagents.agents.get("sub-1").unwrap().state, AgentState::Done);
+        assert!(run.subagents.delegating.is_empty());
+
+        // One with no conversation is named by its step; an ERROR fails it with the tool's error.
+        let mut run = Run::default();
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"delegate_task","parameters":{}}}"#);
+        run.feed(br#"{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{},"tool_info":{"name":"run_command","parameters":{}}}"#);
+        let id = run.subagents.agents.changed()[0].id.clone();
+        assert!(id.starts_with("step-5-"), "{id}");
+        assert_eq!(run.subagents.agents.get(&id).unwrap().title, "delegate task");
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"ERROR","step_type":"tool","tool_info":{"name":"delegate_task","error":{"type":"FAILED","message":"Browser crashed"}}}"#);
+        let a = run.subagents.agents.get(&id).unwrap();
+        assert_eq!((a.state, a.error.as_deref()), (AgentState::Failed, Some("Browser crashed")));
+    }
+
+    #[test]
+    fn two_delegations_at_once_each_name_and_end_their_own_subagent() {
+        let delegate = |index: u64, task: &str| format!(r#"{{"event":"step_update","step_index":{index},"state":"ACTIVE","step_type":"tool","tool_info":{{"name":"browser_subagent","parameters":{{"TaskName":"{task}"}}}}}}"#);
+        let sub_step = |info: &str| format!(r#"{{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{info},"tool_info":{{"name":"run_command","parameters":{{}}}}}}"#);
+        let done = |index: u64| format!(r#"{{"event":"step_update","step_index":{index},"state":"DONE","step_type":"tool","tool_info":{{"name":"browser_subagent"}}}}"#);
+
+        // With no conversation: the id, the title and the end come from the same step.
+        let mut run = Run::default();
+        for l in [delegate(3, "Pricing"), delegate(4, "Docs"), sub_step("{}"), sub_step("{}")] {
+            run.feed(l.as_bytes());
+        }
+        let rows = run.subagents.agents.changed();
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(rows[0].id.starts_with("step-3-") && rows[1].id.starts_with("step-4-"), "{rows:?}");
+        assert_eq!((rows[0].title.as_str(), rows[1].title.as_str()), ("Pricing", "Docs"));
+        run.feed(done(3).as_bytes());
+        assert_eq!(run.subagents.agents.get(&rows[0].id).unwrap().state, AgentState::Done);
+        assert_eq!(run.subagents.agents.get(&rows[1].id).unwrap().state, AgentState::Working, "step 4 still runs");
+
+        // With their conversations: each delegation has one subagent, and ends only it.
+        let mut run = Run::default();
+        for l in [delegate(3, "Pricing"), delegate(4, "Docs"), sub_step(r#"{"conversation_id":"a"}"#), sub_step(r#"{"conversation_id":"b"}"#), sub_step(r#"{"conversation_id":"a"}"#)] {
+            run.feed(l.as_bytes());
+        }
+        run.feed(done(4).as_bytes());
+        let (a, b) = (run.subagents.agents.get("a").unwrap(), run.subagents.agents.get("b").unwrap());
+        assert_eq!((a.title.as_str(), a.state), ("Pricing", AgentState::Working));
+        assert_eq!((b.title.as_str(), b.state), ("Docs", AgentState::Done));
+    }
+
+    #[test]
+    fn a_subagent_named_by_its_step_is_another_one_in_the_next_turn() {
+        // Two turns, each delegating at step 5 to a subagent with no
+        // conversation, and one with neither: four rows, never the same id.
+        let ids = |run: &mut Run| {
+            run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"delegate_task","parameters":{}}}"#);
+            run.feed(br#"{"event":"step_update","step_index":0,"state":"ACTIVE","step_type":"tool","subagent_info":{},"tool_info":{"name":"run_command"}}"#);
+            run.feed(br#"{"event":"step_update","step_index":5,"state":"DONE","step_type":"tool","tool_info":{"name":"delegate_task"}}"#);
+            run.subagents.step(0, false, &json!({ "step_type": "tool", "subagent_info": {} }));
+            run.subagents.agents.changed().into_iter().map(|r| r.id).collect::<Vec<_>>()
+        };
+        let first = ids(&mut Run::default());
+        let second = ids(&mut Run::default());
+        assert_eq!((first.len(), second.len()), (2, 2), "{first:?} {second:?}");
+        assert!(first[0].starts_with("step-5-") && first[1].starts_with("subagent-"));
+        assert!(first.iter().all(|id| !second.contains(id)), "{first:?} {second:?}");
+    }
+
+    #[test]
+    fn a_subagent_still_open_when_the_turn_ends_ends_with_it() {
+        let mut sub = Subagents::default();
+        sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "a" }, "tool_info": { "name": "view_file" } }));
+        sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "b" }, "tool_info": { "name": "view_file" } }));
+        assert_eq!(sub.agents.get("a").unwrap().title, "Agent", "no step named it");
+        sub.agents.touch("a").unwrap().end(AgentState::Done, None);
+        sub.run_ended(AgentState::Failed);
+        assert_eq!(sub.agents.get("a").unwrap().state, AgentState::Done);
+        let b = sub.agents.get("b").unwrap();
+        assert_eq!((b.state, b.error.as_deref()), (AgentState::Failed, Some("Antigravity CLI ended")));
+        let mut sub = Subagents::default();
+        sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "c" } }));
+        sub.run_ended(AgentState::Done);
+        assert!(sub.agents.get("c").unwrap().error.is_none());
     }
 }
