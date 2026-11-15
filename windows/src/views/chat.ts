@@ -107,13 +107,13 @@ import {
   type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, talkBox, type AgentsCardHost } from "./agents-card";
-import { updateChatTurns, type AskQuote, type ChatPermissions } from "../core/chats";
+import { updateChatTurns, type AskQuote } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
 import {
   PICTURE_NAME, THUMB_EDGE, comingBack, groupKey, joinScreen, keptItems, leaveScreen, readSent, restored, sentAgain, sentGroups, sentItems,
   type SentGroup, type SentItem,
 } from "../core/sent";
-import type { SavedTurn } from "../core/chats";
+import type { ChatPermissions, SavedTurn } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
 } from "../core/checklists";
