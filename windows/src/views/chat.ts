@@ -452,7 +452,6 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     const went = message.sent?.length ? message.sent : null;
     if (went) {
       // What went with it: its icons on the bubble's top right corner, and their list under it on a click.
-      sent.classList.add("has-sent");
       const key = `${State.chatId}:${message.id}`;
       const list = sentList(message, went, opts.onOpenSent);
       list.hidden = openSentList !== key;
