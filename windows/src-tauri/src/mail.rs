@@ -4818,7 +4818,8 @@ mod tests {
 
     #[test]
     fn the_ai_reads_the_email_unless_security_says_none() {
-        assert_eq!(access(&Settings::default()), "read", "the first start: read only until the user allows more");
+        assert_eq!(access(&Settings::default()), "manage", "the first start: each change waits for a click");
+        assert_eq!(access(&Settings { ai_mail_access: "read".into(), ..Settings::default() }), "read");
         assert_eq!(access(&Settings { ai_mail_access: "none".into(), ..Settings::default() }), "none");
         assert_eq!(access(&Settings { ai_mail_access: "send".into(), ..Settings::default() }), "send");
         assert_eq!(access(&Settings { ai_mail_access: "manage".into(), ..Settings::default() }), "manage");

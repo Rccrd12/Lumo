@@ -487,9 +487,10 @@ while an agent answers in the island, in the chat or for Gemini Live. They
 only read, so they need no card.
 
 **Settings… → Security → Email** says what the AI may do with
-it: **Read only** (the default, as above), **Read and send**, **Read, send
-and manage** or **No access** (nothing of the mailbox reaches any AI: no
-email tools, nothing for Gemini Live). With Read
+it: **Read, send and manage** (when Lumo is first installed; an
+installation from before keeps what it had, Read only unless it was
+changed), **Read and send**, **Read only** or **No access** (nothing of the
+mailbox reaches any AI: no email tools, nothing for Gemini Live). With Read
 and send, the chat's Claude Code, Codex and Antigravity CLI also get
 `mail_send`, `mail_reply` (an answer in the email's own conversation, with
 `In-Reply-To` and `References`, to the sender or everyone, the email quoted
@@ -522,10 +523,8 @@ Sent ten seconds later and puts a copy there (IMAP `APPEND`) when the server
 didn't.
 The calendar, read from its address or from Google, stays read only:
 **Calendar** has Read only and No access, and shows in Security only once a
-calendar is set. **GitHub** shows there only once its token is saved, and
-is No access until you allow it: a token saved for the GitHub pill only
-shows your pull requests on the island. Right after you save it, its card
-asks once whether the AI may read them too (**Not now** or **Allow read**).
+calendar is set. **GitHub** shows there only once its token is saved, Read
+only when Lumo is first installed.
 
 ## Claude Code
 
