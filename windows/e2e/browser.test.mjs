@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { after, before } from "node:test";
@@ -315,11 +315,7 @@ flow(G, "Watch: the tab comes on screen as a window of its own, and closing it o
   await sleep(800);
   const shot = join(OUT, "shots", "agent-browser-watch.png");
   windowShot(title, shot);
-  if (existsSync(shot)) {
-    const b64 = readFileSync(shot).toString("base64");
-    step(`the window's picture: ${b64.length} base64 characters`);
-    for (let i = 0; i < b64.length; i += 4000) console.log(`B64 watch ${b64.slice(i, i + 4000)}`);
-  }
+  if (existsSync(shot)) step(`the window's picture: ${shot}`);
 
   closeWindow(title);
   let gone = false;
