@@ -28,13 +28,14 @@ use ::windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetGUIThreadInfo,
-    GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, WindowFromPoint,
-    EVENT_SYSTEM_FOREGROUND, GUITHREADINFO, GUI_INMOVESIZE, GWL_EXSTYLE, GW_OWNER, HWND_TOPMOST, SM_SWAPBUTTON,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
+    EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindow,
+    GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, EVENT_SYSTEM_FOREGROUND, GWL_EXSTYLE, GW_OWNER, HWND_TOPMOST,
+    SM_SWAPBUTTON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
     WINEVENT_SKIPOWNPROCESS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
+// The drag's own (thread_under, may_carry_file): apart, so the list above stays as other changes edit it.
+use ::windows::Win32::UI::WindowsAndMessaging::{GetGUIThreadInfo, WindowFromPoint, GUITHREADINFO, GUI_INMOVESIZE};
 
 use super::LocalTime;
 use crate::session_window::{self, Proc};
