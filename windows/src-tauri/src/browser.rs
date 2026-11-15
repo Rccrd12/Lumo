@@ -948,7 +948,7 @@ fn base64_start(text: &str) -> Option<Vec<u8>> {
         } as u32)
     };
     let mut out = Vec::new();
-    for group in text.as_bytes().chunks_exact(4) {
+    for group in text.as_bytes().as_chunks::<4>().0 {
         let n = group.iter().try_fold(0u32, |acc, c| Some((acc << 6) | value(*c)?))?;
         out.extend_from_slice(&[(n >> 16) as u8, (n >> 8) as u8, n as u8]);
     }
