@@ -58,7 +58,7 @@ fn said(text: &str, words: &[&str]) -> bool {
 /// Whether the clause that `before` ends with (from the last , . ; : ! ? or
 /// line break, or the last "but") has a negation in it.
 fn negated(before: &str) -> bool {
-    let clause = before.rsplit(|c| matches!(c, ',' | '.' | ';' | ':' | '!' | '?' | '\n')).next().unwrap_or_default();
+    let clause = before.rsplit([',', '.', ';', ':', '!', '?', '\n']).next().unwrap_or_default();
     let words: Vec<&str> = clause.split(|c: char| !(c.is_alphanumeric() || c == '\'' || c == '’')).filter(|w| !w.is_empty()).collect();
     let clause = words.rsplit(|w| BUT.contains(w)).next().unwrap_or_default();
     clause.iter().any(|w| NEGATIONS.contains(w) || w.ends_with("n't") || w.ends_with("n’t"))
