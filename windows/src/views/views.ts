@@ -18,7 +18,7 @@ import {
 } from "./usage";
 import { buildDiffCard } from "./diff";
 import { lastTextStep, toOneLine } from "../core/diff";
-import { HOLD_TO_ALLOW_MS, approvalKey, approvalKeysArmed, approvalOffer, armApprovalKeys, cutEnds } from "../core/approvals";
+import { approvalKey, approvalKeysArmed, approvalOffer, armApprovalKeys, cutEnds } from "../core/approvals";
 import { formatSize } from "../core/screen";
 import { Bridge, type Decision } from "../core/bridge";
 import { buildRecap } from "./recap";
@@ -606,8 +606,8 @@ const REMEMBERED_TEXT = N_("In Auto, Allow counts for the rest of the chat");
 
 /**
  * A request too long to reach the island whole (`cut`): the card shows its
- * beginning and its end, says so, and Allow is held down. Arguments the relay
- * couldn't read (`unread`): no Allow at all.
+ * beginning and its end, and says so. Arguments the relay couldn't read
+ * (`unread`): no Allow at all.
  */
 const CUT_TEXT = {
   note: N_("Too long to show here whole: its beginning and its end."),
@@ -616,8 +616,6 @@ const CUT_TEXT = {
   elsewhere: N_("Reply in its own window"),
   gap: N_("{hidden} not shown"),
   gapAny: N_("The middle is not shown"),
-  hold: N_("Hold to allow"),
-  holdSize: N_("Hold to allow all {size}"),
 };
 
 function buildApproval(actions: ViewActions): ViewHost {
@@ -658,12 +656,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   });
   // Copilot CLI and Cursor CLI in Auto: Allow stands for the rest of the chat, and the card says so (new look only).
   const rememberedNote = h("div", { class: "session-allow session-note", text: tl(REMEMBERED_TEXT) });
-  const allowBtn = withClass(planWords(btn(tl("Allow"), "primary", () => {
-    if (!holding()) guarded("allow")();
-  }, "Y"), PLAN_ASK_TEXT.approve), "allow-btn");
-  const holdWords = h("span", { class: "words-hold" });
-  allowBtn.append(holdWords);
-  allowBtn.style.setProperty("--hold-ms", `${HOLD_TO_ALLOW_MS}ms`);
+  const allowBtn = withClass(planWords(btn(tl("Allow"), "primary", () => guarded("allow")(), "Y"), PLAN_ASK_TEXT.approve), "allow-btn");
   const body = stack(116, 16, who, about, planSlot, code, gapLine, codeTail, stat, cutNote, mail, row, mailRow);
   let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
@@ -683,29 +676,6 @@ function buildApproval(actions: ViewActions): ViewHost {
     // The request on screen: one that just took its place from the line is not drawn yet.
     if (shownFor != null) actions.decide(d, shownFor);
   };
-  // A request cut short is allowed by holding Allow down (HOLD_TO_ALLOW_MS),
-  // its fill running across the button: never a click meant for something
-  // else, never Y. Letting go, or leaving the button, starts again.
-  let holdTimer: number | null = null;
-  const holding = () => State.pendingApproval?.cut === true && !State.pendingApproval.email;
-  const stopHold = () => {
-    if (holdTimer != null) window.clearTimeout(holdTimer);
-    holdTimer = null;
-    allowBtn.classList.remove("holding");
-  };
-  const startHold = (e: PointerEvent) => {
-    if (!holding() || e.button !== 0 || performance.now() - shownAt < CLICK_GUARD_MS) return;
-    stopHold();
-    const forId = shownFor;
-    allowBtn.classList.add("holding");
-    holdTimer = window.setTimeout(() => {
-      holdTimer = null;
-      allowBtn.classList.remove("holding");
-      if (forId != null && forId === shownFor) guarded("allow")();
-    }, HOLD_TO_ALLOW_MS);
-  };
-  allowBtn.addEventListener("pointerdown", startHold);
-  for (const end of ["pointerup", "pointerleave", "pointercancel"]) allowBtn.addEventListener(end, stopHold);
   // The island never takes the keyboard by itself (typing in another app is
   // never cut off): a click on the card gives it, as the shortcut to the
   // waiting card does.
@@ -728,8 +698,8 @@ function buildApproval(actions: ViewActions): ViewHost {
     const previous = lastKeyAt;
     lastKeyAt = performance.now();
     if (lastKeyAt - previous < KEY_QUIET_MS) return;
-    // Y never allows what is held down, nor what can't be allowed.
-    if (d === "allow" && (holding() || State.pendingApproval?.unread)) return;
+    // Y never allows what can't be allowed.
+    if (d === "allow" && State.pendingApproval?.unread) return;
     guarded(d)();
   };
   window.addEventListener(
@@ -780,7 +750,6 @@ function buildApproval(actions: ViewActions): ViewHost {
       if (req !== shownFor) {
         shownFor = req;
         shownAt = performance.now();
-        stopHold();
       }
       const pending = State.pendingApproval;
       const email = pending?.email ?? null;
@@ -854,10 +823,6 @@ function buildApproval(actions: ViewActions): ViewHost {
           : t(CUT_TEXT.note);
       if (cutNote.textContent !== cutText) cutNote.textContent = cutText;
       allowBtn.style.display = offer.allow ? "" : "none";
-      allowBtn.classList.toggle("hold", offer.holdToAllow);
-      if (!offer.holdToAllow) stopHold();
-      const holdText = pending?.cutBytes ? t(CUT_TEXT.holdSize, { size: formatSize(pending.cutBytes) }) : t(CUT_TEXT.hold);
-      if (holdWords.textContent !== holdText) holdWords.textContent = holdText;
       const edit = !email && !plan ? pending?.edit ?? null : null;
       clear(stat);
       if (edit) {

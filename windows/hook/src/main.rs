@@ -107,9 +107,9 @@ const CONTENT_FIELDS: &[&str] = &[
 /// and its end (`cut_ends`: what is added at the end of a long command is
 /// always on the card) and the request carries `lumo_input_cut`, with
 /// `lumo_input_bytes` (the whole string's size) and `lumo_input_hidden` (what
-/// the card doesn't show). The card says so in amber, Allow is held down to
-/// allow it, the agent's own window can take it whole, and "Allow for this
-/// session" never remembers it. In the chat's Auto nothing waits for them.
+/// the card doesn't show). The card says so in amber, Allow allows all of it,
+/// the agent's own window can show it whole, and "Allow for this session"
+/// never remembers it. In the chat's Auto nothing waits for them.
 const MAX_TARGET_LEN: usize = 64 * 1024;
 /// How long the relay may spend reading a file tool's file on disk for its
 /// numbers (write_stat.rs) before it gives up on them: the agent never waits

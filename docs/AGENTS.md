@@ -145,7 +145,7 @@ rules decide, with two exceptions.
   prints `{"decision":"allow"}`, Deny `{"decision":"deny"}` with the reason the model reads, and
   Reply in Antigravity, no click or Lumo closed print `{"decision":"ask"}`. A command too long
   to forward whole (over 64 KB) shows its beginning and its end on the card, which says in amber
-  how much of its middle is not shown; it is allowed by holding Allow down, never by a click or Y. This
+  how much of its middle is not shown; Allow allows all of it, and the terminal shows it whole. This
   needs the `PreToolUse` hook with `--wait` (below); hooks installed without it never wait.
 - **The island's own chat with Antigravity CLI**, which runs `agy` headless (stream-json on
   stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that run only, the

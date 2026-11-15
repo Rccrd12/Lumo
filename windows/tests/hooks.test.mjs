@@ -833,7 +833,7 @@ test("a plan the chat asks to start brings the chat back over the tool workshop"
   assert.equal(State.requestView(plan), "prompt");
   assert.equal(State.chatSlot, "chat");
   assert.equal(State.requestView({ ...plan, fromChat: undefined }), "approval");
-  // A plan too long to show whole goes on the card, where Approve is held down.
+  // A plan too long to show whole goes on the card, which says so in amber.
   assert.equal(State.requestView({ ...plan, cut: true }), "approval");
   assert.equal(State.requestView({ ...plan, fromChat: undefined, questions: [] }), "question");
 });

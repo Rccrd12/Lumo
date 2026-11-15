@@ -243,8 +243,6 @@ export function editStat(tool: string, input: Record<string, unknown>, sent: Sen
 export interface ApprovalOffer {
   /** Allow, or Approve on a plan. */
   allow: boolean;
-  /** Allow is held down, never a click or a key: the request was cut, and the card shows only its ends. */
-  holdToAllow: boolean;
   /** "Too long to show here whole: its beginning and its end": the request was cut. */
   cutNote: boolean;
   /** "Lumo can't read these arguments": no Allow at all. */
@@ -258,10 +256,9 @@ export interface ApprovalOffer {
 
 /**
  * The buttons of a permission card. A request the relay had to cut (`cut`)
- * shows its beginning and its end, and the card says so in amber: Allow is
- * held down to allow it (never a click that was meant for something else,
- * never Y), its own window can take it whole, and nothing wider than this
- * one request is offered: no "Allow for this session" (two requests that
+ * shows its beginning and its end, and the card says so in amber: Allow
+ * allows all of it, its own window can show it whole, and nothing wider than
+ * this one request is offered: no "Allow for this session" (two requests that
  * only start and end alike are not the same request, session_rules.rs), no
  * free edits after a plan seen in part. Arguments the relay couldn't read
  * (`unread`) are never allowed from here (pipe.rs refuses them anyway): only
@@ -275,7 +272,6 @@ export function approvalOffer(req: Pick<ApprovalInfo, "cut" | "unread" | "email"
   const elsewhere = (cut || unread) && !req?.fromChat;
   return {
     allow: !unread,
-    holdToAllow: cut,
     cutNote: cut,
     unreadNote: unread,
     sessionAllow: req?.sessionAllow === true && !plan && !cut && !unread,
@@ -283,9 +279,6 @@ export function approvalOffer(req: Pick<ApprovalInfo, "cut" | "unread" | "email"
     answerThere: req?.answerIn && !plan ? "agent" : elsewhere ? "elsewhere" : null,
   };
 }
-
-/** How long Allow is held down on a card whose request was cut. */
-export const HOLD_TO_ALLOW_MS = 900;
 
 /** Where lumo-hook took the middle out of a string too long for the card (main.rs GAP, cut_ends). */
 export const CUT_GAP = "\n⋯ ✂ ⋯\n";

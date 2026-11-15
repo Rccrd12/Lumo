@@ -113,9 +113,9 @@ export interface ApprovalInfo {
   edit?: import("./approvals").EditStat;
   /**
    * Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`):
-   * the card shows its beginning and its end and says so in amber; Allow is
-   * held down, the agent's own window can take it whole, and "Allow for this
-   * session" is not offered.
+   * the card shows its beginning and its end and says so in amber; the
+   * agent's own window can show it whole, and "Allow for this session" is not
+   * offered.
    */
   cut?: boolean;
   /** With `cut`: the size of the string shown only in part (`lumo_input_bytes`), for the line that says so. */
@@ -135,7 +135,7 @@ export interface ApprovalInfo {
  * the field, rather than on the permission card.
  */
 export function planAskInChat(req: ApprovalInfo | null | undefined): boolean {
-  // A plan too long to show whole goes on the card, where Approve is held down.
+  // A plan too long to show whole goes on the card, which says so in amber.
   return req?.fromChat === true && (req.plan?.length ?? 0) > 0 && req.cut !== true && req.unread !== true;
 }
 

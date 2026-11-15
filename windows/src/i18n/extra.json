@@ -18071,30 +18071,6 @@
    "id": "Balas di jendelanya sendiri",
    "it": "Rispondi nella sua finestra"
   },
-  "Hold to allow": {
-   "zh-Hans": "按住以允许",
-   "hi": "अनुमति देने के लिए दबाए रखें",
-   "es": "Mantén pulsado para permitir",
-   "ar": "اضغط مطولًا للسماح",
-   "fr": "Maintenir pour autoriser",
-   "bn": "অনুমতি দিতে চেপে ধরে রাখুন",
-   "pt-BR": "Segure para permitir",
-   "ru": "Удерживайте, чтобы разрешить",
-   "id": "Tahan untuk mengizinkan",
-   "it": "Tieni premuto per consentire"
-  },
-  "Hold to allow all {size}": {
-   "zh-Hans": "按住以允许全部 {size}",
-   "hi": "पूरे {size} की अनुमति देने के लिए दबाए रखें",
-   "es": "Mantén pulsado para permitir los {size}",
-   "ar": "اضغط مطولًا للسماح بكامل {size}",
-   "fr": "Maintenir pour autoriser les {size}",
-   "bn": "পুরো {size} অনুমতি দিতে চেপে ধরে রাখুন",
-   "pt-BR": "Segure para permitir os {size}",
-   "ru": "Удерживайте, чтобы разрешить все {size}",
-   "id": "Tahan untuk mengizinkan semua {size}",
-   "it": "Tieni premuto per consentire tutti i {size}"
-  },
   "Start listening?": {
    "zh-Hans": "开始监听？",
    "hi": "सुनना शुरू करें?",
