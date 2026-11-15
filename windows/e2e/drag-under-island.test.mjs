@@ -59,8 +59,13 @@ after(async () => {
 /** The island's window on the screen, physical pixels: the panel the island is drawn in. */
 const panel = () => d.js("const r = devicePixelRatio; return { x: screenX * r, y: screenY * r, w: innerWidth * r, h: innerHeight * r, r };");
 
+// The drop zone, as a file carried over the island shows it: the upload
+// sequence's canvas (src/upload/canvas.ts), the views fading under it. The
+// drop zone's view (.drop-card) stays in the page, transparent, all along.
+const DROP_ZONE = "return !!document.querySelector('#upload-layer.on')";
+
 /** True once the island is open, or shows the drop zone. */
-const opened = () => d.js("return document.getElementById('island').getBoundingClientRect().height >= 60 || !!document.querySelector('.drop-card')?.offsetParent");
+const opened = () => d.js(`return document.getElementById('island').getBoundingClientRect().height >= 60 || !!document.querySelector('#upload-layer.on')`);
 
 /** How many times Lumo's log says a file drag reached the page with `type` (island.ts onDragDrop). */
 function dragsLogged(type) {
@@ -123,15 +128,15 @@ flow(G, "A file picked up under the island opens the drop zone at its own 640 ×
   await sleep(200);
   step("carries it onto the closed island");
   await carry(isl.x + isl.w / 2, isl.y + isl.h / 2, 24);
-  await d.visible(".drop-card", 8_000, "the drop zone");
+  await d.until(DROP_ZONE, 8_000, "the drop zone");
   const size = await settledSize();
   step(`the drop zone: ${size.join(" × ")}`);
   assert.ok(Math.abs(size[0] - 640) <= 2 && Math.abs(size[1] - 176) <= 2, `the drop zone keeps its own 640 × 176, not a size kept for another view: ${size.join(" × ")}`);
   assert.ok(dragsLogged("enter") > enters, "the page heard the drag come in");
 
   step("lets it go on the drop zone");
-  const card = await app.onScreen(".drop-card");
-  await app.mouse.glide(card.x, card.y, 6);
+  const zone = await app.islandBox();
+  await app.mouse.glide(zone.x + zone.w / 2, zone.y + zone.h / 2, 6);
   await sleep(500);
   await app.mouse.up();
   const end = Date.now() + 8_000;
@@ -199,7 +204,7 @@ flow(G, "Text selected by dragging under the island is selected; the island stay
   step(`${selected} characters selected`);
   assert.equal(during, 0, "the island did not open while text was selected");
   assert.equal(await watch(1_500), 0, "nor after");
-  assert.equal(await d.find(".drop-card"), null, "no drop zone");
+  assert.equal(await d.js(DROP_ZONE), false, "no drop zone");
   assert.ok(selected > 0, "the text box got its drag and its release: text is selected");
 });
 
