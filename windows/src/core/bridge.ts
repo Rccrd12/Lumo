@@ -180,18 +180,17 @@ export const Bridge = {
 
   /** Give the window keyboard focus (chat field) and take it away again. */
   focusWindow: (focused: boolean) => {
-    // Given the keyboard, clicks on the island may take the front again (lib.rs).
+    // Given the keyboard, the island's clicks are its own again (lib.rs).
     if (focused) clicksHeld = null;
     return call<void>("focus_window", { focused });
   },
 
   /**
    * While the computer is in use, a click on the island leaves the front to
-   * the window the agent works in (platform/windows.rs hold_clicks). Asked
-   * when it changes, or `again` (a new card: WebView2 may have made windows since).
+   * the window the agent works in (click_hold.rs). Asked when it changes.
    */
-  holdClicks: async (hold: boolean, again = false) => {
-    if (clicksHeld === hold && !again) return;
+  holdClicks: async (hold: boolean) => {
+    if (clicksHeld === hold) return;
     clicksHeld = hold;
     await call<void>("hold_clicks", { hold });
   },

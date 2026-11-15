@@ -169,8 +169,6 @@ export class Island {
   private moving = false;
   /** When the user last pressed on the island or used a shortcut: what lets the chat take the keyboard. */
   private lastGesture = 0;
-  /** The card the island's clicks were last held for (Bridge.holdClicks). */
-  private heldFor: string | null = null;
   /** Lifted while carried: a little bigger, springing back when put down. */
   private lift = new Tracked(1);
   /** Between the island and its edge of the screen, eased when Settings changes it. */
@@ -1140,6 +1138,18 @@ export class Island {
     this.fsm.holdOpen(SHARE_GRACE);
   }
 
+  /**
+   * While the computer is in use, a click on the island must not bring it to
+   * the front: what the agent opened would close (core/computer.ts,
+   * click_hold.rs). Not while the island has the keyboard anyway (its Ask
+   * field, given on purpose).
+   */
+  private syncHeldClicks() {
+    const card = State.pendingApproval;
+    const hold = islandHoldsClicks(card?.tool ?? null, State.computer, State.computerActive) && !document.hasFocus();
+    void Bridge.holdClicks(hold);
+  }
+
   takeKeyboard() {
     this.lastGesture = performance.now();
     void Bridge.focusWindow(true);
@@ -1732,6 +1742,9 @@ export class Island {
     });
     // The window grows and shrinks around the island: its rect moves with it.
     window.addEventListener("resize", () => this.ensureRunning());
+    // Its clicks are held only while the island hasn't the keyboard (syncHeldClicks).
+    window.addEventListener("focus", () => this.syncHeldClicks());
+    window.addEventListener("blur", () => this.syncHeldClicks());
     this.watchScale();
 
     this.islandEl.addEventListener("mousedown", (e) => {
@@ -2265,12 +2278,7 @@ export class Island {
     } else {
       this.newLookSize = "";
     }
-    // While the computer is in use, a click on the island must not bring it to
-    // the front: what the agent opened would close (core/computer.ts).
-    const card = State.pendingApproval;
-    const newCard = (card?.requestId ?? null) !== this.heldFor;
-    this.heldFor = card?.requestId ?? null;
-    void Bridge.holdClicks(islandHoldsClicks(card?.tool ?? null, State.computer, State.computerActive), newCard && card != null);
+    this.syncHeldClicks();
     if (this.lastSyncedView !== State.view) {
       // A permission card can have taken the keyboard too, for Y and N.
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"
