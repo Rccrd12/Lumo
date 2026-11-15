@@ -231,10 +231,11 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
   const req = ask(agent, "mcp__lumo__type", { text: "Notepad" });
   await d.visible(ANY_ALLOW, 10_000, "the card");
   await fullCard();
-  const about = await d.visible(".approval-about", 5_000, "the card's line");
+  // What the action does, in the command's place (views/computer-card.ts).
+  const line = await d.visible(".computer-target-slot, .approval-code", 5_000, "the card's action line");
   await sleep(GUARD);
-  step("clicks the card's line (not a button)");
-  await app.click(about);
+  step("clicks the card's action line (not a button)");
+  await app.click(line);
   await sleep(500);
   assert.equal(await d.js("return document.hasFocus()"), false, "the island must not take the keyboard from the card of a computer action");
   step("the keyboard stayed where it was; clicks Deny");
