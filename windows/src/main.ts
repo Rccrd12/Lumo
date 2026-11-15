@@ -15,6 +15,7 @@ import { Recap } from "./recap/recap";
 import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t } from "./i18n/i18n";
 import { COMPUTER_TEXT } from "./core/computer";
 import { compactNotice } from "./core/compact";
+import type { ComputerState } from "./core/computer-use";
 import { CHECK_DELAY_MS, NOTICE_MS as UPDATE_NOTICE_MS, checkOnOpen } from "./core/update-check";
 
 /** Shows the language Settings asks for ("" = the system's, when Lumo has it). */
@@ -53,10 +54,16 @@ async function main() {
   await onEvent<null>("outside-press", () => island.onOutsidePress());
   // The left button let go anywhere on the screen: ends a file drag the page never saw end.
   await onEvent<null>("left-up", () => island.onLeftUp());
-  // Esc stopped the chat's computer use (computer.rs).
+  // Computer use was stopped (the plan's Stop, computer.rs): Esc only pauses it.
   await onEvent<null>("computer-stopped", () => compactNotice(t(COMPUTER_TEXT.stopped), "#F5A524"));
   // Claude starts or stops using the computer (computer.rs): the island closes to Lumo's ring.
   await onEvent<boolean>("computer-engaged", (on) => island.onComputer(on === true));
+  // How computer use goes, with its plan (computer.rs): the plan opens a moment
+  // as it starts and at each step done, and stays while paused with Esc
+  // (until Resume or Stop: Esc again does not resume).
+  await onEvent<ComputerState>("computer-state", (s) => {
+    if (s && typeof s === "object") island.onComputerState(s);
+  });
   await onEvent<MailMessage[]>("mail-new", (messages) => island.newMail(messages));
   // Unplugged or plugged in: Settings → General → Energy on "Automatic" follows.
   await onEvent<boolean>("energy-power", (onBattery) => {
