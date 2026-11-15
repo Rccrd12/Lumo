@@ -71,8 +71,22 @@ export function cardClickTakesKeyboard(
   computer: { engaged: boolean; stopped: boolean } | null,
   computerActive: boolean,
 ): boolean {
-  if (isComputerTool(tool) || computerActive) return false;
-  return !(computer?.engaged && !computer.stopped);
+  return !islandHoldsClicks(tool, computer, computerActive);
+}
+
+/**
+ * Whether a click anywhere on the island must leave the front where it is
+ * (Bridge.holdClicks): while an agent uses the computer, and while a computer
+ * action's card waits. WebView2 brings the island to the front on a click by
+ * itself, whatever the page does, so the island's own windows are told not to.
+ */
+export function islandHoldsClicks(
+  tool: string | null,
+  computer: { engaged: boolean; stopped: boolean } | null,
+  computerActive: boolean,
+): boolean {
+  if (tool != null && isComputerTool(tool)) return true;
+  return computerActive || !!(computer?.engaged && !computer.stopped);
 }
 
 /** Typed text for the card: ⏎ at each Enter (then a new line), ⇥ at each Tab. */

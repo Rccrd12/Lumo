@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { cardClickTakesKeyboard, computerPoint, describeComputerAction, isComputerTool, peekPlacement, splitComputerLine } = await import("../src/core/computer.ts");
+const { cardClickTakesKeyboard, islandHoldsClicks, computerPoint, describeComputerAction, isComputerTool, peekPlacement, splitComputerLine } = await import("../src/core/computer.ts");
 const { setLanguage } = await import("../src/i18n/i18n.ts");
 
 const say = (name, input = {}) => describeComputerAction(`mcp__lumo__${name}`, input);
@@ -110,4 +110,13 @@ test("a click on a card never takes the keyboard while the computer is in use", 
   assert.equal(cardClickTakesKeyboard("Write", null, true), false);
   // Stopped for good: back to the usual card.
   assert.equal(cardClickTakesKeyboard("Bash", { engaged: true, stopped: true }, false), true);
+});
+
+test("the island's clicks leave the front where it is while the computer is in use", () => {
+  assert.equal(islandHoldsClicks(null, null, false), false);
+  assert.equal(islandHoldsClicks("Bash", null, false), false);
+  assert.equal(islandHoldsClicks("mcp__lumo__left_click", null, false), true);
+  assert.equal(islandHoldsClicks(null, { engaged: true, stopped: false }, false), true);
+  assert.equal(islandHoldsClicks(null, null, true), true);
+  assert.equal(islandHoldsClicks(null, { engaged: true, stopped: true }, false), false);
 });

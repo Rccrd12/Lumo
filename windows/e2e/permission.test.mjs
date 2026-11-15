@@ -267,7 +267,7 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
       inner.__e2eFocus = [];
       const invoke = inner.invoke.bind(inner);
       inner.invoke = (cmd, args, opts) => {
-        if (cmd === "focus_window") inner.__e2eFocus.push(JSON.stringify(args));
+        if (cmd === "focus_window" || cmd === "hold_clicks") inner.__e2eFocus.push(cmd + JSON.stringify(args));
         return invoke(cmd, args, opts);
       };
     }
@@ -275,7 +275,7 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
     return true;`);
   const focus = async (when) => {
     const [has, calls] = await d.js("return [document.hasFocus(), window.__TAURI_INTERNALS__.__e2eFocus.join(' ')]");
-    step(`${when}: island has the keyboard ${has}; focus_window calls: ${calls || "none"}`);
+    step(`${when}: island has the keyboard ${has}; keyboard calls: ${calls || "none"}`);
     return has;
   };
   await focus("the card shows");

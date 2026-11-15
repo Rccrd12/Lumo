@@ -234,8 +234,19 @@ fn focus_window(app: AppHandle, focused: bool) {
     let Some(win) = island::window(&app) else { return };
     platform::set_activating(&win, focused);
     if focused {
+        // Given the keyboard on purpose: clicks in it may take the front again.
+        platform::hold_clicks(&win, false);
         let _ = win.set_focus();
     }
+}
+
+/// While the computer is in use, a click on the island leaves the front to the
+/// window the agent works in (platform::hold_clicks; core/computer.ts
+/// cardClickTakesKeyboard says when).
+#[tauri::command]
+fn hold_clicks(app: AppHandle, hold: bool) {
+    let Some(win) = island::window(&app) else { return };
+    platform::hold_clicks(&win, hold);
 }
 
 #[tauri::command]
@@ -1428,6 +1439,7 @@ pub fn run() {
             set_collapsed,
             set_island_rect,
             focus_window,
+            hold_clicks,
             reposition,
             list_monitors,
             open_url,
