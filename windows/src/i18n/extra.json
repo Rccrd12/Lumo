@@ -8125,6 +8125,18 @@
    "id": "Pemeriksaan di {pr} lolos",
    "it": "I controlli su {pr} sono passati"
   },
+  "Checks were cancelled on {pr}: {checks}": {
+   "zh-Hans": "{pr} 的检查已取消：{checks}",
+   "hi": "{pr} पर चेक रद्द किए गए: {checks}",
+   "es": "Las comprobaciones de {pr} se cancelaron: {checks}",
+   "ar": "أُلغيت الفحوصات على {pr}: {checks}",
+   "fr": "Les vérifications de {pr} ont été annulées : {checks}",
+   "bn": "{pr}-এর চেক বাতিল হয়েছে: {checks}",
+   "pt-BR": "As verificações de {pr} foram canceladas: {checks}",
+   "ru": "Проверки {pr} отменены: {checks}",
+   "id": "Pemeriksaan di {pr} dibatalkan: {checks}",
+   "it": "I controlli su {pr} sono stati annullati: {checks}"
+  },
   "Checks failed on {pr}: {checks}": {
    "zh-Hans": "{pr} 的检查失败：{checks}",
    "hi": "{pr} पर चेक विफल: {checks}",

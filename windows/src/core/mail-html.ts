@@ -85,16 +85,60 @@ export function hiddenBox(width: string | null, height: string | null, style: st
 const TRACKER_HOSTS = /(^|\.)(list-manage\.com|mailtrack\.io|mailstat\.us|sidekickopen\d*\.com|getnotify\.com|bananatag\.com|yesware\.com|mixmax\.com|mailfoogae\.appspot\.com)$/i;
 const TRACKER_PATHS = /\/(track\/open(\.php)?|wf\/open|e\/o\/[^/]+|tr\/op\/[^/]+|trk\/open|open\.php|o\.gif|open\.gif|open\.png|pixel(\.gif|\.png)?|beacon(\.gif|\.png)?)\/?$/i;
 
+/** The width an email's picture is wanted at, given by widths in a srcset: the frame's (600 px) twice, for a sharp screen. */
+const SRCSET_WIDTH = 1200;
+
+/**
+ * The candidates of a srcset, as a browser reads them: each address (which
+ * may hold commas itself) with its width ("800w") or density ("2x", 1 when
+ * it says none).
+ */
+function srcsetCandidates(srcset: string): { url: string; w: number; x: number }[] {
+  const out: { url: string; w: number; x: number }[] = [];
+  let at = 0;
+  while (at < srcset.length) {
+    while (at < srcset.length && /[\s,]/.test(srcset[at])) at++;
+    let end = at;
+    while (end < srcset.length && !/\s/.test(srcset[end])) end++;
+    let url = srcset.slice(at, end);
+    at = end;
+    let descriptor = "";
+    if (url.endsWith(",")) {
+      url = url.replace(/,+$/, "");
+    } else {
+      // Up to the comma that ends the candidate (one inside brackets is the descriptor's own).
+      let depth = 0;
+      while (at < srcset.length && (srcset[at] !== "," || depth > 0)) {
+        if (srcset[at] === "(") depth++;
+        else if (srcset[at] === ")") depth = Math.max(0, depth - 1);
+        descriptor += srcset[at++];
+      }
+    }
+    if (!url) continue;
+    const w = /(?:^|\s)(\d+)w(?:\s|$)/.exec(descriptor);
+    const x = /(?:^|\s)(\d+(?:\.\d+)?|\.\d+)x(?:\s|$)/.exec(descriptor);
+    out.push({ url, w: w ? Number(w[1]) : 0, x: x ? Number(x[1]) : 1 });
+  }
+  return out;
+}
+
 /**
  * The address an image of an email shows: its src, or with none (a picture
- * given only by srcset), the first of its srcset, as a browser would read it.
- * The frame takes srcset out (views/mail-view.ts), so without this such an
- * image would never load, not even after Load images.
+ * given only by srcset), the one of its srcset a browser would take in the
+ * frame: by widths, the smallest at least SRCSET_WIDTH wide (else the
+ * widest); by densities, the highest up to 2x (else the lowest). The frame
+ * takes srcset out (views/mail-view.ts), so without this such an image would
+ * never load, not even after Load images.
  */
 export function imageSource(src: string, srcset: string): string {
   const own = src.trim();
   if (own) return own;
-  return (srcset.trim().split(/\s+/)[0] ?? "").replace(/,+$/, "");
+  const all = srcsetCandidates(srcset);
+  const wide = all.filter((c) => c.w > 0).sort((a, b) => a.w - b.w);
+  if (wide.length) return (wide.find((c) => c.w >= SRCSET_WIDTH) ?? wide[wide.length - 1]).url;
+  const dense = all.filter((c) => c.x > 0).sort((a, b) => a.x - b.x);
+  if (!dense.length) return "";
+  return (dense.filter((c) => c.x <= 2).pop() ?? dense[0]).url;
 }
 
 /**
