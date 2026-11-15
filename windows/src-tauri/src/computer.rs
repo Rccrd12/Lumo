@@ -669,8 +669,7 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>, chat: &str, stopped: bool) -> Op
 // It calls Lumo's tools without asking (agy's own card leaves the computer
 // to Lumo, hook/src/reply.rs), so Lumo asks here, before each action, as the
 // chat's permission mode says: Ask every time is a card for each action that
-// does something (looking never asks), Auto none once the user said yes on
-// the first one of the chat (`CONSENTED`), Plan only refuses them. Each chat
+// does something (looking never asks), Auto none, Plan only refuses them. Each chat
 // by its own turn (the `chat` lumo-hook sends, its LUMO_CHAT_ID): a Claude
 // Code chat using the computer at the same time asks for itself, as always.
 // The state is Lumo's: nothing the agent writes in its own configuration
@@ -681,7 +680,7 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>, chat: &str, stopped: bool) -> Op
 pub enum Asks {
     /// Ask every time: a card for each action.
     Card,
-    /// Auto: none, after the chat's first (`CONSENTED`).
+    /// Auto: none.
     Free,
     /// Plan only: only looking.
     LookOnly,
@@ -732,10 +731,6 @@ struct Other {
 static OTHERS: Mutex<Vec<Other>> = Mutex::new(Vec::new());
 static OTHER_IDS: AtomicUsize = AtomicUsize::new(1);
 
-/// The chats whose agent the user let use the computer without cards in
-/// Auto, on the first card of the chat (until Lumo quits).
-static CONSENTED: Mutex<Vec<String>> = Mutex::new(Vec::new());
-
 fn others() -> MutexGuard<'static, Vec<Other>> {
     OTHERS.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -743,18 +738,6 @@ fn others() -> MutexGuard<'static, Vec<Other>> {
 /// The other agent's turn the chat `chat` is in, if it is in one.
 fn other_of(chat: &str) -> Option<Other> {
     others().iter().find(|o| o.chat == chat).cloned()
-}
-
-/// The user said yes, on the first card, to the chat's agent acting in Auto.
-fn consented(chat: &str) -> bool {
-    CONSENTED.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|c| c == chat)
-}
-
-fn consent(chat: &str) {
-    let mut all = CONSENTED.lock().unwrap_or_else(|e| e.into_inner());
-    if !all.iter().any(|c| c == chat) {
-        all.push(chat.to_string());
-    }
 }
 
 /// Another agent's chat turn that may use the computer: the computer is
@@ -803,28 +786,6 @@ fn asks_now(app: &AppHandle, other: &Other) -> Asks {
     other.started.stricter(Asks::of(&mode))
 }
 
-/// What Lumo does before an action of another agent's turn, from how it asks
-/// and whether the user already said yes to it in Auto (`consented`).
-#[derive(Debug, PartialEq, Eq)]
-enum Before {
-    /// Nothing: the action goes.
-    Go,
-    /// A card for this action.
-    Card,
-    /// The chat's first card in Auto: a yes counts for the rest of the chat.
-    Consent,
-    /// Plan only: refused.
-    Refuse,
-}
-
-fn before(asks: Asks, consented: bool) -> Before {
-    match asks {
-        Asks::LookOnly => Before::Refuse,
-        Asks::Card => Before::Card,
-        Asks::Free if consented => Before::Go,
-        Asks::Free => Before::Consent,
-    }
-}
 
 // ── Gemini's grid ───────────────────────────────────────────────────────────
 //
@@ -2074,11 +2035,10 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     };
     // Another agent's turn: Lumo asks, or refuses, itself.
     let ask = match &other {
-        Some(o) if !only_looks(&tool) => match before(asks_now(app, o), consented(&chat)) {
-            Before::Refuse => return refuse(PLAN_TEXT),
-            Before::Go => None,
-            Before::Card => Some((o.agent, false)),
-            Before::Consent => Some((o.agent, true)),
+        Some(o) if !only_looks(&tool) => match asks_now(app, o) {
+            Asks::LookOnly => return refuse(PLAN_TEXT),
+            Asks::Free => None,
+            Asks::Card => Some(o.agent),
         },
         _ => None,
     };
@@ -2117,26 +2077,16 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         mouse_to_user();
         return refuse(STOPPED_TEXT);
     }
-    if let Some((agent, first)) = ask {
-        let mut card = json!({
+    if let Some(agent) = ask {
+        let card = json!({
             "hook_event_name": "PermissionRequest",
             "lumo_island": true,
             "lumo_agent": agent,
             "tool_name": format!("mcp__lumo__{tool}"),
             "tool_input": card_input(&input),
         });
-        // The chat's first action in Auto: the card says Allow counts for the
-        // rest of the chat, and the island never answers it by itself (hooks.ts).
-        if first {
-            card["lumo_remembered"] = json!(true);
-            card["lumo_computer_consent"] = json!(true);
-        }
         match crate::pipe::ask(app, card).await.as_deref() {
-            Some("allow") => {
-                if first {
-                    consent(&chat);
-                }
-            }
+            Some("allow") => {}
             Some(_) => return refuse(DENIED_TEXT),
             None => return refuse("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment."),
         }
@@ -3413,11 +3363,6 @@ mod tests {
         assert_eq!(Asks::Card.stricter(Asks::Free), Asks::Card, "Auto picked mid-turn: from the next turn");
         assert_eq!(Asks::Free.stricter(Asks::LookOnly), Asks::LookOnly);
         assert_eq!(Asks::LookOnly.stricter(Asks::Free), Asks::LookOnly);
-        // Auto: the chat's first action is a card whose Allow counts for the rest of it.
-        assert_eq!(before(Asks::Free, false), Before::Consent);
-        assert_eq!(before(Asks::Free, true), Before::Go);
-        assert_eq!(before(Asks::Card, true), Before::Card, "a yes in Auto never skips Ask every time's cards");
-        assert_eq!(before(Asks::LookOnly, true), Before::Refuse);
     }
 
     #[test]
@@ -3433,12 +3378,6 @@ mod tests {
         assert!(agy.grid && agy.started == Asks::LookOnly);
         let agy2 = other_of("own-agy2").unwrap();
         assert!(!agy2.grid && agy2.started == Asks::Free, "another Antigravity chat keeps its own");
-        // The yes of the first card is the chat's alone.
-        assert!(!consented("own-agy2"));
-        consent("own-agy2");
-        consent("own-agy2");
-        assert!(consented("own-agy2") && !consented("own-agy"));
-        assert_eq!(CONSENTED.lock().unwrap().iter().filter(|c| *c == "own-agy2").count(), 1);
         others().retain(|o| !o.chat.starts_with("own-"));
         assert!(other_of("own-agy").is_none());
     }

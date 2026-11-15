@@ -1060,9 +1060,8 @@ plan, with no API key.
   tools). It calls Lumo's tools without asking, so Lumo asks itself, as the
   chat's mode says: with *Ask every time* each click, key or text is the same
   Allow / Deny card, under Antigravity's name; in *Plan* mode it may only
-  look; in *Auto* (or Antigravity's own auto mode) the chat's first action is
-  still a card, which says Allow counts for the rest of the chat, and then it
-  acts without one (until Lumo quits). A mode that asks more, picked while it
+  look; in *Auto* (or Antigravity's own auto mode) it acts without a card.
+  A mode that asks more, picked while it
   works, counts from its next action; one that asks less, from the next
   question. Each chat by its own mode: a Claude Code chat using the computer
   at the same time asks as it always does. Same glow, mouse, Esc, rules and
