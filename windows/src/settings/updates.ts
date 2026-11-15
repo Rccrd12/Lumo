@@ -47,9 +47,7 @@ const TEXT = {
   get onlyMain() { return t("No pull request is open: this beta is main, with what has not been released yet."); },
   get installBeta() { return t("Install the beta"); },
   get updateBeta() { return t("Update the beta"); },
-  get betaHint() { return t("Lumo downloads the beta, installs it by itself and opens again."); },
   backToRelease: (version: string) => t("Back to the release {version}", { version }),
-  get backHint() { return t("Reinstalls the latest public version. Your settings stay."); },
 };
 
 type Phase =
@@ -247,7 +245,6 @@ export function updatesSection(
       const url = b.assetUrl;
       body.append(h("div", { class: "row" },
         h("button", { class: "primary", text: onBeta ? TEXT.updateBeta : TEXT.installBeta, onclick: () => void install(info, url) }),
-        h("span", { class: "hint", text: TEXT.betaHint }),
       ));
     }
   }
@@ -257,7 +254,6 @@ export function updatesSection(
     if (info.newer || !info.assetUrl) return;
     body.append(h("div", { class: "row" },
       h("button", { text: TEXT.backToRelease(info.latest), onclick: () => void install(info) }),
-      h("span", { class: "hint", text: TEXT.backHint }),
     ));
   }
 
