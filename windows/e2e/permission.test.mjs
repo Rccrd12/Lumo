@@ -292,3 +292,59 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
   await app.click(await d.visible(".deny-btn", 5_000, "Deny on the full card"));
   assert.equal(behavior(await told(req)), "deny");
 });
+
+flow(G, "Arguments Lumo can't read: the card says so, offers no Allow, and Deny reaches the agent", app, async () => {
+  const agent = app.agent("unread");
+  await agent.start();
+  // Arguments as an agent may send them (Copilot's toolArgs), that are no JSON
+  // the relay can read: the agent may read them one way and Lumo another.
+  const raw = '{"command": "echo hi" ,, "then": rm -rf build}';
+  const req = agent.send({ hook_event_name: "PermissionRequest", tool_name: "bash", toolArgs: raw, permission_suggestions: [] });
+  open.push(req);
+  step(`${agent.id} asks: bash with arguments ${raw}`);
+  await fullCard();
+  const deny = await d.visible(".deny-btn", 10_000, "the full card (never the closed island's)");
+  const note = (await d.text(await d.visible(".approval-cut", 5_000, "the line that says Lumo can't read them"))).trim();
+  step(`the card says: ${note}`);
+  assert.match(note, /can't read/i);
+  assert.equal(await d.find(".allow-btn"), null, "no Allow on the card");
+  assert.equal(await d.find(CLOSED_ALLOW), null, "nor on the closed island");
+  const sessionAllow = await d.js("return [...document.querySelectorAll('button, .session-allow')].some((e) => e.offsetParent && /this session/i.test(e.textContent))");
+  assert.equal(sessionAllow, false, "no Allow for this session");
+  await sleep(GUARD);
+  step("clicks Deny");
+  await app.click(deny);
+  assert.equal(behavior(await told(req)), "deny");
+});
+
+flow(G, "Two cut commands in a row: the second card grows too, its Allow inside the island", app, async () => {
+  const a = app.agent("cut-first");
+  const b = app.agent("cut-second");
+  await a.start();
+  await b.start();
+  const command = (end) => `$data = @'\n${'{"id":2},\n'.repeat(20_000)}'@ | Set-Content data.json; Write-Output ${end}`;
+  const first = ask(a, "PowerShell", { command: command("end-of-first"), description: "First" });
+  await d.visible(".allow-btn", 10_000, "the first card");
+  const second = ask(b, "PowerShell", { command: command("end-of-second"), description: "Second" });
+  await sleep(GUARD);
+  step("Deny on the first");
+  await app.click(await d.visible(".deny-btn"));
+  assert.equal(behavior(await told(first)), "deny");
+  await d.until(
+    "return [...document.querySelectorAll('.approval-code-tail')].some((e) => e.offsetParent && e.textContent.trim().endsWith('end-of-second'))",
+    10_000,
+    "the second card, with its end",
+  );
+  // The card grows to what it holds (anim.ts): let it settle.
+  await sleep(1_200);
+  const fits = await d.js(`
+    const b = [...document.querySelectorAll('.allow-btn')].find((e) => e.offsetParent).getBoundingClientRect();
+    const i = document.getElementById('island').getBoundingClientRect();
+    return { button: [b.top, b.bottom], island: [i.top, i.bottom], window: innerHeight };`);
+  step(`button ${JSON.stringify(fits.button)}, island ${JSON.stringify(fits.island)}, window ${fits.window}`);
+  assert.ok(fits.button[1] <= fits.island[1] + 1 && fits.island[1] <= fits.window + 1, "Allow must be inside the island, and the island inside its window");
+  await sleep(GUARD);
+  step("clicks Allow on the second");
+  await app.click(await d.visible(".allow-btn"));
+  assert.equal(behavior(await told(second)), "allow");
+});

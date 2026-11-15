@@ -4,7 +4,8 @@
 // under the capture's mouse nor hears its clicks; once the capture ends the
 // island is back on top and opens as before. An image the tool pinned to the
 // screen is no capture: the island keeps opening under the mouse while it is
-// in front.
+// in front. With the island set to close on a click outside it, the clicks of
+// a capture (picking the window to take) never close it (#265).
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -118,4 +119,41 @@ flow(G, "An image the tool pinned to the screen is no capture: the island opens 
   } finally {
     await tool.unpin();
   }
+});
+
+flow(G, "Closing on a click outside: a click in a capture leaves the island open, one with no capture closes it", app, async () => {
+  step("Lumo again, set to close the open island on a click outside it (Settings → Island)");
+  await app.quit();
+  await app.launch({ settings: { islandClose: "click" } });
+  await app.open();
+  const s = await app.screen();
+  // Where the user picks a window to capture: away from the island.
+  const elsewhere = { x: s.w / 2, y: s.h * 0.62 };
+  const overlay = await tool.capture();
+  step(`overlay ${overlay.hwnd}: ${overlay.seen}`);
+  try {
+    assert.ok(overlay.front, "the overlay came to the front");
+    await sleep(500);
+    step("a click on the capture, away from the island, as when it is told which window to take");
+    await app.mouse.glide(elsewhere.x, elsewhere.y);
+    await sleep(300);
+    await app.mouse.down();
+    await sleep(60);
+    await app.mouse.up();
+    await sleep(800);
+  } finally {
+    step(`the capture ends: ${await tool.end()}`);
+  }
+  await sleep(1_500);
+  const h = await app.islandHeight();
+  step(`the island after the capture: ${Math.round(h)} px tall`);
+  assert.ok(h > 100, "the click that belonged to the capture did not close the island");
+
+  step("a click outside the island with no capture open closes it, as set");
+  await app.mouse.glide(elsewhere.x, elsewhere.y);
+  await sleep(300);
+  await app.mouse.down();
+  await sleep(60);
+  await app.mouse.up();
+  await d.until("return document.getElementById('island').getBoundingClientRect().height < 60", 5_000, "the island closing on a click outside it");
 });
