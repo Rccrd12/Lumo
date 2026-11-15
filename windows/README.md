@@ -292,7 +292,10 @@ first tools becomes the plan, and it is told so; and each new question in a
 chat whose plan isn't done says where the plan stands.
 
 Each chat shows its own plan: a chip beside the model says how far along it
-is and opens its steps over the chat, and the home lists the plans under way.
+is and opens its steps over the chat, and the home lists the plans under way
+of the chats at work, each under its agent's name and its chat's title. A chat
+stopped, or done without ticking its last step, keeps its plan in its own chat
+but is no longer "In progress" on the home.
 A plan made while the island is closed is there when it opens. Its **–**
 folds it into an icon left of the usage ring, which brings it back; a new
 plan opens it again. A finished plan stays a few seconds, then folds into its
