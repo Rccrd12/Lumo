@@ -1404,7 +1404,7 @@ pub fn show_plan(app: &AppHandle, chat_id: &str, provider: &str, input: &Value) 
 }
 
 /// Name and accent colour of a chat provider for the Plan island (`src/core/providers.ts`).
-fn plan_speaker(provider: &str) -> (String, &'static str) {
+pub(crate) fn plan_speaker(provider: &str) -> (String, &'static str) {
     match provider {
         "anthropic" => ("Anthropic".into(), "#E07950"),
         "claude-code" => ("Claude Code".into(), "#D97757"),
