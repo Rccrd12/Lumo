@@ -98,6 +98,8 @@ import {
   chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists,
   setChatModel, setCompact, toSavedTurn, type AnswerWarning, type ChatHit, type SavedChat,
 } from "../core/chats";
+// The chat's CLI sessions, kept with it: apart, so the list above stays as other changes edit it.
+import { cliOf, setChatCli } from "../core/chats";
 import {
   agentAsk, applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents,
@@ -2698,6 +2700,7 @@ export function buildPrompt(
     if (file?.sent && file.sentWith === id) file.sent = false;
     State.chatHistory = kept;
     State.chatSession = null;
+    setChatCli(State.chatId, null);
     // The cards of the dropped messages (a quiz's answers) are not the next answer's.
     forgetCardsFrom(State.chatId, kept.filter((m) => !m.failed).length);
     // So are the agents the dropped answers started: the next answer's start a card of their own.
@@ -3624,7 +3627,7 @@ export function buildPrompt(
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
       State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, ...fromSavedTurn(turn) }));
       State.chatSession = c.session;
-      void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
+      void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id), cliOf(c.id));
       // Its answers' agents come back under them, unless the island still holds them.
       restoreAgents(agentStore, c.id, c.turns, c.provider);
     }
@@ -3803,7 +3806,7 @@ export function buildPrompt(
       State.chatSession = going.session;
     } else if (State.chatHistory.length > 0) {
       State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, turn: i }));
-      void Bridge.chatRestore(State.chatId, State.chatHistory.map(conversationTurn), State.chatSession, compactOf(State.chatId));
+      void Bridge.chatRestore(State.chatId, State.chatHistory.map(conversationTurn), State.chatSession, compactOf(State.chatId), cliOf(State.chatId));
     }
     const workshop = State.chatSlot === "forge";
     cardEl.classList.toggle("forge", workshop);
@@ -3852,6 +3855,7 @@ export function buildPrompt(
       { role: "assistant", content: `${t(FORGE_STRINGS.editHere, { name: tool.name })}\n\n${blocksOf(seed)}` },
     ];
     State.chatHistory = turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
+    setChatCli(State.chatId, null);
     void Bridge.chatRestore(State.chatId, turns, null);
     const parsed = latestDraft(State.chatHistory);
     if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
@@ -5010,6 +5014,8 @@ export function buildPrompt(
         giveBack(false);
       }
       if (reply.session) run.session = reply.session;
+      // What each CLI session of the chat saw, for opening it again (chat.rs cli_state).
+      if (!run.forgotten) setChatCli(run.chatId, reply.cli ?? null);
       if (State.chatId === run.chatId) {
         State.chatSession = run.session;
         void peekExplorer(true);
@@ -5159,7 +5165,8 @@ export function buildPrompt(
     State.notify();
   }
 
-  void onEvent<{ chat: string; text: string; session: string | null }>("chat-own-answer", (own) => {
+  void onEvent<{ chat: string; text: string; session: string | null; cli?: string | null }>("chat-own-answer", (own) => {
+    if (own?.chat && typeof own.cli === "string") setChatCli(own.chat, own.cli);
     if (own?.chat && own.text) void ownAnswer(own.chat, own.text, own.session ?? null);
   });
 
@@ -5234,7 +5241,7 @@ export function buildPrompt(
     if (saved) restoreAgents(agentStore, chatId, saved.turns, saved.provider);
     loadingAway.add(chatId);
     try {
-      await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId));
+      await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId), cliOf(chatId));
     } finally {
       loadingAway.delete(chatId);
     }
