@@ -813,9 +813,16 @@ const COMPUTER_SETTINGS = {
   get claudeOnly() { return t("In the chat, pick Claude Code or Antigravity CLI as the provider to use it."); },
 };
 
+/** The agents' own hidden browser tabs (browser.rs): Claude Code alone for now. */
+const BROWSER_SETTINGS = {
+  get label() { return t("Let agents browse the web"); },
+  get hint() { return t("Claude Code and its agents open websites in hidden tabs of their own, apart from your browser: none of your accounts or cookies. Pages run as in Edge. Each agent's row in the Agents card has Watch."); },
+  get claudeOnly() { return t("For now only Claude Code browses."); },
+};
+
 /**
  * Settings → Security: what the chat's agents may do on their own (the
- * permissions, computer use, web search), what goes with every message,
+ * permissions, computer use, the agents' browser, web search), what goes with every message,
  * what the AI may do with the email, the calendar and GitHub, and what Lumo
  * always does without a switch. "Open Outlook if it's closed" shows only
  * while Outlook is an Email source of the Email pill, the calendar's row only
@@ -876,6 +883,11 @@ function securitySection(): HTMLElement {
     note.hidden = !(settings.chatComputerUse && !cli);
   };
   showNote();
+  const browserNote = h("p", { class: "hint", text: BROWSER_SETTINGS.claudeOnly });
+  const showBrowserNote = () => {
+    browserNote.hidden = !(settings.chatBrowser && settings.chatProvider !== "claude-code");
+  };
+  showBrowserNote();
   return h(
     "section",
     {},
@@ -890,6 +902,14 @@ function securitySection(): HTMLElement {
       }),
     ),
     note,
+    setting(BROWSER_SETTINGS.label, BROWSER_SETTINGS.hint,
+      toggle(settings.chatBrowser === true, (on) => {
+        settings.chatBrowser = on;
+        showBrowserNote();
+        void save();
+      }),
+    ),
+    browserNote,
     setting(WEB_SETTINGS.label, SECURITY.webHint,
       toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
     ),

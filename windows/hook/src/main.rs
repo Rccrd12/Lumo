@@ -141,7 +141,7 @@ fn args() -> Args {
     while let Some(arg) = it.next() {
         if arg == "--chat-guard" {
             chat_guard = true;
-        } else if arg == "--computer-turn" {
+        } else if arg == "--computer-turn" || arg == "--browser-claim" {
             // Read on its own (main): not the event's name.
         } else if arg == "--agent" {
             agent = it.next().unwrap_or_default();
@@ -204,6 +204,11 @@ fn main() {
         // (computer_turns.rs in the app).
         if std::env::args().skip(1).any(|a| a == "--computer-turn") {
             computer_turn(&raw, &env);
+        }
+        // `--browser-claim`: an agent opens a browser tab, which is to be its
+        // own (browser.rs in the app).
+        if std::env::args().skip(1).any(|a| a == "--browser-claim") {
+            browser_claim(&raw, &env);
         }
         if waits_on_github(&raw) {
             print(Some(reply::claude_wait_denied()));
@@ -322,6 +327,41 @@ fn computer_turn_reply(answer: &str) -> Option<String> {
         "stopped" => Some(reply::computer_turn_denied(None)),
         _ => None,
     }
+}
+
+/// How long a browser claim may take: Lumo answers it at once.
+const BROWSER_CLAIM_BUDGET: Duration = Duration::from_secs(2);
+
+/// An agent of the island's Claude Code chat opens a browser tab
+/// (browser_open): Lumo is told which agent, so the tab the call opens is
+/// that agent's (the MCP call itself carries only the chat). Waited for, so
+/// Lumo has it before the call; never a decision: nothing is printed, Claude
+/// Code goes on as its mode says. Lumo not there: on at once.
+fn browser_claim(raw: &[u8], env: &dyn Fn(&str) -> Option<String>) -> ! {
+    let Some(claim) = browser_claim_line(raw, env) else { std::process::exit(0) };
+    let (tx, rx) = mpsc::channel::<Heard>();
+    std::thread::spawn(move || {
+        let _ = tx.send(talk(&claim, true));
+    });
+    let _ = wait(&rx, BROWSER_CLAIM_BUDGET, || false);
+    std::process::exit(0);
+}
+
+/// The claim as one line: the chat (LUMO_CHAT_ID), the agent (Claude Code's
+/// `agent_id`, "main" for the conversation) and the address it opens. None
+/// for anything else than Lumo's browser_open of a new tab: one given `tab`
+/// loads in a tab that already has its agent, and its claim would be left
+/// for another agent's tab to take.
+fn browser_claim_line(raw: &[u8], env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let v = serde_json::from_slice::<Value>(without_bom(raw)).ok()?;
+    mcp::lumo_tool(v["tool_name"].as_str()?).filter(|t| *t == "browser_open")?;
+    if !v["tool_input"]["tab"].is_null() {
+        return None;
+    }
+    let chat = env("LUMO_CHAT_ID").filter(|c| !c.starts_with("${")).unwrap_or_default();
+    let agent = v["agent_id"].as_str().filter(|a| !a.is_empty()).unwrap_or("main");
+    let url = v["tool_input"]["url"].as_str().unwrap_or("");
+    Some(format!("{}\n", serde_json::json!({ "lumo_browser_claim": { "chat": chat, "agent": agent, "url": url } })))
 }
 
 /// What came back from Lumo.
@@ -877,6 +917,28 @@ mod tests {
         // No chat: no turn to ask for.
         assert!(computer_ask(main.as_bytes(), &|_| None).is_none());
         assert!(computer_ask(main.as_bytes(), &|_| Some("${env:LUMO_CHAT_ID}".into())).is_none());
+    }
+
+    #[test]
+    fn a_browser_tab_is_claimed_for_the_agent_that_opens_it() {
+        let env = |k: &str| (k == "LUMO_CHAT_ID").then(|| "chat-7".to_string());
+        let claim = |raw: &str| browser_claim_line(raw.as_bytes(), &env).map(|l| serde_json::from_str::<Value>(l.trim_end()).unwrap());
+        let sub = r#"{"hook_event_name":"PreToolUse","tool_name":"mcp__lumo__browser_open","agent_id":"a79d00bacacf190b5","tool_input":{"url":"https://example.com"}}"#;
+        assert_eq!(
+            claim(sub).unwrap(),
+            serde_json::json!({ "lumo_browser_claim": { "chat": "chat-7", "agent": "a79d00bacacf190b5", "url": "https://example.com" } })
+        );
+        let main = r#"{"hook_event_name":"PreToolUse","tool_name":"mcp__lumo__browser_open","tool_input":{"url":"example.com","tab":null}}"#;
+        assert_eq!(claim(main).unwrap()["lumo_browser_claim"]["agent"], "main");
+        assert!(browser_claim_line(main.as_bytes(), &|_| None).unwrap().ends_with('\n'), "one line");
+        // A page loaded in a tab it has: no new tab to claim.
+        let again = r#"{"hook_event_name":"PreToolUse","tool_name":"mcp__lumo__browser_open","agent_id":"a1","tool_input":{"url":"example.com","tab":2}}"#;
+        assert!(claim(again).is_none());
+        // Only browser_open of Lumo's own server.
+        for other in ["mcp__lumo__browser_read", "mcp__lumo__left_click", "mcp__other__browser_open", "Bash"] {
+            assert!(claim(&format!(r#"{{"tool_name":"{other}","tool_input":{{"url":"x"}}}}"#)).is_none(), "{other}");
+        }
+        assert!(claim("not json").is_none());
     }
 
     #[test]

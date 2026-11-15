@@ -878,6 +878,25 @@ export interface ChatSignalEvent {
 }
 
 /**
+ * One of the hidden browser tabs an agent of the chat's Claude Code opened
+ * (browser.rs): whose it is (`agent`, the row's id or "main"), its number, the
+ * site and title it is on, and whether the user is watching it (Watch).
+ */
+export interface AgentWebTab {
+  chat: string;
+  agent: string;
+  tab: number;
+  host: string;
+  title: string;
+  visible: boolean;
+}
+
+/** The `browser-tabs` event: every agent's tab, sent whole when one changes. */
+export interface AgentWebTabs {
+  tabs: AgentWebTab[];
+}
+
+/**
  * Unsloth Studio as Lumo starts and stops it (unsloth_studio.rs Status), also
  * the payload of the `unsloth-studio` event.
  */

@@ -12,7 +12,7 @@
 // typing line says "no signal for 6 min" (`stallOf`). Waiting for the user's
 // permission is never stuck: it says so instead.
 
-import type { ChatActivity, ChatAgent, ChatAgentEvent, ChatSignalEvent } from "./bridge";
+import type { AgentWebTab, AgentWebTabs, ChatActivity, ChatAgent, ChatAgentEvent, ChatSignalEvent } from "./bridge";
 import type { AskQuote, SavedAgent, SavedTalk, SavedTurn } from "./chats";
 import type { AgentsPeek } from "./compact";
 import { isApiProvider, isCliProvider, usesLumoTools } from "./providers";
@@ -398,6 +398,49 @@ export function computerOf(agentId: string): { holds: true; waits?: undefined } 
 /** Whether anyone holds or waits for the computer: the card's seconds then count. */
 export function computerBusy(): boolean {
   return computerTurns.holder != null || computerTurns.waiting.length > 0;
+}
+
+// ── The agents' browser tabs ──────────────────────────────────────────────────
+//
+// Rust keeps the hidden tabs the agents browse in (browser.rs) and sends them
+// all as `browser-tabs` when one opens, moves to another site, closes, or is
+// shown or hidden. A tab is the agent's in its chat: "main" in two chats are
+// two owners.
+
+let browserTabs: AgentWebTab[] = [];
+
+/** A `browser-tabs` event: true when the tabs changed. */
+export function applyBrowserTabs(ev: AgentWebTabs | null | undefined): boolean {
+  const next: AgentWebTab[] = (Array.isArray(ev?.tabs) ? ev!.tabs : [])
+    .filter((x) => typeof x?.agent === "string" && typeof x.tab === "number")
+    .map((x) => ({
+      chat: typeof x.chat === "string" ? x.chat : "",
+      agent: x.agent,
+      tab: x.tab,
+      host: typeof x.host === "string" ? x.host : "",
+      title: typeof x.title === "string" ? x.title : "",
+      visible: x.visible === true,
+    }));
+  if (JSON.stringify(next) === JSON.stringify(browserTabs)) return false;
+  browserTabs = next;
+  return true;
+}
+
+/** The chats that have a tab open now: the ones whose rows say so. */
+export function browserChats(): Set<string> {
+  return new Set(browserTabs.map((x) => x.chat));
+}
+
+/**
+ * The tab agent `agentId` of chat `chatId` browses in: its newest, since tabs
+ * are numbered as they open. Undefined when it has none.
+ */
+export function browserOf(chatId: string, agentId: string): AgentWebTab | undefined {
+  let found: AgentWebTab | undefined;
+  for (const x of browserTabs) {
+    if (x.chat === chatId && x.agent === agentId && (!found || x.tab > found.tab)) found = x;
+  }
+  return found;
 }
 
 // ── Permission cards ──────────────────────────────────────────────────────────

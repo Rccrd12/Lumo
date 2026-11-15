@@ -365,8 +365,11 @@ pub fn teller(app: &AppHandle, chat: &str) -> Tell {
         if alive {
             events.signal(&app);
         }
-        // An agent that ended waits for the computer no more, nor keeps it.
-        crate::computer_turns::agents_open(&app, &chat, &agents.open_ids());
+        // An agent that ended waits for the computer no more, nor keeps it,
+        // and its browser tabs close.
+        let open = agents.open_ids();
+        crate::computer_turns::agents_open(&app, &chat, &open);
+        crate::browser::agents_open(&app, &chat, &open);
         events.agents(&app, agents);
     })
 }

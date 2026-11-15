@@ -27,7 +27,7 @@ import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import type { ChatActivity } from "../core/bridge";
 import {
-  AGENT_TEXT, agentStall, askable, computerOf, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
+  AGENT_TEXT, agentStall, askable, browserOf, computerOf, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
   type AgentBatch, type AgentEntry, type AgentLook, type ChatAgents, type TalkEntry,
 } from "../core/chat-agents";
 import type { AskQuote } from "../core/chats";
@@ -77,6 +77,10 @@ export const AGENTS_CARD_TEXT = {
   waitingComputer: N_("Waiting for the computer · {place} of {total} · {time}"),
   inLineComputer: N_("Waiting for the computer"),
   giveTurn: N_("Give it the turn"),
+  /** The site the agent's hidden browser tab is on (browser.rs). */
+  onSite: N_("on {host}"),
+  /** Shows the agent's browser tab in a window of its own; closing it hides it again. */
+  watch: N_("agents|Watch"),
   /** Stop clicked: it goes after STOP_UNDO_MS, unless Undo takes it back. */
   stopping: N_("Stopping in {time}…"),
   undo: N_("agents|Undo"),
@@ -154,6 +158,8 @@ export interface AgentsCardHost {
   ask?(quote: AskQuote): void;
   /** Give it the turn: the agent waiting for the computer goes first in line (`chat_computer_first`). */
   computerFirst?(agentId: string): void;
+  /** Watch: shows the hidden browser tab the agent browses in (`chat_browser_watch`). */
+  watchBrowser?(agentId: string): void;
   /** The card changed: its height, or its state worth saving. */
   changed(): void;
 }
@@ -221,6 +227,18 @@ function cardButton(cls: string, text: string, run: () => void): HTMLElement {
       run();
     },
   });
+}
+
+/**
+ * The conversation's own browser tab (agent "main", browser.rs), next to the
+ * typing dots, as an agent's is on its row: the site it is on, and Watch.
+ * The conversation has no row of its own. Null when it has no tab.
+ */
+export function mainBrowser(chatId: string, watch: () => void): HTMLElement | null {
+  const tab = browserOf(chatId, "main");
+  if (!tab) return null;
+  const site = tab.host ? h("span", { class: "agents-badge browser", text: t(AGENTS_CARD_TEXT.onSite, { host: tab.host }), title: tab.title || tab.host }) : null;
+  return h("span", { class: "typing-browser" }, ...(site ? [site] : []), cardButton("watch", tc(AGENTS_CARD_TEXT.watch), watch));
 }
 
 function chevron(down: boolean, title: string): HTMLElement {
@@ -308,6 +326,7 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
     seeRequest: (id) => current().host.seeRequest(id),
     ask: given.ask ? (quote) => current().host.ask?.(quote) : undefined,
     computerFirst: given.computerFirst ? (id) => current().host.computerFirst?.(id) : undefined,
+    watchBrowser: given.watchBrowser ? (id) => current().host.watchBrowser?.(id) : undefined,
     changed: () => current().host.changed(),
   };
   const key = agentsCardKey(input.chatId, input.batch);
@@ -407,6 +426,9 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const side = h("span", { class: "agents-side" });
   const ask = canAsk(e, host) && left == null ? () => host.ask!({ agentId: r.id, title: r.title, line, look }) : null;
   const stop = () => stopLater(input.chatId, r.id, host, redraw);
+  // A tab it browses in, while it is at work: Watch shows it.
+  const tab = isFinal(r.state) ? undefined : browserOf(input.chatId, r.id);
+  const watch = tab && host.watchBrowser && left == null ? () => host.watchBrowser!(r.id) : null;
   if (left != null) {
     // Stop clicked: Undo until it goes.
     side.append(cardButton("undo", tc(AGENTS_CARD_TEXT.undo), () => undoStop(input.chatId, r.id, redraw)));
@@ -428,11 +450,13 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     if (pc?.waits && pc.place > 1 && host.computerFirst) {
       side.append(cardButton("first", t(AGENTS_CARD_TEXT.giveTurn), () => host.computerFirst!(r.id)));
     }
+    if (watch) side.append(cardButton("watch", tc(AGENTS_CARD_TEXT.watch), watch));
   } else if (look === "done") {
     side.append(h("span", { class: "agents-time", text: t(AGENTS_CARD_TEXT.doneIn, { time: durationText((r.endedAt ?? now) - r.startedAt) }) }));
   } else if (look === "failed") {
     if (r.endedAt) side.append(h("span", { class: "agents-time", text: durationText(r.endedAt - r.startedAt) }));
   } else {
+    if (watch) side.append(cardButton("watch", tc(AGENTS_CARD_TEXT.watch), watch));
     side.append(h("span", { class: "agents-time", text: `${durationText(now - r.startedAt)} · ${t(AGENTS_CARD_TEXT.ago, { time: durationText(now - r.lastSignalAt) })}` }));
   }
   const open = ui.open.has(r.id);
@@ -442,11 +466,13 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const computer = !isFinal(r.state) && computerOf(r.id)?.holds
     ? h("span", { class: "agents-badge computer", text: t(AGENTS_CARD_TEXT.usesComputer) })
     : null;
+  const site = tab?.host ? h("span", { class: "agents-badge browser", text: t(AGENTS_CARD_TEXT.onSite, { host: tab.host }), title: tab.title || tab.host }) : null;
   const head = h("div", { class: "agents-row-head" },
     marker,
     h("span", { class: "agents-name", text: r.title, title: r.title }),
     ...(talking ? [talking] : []),
     ...(computer ? [computer] : []),
+    ...(site ? [site] : []),
     h("span", { class: "agents-line", text: line, title: line }),
     side);
   const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}` }, head);
@@ -455,7 +481,7 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     else ui.open.add(r.id);
     redraw();
   });
-  if (open) el.append(rowDetail(e, host, ui, now, redraw, ask, left == null ? stop : null));
+  if (open) el.append(rowDetail(e, host, ui, now, redraw, ask, left == null ? stop : null, watch));
   return el;
 }
 
@@ -464,8 +490,10 @@ function canAsk(e: AgentEntry, host: AgentsCardHost): boolean {
   return !!host.ask && askable(e) && !cliEnded(e);
 }
 
-/** An opened row: the CLI's summary, the last steps, the numbers, and Stop this agent. */
-function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, ask: (() => void) | null, stop: (() => void) | null): HTMLElement {
+/** An opened row: the CLI's summary, the last steps, the numbers, Watch for its browser tab, and Stop this agent. */
+function rowDetail(
+  e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, ask: (() => void) | null, stop: (() => void) | null, watch: (() => void) | null,
+): HTMLElement {
   const r = e.row;
   const box = h("div", { class: "agents-detail" });
   if (r.summary) box.append(h("div", { class: "agents-summary", text: r.summary }));
@@ -484,6 +512,7 @@ function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number,
   box.append(h("div", { class: "agents-numbers", text: numbers.join(" · ") }));
   const actions = h("div", { class: "agents-actions" });
   if (ask) actions.append(cardButton("ask", tc(AGENTS_CARD_TEXT.ask), ask));
+  if (watch) actions.append(cardButton("watch", tc(AGENTS_CARD_TEXT.watch), watch));
   if (r.canStop && !isFinal(r.state) && stop) actions.append(cardButton("stop", t(AGENTS_CARD_TEXT.stopThis), stop));
   actions.append(cardButton("close", t(AGENTS_CARD_TEXT.close), () => {
     ui.open.delete(r.id);

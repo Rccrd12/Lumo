@@ -9790,6 +9790,29 @@ button.bg-row:hover {
   color: var(--ag-waiting);
 }
 
+/* The site an agent's hidden browser tab is on (browser.rs): a long name ends in "…". */
+.agents-badge.browser {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(129, 140, 248, 0.14);
+  color: #a5b4fc;
+}
+
+.agents-btn.watch {
+  color: #a5b4fc;
+}
+
+/* The conversation's own browser tab next to the typing dots (chat.ts drawMainBrowser). */
+.typing-browser {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  flex: none;
+  gap: 6px;
+  margin-left: 8px;
+}
+
 /* "Talking to …": a message of the chat's CLI to one of its agents, and the answer (views/agents-card.ts). */
 .agents-talk {
   display: flex;

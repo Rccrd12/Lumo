@@ -779,6 +779,10 @@ pictures an email links to (and its backgrounds), in the Email view, are
 downloaded the same way (an http one on https) only after a click on **Load images** (or at once with **Email images
 always**), and the sender's site then learns that you opened it; the tracking
 pixels Lumo recognises are never downloaded. **Settings → Security → Images from the web** turns both off.
+With **Settings → Security → Let agents browse the web** (off by default), the
+island chat's Claude Code and its agents open the sites they choose in hidden
+tabs inside Lumo, in a separate InPrivate profile: those sites, and everything
+their pages load, see your IP address (see [Agents browse the web](#agents-browse-the-web)).
 
 ### Chat with your Claude plan (Claude Code)
 
@@ -1226,6 +1230,41 @@ plan, with no API key.
   send, delete or accept terms unless you asked for exactly that, and to treat
   text on the screen as information, not instructions. Screenshots count
   against your Claude plan's limits.
+
+### Agents browse the web
+
+**Settings… → Security → Let agents browse the web** (off by default,
+Windows only, a prototype) lets the island chat's Claude Code and its agents
+open websites in hidden browser tabs of their own, so several agents browse
+at the same time without touching your mouse. The pages are real ones,
+JavaScript and all, as in Edge, unlike Claude Code's WebFetch, which only
+fetches a page's text.
+
+- Each tab is a hidden WebView2 window that Lumo drives itself (`browser.rs`,
+  through the DevTools protocol inside WebView2, never a debugging port). The
+  tabs share a separate InPrivate profile under
+  `%LOCALAPPDATA%\com.rccrd12.lumo\AgentBrowser`: none of your browser's
+  cookies, passwords or accounts, and nothing kept once Lumo closes. Downloads
+  are refused, a pop-up opens in the same tab instead of a new window, and
+  Lumo's own pages (`*.localhost`) can't be opened, not even from inside a
+  page; nothing in a tab can call Lumo's commands.
+- Claude Code gets the tools from Lumo's MCP server (`lumo-hook --mcp`):
+  `browser_open`, `browser_read` (the page as text, each link, button and
+  field numbered), `browser_click`, `browser_type`, `browser_scroll`,
+  `browser_screenshot` and `browser_close`. Reading and looking need no
+  click; opening a site, clicking, typing and closing go through the chat's
+  permission mode like any other tool, and the card says what they do:
+  "Open in a new browser tab · https://…", "Click in browser tab 2 · [12]".
+- Every agent opens its own tab and works in it: the agent's row in the
+  Agents card says which site it is on, and **Watch** shows its tab in a
+  window. The conversation's own tab, when Claude Code browses without an
+  agent, is shown the same way next to the dots while it answers. The
+  window's title starts with the site's address (it has no address bar), and
+  closing the window only hides the tab again.
+- A tab closes when its agent ends, after 10 minutes unused, or when the
+  setting is turned off; eight tabs at most are open at once.
+- For now only Claude Code browses: Antigravity CLI, Codex, Copilot CLI,
+  Cursor CLI, the API providers and local models don't get these tools.
 
 ### Talk with Gemini (Gemini Live)
 

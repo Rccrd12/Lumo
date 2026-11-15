@@ -5,6 +5,7 @@
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
 import { computerPoint, describeComputerAction } from "../core/computer";
+import { BROWSER_TEXT, describeBrowserAction } from "../core/agent-browser";
 import { currentStep } from "../core/computer-use";
 import { userToolTarget } from "../core/tools";
 import { clipUnits } from "../core/clip";
@@ -548,6 +549,9 @@ function approvalTarget(tool: string, input: Record<string, unknown>): string {
   // The chat's computer use: what the click or the keys will do.
   const action = describeComputerAction(tool, input);
   if (action) return action;
+  // An agent's hidden browser tab: where it goes, what it clicks or types.
+  const browsing = describeBrowserAction(tool, input);
+  if (browsing) return browsing;
   // An MCP server's tool: what its fields mean is its own. Its `path` or
   // `command` may come with a script, a body or a host that Allow allows
   // too: with anything besides the one field, the card shows it all. Its
@@ -590,6 +594,8 @@ function approvalAbout(
     const why = step?.step.text.trim();
     return why ? { reason: why } : {};
   }
+  // An agent's browser tab: the line says it is not the user's browser.
+  if (describeBrowserAction(tool, input)) return { kind: { text: BROWSER_TEXT.apart } };
   // An MCP tool's `description` is one of its arguments, shown whole below: the line says what kind of call it is.
   const reason = MCP_TOOL.test(tool) ? null : requestReason(input);
   if (reason) return { reason };

@@ -100,6 +100,11 @@ Lumo shows the user your plan on its Plan island. When the job uses the computer
 /// computer needs first (computer.rs): Claude Code runs them without asking.
 const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait mcp__lumo__update_plan";
 
+/// Lumo's browser tools that only look (browser.rs): Claude Code runs them
+/// without asking. Opening, clicking, typing, scrolling and closing go
+/// through its own permission, the island's card.
+const BROWSER_LOOKING: &str = "mcp__lumo__browser_read mcp__lumo__browser_screenshot";
+
 /// The island's timer and GitHub tools (island_tools.rs): they only start what
 /// the user asked for, so Claude Code runs them without asking.
 const ISLAND_ALLOWED: &str =
@@ -129,20 +134,28 @@ const WORKSHOP_TRY: &str = " In the workshop you may try the script before you g
 /// (its tools are `mcp__lumo__…`), marked as the island's own run.
 #[cfg(test)]
 fn computer_config() -> Value {
-    mcp_config(true, false, false, "")
+    mcp_config(true, false, false, false, "")
 }
 
-/// Lumo's MCP servers for a chat turn: computer use, the island's tools and
-/// the email's (`lumo`; `mail` is mail.rs ai_tools: "", "mail" or
-/// "mail,mailsend" or "mail,mailsend,mailmanage"), and the user's tools while one of them is on.
-fn mcp_config(computer: bool, tools: bool, island: bool, mail: &str) -> Value {
+/// Lumo's MCP servers for a chat turn: computer use, its browser for agents,
+/// the island's tools and the email's (`lumo`; `mail` is mail.rs ai_tools:
+/// "", "mail" or "mail,mailsend" or "mail,mailsend,mailmanage"), and the
+/// user's tools while one of them is on.
+fn mcp_config(computer: bool, browser: bool, tools: bool, island: bool, mail: &str) -> Value {
     let mut servers = serde_json::Map::new();
-    if computer || island || !mail.is_empty() {
+    if computer || browser || island || !mail.is_empty() {
         let mut server = crate::computer::server_entry();
         server["type"] = json!("stdio");
         // The computer always with Lumo's plan tool: no plan, no computer (computer.rs).
-        let kits: Vec<&str> =
-            [computer.then_some("computer,plan"), (!mail.is_empty()).then_some(mail), island.then_some("island")].into_iter().flatten().collect();
+        let kits: Vec<&str> = [
+            computer.then_some("computer,plan"),
+            browser.then_some("browser"),
+            (!mail.is_empty()).then_some(mail),
+            island.then_some("island"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         server["args"] = json!(["--mcp", format!("--tools={}", kits.join(","))]);
         servers.insert("lumo".into(), server);
     }
@@ -160,27 +173,34 @@ fn mcp_config(computer: bool, tools: bool, island: bool, mail: &str) -> Value {
 /// pointed at it.
 #[cfg(test)]
 fn with_computer(args: Vec<String>) -> Vec<String> {
-    with_mcp(args, true, false, false, "")
+    with_mcp(args, true, false, false, false, "")
 }
 
 /// `args`, plus Lumo's MCP servers: computer use (its looking tools allowed),
-/// the user's tools, and the island's timer and GitHub tools (allowed). Left
-/// out when the file can't be written where Claude Code can be pointed at it.
-fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool, island: bool, mail: &str) -> Vec<String> {
-    if !computer && !tools && !island && mail.is_empty() {
+/// the browser for agents (its looking tools allowed), the user's tools, and
+/// the island's timer and GitHub tools (allowed). Left out when the file
+/// can't be written where Claude Code can be pointed at it.
+fn with_mcp(mut args: Vec<String>, computer: bool, browser: bool, tools: bool, island: bool, mail: &str) -> Vec<String> {
+    if !computer && !browser && !tools && !island && mail.is_empty() {
         return args;
     }
     let name = match (computer, island) {
-        (true, false) => "chat-computer.json",
-        (true, true) => "chat-computer-island.json",
-        (false, true) if tools => "chat-tools-island.json",
-        (false, true) => "chat-island.json",
-        (false, false) => "chat-tools.json",
+        // The browser in a file of its own, named after all it holds.
+        _ if browser => {
+            let parts: Vec<&str> =
+                [computer.then_some("computer"), Some("browser"), tools.then_some("tools"), island.then_some("island")].into_iter().flatten().collect();
+            format!("chat-{}.json", parts.join("-"))
+        }
+        (true, false) => "chat-computer.json".into(),
+        (true, true) => "chat-computer-island.json".into(),
+        (false, true) if tools => "chat-tools-island.json".into(),
+        (false, true) => "chat-island.json".into(),
+        (false, false) => "chat-tools.json".into(),
     };
     // The email's tools in a file of their own: one name, one configuration.
-    let name = if mail.is_empty() { name.to_string() } else { name.replace(".json", &format!("-{}.json", mail.replace(',', "-"))) };
+    let name = if mail.is_empty() { name } else { name.replace(".json", &format!("-{}.json", mail.replace(',', "-"))) };
     let path = crate::platform::local_dir().join(name);
-    let text = mcp_config(computer, tools, island, mail).to_string();
+    let text = mcp_config(computer, browser, tools, island, mail).to_string();
     let written = write_config(&path, &text);
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
@@ -190,6 +210,7 @@ fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool, island: bool, ma
         let manages = mail.split(',').any(|k| k == "mailmanage");
         let allowed: Vec<&str> = [
             computer.then_some(COMPUTER_LOOKING),
+            browser.then_some(BROWSER_LOOKING),
             island.then_some(ISLAND_ALLOWED),
             (!mail.is_empty()).then_some(MAIL_ALLOWED),
             sends.then_some(MAIL_SEND_ALLOWED),
@@ -318,20 +339,34 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
 ///     mode says, but a command that would sit waiting on GitHub (`gh pr checks
 ///     --watch`, a sleep loop): Claude is told to let Lumo listen instead
 ///     (lumo-hook reply::blocking_wait).
-fn chat_settings(permission: Value, guard: &str) -> Value {
+///   * with `browser`, a PreToolUse hook on Lumo's browser_open that tells
+///     Lumo which agent opens the tab (lumo-hook --browser-claim, browser.rs
+///     `claim`): it decides nothing.
+fn chat_settings(permission: Value, guard: &str, browser: bool) -> Value {
+    let mut pre = vec![
+        json!({
+            "matcher": "Bash|PowerShell",
+            "hooks": [{ "type": "command", "command": guard, "timeout": 10 }],
+        }),
+        json!({
+            // One agent at a time on the computer (computer_turns.rs):
+            // each of Lumo's computer tools waits for its turn first.
+            // Longer than the relay waits, so Claude Code never kills it.
+            "matcher": computer_matcher(),
+            "hooks": [{ "type": "command", "command": format!("{guard} --computer-turn"), "timeout": COMPUTER_TURN_TIMEOUT }],
+        }),
+    ];
+    if browser {
+        // Each agent's tab its own: Lumo hears who opens it, then the call.
+        pre.push(json!({
+            "matcher": "mcp__lumo__browser_open",
+            "hooks": [{ "type": "command", "command": format!("{guard} --browser-claim"), "timeout": 10 }],
+        }));
+    }
     json!({
         "hooks": {
             "PermissionRequest": [permission],
-            "PreToolUse": [{
-                "matcher": "Bash|PowerShell",
-                "hooks": [{ "type": "command", "command": guard, "timeout": 10 }],
-            }, {
-                // One agent at a time on the computer (computer_turns.rs):
-                // each of Lumo's computer tools waits for its turn first.
-                // Longer than the relay waits, so Claude Code never kills it.
-                "matcher": computer_matcher(),
-                "hooks": [{ "type": "command", "command": format!("{guard} --computer-turn"), "timeout": COMPUTER_TURN_TIMEOUT }],
-            }],
+            "PreToolUse": pre,
         },
     })
 }
@@ -356,11 +391,12 @@ pub fn is_computer_tool(name: &str) -> bool {
 }
 
 /// `args`, plus the chat's own hooks (`chat_settings`), when the file could be
-/// written where Claude Code can be pointed at it.
-fn with_cards(mut args: Vec<String>) -> Vec<String> {
+/// written where Claude Code can be pointed at it. With the browser, in a
+/// file of its own: one name, one configuration.
+fn with_cards(mut args: Vec<String>, browser: bool) -> Vec<String> {
     let guard = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PreToolUse");
-    let path = crate::platform::local_dir().join("chat-hooks.json");
-    let text = chat_settings(crate::hooks::chat_permission_entry(), &guard).to_string();
+    let path = crate::platform::local_dir().join(if browser { "chat-hooks-browser.json" } else { "chat-hooks.json" });
+    let text = chat_settings(crate::hooks::chat_permission_entry(), &guard, browser).to_string();
     let written = write_config(&path, &text);
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
@@ -742,6 +778,11 @@ fn activity_for(name: &str, input: &Value) -> Activity {
         "TodoWrite" | "TodoRead" | "EnterPlanMode" | "ExitPlanMode" => Activity::new("plan", ""),
         // Lumo's computer use (computer.rs): looking, or using the computer.
         "mcp__lumo__screenshot" | "mcp__lumo__zoom" => Activity::new("screen", ""),
+        // Lumo's browser (browser.rs): a hidden tab of its own, not the computer.
+        _ if name.starts_with("mcp__lumo__browser_") => match host(&field(&["url"])) {
+            h if h.is_empty() => Activity::new("web", ""),
+            h => Activity::new("read", h),
+        },
         _ if name.starts_with("mcp__lumo__") => Activity::new("computer", ""),
         _ if name.to_lowercase().contains("screenshot") => Activity::new("screen", ""),
         _ => match pretty_tool(name) {
@@ -2391,6 +2432,7 @@ pub async fn send(
     effort: &str,
     mode: &str,
     computer: bool,
+    browser: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -2427,13 +2469,14 @@ pub async fn send(
     let base = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
     // The tool workshop: what a tool is and how to hand one over, too.
     let append = if chat.is_workshop() { format!("{base}{}{WORKSHOP_TRY}", crate::chat::workshop_note!()) } else { base.to_string() };
-    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)));
+    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), browser);
     // The user's tools that are on, for Claude to use (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
     // Lumo's email tools, as Settings → Security lets the AI have them,
     // usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
-    args = with_mcp(args, computer, tools, true, mail);
+    // Lumo's browser for agents (browser.rs), as Settings → Security says.
+    args = with_mcp(args, computer, browser, tools, true, mail);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     if computer {
         crate::computer::begin_turn(crate::computer::Who::of(PROVIDER), chat.id());
@@ -2612,9 +2655,9 @@ pub(crate) fn help(
     let inbox = if crate::settings::load().chat_other_files { crate::files::inbox_dir().to_string_lossy().to_string() } else { String::new() };
     let folders: Vec<String> = folder.into_iter().collect();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
-    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders));
+    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), false);
     // The user's own tools too, while one is on.
-    let args = with_mcp(args, computer, crate::tools::any_enabled(), false, "");
+    let args = with_mcp(args, computer, false, crate::tools::any_enabled(), false, "");
     let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_| {}, |_, _| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
@@ -2745,21 +2788,21 @@ mod tests {
 
     #[test]
     fn the_users_tools_come_as_a_server_of_their_own_that_lumo_guards_itself() {
-        let config = mcp_config(false, true, false, "");
+        let config = mcp_config(false, false, true, false, "");
         let server = &config["mcpServers"][TOOLS_SERVER];
         assert_eq!(server["args"], json!(["--mcp", "--tools=user"]));
         assert!(config["mcpServers"].get("lumo").is_none());
-        let both = mcp_config(true, true, false, "");
+        let both = mcp_config(true, false, true, false, "");
         assert!(both["mcpServers"].get("lumo").is_some() && both["mcpServers"].get(TOOLS_SERVER).is_some());
-        let a = with_mcp(vec!["-p".into()], false, true, false, "");
+        let a = with_mcp(vec!["-p".into()], false, false, true, false, "");
         if a.iter().any(|s| s == "--mcp-config") {
             // Claude Code lets the calls through: Lumo's own card asks for each (tools.rs approve).
             assert_eq!(a[a.len() - 2], "--allowedTools");
             assert_eq!(a[a.len() - 1], TOOLS_SERVER_ALLOWED);
-            let b = with_mcp(vec!["-p".into()], true, true, false, "");
+            let b = with_mcp(vec!["-p".into()], true, false, true, false, "");
             assert_eq!(b[b.len() - 1], format!("{COMPUTER_LOOKING} {TOOLS_SERVER_ALLOWED}"));
         }
-        assert_eq!(with_mcp(vec!["-p".into()], false, false, false, ""), ["-p"]);
+        assert_eq!(with_mcp(vec!["-p".into()], false, false, false, false, ""), ["-p"]);
         let workshop = format!("{APPEND_PROMPT}{}{WORKSHOP_TRY}", crate::chat::workshop_note!());
         assert!(!workshop.contains(['%', '"', '&', '|', '<', '>', '^', '`']), "plain words on the command line");
         assert!(workshop.contains("lumo-tool") && workshop.contains("lumo-file"));
@@ -2903,10 +2946,10 @@ mod tests {
 
     #[test]
     fn the_chat_always_gets_the_island_tools_and_may_run_them() {
-        let config = mcp_config(false, false, true, "");
+        let config = mcp_config(false, false, false, true, "");
         assert_eq!(config["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=island"]));
-        assert_eq!(mcp_config(true, false, true, "")["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,island"]));
-        let a = with_mcp(vec!["-p".into()], false, true, true, "");
+        assert_eq!(mcp_config(true, false, false, true, "")["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,island"]));
+        let a = with_mcp(vec!["-p".into()], false, false, true, true, "");
         if a.iter().any(|s| s == "--mcp-config") {
             assert_eq!(a[a.len() - 1], format!("{ISLAND_ALLOWED} {TOOLS_SERVER_ALLOWED}"));
         }
@@ -2921,20 +2964,20 @@ mod tests {
 
     #[test]
     fn the_email_tools_come_as_security_lets_them() {
-        let read = mcp_config(false, false, true, "mail");
+        let read = mcp_config(false, false, false, true, "mail");
         assert_eq!(read["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=mail,island"]));
-        let send = mcp_config(true, false, true, "mail,mailsend");
+        let send = mcp_config(true, false, false, true, "mail,mailsend");
         assert_eq!(send["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,mail,mailsend,island"]));
-        let a = with_mcp(vec!["-p".into()], false, false, true, "mail,mailsend");
+        let a = with_mcp(vec!["-p".into()], false, false, false, true, "mail,mailsend");
         if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
             assert!(a[i + 1].ends_with("chat-island-mail-mailsend.json"));
             assert_eq!(a[a.len() - 1], format!("{ISLAND_ALLOWED} {MAIL_ALLOWED} {MAIL_SEND_ALLOWED}"));
         }
-        let a = with_mcp(vec!["-p".into()], false, false, true, "mail");
+        let a = with_mcp(vec!["-p".into()], false, false, false, true, "mail");
         if a.iter().any(|s| s == "--mcp-config") {
             assert!(!a[a.len() - 1].contains("mail_send"), "reading only");
         }
-        let a = with_mcp(vec!["-p".into()], false, false, true, "mail,mailsend,mailmanage");
+        let a = with_mcp(vec!["-p".into()], false, false, false, true, "mail,mailsend,mailmanage");
         if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
             assert!(a[i + 1].ends_with("chat-island-mail-mailsend-mailmanage.json"));
             assert_eq!(a[a.len() - 1], format!("{ISLAND_ALLOWED} {MAIL_ALLOWED} {MAIL_SEND_ALLOWED} {MAIL_MANAGE_ALLOWED}"));
@@ -3028,7 +3071,7 @@ mod tests {
     #[test]
     fn the_chat_asks_with_lumos_own_permission_hook_and_guards_shell_commands() {
         let permission = crate::hooks::permission_request_entry();
-        let v = chat_settings(permission.clone(), "'/x/lumo-hook' --chat-guard PreToolUse");
+        let v = chat_settings(permission.clone(), "'/x/lumo-hook' --chat-guard PreToolUse", false);
         // The very entry installing writes, so Claude Code runs it once when both are there.
         assert_eq!(v["hooks"]["PermissionRequest"][0], permission);
         let hook = &permission["hooks"][0];
@@ -3041,8 +3084,47 @@ mod tests {
     }
 
     #[test]
+    fn the_browser_comes_as_security_lets_it_and_its_looking_tools_run() {
+        let config = mcp_config(false, true, false, true, "");
+        assert_eq!(config["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=browser,island"]));
+        let all = mcp_config(true, true, false, true, "mail");
+        assert_eq!(all["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,browser,mail,island"]));
+        assert_eq!(mcp_config(false, true, false, false, "")["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=browser"]));
+        assert!(!mcp_config(false, false, false, true, "")["mcpServers"]["lumo"]["args"][1].as_str().unwrap().contains("browser"));
+        let a = with_mcp(vec!["-p".into()], false, true, true, true, "");
+        if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
+            assert!(a[i + 1].ends_with("chat-browser-tools-island.json"), "a file of its own");
+            assert_eq!(a[a.len() - 1], format!("{BROWSER_LOOKING} {ISLAND_ALLOWED} {TOOLS_SERVER_ALLOWED}"));
+        }
+        let a = with_mcp(vec!["-p".into()], true, true, false, true, "mail");
+        if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
+            assert!(a[i + 1].ends_with("chat-computer-browser-island-mail.json"));
+        }
+        // Only reading and screenshots go without Claude Code's card.
+        for tool in ["browser_read", "browser_screenshot"] {
+            assert!(BROWSER_LOOKING.split(' ').any(|t| t == format!("mcp__lumo__{tool}")), "{tool}");
+        }
+        for tool in ["open", "click", "type", "scroll", "close"] {
+            assert!(!BROWSER_LOOKING.contains(tool), "{tool}");
+        }
+
+        // The tab is claimed for its agent before browser_open runs, and nothing else is.
+        let guard = "'/x/lumo-hook' --chat-guard PreToolUse";
+        let v = chat_settings(crate::hooks::permission_request_entry(), guard, true);
+        let pre = v["hooks"]["PreToolUse"].as_array().unwrap();
+        assert_eq!(pre.len(), 3);
+        assert_eq!(pre[2]["matcher"], "mcp__lumo__browser_open");
+        assert_eq!(pre[2]["hooks"][0]["command"], format!("{guard} --browser-claim"));
+        assert_eq!(pre[2]["hooks"][0]["timeout"], 10);
+        assert!(!regex_lite_full(pre[1]["matcher"].as_str().unwrap())("mcp__lumo__browser_open"), "the computer's turn is not the browser's");
+        let off = chat_settings(crate::hooks::permission_request_entry(), guard, false);
+        assert_eq!(off["hooks"]["PreToolUse"].as_array().unwrap().len(), 2, "no browser, no claim");
+        assert!(!is_computer_tool("mcp__lumo__browser_click"));
+    }
+
+    #[test]
     fn each_computer_tool_waits_for_its_turn_and_nothing_else_does() {
-        let v = chat_settings(crate::hooks::permission_request_entry(), "'/x/lumo-hook' --chat-guard PreToolUse");
+        let v = chat_settings(crate::hooks::permission_request_entry(), "'/x/lumo-hook' --chat-guard PreToolUse", false);
         let gate = &v["hooks"]["PreToolUse"][1];
         let matcher = regex_lite_full(gate["matcher"].as_str().unwrap());
         for tool in COMPUTER_TOOLS {
@@ -3165,6 +3247,10 @@ mod tests {
         assert_eq!(a("mcp__lumo__screenshot", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__zoom", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__left_click", json!({ "coordinate": [1, 2] })), Activity::new("computer", ""));
+        // Lumo's browser is a hidden tab, not the computer.
+        assert_eq!(a("mcp__lumo__browser_open", json!({ "url": "https://www.example.com/a" })), Activity::new("read", "example.com"));
+        assert_eq!(a("mcp__lumo__browser_click", json!({ "tab": 1, "ref": 3 })), Activity::new("web", ""));
+        assert_eq!(a("mcp__lumo__browser_screenshot", json!({ "tab": 1 })), Activity::new("web", ""));
         assert_eq!(a("ToolSearch", json!({})), Activity::new("tool", "Tool Search"));
         assert_eq!(a("", json!({})), Activity::thinking());
 

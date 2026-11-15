@@ -76,7 +76,8 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     }
     // Lumo's email tools only read the user's mailbox, or have Lumo's own
     // card (an email to send, a change), its plan tool only shows, its island
-    // tools only start a timer or a watch (mcp.rs).
+    // tools only start a timer or a watch, its browser tools are Lumo's own
+    // and asked for by the chat's own permission (mcp.rs).
     // Its computer tools have Lumo's own card in the island's chat (computer.rs
     // `OtherTurn`, which asks as the chat's mode says).
     if crate::mcp::lumo_call(tool, input).is_some_and(|name| {
@@ -86,6 +87,7 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
             || crate::mcp::MAIL_MANAGE_NAMES.contains(&name)
             || name == crate::mcp::PLAN_NAME
             || crate::mcp::ISLAND_NAMES.contains(&name)
+            || crate::mcp::BROWSER_NAMES.contains(&name)
     }) {
         return false;
     }
