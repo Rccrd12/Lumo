@@ -1311,8 +1311,13 @@ fn write_stdin(stdin: &Mutex<impl Write>, text: &str) -> std::io::Result<()> {
 #[derive(Default, Debug)]
 struct Run {
     session: Option<String>,
-    /// The text of the assistant message being written, for the island.
+    /// The text of the assistant message being written.
     visible: String,
+    /// Every message of the turn so far, one paragraph each: what the island
+    /// shows (chat::add_shown), the sentences before the tools too.
+    shown: String,
+    /// The next text starts a message of its own in `shown`.
+    new_message: bool,
     /// Every text of the turn, each message on its own lines (chat::keep_lumo_lines).
     said: String,
     /// The `result` line: final text, or the error Claude Code reported.
@@ -1506,9 +1511,10 @@ impl Run {
                     Some("message_start") => {
                         self.blocks.clear();
                         self.said.push('\n');
-                        let changed = !self.visible.is_empty();
+                        // A new message after the tools: what was written before stays shown.
                         self.visible.clear();
-                        changed
+                        self.new_message = true;
+                        false
                     }
                     Some("content_block_start") => {
                         let block = &event["content_block"];
@@ -1546,6 +1552,7 @@ impl Run {
                         let text = event["delta"]["text"].as_str().unwrap_or("");
                         self.visible.push_str(text);
                         self.said.push_str(text);
+                        chat::add_shown(&mut self.shown, text, &mut self.new_message);
                         if !text.is_empty() {
                             // The text shows instead: a later tool call is news again.
                             self.activity = None;
@@ -1842,7 +1849,7 @@ fn read_turn(
                 if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) && !state.stopped {
                     unsent = false;
                     last_emit = Instant::now();
-                    on_text(&state.visible);
+                    on_text(&state.shown);
                 }
                 if let Some(activity) = activity.filter(|_| !state.stopped) {
                     on_activity(&activity);
@@ -2326,9 +2333,9 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
         let _ = app.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": chat_id, "tool": tool, "input": input }));
     }
     let text = match run.result.take() {
-        Some(Ok(text)) => chat::keep_lumo_lines(text, &run.said),
+        Some(Ok(text)) => chat::keep_lumo_lines(chat::turn_answer(&run.shown, &run.visible, &text), &run.said),
         // Interrupted or failed: what it wrote before, if anything.
-        _ => run.visible.trim().to_string(),
+        _ => run.shown.trim().to_string(),
     };
     if text.trim().is_empty() {
         return;
@@ -2525,7 +2532,7 @@ pub async fn send(
         chat.set_cli_session(&turn, id);
     }
     if state.stopped {
-        let shown = state.visible.trim().to_string();
+        let shown = state.shown.trim().to_string();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
         } else if recap.is_some() {
@@ -2545,7 +2552,8 @@ pub async fn send(
         return Ok(ChatReply { computer: recap, ..ChatReply::stopped(shown, chat.cli_session()) });
     }
     let answer = match state.result {
-        Some(Ok(text)) => text,
+        // Every message it wrote, not only the last: none disappears once the answer is saved.
+        Some(Ok(text)) => chat::turn_answer(&state.shown, &state.visible, &text),
         Some(Err(e)) => return failed(tf("Claude Code: {error}", &[("error", &e)]), recap),
         None => unreachable!("live_turn() returns an error without a result"),
     };
@@ -3124,6 +3132,10 @@ mod tests {
         }
         assert_eq!(run.session.as_deref(), Some(SID));
         assert_eq!(run.visible, "The PDF says hi.");
+        // The sentence written before the tool stays shown, and in the answer
+        // (a subagent's text never).
+        assert_eq!(run.shown, "Let me read it.\n\nThe PDF says hi.");
+        assert_eq!(chat::turn_answer(&run.shown, &run.visible, "The PDF says hi."), "Let me read it.\n\nThe PDF says hi.");
         assert_eq!(run.result, Some(Ok("The PDF says hi.".into())));
         assert_eq!(run.denied, 1);
 
