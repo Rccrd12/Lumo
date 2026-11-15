@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { aimBox, aimSide, along, ease, keyCaps, sparks, toCss, typedTail } = await import("../src/computer/fx.ts");
+const { HINT_MS, aimBox, aimSide, along, ease, hintBox, keyCaps, sparks, toCss, typedTail } = await import("../src/computer/fx.ts");
 
 test("the glow follows the mouse on the same eased curve", () => {
   assert.equal(ease(0), 0);
@@ -76,4 +76,27 @@ test("the Aim square stays whole on the screen, with the spot inside it", () => 
     assert.ok(left >= 0 && top >= 0 && left + 24 <= 1000 && top + 24 <= 620, `whole for ${JSON.stringify(p)}`);
     assert.ok(p.x >= left - 2 && p.x <= left + 26 && p.y >= top - 2 && p.y <= top + 26, `spot inside for ${JSON.stringify(p)}`);
   }
+});
+
+test("the pointer hint sits by the user's pointer, clear of the arrow, whole on the screen", () => {
+  const W = 1920;
+  const H = 1080;
+  // Below and to the right of the pointer, off the arrow.
+  const mid = hintBox({ x: 500, y: 400 }, 220, 52, W, H);
+  assert.ok(mid.left > 500 && mid.top > 400, JSON.stringify(mid));
+  // By the right edge: on the pointer's left, still clear of it.
+  const right = hintBox({ x: 1900, y: 400 }, 220, 52, W, H);
+  assert.ok(right.left + 220 < 1900, JSON.stringify(right));
+  assert.ok(right.left >= 8);
+  // By the bottom: above the pointer.
+  const bottom = hintBox({ x: 500, y: 1070 }, 220, 52, W, H);
+  assert.ok(bottom.top + 52 < 1070, JSON.stringify(bottom));
+  // In a corner: both, and never off the screen.
+  const corner = hintBox({ x: 1919, y: 1079 }, 220, 52, W, H);
+  assert.ok(corner.left >= 8 && corner.left + 220 <= W - 8 && corner.top >= 8 && corner.top + 52 <= H - 8, JSON.stringify(corner));
+  const top = hintBox({ x: 0, y: 0 }, 220, 52, W, H);
+  assert.ok(top.left >= 8 && top.top >= 8);
+  // A screen smaller than the hint: from its top-left margin.
+  assert.deepEqual(hintBox({ x: 50, y: 50 }, 220, 52, 100, 40), { left: 8, top: 8 });
+  assert.ok(HINT_MS >= 2000 && HINT_MS <= 3000, "about two and a half seconds");
 });
