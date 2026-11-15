@@ -761,14 +761,11 @@ async fn chat_send(
     // while this answer is written goes with the next message. The chat's own
     // provider and model, when the page names them, answer it.
     let settings = chat::with_pick(shared.settings.lock().unwrap().clone(), provider.as_deref(), model.as_deref());
-    let shots: Vec<String> = screen.as_ref().map(|s| s.shots.iter().map(|r| r.path.clone()).collect()).unwrap_or_default();
-    let reply = chat::send(&app, &chat, &settings, query, context, screen).await;
-    // Screenshots are read once the turn is answered: they don't stay on disk.
-    // A failed turn keeps them, so the same message can be sent again.
-    if reply.is_ok() {
-        screen::discard(&shots);
-    }
-    reply
+    // The screenshots stay in the inbox with the chat that sent them, like its
+    // dropped files: its question shows them, and editing it sends them again.
+    // They go when the chat is deleted (files.rs release), or with the inbox's
+    // tidying once no chat names them.
+    chat::send(&app, &chat, &settings, query, context, screen).await
 }
 
 /// The models a provider offers, for the picker in the chat view. Only asked
