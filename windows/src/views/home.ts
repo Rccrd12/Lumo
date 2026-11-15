@@ -153,13 +153,18 @@ export function homeLists(active: (t: AgentTask) => boolean, data: ActivitiesDat
 
 /**
  * The island chats' plans still under way (island/plan.ts, State.plans), one
- * per chat: the home lists them with the sessions, as they run nowhere else.
+ * per chat at work: the home lists them with the sessions, as they run
+ * nowhere else. A chat stopped, failed or done without ticking its last step
+ * is no longer at work: its plan stays in its own chat, not "In progress".
  */
 export function homeChatPlans(): AgentPlan[] {
   const seen = new Set<string>();
   return State.plans.filter((p) => {
     if (p.pillId !== "chat" || seen.has(p.key)) return false;
     seen.add(p.key);
+    // Only while its chat is at work (or just done, State.activeChats).
+    const chatId = p.key.slice(p.key.indexOf("|") + 1);
+    if (!State.activeChats.some((c) => c.chatId === chatId)) return false;
     return p.steps.length > 0 && !planFinished(p.steps);
   });
 }
@@ -411,7 +416,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
         h("div", { class: "home-who" },
           dot(plan.color, 8),
           h("span", { class: "n", text: plan.agent }),
-          h("span", { class: "s", text: `· ${plan.project}` })),
+          h("span", { class: "s", text: `· ${liveRun?.title || plan.project}` })),
         h("div", { class: "home-line", text: stepText })),
       ...planEnds(plan));
   }
