@@ -15969,17 +15969,17 @@
    "id": "File chat lain",
    "it": "File delle altre chat"
   },
-  "Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: also those of the other chats from the last 7 days.": {
-   "zh-Hans": "关闭：Claude Code 和 Antigravity CLI 只读取交给其所在聊天的文件和截图。开启：也读取最近 7 天其他聊天的文件和截图。",
-   "hi": "बंद: Claude Code और Antigravity CLI केवल अपनी चैट को दी गई फ़ाइलें और स्क्रीनशॉट पढ़ते हैं। चालू: पिछले 7 दिनों की दूसरी चैट की भी।",
-   "es": "Apagado: Claude Code y Antigravity CLI leen solo los archivos y capturas que se dieron a su propio chat. Encendido: también los de los otros chats de los últimos 7 días.",
-   "ar": "متوقف: لا يقرأ Claude Code وAntigravity CLI إلا الملفات ولقطات الشاشة المعطاة لدردشتهما. مشغّل: وأيضًا ملفات الدردشات الأخرى في آخر 7 أيام.",
-   "fr": "Désactivé : Claude Code et Antigravity CLI ne lisent que les fichiers et captures donnés à leur propre chat. Activé : aussi ceux des autres chats des 7 derniers jours.",
-   "bn": "বন্ধ: Claude Code ও Antigravity CLI শুধু নিজের চ্যাটকে দেওয়া ফাইল ও স্ক্রিনশট পড়ে। চালু: গত ৭ দিনের অন্য চ্যাটেরগুলোও।",
-   "pt-BR": "Desligado: Claude Code e Antigravity CLI leem só os arquivos e capturas dados ao próprio chat. Ligado: também os dos outros chats dos últimos 7 dias.",
-   "ru": "Выключено: Claude Code и Antigravity CLI читают только файлы и снимки экрана, отданные их собственному чату. Включено: также файлы других чатов за последние 7 дней.",
-   "id": "Mati: Claude Code dan Antigravity CLI hanya membaca file dan tangkapan layar yang diberikan ke chat-nya sendiri. Nyala: juga milik chat lain dari 7 hari terakhir.",
-   "it": "Spento: Claude Code e Antigravity CLI leggono solo i file e le schermate dati alla loro chat. Acceso: anche quelli delle altre chat degli ultimi 7 giorni."
+  "Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: every file Lumo received in the last 7 days. Gemini Live can read them either way.": {
+   "zh-Hans": "关闭：Claude Code 和 Antigravity CLI 只读取交给其所在聊天的文件和截图。开启：读取 Lumo 最近 7 天收到的所有文件。无论开关如何，Gemini Live 都能读取它们。",
+   "hi": "बंद: Claude Code और Antigravity CLI केवल अपनी चैट को दी गई फ़ाइलें और स्क्रीनशॉट पढ़ते हैं। चालू: पिछले 7 दिनों में Lumo को मिली हर फ़ाइल। Gemini Live दोनों ही स्थितियों में उन्हें पढ़ सकता है।",
+   "es": "Apagado: Claude Code y Antigravity CLI leen solo los archivos y capturas que se dieron a su propio chat. Encendido: todos los archivos que Lumo recibió en los últimos 7 días. Gemini Live puede leerlos en ambos casos.",
+   "ar": "متوقف: لا يقرأ Claude Code وAntigravity CLI إلا الملفات ولقطات الشاشة المعطاة لدردشتهما. مشغّل: كل ملف تلقّاه Lumo في آخر 7 أيام. يمكن لـ Gemini Live قراءتها في الحالتين.",
+   "fr": "Désactivé : Claude Code et Antigravity CLI ne lisent que les fichiers et captures donnés à leur propre chat. Activé : tous les fichiers reçus par Lumo ces 7 derniers jours. Gemini Live peut les lire dans les deux cas.",
+   "bn": "বন্ধ: Claude Code ও Antigravity CLI শুধু নিজের চ্যাটকে দেওয়া ফাইল ও স্ক্রিনশট পড়ে। চালু: গত ৭ দিনে Lumo যত ফাইল পেয়েছে সবই। Gemini Live দুই ক্ষেত্রেই সেগুলো পড়তে পারে।",
+   "pt-BR": "Desligado: Claude Code e Antigravity CLI leem só os arquivos e capturas dados ao próprio chat. Ligado: todos os arquivos que o Lumo recebeu nos últimos 7 dias. O Gemini Live pode lê-los em qualquer caso.",
+   "ru": "Выключено: Claude Code и Antigravity CLI читают только файлы и снимки экрана, отданные их собственному чату. Включено: все файлы, которые Lumo получил за последние 7 дней. Gemini Live может читать их в любом случае.",
+   "id": "Mati: Claude Code dan Antigravity CLI hanya membaca file dan tangkapan layar yang diberikan ke chat-nya sendiri. Nyala: setiap file yang diterima Lumo dalam 7 hari terakhir. Gemini Live bisa membacanya dalam kedua kasus.",
+   "it": "Spento: Claude Code e Antigravity CLI leggono solo i file e le schermate dati alla loro chat. Acceso: tutti i file ricevuti da Lumo negli ultimi 7 giorni. Gemini Live può leggerli in entrambi i casi."
   },
   "Always on": {
    "zh-Hans": "始终开启",
