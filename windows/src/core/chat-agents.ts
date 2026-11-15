@@ -151,9 +151,11 @@ function sameActivity(a: ChatActivity | undefined, b: ChatActivity | undefined):
  * A `chat-agent` event: the agent's whole state, which replaces what was
  * known. One that already ended keeps its end (a late event never brings it
  * back), unless a message took it up again (a higher `round`); an event of
- * an earlier round is late. A new one joins the batch still at work, or the
- * one of the same answer; otherwise it starts a batch under the answer
- * `anchor` (asked only then, when a function). Its talk (a message its CLI
+ * an earlier round is late. A new one joins the batch of its answer `anchor`
+ * (asked only then, when a function): agents started together, or between
+ * two turns under the same answer, share a card; one a later answer started
+ * has a card of its own under that answer, even while an earlier answer's
+ * agents still work. Its talk (a message its CLI
  * sent it) joins the chat's talks. True when something changed.
  */
 export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number | (() => number)): boolean {
@@ -171,9 +173,9 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
   if (agent.talk) noteTalk(c, agent, at);
   if (!known) {
     const anchor = at();
-    const last = c.batches.at(-1);
-    const lastOpen = last ? last.ids.some((id) => { const r = c.rows.get(id); return r && !isFinal(r.row.state); }) : false;
-    if (last && (lastOpen || last.anchor === anchor)) last.ids.push(agent.id);
+    let mine: AgentBatch | undefined;
+    for (let i = c.batches.length - 1; i >= 0 && !mine; i--) if (c.batches[i].anchor === anchor) mine = c.batches[i];
+    if (mine) mine.ids.push(agent.id);
     else c.batches.push({ anchor, ids: [agent.id] });
     c.rows.set(agent.id, entry);
   }
@@ -390,22 +392,32 @@ export function permissionMatch(
 
 // ── Saved with the chat ───────────────────────────────────────────────────────
 
-/** The agents kept with an answer: those that ended, in short, at most MAX_SAVED_AGENTS. */
-export function savedAgents(entries: AgentEntry[]): SavedAgent[] {
-  return entries
-    .filter((e) => isFinal(e.row.state))
-    .slice(-MAX_SAVED_AGENTS)
-    .map(({ row }) => ({
+/**
+ * The agents kept with an answer, in short, at most MAX_SAVED_AGENTS. One
+ * still at work is kept as Lumo closing under it would leave it: ended
+ * halfway (`endedBy: "lumo"`), so a chat opened after Lumo closed says so and
+ * offers Resume. Its end, when it comes, is saved over it. `resumed`: Resume
+ * was sent for their batch.
+ */
+export function savedAgents(entries: AgentEntry[], resumed = false): SavedAgent[] {
+  return entries.slice(-MAX_SAVED_AGENTS).map(({ row }) => {
+    const open = !isFinal(row.state);
+    const endedBy = open ? "lumo" : row.endedBy;
+    const endedAt = open ? row.lastSignalAt || undefined : row.endedAt;
+    return {
       id: row.id,
       title: row.title,
-      state: row.state as SavedAgent["state"],
+      state: (open ? "failed" : row.state) as SavedAgent["state"],
       ...(row.summary ? { summary: row.summary } : {}),
-      ...(row.error ? { error: row.error } : {}),
+      ...(row.error && !open ? { error: row.error } : {}),
       steps: row.steps,
       ...(row.tokens != null ? { tokens: row.tokens } : {}),
       startedAt: row.startedAt,
-      ...(row.endedAt != null ? { endedAt: row.endedAt } : {}),
-    }));
+      ...(endedAt != null ? { endedAt } : {}),
+      ...(endedBy ? { endedBy } : {}),
+      ...(endedBy && resumed ? { resumed: true } : {}),
+    };
+  });
 }
 
 /**
@@ -429,7 +441,7 @@ export function withAgents<T extends { role: string }>(c: ChatAgents | undefined
     } else {
       return turn;
     }
-    const agents = savedAgents(c.batches.filter((b) => mine(b.anchor)).flatMap((b) => batchEntries(c, b)));
+    const agents = c.batches.filter((b) => mine(b.anchor)).flatMap((b) => savedAgents(batchEntries(c, b), b.resumed)).slice(-MAX_SAVED_AGENTS);
     const talks = c.talks.filter((x) => mine(x.anchor)).map(savedTalk);
     if (!agents.length && !talks.length) return turn;
     return { ...turn, ...(agents.length ? { agents } : {}), ...(talks.length ? { talks } : {}) };
@@ -477,11 +489,14 @@ export function restoreAgents(store: AgentStore, chat: string, turns: readonly P
           id: a.id, source, title: a.title, state: a.state, summary: a.summary, error: a.error,
           steps: typeof a.steps === "number" ? a.steps : 0, tokens: a.tokens, startedAt: a.startedAt || 0,
           lastSignalAt: a.endedAt || a.startedAt || 0, endedAt: a.endedAt, background: false, canStop: false,
+          ...(a.endedBy === "cli" || a.endedBy === "lumo" ? { endedBy: a.endedBy } : {}),
         },
         steps: [],
       });
     }
-    c.batches.push({ anchor, ids: agents.map((a) => a.id), resumed: true });
+    // Resume is offered again only for agents that ended halfway and were never resumed.
+    const halfway = agents.some((a) => a.state === "failed" && (a.endedBy === "cli" || a.endedBy === "lumo") && !a.resumed);
+    c.batches.push({ anchor, ids: agents.map((a) => a.id), resumed: !halfway });
   }
 }
 
