@@ -540,17 +540,28 @@ pub fn server_entry() -> Value {
     })
 }
 
+/// `--tools=…` for Lumo's server: `first` (agy's plan), the computer
+/// (`computer`, while a chat turn may use it), the email as Security lets the
+/// AI have it (`mail`), and the island's tools.
+pub fn kit(first: &str, computer: bool, mail: &str) -> String {
+    // The computer always with Lumo's plan tool: no plan, no computer (`gate`).
+    let plan = if computer && first != "plan" { "computer,plan" } else if computer { "computer" } else { "" };
+    let parts: Vec<&str> = [first, plan, mail, "island"].into_iter().filter(|p| !p.is_empty()).collect();
+    format!("--tools={}", parts.join(","))
+}
+
 /// Antigravity CLI reads MCP servers from its workspace's
 /// `.agents/mcp_config.json`. Lumo's server goes in the one of Lumo's own
 /// folder with its plan tool (`--tools=plan`, for the Plan island), the
 /// island's timer and GitHub tools (`island`, island_tools.rs) and its email
 /// tools while the Email pill is on (`mail`, mail.rs); the user's own tools
 /// as a server of their own while any is on (`tools`, tools.rs, which asks
-/// for each call itself); computer use never goes to agy (Gemini Live's
-/// screen work is Claude Code's). An entry an earlier build put there is
-/// replaced. Whatever else the file holds is kept, and the user's global
-/// configuration is never touched.
-pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
+/// for each call itself); the computer only for a chat turn that may use it
+/// (`computer`: Lumo asks for each action itself, `OtherTurn`;
+/// Gemini Live's screen work stays Claude Code's). An entry an earlier build
+/// put there is replaced. Whatever else the file holds is kept, and the
+/// user's global configuration is never touched.
+pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool, computer: bool) {
     let path = work.join(".agents").join("mcp_config.json");
     let read = match std::fs::read_to_string(&path) {
         Ok(text) => Some(text),
@@ -565,7 +576,7 @@ pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
         None => json!({}),
     };
     let mut entry = server_entry();
-    entry["args"] = json!(["--mcp", if mail.is_empty() { "--tools=plan,island".to_string() } else { format!("--tools=plan,{mail},island") }]);
+    entry["args"] = json!(["--mcp", kit("plan", computer, mail)]);
     let Some(root) = config.as_object_mut() else { return };
     let servers = root.entry("mcpServers").or_insert_with(|| json!({}));
     let Some(servers) = servers.as_object_mut() else { return };
@@ -652,6 +663,213 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>, chat: &str, stopped: bool) -> Op
     }
     recap
 }
+
+// ── The other agents ─────────────────────────────────────────
+//
+// Codex, Antigravity CLI, Copilot CLI and Cursor CLI get the same tools in the
+// chat, while computer use is on. They call Lumo's tools without asking
+// (Lumo lets them: `default_tools_approval_mode`, `--allow-tool lumo`,
+// `Mcp(lumo:*)`, and agy's own card leaves the computer to Lumo), so Lumo asks
+// here, before each action, as the chat's permission mode says: Ask every
+// time is a card for each action that does something (looking never asks),
+// Auto none, Plan only refuses them. The state is Lumo's: nothing the agent
+// writes in its own configuration asks less.
+
+/// How Lumo asks for another agent's actions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Asks {
+    /// Ask every time: a card for each action.
+    Card,
+    /// Auto: none.
+    Free,
+    /// Plan only: only looking.
+    LookOnly,
+}
+
+impl Asks {
+    /// From the chat's permission mode ("default", "auto", "plan"; agy's "turbo").
+    pub fn of(mode: &str) -> Asks {
+        match mode.trim() {
+            "auto" | "turbo" | "bypassPermissions" | "acceptEdits" => Asks::Free,
+            "plan" => Asks::LookOnly,
+            _ => Asks::Card,
+        }
+    }
+}
+
+/// Another agent's chat turns using the computer: their id, the agent's tag
+/// (`lumo_agent`, for the card), how Lumo asks, and whether its model writes
+/// points on a 0–999 grid (`uses_grid`).
+static OTHERS: Mutex<Vec<(usize, &'static str, Asks, bool)>> = Mutex::new(Vec::new());
+static OTHER_IDS: AtomicUsize = AtomicUsize::new(1);
+
+/// Another agent's chat turn that may use the computer: the computer is
+/// usable from `begin`, and let go when it is dropped (an answer, an error,
+/// Stop alike). As Claude Code's turn, it is the chat `chat`'s, for the
+/// provider `provider` (the island's name and colour), and its agent gives
+/// its plan before anything is done (`gate`).
+pub struct OtherTurn {
+    id: usize,
+    app: AppHandle,
+    chat: String,
+}
+
+impl OtherTurn {
+    pub fn begin(app: &AppHandle, provider: &str, chat: &str, agent: &'static str, mode: &str, grid: bool) -> OtherTurn {
+        let id = OTHER_IDS.fetch_add(1, Ordering::SeqCst);
+        OTHERS.lock().unwrap_or_else(|e| e.into_inner()).push((id, agent, Asks::of(mode), grid));
+        begin_turn(Who::of(provider), chat);
+        OtherTurn { id, app: app.clone(), chat: chat.to_string() }
+    }
+}
+
+impl Drop for OtherTurn {
+    fn drop(&mut self) {
+        OTHERS.lock().unwrap_or_else(|e| e.into_inner()).retain(|(id, _, _, _)| *id != self.id);
+        let _ = end_turn(&self.app, &self.chat, false);
+    }
+}
+
+/// How Lumo asks while other agents' turns run, the strictest of them, with
+/// the agent a card names; None while only Claude Code's run (it asks itself).
+fn others_ask() -> Option<(Asks, &'static str)> {
+    let others = OTHERS.lock().unwrap_or_else(|e| e.into_inner());
+    let rank = |a: Asks| match a {
+        Asks::LookOnly => 2,
+        Asks::Card => 1,
+        Asks::Free => 0,
+    };
+    others.iter().max_by_key(|(_, _, a, _)| rank(*a)).map(|(_, agent, a, _)| (*a, *agent))
+}
+
+// ── Gemini's grid ───────────────────────────────────────────────────────────
+//
+// Gemini models count points on a 0–999 grid over an image, whatever its size
+// in pixels (Google's own computer use does). Asked for the screenshot's
+// pixels, they mix the two, x one way and y the other (recorded on this
+// branch). For them Lumo asks for the grid outright and turns its points into
+// the screenshot's pixels itself, and the points it answers with back into
+// the grid.
+
+/// The model writes points on the 0–999 grid: a Gemini model, or Antigravity
+/// CLI's own default (Gemini).
+pub fn uses_grid(provider: &str, model: &str) -> bool {
+    let m = model.trim().to_ascii_lowercase();
+    m.contains("gemini") || (provider == crate::antigravity_cli::PROVIDER && (m.is_empty() || m == "default"))
+}
+
+/// The turns using the computer now all write points on the grid.
+fn grid_now() -> bool {
+    let others = OTHERS.lock().unwrap_or_else(|e| e.into_inner());
+    !others.is_empty() && others.iter().all(|o| o.3) && TURN.load(Ordering::SeqCst) == others.len()
+}
+
+/// A grid value (0–999) on an axis `size` pixels long, as a pixel of it.
+fn grid_to_px(v: i64, size: u32) -> i64 {
+    let size = size.max(1) as f64;
+    (((v.clamp(0, 999) as f64) + 0.5) * size / 1000.0).floor().min(size - 1.0) as i64
+}
+
+/// A pixel of an axis `size` pixels long, on the grid.
+fn px_to_grid(v: i64, size: u32) -> i64 {
+    ((v as f64 + 0.5) * 1000.0 / size.max(1) as f64).floor().clamp(0.0, 999.0) as i64
+}
+
+/// The call's points (`coordinate`, `start_coordinate`, `region`), written on
+/// the grid, in `view`'s screenshot pixels. Without a screenshot yet, as they came.
+fn from_grid(input: &Value, view: Option<View>) -> Value {
+    let Some(v) = view else { return input.clone() };
+    let mut out = input.clone();
+    for key in ["coordinate", "start_coordinate"] {
+        if let Ok(Some((x, y))) = point(input, key) {
+            out[key] = json!([grid_to_px(x, v.w), grid_to_px(y, v.h)]);
+        }
+    }
+    if let Some(r) = input.get("region").and_then(Value::as_array).filter(|a| a.len() == 4) {
+        let n: Vec<i64> = r.iter().filter_map(|n| n.as_f64().map(|f| f.round() as i64)).collect();
+        if n.len() == 4 {
+            out["region"] = json!([grid_to_px(n[0], v.w), grid_to_px(n[1], v.h), grid_to_px(n[2], v.w), grid_to_px(n[3], v.h)]);
+        }
+    }
+    out
+}
+
+/// What the screenshot's answer says about the points, for a model on the grid.
+const GRID_SHOT: &str = "Give points for the other tools as [x, y] on a 0–999 grid over this screenshot: [0, 0] is its top-left corner, [999, 999] its bottom-right, whatever its size in pixels.";
+
+/// An answer's text for a model on the grid: its points `[x, y]` (the
+/// screenshot's pixels) on the grid, and the screenshot's word on them.
+fn to_grid_text(text: &str, view: View) -> String {
+    let text = text
+        .replace("Coordinates for the other tools are in these pixels.", GRID_SHOT)
+        .replace("Coordinates stay those of the full screenshot.", "Points stay on the 0–999 grid of the full screenshot.");
+    // Every "[x, y]" pair of whole numbers.
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text.as_str();
+    while let Some(open) = rest.find('[') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let pair = after.find(']').and_then(|close| {
+            let inside = &after[..close];
+            let mut parts = inside.split(',').map(str::trim);
+            let x = parts.next()?.parse::<i64>().ok()?;
+            let y = parts.next()?.parse::<i64>().ok()?;
+            parts.next().is_none().then_some((x, y, close))
+        });
+        match pair {
+            Some((x, y, close)) => {
+                out.push_str(&format!("[{}, {}]", px_to_grid(x, view.w), px_to_grid(y, view.h)));
+                rest = &after[close + 1..];
+            }
+            None => {
+                out.push('[');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The tools that only look: no card, even for another agent.
+pub fn only_looks(tool: &str) -> bool {
+    matches!(tool, "screenshot" | "zoom" | "cursor_position" | "wait")
+}
+
+/// In front of each question to another agent while computer use is on:
+/// none of them takes a system prompt for it, and the conversation may have
+/// started with it off.
+pub fn with_note(text: &str, grid: bool) -> String {
+    let points = if grid {
+        "Give every point as [x, y] on a 0–999 grid over the last screenshot, both numbers on the grid: [0, 0] is its top-left corner, [999, 999] its bottom-right, whatever its size in pixels. Lumo answers with points on the same grid. "
+    } else {
+        "Coordinates are always [x, y] in pixels of the last screenshot, counted from its top-left corner: never normalized, never fractions. "
+    };
+    format!(
+        "<lumo_computer>\n{}{points}{}\n</lumo_computer>\n\n{text}",
+        computer_note!(),
+        "After each click Lumo says where it landed; if that is not where you meant, take a screenshot and try again. \
+This replaces what Lumo said before about never taking a screenshot yourself."
+    )
+}
+
+/// The input as the card reads it (core/computer.ts): its points as `[x, y]`
+/// whichever way the model wrote them, so the card says where the action
+/// goes, never "where the mouse is" for a point written another way.
+fn card_input(input: &Value) -> Value {
+    let mut shown = input.clone();
+    for key in ["coordinate", "start_coordinate"] {
+        if let Ok(Some((x, y))) = point(input, key) {
+            shown[key] = json!([x, y]);
+        }
+    }
+    shown
+}
+
+/// What another agent reads when the user said no on the card.
+const DENIED_TEXT: &str = "The user said no to this action on Lumo's card. Don't do it another way: ask them what to do.";
+/// What another agent reads in Plan only.
+const PLAN_TEXT: &str = "The chat is in Plan only: you may look at the screen, but not click, type or press keys. Say what you would do instead.";
 
 /// The agent starts using the computer in this turn: the screen glows, the
 /// mouse wears the agent's arrow and the hand lets go of it, and the island
@@ -1713,8 +1931,10 @@ fn one_at_a_time(until: Instant) -> Option<MutexGuard<'static, ()>> {
 /// chat its agent answers (`chat`, "" for Gemini Live's helper): that
 /// chat's own plan lets it in.
 pub async fn serve(app: &AppHandle, request: &Value) -> Value {
-    // Answered within CALL_LIMIT of now, whatever it waits for.
-    let deadline = Instant::now() + CALL_LIMIT;
+    // Answered within CALL_LIMIT of now, whatever it waits for (but Lumo's
+    // card for another agent's action, which has its own time: lumo-hook's
+    // COMPUTER_CALL_BUDGET).
+    let mut deadline = Instant::now() + CALL_LIMIT;
     let tool = request.get("tool").and_then(Value::as_str).unwrap_or("").to_string();
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
     let chat = request.get("chat").and_then(Value::as_str).unwrap_or("").to_string();
@@ -1728,10 +1948,18 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     if STOPPED.load(Ordering::SeqCst) {
         return refuse(STOPPED_TEXT);
     }
+    // A model on the grid: its points in the screenshot's pixels from here on.
+    let grid = grid_now();
+    let input = if grid { from_grid(&input, VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied()) } else { input };
     let action = match parse(&tool, &input) {
         Ok(a) => a,
         Err(e) => return refuse(e),
     };
+    // Another agent's turn: Lumo asks, or refuses, itself.
+    let others = if only_looks(&tool) { None } else { others_ask() };
+    if matches!(others, Some((Asks::LookOnly, _))) {
+        return refuse(PLAN_TEXT);
+    }
     {
         let mut job = job();
         // No plan of its own, no computer: nothing is taken (no glow, no mouse) before it.
@@ -1767,10 +1995,45 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         mouse_to_user();
         return refuse(STOPPED_TEXT);
     }
+    if let Some((Asks::Card, agent)) = others {
+        let card = json!({
+            "hook_event_name": "PermissionRequest",
+            "lumo_island": true,
+            "lumo_agent": agent,
+            "tool_name": format!("mcp__lumo__{tool}"),
+            "tool_input": card_input(&input),
+        });
+        match crate::pipe::ask(app, card).await.as_deref() {
+            Some("allow") => {}
+            Some(_) => return refuse(DENIED_TEXT),
+            None => return refuse("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment."),
+        }
+        // The chat's Stop, or the plan's, while the card waited.
+        if !(TURN.load(Ordering::SeqCst) > 0) || STOPPED.load(Ordering::SeqCst) {
+            return refuse(STOPPED_TEXT);
+        }
+        deadline = Instant::now() + CALL_LIMIT;
+    }
     let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || run(&app2, action, start, &chat, deadline))
+    let answer = tauri::async_runtime::spawn_blocking(move || run(&app2, action, start, &chat, deadline))
         .await
-        .unwrap_or_else(|e| refuse(e.to_string()))
+        .unwrap_or_else(|e| refuse(e.to_string()));
+    // A model on the grid reads the points of the answer on the grid too.
+    let view_now = VIEW.lock().unwrap_or_else(|e| e.into_inner()).as_ref().copied();
+    match view_now {
+        Some(view) if grid => on_grid(answer, view),
+        _ => answer,
+    }
+}
+
+/// An answer for a model on the grid: its text, or why not, with the points on the grid.
+fn on_grid(mut answer: Value, view: View) -> Value {
+    for key in ["text", "error"] {
+        if let Some(text) = answer.get(key).and_then(Value::as_str).map(|t| to_grid_text(t, view)) {
+            answer[key] = json!(text);
+        }
+    }
+    answer
 }
 
 /// A call, from the first action's countdown and a pause to what it did,
@@ -2876,22 +3139,22 @@ mod tests {
         let file = dir.join(".agents").join("mcp_config.json");
         let read = || serde_json::from_str::<Value>(&std::fs::read_to_string(&file).unwrap()).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        agy_workspace(&dir, "", false);
+        agy_workspace(&dir, "", false, false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the plan always");
-        agy_workspace(&dir, "mail", false);
+        agy_workspace(&dir, "mail", false, false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]));
-        agy_workspace(&dir, "mail,mailsend", false);
+        agy_workspace(&dir, "mail,mailsend", false, false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,mailsend,island"]), "sending too");
 
         // An earlier build's computer use entry, next to the user's own.
         std::fs::write(&file, r#"{"mcpServers":{"mine":{"command":"x"},"lumo":{"command":"lumo-hook","args":["--mcp"]}},"other":1}"#).unwrap();
-        agy_workspace(&dir, "mail", false);
+        agy_workspace(&dir, "mail", false, false);
         let v = read();
-        assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]), "never the computer");
+        assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]), "no computer unless the turn may use it");
         assert_eq!(v["mcpServers"]["lumo"]["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(v["other"], 1);
-        agy_workspace(&dir, "", false);
+        agy_workspace(&dir, "", false, false);
         let v = read();
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the email goes with the pill");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
@@ -2899,22 +3162,28 @@ mod tests {
         assert!(v["mcpServers"].get(crate::tools::SERVER).is_none());
 
         // The user's tools, as a server of their own while any is on.
-        agy_workspace(&dir, "", true);
+        // A chat turn that may use the computer, and the next without.
+        agy_workspace(&dir, "mail", false, true);
+        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,computer,mail,island"]));
+        agy_workspace(&dir, "", false, false);
+        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]));
+
+        agy_workspace(&dir, "", true, false);
         let v = read();
         assert_eq!(v["mcpServers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]));
-        agy_workspace(&dir, "", false);
+        agy_workspace(&dir, "", false, false);
         let v = read();
         assert!(v["mcpServers"].get(crate::tools::SERVER).is_none(), "gone once none is on");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
 
         std::fs::write(&file, "not json").unwrap();
-        agy_workspace(&dir, "mail", false);
+        agy_workspace(&dir, "mail", false, false);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json", "what Lumo can't read is left alone");
         // Saved as UTF-16 (Notepad's "Unicode"): not text Lumo reads, so not written over.
         let utf16: Vec<u8> = [0xFEFFu16].into_iter().chain("{}".encode_utf16()).flat_map(u16::to_le_bytes).collect();
         std::fs::write(&file, &utf16).unwrap();
-        agy_workspace(&dir, "mail", false);
+        agy_workspace(&dir, "mail", false, false);
         assert_eq!(std::fs::read(&file).unwrap(), utf16, "a UTF-16 file is left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2925,6 +3194,77 @@ mod tests {
 
     fn plan(steps: &[(&str, &str)]) -> Plan {
         Plan::from_input(&json!({ "plan": steps.iter().map(|(s, st)| json!({ "step": s, "status": st })).collect::<Vec<_>>() })).unwrap()
+    }
+
+    #[test]
+    fn the_other_agents_get_the_computer_in_their_kit_and_a_note_in_front() {
+        assert_eq!(kit("plan", false, ""), "--tools=plan,island");
+        assert_eq!(kit("plan", true, "mail,mailsend"), "--tools=plan,computer,mail,mailsend,island");
+        assert_eq!(kit("", true, ""), "--tools=computer,plan,island", "the computer always with Lumo's plan tool");
+        assert_eq!(kit("", false, "mail"), "--tools=mail,island");
+        let text = with_note("click Send", false);
+        assert!(text.starts_with("<lumo_computer>\n") && text.ends_with("</lumo_computer>\n\nclick Send"));
+        assert!(text.contains("lumo MCP server") && text.contains("Esc") && text.contains("never normalized"));
+        assert!(text.contains("replaces what Lumo said before"));
+    }
+
+    #[test]
+    fn a_gemini_model_gives_and_reads_points_on_the_grid() {
+        assert!(uses_grid("antigravity-cli", "default") && uses_grid("antigravity-cli", ""));
+        assert!(uses_grid("antigravity-cli", "gemini-3.8-flash-low") && uses_grid("copilot-cli", "Gemini 3 Pro"));
+        assert!(!uses_grid("antigravity-cli", "claude-sonnet-4.5") && !uses_grid("codex", "default") && !uses_grid("cursor-cli", "gpt-5"));
+        // The screenshot of a 2560×1440 screen, 1430×804 pixels (recorded on this branch).
+        let v = View { display: 0, rect: (0, 0, 2560, 1440), w: 1430, h: 804 };
+        // «Apri»: [515, 591] on the grid is [736, 475] in the screenshot.
+        let px = from_grid(&json!({ "coordinate": [515, 591] }), Some(v));
+        assert_eq!(px["coordinate"], json!([737, 475]));
+        assert_eq!(from_grid(&json!({ "x": 0, "y": 999 }), Some(v))["coordinate"], json!([0, 803]), "the corners stay inside");
+        assert_eq!(from_grid(&json!({ "coordinate": [1200, 240] }), Some(v))["coordinate"], json!([1429, 193]), "past the grid: its edge");
+        assert_eq!(from_grid(&json!({ "region": [0, 0, 500, 500] }), Some(v))["region"], json!([0, 0, 715, 402]));
+        assert_eq!(from_grid(&json!({ "coordinate": [10, 10] }), None), json!({ "coordinate": [10, 10] }), "no screenshot yet");
+        // Back on the grid: the answers' points and the screenshot's word.
+        assert_eq!(to_grid_text("Clicked at [737, 475]. Take a screenshot to see what changed.", v), "Clicked at [515, 591]. Take a screenshot to see what changed.");
+        assert_eq!(to_grid_text("Clicked at [1429, 803], not at [0, 0] as asked", v), "Clicked at [999, 999], not at [0, 0] as asked");
+        let shot = to_grid_text("Screen 1 of 2, 1430×804 pixels (Lumo's island and Settings are left out). Coordinates for the other tools are in these pixels.", v);
+        assert!(shot.contains("0–999 grid") && !shot.contains("in these pixels"), "{shot}");
+        assert_eq!(to_grid_text("The region [1, 2, 3, 4], enlarged. [a, b] [7]", v), "The region [1, 2, 3, 4], enlarged. [a, b] [7]", "only pairs of numbers");
+        assert!(with_note("x", true).contains("0–999 grid") && !with_note("x", false).contains("0–999 grid"));
+    }
+
+    #[test]
+    fn the_card_shows_the_point_however_the_model_wrote_it() {
+        assert_eq!(card_input(&json!({ "coordinate": [640, 320] }))["coordinate"], json!([640, 320]));
+        assert_eq!(card_input(&json!({ "x": 640, "y": 320 }))["coordinate"], json!([640, 320]));
+        assert_eq!(card_input(&json!({ "coordinate": { "x": 640.4, "y": 320 } }))["coordinate"], json!([640, 320]));
+        assert_eq!(card_input(&json!({ "coordinate": "[640, 320]" }))["coordinate"], json!([640, 320]));
+        assert_eq!(card_input(&json!({ "text": "hi" })), json!({ "text": "hi" }), "nothing added");
+    }
+
+    #[test]
+    fn lumo_asks_for_the_other_agents_actions_as_the_chats_mode_says() {
+        assert_eq!(Asks::of("default"), Asks::Card);
+        assert_eq!(Asks::of(""), Asks::Card, "unknown asks");
+        assert_eq!(Asks::of("auto"), Asks::Free);
+        assert_eq!(Asks::of("turbo"), Asks::Free);
+        assert_eq!(Asks::of("plan"), Asks::LookOnly);
+        for looks in ["screenshot", "zoom", "cursor_position", "wait"] {
+            assert!(only_looks(looks));
+        }
+        for acts in ["left_click", "type", "key", "scroll", "left_click_drag", "mouse_move", "double_click"] {
+            assert!(!only_looks(acts), "{acts}");
+        }
+        // The strictest of the turns running wins (the state alone: OtherTurn needs the app).
+        let mut others = OTHERS.lock().unwrap();
+        others.clear();
+        drop(others);
+        assert_eq!(others_ask(), None, "Claude Code's turns ask themselves");
+        OTHERS.lock().unwrap().push((1000, "codex", Asks::Free, false));
+        assert_eq!(others_ask(), Some((Asks::Free, "codex")));
+        OTHERS.lock().unwrap().push((1001, "antigravity", Asks::Card, true));
+        assert_eq!(others_ask(), Some((Asks::Card, "antigravity")));
+        OTHERS.lock().unwrap().push((1002, "cursor", Asks::LookOnly, false));
+        assert_eq!(others_ask(), Some((Asks::LookOnly, "cursor")));
+        OTHERS.lock().unwrap().clear();
     }
 
     #[test]

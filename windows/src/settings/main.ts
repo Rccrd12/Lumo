@@ -871,7 +871,9 @@ function securitySection(): HTMLElement {
   whileShown(githubRow, "focus", () => void showAccounts());
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
-    note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
+    // Antigravity CLI uses it too.
+    const cli = ["claude-code", "antigravity-cli"].includes(settings.chatProvider);
+    note.hidden = !(settings.chatComputerUse && !cli);
   };
   showNote();
   return h(
