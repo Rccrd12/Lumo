@@ -810,7 +810,7 @@ const MAIL_IMAGES = {
 
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
-  get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
+  get claudeOnly() { return t("In the chat, pick Claude Code or Antigravity CLI as the provider to use it."); },
 };
 
 /**
@@ -871,7 +871,7 @@ function securitySection(): HTMLElement {
   whileShown(githubRow, "focus", () => void showAccounts());
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
-    // Antigravity CLI uses it too.
+    // The two providers that use it.
     const cli = ["claude-code", "antigravity-cli"].includes(settings.chatProvider);
     note.hidden = !(settings.chatComputerUse && !cli);
   };
