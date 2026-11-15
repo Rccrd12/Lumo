@@ -228,6 +228,17 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
   // what the agent opened. A click on the card must not.
   const agent = app.agent("computer-type");
   await agent.start();
+  // The cards before gave the island the keyboard: a click on the desktop,
+  // far from the island and the taskbar, hands it to another window first.
+  const s = await app.screen();
+  step("clicks the desktop, so the keyboard is in another window");
+  await app.mouse.move(s.w * 0.75, s.h * 0.55);
+  await sleep(150);
+  await app.mouse.down();
+  await sleep(50);
+  await app.mouse.up();
+  await sleep(500);
+  assert.equal(await d.js("return document.hasFocus()"), false, "the island still has the keyboard after a click elsewhere");
   const req = ask(agent, "mcp__lumo__type", { text: "Notepad" });
   await d.visible(ANY_ALLOW, 10_000, "the card");
   await fullCard();
