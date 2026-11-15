@@ -97,6 +97,42 @@
    "id": "{n} piksel pelacak diblokir",
    "it": "{n} pixel di tracciamento bloccati"
   },
+  "Images loaded automatically": {
+   "zh-Hans": "图片已自动加载",
+   "hi": "इमेज अपने-आप लोड हुईं",
+   "es": "Imágenes cargadas automáticamente",
+   "ar": "تم تحميل الصور تلقائيًا",
+   "fr": "Images chargées automatiquement",
+   "bn": "ছবি স্বয়ংক্রিয়ভাবে লোড হয়েছে",
+   "pt-BR": "Imagens carregadas automaticamente",
+   "ru": "Изображения загружены автоматически",
+   "id": "Gambar dimuat otomatis",
+   "it": "Immagini caricate in automatico"
+  },
+  "Turn off": {
+   "zh-Hans": "关闭",
+   "hi": "बंद करें",
+   "es": "Desactivar",
+   "ar": "إيقاف",
+   "fr": "Désactiver",
+   "bn": "বন্ধ করুন",
+   "pt-BR": "Desativar",
+   "ru": "Выключить",
+   "id": "Matikan",
+   "it": "Disattiva"
+  },
+  "Only the first {max} images loaded": {
+   "zh-Hans": "只加载了前 {max} 张图片",
+   "hi": "सिर्फ़ पहली {max} इमेज लोड हुईं",
+   "es": "Solo se cargaron las primeras {max} imágenes",
+   "ar": "تم تحميل أول {max} صورة فقط",
+   "fr": "Seules les {max} premières images ont été chargées",
+   "bn": "শুধু প্রথম {max}টি ছবি লোড হয়েছে",
+   "pt-BR": "Só as primeiras {max} imagens foram carregadas",
+   "ru": "Загружены только первые {max} изображений",
+   "id": "Hanya {max} gambar pertama yang dimuat",
+   "it": "Caricate solo le prime {max} immagini"
+  },
   "Email images always": {
    "zh-Hans": "始终显示邮件图片",
    "hi": "ईमेल की छवियाँ हमेशा",
@@ -7645,17 +7681,17 @@
    "id": "Gulir ke kanan",
    "it": "Scorri a destra"
   },
-  "In the chat, pick Claude Code as the provider to use it.": {
-   "zh-Hans": "在聊天中，请将 Claude Code 设为提供方以使用它。",
-   "hi": "चैट में इसे इस्तेमाल करने के लिए प्रदाता के रूप में Claude Code चुनें।",
-   "es": "En el chat, elige Claude Code como proveedor para usarlo.",
-   "ar": "في الدردشة، اختر Claude Code كمزوّد لاستخدامه.",
-   "fr": "Dans le chat, choisissez Claude Code comme fournisseur pour l'utiliser.",
-   "bn": "চ্যাটে এটি ব্যবহার করতে প্রদানকারী হিসেবে Claude Code বেছে নিন।",
-   "pt-BR": "No chat, escolha o Claude Code como provedor para usá-lo.",
-   "ru": "Чтобы пользоваться этим в чате, выберите поставщиком Claude Code.",
-   "id": "Di chat, pilih Claude Code sebagai penyedia untuk memakainya.",
-   "it": "Nella chat, scegli Claude Code come provider per usarlo."
+  "In the chat, pick Claude Code or Antigravity CLI as the provider to use it.": {
+   "zh-Hans": "在聊天中，请将 Claude Code 或 Antigravity CLI 设为提供方以使用它。",
+   "hi": "चैट में इसे इस्तेमाल करने के लिए प्रदाता के रूप में Claude Code या Antigravity CLI चुनें।",
+   "es": "En el chat, elige Claude Code o Antigravity CLI como proveedor para usarlo.",
+   "ar": "في الدردشة، اختر Claude Code أو Antigravity CLI كمزوّد لاستخدامه.",
+   "fr": "Dans le chat, choisissez Claude Code ou Antigravity CLI comme fournisseur pour l'utiliser.",
+   "bn": "চ্যাটে এটি ব্যবহার করতে প্রদানকারী হিসেবে Claude Code বা Antigravity CLI বেছে নিন।",
+   "pt-BR": "No chat, escolha o Claude Code ou o Antigravity CLI como provedor para usá-lo.",
+   "ru": "Чтобы пользоваться этим в чате, выберите поставщиком Claude Code или Antigravity CLI.",
+   "id": "Di chat, pilih Claude Code atau Antigravity CLI sebagai penyedia untuk memakainya.",
+   "it": "Nella chat, scegli Claude Code o Antigravity CLI come provider per usarlo."
   },
   "No page is open in Edge or Chrome.": {
    "zh-Hans": "Edge 或 Chrome 中没有打开的网页。",
@@ -8124,6 +8160,18 @@
    "ru": "Проверки {pr} пройдены",
    "id": "Pemeriksaan di {pr} lolos",
    "it": "I controlli su {pr} sono passati"
+  },
+  "Checks were cancelled on {pr}: {checks}": {
+   "zh-Hans": "{pr} 的检查已取消：{checks}",
+   "hi": "{pr} पर चेक रद्द किए गए: {checks}",
+   "es": "Las comprobaciones de {pr} se cancelaron: {checks}",
+   "ar": "أُلغيت الفحوصات على {pr}: {checks}",
+   "fr": "Les vérifications de {pr} ont été annulées : {checks}",
+   "bn": "{pr}-এর চেক বাতিল হয়েছে: {checks}",
+   "pt-BR": "As verificações de {pr} foram canceladas: {checks}",
+   "ru": "Проверки {pr} отменены: {checks}",
+   "id": "Pemeriksaan di {pr} dibatalkan: {checks}",
+   "it": "I controlli su {pr} sono stati annullati: {checks}"
   },
   "Checks failed on {pr}: {checks}": {
    "zh-Hans": "{pr} 的检查失败：{checks}",
@@ -9805,6 +9853,18 @@
    "id": "Mencabut dari Claude Code…",
    "it": "Tolgo da Claude Code…"
   },
+  "{helper} answered, with a problem": {
+   "zh-Hans": "{helper} 已回复，但有问题",
+   "hi": "{helper} ने जवाब दिया, एक समस्या के साथ",
+   "es": "{helper} respondió, con un problema",
+   "ar": "ردّ {helper}، مع مشكلة",
+   "fr": "{helper} a répondu, avec un problème",
+   "bn": "{helper} উত্তর দিয়েছে, একটি সমস্যাসহ",
+   "pt-BR": "{helper} respondeu, com um problema",
+   "ru": "{helper} ответил, но с проблемой",
+   "id": "{helper} menjawab, dengan masalah",
+   "it": "{helper} ha risposto, con un problema"
+  },
   "Take away?": {
    "zh-Hans": "取消？",
    "hi": "हटाएँ?",
@@ -11050,6 +11110,30 @@
    "ru": "Прослушивание {what} остановлено, чтобы освободить место: не больше {count} одновременно",
    "id": "Berhenti mendengarkan {what} untuk memberi ruang: paling banyak {count} sekaligus",
    "it": "Smesso di ascoltare {what} per fare spazio: al massimo {count} alla volta"
+  },
+  "Stopped listening to {what}: an edited watch listens to it now": {
+   "zh-Hans": "已停止监听 {what}：现在由一个修改过的监听代替",
+   "hi": "{what} को सुनना बंद किया: अब एक बदला हुआ वॉच इसे सुनता है",
+   "es": "Se dejó de escuchar {what}: ahora lo escucha una escucha editada",
+   "ar": "توقف الاستماع إلى {what}: يستمع إليه الآن استماع معدَّل",
+   "fr": "Arrêt de l'écoute de {what} : une écoute modifiée l'écoute désormais",
+   "bn": "{what} শোনা বন্ধ করা হয়েছে: এখন একটি সম্পাদিত শোনা এটি শোনে",
+   "pt-BR": "Parou de ouvir {what}: agora uma escuta editada ouve isso",
+   "ru": "Прослушивание {what} остановлено: теперь его слушает изменённое прослушивание",
+   "id": "Berhenti mendengarkan {what}: kini didengarkan oleh pemantauan yang diubah",
+   "it": "Smesso di ascoltare {what}: ora lo ascolta un ascolto modificato"
+  },
+  "The task did not start": {
+   "zh-Hans": "任务没有开始",
+   "hi": "काम शुरू नहीं हुआ",
+   "es": "La tarea no se inició",
+   "ar": "لم تبدأ المهمة",
+   "fr": "La tâche n'a pas démarré",
+   "bn": "কাজটি শুরু হয়নি",
+   "pt-BR": "A tarefa não começou",
+   "ru": "Задача не запустилась",
+   "id": "Tugas tidak dimulai",
+   "it": "Il compito non è partito"
   },
   "{what} no longer shows “{text}”": {
    "zh-Hans": "{what} 不再显示「{text}」",
@@ -15609,18 +15693,6 @@
    "id": "Perbarui beta",
    "it": "Aggiorna la beta"
   },
-  "Lumo downloads the beta, installs it by itself and opens again.": {
-   "zh-Hans": "Lumo 会下载测试版，自动安装并重新打开。",
-   "hi": "Lumo बीटा डाउनलोड करता है, खुद इंस्टॉल करता है और फिर से खुलता है।",
-   "es": "Lumo descarga la beta, la instala solo y se vuelve a abrir.",
-   "ar": "يقوم Lumo بتنزيل الإصدار التجريبي وتثبيته تلقائيًا ثم يفتح من جديد.",
-   "fr": "Lumo télécharge la bêta, l'installe tout seul et se rouvre.",
-   "bn": "Lumo বিটা ডাউনলোড করে, নিজেই ইনস্টল করে আবার খোলে।",
-   "pt-BR": "O Lumo baixa a beta, instala sozinho e abre de novo.",
-   "ru": "Lumo скачает бету, сам установит её и откроется снова.",
-   "id": "Lumo mengunduh beta, memasangnya sendiri, lalu terbuka lagi.",
-   "it": "Lumo scarica la beta, la installa da solo e si riapre."
-  },
   "Back to the release {version}": {
    "zh-Hans": "回到正式版 {version}",
    "hi": "रिलीज़ {version} पर वापस जाएँ",
@@ -15632,18 +15704,6 @@
    "ru": "Вернуться к выпуску {version}",
    "id": "Kembali ke rilis {version}",
    "it": "Torna alla stabile {version}"
-  },
-  "Reinstalls the latest public version. Your settings stay.": {
-   "zh-Hans": "重新安装最新的公开版本。你的设置会保留。",
-   "hi": "नवीनतम सार्वजनिक संस्करण फिर से इंस्टॉल करता है। आपकी सेटिंग्स बनी रहती हैं।",
-   "es": "Reinstala la última versión pública. Tus ajustes se mantienen.",
-   "ar": "يعيد تثبيت أحدث إصدار عام. تبقى إعداداتك كما هي.",
-   "fr": "Réinstalle la dernière version publique. Vos réglages restent.",
-   "bn": "সর্বশেষ সর্বজনীন সংস্করণ আবার ইনস্টল করে। আপনার সেটিংস থাকে।",
-   "pt-BR": "Reinstala a versão pública mais recente. Suas configurações ficam.",
-   "ru": "Переустанавливает последнюю публичную версию. Настройки сохранятся.",
-   "id": "Memasang ulang versi publik terbaru. Pengaturan Anda tetap.",
-   "it": "Reinstalla l'ultima versione pubblica. Le tue impostazioni restano."
   },
   "Lumo beta {version} available": {
    "zh-Hans": "Lumo 测试版 {version} 可用",
@@ -15837,17 +15897,17 @@
    "id": "Akun Anda",
    "it": "I tuoi account"
   },
-  "At first the AI may only read. If you let it send, each email waits for your click on its card. Nothing is ever deleted for good.": {
-   "zh-Hans": "默认情况下 AI 只能读取。如果你允许它发送，每封邮件都会等你在其卡片上点击。任何内容都不会被永久删除。",
-   "hi": "शुरू में AI केवल पढ़ सकता है। अगर आप इसे भेजने दें, तो हर ईमेल उसके कार्ड पर आपके क्लिक का इंतज़ार करता है। कुछ भी हमेशा के लिए नहीं मिटाया जाता।",
-   "es": "De entrada, la IA solo puede leer. Si la dejas enviar, cada correo espera tu clic en su tarjeta. Nada se borra nunca para siempre.",
-   "ar": "في البداية لا يمكن للذكاء الاصطناعي إلا القراءة. إذا سمحت له بالإرسال، تنتظر كل رسالة نقرتك على بطاقتها. لا يُحذف أي شيء نهائيًا أبدًا.",
-   "fr": "Au départ, l'IA peut seulement lire. Si vous la laissez envoyer, chaque e-mail attend votre clic sur sa carte. Rien n'est jamais supprimé définitivement.",
-   "bn": "শুরুতে AI শুধু পড়তে পারে। পাঠাতে দিলে প্রতিটি ইমেল তার কার্ডে আপনার ক্লিকের অপেক্ষা করে। কিছুই কখনো চিরতরে মোছা হয় না।",
-   "pt-BR": "De início, a IA só pode ler. Se você deixar que ela envie, cada e-mail espera o seu clique no cartão dele. Nada é apagado para sempre.",
-   "ru": "Сначала ИИ может только читать. Если вы разрешите отправку, каждое письмо ждёт вашего щелчка на его карточке. Ничто никогда не удаляется навсегда.",
-   "id": "Awalnya AI hanya boleh membaca. Jika Anda mengizinkannya mengirim, setiap email menunggu klik Anda di kartunya. Tidak ada yang dihapus permanen.",
-   "it": "Di base l'IA può solo leggere. Se le permetti di inviare, ogni email aspetta il tuo clic sulla sua scheda. Niente viene mai cancellato per sempre."
+  "Each email sent, moved or trashed waits for your click on its card. Nothing is ever deleted for good.": {
+   "zh-Hans": "每封要发送、移动或移到废纸篓的邮件都会等你在其卡片上点击。任何内容都不会被永久删除。",
+   "hi": "भेजा, ले जाया या ट्रैश में डाला जाने वाला हर ईमेल उसके कार्ड पर आपके क्लिक का इंतज़ार करता है। कुछ भी हमेशा के लिए नहीं मिटाया जाता।",
+   "es": "Cada correo que se envía, se mueve o va a la papelera espera tu clic en su tarjeta. Nada se borra nunca para siempre.",
+   "ar": "كل رسالة تُرسل أو تُنقل أو توضع في المهملات تنتظر نقرتك على بطاقتها. لا يُحذف أي شيء نهائيًا أبدًا.",
+   "fr": "Chaque e-mail envoyé, déplacé ou mis à la corbeille attend votre clic sur sa carte. Rien n'est jamais supprimé définitivement.",
+   "bn": "পাঠানো, সরানো বা ট্র্যাশে ফেলা প্রতিটি ইমেল তার কার্ডে আপনার ক্লিকের অপেক্ষা করে। কিছুই কখনো চিরতরে মোছা হয় না।",
+   "pt-BR": "Cada e-mail enviado, movido ou levado à lixeira espera o seu clique no cartão dele. Nada é apagado para sempre.",
+   "ru": "Каждое письмо, которое отправляется, перемещается или удаляется в корзину, ждёт вашего щелчка на его карточке. Ничто никогда не удаляется навсегда.",
+   "id": "Setiap email yang dikirim, dipindahkan, atau dibuang ke sampah menunggu klik Anda di kartunya. Tidak ada yang dihapus permanen.",
+   "it": "Ogni email da inviare, spostare o cestinare aspetta il tuo clic sulla sua scheda. Niente viene mai cancellato per sempre."
   },
   "Read your coming events, or nothing.": {
    "zh-Hans": "读取你即将到来的日程，或什么都不做。",
@@ -15861,17 +15921,41 @@
    "id": "Membaca acara Anda berikutnya, atau tidak sama sekali.",
    "it": "Leggere i prossimi eventi, oppure niente."
   },
-  "Read your pull requests, issues and checks when you ask. Off until you turn it on.": {
-   "zh-Hans": "在你询问时读取你的拉取请求、议题和检查。在你开启之前保持关闭。",
-   "hi": "आपके पूछने पर आपके pull request, issue और check पढ़ना। जब तक आप चालू न करें, बंद।",
-   "es": "Leer tus pull requests, issues y comprobaciones cuando lo pidas. Apagado hasta que lo actives.",
-   "ar": "قراءة طلبات السحب والمشكلات والفحوصات عندما تطلب. متوقف حتى تشغّله.",
-   "fr": "Lire vos pull requests, issues et vérifications quand vous le demandez. Désactivé tant que vous ne l'activez pas.",
-   "bn": "আপনি চাইলে আপনার pull request, issue ও check পড়া। আপনি চালু না করা পর্যন্ত বন্ধ।",
-   "pt-BR": "Ler seus pull requests, issues e verificações quando você pede. Desligado até você ligar.",
-   "ru": "Читать ваши pull request, issue и проверки, когда вы просите. Выключено, пока вы не включите.",
-   "id": "Membaca pull request, issue, dan pemeriksaan Anda saat Anda minta. Mati sampai Anda menyalakannya.",
-   "it": "Leggere pull request, issue e controlli quando lo chiedi. Spento finché non lo accendi."
+  "Read your pull requests, issues and checks when you ask.": {
+   "zh-Hans": "在你询问时读取你的拉取请求、议题和检查。",
+   "hi": "आपके पूछने पर आपके pull request, issue और check पढ़ना।",
+   "es": "Leer tus pull requests, issues y comprobaciones cuando lo pidas.",
+   "ar": "قراءة طلبات السحب والمشكلات والفحوصات عندما تطلب.",
+   "fr": "Lire vos pull requests, issues et vérifications quand vous le demandez.",
+   "bn": "আপনি চাইলে আপনার pull request, issue ও check পড়া।",
+   "pt-BR": "Ler seus pull requests, issues e verificações quando você pede.",
+   "ru": "Читать ваши pull request, issue и проверки, когда вы просите.",
+   "id": "Membaca pull request, issue, dan pemeriksaan Anda saat Anda minta.",
+   "it": "Leggere pull request, issue e controlli quando lo chiedi."
+  },
+  "Other chats' files": {
+   "zh-Hans": "其他聊天的文件",
+   "hi": "दूसरी चैट की फ़ाइलें",
+   "es": "Archivos de otros chats",
+   "ar": "ملفات الدردشات الأخرى",
+   "fr": "Fichiers des autres chats",
+   "bn": "অন্য চ্যাটের ফাইল",
+   "pt-BR": "Arquivos de outros chats",
+   "ru": "Файлы других чатов",
+   "id": "File chat lain",
+   "it": "File delle altre chat"
+  },
+  "Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: also those of the other chats from the last 7 days.": {
+   "zh-Hans": "关闭：Claude Code 和 Antigravity CLI 只读取交给其所在聊天的文件和截图。开启：也读取最近 7 天其他聊天的文件和截图。",
+   "hi": "बंद: Claude Code और Antigravity CLI केवल अपनी चैट को दी गई फ़ाइलें और स्क्रीनशॉट पढ़ते हैं। चालू: पिछले 7 दिनों की दूसरी चैट की भी।",
+   "es": "Apagado: Claude Code y Antigravity CLI leen solo los archivos y capturas que se dieron a su propio chat. Encendido: también los de los otros chats de los últimos 7 días.",
+   "ar": "متوقف: لا يقرأ Claude Code وAntigravity CLI إلا الملفات ولقطات الشاشة المعطاة لدردشتهما. مشغّل: وأيضًا ملفات الدردشات الأخرى في آخر 7 أيام.",
+   "fr": "Désactivé : Claude Code et Antigravity CLI ne lisent que les fichiers et captures donnés à leur propre chat. Activé : aussi ceux des autres chats des 7 derniers jours.",
+   "bn": "বন্ধ: Claude Code ও Antigravity CLI শুধু নিজের চ্যাটকে দেওয়া ফাইল ও স্ক্রিনশট পড়ে। চালু: গত ৭ দিনের অন্য চ্যাটেরগুলোও।",
+   "pt-BR": "Desligado: Claude Code e Antigravity CLI leem só os arquivos e capturas dados ao próprio chat. Ligado: também os dos outros chats dos últimos 7 dias.",
+   "ru": "Выключено: Claude Code и Antigravity CLI читают только файлы и снимки экрана, отданные их собственному чату. Включено: также файлы других чатов за последние 7 дней.",
+   "id": "Mati: Claude Code dan Antigravity CLI hanya membaca file dan tangkapan layar yang diberikan ke chat-nya sendiri. Nyala: juga milik chat lain dari 7 hari terakhir.",
+   "it": "Spento: Claude Code e Antigravity CLI leggono solo i file e le schermate dati alla loro chat. Acceso: anche quelli delle altre chat degli ultimi 7 giorni."
   },
   "Always on": {
    "zh-Hans": "始终开启",
@@ -17987,29 +18071,77 @@
    "id": "Penginstal tidak ditandatangani dengan kunci Lumo, jadi Lumo tidak memasangnya.",
    "it": "Il programma di installazione non è firmato con la chiave di Lumo, quindi Lumo non l'ha installato."
   },
-  "Too long to show here whole: this is its beginning ({size} in all).": {
-   "zh-Hans": "太长，无法在此完整显示：这是它的开头（共 {size}）。",
-   "hi": "पूरा दिखाने के लिए बहुत लंबा है: यह इसकी शुरुआत है (कुल {size})।",
-   "es": "Demasiado largo para mostrarlo entero aquí: esto es el principio ({size} en total).",
-   "ar": "أطول من أن يُعرض هنا كاملًا: هذه بدايته ({size} إجمالًا).",
-   "fr": "Trop long pour être affiché ici en entier : en voici le début ({size} au total).",
-   "bn": "এখানে পুরোটা দেখানোর জন্য খুব লম্বা: এটি এর শুরু (মোট {size})।",
-   "pt-BR": "Longo demais para mostrar inteiro aqui: este é o começo ({size} no total).",
-   "ru": "Слишком длинно, чтобы показать здесь целиком: это его начало (всего {size}).",
-   "id": "Terlalu panjang untuk ditampilkan utuh di sini: ini bagian awalnya (total {size}).",
-   "it": "Troppo lungo per mostrarlo qui per intero: questo è l'inizio ({size} in tutto)."
+  "Too long to show here whole: its beginning and its end.": {
+   "zh-Hans": "太长，无法在此完整显示：这是它的开头和结尾。",
+   "hi": "पूरा दिखाने के लिए बहुत लंबा है: यह इसकी शुरुआत और अंत है।",
+   "es": "Demasiado largo para mostrarlo entero aquí: esto es el principio y el final.",
+   "ar": "أطول من أن يُعرض هنا كاملًا: هذه بدايته ونهايته.",
+   "fr": "Trop long pour être affiché ici en entier : en voici le début et la fin.",
+   "bn": "এখানে পুরোটা দেখানোর জন্য খুব লম্বা: এটি এর শুরু ও শেষ।",
+   "pt-BR": "Longo demais para mostrar inteiro aqui: este é o começo e o fim.",
+   "ru": "Слишком длинно, чтобы показать здесь целиком: это его начало и конец.",
+   "id": "Terlalu panjang untuk ditampilkan utuh di sini: ini bagian awal dan akhirnya.",
+   "it": "Troppo lungo per mostrarlo qui per intero: questo è l'inizio e la fine."
   },
-  "Too long to show here whole: this is its beginning.": {
-   "zh-Hans": "太长，无法在此完整显示：这是它的开头。",
-   "hi": "पूरा दिखाने के लिए बहुत लंबा है: यह इसकी शुरुआत है।",
-   "es": "Demasiado largo para mostrarlo entero aquí: esto es el principio.",
-   "ar": "أطول من أن يُعرض هنا كاملًا: هذه بدايته.",
-   "fr": "Trop long pour être affiché ici en entier : en voici le début.",
-   "bn": "এখানে পুরোটা দেখানোর জন্য খুব লম্বা: এটি এর শুরু।",
-   "pt-BR": "Longo demais para mostrar inteiro aqui: este é o começo.",
-   "ru": "Слишком длинно, чтобы показать здесь целиком: это его начало.",
-   "id": "Terlalu panjang untuk ditampilkan utuh di sini: ini bagian awalnya.",
-   "it": "Troppo lungo per mostrarlo qui per intero: questo è l'inizio."
+  "{hidden} not shown": {
+   "zh-Hans": "{hidden} 未显示",
+   "hi": "{hidden} नहीं दिखाए गए",
+   "es": "{hidden} sin mostrar",
+   "ar": "{hidden} غير معروضة",
+   "fr": "{hidden} non affichés",
+   "bn": "{hidden} দেখানো হয়নি",
+   "pt-BR": "{hidden} não mostrados",
+   "ru": "{hidden} не показано",
+   "id": "{hidden} tidak ditampilkan",
+   "it": "{hidden} non mostrati"
+  },
+  "The middle is not shown": {
+   "zh-Hans": "中间部分未显示",
+   "hi": "बीच का हिस्सा नहीं दिखाया गया",
+   "es": "La parte del medio no se muestra",
+   "ar": "الجزء الأوسط غير معروض",
+   "fr": "Le milieu n'est pas affiché",
+   "bn": "মাঝের অংশ দেখানো হয়নি",
+   "pt-BR": "A parte do meio não é mostrada",
+   "ru": "Середина не показана",
+   "id": "Bagian tengah tidak ditampilkan",
+   "it": "La parte centrale non è mostrata"
+  },
+  "Too long to show here whole: its beginning and its end, not the {hidden} in between ({size} in all).": {
+   "zh-Hans": "太长，无法在此完整显示：这是它的开头和结尾，中间的 {hidden} 未显示（共 {size}）。",
+   "hi": "पूरा दिखाने के लिए बहुत लंबा है: यह इसकी शुरुआत और अंत है, बीच के {hidden} नहीं दिखाए गए (कुल {size})।",
+   "es": "Demasiado largo para mostrarlo entero aquí: el principio y el final, sin los {hidden} del medio ({size} en total).",
+   "ar": "أطول من أن يُعرض هنا كاملًا: بدايته ونهايته، دون الـ {hidden} التي بينهما ({size} إجمالًا).",
+   "fr": "Trop long pour être affiché ici en entier : le début et la fin, sans les {hidden} du milieu ({size} au total).",
+   "bn": "এখানে পুরোটা দেখানোর জন্য খুব লম্বা: এর শুরু ও শেষ, মাঝের {hidden} দেখানো হয়নি (মোট {size})।",
+   "pt-BR": "Longo demais para mostrar inteiro aqui: o começo e o fim, sem os {hidden} do meio ({size} no total).",
+   "ru": "Слишком длинно, чтобы показать здесь целиком: начало и конец, без {hidden} в середине (всего {size}).",
+   "id": "Terlalu panjang untuk ditampilkan utuh di sini: bagian awal dan akhirnya, tanpa {hidden} di tengahnya (total {size}).",
+   "it": "Troppo lungo per mostrarlo qui per intero: l'inizio e la fine, senza i {hidden} nel mezzo ({size} in tutto)."
+  },
+  "Lumo can't read these arguments, so it can't allow them.": {
+   "zh-Hans": "Lumo 无法读取这些参数，因此不能允许它们。",
+   "hi": "Lumo इन आर्ग्युमेंट्स को पढ़ नहीं सकता, इसलिए इनकी अनुमति नहीं दे सकता।",
+   "es": "Lumo no puede leer estos argumentos, así que no puede permitirlos.",
+   "ar": "لا يستطيع Lumo قراءة هذه الوسائط، لذا لا يمكنه السماح بها.",
+   "fr": "Lumo ne peut pas lire ces arguments, il ne peut donc pas les autoriser.",
+   "bn": "Lumo এই আর্গুমেন্টগুলো পড়তে পারে না, তাই এগুলোর অনুমতি দিতে পারে না।",
+   "pt-BR": "O Lumo não consegue ler esses argumentos, então não pode permiti-los.",
+   "ru": "Lumo не может прочитать эти аргументы, поэтому не может их разрешить.",
+   "id": "Lumo tidak bisa membaca argumen ini, jadi tidak bisa mengizinkannya.",
+   "it": "Lumo non riesce a leggere questi argomenti, quindi non può consentirli."
+  },
+  "Reply in its own window": {
+   "zh-Hans": "在它自己的窗口中回复",
+   "hi": "उसकी अपनी विंडो में जवाब दें",
+   "es": "Responder en su propia ventana",
+   "ar": "الرد في نافذته الخاصة",
+   "fr": "Répondre dans sa propre fenêtre",
+   "bn": "এর নিজের উইন্ডোতে উত্তর দিন",
+   "pt-BR": "Responder na janela dele",
+   "ru": "Ответить в его собственном окне",
+   "id": "Balas di jendelanya sendiri",
+   "it": "Rispondi nella sua finestra"
   },
   "Start listening?": {
    "zh-Hans": "开始监听？",
@@ -18779,6 +18911,42 @@
    "id": "Proses masuk dibatalkan.",
    "it": "Accesso annullato."
   },
+  "You can no longer read this calendar.": {
+   "zh-Hans": "你已无法再读取此日历。",
+   "hi": "अब आप यह कैलेंडर नहीं पढ़ सकते।",
+   "es": "Ya no puedes leer este calendario.",
+   "ar": "لم يعد بإمكانك قراءة هذا التقويم.",
+   "fr": "Vous ne pouvez plus lire cet agenda.",
+   "bn": "আপনি আর এই ক্যালেন্ডারটি পড়তে পারবেন না।",
+   "pt-BR": "Você não pode mais ler esta agenda.",
+   "ru": "Вы больше не можете читать этот календарь.",
+   "id": "Anda tidak bisa lagi membaca kalender ini.",
+   "it": "Non puoi più leggere questo calendario."
+  },
+  "Remove client": {
+   "zh-Hans": "移除客户端",
+   "hi": "क्लाइंट हटाएँ",
+   "es": "Quitar cliente",
+   "ar": "إزالة العميل",
+   "fr": "Supprimer le client",
+   "bn": "ক্লায়েন্ট সরান",
+   "pt-BR": "Remover cliente",
+   "ru": "Удалить клиент",
+   "id": "Hapus klien",
+   "it": "Rimuovi client"
+  },
+  "Google could not be reached: Lumo no longer uses the access, but to end it at Google too, remove Lumo in your Google account (Security → Third-party connections).": {
+   "zh-Hans": "无法连接 Google：Lumo 已不再使用该访问权限，但要在 Google 那边也结束它，请在你的 Google 账号中移除 Lumo（安全 → 第三方连接）。",
+   "hi": "Google तक नहीं पहुँचा जा सका: Lumo अब इस एक्सेस का उपयोग नहीं करता, लेकिन इसे Google पर भी समाप्त करने के लिए अपने Google खाते में Lumo को हटाएँ (सुरक्षा → तृतीय-पक्ष कनेक्शन)।",
+   "es": "No se pudo contactar con Google: Lumo ya no usa el acceso, pero para cerrarlo también en Google, quita Lumo en tu cuenta de Google (Seguridad → Conexiones de terceros).",
+   "ar": "تعذّر الوصول إلى Google: لم يعد Lumo يستخدم الوصول، لكن لإنهائه لدى Google أيضًا، أزِل Lumo من حسابك على Google (الأمان ← اتصالات الجهات الخارجية).",
+   "fr": "Google est injoignable : Lumo n'utilise plus l'accès, mais pour y mettre fin chez Google aussi, retirez Lumo de votre compte Google (Sécurité → Connexions tierces).",
+   "bn": "Google-এ পৌঁছানো যায়নি: Lumo আর এই অ্যাক্সেস ব্যবহার করে না, কিন্তু Google-এও এটি শেষ করতে আপনার Google অ্যাকাউন্ট থেকে Lumo সরান (নিরাপত্তা → তৃতীয় পক্ষের সংযোগ)।",
+   "pt-BR": "Não foi possível contatar o Google: o Lumo não usa mais o acesso, mas para encerrá-lo também no Google, remova o Lumo da sua Conta do Google (Segurança → Conexões de terceiros).",
+   "ru": "Не удалось связаться с Google: Lumo больше не использует доступ, но чтобы закрыть его и в Google, удалите Lumo в своём аккаунте Google (Безопасность → Сторонние подключения).",
+   "id": "Google tidak dapat dihubungi: Lumo tidak lagi memakai akses ini, tetapi untuk mengakhirinya juga di Google, hapus Lumo di Akun Google Anda (Keamanan → Koneksi pihak ketiga).",
+   "it": "Google non è raggiungibile: Lumo non usa più l'accesso, ma per chiuderlo anche su Google rimuovi Lumo dal tuo account Google (Sicurezza → Connessioni di terze parti)."
+  },
   "The browser did not come back: sign in again.": {
    "zh-Hans": "浏览器没有返回：请重新登录。",
    "hi": "ब्राउज़र वापस नहीं आया: फिर से साइन इन करें।",
@@ -19054,66 +19222,6 @@
    "ru": "Остров читает не больше {max} календарей: отключите ненужные.",
    "id": "Pulau membaca paling banyak {max} kalender: matikan yang tidak Anda perlukan.",
    "it": "L'isola legge al massimo {max} calendari: spegni quelli che non ti servono."
-  },
-  "Antigravity CLI reported a problem at the end": {
-   "zh-Hans": "Antigravity CLI 在结束时报告了一个问题",
-   "hi": "Antigravity CLI ने अंत में एक समस्या बताई",
-   "es": "Antigravity CLI informó de un problema al final",
-   "ar": "أبلغ Antigravity CLI عن مشكلة في النهاية",
-   "fr": "Antigravity CLI a signalé un problème à la fin",
-   "bn": "Antigravity CLI শেষে একটি সমস্যার কথা জানিয়েছে",
-   "pt-BR": "O Antigravity CLI relatou um problema no final",
-   "ru": "Antigravity CLI сообщил о проблеме в конце",
-   "id": "Antigravity CLI melaporkan masalah di akhir",
-   "it": "Antigravity CLI ha segnalato un problema alla fine"
-  },
-  "Antigravity CLI's message: {error}": {
-   "zh-Hans": "Antigravity CLI 的消息：{error}",
-   "hi": "Antigravity CLI का संदेश: {error}",
-   "es": "Mensaje de Antigravity CLI: {error}",
-   "ar": "رسالة Antigravity CLI: {error}",
-   "fr": "Message d'Antigravity CLI : {error}",
-   "bn": "Antigravity CLI-এর বার্তা: {error}",
-   "pt-BR": "Mensagem do Antigravity CLI: {error}",
-   "ru": "Сообщение Antigravity CLI: {error}",
-   "id": "Pesan Antigravity CLI: {error}",
-   "it": "Messaggio di Antigravity CLI: {error}"
-  },
-  "While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”.": {
-   "zh-Hans": "工作过程中，模型发送了一个空的工具调用（这是模型自身的错误），Antigravity CLI 让它重试了。上面的回答是它最后写的：请检查工作是否已完成，如果没有，请输入“继续”。",
-   "hi": "काम के दौरान मॉडल ने एक खाली टूल कॉल भेजी, जो मॉडल की अपनी गलती थी, और Antigravity CLI ने उसे फिर से कोशिश करवाई। ऊपर का जवाब उसका आखिरी लिखा हुआ है: देख लें कि काम पूरा हुआ है, और अगर नहीं, तो “जारी रखो” लिखें।",
-   "es": "Mientras trabajaba, el modelo envió una llamada a herramienta vacía, un error del propio modelo, y Antigravity CLI le hizo volver a intentarlo. La respuesta de arriba es la última que escribió: comprueba que el trabajo esté terminado y, si no lo está, escribe «continúa».",
-   "ar": "أثناء العمل، أرسل النموذج استدعاء أداة فارغًا، وهو خطأ من النموذج نفسه، فجعله Antigravity CLI يحاول مرة أخرى. الإجابة أعلاه هي آخر ما كتبه: تحقق من اكتمال العمل، وإن لم يكتمل فاكتب «تابع».",
-   "fr": "Pendant son travail, le modèle a envoyé un appel d'outil vide, une erreur du modèle lui-même, et Antigravity CLI l'a fait réessayer. La réponse ci-dessus est la dernière qu'il a écrite : vérifiez que le travail est terminé et, sinon, écrivez « continue ».",
-   "bn": "কাজ করার সময় মডেলটি একটি ফাঁকা টুল কল পাঠিয়েছিল, যা মডেলের নিজেরই ভুল, এবং Antigravity CLI তাকে আবার চেষ্টা করিয়েছে। উপরের উত্তরটি তার লেখা শেষটি: কাজটি শেষ হয়েছে কিনা দেখে নিন, না হলে “চালিয়ে যাও” লিখুন।",
-   "pt-BR": "Durante o trabalho, o modelo enviou uma chamada de ferramenta vazia, um erro do próprio modelo, e o Antigravity CLI o fez tentar de novo. A resposta acima é a última que ele escreveu: confira se o trabalho terminou e, se não terminou, escreva “continue”.",
-   "ru": "Во время работы модель отправила пустой вызов инструмента, это ошибка самой модели, и Antigravity CLI попросил её повторить. Ответ выше — последний, который она написала: проверьте, что работа закончена, а если нет, напишите «продолжай».",
-   "id": "Saat bekerja, model mengirim panggilan alat yang kosong, kesalahan model itu sendiri, dan Antigravity CLI memintanya mencoba lagi. Jawaban di atas adalah yang terakhir ia tulis: periksa apakah pekerjaannya selesai, dan jika belum, tulis “lanjutkan”.",
-   "it": "Mentre lavorava, il modello ha mandato una chiamata a strumento vuota, un errore del modello stesso, e Antigravity CLI gli ha fatto riprovare. La risposta qui sopra è l'ultima che ha scritto: controlla che il lavoro sia finito e, se non lo è, scrivi «continua»."
-  },
-  "Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”.": {
-   "zh-Hans": "Antigravity CLI 在写完上面的回答后以错误结束了这一轮：请检查工作是否已完成，如果没有，请输入“继续”。",
-   "hi": "ऊपर का जवाब लिखने के बाद Antigravity CLI ने यह बारी एक त्रुटि के साथ खत्म की: देख लें कि काम पूरा हुआ है, और अगर नहीं, तो “जारी रखो” लिखें।",
-   "es": "Antigravity CLI terminó este turno con un error después de escribir la respuesta de arriba: comprueba que el trabajo esté terminado y, si no lo está, escribe «continúa».",
-   "ar": "أنهى Antigravity CLI هذه الجولة بخطأ بعد كتابة الإجابة أعلاه: تحقق من اكتمال العمل، وإن لم يكتمل فاكتب «تابع».",
-   "fr": "Antigravity CLI a terminé ce tour par une erreur après avoir écrit la réponse ci-dessus : vérifiez que le travail est terminé et, sinon, écrivez « continue ».",
-   "bn": "উপরের উত্তরটি লেখার পর Antigravity CLI এই পালাটি একটি ত্রুটি দিয়ে শেষ করেছে: কাজটি শেষ হয়েছে কিনা দেখে নিন, না হলে “চালিয়ে যাও” লিখুন।",
-   "pt-BR": "O Antigravity CLI encerrou esta vez com um erro depois de escrever a resposta acima: confira se o trabalho terminou e, se não terminou, escreva “continue”.",
-   "ru": "Antigravity CLI завершил этот ход с ошибкой после ответа выше: проверьте, что работа закончена, а если нет, напишите «продолжай».",
-   "id": "Antigravity CLI mengakhiri giliran ini dengan kesalahan setelah menulis jawaban di atas: periksa apakah pekerjaannya selesai, dan jika belum, tulis “lanjutkan”.",
-   "it": "Antigravity CLI ha chiuso questo turno con un errore dopo aver scritto la risposta qui sopra: controlla che il lavoro sia finito e, se non lo è, scrivi «continua»."
-  },
-  "Antigravity CLI stopped: the model sent an empty tool call and couldn't correct it. What it did so far is saved: write “continue” to pick up from there.": {
-   "zh-Hans": "Antigravity CLI 已停止：模型发送了一个空的工具调用，且未能纠正。到目前为止完成的内容已保存：输入“继续”即可从那里接着做。",
-   "hi": "Antigravity CLI रुक गया: मॉडल ने एक खाली टूल कॉल भेजी और उसे ठीक नहीं कर पाया। अब तक का काम सहेजा गया है: वहीं से आगे बढ़ने के लिए “जारी रखो” लिखें।",
-   "es": "Antigravity CLI se detuvo: el modelo envió una llamada a herramienta vacía y no logró corregirla. Lo que hizo hasta ahora está guardado: escribe «continúa» para retomarlo desde ahí.",
-   "ar": "توقف Antigravity CLI: أرسل النموذج استدعاء أداة فارغًا ولم يتمكن من تصحيحه. ما أنجزه حتى الآن محفوظ: اكتب «تابع» للمتابعة من هناك.",
-   "fr": "Antigravity CLI s'est arrêté : le modèle a envoyé un appel d'outil vide et n'a pas réussi à le corriger. Ce qu'il a fait jusqu'ici est conservé : écrivez « continue » pour reprendre à partir de là.",
-   "bn": "Antigravity CLI থেমে গেছে: মডেলটি একটি ফাঁকা টুল কল পাঠিয়েছিল এবং তা ঠিক করতে পারেনি। এখন পর্যন্ত করা কাজ সংরক্ষিত আছে: সেখান থেকে আবার শুরু করতে “চালিয়ে যাও” লিখুন।",
-   "pt-BR": "O Antigravity CLI parou: o modelo enviou uma chamada de ferramenta vazia e não conseguiu corrigi-la. O que ele fez até agora está salvo: escreva “continue” para retomar de onde parou.",
-   "ru": "Antigravity CLI остановился: модель отправила пустой вызов инструмента и не смогла его исправить. Сделанное до сих пор сохранено: напишите «продолжай», чтобы продолжить с этого места.",
-   "id": "Antigravity CLI berhenti: model mengirim panggilan alat yang kosong dan tidak berhasil memperbaikinya. Yang sudah dikerjakan sejauh ini tersimpan: tulis “lanjutkan” untuk melanjutkan dari sana.",
-   "it": "Antigravity CLI si è fermato: il modello ha mandato una chiamata a strumento vuota e non è riuscito a correggerla. Quello che ha fatto finora è salvato: scrivi «continua» per riprendere da lì."
   },
   "{minutes} min": {
    "zh-Hans": "{minutes} 分钟",
@@ -19611,18 +19719,6 @@
     "other": "{name} si è chiuso: {count} agenti si sono fermati a metà"
    }
   },
-  "{name} ended while these agents were still working. Please resume their tasks where they stopped:": {
-   "zh-Hans": "{name} 在这些代理仍在工作时退出了。请从它们停下的地方继续它们的任务：",
-   "hi": "ये एजेंट अभी काम कर ही रहे थे कि {name} बंद हो गया। कृपया इनके काम वहीं से फिर शुरू करें जहाँ ये रुके थे:",
-   "es": "{name} se cerró mientras estos agentes seguían trabajando. Retoma sus tareas donde se quedaron:",
-   "ar": "أُغلق {name} بينما كان هؤلاء الوكلاء لا يزالون يعملون. يُرجى استئناف مهامهم من حيث توقفت:",
-   "fr": "{name} s'est fermé alors que ces agents travaillaient encore. Reprends leurs tâches là où elles se sont arrêtées :",
-   "bn": "এই এজেন্টগুলো কাজ করার সময়ই {name} বন্ধ হয়ে গেছে। যেখানে থেমেছিল সেখান থেকে এদের কাজ আবার শুরু করুন:",
-   "pt-BR": "{name} fechou enquanto estes agentes ainda trabalhavam. Retome as tarefas deles de onde pararam:",
-   "ru": "{name} закрылся, пока эти агенты ещё работали. Продолжи их задачи с того места, где они остановились:",
-   "id": "{name} tertutup saat agen-agen ini masih bekerja. Lanjutkan tugas mereka dari tempat mereka berhenti:",
-   "it": "{name} si è chiuso mentre questi agenti lavoravano ancora. Riprendi i loro compiti da dove si sono fermati:"
-  },
   "{count} agents finished": {
    "zh-Hans": {
     "other": "{count} 个代理已完成"
@@ -19881,6 +19977,218 @@
    "id": "{agent} tertutup",
    "it": "{agent} si è chiuso"
   },
+  "Stopping in {time}…": {
+   "zh-Hans": "{time} 后停止…",
+   "hi": "{time} में रुकेगा…",
+   "es": "Se detiene en {time}…",
+   "ar": "يتوقف خلال {time}…",
+   "fr": "Arrêt dans {time}…",
+   "bn": "{time} পরে থামবে…",
+   "pt-BR": "Para em {time}…",
+   "ru": "Остановится через {time}…",
+   "id": "Berhenti dalam {time}…",
+   "it": "Si ferma tra {time}…"
+  },
+  "agents|Undo": {
+   "zh-Hans": "撤销",
+   "hi": "पूर्ववत करें",
+   "es": "Deshacer",
+   "ar": "تراجع",
+   "fr": "Annuler",
+   "bn": "পূর্বাবস্থায় ফেরান",
+   "pt-BR": "Desfazer",
+   "ru": "Отменить",
+   "id": "Urungkan",
+   "it": "Annulla"
+  },
+  "{name} starts again with the new settings and stops the {count} agents still working.": {
+   "zh-Hans": {
+    "other": "{name} 将以新设置重新启动，并停止仍在工作的 {count} 个代理。"
+   },
+   "hi": {
+    "one": "{name} नई सेटिंग्स के साथ फिर से शुरू होगा और अभी काम कर रहे {count} एजेंट को रोक देगा।",
+    "other": "{name} नई सेटिंग्स के साथ फिर से शुरू होगा और अभी काम कर रहे {count} एजेंटों को रोक देगा।"
+   },
+   "es": {
+    "one": "{name} se reinicia con los nuevos ajustes y detiene el agente que sigue trabajando.",
+    "other": "{name} se reinicia con los nuevos ajustes y detiene los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "يُعاد تشغيل {name} بالإعدادات الجديدة.",
+    "one": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف الوكيل الذي لا يزال يعمل.",
+    "two": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف الوكيلين اللذين لا يزالان يعملان.",
+    "few": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف {count} وكلاء لا يزالون يعملون.",
+    "many": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف {count} وكيلًا لا يزالون يعملون.",
+    "other": "يُعاد تشغيل {name} بالإعدادات الجديدة ويوقف {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "{name} redémarre avec les nouveaux réglages et arrête l'agent encore au travail.",
+    "other": "{name} redémarre avec les nouveaux réglages et arrête les {count} agents encore au travail."
+   },
+   "bn": {
+    "one": "{name} নতুন সেটিংসে আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।",
+    "other": "{name} নতুন সেটিংসে আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।"
+   },
+   "pt-BR": {
+    "one": "{name} reinicia com as novas configurações e para o agente que ainda está trabalhando.",
+    "other": "{name} reinicia com as novas configurações e para os {count} agentes que ainda estão trabalhando."
+   },
+   "ru": {
+    "one": "{name} перезапустится с новыми настройками и остановит {count} работающего агента.",
+    "few": "{name} перезапустится с новыми настройками и остановит {count} работающих агента.",
+    "many": "{name} перезапустится с новыми настройками и остановит {count} работающих агентов.",
+    "other": "{name} перезапустится с новыми настройками и остановит {count} работающих агента."
+   },
+   "id": {
+    "other": "{name} dimulai ulang dengan pengaturan baru dan menghentikan {count} agen yang masih bekerja."
+   },
+   "it": {
+    "one": "{name} riparte con le nuove impostazioni e ferma l'agente ancora al lavoro.",
+    "other": "{name} riparte con le nuove impostazioni e ferma i {count} agenti ancora al lavoro."
+   }
+  },
+  "Your message can wait for them to finish, or go now.": {
+   "zh-Hans": "你的消息可以等它们完成，或者现在就发送。",
+   "hi": "आपका संदेश उनके पूरा होने तक रुक सकता है, या अभी जा सकता है।",
+   "es": "Tu mensaje puede esperar a que terminen o enviarse ahora.",
+   "ar": "يمكن لرسالتك أن تنتظر حتى ينتهوا، أو أن تُرسل الآن.",
+   "fr": "Votre message peut attendre qu'ils aient fini, ou partir maintenant.",
+   "bn": "আপনার বার্তা তাদের শেষ হওয়া পর্যন্ত অপেক্ষা করতে পারে, বা এখনই যেতে পারে।",
+   "pt-BR": "Sua mensagem pode esperar que terminem ou ir agora.",
+   "ru": "Сообщение может подождать, пока они закончат, или уйти сейчас.",
+   "id": "Pesan Anda bisa menunggu mereka selesai, atau dikirim sekarang.",
+   "it": "Il messaggio può aspettare che finiscano, o partire subito."
+  },
+  "Your message goes when the {count} agents still working finish.": {
+   "zh-Hans": {
+    "other": "仍在工作的 {count} 个代理完成后，你的消息就会发送。"
+   },
+   "hi": {
+    "one": "अभी काम कर रहा {count} एजेंट पूरा होते ही आपका संदेश जाएगा।",
+    "other": "अभी काम कर रहे {count} एजेंट पूरे होते ही आपका संदेश जाएगा।"
+   },
+   "es": {
+    "one": "Tu mensaje se enviará cuando termine el agente que sigue trabajando.",
+    "other": "Tu mensaje se enviará cuando terminen los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "ستُرسل رسالتك الآن.",
+    "one": "ستُرسل رسالتك عندما ينتهي الوكيل الذي لا يزال يعمل.",
+    "two": "ستُرسل رسالتك عندما ينتهي الوكيلان اللذان لا يزالان يعملان.",
+    "few": "ستُرسل رسالتك عندما ينتهي {count} وكلاء لا يزالون يعملون.",
+    "many": "ستُرسل رسالتك عندما ينتهي {count} وكيلًا لا يزالون يعملون.",
+    "other": "ستُرسل رسالتك عندما ينتهي {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "Votre message partira quand l'agent encore au travail aura fini.",
+    "other": "Votre message partira quand les {count} agents encore au travail auront fini."
+   },
+   "bn": {
+    "one": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার বার্তা যাবে।",
+    "other": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার বার্তা যাবে।"
+   },
+   "pt-BR": {
+    "one": "Sua mensagem vai quando o agente que ainda está trabalhando terminar.",
+    "other": "Sua mensagem vai quando os {count} agentes que ainda estão trabalhando terminarem."
+   },
+   "ru": {
+    "one": "Сообщение уйдёт, когда закончит {count} работающий агент.",
+    "few": "Сообщение уйдёт, когда закончат {count} работающих агента.",
+    "many": "Сообщение уйдёт, когда закончат {count} работающих агентов.",
+    "other": "Сообщение уйдёт, когда закончат {count} работающих агента."
+   },
+   "id": {
+    "other": "Pesan Anda dikirim setelah {count} agen yang masih bekerja selesai."
+   },
+   "it": {
+    "one": "Il messaggio parte quando finisce l'agente ancora al lavoro.",
+    "other": "Il messaggio parte quando finiscono i {count} agenti ancora al lavoro."
+   }
+  },
+  "Send when they finish": {
+   "zh-Hans": "完成后发送",
+   "hi": "पूरा होने पर भेजें",
+   "es": "Enviar cuando terminen",
+   "ar": "أرسل عندما ينتهون",
+   "fr": "Envoyer quand ils ont fini",
+   "bn": "শেষ হলে পাঠান",
+   "pt-BR": "Enviar quando terminarem",
+   "ru": "Отправить, когда закончат",
+   "id": "Kirim setelah selesai",
+   "it": "Invia quando finiscono"
+  },
+  "Send now and stop them": {
+   "zh-Hans": "立即发送并停止它们",
+   "hi": "अभी भेजें और उन्हें रोकें",
+   "es": "Enviar ahora y detenerlos",
+   "ar": "أرسل الآن وأوقفهم",
+   "fr": "Envoyer maintenant et les arrêter",
+   "bn": "এখনই পাঠান এবং তাদের থামান",
+   "pt-BR": "Enviar agora e pará-los",
+   "ru": "Отправить сейчас и остановить их",
+   "id": "Kirim sekarang dan hentikan",
+   "it": "Invia ora e fermali"
+  },
+  "Antigravity CLI reported a problem at the end": {
+   "zh-Hans": "Antigravity CLI 在结束时报告了一个问题",
+   "hi": "Antigravity CLI ने अंत में एक समस्या बताई",
+   "es": "Antigravity CLI informó de un problema al final",
+   "ar": "أبلغ Antigravity CLI عن مشكلة في النهاية",
+   "fr": "Antigravity CLI a signalé un problème à la fin",
+   "bn": "Antigravity CLI শেষে একটি সমস্যার কথা জানিয়েছে",
+   "pt-BR": "O Antigravity CLI relatou um problema no final",
+   "ru": "Antigravity CLI сообщил о проблеме в конце",
+   "id": "Antigravity CLI melaporkan masalah di akhir",
+   "it": "Antigravity CLI ha segnalato un problema alla fine"
+  },
+  "Antigravity CLI's message: {error}": {
+   "zh-Hans": "Antigravity CLI 的消息：{error}",
+   "hi": "Antigravity CLI का संदेश: {error}",
+   "es": "Mensaje de Antigravity CLI: {error}",
+   "ar": "رسالة Antigravity CLI: {error}",
+   "fr": "Message d'Antigravity CLI : {error}",
+   "bn": "Antigravity CLI-এর বার্তা: {error}",
+   "pt-BR": "Mensagem do Antigravity CLI: {error}",
+   "ru": "Сообщение Antigravity CLI: {error}",
+   "id": "Pesan Antigravity CLI: {error}",
+   "it": "Messaggio di Antigravity CLI: {error}"
+  },
+  "While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”.": {
+   "zh-Hans": "工作过程中，模型发送了一个空的工具调用（这是模型自身的错误），Antigravity CLI 让它重试了。上面的回答是它最后写的：请检查工作是否已完成，如果没有，请输入“继续”。",
+   "hi": "काम के दौरान मॉडल ने एक खाली टूल कॉल भेजी, जो मॉडल की अपनी गलती थी, और Antigravity CLI ने उसे फिर से कोशिश करवाई। ऊपर का जवाब उसका आखिरी लिखा हुआ है: देख लें कि काम पूरा हुआ है, और अगर नहीं, तो “जारी रखो” लिखें।",
+   "es": "Mientras trabajaba, el modelo envió una llamada a herramienta vacía, un error del propio modelo, y Antigravity CLI le hizo volver a intentarlo. La respuesta de arriba es la última que escribió: comprueba que el trabajo esté terminado y, si no lo está, escribe «continúa».",
+   "ar": "أثناء العمل، أرسل النموذج استدعاء أداة فارغًا، وهو خطأ من النموذج نفسه، فجعله Antigravity CLI يحاول مرة أخرى. الإجابة أعلاه هي آخر ما كتبه: تحقق من اكتمال العمل، وإن لم يكتمل فاكتب «تابع».",
+   "fr": "Pendant son travail, le modèle a envoyé un appel d'outil vide, une erreur du modèle lui-même, et Antigravity CLI l'a fait réessayer. La réponse ci-dessus est la dernière qu'il a écrite : vérifiez que le travail est terminé et, sinon, écrivez « continue ».",
+   "bn": "কাজ করার সময় মডেলটি একটি ফাঁকা টুল কল পাঠিয়েছিল, যা মডেলের নিজেরই ভুল, এবং Antigravity CLI তাকে আবার চেষ্টা করিয়েছে। উপরের উত্তরটি তার লেখা শেষটি: কাজটি শেষ হয়েছে কিনা দেখে নিন, না হলে “চালিয়ে যাও” লিখুন।",
+   "pt-BR": "Durante o trabalho, o modelo enviou uma chamada de ferramenta vazia, um erro do próprio modelo, e o Antigravity CLI o fez tentar de novo. A resposta acima é a última que ele escreveu: confira se o trabalho terminou e, se não terminou, escreva “continue”.",
+   "ru": "Во время работы модель отправила пустой вызов инструмента, это ошибка самой модели, и Antigravity CLI попросил её повторить. Ответ выше — последний, который она написала: проверьте, что работа закончена, а если нет, напишите «продолжай».",
+   "id": "Saat bekerja, model mengirim panggilan alat yang kosong, kesalahan model itu sendiri, dan Antigravity CLI memintanya mencoba lagi. Jawaban di atas adalah yang terakhir ia tulis: periksa apakah pekerjaannya selesai, dan jika belum, tulis “lanjutkan”.",
+   "it": "Mentre lavorava, il modello ha mandato una chiamata a strumento vuota, un errore del modello stesso, e Antigravity CLI gli ha fatto riprovare. La risposta qui sopra è l'ultima che ha scritto: controlla che il lavoro sia finito e, se non lo è, scrivi «continua»."
+  },
+  "Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”.": {
+   "zh-Hans": "Antigravity CLI 在写完上面的回答后以错误结束了这一轮：请检查工作是否已完成，如果没有，请输入“继续”。",
+   "hi": "ऊपर का जवाब लिखने के बाद Antigravity CLI ने यह बारी एक त्रुटि के साथ खत्म की: देख लें कि काम पूरा हुआ है, और अगर नहीं, तो “जारी रखो” लिखें।",
+   "es": "Antigravity CLI terminó este turno con un error después de escribir la respuesta de arriba: comprueba que el trabajo esté terminado y, si no lo está, escribe «continúa».",
+   "ar": "أنهى Antigravity CLI هذه الجولة بخطأ بعد كتابة الإجابة أعلاه: تحقق من اكتمال العمل، وإن لم يكتمل فاكتب «تابع».",
+   "fr": "Antigravity CLI a terminé ce tour par une erreur après avoir écrit la réponse ci-dessus : vérifiez que le travail est terminé et, sinon, écrivez « continue ».",
+   "bn": "উপরের উত্তরটি লেখার পর Antigravity CLI এই পালাটি একটি ত্রুটি দিয়ে শেষ করেছে: কাজটি শেষ হয়েছে কিনা দেখে নিন, না হলে “চালিয়ে যাও” লিখুন।",
+   "pt-BR": "O Antigravity CLI encerrou esta vez com um erro depois de escrever a resposta acima: confira se o trabalho terminou e, se não terminou, escreva “continue”.",
+   "ru": "Antigravity CLI завершил этот ход с ошибкой после ответа выше: проверьте, что работа закончена, а если нет, напишите «продолжай».",
+   "id": "Antigravity CLI mengakhiri giliran ini dengan kesalahan setelah menulis jawaban di atas: periksa apakah pekerjaannya selesai, dan jika belum, tulis “lanjutkan”.",
+   "it": "Antigravity CLI ha chiuso questo turno con un errore dopo aver scritto la risposta qui sopra: controlla che il lavoro sia finito e, se non lo è, scrivi «continua»."
+  },
+  "Antigravity CLI stopped: the model sent an empty tool call and couldn't correct it. What it did so far is saved: write “continue” to pick up from there.": {
+   "zh-Hans": "Antigravity CLI 已停止：模型发送了一个空的工具调用，且未能纠正。到目前为止完成的内容已保存：输入“继续”即可从那里接着做。",
+   "hi": "Antigravity CLI रुक गया: मॉडल ने एक खाली टूल कॉल भेजी और उसे ठीक नहीं कर पाया। अब तक का काम सहेजा गया है: वहीं से आगे बढ़ने के लिए “जारी रखो” लिखें।",
+   "es": "Antigravity CLI se detuvo: el modelo envió una llamada a herramienta vacía y no logró corregirla. Lo que hizo hasta ahora está guardado: escribe «continúa» para retomarlo desde ahí.",
+   "ar": "توقف Antigravity CLI: أرسل النموذج استدعاء أداة فارغًا ولم يتمكن من تصحيحه. ما أنجزه حتى الآن محفوظ: اكتب «تابع» للمتابعة من هناك.",
+   "fr": "Antigravity CLI s'est arrêté : le modèle a envoyé un appel d'outil vide et n'a pas réussi à le corriger. Ce qu'il a fait jusqu'ici est conservé : écrivez « continue » pour reprendre à partir de là.",
+   "bn": "Antigravity CLI থেমে গেছে: মডেলটি একটি ফাঁকা টুল কল পাঠিয়েছিল এবং তা ঠিক করতে পারেনি। এখন পর্যন্ত করা কাজ সংরক্ষিত আছে: সেখান থেকে আবার শুরু করতে “চালিয়ে যাও” লিখুন।",
+   "pt-BR": "O Antigravity CLI parou: o modelo enviou uma chamada de ferramenta vazia e não conseguiu corrigi-la. O que ele fez até agora está salvo: escreva “continue” para retomar de onde parou.",
+   "ru": "Antigravity CLI остановился: модель отправила пустой вызов инструмента и не смогла его исправить. Сделанное до сих пор сохранено: напишите «продолжай», чтобы продолжить с этого места.",
+   "id": "Antigravity CLI berhenti: model mengirim panggilan alat yang kosong dan tidak berhasil memperbaikinya. Yang sudah dikerjakan sejauh ini tersimpan: tulis “lanjutkan” untuk melanjutkan dari sana.",
+   "it": "Antigravity CLI si è fermato: il modello ha mandato una chiamata a strumento vuota e non è riuscito a correggerla. Quello che ha fatto finora è salvato: scrivi «continua» per riprendere da lì."
+  },
   "{agent} is using the computer": {
    "zh-Hans": "{agent} 正在使用电脑",
    "hi": "{agent} कंप्यूटर का उपयोग कर रहा है",
@@ -20049,138 +20357,6 @@
    "id": "ingin memakai komputer · langkah {step} dari {total}",
    "it": "vuole usare il computer · passo {step} di {total}"
   },
-  "Click on «{name}»": {
-   "zh-Hans": "点击“{name}”",
-   "hi": "“{name}” पर क्लिक",
-   "es": "Clic en «{name}»",
-   "ar": "نقر على «{name}»",
-   "fr": "Clic sur « {name} »",
-   "bn": "“{name}”-এ ক্লিক",
-   "pt-BR": "Clique em “{name}”",
-   "ru": "Щелчок по «{name}»",
-   "id": "Klik “{name}”",
-   "it": "Clic su «{name}»"
-  },
-  "Right click on «{name}»": {
-   "zh-Hans": "右键点击“{name}”",
-   "hi": "“{name}” पर राइट क्लिक",
-   "es": "Clic derecho en «{name}»",
-   "ar": "نقر بزر الماوس الأيمن على «{name}»",
-   "fr": "Clic droit sur « {name} »",
-   "bn": "“{name}”-এ রাইট ক্লিক",
-   "pt-BR": "Clique direito em “{name}”",
-   "ru": "Щелчок правой кнопкой по «{name}»",
-   "id": "Klik kanan “{name}”",
-   "it": "Clic destro su «{name}»"
-  },
-  "Middle click on «{name}»": {
-   "zh-Hans": "中键点击“{name}”",
-   "hi": "“{name}” पर मिडिल क्लिक",
-   "es": "Clic central en «{name}»",
-   "ar": "نقر بالزر الأوسط على «{name}»",
-   "fr": "Clic du milieu sur « {name} »",
-   "bn": "“{name}”-এ মিডল ক্লিক",
-   "pt-BR": "Clique do meio em “{name}”",
-   "ru": "Щелчок средней кнопкой по «{name}»",
-   "id": "Klik tengah “{name}”",
-   "it": "Clic centrale su «{name}»"
-  },
-  "Double click on «{name}»": {
-   "zh-Hans": "双击“{name}”",
-   "hi": "“{name}” पर डबल क्लिक",
-   "es": "Doble clic en «{name}»",
-   "ar": "نقر مزدوج على «{name}»",
-   "fr": "Double-clic sur « {name} »",
-   "bn": "“{name}”-এ ডাবল ক্লিক",
-   "pt-BR": "Clique duplo em “{name}”",
-   "ru": "Двойной щелчок по «{name}»",
-   "id": "Klik ganda “{name}”",
-   "it": "Doppio clic su «{name}»"
-  },
-  "Triple click on «{name}»": {
-   "zh-Hans": "三击“{name}”",
-   "hi": "“{name}” पर ट्रिपल क्लिक",
-   "es": "Triple clic en «{name}»",
-   "ar": "نقر ثلاثي على «{name}»",
-   "fr": "Triple-clic sur « {name} »",
-   "bn": "“{name}”-এ ট্রিপল ক্লিক",
-   "pt-BR": "Clique triplo em “{name}”",
-   "ru": "Тройной щелчок по «{name}»",
-   "id": "Klik tiga kali “{name}”",
-   "it": "Triplo clic su «{name}»"
-  },
-  "Move the mouse to «{name}»": {
-   "zh-Hans": "将鼠标移到“{name}”",
-   "hi": "माउस को “{name}” पर ले जाएँ",
-   "es": "Mover el ratón a «{name}»",
-   "ar": "تحريك الماوس إلى «{name}»",
-   "fr": "Déplacer la souris sur « {name} »",
-   "bn": "মাউস “{name}”-এ সরান",
-   "pt-BR": "Mover o mouse para “{name}”",
-   "ru": "Навести мышь на «{name}»",
-   "id": "Gerakkan mouse ke “{name}”",
-   "it": "Sposta il mouse su «{name}»"
-  },
-  "Drag to «{name}»": {
-   "zh-Hans": "拖动到“{name}”",
-   "hi": "“{name}” तक खींचें",
-   "es": "Arrastrar a «{name}»",
-   "ar": "سحب إلى «{name}»",
-   "fr": "Glisser sur « {name} »",
-   "bn": "“{name}” পর্যন্ত টেনে আনুন",
-   "pt-BR": "Arrastar para “{name}”",
-   "ru": "Перетащить на «{name}»",
-   "id": "Seret ke “{name}”",
-   "it": "Trascina su «{name}»"
-  },
-  "Scroll up on «{name}»": {
-   "zh-Hans": "在“{name}”上向上滚动",
-   "hi": "“{name}” पर ऊपर स्क्रॉल करें",
-   "es": "Desplazar hacia arriba en «{name}»",
-   "ar": "تمرير لأعلى في «{name}»",
-   "fr": "Défiler vers le haut sur « {name} »",
-   "bn": "“{name}”-এ উপরে স্ক্রোল করুন",
-   "pt-BR": "Rolar para cima em “{name}”",
-   "ru": "Прокрутить вверх в «{name}»",
-   "id": "Gulir ke atas di “{name}”",
-   "it": "Scorri su in «{name}»"
-  },
-  "Scroll down on «{name}»": {
-   "zh-Hans": "在“{name}”上向下滚动",
-   "hi": "“{name}” पर नीचे स्क्रॉल करें",
-   "es": "Desplazar hacia abajo en «{name}»",
-   "ar": "تمرير لأسفل في «{name}»",
-   "fr": "Défiler vers le bas sur « {name} »",
-   "bn": "“{name}”-এ নিচে স্ক্রোল করুন",
-   "pt-BR": "Rolar para baixo em “{name}”",
-   "ru": "Прокрутить вниз в «{name}»",
-   "id": "Gulir ke bawah di “{name}”",
-   "it": "Scorri giù in «{name}»"
-  },
-  "Scroll left on «{name}»": {
-   "zh-Hans": "在“{name}”上向左滚动",
-   "hi": "“{name}” पर बाएँ स्क्रॉल करें",
-   "es": "Desplazar a la izquierda en «{name}»",
-   "ar": "تمرير لليسار في «{name}»",
-   "fr": "Défiler vers la gauche sur « {name} »",
-   "bn": "“{name}”-এ বাঁয়ে স্ক্রোল করুন",
-   "pt-BR": "Rolar para a esquerda em “{name}”",
-   "ru": "Прокрутить влево в «{name}»",
-   "id": "Gulir ke kiri di “{name}”",
-   "it": "Scorri a sinistra in «{name}»"
-  },
-  "Scroll right on «{name}»": {
-   "zh-Hans": "在“{name}”上向右滚动",
-   "hi": "“{name}” पर दाएँ स्क्रॉल करें",
-   "es": "Desplazar a la derecha en «{name}»",
-   "ar": "تمرير لليمين في «{name}»",
-   "fr": "Défiler vers la droite sur « {name} »",
-   "bn": "“{name}”-এ ডানে স্ক্রোল করুন",
-   "pt-BR": "Rolar para a direita em “{name}”",
-   "ru": "Прокрутить вправо в «{name}»",
-   "id": "Gulir ke kanan di “{name}”",
-   "it": "Scorri a destra in «{name}»"
-  },
   "{agent} is using the mouse": {
    "zh-Hans": "{agent} 正在使用鼠标",
    "hi": "{agent} माउस का उपयोग कर रहा है",
@@ -20264,6 +20440,78 @@
    "ru": "Только пока он отвечает и только после того, как он покажет вам свой план: экран, которым он пользуется, светится, а Esc ставит его на паузу. С «Спрашивать каждый раз» каждый его щелчок ждёт вашего.",
    "id": "Hanya saat menjawab, dan hanya setelah ia menunjukkan rencananya: layar yang dipakainya menyala, dan Esc menjedanya. Dengan Selalu tanya, setiap kliknya menunggu klik Anda.",
    "it": "Solo mentre risponde, e solo dopo averti mostrato il suo piano: lo schermo che usa si illumina ed Esc lo mette in pausa. Con Chiedi ogni volta, ogni suo clic aspetta il tuo."
+  },
+  "at the marked point": {
+   "zh-Hans": "在标记的位置",
+   "hi": "चिह्नित जगह पर",
+   "es": "en el punto marcado",
+   "ar": "عند النقطة المحددة",
+   "fr": "au point marqué",
+   "bn": "চিহ্নিত জায়গায়",
+   "pt-BR": "no ponto marcado",
+   "ru": "в отмеченной точке",
+   "id": "di titik yang ditandai",
+   "it": "nel punto segnato"
+  },
+  "to the marked point": {
+   "zh-Hans": "到标记的位置",
+   "hi": "चिह्नित जगह तक",
+   "es": "hasta el punto marcado",
+   "ar": "إلى النقطة المحددة",
+   "fr": "jusqu'au point marqué",
+   "bn": "চিহ্নিত জায়গা পর্যন্ত",
+   "pt-BR": "até o ponto marcado",
+   "ru": "до отмеченной точки",
+   "id": "ke titik yang ditandai",
+   "it": "fino al punto segnato"
+  },
+  "The app calls it «{name}»": {
+   "zh-Hans": "应用称它为“{name}”",
+   "hi": "ऐप इसे “{name}” कहता है",
+   "es": "La app lo llama «{name}»",
+   "ar": "يسمّيه التطبيق «{name}»",
+   "fr": "L'app l'appelle « {name} »",
+   "bn": "অ্যাপ এটিকে “{name}” বলে",
+   "pt-BR": "O app o chama de “{name}”",
+   "ru": "Приложение называет это «{name}»",
+   "id": "Aplikasi menyebutnya “{name}”",
+   "it": "L'app lo chiama «{name}»"
+  },
+  "Enlarge": {
+   "zh-Hans": "放大",
+   "hi": "बड़ा करें",
+   "es": "Ampliar",
+   "ar": "تكبير",
+   "fr": "Agrandir",
+   "bn": "বড় করুন",
+   "pt-BR": "Ampliar",
+   "ru": "Увеличить",
+   "id": "Perbesar",
+   "it": "Ingrandisci"
+  },
+  "Smaller": {
+   "zh-Hans": "缩小",
+   "hi": "छोटा करें",
+   "es": "Reducir",
+   "ar": "تصغير",
+   "fr": "Réduire",
+   "bn": "ছোট করুন",
+   "pt-BR": "Reduzir",
+   "ru": "Уменьшить",
+   "id": "Perkecil",
+   "it": "Riduci"
+  },
+  "Paused: this action won't be done. After Resume, {agent} looks at the screen again and asks again.": {
+   "zh-Hans": "已暂停：此操作不会执行。点击“继续”后，{agent} 会重新查看屏幕并再次询问。",
+   "hi": "रुका हुआ: यह कार्य नहीं होगा। फिर से शुरू करने के बाद {agent} स्क्रीन को दोबारा देखेगा और फिर से पूछेगा।",
+   "es": "En pausa: esta acción no se hará. Al reanudar, {agent} vuelve a mirar la pantalla y lo pide de nuevo.",
+   "ar": "متوقف مؤقتًا: لن يُنفَّذ هذا الإجراء. بعد الاستئناف، ينظر {agent} إلى الشاشة من جديد ويطلب مرة أخرى.",
+   "fr": "En pause : cette action ne sera pas faite. Après Reprendre, {agent} regarde l'écran à nouveau et redemande.",
+   "bn": "বিরতিতে: এই কাজটি হবে না। আবার শুরু করার পর {agent} আবার স্ক্রিন দেখে আবার জিজ্ঞেস করবে।",
+   "pt-BR": "Em pausa: esta ação não será feita. Ao retomar, {agent} olha a tela de novo e pede outra vez.",
+   "ru": "Пауза: это действие не будет выполнено. После «Продолжить» {agent} снова посмотрит на экран и спросит ещё раз.",
+   "id": "Dijeda: tindakan ini tidak akan dilakukan. Setelah Lanjutkan, {agent} melihat layar lagi dan meminta lagi.",
+   "it": "In pausa: questa azione non verrà fatta. Dopo Riprendi, {agent} guarda di nuovo lo schermo e la chiede ancora."
   }
  }
 }

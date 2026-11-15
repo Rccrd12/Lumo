@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { compile, ExprError, normalizeName, MAX_DEPTH } = await import("../src/core/expr.ts");
+const { compile, ExprError, normalizeName, fromTeX, MAX_DEPTH } = await import("../src/core/expr.ts");
 
 const run = (source, scope = {}) => compile(source).evaluate(scope);
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-12, `${a} ≉ ${b}`);
@@ -74,6 +74,13 @@ test("the Unicode a model writes", () => {
   assert.equal(normalizeName("Δθ"), "Deltatheta");
   assert.equal(normalizeName("x_θ"), "x_theta");
   assert.deepEqual(compile("ωt").vars, [normalizeName("ωt")]);
+});
+
+test("primes as a formula writes them: y″, x^{\\prime}", () => {
+  assert.equal(normalizeName("y″"), "y''");
+  assert.deepEqual(compile("y″ + y‴").vars, ["y''", "y'''"]);
+  assert.deepEqual(compile(fromTeX("2 x^{\\prime} + x^\\prime + y^{\\prime\\prime}")).vars, ["x'", "y''"]);
+  assert.deepEqual(compile(fromTeX("\\frac{x^{\\prime}}{2}")).vars, ["x'"]);
 });
 
 test("names ending with primes", () => {

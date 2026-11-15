@@ -85,7 +85,7 @@ export async function gatherLumo(topic: LumoTopic): Promise<LumoFacts> {
     now,
     mailOff: !aiReads(s.aiMailAccess),
     calendarOff: !aiReads(s.aiCalendarAccess),
-    // Only "read" lets the AI see GitHub, as in Rust (github_tools.rs): off by default.
+    // Only "read" lets the AI see GitHub, as in Rust (github_tools.rs).
     githubOff: s.aiGithubAccess !== "read",
     tasks: State.tasks,
     sessions,

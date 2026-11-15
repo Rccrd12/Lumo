@@ -888,10 +888,32 @@ html.look-new .stack > .approval-code {
   flex-shrink: 0;
 }
 
-/* A request too long to reach the island whole: the card shows its beginning, and says so. */
+/* A command cut short: its beginning, how much of its middle is not shown,
+   and its end, scrolled to its last line. */
+html.look-new .approval-gap {
+  font: 500 12px var(--font);
+  color: var(--amber);
+  text-align: center;
+  background: rgba(245, 165, 36, 0.1);
+  border-radius: 6px;
+  padding: 3px 8px;
+  margin: -4px 0;
+}
+
+html.look-new .stack > .approval-code-tail {
+  max-height: calc(3 * 1.45em + 16px);
+}
+
+html.look-new .approval-gap[hidden],
+html.look-new .approval-code-tail[hidden] {
+  display: none;
+}
+
+/* A request too long to reach the island whole (its beginning and its end
+   on the card), or whose arguments Lumo can't read: said in amber. */
 html.look-new .approval-cut {
   font: 500 12px var(--font);
-  color: var(--dim);
+  color: var(--amber);
 }
 
 html.look-new .approval-cut[hidden] {

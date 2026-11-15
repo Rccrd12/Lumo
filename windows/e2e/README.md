@@ -22,12 +22,13 @@ touches `windows/` (`.github/workflows/windows-e2e.yml`, on `windows-latest`).
 
 | File | What it checks |
 | --- | --- |
-| `chat-text.test.mjs` | A sent question's multiplications (`8*10^-9`) keep their stars, with no italics |
+| `chat-text.test.mjs` | A sent question's multiplications (`8*10^-9`) keep their stars, with no italics; a long question folds, Show more opens it downwards from where it is read (the log is not carried to its end), Show less stays in sight in the middle of it and folds it back in view |
 | `formula-ink.test.mjs` | No box cuts a formula's ink (subscripts, fractions, the last letter's lean): the chat's formulas, the steps card's step, the step before and the list, the calculator's top line; each box photographed as shown and with nothing cut, the two compared (`lib/ink.mjs`, `lib/png.mjs`) |
-| `permission.test.mjs` | Allow and Deny reach Claude Code (closed island and full card), the 600 ms click guard, a small and a 400 KB Write (its whole numbers, and Allow), a long plan, a question, two requests in line |
+| `permission.test.mjs` | Allow and Deny reach Claude Code (closed island and full card), the 600 ms click guard, a small and a 400 KB Write (its whole numbers, and Allow), a 200 KB command (its beginning and its end, and Allow), a long plan, a question, two requests in line |
 | `never-block.test.mjs` | The relay answers at once when Lumo is closed, events nobody waits on, Lumo quitting while a card waits |
 | `island-size.test.mjs` | The chat's size across a restart, and resizing the chat leaves the home's size alone |
 | `pickers.test.mjs` | Choose… in the Listening form: Windows' folder picker belongs to the island, so it shows over it, and a click in it keeps the form open |
+| `screen-capture.test.mjs` | A screen capture over the island (a small program of the test's own named `Greenshot.exe`, `lib/capture.mjs`): its overlay stays above the island even when the island climbed above it a moment before, the island neither hears nor opens under the capture's mouse, opens again once the capture ends, and keeps opening under the mouse while an image the tool pinned to the screen is in front |
 | `settings-island.test.mjs` | Settings inside the island: the relay installed from there after Windows' own Yes (Cancel writes nothing), the Settings window staying shut, no write without its preview, and the separate Settings window made only when first opened, showing its page |
 
 A new flow is a `flow(group, name, app, async () => { … })` in a

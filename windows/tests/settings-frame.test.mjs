@@ -43,6 +43,11 @@ test("a field of Settings being written in holds the island open, as the chat's 
   assert.equal(fieldHold(field("INPUT", "url")), "linger");
   assert.equal(fieldHold(field("INPUT", "", "  ")), "linger");
   assert.equal(fieldHold(field("SELECT", "select-one", "timer")), "linger");
+  // Only clicked in, as saved (a model's name, a server's address): a while, not for good.
+  assert.equal(fieldHold(field("INPUT", "text", "llama3.2"), "llama3.2"), "linger");
+  assert.equal(fieldHold(field("INPUT", "text", "llama3.2:8b"), "llama3.2"), "keep");
+  // The search only finds: a while, whatever is typed in it.
+  assert.equal(fieldHold(field("INPUT", "search", "email")), "linger");
   // A switch or a button pressed, nothing focused: nothing to wait for.
   assert.equal(fieldHold(field("INPUT", "checkbox", "on")), "none");
   assert.equal(fieldHold(field("BUTTON", "button")), "none");
@@ -64,4 +69,17 @@ test("a field of Settings being written in holds the island open, as the chat's 
   document.hasFocus = () => true;
   document.activeElement = document.body;
   assert.equal(settingsHold(), "none");
+
+  // The page tells the island what a field held as the cursor came into it:
+  // clicked in, as saved, a while; written in since, for good.
+  const listeners = new Map();
+  const saved = field("INPUT", "text", "http://localhost:11434");
+  frame.contentDocument = { activeElement: saved, addEventListener: (type, fn) => listeners.set(type, [...(listeners.get(type) ?? []), fn]) };
+  frame.contentWindow = { addEventListener() {} };
+  frame.fire("load");
+  for (const fn of listeners.get("focusin") ?? []) fn({ target: saved });
+  document.activeElement = frame;
+  assert.equal(settingsHold(), "linger");
+  saved.value = "http://localhost:11435";
+  assert.equal(settingsHold(), "keep");
 });

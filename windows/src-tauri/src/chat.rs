@@ -65,11 +65,13 @@ pub struct ChatReply {
     pub warning: Option<ChatWarning>,
 }
 
-/// A problem under an answer: one short line, and what to know, shown on a click.
+/// A problem under an answer: what kind ("malformed": the model sent a tool
+/// call the CLI could not read; "error": any other), and the CLI's own words.
+/// The island says it in its language (src/views/chat.ts warningWords).
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct ChatWarning {
-    pub line: String,
-    pub detail: String,
+    pub kind: String,
+    pub message: String,
 }
 
 /// Between what an error says to the user and the words the CLI gave for it,
@@ -379,8 +381,12 @@ impl Chat {
     }
 
     /// The files added in this chat, oldest first.
+    /// As its CLI is told them: each one in the inbox, in this chat's own
+    /// folder of it (files.rs for_chat).
     pub fn files(&self) -> Vec<(String, String)> {
-        self.inner.lock().unwrap().files.iter().map(|(name, path, _)| (name.clone(), path.clone())).collect()
+        let files: Vec<(String, String)> =
+            self.inner.lock().unwrap().files.iter().map(|(name, path, _)| (name.clone(), path.clone())).collect();
+        files.into_iter().map(|(name, path)| (name, crate::files::for_chat(&self.id, &path))).collect()
     }
 
     /// The × of one of the chat's files: it is no longer told to a fresh
@@ -709,7 +715,7 @@ pub fn api_tools_note(mail: &str) -> String {
         note.push_str(crate::github_tools::NOTE);
     }
     if !mail.is_empty() {
-        note.push_str(" The user's email: Lumo's email tools (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached; Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking.");
+        note.push_str(" The user's email: Lumo's email tools (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached. Use them for any question about email, and never say there is no email before looking.");
         if mail.contains("mailsend") {
             note.push_str(" To send one, answer one in its conversation or forward one, use mail_send, mail_reply or mail_forward: the user sees the email on a card and it goes only if they click Send; mail_draft saves one in their Drafts.");
         } else {
@@ -893,9 +899,14 @@ pub fn model_for(settings: &Settings, provider: &str) -> String {
 
 /// `settings` with the provider and model a chat is on (the page keeps them
 /// by chat, chats.ts): that chat is answered by them, whatever the picker
-/// shows for another chat meanwhile. None, or empty, leaves the settings' own.
+/// shows for another chat meanwhile. None, or empty, leaves the settings' own;
+/// so does a provider the user took out of the chat (Settings → Chat → Show
+/// in the chat), as the page does (providers.ts onChatModel).
 pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>) -> Settings {
     let Some(provider) = provider.map(str::trim).filter(|p| !p.is_empty()) else { return settings };
+    if provider != settings.chat_provider && settings.hidden_chat_providers.iter().any(|h| h == provider) {
+        return settings;
+    }
     settings.chat_provider = provider.to_string();
     if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
         if provider == ANTHROPIC {
@@ -1057,17 +1068,9 @@ async fn dispatch(
         }
         s.documents = documents;
     }
-    // The Email pill: a question about email gets the newest emails, read or
-    // not, so every provider can answer it, not only those with a mail tool of
-    // their own. Not when Settings → Security keeps the email from the AI.
-    if !command && crate::mail::asks_about(&query) && crate::mail::for_ai(app) {
-        let Some(mail) = chat.unless_stopped(crate::mail::for_chat(app)).await else {
-            return Ok(stopped_before_sent(chat));
-        };
-        if let Some(text) = mail {
-            screen.get_or_insert_with(ScreenContext::default).mail = text;
-        }
-    }
+    // The emails never go with a question by themselves: the providers read
+    // what they need with Lumo's email tools (mail.rs ai_tools), each call
+    // seen on the island.
     if chat.stopper().is_stopped() {
         return Ok(stopped_before_sent(chat));
     }
@@ -1078,7 +1081,15 @@ async fn dispatch(
     let at = chat.turns();
     let more: Vec<(String, String)> =
         screen.as_ref().map(|s| s.files.iter().map(|f| (f.name.clone(), f.path.clone())).collect()).unwrap_or_default();
-    let reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await;
+    // A CLI is told the files of this question in this chat's own folder of
+    // the inbox, the one it reads; the chat keeps them by their place in the
+    // inbox, as the island names them.
+    let (told, screen) = if is_cli(&settings.chat_provider) {
+        in_chat_folder(chat.id(), context.clone(), screen)
+    } else {
+        (context.clone(), screen)
+    };
+    let reply = send_to(app, chat, settings, query, told, screen, usage).await;
     // What the island's tools asked for during the turn (island_tools.rs), as
     // the lines the island reads; a failed turn, or one stopped before it
     // said anything, drops them. One stopped that used the computer is kept
@@ -1101,6 +1112,22 @@ async fn dispatch(
     }
     reply.turns = chat.turns();
     Ok(reply)
+}
+
+/// The file and the screenshots of a question as the CLI of `chat` is told
+/// them: each one in the inbox, in the chat's own folder of it (files.rs for_chat).
+fn in_chat_folder(chat: &str, context: Option<ChatContext>, screen: Option<ScreenContext>) -> (Option<ChatContext>, Option<ScreenContext>) {
+    let context = context.map(|c| match c {
+        ChatContext::File { name, path } => ChatContext::File { path: crate::files::for_chat(chat, &path), name },
+        other => other,
+    });
+    let screen = screen.map(|mut s| {
+        for shot in s.shots.iter_mut().chain(s.files.iter_mut()) {
+            shot.path = crate::files::for_chat(chat, &shot.path);
+        }
+        s
+    });
+    (context, screen)
 }
 
 /// A turn stopped before its question went: nothing was said, nothing is kept.
@@ -1182,18 +1209,16 @@ async fn send_to(
         }
         // Computer use: Claude Code's as it always was; Antigravity CLI's
         // each action asked for by Lumo (computer.rs OtherTurn). Codex,
-        // Copilot CLI and Cursor CLI could take the same tools but are left
-        // out: Copilot CLI answered it can't control Windows, Codex and
-        // Cursor CLI were never tried.
+        // Copilot CLI and Cursor CLI don't get it.
         let computer = settings.chat_computer_use;
         if provider == antigravity_cli::PROVIDER {
             return Box::pin(antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), computer, query, context, folder)).await;
         }
         if provider == codex_chat::PROVIDER {
-            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, false, query, context, folder)).await;
+            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
         }
         if acp_chat::Agent::of(provider).is_some() {
-            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, false, query, context, folder)).await;
+            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
         }
         return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)).await;
     }
@@ -1820,7 +1845,6 @@ mod tests {
             shared_windows: Vec::new(),
             tabs: Vec::new(),
             documents: Vec::new(),
-            mail: String::new(),
         };
         for cli in ["claude-code", "antigravity-cli"] {
             let (q, images) = with_screen(cli, false, Some(&screen), "what is this?".into()).unwrap();
@@ -1914,6 +1938,10 @@ mod tests {
         // Nothing named: the settings as they are.
         let d = with_pick(settings.clone(), None, Some("x"));
         assert_eq!((d.chat_provider.as_str(), model_for(&d, "openai").as_str()), ("openai", "gpt-4o"));
-        assert_eq!(with_pick(settings, Some(" "), None).chat_provider, "openai");
+        assert_eq!(with_pick(settings.clone(), Some(" "), None).chat_provider, "openai");
+        // A provider taken out of the chat: the settings' own answers.
+        let hidden = Settings { hidden_chat_providers: vec!["codex".into()], ..settings };
+        let e = with_pick(hidden.clone(), Some("codex"), Some("gpt-5"));
+        assert_eq!((e.chat_provider.as_str(), model_for(&e, "codex").as_str()), ("openai", model_for(&hidden, "codex").as_str()));
     }
 }

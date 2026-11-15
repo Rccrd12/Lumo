@@ -4,7 +4,7 @@ import type { ComputerRecap, ComputerState } from "./computer-use";
 import { pausedPlanWaits } from "./computer-plan";
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
-import { newChatId, type AskQuote } from "./chats";
+import { newChatId, type AnswerWarning, type AskQuote } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../character/engine";
 import {
@@ -115,18 +115,31 @@ export interface ApprovalInfo {
   plan?: import("./agent-plan").PlanStep[];
   /** A file tool's request: the lines it adds and removes, and a Write's size (core/approvals.ts editStat), under the file on the card. */
   edit?: import("./approvals").EditStat;
-  /** Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`): the card shows its beginning and says so; Allow stays, "Allow for this session" doesn't. */
+  /**
+   * Too long for the relay to forward whole (lumo-hook's `lumo_input_cut`):
+   * the card shows its beginning and its end and says so in amber; the
+   * agent's own window can show it whole, and "Allow for this session" is not
+   * offered.
+   */
   cut?: boolean;
-  /** With `cut`: the whole request's size (`lumo_input_bytes`), for the line that says so. */
+  /** With `cut`: the size of the string shown only in part (`lumo_input_bytes`), for the line that says so. */
   cutBytes?: number;
+  /** With `cut`: how much of it the card doesn't show (`lumo_input_hidden`). */
+  cutHidden?: number;
+  /**
+   * Arguments the relay couldn't read (lumo-hook's `lumo_input_unread`): the
+   * agent reads them one way, Lumo another. Never allowed from the island
+   * (pipe.rs refuses it too): only Deny, and the agent's own window.
+   */
+  unread?: boolean;
   /**
    * A computer use action of the chat (core/computer.ts): the point it acts on,
    * in the pixels of the agent's last screenshot, when it has one (a click, a
    * move, a scroll, a drag's end). The card shows the screen around it.
    */
   computerAt?: [number, number];
-  /** A computer use scroll's way, from its request (core/computer.ts scrollDirection). */
-  computerScroll?: "up" | "down" | "left" | "right";
+  /** The island chat that asks (lumo-hook's `lumo_chat`, its LUMO_CHAT_ID): a computer use card says the step of that chat's plan only. */
+  chat?: string;
 }
 
 /**
@@ -134,7 +147,8 @@ export interface ApprovalInfo {
  * the field, rather than on the permission card.
  */
 export function planAskInChat(req: ApprovalInfo | null | undefined): boolean {
-  return req?.fromChat === true && (req.plan?.length ?? 0) > 0;
+  // A plan too long to show whole goes on the card, which says so in amber.
+  return req?.fromChat === true && (req.plan?.length ?? 0) > 0 && req.cut !== true && req.unread !== true;
 }
 
 /** An email on its card: from the Email pill's account, to whom, what. */
@@ -170,7 +184,7 @@ export interface ChatMessage {
   /** No answer: what went wrong, said in the chat where it was asked (never saved). */
   failed?: boolean;
   /** The answer came, but the CLI ended its turn with an error: said under it (ChatReply.warning). */
-  warning?: { line: string; detail: string };
+  warning?: AnswerWarning;
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
   /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing, a question asked of an agent). */
@@ -360,10 +374,12 @@ export interface Settings {
    * from the screen button. Off until the user turns it on in Settings → Security.
    */
   chatShareExplorer: boolean;
-  /** Every message carries the open windows and their documents (desk.rs). */
+  /** Every message carries the open windows and their documents (desk.rs). Off by default. */
   chatShareOpen: boolean;
   /** Every message carries the browsers' open tabs (core/screen.ts autoShare). Off by default. */
   chatShareTabs: boolean;
+  /** The CLIs a chat runs may read the files given to the other chats too, the whole inbox (files.rs). Off by default: each chat's own folder only. */
+  chatOtherFiles: boolean;
   /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
   chatComputerUse: boolean;
   /** Lumo's own web search for the providers without one (web_search.rs). Off until turned on. */
@@ -373,16 +389,16 @@ export interface Settings {
   /**
    * Whether an image line in the chat's answers is downloaded and shown at once
    * (views/rich/image.ts, web_image.rs). Off: the card shows only its site and a
-   * way to open it in the browser. From Settings → Security, on by default.
+   * way to open it in the browser. From Settings → Security, off at the first start.
    */
   webImages: boolean;
   /** An email's images shown at once in the Email view, with no click on Load images (its tracking pixels never). Settings → Security, off by default, only with webImages. */
   mailImagesAlways: boolean;
-  /** What the AI may do with the email, from Settings → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
+  /** What the AI may do with the email, from Settings → Security: "manage" (the first start), "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
   aiCalendarAccess: string;
-  /** Whether the chat's AI may read the GitHub account set in Lumo: "read" or "none" (github_tools.rs). Off until turned on. */
+  /** Whether the chat's AI may read the GitHub account set in Lumo: "read" (the first start) or "none" (github_tools.rs). */
   aiGithubAccess: string;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
@@ -482,7 +498,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mailHidePromotions: false,
   mailImap: true,
   mailOutlook: false,
-  outlookStart: false,
+  outlookStart: true,
   mailPaused: [],
   hiddenChatProviders: [],
   energyMode: "auto",
@@ -496,16 +512,17 @@ export const DEFAULT_SETTINGS: Settings = {
   localSandbox: "high",
   chatShowUsage: false,
   chatShareExplorer: false,
-  chatShareOpen: true,
+  chatShareOpen: false,
   chatShareTabs: false,
+  chatOtherFiles: false,
   chatComputerUse: false,
   chatWebSearch: false,
   chatAutoCompact: true,
-  webImages: true,
+  webImages: false,
   mailImagesAlways: false,
-  aiMailAccess: "read",
+  aiMailAccess: "manage",
   aiCalendarAccess: "read",
-  aiGithubAccess: "none",
+  aiGithubAccess: "read",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
