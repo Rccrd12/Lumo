@@ -658,41 +658,6 @@ pub fn set_activating(win: &WebviewWindow, activating: bool) {
     }
 }
 
-/// Clicks on the island leave the front where it is (`hold`), or may take it.
-///
-/// WS_EX_NOACTIVATE on the island is not enough: WebView2's own windows
-/// inside it (one of them in WebView2's browser process) bring the island to
-/// the front on a click by themselves. Windows then closes what goes away
-/// when it loses the front (the Start menu, Search, a browser's suggestions,
-/// a drop-down), which an agent using the computer may just have opened. Held,
-/// those windows carry the style too. WebView2 makes some of them later, so
-/// the page asks again each time it matters (cheap: a few child windows).
-pub fn hold_clicks(win: &WebviewWindow, hold: bool) {
-    let Some(hwnd) = hwnd_of(win) else { return };
-    let mut walk = (hold, 0u32, 0u32);
-    unsafe {
-        let _ = EnumChildWindows(Some(hwnd), Some(set_no_activate), LPARAM(&mut walk as *mut _ as isize));
-    }
-    let (_, seen, changed) = walk;
-    if changed > 0 {
-        crate::log::line(format!("island clicks {}: {changed} of {seen} windows", if hold { "held" } else { "free" }));
-    }
-}
-
-unsafe extern "system" fn set_no_activate(hwnd: HWND, walk: LPARAM) -> BOOL {
-    let walk = unsafe { &mut *(walk.0 as *mut (bool, u32, u32)) };
-    walk.1 += 1;
-    unsafe {
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let want = if walk.0 { ex | WS_EX_NOACTIVATE.0 as isize } else { ex & !(WS_EX_NOACTIVATE.0 as isize) };
-        if want != ex {
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want);
-            walk.2 += 1;
-        }
-    }
-    true.into()
-}
-
 /// Puts the window back on top of every other always-on-top window.
 ///
 /// `set_always_on_top(true)` is not enough to stay there: tao only calls

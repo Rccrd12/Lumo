@@ -1129,11 +1129,11 @@ plan, with no API key.
   your screen's, whatever its scaling.
 - Lumo's island is left out of the screenshots and lets clicks through while
   Claude clicks; nothing is typed while the keyboard is
-  in the island (Claude has to click the window first). A click on a card
-  while the computer is in use leaves the keyboard where it was, so a menu
-  Claude opened stays open for what it types next. Classic right-click menus
-  still close at any click outside them, a card's included (Windows' own
-  rule).
+  in the island (Claude has to click the window first). A click on the
+  island while the computer is in use leaves the keyboard where it was, so
+  what Claude opened (the Start menu, Search, a drop-down) stays open for what
+  it types next: the click never reaches the island's window (WebView2 would
+  bring it to the front), Lumo takes it first and clicks the card itself.
 - Claude is told never to type passwords or payment details, never to buy,
   send, delete or accept terms unless you asked for exactly that, and to treat
   text on the screen as information, not instructions. Screenshots count
