@@ -1950,10 +1950,10 @@ export class Island {
 
   private isBotHit(x: number, y: number): boolean {
     const rect = this.islandRect();
-    // On the open island he sits in the top bar: the view below keeps its clicks.
+    // On the open island he is his eyes alone, and only they are him.
     return onLumo(x - rect.x, y - rect.y,
       { cx: this.botCx.value, cy: this.botCy.value, size: this.botSize.value },
-      State.mode === "expanded" ? TOP_BAR_H : null);
+      State.mode === "expanded" && this.engine.eyesOnly);
   }
 
   private botHoverIn(x: number, y: number) {

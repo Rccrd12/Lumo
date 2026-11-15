@@ -414,20 +414,31 @@ export interface BotPlacement {
   opacity: number;
 }
 
+/** Room around his eyes that still counts as them (px), for a hand that lands a little off. */
+export const EYES_HIT_PAD = 6;
+
 /**
- * Whether a point (measured from the island's top-left corner) is on Lumo:
- * the circle of his canvas around him. Sitting in the open island's top bar
- * (his eyes there), he ends at its lower edge: below it the press, and the
- * mouse resting there, belong to the view — the model picker's provider
- * chips, a list — never to him (no poke, no blink).
+ * Whether a point (measured from the island's top-left corner) is on Lumo.
+ * Whole, he is the circle of his canvas. As his eyes alone on the open island
+ * (engine.ts eyesOnly: the island is his body), he is only his eyes: the box
+ * of the two (looks.ts LOOK_EYES, with room for where they look and their
+ * bob) and EYES_HIT_PAD around it. The rest — the top bar's sides, the model
+ * picker's provider chips right under him — belongs to the island, and a
+ * press or the mouse resting there never pokes him or makes him blink.
  */
 export function onLumo(
   x: number,
   y: number,
   bot: { cx: number; cy: number; size: number },
-  topBarH: number | null,
+  eyesOnly: boolean,
 ): boolean {
-  if (topBarH != null && bot.cy < topBarH && y >= topBarH) return false;
+  if (eyesOnly) {
+    // His radius R is 0.3 of the canvas (engine.ts drawRound); the eyes sit
+    // at ±0.3 R, 0.19 R wide and 0.4 R tall, and look up to 0.1 R aside.
+    const R = bot.size * 0.3;
+    return Math.abs(x - bot.cx) <= 0.5 * R + EYES_HIT_PAD &&
+      Math.abs(y - bot.cy) <= 0.3 * R + EYES_HIT_PAD;
+  }
   const r = bot.size / 2;
   return (x - bot.cx) ** 2 + (y - bot.cy) ** 2 <= r * r;
 }
