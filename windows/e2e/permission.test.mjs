@@ -241,14 +241,34 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
   assert.equal(await d.js("return document.hasFocus()"), false, "the island still has the keyboard after a click elsewhere");
   const req = ask(agent, "mcp__lumo__type", { text: "Notepad" });
   await d.visible(ANY_ALLOW, 10_000, "the card");
+  // Every keyboard call the page makes from here (focus_window), for the log.
+  await d.js(`
+    const inner = window.__TAURI_INTERNALS__;
+    if (!inner.__e2eFocus) {
+      inner.__e2eFocus = [];
+      const invoke = inner.invoke.bind(inner);
+      inner.invoke = (cmd, args, opts) => {
+        if (cmd === "focus_window") inner.__e2eFocus.push(JSON.stringify(args));
+        return invoke(cmd, args, opts);
+      };
+    }
+    inner.__e2eFocus.length = 0;
+    return true;`);
+  const focus = async (when) => {
+    const [has, calls] = await d.js("return [document.hasFocus(), window.__TAURI_INTERNALS__.__e2eFocus.join(' ')]");
+    step(`${when}: island has the keyboard ${has}; focus_window calls: ${calls || "none"}`);
+    return has;
+  };
+  await focus("the card shows");
   await fullCard();
+  await focus("the full card");
   // What the action does, in the command's place (views/computer-card.ts).
   const line = await d.visible(".computer-target-slot, .approval-code", 5_000, "the card's action line");
   await sleep(GUARD);
   step("clicks the card's action line (not a button)");
   await app.click(line);
   await sleep(500);
-  assert.equal(await d.js("return document.hasFocus()"), false, "the island must not take the keyboard from the card of a computer action");
+  assert.equal(await focus("after the click"), false, "the island must not take the keyboard from the card of a computer action");
   step("the keyboard stayed where it was; clicks Deny");
   await app.click(await d.visible(".deny-btn", 5_000, "Deny on the full card"));
   assert.equal(behavior(await told(req)), "deny");
