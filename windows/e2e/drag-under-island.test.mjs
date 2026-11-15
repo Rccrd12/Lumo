@@ -235,7 +235,12 @@ flow(G, "A window carried across the island with Open on hover on does not open 
   assert.ok(Math.abs(moved.x - m.x) > 100, "the window moved with the mouse");
 
   step("takes it again and lets go with the cursor on the island");
-  await app.mouse.move(moved.x + 110 * pan.r, moved.y + (m.titleY - m.y));
+  // As a hand comes back to it: from a little below, not from where the first
+  // carry let go (the same pixel, which the cursor poll would never see move).
+  const again = { x: moved.x + 150 * pan.r, y: moved.y + (m.titleY - m.y) };
+  await app.mouse.move(again.x, again.y + 90 * pan.r);
+  await sleep(300);
+  await app.mouse.glide(again.x, again.y);
   await sleep(400);
   await app.mouse.down();
   await sleep(150);
@@ -243,7 +248,9 @@ flow(G, "A window carried across the island with Open on hover on does not open 
   await sleep(300);
   await app.mouse.up();
   const after = await watch(1_500);
-  step(`the window now ${JSON.stringify(await source.moverAt())}; looks that found the island open: ${carried} while carried, ${after} after letting go`);
+  const there = await source.moverAt();
+  step(`the window now ${JSON.stringify(there)}; looks that found the island open: ${carried} while carried, ${after} after letting go`);
+  assert.ok(Math.abs(there.x - moved.x) > 100, "the window moved with the mouse again");
   assert.equal(carried + after, 0, "a window let go on the island does not open it either");
 
   step("the cursor leaves, then rests on the island: Open on hover opens it");
