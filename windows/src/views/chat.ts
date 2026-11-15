@@ -92,6 +92,7 @@ import {
   activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps, storedPermissionMode, withPermissionMode,
   anyProviderReady, modelFor, onChatModel, visibleProviders, withModel, type PermissionMode, type ProviderId, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
+import { groupByEffort, groupOf, levelOf, splitEffort, variantFor } from "../core/effort-groups";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
@@ -1480,6 +1481,9 @@ function saveSettings() {
   void Bridge.saveSettings(State.settings);
 }
 
+/** Antigravity CLI: its models' variants by effort are one row in the picker. */
+const AGY = "antigravity-cli";
+
 // ── Model picker ──────────────────────────────────────────────────────────────
 
 interface Picker {
@@ -1493,6 +1497,8 @@ interface Picker {
    * longer offers it (a model retired since a chat was on it), else null.
    */
   replacementFor(id: string, model: string): Promise<string | null>;
+  /** Antigravity CLI: `model`'s name and level when the list has other levels of it, else null. */
+  variantOf(model: string): { base: string; level: string } | null;
   readonly isOpen: boolean;
 }
 
@@ -1518,10 +1524,39 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     if (Array.isArray(ids)) readyProviders = new Set(ids);
   });
 
+  /**
+   * The slider's levels and what it is on. Antigravity CLI: the levels of the
+   * model in use (its variants by effort), and a level picks that variant, with
+   * no Auto (its CLI has no level of its own to fall back on).
+   */
+  function effortSpec(p: ProviderDef): { levels: string[]; current: () => string; set: (e: string) => void; auto: boolean } {
+    if (p.id === AGY) {
+      const groups = groupByEffort((cache.get(p.id) ?? []).map((m) => m.id));
+      const group = groupOf(groups, activeModel(State.settings));
+      return {
+        levels: group?.levels ?? [],
+        current: () => levelOf(groups, activeModel(State.settings)),
+        set: (e) => {
+          if (group?.ids.has(e)) State.settings = withModel(State.settings, p.id, group.ids.get(e)!);
+        },
+        auto: false,
+      };
+    }
+    return {
+      levels: effortsFor(p.id).filter((e) => e !== ""),
+      current: () => effortFor(p.id, State.settings.chatEffort),
+      set: (e) => {
+        State.settings = { ...State.settings, chatEffort: e };
+      },
+      auto: true,
+    };
+  }
+
   function drawEfforts() {
     clear(efforts);
     const p = providerDef(State.settings.chatProvider);
-    const levels = effortsFor(p.id).filter((e) => e !== "");
+    const spec = effortSpec(p);
+    const levels = spec.levels;
     efforts.hidden = levels.length === 0;
     if (efforts.hidden) return;
     const last = levels.length - 1;
@@ -1557,7 +1592,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     };
     /** Draws the saved level (or Auto) without saving anything. */
     const show = () => {
-      const current = effortFor(p.id, State.settings.chatEffort);
+      const current = spec.current();
       const index = levels.indexOf(current);
       auto.classList.toggle("on", !current);
       track.classList.toggle("auto", !current);
@@ -1568,8 +1603,8 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     };
     const pick = (e: string) => {
       show();
-      if (e === effortFor(p.id, State.settings.chatEffort)) return;
-      State.settings = { ...State.settings, chatEffort: e };
+      if (e === spec.current()) return;
+      spec.set(e);
       saveSettings();
       Sound.play("blip");
       show();
@@ -1618,7 +1653,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     });
     track.addEventListener("keydown", (e) => {
       const key = (e as KeyboardEvent).key;
-      const current = levels.indexOf(effortFor(p.id, State.settings.chatEffort));
+      const current = levels.indexOf(spec.current());
       const to = key === "ArrowRight" || key === "ArrowUp" ? Math.min(last, current + 1)
         : key === "ArrowLeft" || key === "ArrowDown" ? Math.max(0, current < 0 ? 0 : current - 1)
         : key === "Home" ? 0 : key === "End" ? last : null;
@@ -1630,7 +1665,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
 
     // One short row, so the model list keeps its room: the slider, the level
     // it is on, and Auto at the end.
-    efforts.append(h("div", { class: "effort-row" }, track, value, auto));
+    efforts.append(h("div", { class: "effort-row" }, track, value, spec.auto ? auto : null));
     show();
     fitEfforts();
   }
@@ -1743,9 +1778,27 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     slot.textContent = words.join(" · ");
   }
 
-  function drawModels(p: ProviderDef, models: ModelInfo[]) {
+  function drawModels(p: ProviderDef, listed: ModelInfo[]) {
     clear(list);
     const current = activeModel(State.settings);
+    // Antigravity CLI: a model's variants by effort on one row, the slider below.
+    const groups = p.id === AGY ? groupByEffort(listed.map((m) => m.id)) : null;
+    const models: ModelInfo[] = groups
+      ? groups.map((g) => {
+          const alone = g.levels.length === 0 ? listed.find((m) => m.id === g.ids.get("")) : undefined;
+          return alone ?? { id: [...g.ids.values()].includes(current) ? current : variantFor(g, levelOf(groups, current)), label: g.name };
+        })
+      : listed;
+    /**
+     * The model a click on a row picks. A group's: the variant at the level in
+     * use when it is clicked (the slider may have moved since the list was drawn).
+     */
+    const picked = (m: ModelInfo): string => {
+      const g = groups ? groupOf(groups, m.id) : undefined;
+      if (!groups || !g || g.levels.length === 0) return m.id;
+      const now = activeModel(State.settings);
+      return [...g.ids.values()].includes(now) ? now : variantFor(g, levelOf(groups, now));
+    };
     for (const m of models) {
       const on = m.id === current;
       const row = h(
@@ -1757,7 +1810,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
       );
       if (holds(p)) row.append(loadButton(p, m.id));
       row.addEventListener("click", () => {
-        State.settings = withModel(State.settings, p.id, m.id);
+        State.settings = withModel(State.settings, p.id, picked(m));
         saveSettings();
         onPicked();
         Sound.play("blip");
@@ -1769,6 +1822,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     drawCaps();
     list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
     if (holds(p)) void drawLoaded(p, models.map((m) => m.id));
+    if (groups) drawEfforts();
   }
 
   /** Ollama and LM Studio load and eject models; a custom server doesn't say. */
@@ -1949,6 +2003,12 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     close,
     refreshCaps,
     replacementFor,
+    variantOf(model: string) {
+      // Before the list is asked (the CLI is started only by the picker), its name says it.
+      const listed = cache.get(AGY);
+      if (!listed) return splitEffort(model);
+      return groupOf(groupByEffort(listed.map((m) => m.id)), model)?.levels.length ? splitEffort(model) : null;
+    },
     get isOpen() {
       return isOpen;
     },
@@ -2753,8 +2813,11 @@ export function buildPrompt(
     const p = providerDef(State.settings.chatProvider);
     modelDot.style.background = p.accent;
     const model = activeModel(State.settings) || t(STRINGS.noModel);
-    const effort = effortFor(p.id, State.settings.chatEffort);
-    modelName.textContent = effort ? `${model} · ${effortLabel(effort)}` : model;
+    // Antigravity CLI: its model's effort, said as Claude Code's is (`gemini-4-argon · High`).
+    const variant = p.id === AGY ? picker.variantOf(model) : null;
+    const effort = variant ? variant.level : effortFor(p.id, State.settings.chatEffort);
+    const name = variant ? variant.base : model;
+    modelName.textContent = effort ? `${name} · ${effortLabel(effort)}` : name;
     // A long name is cut; the whole of it shows on hover.
     modelName.title = modelName.textContent;
     modelBtn.classList.toggle("open", picker.isOpen);
