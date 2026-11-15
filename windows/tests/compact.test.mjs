@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {
   CompactFeed, MAIL_OPEN_MAX_H, MAIL_PEEK_MS, NOTICE_MS, activityLine, mailOpenHeight, mailPieces, mailReadable, mailTime, activityLines, parseDuration, speakerName, takeTimers, timerLeft,
 } from "../src/core/compact.ts";
-import { COMPACT_SIZES, COMPACT_W, NOTCH_H, computerCompact, islandSize } from "../src/core/layout.ts";
+import { COMPACT_BOT_X, COMPACT_SIZES, COMPACT_W, COMPUTER_COMPACT_W, NOTCH_H, computerCompact, islandSize } from "../src/core/layout.ts";
 
 const first = (shown) => shown.items[0];
 const kinds = (shown) => (shown?.kind === "items" ? shown.items.map((i) => i.kind) : []);
@@ -174,6 +174,20 @@ test("while Claude uses the computer the closed island is a short pill with Lumo
   assert.equal(top.bot.cy, NOTCH_H / 2);
   const side = computerCompact("left");
   assert.deepEqual([side.w, side.h], [top.h, top.w], "upright on a side, turned");
+  assert.deepEqual(computerCompact("top", 0), top, "nothing to say: the short pill");
+});
+
+test("with a plan the closed island says the step beside Lumo, as wide as that and no wider than two activities", () => {
+  const plan = computerCompact("top", 312);
+  assert.equal(plan.w, 312, "as wide as what it says");
+  assert.equal(plan.h, NOTCH_H);
+  assert.equal(plan.bot.cx, COMPACT_BOT_X + 4, "Lumo at its left end, as on any closed island that says something");
+  assert.equal(computerCompact("bottom", 312).w, 312, "the same on the bottom edge");
+  assert.equal(computerCompact("top", 2000).w, COMPACT_SIZES.two.w, "a long step is cut, not the island widened");
+  assert.equal(computerCompact("top", 60).w, COMPUTER_COMPACT_W, "never narrower than the short pill");
+  const side = computerCompact("right", 312);
+  assert.deepEqual([side.w, side.h], [NOTCH_H, COMPUTER_COMPACT_W], "upright on a side: no room for words, the short pill");
+  assert.equal(side.bot.cx, COMPUTER_COMPACT_W / 2);
 });
 
 test("an agent's step is said in fewer words: a file's name stays, a command or a search goes", async () => {
