@@ -13,8 +13,11 @@ pub enum Event {
     /// A piece of the answer's text.
     Text(String),
     /// Pieces of tool calls, each with its `index` (the OpenAI API streams a
-    /// call's arguments in pieces; Ollama sends each call whole).
-    Calls(Vec<Value>),
+    /// call's arguments in pieces; Ollama sends each call whole), and the
+    /// text that came in the same piece, before them (Ollama, and a server
+    /// that decodes several tokens at once, send the last words with the
+    /// call): empty when none did.
+    Calls(Vec<Value>, String),
     /// What the request and its answer took, in tokens (the last event, with
     /// `stream_options.include_usage`).
     Usage(u64),
@@ -61,10 +64,11 @@ pub fn parse_sse_line(line: &str) -> Option<Event> {
     // that also carries the usage (vLLM's continuous usage, a server that
     // ends with both) are read all the same; `usage_of` reads its usage.
     if let Some(delta) = json.pointer("/choices/0/delta") {
+        let text = delta.get("content").and_then(Value::as_str).filter(|s| !s.is_empty());
         if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array).filter(|c| !c.is_empty()) {
-            return Some(Event::Calls(calls.clone()));
+            return Some(Event::Calls(calls.clone(), text.unwrap_or_default().to_string()));
         }
-        if let Some(text) = delta.get("content").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        if let Some(text) = text {
             return Some(Event::Text(text.to_string()));
         }
         if ["reasoning_content", "reasoning"].iter().any(|k| delta.get(*k).and_then(Value::as_str).is_some_and(|r| !r.is_empty())) {
@@ -240,7 +244,10 @@ mod tests {
         assert_eq!(parse_sse_line("data: not json"), None);
         assert_eq!(parse_sse_line(r#"data: {"error":{"message":"out of memory"}}"#), Some(Event::Error("out of memory".into())));
         let line = r#"data: {"choices":[{"delta":{"content":"","tool_calls":[{"index":0,"id":"c1","function":{"name":"set_timer"}}]}}]}"#;
-        assert!(matches!(parse_sse_line(line), Some(Event::Calls(c)) if c.len() == 1));
+        assert!(matches!(parse_sse_line(line), Some(Event::Calls(c, t)) if c.len() == 1 && t.is_empty()));
+        // The last words in the same piece as the call are kept with it.
+        let line = r#"data: {"choices":[{"delta":{"content":" uno per uno.","tool_calls":[{"index":0,"id":"c1","function":{"name":"workspace_read"}}]}}]}"#;
+        assert!(matches!(parse_sse_line(line), Some(Event::Calls(c, t)) if c.len() == 1 && t == " uno per uno."));
     }
 
     #[test]
@@ -280,7 +287,7 @@ mod tests {
     #[test]
     fn a_chunk_with_the_usage_keeps_its_calls_and_text() {
         let calls = r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"set_timer","arguments":"{}"}}]}}],"usage":{"total_tokens":120}}"#;
-        assert!(matches!(parse_sse_line(calls), Some(Event::Calls(c)) if c.len() == 1));
+        assert!(matches!(parse_sse_line(calls), Some(Event::Calls(c, _)) if c.len() == 1));
         assert_eq!(usage_of(calls), Some(120));
         let text = r#"data: {"choices":[{"delta":{"content":"Ciao"}}],"usage":{"total_tokens":121}}"#;
         assert_eq!(parse_sse_line(text), Some(Event::Text("Ciao".into())));

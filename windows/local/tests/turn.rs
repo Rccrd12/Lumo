@@ -779,3 +779,36 @@ fn every_piece_of_the_stream_is_a_sign_of_life() {
     assert_eq!(outcome.unwrap().text, "Ciao.");
     assert_eq!(island.signals, 2, "the request and the whole answer");
 }
+
+#[test]
+fn the_words_that_come_with_a_call_are_kept() {
+    // Ollama, and servers that decode several tokens at once (MTP, a draft
+    // model), send the last words of the text in the same piece as the call.
+    let mut island = Island::default();
+    let mut body = question("Leggi il progetto", &["workspace_read"]);
+    let with_call = json!({ "choices": [{ "delta": { "content": " file uno per uno.", "tool_calls": [{ "index": 0, "id": "c1", "function": { "name": "workspace_read", "arguments": "{}" } }] } }] });
+    let replies = vec![Reply::Events(vec![text("Ora leggo ogni"), with_call.to_string(), finish("tool_calls"), DONE.into()]), answer("Fatto.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("with call", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.said, ["Ora leggo ogni file uno per uno."]);
+    assert!(island.shown.iter().any(|s| s == "Ora leggo ogni file uno per uno."), "{:?}", island.shown);
+    assert_eq!(requests[1]["messages"][2]["content"], "Ora leggo ogni file uno per uno.");
+    assert_eq!(island.ran.len(), 1);
+}
+
+#[test]
+fn the_same_words_said_again_after_a_tool_show_once_while_the_turn_goes_on() {
+    let mut island = Island::default();
+    let mut body = question("Leggi il progetto", &["workspace_read"]);
+    let said = "Ho copiato la cartella. Ora leggo i file uno per uno.";
+    let replies = vec![calls_after(said, "c1"), calls_after(said, "c2"), answer("Ecco cosa fa.")];
+    let (outcome, _) = turn(replies, &mut body, &rules("again", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.answer(), format!("{said}\n\nEcco cosa fa."));
+    // Never twice on the island, before the end either.
+    assert!(island.shown.iter().all(|s| s.matches(said).count() <= 1), "{:?}", island.shown);
+}
+
+fn calls_after(said: &str, id: &str) -> Reply {
+    Reply::Events(vec![text(said), call(id, "workspace_read", "{}"), finish("tool_calls"), DONE.into()])
+}

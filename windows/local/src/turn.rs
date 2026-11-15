@@ -147,14 +147,19 @@ impl Outcome {
     /// The same words said twice in a row (a model that repeats itself
     /// after a tool) are said once.
     pub fn answer(&self) -> String {
-        let mut parts: Vec<&str> = Vec::new();
-        for s in self.said.iter().chain([&self.text]).map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            if parts.last() != Some(&s) {
-                parts.push(s);
-            }
-        }
-        parts.join("\n\n")
+        joined(self.said.iter().chain([&self.text]))
     }
+}
+
+/// What was said, one paragraph each, the same words said twice in a row once.
+fn joined<'a>(said: impl IntoIterator<Item = &'a String>) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for s in said.into_iter().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if parts.last() != Some(&s) {
+            parts.push(s);
+        }
+    }
+    parts.join("\n\n")
 }
 
 /// Whether the stream of `key` (server and model) hung in this session, after
@@ -220,8 +225,19 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         if !hushed {
             hooks.doing(doing);
         }
-        let before = said.join("\n\n");
-        let after_before = |visible: &str| if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") };
+        // The island shows what was said as the answer will: the same words
+        // said again after a tool, once.
+        let before = joined(&said);
+        // What the island shows with this round's words after them. None
+        // while the words only say again what was said last (a model that
+        // repeats itself after a tool): they show once, as in the answer.
+        let after_before = |visible: &str| -> Option<String> {
+            let words = visible.trim();
+            if !words.is_empty() && said.last().is_some_and(|last| last.trim().starts_with(words)) {
+                return None;
+            }
+            Some(if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") })
+        };
         let answer = if whole {
             let mut asked = std::pin::pin!(ask_whole(to, body));
             let answer = loop {
@@ -233,7 +249,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             };
             if let Ok(a) = &answer {
                 if !a.text.is_empty() && !hushed {
-                    hooks.shown(&after_before(&progressive_filter(&a.text)));
+                    if let Some(shown) = after_before(&progressive_filter(&a.text)) {
+                        hooks.shown(&shown);
+                    }
                 }
             }
             answer
@@ -246,7 +264,11 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 // answer is doing.
                 _ if hushed => {}
                 Seen::Text(visible) if visible.is_empty() => {}
-                Seen::Text(visible) => hooks.shown(&after_before(&visible)),
+                Seen::Text(visible) => {
+                    if let Some(shown) = after_before(&visible) {
+                        hooks.shown(&shown);
+                    }
+                }
                 Seen::Reasoning => hooks.doing(Doing::Reasoning),
                 Seen::Calling(name) => hooks.doing(Doing::Calling(name)),
             })
@@ -327,7 +349,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 fixes.push("call read from the text");
                 // The plan's check stays unseen: the answer shown stays as it was.
                 if !hushed {
-                    hooks.shown(&after_before(&answer.text));
+                    hooks.shown(&after_before(&answer.text).unwrap_or_else(|| before.clone()));
                 }
             }
         }
