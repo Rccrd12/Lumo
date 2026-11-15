@@ -16,6 +16,7 @@ mod chat_files;
 mod chat_usage;
 mod claude;
 mod claude_code;
+mod click_hold;
 mod clipboard;
 mod acp_chat;
 mod codex_chat;
@@ -235,8 +236,18 @@ fn focus_window(app: AppHandle, focused: bool) {
     let Some(win) = island::window(&app) else { return };
     platform::set_activating(&win, focused);
     if focused {
+        // Given the keyboard on purpose: its clicks are its own again.
+        click_hold::set(&app, false);
         let _ = win.set_focus();
     }
+}
+
+/// While the computer is in use, a click on the island leaves the front to the
+/// window the agent works in (click_hold.rs; core/computer.ts islandHoldsClicks
+/// says when).
+#[tauri::command]
+fn hold_clicks(app: AppHandle, hold: bool) {
+    click_hold::set(&app, hold);
 }
 
 #[tauri::command]
@@ -381,10 +392,24 @@ fn open_url(url: String) {
         outlook::open(&url);
         return;
     }
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
+    if !(url.starts_with("http://") || url.starts_with("https://") || plain_mailto(&url)) {
         return;
     }
     platform::open_url(&url);
+}
+
+/// A mailto: link the mail program may be handed: an address and nothing
+/// else (no `?subject=`, no `?attach=` a mail program could read a file
+/// with). The island's Email view sends these (views/mail-view.ts).
+fn plain_mailto(url: &str) -> bool {
+    let Some(address) = url.strip_prefix("mailto:") else { return false };
+    let Some((user, domain)) = address.split_once('@') else { return false };
+    !user.is_empty()
+        && user.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '%' | '+' | '-'))
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && domain.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
 }
 
 /// "Open terminal" opens the working folder in VS Code when `code` is on PATH,
@@ -737,14 +762,11 @@ async fn chat_send(
     // while this answer is written goes with the next message. The chat's own
     // provider and model, when the page names them, answer it.
     let settings = chat::with_pick(shared.settings.lock().unwrap().clone(), provider.as_deref(), model.as_deref());
-    let shots: Vec<String> = screen.as_ref().map(|s| s.shots.iter().map(|r| r.path.clone()).collect()).unwrap_or_default();
-    let reply = chat::send(&app, &chat, &settings, query, context, screen).await;
-    // Screenshots are read once the turn is answered: they don't stay on disk.
-    // A failed turn keeps them, so the same message can be sent again.
-    if reply.is_ok() {
-        screen::discard(&shots);
-    }
-    reply
+    // The screenshots stay in the inbox with the chat that sent them, like its
+    // dropped files: its question shows them, and editing it sends them again.
+    // They go when the chat is deleted (files.rs release), or with the inbox's
+    // tidying once no chat names them.
+    chat::send(&app, &chat, &settings, query, context, screen).await
 }
 
 /// The models a provider offers, for the picker in the chat view. Only asked
@@ -889,6 +911,13 @@ fn chat_stop_agent(chat_id: String, agent_id: String) -> Result<(), String> {
     chat_agents::stop(&chat_id, &agent_id)
 }
 
+/// "Send now and stop them": the chat's next message may start its CLI again
+/// with other settings, ending the agents still at work (chat_agents.rs WOULD_STOP).
+#[tauri::command]
+fn chat_allow_restart(chat_id: String) {
+    chat_agents::allow_restart(&chat_id);
+}
+
 /// An edited message: the conversation goes back to its first `keep` turns
 /// (as `chat_send` counted them) before the edited one is sent.
 #[tauri::command]
@@ -923,8 +952,8 @@ struct SavedTurn {
 /// or Antigravity CLI conversation that answered it, if any, so the next
 /// question continues it.
 #[tauri::command]
-fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
-    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, cli: Option<String>, compact: Option<SavedCompact>) {
+    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, cli, compact.map(|c| (c.upto, c.summary)));
 }
 
 /// chat_restore for a chat that is not on screen: the Listening events use it
@@ -935,10 +964,10 @@ fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, ses
 /// chat on screen, or an answer to an earlier event still being written) its
 /// own is the newer one, and restoring would drop that answer.
 #[tauri::command]
-fn chat_load(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
+fn chat_load(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, cli: Option<String>, compact: Option<SavedCompact>) {
     let (chat, fresh) = chats.load(&chat_id);
     if fresh {
-        chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+        chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, cli, compact.map(|c| (c.upto, c.summary)));
     }
 }
 
@@ -1408,6 +1437,7 @@ pub fn run() {
             set_collapsed,
             set_island_rect,
             focus_window,
+            hold_clicks,
             reposition,
             list_monitors,
             open_url,
@@ -1466,6 +1496,7 @@ pub fn run() {
             chat_commands,
             chat_stop,
             chat_stop_agent,
+            chat_allow_restart,
             chat_rewind,
             chat_forget_file,
             island_drag,
@@ -1495,6 +1526,7 @@ pub fn run() {
             listen::listen_list,
             listen_github::listen_github_names,
             listen::listen_stop,
+            listen::listen_move,
             listen::listen_pause,
             listen::listen_history,
             listen::listen_history_clear,
@@ -1631,8 +1663,22 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{diff_file, keep_size};
+    use super::{diff_file, keep_size, plain_mailto};
     use crate::settings::{Settings, ViewSize};
+
+    #[test]
+    fn only_a_plain_mailto_address_goes_to_the_mail_program() {
+        assert!(plain_mailto("mailto:ada@example.com"));
+        assert!(plain_mailto("mailto:ada.l+news@mail.example.co.uk"));
+        assert!(!plain_mailto("mailto:ada@example.com?attach=C:\\Users\\a\\secret.txt"));
+        assert!(!plain_mailto("mailto:ada@example.com?subject=hi"));
+        assert!(!plain_mailto("mailto:ada@localhost"));
+        assert!(!plain_mailto("mailto:@example.com"));
+        assert!(!plain_mailto("mailto:a b@example.com"));
+        assert!(!plain_mailto("mailto:ada@example..com"));
+        assert!(!plain_mailto("file:///C:/Windows"));
+        assert!(!plain_mailto("mailto:ada@example.com\" & calc"));
+    }
 
     #[test]
     fn a_resized_view_keeps_its_size_and_leaves_the_others_alone() {

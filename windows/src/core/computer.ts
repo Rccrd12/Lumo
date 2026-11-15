@@ -43,25 +43,6 @@ export const COMPUTER_TEXT = {
   using: N_("Using the computer"),
 };
 
-/**
- * The permission card's line when Windows says what is at the point
- * (views/computer-card.ts): the action and the thing it acts on. `{name}` is
- * what Windows calls it (UI Automation), drawn apart from the words.
- */
-export const COMPUTER_ON_TEXT = {
-  left_click: N_("Click on «{name}»"),
-  right_click: N_("Right click on «{name}»"),
-  middle_click: N_("Middle click on «{name}»"),
-  double_click: N_("Double click on «{name}»"),
-  triple_click: N_("Triple click on «{name}»"),
-  mouse_move: N_("Move the mouse to «{name}»"),
-  left_click_drag: N_("Drag to «{name}»"),
-  scroll_up: N_("Scroll up on «{name}»"),
-  scroll_down: N_("Scroll down on «{name}»"),
-  scroll_left: N_("Scroll left on «{name}»"),
-  scroll_right: N_("Scroll right on «{name}»"),
-};
-
 /** Each way of scrolling, in full: a direction alone is also a value elsewhere ("left"). */
 const SCROLLS: Record<string, string> = {
   up: N_("Scroll up"),
@@ -74,6 +55,38 @@ const SCROLLS: Record<string, string> = {
 /** True for one of Lumo's computer use tools. */
 export function isComputerTool(tool: string): boolean {
   return computerToolName(tool) != null;
+}
+
+/**
+ * Whether a click on a permission card may give the island the keyboard (for
+ * Y and N). Not for a computer action, nor while computer use is under way:
+ * the island taking the keyboard brings it to the front, and Windows then
+ * closes whatever the agent opened that goes away when it loses the front
+ * (the Start menu, Search, a browser's suggestions, a drop-down), so the
+ * next action would type into nothing. The card's buttons work without the
+ * keyboard; its shortcut still gives it, the user's own choice.
+ */
+export function cardClickTakesKeyboard(
+  tool: string,
+  computer: { engaged: boolean; stopped: boolean } | null,
+  computerActive: boolean,
+): boolean {
+  return !islandHoldsClicks(tool, computer, computerActive);
+}
+
+/**
+ * Whether a click anywhere on the island must leave the front where it is
+ * (Bridge.holdClicks): while an agent uses the computer, and while a computer
+ * action's card waits. WebView2 brings the island to the front on a click by
+ * itself, whatever the page does, so the island's own windows are told not to.
+ */
+export function islandHoldsClicks(
+  tool: string | null,
+  computer: { engaged: boolean; stopped: boolean } | null,
+  computerActive: boolean,
+): boolean {
+  if (tool != null && isComputerTool(tool)) return true;
+  return computerActive || !!(computer?.engaged && !computer.stopped);
 }
 
 /** Typed text for the card: ⏎ at each Enter (then a new line), ⇥ at each Tab. */
@@ -103,40 +116,6 @@ const POINTED = new Set(["left_click", "right_click", "middle_click", "double_cl
 export function computerPoint(tool: string, input: Record<string, unknown>): [number, number] | null {
   const name = computerToolName(tool);
   return name != null && POINTED.has(name) ? pointOf(input.coordinate) : null;
-}
-
-/**
- * The card's words for an action on a thing Windows named ("Click on «Save
- * as…»"), in three parts so the name can be drawn apart: the words before it,
- * the name, the words after it (the order is the language's). Null for an
- * action with no point, or no name.
- */
-export function computerActionOn(tool: string, input: Record<string, unknown>, name: string): { before: string; name: string; after: string } | null {
-  const tool_ = computerToolName(tool);
-  const named = name.replace(/\s+/g, " ").trim();
-  if (tool_ == null || !POINTED.has(tool_) || !named) return null;
-  // A scroll that does not say which way is not said on the thing: the card
-  // keeps its plain line rather than a way it may not go.
-  const dir = scrollDirection(input);
-  if (tool_ === "scroll" && dir == null) return null;
-  const key = (tool_ === "scroll" ? `scroll_${dir}` : tool_) as keyof typeof COMPUTER_ON_TEXT;
-  const words = t(COMPUTER_ON_TEXT[key]);
-  const at = words.indexOf("{name}");
-  if (at < 0) return { before: words, name: "", after: "" };
-  // The quotes go with the name: the words around it are what is done.
-  const open = /[«“„"'‘「『][\s\u00a0]*$/.exec(words.slice(0, at))?.[0] ?? "";
-  const close = /^[\s\u00a0]*[»”"'’」』]/.exec(words.slice(at + 6))?.[0] ?? "";
-  return { before: words.slice(0, at - open.length), name: `${open}${named}${close}`, after: words.slice(at + 6 + close.length) };
-}
-
-/**
- * Which way a scroll goes, from the request's own input (its
- * scroll_direction), null when it says none of the four. The card takes it
- * from there, never from its translated line.
- */
-export function scrollDirection(input: Record<string, unknown>): "up" | "down" | "left" | "right" | null {
-  const dir = input.scroll_direction;
-  return dir === "up" || dir === "down" || dir === "left" || dir === "right" ? dir : null;
 }
 
 /**

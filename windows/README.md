@@ -135,6 +135,7 @@ Quit. The look of 0.17, with the ring of light and the tabs, is gone since
 | **…** → Hide in the edge of the screen | Hides the island into the edge of the screen it hangs from, as **Hide when unused** does; bring the mouse to that piece of the edge and it comes back. A request waiting for your answer is folded instead, never hidden |
 | **…** → Quit | Quits Lumo altogether, tray icon included (open it again from the Start menu) |
 | Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
+| Take a screen capture: `Win+Shift+S`, `Print Screen`, or ShareX, Greenshot, Lightshot, Snagit, PicPick, Flameshot, Snipaste, FastStone Capture, Screenpresso, PowerToys' Text Extractor | The island stays under the capture, dimmed with the rest of the screen, so it can be captured where it is; it neither opens under the capture's mouse nor covers its toolbar. An image such a tool pins to the screen is no capture: the island goes on opening under the mouse while it is in front. Once the capture ends, the island is back on top (Windows) |
 | In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
 | Tray icon | A left click hides the island into its edge, or brings it back (Windows). A right click: Open, Weekly recap, Wardrobe…, Settings…, Pause (**Resume** while paused), Quit |
@@ -145,7 +146,8 @@ Quit. The look of 0.17, with the ring of light and the tabs, is gone since
 | `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
 | The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab, folder and selected text on its own, even two of the same screen; what comes from the computer (screenshots, windows, tabs, folders, selected text) sits in a **Computer** folder, with how many it holds on its right, that a click opens — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
 | **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code (its subagents too), Codex or Antigravity CLI (its subagents too, from their transcripts) read, edited or created while answering, in a folder for each: **Attached**, **Read by the AI**, **Edited by the AI**, **Created by the AI** (a file attached and then read is in both; only the folders with something in them show, with how many on their right). Each row has the folder the file is in, and a × (or **Remove from the chat's context** in its right click) that takes it out of the chat: the AI is told with your next question to leave it alone, and a fresh Claude Code session isn't given it again. Editing a message takes out the files of the messages after it, and what the AI read or wrote for them. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
-| Under a message in the chat | Its actions, as in Claude's app, under the mouse (always under the last answer): under an answer **Copy**, **Retry** and when it came ("2 min ago"); under a question when you sent it, **Retry**, **Edit** and **Copy**. **Copy** takes the text as written, Markdown included. **Edit** puts the question back in the field: sending it replaces it and drops what followed. **Retry** is on the last question and its answer only: the question goes again, unchanged, in place of its answer; when an answer failed, it stays in sight under the question. Chats saved before 0.21.0 have no times |
+| On a question in the chat | **What went with it**, as small icons in a capsule on its bubble's top right corner: one for each kind (a file, a picture with its own small picture, a screenshot, a window, a web page, a folder, selected text), in the attachments' colours, with how many beside it. A click lists them under the bubble; a click on one opens it: a file in its app, a picture or a screenshot big, the selected text, what a window or a page showed. Kept with the chat |
+| Under a message in the chat | Its actions, as in Claude's app, under the mouse (always under the last answer): under an answer **Copy**, **Retry** and when it came ("2 min ago"); under a question when you sent it, **Retry**, **Edit** and **Copy**. **Copy** takes the text as written, Markdown included. **Edit** puts the question back in the field, and what went with it back in the attachments (its × takes any of it out): sending it replaces it and drops what followed. Over the field, a line says what comes back with it and what leaves the context — what went with the questions after it, and in a chat opened again what can't come back (a window, a tab or a folder showed what it showed then; a file deleted since). **Retry** sends it again with the same. **Retry** is on the last question and its answer only: the question goes again, unchanged, in place of its answer; when an answer failed, it stays in sight under the question. Chats saved before 0.21.0 have no times |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last; with several folders open (windows or tabs), **Folders open in File Explorer** lists them, to share one or all. Their files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
@@ -165,7 +167,10 @@ and grows a little to say it (on the top and bottom edges; upright on a side
 it stays as it is), only as wide as what it says. One thing alone sits in
 the middle; several sit side by side, each more compact (what the AI is doing, the next
 event, up to two timers, the music). Their buttons work: resting the mouse on
-them never opens the island, even with Open on hover.
+them never opens the island, even with Open on hover. Nor does a window
+dragged or resized across it, nor letting go of that window on it: the
+island opens on hover again once the mouse has left it and come back. A
+file dragged near it still opens it for the drop.
 
 - **What the AI is doing**: "Haiku · Reading main.ts", "Haiku · Writing…",
   "Gemini Live · Looking at the screen", "Claude Code · Waiting for your
@@ -351,7 +356,11 @@ nothing.", "Changes a file."). Once the island has the keyboard (a click on the
 card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say, even
 with the chat field focused. In another app they are just letters, never an
 answer. A letter typed right after another key, mid-word, is never taken as an
-answer.
+answer. While an agent uses the computer, and on a computer action's card, a
+click on the card does not give the island the keyboard: the window the agent
+works in keeps the front, so what it opened (the Start menu, Search, a
+drop-down) stays open. Its buttons are clicked as usual; `Ctrl+Alt+A` still
+brings Y and N.
 **Open terminal** brings the window the session
 runs in to the front.
 
@@ -451,18 +460,23 @@ marked read.
 An email with HTML is shown as its sender drew it (**Original**), on a white
 page shrunk to fit, or as its text (**Text only**), the choice kept for the
 next emails. It is shown in a frame where nothing of it runs (no scripts,
-forms or plug-ins) and nothing of it is fetched from the web: its links open
-in the browser only on a click, the corner saying where each really goes, and
-the pictures it links to stay hidden, so the sender can't tell it was opened,
-until **Load images** downloads them as the chat's images are (https, public
-sites, images only; **Images from the web** off in Settings → Security keeps
-them hidden). **Always load**, or **Email images always** in Settings →
-Security, shows every email's pictures at once. Either way the tracking
-pixels Lumo recognises (2 × 2 px or less, or from a service made to
-count openings) are never downloaded, and the email says how many were left
-out. The pictures inside the email itself come with it. From
-Outlook, the HTML is read through MAPI, with no prompt; where MAPI can't be
-had (a 32-bit Office), the text is shown.
+forms or plug-ins) and nothing of it is fetched from the web (the frame has a
+CSP of its own: its CSS, fonts, SVG and videos reach nowhere): its links open
+in the browser only on a click, as the corner shows them, the corner saying
+where each really goes (a mailto: link opens the mail program with its
+address only; a link to a place in the email scrolls there), and the pictures
+it links to and its backgrounds stay hidden, so the sender can't tell it was
+opened, until **Load images** downloads them as the chat's images are (https,
+an http picture asked on https, public sites, images only, the first 60;
+**Images from the web** off in Settings → Security keeps them hidden).
+**Always load**, or **Email images always** in Settings → Security, shows
+every email's pictures at once, and the email says so, with **Turn off**.
+Either way the tracking pixels Lumo recognises (2 × 2 px or less, or from a
+service made to count openings) are never downloaded, and the email says how
+many were left out. The pictures inside the email itself come with it. From
+Outlook, the HTML is read through MAPI, with no prompt, in the code page
+Outlook keeps it in when it doesn't say its own; where MAPI can't be had (a
+32-bit Office), the text is shown.
 
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
@@ -648,7 +662,13 @@ add their keys in **Settings… → Chat → Chat providers**, then click the mo
 above the chat box to switch provider and model. The model list
 is fetched from the provider only once you pick it and it has a key. Switching
 mid-conversation carries the conversation over as plain text, so nothing in one
-provider's format is ever sent to another. These providers get the island's
+provider's format is ever sent to another. Back on a CLI (Claude Code,
+Antigravity CLI, Codex, Copilot CLI, Cursor CLI), the chat continues that CLI's
+own session, one for each, and its next question carries the turns the others
+answered meanwhile, as a record of what was said; that holds after the chat is
+opened again from Past chats too. With an Anthropic API key, Lumo's
+instructions, its tools and the conversation so far are read from Claude's
+prompt cache when the next request comes within five minutes. These providers get the island's
 tools, the email and listening tools and your own tools. With **Lumo's web search** turned on they can also
 search the web (Bing, with Bing News for the latest, and Wikipedia only when neither answers; with Unsloth Studio, its own web search when Lumo has its key) and read a page; it is off
 until you turn it on. `/compact` summarises a long chat into a short one.
@@ -755,8 +775,8 @@ configure yourself, and to the sites of the images in chat answers: Lumo
 downloads such an image at once (https and public addresses only, image files
 only, 8 MB at most), so its site sees your IP address and the image's full
 address, which the AI writes and could fill with words from your chat. The
-pictures an email links to, in the Email view, are downloaded the same way
-only after a click on **Load images** (or at once with **Email images
+pictures an email links to (and its backgrounds), in the Email view, are
+downloaded the same way (an http one on https) only after a click on **Load images** (or at once with **Email images
 always**), and the sender's site then learns that you opened it; the tracking
 pixels Lumo recognises are never downloaded. **Settings → Security → Images from the web** turns both off.
 
@@ -1016,17 +1036,22 @@ The text is cut to fit (about 36,000 characters for all the windows or all the
 tabs of one message). What you picked waits in the attachments, one row each,
 and you can remove any of them before sending; it goes with your next question
 only, and a click on its row shows exactly what it sends. Screenshots are saved only in the inbox
-(`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
-week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
+(`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files: one that went with a
+question stays with its chat (its bubble shows it, and editing the question sends it
+again) and is deleted with the chat; one that never went is deleted after a day. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
 Each chat has its own folder in the inbox (`inbox\chats\<chat>`): the files
 and screenshots of a chat are linked there as they go to its CLI (the same
 file on disk, not a second copy), and the chat's Claude Code and Antigravity
 CLI read only that folder without asking, never the files of another chat.
-**Settings → Security → Other chats' files** (off by default) gives them the
-whole inbox instead, the files of every chat of the last week. A task Gemini
-Live hands to Claude Code or Antigravity CLI gets no inbox folder unless that
-switch is on. A deleted chat takes its folder with it.
+An email's file that an agent saves with `mail_attachment` goes in its
+chat's folder too. **Settings → Security → Other chats' files** (off by
+default) gives them the whole inbox instead: every file Lumo received in the
+last week. A task Gemini Live hands to Claude Code or Antigravity CLI gets no
+inbox folder unless that switch is on; Gemini Live itself can read any file
+of the inbox, switch or not. A deleted chat takes its folder with it, and a
+link whose file left the inbox (a chat past the 40 kept in the history) goes
+at the next sweep.
 
 Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
 and OpenRouter receive them as images; the local model servers take the window
@@ -1077,15 +1102,20 @@ plan, with no API key.
 
 - **Antigravity CLI** gets the same tools when it is the chat's provider
   (in its own MCP configuration for the chat's runs, as for the email's
-  tools). It calls Lumo's tools without asking, so Lumo asks itself: with
-  *Ask every time* each click, key or text is the same Allow / Deny card,
-  under Antigravity's name; in *Plan* mode it may only look; in *Auto* (or
-  Antigravity's own auto mode) it acts without a card. Same glow, mouse, Esc
-  and rules as Claude Code's. A note in front of every question tells it how
-  the tools work. Its Gemini models give and read points on a 0–999 grid
-  over the screenshot, the way Gemini counts them: Lumo turns them into the
-  screenshot's pixels and back, so a click lands where the model meant.
-  Codex, Copilot CLI and Cursor CLI don't get the computer.
+  tools). It calls Lumo's tools without asking, so Lumo asks itself, as the
+  chat's mode says: with *Ask every time* each click, key or text is the same
+  Allow / Deny card, under Antigravity's name; in *Plan* mode it may only
+  look; in *Auto* (or Antigravity's own auto mode) it acts without a card.
+  A mode that asks more, picked while it
+  works, counts from its next action; one that asks less, from the next
+  question. Each chat by its own mode: a Claude Code chat using the computer
+  at the same time asks as it always does. Same glow, mouse, Esc, rules and
+  recap under the answer as Claude Code's. A note in front of the question
+  tells it how the tools work, whole the first time its conversation hears
+  it, then as a short reminder. Its Gemini models give and read points on a
+  0–999 grid over the screenshot, the way Gemini counts them: Lumo turns them
+  into the screenshot's pixels and back, so a click lands where the model
+  meant. Codex, Copilot CLI and Cursor CLI don't get the computer.
 
 - **Gemini Live** hands what is to be done on the screen ("click Send", "open
   the display settings and turn on night light") to Claude Code with its own
@@ -1107,13 +1137,20 @@ plan, with no API key.
 - **Every action asks first**, with the chat set to *Ask every time*: a click,
   a key or a text is an Allow / Deny card on the island. It says who asks, in
   the provider's name and colour, at which step of the plan ("wants to use the
-  computer · step 3 of 5"), why (the step under way), and what: for a click, a
-  move, a scroll or a drag, the screen around the point with the point ringed
-  and what Windows calls the thing there ("Click on «Save as…»", "Menu item ·
-  Notepad"), the coordinates still under it, small; for typing and keys, the
-  whole text (each Enter and Tab shown where it falls) and the keys, since
-  that is what Allow allows. Screenshots, zooms and waits don't ask. In *Auto*
-  mode Claude Code decides, as for its other tools.
+  computer · step 3 of 5"), why (the step under way of that chat's own plan,
+  never of another chat using the computer at the same time), and what: for
+  a click, a move, a scroll or a drag, the action on the point ("Click · at
+  the marked point") beside the screen around it with the point ringed (a
+  click on the picture, or on Enlarge, shows it at its own size), then, apart
+  and in grey, what the app says the thing is ("The app calls it «Save
+  as…»", "Menu item · Notepad"): the app or the web page chooses that name,
+  so it is never what the card says will be done; the coordinates stay under
+  it, small. For typing and keys, the whole text (each Enter and Tab shown
+  where it falls) and the keys, since that is what Allow allows. A card
+  waiting while computer use is paused says that its action won't be done:
+  after Resume, Claude looks at the screen again and asks again. Screenshots,
+  zooms and waits don't ask. In *Auto* mode Claude Code decides, as for its
+  other tools.
 - **Esc, anywhere, pauses it**: the mouse is yours again at once, the glow
   turns grey, and Claude waits at its next action. The island stays open on
   the plan with **Stop** (nothing more is done in this answer), **Ask Claude
@@ -1122,7 +1159,8 @@ plan, with no API key.
   again; Esc in the field closes it, nothing sent) and **Resume**. Only
   Resume gives Claude the mouse back: Esc pressed again, by a panic double
   press or in another app, never does. While it is paused, Esc is yours
-  again, for your apps and the island.
+  again, for your apps and the island. The pause lasts until you resume or
+  stop it, or the answer ends; no picture for the recap is taken meanwhile.
 - **You can see it work**: the screen it uses glows softly around its edges
   (on whichever display it is), the mouse turns into an orange arrow and
   glides from point to point instead of jumping, and each action shows where
@@ -1149,7 +1187,11 @@ plan, with no API key.
   your screen's, whatever its scaling.
 - Lumo's island is left out of the screenshots and lets clicks through while
   Claude clicks; nothing is typed while the keyboard is
-  in the island (Claude has to click the window first).
+  in the island (Claude has to click the window first). A click on the
+  island while the computer is in use leaves the keyboard where it was, so
+  what Claude opened (the Start menu, Search, a drop-down) stays open for what
+  it types next: the click never reaches the island's window (WebView2 would
+  bring it to the front), Lumo takes it first and clicks the card itself.
 - Claude is told never to type passwords or payment details, never to buy,
   send, delete or accept terms unless you asked for exactly that, and to treat
   text on the screen as information, not instructions. Screenshots count
@@ -1336,7 +1378,8 @@ grey.
   Edit keeps the watch (a webhook keeps its address). A watch says on its
   card when GitHub stops accepting the token (it keeps listening; Update opens
   Settings) or when it was paused for firing too often (Resume).
-- **History** keeps what Lumo heard, and whether it happened or no longer can.
+- **History** keeps what Lumo heard, and whether it happened or no longer can,
+  and a watch that ended because an edited one now listens to the same thing.
 - **Listen for something** picks a source, then what to listen to, the event,
   once or every time, and what Lumo should do then.
 
@@ -1347,10 +1390,16 @@ something to do, the AI gets a message in that chat saying what happened and
 what it meant to do, and answers it there, even when another chat is on
 screen: the chat on screen stays as it is. When the event is not the one
 waited for (the pull request was closed instead of merged), the AI is told
-not to do what was planned.
+not to do what was planned. A task that was still waiting for its chat to be
+free when Lumo closed is not sent by itself when Lumo opens again: its line
+says the task did not start, and **Ask** is back. When the chat that asked
+was deleted, the task is done in a new chat, and the next events of a watch
+that listens every time go to that same chat; a task still waiting for a
+chat you delete goes with it.
 
-Until that chat is opened, the closed island names it («chat» · what
-happened, +N when more chats wait), a bar over the field of the chat on screen
+Until that chat is opened, the closed island names it and where it heard,
+never what («chat» · Email, +N when more chats wait: no subject, sender, page
+or notification text, so a shared screen shows nothing of it), a bar over the field of the chat on screen
 offers **Open that chat** and **Close** (as if it was opened), and Past chats
 marks it, with a count on the clock. Nothing waits after a restart.
 

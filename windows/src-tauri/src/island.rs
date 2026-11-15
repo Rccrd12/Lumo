@@ -408,9 +408,14 @@ fn effective_offset(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> f64
 const HIT_MARGIN: f64 = 14.0;
 
 #[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct CursorPayload {
     pub x: f64,
     pub y: f64,
+    /// A window is being moved or sized (platform::window_moving): the cursor
+    /// passing over the island is carrying it, so it does not open the island
+    /// (src/island/window-move.ts).
+    pub window_moving: bool,
 }
 
 /// The island shape in window-logical coordinates, pushed by the front end.
@@ -443,6 +448,11 @@ impl PollGate {
             rect: Mutex::new(IslandRect::default()),
             ignoring: AtomicBool::new(false),
         }
+    }
+
+    /// The island lets the mouse through right now (the cursor is off its shape).
+    pub fn lets_mouse_through(&self) -> bool {
+        self.ignoring.load(Ordering::Relaxed)
     }
 
     pub fn set_rect(&self, rect: IslandRect) {
@@ -1054,7 +1064,7 @@ pub fn keep_on_top(app: &AppHandle) {
 /// by executable name without `.exe`: Windows' Snipping Tool (Win+Shift+S,
 /// Print Screen; ScreenClippingHost on Windows 10) and the common ones people
 /// install.
-const CAPTURE_TOOLS: [&str; 9] = [
+const CAPTURE_TOOLS: [&str; 13] = [
     "SnippingTool",
     "ScreenClippingHost",
     "ShareX",
@@ -1064,10 +1074,47 @@ const CAPTURE_TOOLS: [&str; 9] = [
     "Snagit32",
     "PicPick",
     "flameshot",
+    "Snipaste",
+    "FSCapture",
+    "Screenpresso",
+    // PowerToys' Text Extractor (Win+Shift+T): a whole-screen overlay too.
+    "PowerToys.PowerOCR",
 ];
 
 pub fn is_capture_tool(exe: &str) -> bool {
     CAPTURE_TOOLS.iter().any(|tool| tool.eq_ignore_ascii_case(exe))
+}
+
+/// Windows' own capture: every always-on-top window it shows belongs to a
+/// capture or a recording (the overlay, its toolbar, the recording bar), so
+/// the island stays under each. The others also keep always-on-top windows
+/// that are no capture (an image pinned to the screen, Snagit's capture
+/// widget): theirs count only while one of them covers a whole display.
+pub fn capture_is_any_window(exe: &str) -> bool {
+    ["SnippingTool", "ScreenClippingHost"].iter().any(|tool| tool.eq_ignore_ascii_case(exe))
+}
+
+/// A window's rectangle (left, top, right, bottom) covers a display's whole:
+/// a capture's overlay, not a window on it.
+pub fn covers_display(window: (i32, i32, i32, i32), display: (i32, i32, i32, i32)) -> bool {
+    display.2 > display.0
+        && display.3 > display.1
+        && window.0 <= display.0
+        && window.1 <= display.1
+        && window.2 >= display.2
+        && window.3 >= display.3
+}
+
+/// A screen capture came to the front (platform::capturing): the island goes
+/// right under its overlay, even if it climbed above it a moment before (the
+/// tool brought a window of its own to the front first, or the event of the
+/// window before came late). Claude's hand goes last, so it stays above the
+/// island, as in `keep_on_top`.
+pub fn stay_under(app: &AppHandle, overlay: isize) {
+    for label in [WINDOW_LABEL, crate::computer::OVERLAY] {
+        let Some(win) = app.get_webview_window(label) else { continue };
+        platform::place_under(&win, overlay);
+    }
 }
 
 #[cfg(test)]
@@ -1079,13 +1126,42 @@ mod placement_tests {
 
     #[test]
     fn screen_capture_tools_are_known_by_their_program() {
-        for exe in ["SnippingTool", "ScreenClippingHost", "sharex", "Greenshot", "PicPick", "SnagitCapture"] {
+        for exe in [
+            "SnippingTool", "ScreenClippingHost", "sharex", "Greenshot", "PicPick", "SnagitCapture", "Snipaste", "FSCapture",
+            "Screenpresso", "PowerToys.PowerOCR",
+        ] {
             assert!(is_capture_tool(exe), "{exe}");
         }
-        // Not a video player, a game overlay, the taskbar, or a name it only contains.
-        for exe in ["vlc", "Discord", "explorer", "ShareXHelper", ""] {
+        // Not a video player, a game overlay, the taskbar, PowerToys itself, or a name it only contains.
+        for exe in ["vlc", "Discord", "explorer", "ShareXHelper", "PowerToys", "Snipaste2", ""] {
             assert!(!is_capture_tool(exe), "{exe}");
         }
+    }
+
+    #[test]
+    fn only_windows_own_capture_counts_every_window_on_top() {
+        assert!(capture_is_any_window("SnippingTool"));
+        assert!(capture_is_any_window("screenclippinghost"));
+        // An image pinned to the screen by ShareX or Snipaste is no capture.
+        for exe in ["ShareX", "Snipaste", "SnagitCapture", "Greenshot", ""] {
+            assert!(!capture_is_any_window(exe), "{exe}");
+        }
+    }
+
+    #[test]
+    fn an_overlay_covers_a_whole_display_and_a_pinned_image_does_not() {
+        let fhd = (0, 0, 1920, 1080);
+        assert!(covers_display(fhd, fhd));
+        // ShareX's overlay spans every display, the one on the left included.
+        assert!(covers_display((-2560, -200, 1920, 1440), fhd));
+        assert!(covers_display((-2560, -200, 1920, 1440), (-2560, 0, 0, 1440)));
+        // A pinned image, a toolbar, a window one pixel short, a display it misses.
+        assert!(!covers_display((100, 100, 600, 400), fhd));
+        assert!(!covers_display((760, 0, 1160, 60), fhd));
+        assert!(!covers_display((0, 0, 1920, 1079), fhd));
+        assert!(!covers_display(fhd, (1920, 0, 4480, 1440)));
+        // No display (an empty rectangle) is covered by nothing.
+        assert!(!covers_display(fhd, (0, 0, 0, 0)));
     }
 
     #[test]
@@ -1363,7 +1439,10 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
     std::thread::spawn(move || {
         let mut pressed_in_panel = false;
         let mut pressed_at = (0.0, 0.0);
-        // That press, carried near the island: from then on it is a file drag.
+        // The thread of the window that press was meant for (platform::thread_under).
+        let mut pressed_thread = 0u32;
+        // That press, carried near the island as a drag that may hold a file
+        // (platform::may_carry_file): from then on the island takes the mouse.
         let mut came_near = false;
         let mut was_down = false;
         // Remembered across wakes so a display change while hidden is noticed the
@@ -1420,6 +1499,10 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // the mouse is the capture's, so the island neither opens under
                 // it nor hears its clicks.
                 if platform::capturing() {
+                    // The button is still followed: a capture that ends with
+                    // it held (a window picked with a press) is no new press
+                    // outside the island, which could close it.
+                    was_down = left_button_down();
                     continue;
                 }
 
@@ -1462,6 +1545,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 if down && !was_down {
                     pressed_in_panel = in_panel && !on_island;
                     pressed_at = (x, y);
+                    pressed_thread = if pressed_in_panel { platform::thread_under(cx, cy) } else { 0 };
                     came_near = false;
                 }
                 if down && !was_down && !acting {
@@ -1494,19 +1578,20 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // Not for a press that began on the panel's empty part: that
                 // is a click or a drag in the window under it, and taking the
                 // mouse half way through left that window without its release.
-                // Unless it moved and came near the island: a file picked up
-                // right under the panel (on the desktop, in a maximised File
-                // Explorer) opens the island as one picked up anywhere else.
-                // Whatever the window under it was doing holds the capture, so
-                // its release still reaches it.
+                // Unless it moved and came near the island as a drag that may
+                // carry a file: a file picked up right under the panel (on the
+                // desktop, in a maximised File Explorer) opens the island as one
+                // picked up anywhere else. Only while the window it was meant
+                // for holds the mouse capture, as an OLE drag does, so its
+                // release still reaches it; never for a window being moved.
                 let near = r.w > 0.0
                     && x >= r.x - DRAG_NEAR
                     && x <= r.x + r.w + DRAG_NEAR
                     && y >= r.y - DRAG_NEAR
                     && y <= r.y + r.h + DRAG_NEAR;
                 let moved = (x - pressed_at.0).hypot(y - pressed_at.1) > DRAG_START;
-                if down && pressed_in_panel && moved && near {
-                    came_near = true;
+                if down && pressed_in_panel && !came_near && moved && near {
+                    came_near = platform::may_carry_file(pressed_thread);
                 }
                 let dragging = down && in_panel && (!pressed_in_panel || came_near);
 
@@ -1518,7 +1603,9 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     });
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y });
+                // Asked only near the island, where a hover could open it.
+                let window_moving = !far && platform::window_moving();
+                let _ = win.emit("cursor", CursorPayload { x, y, window_moving });
             }
         }
     });

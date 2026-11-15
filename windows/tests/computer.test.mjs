@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { computerActionOn, computerPoint, describeComputerAction, isComputerTool, peekPlacement, scrollDirection, splitComputerLine } = await import("../src/core/computer.ts");
+const { cardClickTakesKeyboard, islandHoldsClicks, computerPoint, describeComputerAction, isComputerTool, peekPlacement, splitComputerLine } = await import("../src/core/computer.ts");
 const { setLanguage } = await import("../src/i18n/i18n.ts");
 
 const say = (name, input = {}) => describeComputerAction(`mcp__lumo__${name}`, input);
@@ -72,37 +72,10 @@ test("the point an action acts on: a click's, a move's, a scroll's, a drag's end
   assert.equal(computerPoint("mcp__other__left_click", { coordinate: [1, 2] }), null);
 });
 
-test("an action on a thing Windows named is said on it, the name apart with its quotes", () => {
-  const on = (name, input = {}, tool = "left_click") => computerActionOn(`mcp__lumo__${tool}`, input, name);
-  assert.deepEqual(on("Save as…"), { before: "Click on ", name: "«Save as…»", after: "" });
-  assert.deepEqual(on("  File \n menu "), { before: "Click on ", name: "«File menu»", after: "" }, "on one line");
-  assert.deepEqual(on("Text", {}, "right_click"), { before: "Right click on ", name: "«Text»", after: "" });
-  assert.deepEqual(on("List", { scroll_direction: "up" }, "scroll"), { before: "Scroll up on ", name: "«List»", after: "" });
-  // A scroll that says no way (or one of its own) is not said on the thing: never a made-up "down".
-  assert.equal(on("List", {}, "scroll"), null);
-  assert.equal(on("List", { scroll_direction: "sideways" }, "scroll"), null);
-  assert.deepEqual(on("Bin", {}, "left_click_drag"), { before: "Drag to ", name: "«Bin»", after: "" });
-  assert.deepEqual(on("OK", {}, "mouse_move"), { before: "Move the mouse to ", name: "«OK»", after: "" });
-  assert.equal(on(""), null, "no name, no words");
-  assert.equal(on("x", {}, "type"), null, "typing has no point");
-  assert.equal(computerActionOn("Bash", {}, "x"), null);
-  setLanguage("it");
-  try {
-    assert.deepEqual(on("Salva con nome…"), { before: "Clic su ", name: "«Salva con nome…»", after: "" });
-  } finally {
-    setLanguage("en");
-  }
-});
-
-test("the card's line comes apart into what is done and on what; a scroll's way is the request's", () => {
+test("the card's line comes apart into what is done and on what", () => {
   assert.deepEqual(splitComputerLine("Click · 640, 320"), { label: "Click", detail: "640, 320" });
   assert.deepEqual(splitComputerLine("Type · a · b"), { label: "Type", detail: "a · b" });
   assert.deepEqual(splitComputerLine("Look at the screen"), { label: "Look at the screen", detail: "" });
-  assert.equal(scrollDirection({ scroll_direction: "left", coordinate: [1, 2] }), "left");
-  assert.equal(scrollDirection({ scroll_direction: "up" }), "up");
-  assert.equal(scrollDirection({ scroll_direction: "UP" }), null);
-  assert.equal(scrollDirection({ scroll_direction: 1 }), null);
-  assert.equal(scrollDirection({}), null);
 });
 
 test("the screen's crop fills the card's thumbnail, its point inside it", () => {
@@ -121,4 +94,29 @@ test("the screen's crop fills the card's thumbnail, its point inside it", () => 
   assert.deepEqual([corner.left, corner.top, corner.x, corner.y], [0, 0, 0, 0], "the crop's corner can't move further");
   // Smaller than the box: scaled up to fill it.
   assert.equal(peekPlacement({ width: 56, height: 36, at: [28, 18] }, 112, 72).scale, 2);
+});
+
+test("a click on a card never takes the keyboard while the computer is in use", () => {
+  const on = { engaged: true, stopped: false };
+  // Outside computer use, a click on the card gives the island Y and N, as before.
+  assert.equal(cardClickTakesKeyboard("Bash", null, false), true);
+  assert.equal(cardClickTakesKeyboard("Bash", { engaged: false, stopped: false }, false), true);
+  // A computer action's card: the window it acts on keeps the front (the Start menu, Search stay open).
+  assert.equal(cardClickTakesKeyboard("mcp__lumo__type", null, false), false);
+  assert.equal(cardClickTakesKeyboard("mcp_lumo_left_click", null, false), false);
+  // Any other card while an agent uses the computer, engaged or paused.
+  assert.equal(cardClickTakesKeyboard("Bash", on, false), false);
+  assert.equal(cardClickTakesKeyboard("Bash", { engaged: true, stopped: false, paused: true }, false), false);
+  assert.equal(cardClickTakesKeyboard("Write", null, true), false);
+  // Stopped for good: back to the usual card.
+  assert.equal(cardClickTakesKeyboard("Bash", { engaged: true, stopped: true }, false), true);
+});
+
+test("the island's clicks leave the front where it is while the computer is in use", () => {
+  assert.equal(islandHoldsClicks(null, null, false), false);
+  assert.equal(islandHoldsClicks("Bash", null, false), false);
+  assert.equal(islandHoldsClicks("mcp__lumo__left_click", null, false), true);
+  assert.equal(islandHoldsClicks(null, { engaged: true, stopped: false }, false), true);
+  assert.equal(islandHoldsClicks(null, null, true), true);
+  assert.equal(islandHoldsClicks(null, { engaged: true, stopped: true }, false), false);
 });

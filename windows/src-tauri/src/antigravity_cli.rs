@@ -376,42 +376,59 @@ fn error_text(error: &Value) -> Option<String> {
     }
 }
 
-/// A `result` event as agy wrote it, for the log: its answer (the user's
-/// work, maybe long) only as its length, wherever agy put it.
-fn without_response(frame: &Value) -> String {
-    let mut f = frame.clone();
-    let cut = |v: &mut Value| {
-        if let Some(text) = v.get("response").and_then(Value::as_str) {
-            let n = text.chars().count();
-            v["response"] = json!(format!("<{n} characters>"));
-        }
+/// The fields of a `result` that go to the log: never its answer (the user's
+/// work, maybe long), only its length. Only these, so a field agy adds one
+/// day (its steps, an output) stays out of the log.
+const LOGGED_FIELDS: [&str; 4] = ["status", "error", "usage", "conversation_id"];
+
+/// A `result` event as agy wrote it, for the log: the fields above, and its
+/// answer only as its length, wherever agy put it.
+fn logged_result(frame: &Value) -> String {
+    let v = match frame.get("event").and_then(Value::as_str).and_then(|e| frame.get(e)) {
+        Some(inner) if inner.is_object() => inner,
+        _ => frame,
     };
-    cut(&mut f);
-    if let Some(inner) = f.get_mut("result").filter(|r| r.is_object()) {
-        cut(inner);
+    let mut out = serde_json::Map::new();
+    for key in LOGGED_FIELDS {
+        if let Some(x) = v.get(key) {
+            out.insert(key.to_string(), x.clone());
+        }
     }
-    f.to_string()
+    if let Some(text) = v.get("response").and_then(Value::as_str) {
+        out.insert("response".to_string(), json!(format!("<{} characters>", text.chars().count())));
+    }
+    Value::Object(out).to_string()
 }
 
 /// agy's words when the model sent a tool call it could not read (Gemini's
 /// MALFORMED_FUNCTION_CALL): agy has the model try again, but may still end
 /// the turn with them.
 fn is_malformed_call(error: &str) -> bool {
-    let l = error.to_lowercase();
+    let l = error.to_ascii_lowercase();
     l.contains("malformed function call") || l.contains("improperly formatted function call")
 }
 
+/// At most this many characters of agy's error are shown (a stack trace would
+/// fill the island).
+const ERROR_WORDS_MAX: usize = 600;
+
 /// The part of agy's error worth showing: for a malformed call, its line
-/// that says so, without what agy tells the model ("Please retry…").
+/// that says so, without what agy tells the model ("Please retry…"); at most
+/// ERROR_WORDS_MAX characters.
 fn error_words(error: &str) -> String {
     let error = error.trim();
-    if is_malformed_call(error) {
-        let lower = error.to_lowercase();
-        if let Some(at) = lower.find("malformed function call") {
-            return error[at..].lines().next().unwrap_or("").trim().to_string();
-        }
+    // ASCII lowercase keeps every byte where it was, so the place found is
+    // a place in `error` too (to_lowercase can change a character's length).
+    let at = error.to_ascii_lowercase().find("malformed function call");
+    let words = match at {
+        Some(at) => error[at..].lines().next().unwrap_or("").trim(),
+        None => error,
+    };
+    if words.chars().count() <= ERROR_WORDS_MAX {
+        return words.to_string();
     }
-    error.to_string()
+    let cut: String = words.chars().take(ERROR_WORDS_MAX).collect();
+    format!("{}…", cut.trim_end())
 }
 
 /// What agy said, after what Lumo says about it (chat::ERROR_DETAIL).
@@ -419,16 +436,29 @@ fn with_agy_words(said: String, error: &str) -> String {
     format!("{said}\n{}{}", crate::chat::ERROR_DETAIL, tf("Antigravity CLI's message: {error}", &[("error", &error_words(error))]))
 }
 
-/// The answer came, but agy ended the turn with `error`: said under it.
+/// The answer to keep when agy ended the turn with `error`: the one its
+/// result still carried, or, for a malformed tool call only, what was
+/// streamed. Any other error with only streamed text (a quota, the network)
+/// is said as an error, as that text may be a step's words ("Now I read…"),
+/// not an answer.
+fn kept_answer(error: &str, response: &str, streamed: &str) -> Option<String> {
+    if is_auth_error(error) {
+        return None;
+    }
+    if !response.trim().is_empty() {
+        return Some(response.to_string());
+    }
+    let streamed = streamed.trim();
+    (is_malformed_call(error) && !streamed.is_empty()).then(|| streamed.to_string())
+}
+
+/// The answer came, but agy ended the turn with `error`: said under it. The
+/// island writes the words in its language (src/views/chat.ts warningWords),
+/// so a chat opened later in another language reads in that one.
 fn answer_warning(error: &str) -> crate::chat::ChatWarning {
-    let why = if is_malformed_call(error) {
-        t("While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”.")
-    } else {
-        t("Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”.")
-    };
     crate::chat::ChatWarning {
-        line: t("Antigravity CLI reported a problem at the end"),
-        detail: format!("{why}\n\n{}", tf("Antigravity CLI's message: {error}", &[("error", &error_words(error))])),
+        kind: if is_malformed_call(error) { "malformed" } else { "error" }.to_string(),
+        message: error_words(error),
     }
 }
 
@@ -551,6 +581,15 @@ fn transcript_args(args: &Value) -> Value {
     )
 }
 
+/// Whether a call's result says it failed: it begins so ("Error: file
+/// already exists", "Failed to write…", "Permission denied"), or says it was
+/// refused. Not a word in a name it gives back ("Created file errors.log").
+fn call_failed(content: &str) -> bool {
+    let text = content.trim_start().to_ascii_lowercase();
+    ["error", "failed", "failure", "denied", "permission denied", "access is denied", "not allowed", "refused"].iter().any(|w| text.starts_with(w))
+        || [" was denied", " is not allowed", " not permitted", "access is denied", "permission denied"].iter().any(|w| text.contains(w))
+}
+
 /// One line of a subagent's transcript on its row: its steps, what it does
 /// now, its tokens, its report, and the files it wrote (`pending` until the
 /// call's result says it went through). True once it is done: its answer,
@@ -563,8 +602,7 @@ fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mu
     }
     // A call's result: the files it wrote, unless it failed.
     if line["type"] == "GENERIC" && !pending.is_empty() {
-        let text = line["content"].as_str().unwrap_or("").to_ascii_lowercase();
-        let failed = line["status"].as_str().is_some_and(|s| s != "DONE") || ["error", "failed", "denied", "not allowed"].iter().any(|w| text.contains(w));
+        let failed = line["status"].as_str().is_some_and(|s| s != "DONE") || call_failed(line["content"].as_str().unwrap_or(""));
         for touch in pending.drain(..) {
             if !failed && !files.contains(&touch) {
                 files.push(touch);
@@ -896,7 +934,7 @@ impl Run {
                 self.result = Some(match (status.as_str(), error) {
                     ("SUCCESS", _) | ("", None) => Ok(response),
                     (s, error) => {
-                        self.failed_line = Some(without_response(&frame));
+                        self.failed_line = Some(logged_result(&frame));
                         self.failed_response = response;
                         Err(error.unwrap_or_else(|| s.to_string()))
                     }
@@ -1491,10 +1529,15 @@ pub async fn send(
         None if chat.is_workshop() => with_workshop_instructions(&text),
         None => with_instructions(&text),
     };
-    // Computer use: the note in front of every question.
+    // Computer use: the note in front of the question, whole the first time
+    // this conversation hears it, then a short reminder.
     let computer = computer && cfg!(windows);
     let grid = crate::computer::uses_grid(PROVIDER, model);
-    let text = if computer { crate::computer::with_note(&text, grid) } else { text };
+    let text = if computer {
+        crate::computer::with_note(&text, grid, !crate::computer::note_heard(chat.id(), conversation.as_deref(), grid))
+    } else {
+        text
+    };
     let input = user_event(&text);
     // This chat's folder of the inbox, or all of it with "Other chats' files" on.
     let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
@@ -1506,7 +1549,7 @@ pub async fn send(
     crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer);
     let _mail = crate::mail::agent_turn();
     // The computer usable while this turn runs, each action asked for by Lumo.
-    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
+    let computer_turn = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
 
     let app2 = app.clone();
     let events = chat.events();
@@ -1550,7 +1593,22 @@ pub async fn send(
         )
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string());
+    // What the turn did on the computer, for under its answer (as Claude Code's).
+    let recap = computer_turn.and_then(|t| t.finish(matches!(&state, Ok(Ok(s)) if s.stopped)));
+    let plain = chat::plain_question(true, context.as_ref(), &query);
+    // It failed after using the computer: the turn is kept as an empty answer
+    // that says why, so the recap of what was done on the screen is shown and
+    // saved under it (and the next turn knows it was done).
+    let failed = |error: String, recap: Option<Value>| -> Result<ChatReply, String> {
+        let Some(recap) = recap else { return Err(error) };
+        chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+        Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
+    };
+    let state = match state {
+        Ok(Ok(state)) => state,
+        Ok(Err(e)) | Err(e) => return failed(e, recap),
+    };
 
     // About how full the conversation is, for the chat's usage menu: agy does
     // not say its model's context window, the island knows it by the model's name.
@@ -1566,14 +1624,23 @@ pub async fn send(
     }
     if let Some(id) = &state.conversation {
         chat.set_cli_session(&turn, id);
+        // The conversation has the whole note of computer use now.
+        if computer {
+            crate::computer::note_given(chat.id(), id, grid);
+        }
     }
-    let plain = chat::plain_question(true, context.as_ref(), &query);
     if state.stopped {
         let shown = state.visible.trim().to_string();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
+        } else if recap.is_some() {
+            // Stopped before it wrote anything, but it used the computer: the
+            // turn is kept, as an empty answer, so the recap has an answer to
+            // go under and the next turn knows what was done.
+            chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
+            return Ok(ChatReply { computer: recap, kept: Some(chat::NO_ANSWER.into()), ..ChatReply::stopped(String::new(), chat.cli_session()) });
         }
-        return Ok(ChatReply::stopped(shown, chat.cli_session()));
+        return Ok(ChatReply { computer: recap, ..ChatReply::stopped(shown, chat.cli_session()) });
     }
     let mut warning = None;
     let answer = match state.result {
@@ -1582,12 +1649,11 @@ pub async fn send(
         Some(Ok(text)) if text.trim().is_empty() => state.visible.trim().to_string(),
         Some(Ok(text)) => text,
         // An error with an answer written: the answer stays, the error is
-        // said under it. Without one, or signed out, the error alone.
+        // said under it (kept_answer). Without one, or signed out, the error alone.
         Some(Err(e)) => {
-            let written = if state.failed_response.trim().is_empty() { state.visible.trim().to_string() } else { state.failed_response.clone() };
-            if is_auth_error(&e) || written.trim().is_empty() {
-                return Err(result_error(&e));
-            }
+            let Some(written) = kept_answer(&e, &state.failed_response, &state.visible) else {
+                return failed(result_error(&e), recap);
+            };
             warning = Some(answer_warning(&e));
             written
         }
@@ -1601,7 +1667,7 @@ pub async fn send(
         answer
     };
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply { warning, ..ChatReply::answer(answer, chat.cli_session()) })
+    Ok(ChatReply { warning, computer: recap, ..ChatReply::answer(answer, chat.cli_session()) })
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -1719,7 +1785,9 @@ async fn command(
     mode: &str,
     folder: Option<String>,
 ) -> Result<ChatReply, String> {
-    let turn = chat.begin(PROVIDER);
+    // A command's turn tells the conversation nothing it missed (/usage
+    // never goes to it): that waits for its next question.
+    let turn = chat.begin_aside(PROVIDER);
     let query = format!("/{name}");
     let work = claude_code::work_dir();
     let answer = if name == COMPACT {
@@ -1727,10 +1795,6 @@ async fn command(
             // A new conversation would take it for a question.
             return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen this conversation yet."), chat.cli_session()));
         };
-        if !chat.cli_unseen(PROVIDER).is_empty() {
-            // It would sum up the conversation without the turns another provider answered.
-            return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen the latest answers in this chat yet."), chat.cli_session()));
-        }
         let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
         let mut args = args(model, mode, Some(conversation.as_str()), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
         args.retain(|a| a != "--disable-slash-commands");
@@ -2169,6 +2233,12 @@ mod tests {
         // The log has what agy said, never the answer itself.
         let logged = run.failed_line.unwrap();
         assert!(logged.contains("Retries remaining") && logged.contains("<29 characters>") && !logged.contains("appunti"));
+        // Only the fields it lists: one agy adds (its steps, an output) stays out.
+        let mut more = Run::default();
+        let line = json!({ "event": "result", "result": { "status": "ERROR", "error": "boom", "response": "ok", "output": "il testo degli appunti" } }).to_string();
+        more.feed(line.as_bytes());
+        let logged = more.failed_line.unwrap();
+        assert!(logged.contains("boom") && logged.contains("<2 characters>") && !logged.contains("appunti"));
 
         // A result that went well leaves nothing for the log.
         let mut ok = Run::default();
@@ -2191,11 +2261,35 @@ mod tests {
         // Other errors are said as before.
         assert_eq!(result_error("quota exceeded"), "Antigravity CLI: quota exceeded");
 
-        // With an answer: one line under it, and what to know on a click.
+        // With an answer: its kind and agy's words, the island says them in its language.
         let w = answer_warning(MALFORMED);
-        assert_eq!(w.line, "Antigravity CLI reported a problem at the end");
-        assert!(w.detail.contains("empty tool call") && w.detail.ends_with(&error_words(MALFORMED)));
-        assert!(answer_warning("internal error").detail.contains("ended this turn with an error"));
+        assert_eq!((w.kind.as_str(), w.message.as_str()), ("malformed", error_words(MALFORMED).as_str()));
+        assert_eq!(answer_warning("internal error").kind, "error");
+    }
+
+    #[test]
+    fn an_error_keeps_agys_answer_and_streamed_words_only_after_a_malformed_call() {
+        // agy's result carried the answer: kept, whatever the error.
+        assert_eq!(kept_answer("quota exceeded", "Ecco gli appunti.", "Ora leggo…"), Some("Ecco gli appunti.".into()));
+        assert_eq!(kept_answer(MALFORMED, "Ecco gli appunti.", ""), Some("Ecco gli appunti.".into()));
+        // Only streamed words: an answer after a malformed call, a step's words otherwise.
+        assert_eq!(kept_answer(MALFORMED, "", "  Fatto: 109 pagine.\n"), Some("Fatto: 109 pagine.".into()));
+        assert_eq!(kept_answer("quota exceeded", "", "Ora leggo il file…"), None);
+        // Nothing written, or signed out: the error alone.
+        assert_eq!(kept_answer(MALFORMED, " ", " "), None);
+        assert_eq!(kept_answer("authentication required", "Ecco.", "Ecco."), None);
+    }
+
+    #[test]
+    fn agys_words_are_found_whatever_comes_before_them_and_kept_short() {
+        // Characters whose lowercase takes more or fewer bytes (Kelvin sign, dotted I) before them.
+        assert_eq!(error_words("\u{212A}\u{212A}Malformed function call: empty\nPlease retry"), "Malformed function call: empty");
+        assert_eq!(error_words("İ İ: Malformed function call: empty"), "Malformed function call: empty");
+        // A long error is cut, on a character.
+        let long = "é".repeat(ERROR_WORDS_MAX + 50);
+        let words = error_words(&long);
+        assert_eq!(words.chars().count(), ERROR_WORDS_MAX + 1);
+        assert!(words.ends_with('…'));
     }
 
     #[test]
@@ -2414,11 +2508,23 @@ mod tests {
             let mut feed = |l: &str| transcript_line(&mut row, &mut report, &mut pending, &mut files, &serde_json::from_str(l).unwrap());
             assert!(!feed(&lines_of(1)));
             assert!(!feed(r#"{"source":"MODEL","type":"GENERIC","status":"DONE","content":"Error: file already exists"}"#));
+            assert!(!feed(&lines_of(1)));
+            assert!(!feed(r#"{"source":"MODEL","type":"GENERIC","status":"DONE","content":"Permission denied: C:\\work\\a.txt"}"#));
             assert!(!feed(r#"{"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"I'll write the renderer now.","truncated_fields":["tool_calls"]}"#));
         }
         assert!(files.is_empty());
-        assert_eq!(row.steps, 2);
+        assert_eq!(row.steps, 3);
         assert!(!row.state.is_final());
+    }
+
+    #[test]
+    fn a_file_with_error_in_its_name_is_written_all_the_same() {
+        assert!(!call_failed("Created file C:\\work\\error-handler.ts."));
+        assert!(!call_failed("Wrote errors.log"));
+        assert!(call_failed("Error: file already exists"));
+        assert!(call_failed("  failed to write C:\\a.txt"));
+        assert!(call_failed("The write to C:\\a.txt was denied by the user."));
+        assert!(call_failed("Access is denied."));
     }
 
     fn lines_of(i: usize) -> String {

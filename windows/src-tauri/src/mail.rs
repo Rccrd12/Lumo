@@ -839,8 +839,9 @@ pub async fn mail_html(app: AppHandle, id: String) -> Result<MailHtml, String> {
         if !crate::outlook::on(&app) {
             return Ok(MailHtml::default());
         }
-        let (html, pictures) = crate::outlook::html(own.to_string(), HTML_PART_BYTES, INLINE_IMAGE_BYTES, INLINE_IMAGES_BYTES).await?;
-        return Ok(assemble(vec![(html, String::new())], pictures));
+        let (html, pictures, codepage) = crate::outlook::html(own.to_string(), HTML_PART_BYTES, INLINE_IMAGE_BYTES, INLINE_IMAGES_BYTES).await?;
+        let charset = outlook_charset(&html, codepage);
+        return Ok(assemble(vec![(html, charset)], pictures));
     }
     let slot: usize = key.strip_prefix("imap:").and_then(|n| n.parse().ok()).ok_or_else(|| bad_id(&id))?;
     let acct = live_accounts(&app).into_iter().find(|a| a.slot == slot).ok_or_else(|| gone(&id))?;
@@ -1138,6 +1139,50 @@ pub(crate) fn html_charset(bytes: &[u8]) -> String {
         .unwrap_or_default()
 }
 
+/// The charset of an Outlook email's HTML: the one its own bytes say (a
+/// byte-order mark, its `<meta>`), else the code page Outlook keeps it in
+/// (`InternetCodepage`); "" when neither says (read as UTF-8, else Windows-1252).
+fn outlook_charset(html: &[u8], codepage: u32) -> String {
+    if !html_charset(html).is_empty() {
+        return String::new();
+    }
+    codepage_charset(codepage).to_string()
+}
+
+/// The charset a Windows code page stands for, as a browser's TextDecoder
+/// knows it; "" for one Lumo doesn't know.
+fn codepage_charset(codepage: u32) -> &'static str {
+    match codepage {
+        65001 => "utf-8",
+        1200 => "utf-16le",
+        1201 => "utf-16be",
+        20127 => "us-ascii",
+        874 => "windows-874",
+        1250..=1258 => ["windows-1250", "windows-1251", "windows-1252", "windows-1253", "windows-1254", "windows-1255", "windows-1256", "windows-1257", "windows-1258"][(codepage - 1250) as usize],
+        28591 => "iso-8859-1",
+        28592 => "iso-8859-2",
+        28593 => "iso-8859-3",
+        28594 => "iso-8859-4",
+        28595 => "iso-8859-5",
+        28596 => "iso-8859-6",
+        28597 => "iso-8859-7",
+        28598 => "iso-8859-8",
+        28599 => "iso-8859-9",
+        28603 => "iso-8859-13",
+        28605 => "iso-8859-15",
+        20866 => "koi8-r",
+        21866 => "koi8-u",
+        932 => "shift_jis",
+        50220..=50222 => "iso-2022-jp",
+        51932 => "euc-jp",
+        936 => "gbk",
+        54936 => "gb18030",
+        949 | 51949 => "euc-kr",
+        950 => "big5",
+        _ => "",
+    }
+}
+
 /// The view's HTML from the email's HTML parts (their bytes and charset, ""
 /// when the part names none) and its pictures (Content-ID, bytes): the parts
 /// one after the other, cut at HTML_KEPT_BYTES, the pictures put in for their
@@ -1164,8 +1209,22 @@ pub(crate) fn assemble(parts: Vec<(Vec<u8>, String)>, pictures: Vec<(String, Vec
         }
         (text.as_bytes()[..end].to_vec(), None)
     } else {
-        let (b, cs) = parts.into_iter().find(|(_, cs)| !read_here(cs)).unwrap_or_default();
-        (b[..b.len().min(HTML_KEPT_BYTES)].to_vec(), Some(cs))
+        // The island reads one charset: the first Lumo doesn't read, with every
+        // part in it and every part in plain ASCII (the same in all but UTF-16),
+        // in their order; a part in yet another charset is left out.
+        let cs = parts.iter().find(|(_, cs)| !read_here(cs)).map(|(_, cs)| cs.clone()).unwrap_or_default();
+        let wide = cs.to_ascii_lowercase().contains("16") || cs.eq_ignore_ascii_case("ucs-2") || cs.eq_ignore_ascii_case("unicode");
+        let mut b: Vec<u8> = Vec::new();
+        for (bytes, part_cs) in &parts {
+            if part_cs.eq_ignore_ascii_case(&cs) || (!wide && bytes.is_ascii()) {
+                if !b.is_empty() {
+                    b.push(b'\n');
+                }
+                b.extend_from_slice(bytes);
+            }
+        }
+        b.truncate(HTML_KEPT_BYTES);
+        (b, Some(cs))
     };
     let mut urls: BTreeMap<String, String> = BTreeMap::new();
     let mut total = 0;
@@ -2248,7 +2307,7 @@ fn pick<'a>(files: &'a [Attached], which: Option<&serde_json::Value>) -> Result<
 
 /// `mail_attachment`: a file attached to an email, saved with the files
 /// attached to the chat, where the agent can read it.
-async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<crate::files::DroppedFile, String> {
     let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let (acct, plain) = account_for(app, id)?;
     let (folder, uid) = parse_id(&plain).ok_or_else(|| bad_id(id))?;
@@ -2267,7 +2326,15 @@ async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<S
     let (file, bytes) = got?;
     let saved = crate::files::write_in(&file.name, &bytes)?;
     log::line(format!("[mail] a file of an email saved for the chat ({} bytes)", saved.size));
-    Ok(format!("Saved {} ({}) with the files attached to the chat: {}. Read it from there.", saved.name, size_text(saved.size as usize), saved.path))
+    Ok(saved)
+}
+
+/// What `mail_attachment` answers: where the file is, in the folder of the
+/// chat that asked (files.rs for_chat), the one its CLI reads without asking.
+/// No chat (a provider of the island's own, a task of Gemini Live): in the inbox.
+pub(crate) fn saved_text(saved: &crate::files::DroppedFile, chat: &str) -> String {
+    let path = if chat.trim().is_empty() { saved.path.clone() } else { crate::files::for_chat(chat, &saved.path) };
+    format!("Saved {} ({}) with the files attached to the chat: {}. Read it from there.", saved.name, size_text(saved.size as usize), path)
 }
 
 /// "120 KB", "3.4 MB".
@@ -2392,11 +2459,13 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         "mail_folders" => folders_anywhere(app).await,
         "mail_attachment" => {
             let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if crate::outlook::is_id(&id) {
+            let saved = if crate::outlook::is_id(&id) {
                 crate::outlook::save_attachment(id, input.get("attachment").cloned()).await
             } else {
                 save_attachment(app, &input).await
-            }
+            };
+            let chat = request.get("chat").and_then(|v| v.as_str()).unwrap_or("");
+            saved.map(|saved| saved_text(&saved, chat))
         }
         _ => Err(format!("Lumo has no email tool called {tool}.")),
     };
@@ -4775,6 +4844,42 @@ mod tests {
     }
 
     #[test]
+    fn every_html_part_in_the_islands_charset_is_kept() {
+        // Apple Mail's parts around a picture, in Shift_JIS, and one in plain ASCII between them.
+        let a = b"<p>\x82\xa0</p>".to_vec();
+        let b = b"<p>ok</p>".to_vec();
+        let c = b"<p>\x82\xa2</p>".to_vec();
+        let out = assemble(vec![(a.clone(), "Shift_JIS".into()), (b.clone(), "us-ascii".into()), (c.clone(), "shift_jis".into())], vec![]);
+        assert_eq!(out.charset.as_deref(), Some("Shift_JIS"));
+        assert_eq!(out.bytes, Some(crate::claude::base64_for(&[a.clone(), b"\n".to_vec(), b, b"\n".to_vec(), c].concat())));
+        // A part in yet another charset (and not ASCII) is left out.
+        let cyr = b"<p>\xcf\xf0</p>".to_vec();
+        let out = assemble(vec![(a.clone(), "Shift_JIS".into()), (cyr, "windows-1251".into())], vec![]);
+        assert_eq!(out.bytes, Some(crate::claude::base64_for(&a)));
+    }
+
+    #[test]
+    fn an_outlook_email_without_its_charset_is_read_in_its_code_page() {
+        // Its <meta> says: that one (assemble reads it).
+        assert_eq!(outlook_charset(b"<meta charset=\"utf-8\"><p>ciao</p>", 1252), "");
+        // None: Outlook's code page.
+        assert_eq!(outlook_charset(b"<p>Perch\xe8</p>", 1252), "windows-1252");
+        assert_eq!(outlook_charset(b"<p>x</p>", 932), "shift_jis");
+        assert_eq!(outlook_charset(b"<p>x</p>", 0), "");
+        assert_eq!(codepage_charset(1250), "windows-1250");
+        assert_eq!(codepage_charset(1258), "windows-1258");
+        assert_eq!(codepage_charset(28605), "iso-8859-15");
+        assert_eq!(codepage_charset(65001), "utf-8");
+        assert_eq!(codepage_charset(12345), "");
+        // Windows-1252 bytes are read here, as Lumo reads that charset.
+        let out = assemble(vec![(b"<p>Perch\xe8</p>".to_vec(), outlook_charset(b"<p>Perch\xe8</p>", 1252))], vec![]);
+        assert!(out.html.contains("Perchè"), "{}", out.html);
+        // Windows-1251 goes to the island with its charset.
+        let out = assemble(vec![(b"<p>\xcf</p>".to_vec(), outlook_charset(b"<p>\xcf</p>", 1251))], vec![]);
+        assert_eq!(out.charset.as_deref(), Some("windows-1251"));
+    }
+
+    #[test]
     fn the_email_view_lists_every_account_newest_first_and_says_which_failed() {
         let button = |key: &str, unread: usize| ViewAccount {
             key: key.into(), label: key.into(), state: "ok", error: None, unread, inbox: None,
@@ -4880,6 +4985,21 @@ mod tests {
         assert!(concerned(&before, &filtered), "its filter");
         let italian = Settings { language: "it".into(), ..before.clone() };
         assert!(concerned(&before, &italian), "its errors' language");
+    }
+
+    #[test]
+    fn an_emails_file_is_told_in_the_folder_of_the_chat_that_asked() {
+        let saved = crate::files::write_in("saved-text-test.pdf", b"%PDF").unwrap();
+        let chat = "saved-text-test-chat";
+        crate::files::forget_chat(chat);
+        let told = saved_text(&saved, chat);
+        let linked = crate::files::chat_dir(chat).join(&saved.name);
+        assert!(told.contains(&linked.to_string_lossy().to_string()), "{told}");
+        assert_eq!(std::fs::read(&linked).unwrap(), b"%PDF");
+        // No chat (an API provider, a task of Gemini Live): the inbox's own path.
+        assert!(saved_text(&saved, "").contains(&saved.path));
+        crate::files::forget_chat(chat);
+        let _ = std::fs::remove_file(&saved.path);
     }
 
     #[test]

@@ -704,6 +704,7 @@ class LiveSession {
       title: chatTitle(turns),
       updatedAt: Date.now(),
       provider: "google",
+      call: true,
       session: null,
       turns,
     });

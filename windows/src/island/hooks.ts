@@ -4,7 +4,7 @@
 // The relay has already mapped every agent's events and fields onto Claude
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
-import { computerPoint, computerToolName, describeComputerAction, scrollDirection } from "../core/computer";
+import { computerPoint, describeComputerAction } from "../core/computer";
 import { currentStep } from "../core/computer-use";
 import { userToolTarget } from "../core/tools";
 import { clipUnits } from "../core/clip";
@@ -304,6 +304,8 @@ interface HookPayload {
   term_editor?: string;
   /** The island's own chat started this Claude Code run (only its permission requests arrive). */
   lumo_island?: boolean;
+  /** With `lumo_island`: which of the island's chats it answers (its LUMO_CHAT_ID). */
+  lumo_chat?: string;
   /** PermissionRequest from inside an agent Claude Code started: that agent's id (the chat's Agents card matches it). */
   agent_id?: string;
   /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
@@ -318,8 +320,11 @@ interface HookPayload {
   lumo_remembered?: boolean;
   /** The relay had to cut what the card shows of the request (lumo-hook's truncate_payload): it says it shows the beginning. */
   lumo_input_cut?: boolean;
-  /** With lumo_input_cut: the size of the whole input, before the cut. */
+  /** With lumo_input_cut: the size of the string shown only in part, and how much of it the card doesn't show. */
   lumo_input_bytes?: number;
+  lumo_input_hidden?: number;
+  /** Arguments the relay couldn't read (lumo-hook normalize.rs): shown as they came, never allowed from the island. */
+  lumo_input_unread?: boolean;
   /** The relay cut only the text a file tool writes, which the card never shows: its numbers below are the whole text's. */
   lumo_text_cut?: boolean;
   /** What a file tool changes, counted by the relay before any cut (hook/src/write_stat.rs): lines added and removed, a whole-file write's size. */
@@ -350,7 +355,7 @@ interface HookPayload {
 const TEXT_FIELDS = [
   "hook_event_name", "request_id", "session_id", "cwd", "message", "notification_type", "reason", "trigger",
   "prompt", "last_assistant_message", "tool_name", "error", "lumo_agent", "platform", "term_editor",
-  "lumo_task_id", "lumo_title", "lumo_launcher",
+  "lumo_task_id", "lumo_title", "lumo_launcher", "lumo_chat",
 ] as const;
 const FLAG_FIELDS = [
   "lumo_diff_truncated", "lumo_island", "lumo_session_allow", "lumo_remembered", "lumo_agy_gate", "lumo_background",
@@ -572,11 +577,16 @@ const REASON_KEYS = new Set(["description", "Description", "justification", "exp
  * The line under the who-row that says what the request is for: the agent's
  * own words when it gave some, else what the request does, read off it.
  * For computer use, the step of its plan under way (computer-state), which
- * is why it acts; nothing without a plan, the target says the rest.
+ * is why it acts: only when the plan is the asking chat's own (`chat`, ""
+ * for Gemini Live's helper), never another chat's using the computer at
+ * the same time; nothing without a plan, the target says the rest.
  */
-function approvalAbout(tool: string, input: Record<string, unknown>): { reason?: string; kind?: { text: string; vars?: Record<string, string> } } {
+function approvalAbout(
+  tool: string, input: Record<string, unknown>, chat?: string,
+): { reason?: string; kind?: { text: string; vars?: Record<string, string> } } {
   if (describeComputerAction(tool, input)) {
-    const step = State.computer ? currentStep(State.computer.steps) : null;
+    const plan = State.computer;
+    const step = plan && (plan.chat ?? "") === (chat ?? "") ? currentStep(plan.steps) : null;
     const why = step?.step.text.trim();
     return why ? { reason: why } : {};
   }
@@ -1078,12 +1088,11 @@ function handleHook(island: Island, payload: HookPayload) {
       // A file to write: how many lines, under its name (the text itself is not on the card).
       const edit = !questions && !email && !change && !userTool
         ? editStat(tool, input, {
-          cut: payload.lumo_input_cut === true || payload.lumo_text_cut === true,
+          cut: payload.lumo_input_cut === true || payload.lumo_text_cut === true || payload.lumo_input_unread === true,
           added: payload.lumo_write_added, removed: payload.lumo_write_removed, bytes: payload.lumo_write_bytes,
         })
         : null;
       const computerAt = !questions && !email && !change && !userTool ? computerPoint(tool, input) : null;
-      const computerScroll = computerAt && computerToolName(tool) === "scroll" ? scrollDirection(input) : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -1092,15 +1101,24 @@ function handleHook(island: Island, payload: HookPayload) {
         // One of the user's tools: its name and what it is given, and the
         // supervisor's words for what it does.
         command: email ? email.to.join(", ") : change ? change.command : userTool ? userToolTarget(userTool.name ?? tool, input) : approvalTarget(tool, input),
-        ...(email ? { email } : change ? { reason: change.reason } : userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
+        ...(email ? { email } : change ? { reason: change.reason } : userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input, fromChat ? payload.lumo_chat : undefined)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
         // Asked inside one of the chat's agents: its row in the Agents card says so.
         ...(fromChat && typeof payload.agent_id === "string" && payload.agent_id ? { subagentId: payload.agent_id } : {}),
-        ...(payload.lumo_session_allow === true && payload.lumo_input_cut !== true && !questions && !agyGate ? { sessionAllow: true } : {}),
+        ...(payload.lumo_session_allow === true && payload.lumo_input_cut !== true && payload.lumo_input_unread !== true && !questions && !agyGate ? { sessionAllow: true } : {}),
         ...(payload.lumo_remembered === true && !questions ? { remembered: true } : {}),
         ...(payload.lumo_input_cut === true && !questions && !email && !change && !userTool
-          ? { cut: true, ...(typeof payload.lumo_input_bytes === "number" ? { cutBytes: payload.lumo_input_bytes } : {}) } : {}),
+          ? {
+            cut: true,
+            ...(typeof payload.lumo_input_bytes === "number" ? { cutBytes: payload.lumo_input_bytes } : {}),
+            ...(typeof payload.lumo_input_hidden === "number" ? { cutHidden: payload.lumo_input_hidden } : {}),
+          } : {}),
+        // Never "not for me" for an email or a question: Lumo's own, never through normalize.rs.
+        ...(payload.lumo_input_unread === true && !email && !change ? { unread: true } : {}),
+        // Arguments the relay couldn't read: as they came, not as JSON around them.
+        ...(payload.lumo_input_unread === true && !email && !change && !userTool && typeof input.arguments === "string"
+          ? { command: `${tool} · ${input.arguments}` } : {}),
         ...(agyGate ? { answerIn: agentName("antigravity") } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
@@ -1109,7 +1127,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(edit ? { edit } : {}),
         // A computer use action: the point it acts on, for the screen around it on the card.
         ...(computerAt ? { computerAt } : {}),
-        ...(computerScroll ? { computerScroll } : {}),
+        ...(fromChat && payload.lumo_chat ? { chat: payload.lumo_chat } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how
@@ -1117,7 +1135,7 @@ function handleHook(island: Island, payload: HookPayload) {
       const cardMs = email ? mailCardMs(payload.lumo_card_secs)
         : chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 107_000;
       if (inLine) {
-        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && !info.cut && isSimpleRequest(tool, input) ? { simple: true } : {}) });
+        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && !info.cut && !info.unread && isSimpleRequest(tool, input) ? { simple: true } : {}) });
         void Bridge.log(`permission ${tool} req=${requestId}${fromChat ? " (chat)" : ""} (waiting, ${State.approvalQueue.length + 1} in line)`);
         // A human will see it: the relay waits for the decision.
         void Bridge.approvalAck(requestId);
@@ -1129,8 +1147,8 @@ function handleHook(island: Island, payload: HookPayload) {
       // A request that only reads or looks, while the island is closed, is
       // answered right there: Deny and Allow next to Lumo (Settings → Island).
       // Still a click, never automatic; anything else opens the full card,
-      // a request the relay had to cut too (its card has no Allow).
-      const quick = !questions && !email && !change && !info.cut && State.settings.quickApprovals !== false
+      // a request the relay had to cut or couldn't read too (its card says so).
+      const quick = !questions && !email && !change && !info.cut && !info.unread && State.settings.quickApprovals !== false
         && State.mode !== "expanded" && isSimpleRequest(tool, input);
       void Bridge.log(`permission ${tool} req=${requestId || "none"}${fromChat ? " (chat)" : ""}${quick ? " (closed island)" : ""}`);
       // The card always comes up, even over another pill or an island that is

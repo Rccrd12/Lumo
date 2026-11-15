@@ -5,6 +5,7 @@
 
 import { cleanChecklists, type ChatChecklists } from "./checklists";
 import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
+import type { SentItem } from "./sent";
 
 export interface SavedTurn {
   role: "user" | "assistant";
@@ -13,10 +14,12 @@ export interface SavedTurn {
   at?: number;
   /** What the conversation holds for it, when not `content` (ChatMessage.kept). */
   kept?: string;
+  /** A question: what went with it (core/sent.ts ChatMessage.sent). */
+  sent?: SentItem[];
   /** The answer's turn used the computer: its plan as it ended (ChatMessage.computer), with the steps' small pictures. */
   computer?: ComputerRecap;
   /** The problem said under an answer (ChatMessage.warning). */
-  warning?: { line: string; detail: string };
+  warning?: AnswerWarning;
   /** An answer's: the agents it started that ended, in short (core/chat-agents.ts savedAgents). */
   agents?: SavedAgent[];
   /** An answer's: the messages its CLI sent its agents, and their answers ("Talking to …"). */
@@ -65,6 +68,10 @@ export interface SavedAgent {
   tokens?: number;
   startedAt: number;
   endedAt?: number;
+  /** Ended under its work: its CLI ended ("cli"), or Lumo closed while it worked ("lumo"). */
+  endedBy?: "cli" | "lumo";
+  /** Resume was sent for it: the card no longer offers it. */
+  resumed?: boolean;
 }
 
 const STATUSES = new Set(["pending", "active", "done"]);
@@ -105,7 +112,7 @@ export function cleanRecap(raw: unknown): ComputerRecap | undefined {
  */
 export function toSavedTurn(m: {
   role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap;
-  warning?: { line: string; detail: string }; ask?: AskQuote;
+  warning?: AnswerWarning; ask?: AskQuote;
 }): SavedTurn {
   return {
     role: m.role,
@@ -120,7 +127,7 @@ export function toSavedTurn(m: {
 
 /** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */
 export function fromSavedTurn(turn: SavedTurn): {
-  at?: number; kept?: string; computer?: ComputerRecap; warning?: { line: string; detail: string }; ask?: AskQuote;
+  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote;
 } {
   const computer = turn.role === "assistant" ? cleanRecap(turn.computer) : undefined;
   const warning = savedWarning(turn.warning);
@@ -147,6 +154,12 @@ export interface SavedChat {
   provider: string;
   /** Its model, with `provider`; none in chats saved before each chat kept its own. */
   model?: string;
+  /**
+   * A voice call's transcript (live/session.ts): `provider` names the call's,
+   * not one picked in the chat, so reopening it leaves the picker as it is,
+   * until a question asked in it in writing is answered (it has a `model` then).
+   */
+  call?: boolean;
   /** The CLI session that answered (Claude Code, Antigravity CLI), so reopening continues it. */
   session: string | null;
   turns: SavedTurn[];
@@ -299,13 +312,22 @@ function store(list: SavedChat[]): SavedChat[] {
   return list;
 }
 
-/** The first question, on one line and shortened. */
+/**
+ * The problem said under an answer: its kind and the CLI's words (Rust's
+ * ChatWarning), said in the island's language when shown; or, saved by the
+ * 0.22.2 betas, the words already written.
+ */
+export type AnswerWarning = { kind: "malformed" | "error"; message: string } | { line: string; detail: string };
+
 /** A saved answer's warning (SavedTurn.warning), when it is one. */
-export function savedWarning(w: unknown): { line: string; detail: string } | undefined {
-  const o = w as { line?: unknown; detail?: unknown } | null | undefined;
-  return o && typeof o.line === "string" && typeof o.detail === "string" ? { line: o.line, detail: o.detail } : undefined;
+export function savedWarning(w: unknown): AnswerWarning | undefined {
+  const o = w as { kind?: unknown; message?: unknown; line?: unknown; detail?: unknown } | null | undefined;
+  if (!o) return undefined;
+  if ((o.kind === "malformed" || o.kind === "error") && typeof o.message === "string") return { kind: o.kind, message: o.message };
+  return typeof o.line === "string" && typeof o.detail === "string" ? { line: o.line, detail: o.detail } : undefined;
 }
 
+/** The first question, on one line and shortened. */
 export function chatTitle(turns: SavedTurn[]): string {
   const first = turns.find((t) => t.role === "user")?.content ?? "";
   const line = first.replace(/\s+/g, " ").trim();
@@ -363,12 +385,13 @@ export function setChatModel(id: string, provider: string, model: string) {
   store(list);
 }
 
-/** The provider and model chat `id` is on, if it has any yet. */
+/** The provider and model chat `id` is on, if it has any yet (a voice call's has none). */
 export function chatModelOf(id: string): ChatModel | null {
   const picked = picks.get(id);
   if (picked) return picked;
   const chat = loadChats().find((c) => c.id === id);
   if (!chat || typeof chat.provider !== "string" || !chat.provider) return null;
+  if (chat.call === true && !chat.model) return null;
   return typeof chat.model === "string" && chat.model ? { provider: chat.provider, model: chat.model } : { provider: chat.provider };
 }
 
@@ -425,6 +448,7 @@ export function deleteChat(id: string): SavedChat[] {
   const list = loadChats().filter((c) => c.id !== id);
   store(list);
   setCompact(id, null);
+  setChatCli(id, null);
   return list;
 }
 
@@ -464,6 +488,45 @@ export function setCompact(id: string, compact: ChatCompact | null) {
     storage()?.setItem(COMPACT_KEY, JSON.stringify(all));
   } catch {
     // Storage full: the summary lasts while the app is open.
+  }
+}
+
+const CLI_KEY = "lumo.chats.cli.v1";
+
+function clis(): Record<string, string> {
+  try {
+    const raw = storage()?.getItem(CLI_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    return all && typeof all === "object" && !Array.isArray(all) ? all : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * A chat's CLI sessions (Claude Code's, Codex's…) and how much of the chat
+ * each has seen, as Rust gave them last (chat.rs `Chat::cli_state`, opaque
+ * here): given back when the chat is opened again, so a session still gets
+ * the turns another provider answered meanwhile.
+ */
+export function cliOf(id: string): string | null {
+  const c = clis()[id];
+  return typeof c === "string" && c ? c : null;
+}
+
+/** Keeps (or with null forgets) a chat's CLI sessions; only chats still in the history keep them. */
+export function setChatCli(id: string, cli: string | null) {
+  const all = clis();
+  if (all[id] === (cli ?? undefined)) return;
+  if (cli) all[id] = cli;
+  else delete all[id];
+  const kept = new Set(loadChats().map((c) => c.id));
+  kept.add(cli ? id : "");
+  for (const key of Object.keys(all)) if (!kept.has(key)) delete all[key];
+  try {
+    storage()?.setItem(CLI_KEY, JSON.stringify(all));
+  } catch {
+    // Storage full: the sessions are taken as having seen every turn, as before.
   }
 }
 

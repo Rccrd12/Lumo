@@ -775,7 +775,7 @@ const SECURITY = {
   get outlookStartHint() { return t("When Lumo starts, it opens classic Outlook in the background, with no window. If you close it yourself, Lumo doesn't open it again until it next starts."); },
   get githubHint() { return t("Read your pull requests, issues and checks when you ask."); },
   get otherFiles() { return t("Other chats' files"); },
-  get otherFilesHint() { return t("Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: also those of the other chats from the last 7 days."); },
+  get otherFilesHint() { return t("Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: every file Lumo received in the last 7 days. Gemini Live can read them either way."); },
   get readAndSend() { return t("Read and send"); },
   get readSendManage() { return t("Read, send and manage"); },
   get readOnly() { return t("Read only"); },
@@ -810,7 +810,7 @@ const MAIL_IMAGES = {
 
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
-  get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
+  get claudeOnly() { return t("In the chat, pick Claude Code or Antigravity CLI as the provider to use it."); },
 };
 
 /**
@@ -871,7 +871,7 @@ function securitySection(): HTMLElement {
   whileShown(githubRow, "focus", () => void showAccounts());
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
-    // Antigravity CLI uses it too.
+    // The two providers that use it.
     const cli = ["claude-code", "antigravity-cli"].includes(settings.chatProvider);
     note.hidden = !(settings.chatComputerUse && !cli);
   };

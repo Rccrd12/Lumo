@@ -3339,6 +3339,13 @@ math.mx .mx-cancel.mx-sout {
   color: #fda4af;
 }
 
+/* Under a line Lumo heard whose task never went (chat.ts heardRow). */
+.listen-warn.heard-unsent {
+  --warn: #fbbf24;
+  align-items: center;
+  color: #fbbf24;
+}
+
 .listen-warn-dot {
   display: inline-block;
   width: 6px;
@@ -4993,6 +5000,22 @@ html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
   text-underline-offset: 2px;
 }
 
+/* Open and taller than the log, Show less stays at the log's bottom edge
+   while the question is read, on the bubble's own colour (white 13 % over
+   the island's black), the lines above fading into it. Not in the tool
+   workshop, whose questions have a bubble of their own colours. */
+.chat-card:not(.forge) .msg-fold[aria-expanded="true"] {
+  position: sticky;
+  /* Over the log's own 2 px of padding too, which would show the lines under it. */
+  bottom: -2px;
+  align-self: stretch;
+  margin: -6px -10px -5px;
+  padding: 8px 10px 6px;
+  border-radius: 0 0 12px 12px;
+  text-align: start;
+  background: linear-gradient(to bottom, rgba(33, 33, 33, 0), #212121 8px);
+}
+
 /* The question being edited, and what sending it would drop. */
 .chat-row.editing .bubble {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
@@ -5000,6 +5023,173 @@ html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
 
 .chat-row.dropped {
   opacity: 0.4;
+}
+
+/* What went with a question (views/chat.ts sentBadges): a small capsule on
+   the bubble's top right corner, above its edge, one icon for each kind in its colour
+   (the attachments' tiles), how many beside it, a picture's own small
+   picture. A click lists them under the bubble. */
+.bubble-wrap {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+  margin-top: 12px;
+}
+
+.bubble.has-sent {
+  padding-top: 8px;
+}
+
+.sent-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 18px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 9px;
+  background: #26272b;
+  box-shadow: 0 0 0 2px #000, inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  font: inherit;
+  cursor: default;
+  transition: box-shadow 0.15s ease-out;
+}
+
+.bubble-wrap > .sent-badges {
+  position: absolute;
+  top: -12px;
+  right: 10px;
+}
+
+.bubble-wrap > .sent-badges:hover,
+.bubble-wrap > .sent-badges.open {
+  box-shadow: 0 0 0 2px #000, inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.sent-badges:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #000, inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.sent-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tile);
+}
+
+.sent-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+/* Digits sit high in their line box: a pixel down centres them on the icon. */
+.sent-count {
+  font: 600 10px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  color: #a5aab3;
+  transform: translateY(1px);
+}
+
+.sent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: min(300px, 100%);
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #16171b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sent-list[hidden] {
+  display: none;
+}
+
+.sent-list-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px 3px;
+  font: 600 11px var(--font);
+  color: #8b9099;
+}
+
+/* As an attachment's row (.attach-row), with an arrow where its × would be. */
+.sent-row {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 16px;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 42px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.sent-row:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.sent-row:focus-visible {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.sent-open {
+  display: grid;
+  place-items: center;
+  color: #6b7079;
+}
+
+/* While a question is edited, over the field: what comes back with it, and
+   what leaves the chat's context (views/chat.ts drawEditStrip). */
+.edit-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(247, 179, 43, 0.07);
+  border: 1px solid rgba(247, 179, 43, 0.22);
+  font: 400 11.5px/1.35 var(--font);
+  color: #d9dce1;
+}
+
+.edit-strip[hidden],
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .edit-strip {
+  display: none;
+}
+
+.edit-strip-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.edit-strip-label {
+  font-weight: 600;
+  color: #f7c55a;
+}
+
+.edit-strip .sent-badges {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.edit-strip-hint {
+  font-size: 11px;
+  color: #9aa0aa;
 }
 
 /* ── Screen button: menu, preview, chips (views/chat.ts) ─────────────────── */
@@ -9249,8 +9439,9 @@ button.bg-row:hover {
 }
 
 /* Under an answer the CLI ended with an error (views/chat.ts bubble): one
-   line on its bar, in amber, and what to know under it once clicked. The
-   same box holds a failed answer's own words from the CLI (failedParts). */
+   line on its bar, in amber, the bar then in sight without the mouse, and
+   what to know under it once clicked. The same box holds a failed answer's
+   own words from the CLI (failedParts). */
 .msg-warning {
   display: inline-flex;
   align-items: center;
@@ -9854,4 +10045,80 @@ button.bg-row:hover {
 
 #compact .cp-stalled {
   color: #f5a524;
+}
+
+/* A message held because it would start the chat's CLI again under the
+   agents it left at work (views/chat.ts holdForAgents): amber, as an agent
+   with no sign of life; a message waiting for them, in their blue. */
+.chat-hold {
+  --ask: #f5a524;
+  display: flex;
+  gap: 8px;
+  padding: 7px 8px 8px 6px;
+  border-radius: 10px;
+  background: rgba(245, 165, 36, 0.07);
+  border: 1px solid rgba(245, 165, 36, 0.32);
+  animation: queue-in 0.18s ease-out;
+}
+
+.chat-hold.waiting {
+  --ask: #3b9eff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+.chat-hold[hidden],
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .chat-hold {
+  display: none;
+}
+
+.hold-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hold-text {
+  font: 600 11.5px var(--font);
+  color: #f7c66a;
+}
+
+.chat-hold.waiting .hold-text {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.hold-sub {
+  font: 400 11px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hold-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.hold-acts .agents-btn[hidden] {
+  display: none;
+}
+
+.hold-acts .agents-btn.primary {
+  background: #3b9eff;
+  color: #fff;
+}
+
+.hold-acts .agents-btn.primary:hover {
+  background: #5aaeff;
+}
+
+/* Stop clicked on an agent: Undo until it goes (views/agents-card.ts). */
+.agents-btn.undo {
+  color: var(--ag-working);
 }

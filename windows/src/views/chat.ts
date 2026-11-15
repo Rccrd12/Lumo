@@ -90,14 +90,17 @@ import {
 } from "../core/bridge";
 import {
   activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps, storedPermissionMode, withPermissionMode,
-  anyProviderReady, modelFor, onChatModel, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
+  anyProviderReady, modelFor, onChatModel, visibleProviders, withModel, type PermissionMode, type ProviderId, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
+import { groupByEffort, groupOf, levelOf, splitEffort, variantFor } from "../core/effort-groups";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact,
-  toSavedTurn, type ChatHit, type SavedChat,
+  chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists,
+  setChatModel, setCompact, toSavedTurn, type AnswerWarning, type ChatHit, type SavedChat,
 } from "../core/chats";
+// The chat's CLI sessions, kept with it: apart, so the list above stays as other changes edit it.
+import { cliOf, setChatCli } from "../core/chats";
 import {
   agentAsk, applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents,
@@ -107,10 +110,15 @@ import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, talkBox, type A
 import { updateChatTurns, type AskQuote } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
 import {
+  PICTURE_NAME, THUMB_EDGE, comingBack, groupKey, joinScreen, keptItems, leaveScreen, readSent, restored, sentAgain, sentGroups, sentItems,
+  type SentGroup, type SentItem,
+} from "../core/sent";
+import type { SavedTurn } from "../core/chats";
+import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
 } from "../core/checklists";
 import {
-  addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
+  addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
 import { ageLabel } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
@@ -133,7 +141,7 @@ import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNews, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, listeningLine, takeListens, untilText, watchColor, watchLabel, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { LISTENING_STRINGS, buildListeningPanel, listeningButtonTitle, neededText, watchTile } from "./listening";
-import { addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, placeHeard, seenChat, waitingElsewhere, wavesLit, type HeardLine } from "../core/heard";
+import { addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, markSent, placeHeard, seenChat, unsentOnOpen, waitingElsewhere, wavesLit, type HeardLine } from "../core/heard";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
@@ -168,6 +176,7 @@ const STRINGS = {
   heardClose: N_("Close"),
   heardIn: N_("Heard in the chat «{chat}»"),
   heardDoing: N_("{helper} takes care of it in its chat, «{chat}»"),
+  heardUnsent: N_("The task did not start"),
   planChange: N_("Or write what to change…"),
   send: N_("Send"),
   toEnd: N_("Go to the bottom"),
@@ -220,8 +229,25 @@ const STRINGS = {
   retry: N_("Retry"),
   editing: N_("Editing a message"),
   editingHint: N_("Sending replaces this message and everything after it."),
+  sentWith: N_("Sent with this message"),
+  comeBack: N_("Come back with the message"),
+  leaveContext: N_("Leave the context"),
+  comeBackHint: N_("What comes back waits in the attachments: take anything out with its ×."),
   queued: N_("Queued"),
   queuedHint: N_("Sent as soon as this answer ends"),
+};
+
+/**
+ * A message held because it would start the chat's CLI again under the
+ * agents it left at work (another model, effort, mode, folder or tools:
+ * chat_agents.rs WOULD_STOP): the bar above the field.
+ */
+const HOLD_TEXT = {
+  stops: N_("{name} starts again with the new settings and stops the {count} agents still working."),
+  choose: N_("Your message can wait for them to finish, or go now."),
+  waiting: N_("Your message goes when the {count} agents still working finish."),
+  wait: N_("Send when they finish"),
+  now: N_("Send now and stop them"),
 };
 
 /** The commands' icons drawn filled (core/slash.ts); the others are strokes. */
@@ -345,6 +371,8 @@ interface BubbleOptions {
   workshop?: boolean;
   /** Which message it is (core/checklists.ts messageScope): its cards keep their own state. */
   scope?: string;
+  /** A click on one of the things that went with a question, in the list under it. */
+  onOpenSent?: (message: ChatMessage, item: SentItem) => void;
 }
 
 /** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
@@ -354,6 +382,23 @@ let sendFromCard: ((text: string) => boolean) | undefined;
 let sentTimes: { el: HTMLElement; at: number }[] = [];
 
 /** "just now", "12 min ago", "3 h ago", then the day: when a message was sent or answered. */
+/** The chat's messages as Past chats keeps them: what failed left out, what went with a question kept small. */
+function savedTurns(history: readonly ChatMessage[]): SavedTurn[] {
+  return history.filter((m) => !m.failed).map((m) => ({
+    ...toSavedTurn(m),
+    ...(m.sent?.length ? { sent: keptItems(m.sent) } : {}),
+  }));
+}
+
+/** A kept message back on screen: Rust takes every turn back as it is, so its place there is its index. */
+function messageOf(turn: SavedTurn, i: number): ChatMessage {
+  const sent = readSent(turn.sent);
+  return {
+    id: nextId++, role: turn.role, content: turn.content, turn: i, ...fromSavedTurn(turn),
+    ...(sent ? { sent } : {}),
+  };
+}
+
 /** A message as Rust's conversation holds it (chat_restore): what it kept, when not what shows. */
 export function conversationTurn(m: { role: "user" | "assistant"; content: string; kept?: string }): { role: "user" | "assistant"; content: string } {
   return { role: m.role, content: m.kept ?? m.content };
@@ -410,7 +455,8 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     times.push({ el: when, at });
     sentTimes.push(...times);
   }
-  const bar = h("div", { class: opts.shown ? "msg-actions shown" : "msg-actions" });
+  // An answer with a warning keeps its bar in sight, the warning on it.
+  const bar = h("div", { class: opts.shown || message.warning ? "msg-actions shown" : "msg-actions" });
   let row: HTMLElement;
   if (message.role === "user") {
     const onEdit = opts.onEdit;
@@ -419,15 +465,36 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     const sent = sentBubble(message.content);
     // Asked of an agent: that agent on top of the question, as WhatsApp's quoted Reply.
     if (message.ask) sent.insertBefore(askQuote(message.ask), sent.firstChild);
-    foldLong(sent, message.id);
+    foldLong(sent, message.content);
     row = h("div", { class: `chat-row user${state}` }, sent, bar);
+    const went = message.sent?.length ? message.sent : null;
+    if (went) {
+      // What went with it: its icons on the bubble's top right corner, and their list under it on a click.
+      sent.classList.add("has-sent");
+      const key = `${State.chatId}:${message.id}`;
+      const list = sentList(message, went, opts.onOpenSent);
+      list.hidden = openSentList !== key;
+      const badges = sentBadges(went, "sent-badges");
+      badges.classList.toggle("open", !list.hidden);
+      badges.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openSentList = list.hidden ? key : null;
+        list.hidden = !list.hidden;
+        badges.classList.toggle("open", !list.hidden);
+        badges.setAttribute("aria-expanded", String(!list.hidden));
+        if (!list.hidden) list.scrollIntoView?.({ block: "nearest" });
+      });
+      badges.setAttribute("aria-expanded", String(!list.hidden));
+      row.replaceChildren(h("div", { class: "bubble-wrap" }, sent, badges), list, bar);
+    }
   } else {
     const reply = h("div", { class: "reply" });
     drawReply(reply, message.content, !!opts.workshop, opts.scope);
     // A stopped answer says so on the same line.
     const stopped = message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null;
-    // The CLI ended with an error after this answer: one line on the bar, what to know on a click.
-    const warned = message.warning;
+    // The CLI ended with an error after this answer: one line on the bar,
+    // which stays in sight, what to know on a click.
+    const warned = message.warning ? warningWords(message.warning) : null;
     const detail = warned ? h("div", { class: "msg-warning-detail", text: warned.detail }) : null;
     let warning: HTMLElement | null = null;
     if (warned && detail) {
@@ -454,8 +521,122 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   return row;
 }
 
+/** The question whose list of what went with it is open (chat id and message id): a redrawn log keeps it open. */
+let openSentList: string | null = null;
+
+/** Each kind's colour (the attachments' tiles) and icon, drawn as a stroke. */
+const SENT_ICONS: Record<SentGroup["key"], { cls: string; path: string }> = {
+  file: { cls: "attach-file", path: ICONS.docLine },
+  picture: { cls: "attach-file", path: ICONS.photo },
+  shot: { cls: "attach-shot", path: ICONS.display },
+  window: { cls: "attach-window", path: ICONS.window },
+  tab: { cls: "attach-tab", path: ICONS.globe },
+  selection: { cls: "attach-selection", path: ICONS.textLines },
+  folder: { cls: "attach-folder", path: ICONS.folder },
+};
+
+/**
+ * What went with a question, small: one icon for each kind of thing, in its
+ * colour, with how many beside it when more than one; a picture shows its
+ * own small picture. A button on the bubble, a plain line elsewhere.
+ */
+function sentBadges(items: readonly SentItem[], cls: string): HTMLElement {
+  const groups = sentGroups(items);
+  const names = items.map((i) => i.label).join("\n");
+  const el = cls === "sent-badges"
+    ? h("button", { class: cls, title: `${tl(STRINGS.sentWith)}\n${names}`, "aria-label": tl(STRINGS.sentWith) })
+    : h("span", { class: cls, title: names });
+  for (const g of groups) {
+    const look = SENT_ICONS[g.key];
+    const thumb = g.first.thumb;
+    const mark = thumb
+      ? h("img", { class: "sent-thumb", src: thumb, alt: "", draggable: "false" })
+      : svg(look.path, 11, { stroke: 1.6 });
+    el.append(h("span", { class: `sent-item ${look.cls}` }, mark, g.count > 1 ? h("span", { class: "sent-count", text: String(g.count) }) : null));
+  }
+  return el;
+}
+
+/** Under a question, once its icons are clicked: each thing that went with it, a click opening it. */
+function sentList(message: ChatMessage, items: readonly SentItem[], onOpen?: (message: ChatMessage, item: SentItem) => void): HTMLElement {
+  const list = h("div", { class: "sent-list" },
+    h("div", { class: "sent-list-head" }, h("span", { text: tl(STRINGS.sentWith) }), h("span", { class: "sent-list-count", text: String(items.length) })));
+  for (const item of items) {
+    const look = SENT_ICONS[groupKey(item)];
+    const tile = h("span", { class: `attach-tile ${look.cls}` },
+      item.thumb ? h("img", { class: "attach-thumb", src: item.thumb, alt: "", draggable: "false" }) : svg(look.path, 15, { stroke: 1.6 }));
+    const row = h("div", { class: "sent-row", title: item.title, role: "button", tabindex: "0" },
+      tile,
+      h("span", { class: "attach-text" },
+        h("span", { class: "attach-name", text: item.label }),
+        item.detail ? h("span", { class: "attach-detail", text: item.detail }) : null),
+      h("span", { class: "sent-open" }, svg(ICONS.arrowUpRight, 10, { stroke: 1.8 })));
+    const open = () => onOpen?.(message, item);
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      open();
+    });
+    row.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter") open();
+    });
+    list.append(row);
+  }
+  return list;
+}
+
+/** A picture made small and square (THUMB_EDGE), to keep with a question; none when it can't be drawn. */
+function smallPicture(src: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    if (typeof Image === "undefined" || typeof document === "undefined") {
+      resolve(undefined);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const c = document.createElement("canvas");
+        const g = side > 0 ? c.getContext("2d") : null;
+        if (!g) {
+          resolve(undefined);
+          return;
+        }
+        c.width = c.height = THUMB_EDGE;
+        g.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, THUMB_EDGE, THUMB_EDGE);
+        resolve(c.toDataURL("image/jpeg", 0.75));
+      } catch {
+        resolve(undefined);
+      }
+    };
+    img.onerror = () => resolve(undefined);
+    img.src = src;
+  });
+}
+
 /** The answers whose warning (ChatMessage.warning) is open: a redrawn log keeps it open. */
 const openWarnings = new WeakSet<ChatMessage>();
+
+/** The closed island's note for an answer with a warning: the island's amber (--amber). */
+const WARNING_COLOR = "#f5a524";
+
+/** What a warning under an answer says (antigravity_cli.rs answer_warning). */
+const WARNING_TEXT = {
+  line: N_("Antigravity CLI reported a problem at the end"),
+  malformed: N_("While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”."),
+  error: N_("Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”."),
+  message: N_("Antigravity CLI's message: {error}"),
+};
+
+/**
+ * A warning's line and what to know, in the island's language now (a chat
+ * opened later in another language reads in that one); one saved by the
+ * 0.22.2 betas keeps the words it was saved with.
+ */
+export function warningWords(w: AnswerWarning): { line: string; detail: string } {
+  if ("line" in w) return w;
+  const why = t(w.kind === "malformed" ? WARNING_TEXT.malformed : WARNING_TEXT.error);
+  return { line: t(WARNING_TEXT.line), detail: `${why}\n\n${t(WARNING_TEXT.message, { error: w.message })}` };
+}
 
 /**
  * A failed answer's text: what Lumo says, and the CLI's own words for it when
@@ -489,8 +670,13 @@ function sentBubble(text: string): HTMLElement {
 
 /** Taller than this (page px), a question is folded to its first lines (style.css `.bubble-body.folded`), with Show more in it. */
 const FOLD_OVER = 240;
-/** The long questions opened with Show more, by chat and message: a redrawn log keeps them open. */
+/**
+ * The long questions opened with Show more, by chat and text: a redrawn log
+ * keeps them open, and so does a chat opened again, whose messages are given
+ * new ids (openChat). The oldest go past UNFOLDED_KEPT.
+ */
 const unfolded = new Set<string>();
+const UNFOLDED_KEPT = 100;
 /** Each bubble's own measure, once it is laid out and whenever its width changes. */
 const foldMeasures = new WeakMap<Element, () => void>();
 let foldObserver: ResizeObserver | null = null;
@@ -501,9 +687,9 @@ let foldObserver: ResizeObserver | null = null;
  * one is left as it is drawn. Measured once laid out, so it never depends on
  * how many characters it has.
  */
-function foldLong(bubble: HTMLElement, id: number): void {
+function foldLong(bubble: HTMLElement, text: string): void {
   if (typeof ResizeObserver === "undefined") return;
-  const key = `${State.chatId}:${id}`;
+  const key = `${State.chatId}\n${text}`;
   // Made the first time the question is found long: its text goes in `body`, the button under it.
   let body: HTMLElement | null = null;
   let btn: HTMLElement | null = null;
@@ -517,10 +703,16 @@ function foldLong(bubble: HTMLElement, id: number): void {
         e.stopPropagation();
         const closing = unfolded.has(key);
         if (closing) unfolded.delete(key);
-        else unfolded.add(key);
+        else unfold(key);
         paint();
         // Folded again from far down: the question's top comes back in sight.
         if (closing) bubble.scrollIntoView?.({ block: "nearest" });
+      });
+      // Tab reaching a link in the hidden lines opens the question, so what has the keyboard is in sight.
+      body.addEventListener("focusin", () => {
+        if (!body?.classList.contains("folded")) return;
+        unfold(key);
+        paint();
       });
       bubble.append(body, btn);
     }
@@ -528,14 +720,23 @@ function foldLong(bubble: HTMLElement, id: number): void {
     const open = unfolded.has(key);
     btn.hidden = !long;
     body.classList.toggle("folded", long && !open);
-    btn.textContent = t(open ? STRINGS.showLess : STRINGS.showMore);
-    btn.setAttribute("aria-expanded", String(open));
+    // Only what changed: the island resizing measures every bubble at each frame,
+    // and a rewritten label is a change in the log that its observers act on.
+    const label = t(open ? STRINGS.showLess : STRINGS.showMore);
+    if (btn.textContent !== label) btn.textContent = label;
+    if (btn.getAttribute("aria-expanded") !== String(open)) btn.setAttribute("aria-expanded", String(open));
   };
   foldObserver ??= new ResizeObserver((entries) => {
     for (const entry of entries) foldMeasures.get(entry.target)?.();
   });
   foldMeasures.set(bubble, paint);
   foldObserver.observe(bubble);
+}
+
+/** Opened with Show more: kept, the oldest one going past UNFOLDED_KEPT. */
+function unfold(key: string): void {
+  unfolded.add(key);
+  if (unfolded.size > UNFOLDED_KEPT) unfolded.delete(unfolded.values().next().value as string);
 }
 
 /** Takes plainQuestion's marks back out of the drawn text, so a selection copies what was written. */
@@ -814,6 +1015,8 @@ interface Run {
 
 /** A provider that streams no tools shows the screenshots or the file this long, then Thinking…. */
 const FIRST_ACTIVITY_MS = 1200;
+/** How long a question waits for its chat's model to be checked (checkChatModel). */
+const MODEL_CHECK_WAIT_MS = 3000;
 
 /** How long Lumo shows that an answer came (his hop) or went wrong (his shake). */
 export const SETTLE_MS = 2000;
@@ -1278,6 +1481,9 @@ function saveSettings() {
   void Bridge.saveSettings(State.settings);
 }
 
+/** Antigravity CLI: its models' variants by effort are one row in the picker. */
+const AGY = "antigravity-cli";
+
 // ── Model picker ──────────────────────────────────────────────────────────────
 
 interface Picker {
@@ -1286,6 +1492,13 @@ interface Picker {
   close(): void;
   /** Asks a local model's server what the model picked can do, when it changed (or `force`d). */
   refreshCaps(force?: boolean): void;
+  /**
+   * The model to use in place of `model` with provider `id` when its list no
+   * longer offers it (a model retired since a chat was on it), else null.
+   */
+  replacementFor(id: string, model: string): Promise<string | null>;
+  /** Antigravity CLI: `model`'s name and level when the list has other levels of it, else null. */
+  variantOf(model: string): { base: string; level: string } | null;
   readonly isOpen: boolean;
 }
 
@@ -1311,10 +1524,39 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     if (Array.isArray(ids)) readyProviders = new Set(ids);
   });
 
+  /**
+   * The slider's levels and what it is on. Antigravity CLI: the levels of the
+   * model in use (its variants by effort), and a level picks that variant, with
+   * no Auto (its CLI has no level of its own to fall back on).
+   */
+  function effortSpec(p: ProviderDef): { levels: string[]; current: () => string; set: (e: string) => void; auto: boolean } {
+    if (p.id === AGY) {
+      const groups = groupByEffort((cache.get(p.id) ?? []).map((m) => m.id));
+      const group = groupOf(groups, activeModel(State.settings));
+      return {
+        levels: group?.levels ?? [],
+        current: () => levelOf(groups, activeModel(State.settings)),
+        set: (e) => {
+          if (group?.ids.has(e)) State.settings = withModel(State.settings, p.id, group.ids.get(e)!);
+        },
+        auto: false,
+      };
+    }
+    return {
+      levels: effortsFor(p.id).filter((e) => e !== ""),
+      current: () => effortFor(p.id, State.settings.chatEffort),
+      set: (e) => {
+        State.settings = { ...State.settings, chatEffort: e };
+      },
+      auto: true,
+    };
+  }
+
   function drawEfforts() {
     clear(efforts);
     const p = providerDef(State.settings.chatProvider);
-    const levels = effortsFor(p.id).filter((e) => e !== "");
+    const spec = effortSpec(p);
+    const levels = spec.levels;
     efforts.hidden = levels.length === 0;
     if (efforts.hidden) return;
     const last = levels.length - 1;
@@ -1350,7 +1592,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     };
     /** Draws the saved level (or Auto) without saving anything. */
     const show = () => {
-      const current = effortFor(p.id, State.settings.chatEffort);
+      const current = spec.current();
       const index = levels.indexOf(current);
       auto.classList.toggle("on", !current);
       track.classList.toggle("auto", !current);
@@ -1361,8 +1603,8 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     };
     const pick = (e: string) => {
       show();
-      if (e === effortFor(p.id, State.settings.chatEffort)) return;
-      State.settings = { ...State.settings, chatEffort: e };
+      if (e === spec.current()) return;
+      spec.set(e);
       saveSettings();
       Sound.play("blip");
       show();
@@ -1411,7 +1653,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     });
     track.addEventListener("keydown", (e) => {
       const key = (e as KeyboardEvent).key;
-      const current = levels.indexOf(effortFor(p.id, State.settings.chatEffort));
+      const current = levels.indexOf(spec.current());
       const to = key === "ArrowRight" || key === "ArrowUp" ? Math.min(last, current + 1)
         : key === "ArrowLeft" || key === "ArrowDown" ? Math.max(0, current < 0 ? 0 : current - 1)
         : key === "Home" ? 0 : key === "End" ? last : null;
@@ -1423,7 +1665,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
 
     // One short row, so the model list keeps its room: the slider, the level
     // it is on, and Auto at the end.
-    efforts.append(h("div", { class: "effort-row" }, track, value, auto));
+    efforts.append(h("div", { class: "effort-row" }, track, value, spec.auto ? auto : null));
     show();
     fitEfforts();
   }
@@ -1536,9 +1778,27 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     slot.textContent = words.join(" · ");
   }
 
-  function drawModels(p: ProviderDef, models: ModelInfo[]) {
+  function drawModels(p: ProviderDef, listed: ModelInfo[]) {
     clear(list);
     const current = activeModel(State.settings);
+    // Antigravity CLI: a model's variants by effort on one row, the slider below.
+    const groups = p.id === AGY ? groupByEffort(listed.map((m) => m.id)) : null;
+    const models: ModelInfo[] = groups
+      ? groups.map((g) => {
+          const alone = g.levels.length === 0 ? listed.find((m) => m.id === g.ids.get("")) : undefined;
+          return alone ?? { id: [...g.ids.values()].includes(current) ? current : variantFor(g, levelOf(groups, current)), label: g.name };
+        })
+      : listed;
+    /**
+     * The model a click on a row picks. A group's: the variant at the level in
+     * use when it is clicked (the slider may have moved since the list was drawn).
+     */
+    const picked = (m: ModelInfo): string => {
+      const g = groups ? groupOf(groups, m.id) : undefined;
+      if (!groups || !g || g.levels.length === 0) return m.id;
+      const now = activeModel(State.settings);
+      return [...g.ids.values()].includes(now) ? now : variantFor(g, levelOf(groups, now));
+    };
     for (const m of models) {
       const on = m.id === current;
       const row = h(
@@ -1550,7 +1810,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
       );
       if (holds(p)) row.append(loadButton(p, m.id));
       row.addEventListener("click", () => {
-        State.settings = withModel(State.settings, p.id, m.id);
+        State.settings = withModel(State.settings, p.id, picked(m));
         saveSettings();
         onPicked();
         Sound.play("blip");
@@ -1562,6 +1822,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     drawCaps();
     list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
     if (holds(p)) void drawLoaded(p, models.map((m) => m.id));
+    if (groups) drawEfforts();
   }
 
   /** Ollama and LM Studio load and eject models; a custom server doesn't say. */
@@ -1717,11 +1978,37 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
     onChange();
   }
 
+  async function replacementFor(id: string, model: string): Promise<string | null> {
+    const p = providerDef(id);
+    if (p.id !== id || !model) return null;
+    let models = p.urlField ? undefined : cache.get(p.id);
+    if (!models) {
+      // The list is asked only where that costs nothing more than the picker
+      // opening on it: a provider called by its API with its key, or Claude
+      // Code's own list. No CLI or model server is started for it.
+      if (!isApiProvider(p.id) && p.id !== "claude-code") return null;
+      if (p.key && !(await Bridge.secretPresent(p.key))) return null;
+      const listed = await Bridge.chatModels(p.id);
+      if (!Array.isArray(listed)) return null;
+      models = listed;
+      cache.set(p.id, models);
+    }
+    const keep = pickModel(p, models.map((m) => m.id), model);
+    return keep && keep !== model ? keep : null;
+  }
+
   return {
     el,
     open,
     close,
     refreshCaps,
+    replacementFor,
+    variantOf(model: string) {
+      // Before the list is asked (the CLI is started only by the picker), its name says it.
+      const listed = cache.get(AGY);
+      if (!listed) return splitEffort(model);
+      return groupOf(groupByEffort(listed.map((m) => m.id)), model)?.levels.length ? splitEffort(model) : null;
+    },
     get isOpen() {
       return isOpen;
     },
@@ -1828,6 +2115,11 @@ export function buildPrompt(
     stuck = fromEnd() <= STUCK_PX;
     drawToEnd();
   }, { passive: true });
+  // Show more opens a question downwards, from where it is read: the log lets
+  // go of its end, so it is not carried to the question's last line.
+  log.addEventListener("click", (e) => {
+    if ((e.target as Element | null)?.closest?.(".msg-fold")) stuck = false;
+  }, true);
   // A turn of the wheel upwards lets go at once, before the scroll it starts.
   log.addEventListener("wheel", (e) => {
     if (e.deltaY < 0 && !e.ctrlKey && !e.shiftKey) stuck = false;
@@ -1909,6 +2201,27 @@ export function buildPrompt(
   const askClose = h("button", { class: "ask-close", title: tl(SCREEN_STRINGS.remove), "aria-label": tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 9));
   const askEl = h("div", { class: "chat-ask" }, h("i", { class: "ask-bar" }), h("div", { class: "ask-text" }, askWho, askLine), askClose);
   askEl.hidden = true;
+
+  // A message that would start the chat's CLI again under its agents at
+  // work: held above the field until the user says to wait for them or to
+  // stop them (HOLD_TEXT, `holdForAgents`).
+  const holdText = h("div", { class: "hold-text" });
+  const holdSub = h("div", { class: "hold-sub" });
+  const holdWait = h("button", { class: "agents-btn primary", text: tl(HOLD_TEXT.wait) });
+  const holdNow = h("button", { class: "agents-btn stop", text: tl(HOLD_TEXT.now) });
+  const holdCancel = h("button", { class: "agents-btn", text: tl(STRINGS.cancel) });
+  const holdEl = h("div", { class: "chat-hold" },
+    h("i", { class: "ask-bar" }),
+    h("div", { class: "hold-body" }, holdText, holdSub, h("div", { class: "hold-acts" }, holdWait, holdNow, holdCancel)));
+  holdEl.hidden = true;
+  /**
+   * By chat: a message that would have started its CLI again under the
+   * agents it left at work. `waiting`: it goes once they finish; else it is
+   * back in the field and the bar asks. `stuck`: sent once they seemed done
+   * and held again, so it waits for news of an agent before it tries again.
+   */
+  const held = new Map<string, { text: string; quote?: AskQuote; count: number; name: string; waiting: boolean; stuck?: boolean }>();
+  let holdShown = "";
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -2225,7 +2538,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, askEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, holdEl, askEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -2246,6 +2559,12 @@ export function buildPrompt(
     });
     return img;
   }
+
+  // While a question is edited: what comes back with it, and what leaves the
+  // context (drawEditStrip), just over the model's row.
+  const editStrip = h("div", { class: "edit-strip" });
+  editStrip.hidden = true;
+  body.insertBefore(editStrip, modelRow);
 
   // A click anywhere else — in the island or, through Rust's outside-press,
   // anywhere on the screen — closes the list that is open: the models, the
@@ -2494,8 +2813,11 @@ export function buildPrompt(
     const p = providerDef(State.settings.chatProvider);
     modelDot.style.background = p.accent;
     const model = activeModel(State.settings) || t(STRINGS.noModel);
-    const effort = effortFor(p.id, State.settings.chatEffort);
-    modelName.textContent = effort ? `${model} · ${effortLabel(effort)}` : model;
+    // Antigravity CLI: its model's effort, said as Claude Code's is (`gemini-4-argon · High`).
+    const variant = p.id === AGY ? picker.variantOf(model) : null;
+    const effort = variant ? variant.level : effortFor(p.id, State.settings.chatEffort);
+    const name = variant ? variant.base : model;
+    modelName.textContent = effort ? `${name} · ${effortLabel(effort)}` : name;
     // A long name is cut; the whole of it shows on hover.
     modelName.title = modelName.textContent;
     modelBtn.classList.toggle("open", picker.isOpen);
@@ -2545,11 +2867,13 @@ export function buildPrompt(
     State.notify();
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
+    void bringBack(message);
   }
 
   function cancelEdit() {
     if (editing == null) return;
     editing = null;
+    takeBackAgain();
     setInput("");
     Sound.play("pop");
     renderedCount = -1;
@@ -2565,7 +2889,140 @@ export function buildPrompt(
   function retry(message: ChatMessage) {
     if (preparing || answering() || editing != null) return;
     editing = message.id;
-    void submit(undefined, message.content);
+    void bringBack(message).then(() => {
+      if (editing === message.id) void submit(undefined, message.content);
+    });
+  }
+
+  /** Edit is putting back what went with the question: sending waits for it. */
+  let bringing: Promise<void> | null = null;
+
+  // ── What went with a question, again ──────────────────────────────────────
+  //
+  // Edit (and Retry) put back in the attachments what went with the question
+  // (core/sent.ts), so it goes again with it; its × takes any of it out first.
+  // Given up, the edit takes back out only what it put there.
+
+  /** What the edit put back in the attachments, and what the file waiting was before it. */
+  let editBack: {
+    screen: PendingScreen;
+    more: string[];
+    dropped: { was: typeof State.droppedFile; sent: boolean | undefined; context: typeof State.promptContext; now: typeof State.droppedFile } | null;
+  } | null = null;
+  /** For the line over the field while editing: what comes back, and what leaves the context. */
+  let editSent: { back: SentItem[]; lost: SentItem[] } | null = null;
+  /** Screenshots that went with a question: the chat keeps them (chat copies), nothing here deletes them. */
+  const keptShots = new Set<string>();
+
+  /** The things that went with the questions after `at` in the chat on screen. */
+  function sentAfter(at: number): SentItem[] {
+    return State.chatHistory.slice(at + 1).flatMap((m) => (m.role === "user" ? m.sent ?? [] : []));
+  }
+
+  function bringBack(message: ChatMessage): Promise<void> {
+    const done = putBack(message);
+    bringing = done;
+    void done.finally(() => {
+      if (bringing === done) bringing = null;
+    });
+    return done;
+  }
+
+  async function putBack(message: ChatMessage) {
+    const items = message.sent ?? [];
+    const at = State.chatHistory.findIndex((m) => m.id === message.id);
+    const later = at < 0 ? [] : sentAfter(at);
+    editSent = items.length || later.length ? { back: [], lost: later } : null;
+    if (!items.length) return;
+    // A file or a screenshot deleted since can't go again.
+    const paths = items.flatMap((i) => (i.path ? [i.path] : []));
+    let present: boolean[] | null = null;
+    if (paths.length) present = await Bridge.chatFilesPresent(paths).catch(() => null);
+    if (editing !== message.id) return;
+    const gone = new Set(paths.filter((_, i) => present?.[i] === false));
+    const { back, lost } = comingBack(items, message.again, (path) => !gone.has(path));
+    editSent = { back, lost: [...lost, ...later] };
+    const again = restored(back, message.again);
+    for (const shot of again.screen.shots) keptShots.add(shot.path);
+    const dropped = State.droppedFile;
+    const before = { was: dropped, sent: dropped?.sent, context: State.promptContext };
+    const more: string[] = [];
+    for (const f of again.files) {
+      const waiting = State.droppedFile;
+      if (waiting && samePath(waiting.path, f.path)) waiting.sent = false;
+      else if (waiting && !waiting.sent) {
+        if (!State.moreFiles.some((m) => samePath(m.path, f.path))) {
+          State.moreFiles = [...State.moreFiles, { name: f.name, path: f.path }];
+          more.push(f.path);
+        }
+      } else {
+        State.droppedFile = { name: f.name, path: f.path };
+        State.promptContext = { kind: "file", name: f.name, path: f.path };
+      }
+    }
+    editBack = { screen: again.screen, more, dropped: State.droppedFile !== before.was || before.sent !== State.droppedFile?.sent ? { ...before, now: State.droppedFile } : null };
+    screen = joinScreen(screen, again.screen);
+    // A screenshot kept with the chat shows its small picture until its own is read.
+    for (const shot of again.screen.shots) {
+      void chatPicture(shot.path).then((src) => {
+        if (!src || !screen.shots.some((x) => x.path === shot.path && x.preview !== src)) return;
+        screen = { ...screen, shots: screen.shots.map((x) => (x.path === shot.path ? { ...x, preview: src } : x)) };
+        State.notify();
+      });
+    }
+    State.notify();
+  }
+
+  /** The edit was given up: what it put back in the attachments leaves them again. */
+  function takeBackAgain() {
+    const back = editBack;
+    editBack = null;
+    editSent = null;
+    if (!back) return;
+    screen = leaveScreen(screen, back.screen);
+    if (back.more.length) State.moreFiles = State.moreFiles.filter((f) => !back.more.includes(f.path));
+    const d = back.dropped;
+    if (d && State.droppedFile === d.now) {
+      if (d.was && d.was === d.now) d.was.sent = d.sent;
+      else {
+        State.droppedFile = d.was;
+        if (d.was && d.sent !== undefined) d.was.sent = d.sent;
+        State.promptContext = d.context;
+      }
+    }
+  }
+
+  /** A click in the list under a question: what it was, as it went. */
+  async function openSent(message: ChatMessage, item: SentItem) {
+    const again = message.again;
+    if (again && item.kind !== "file" && item.kind !== "shot") {
+      const blocks = itemPreview(again.screen, { kind: item.kind, key: item.key });
+      if (blocks.length) {
+        openPreview(blocks, null, true);
+        return;
+      }
+    }
+    const plain = (over: Partial<PreviewBlock>): PreviewBlock => ({ heading: item.label, detail: item.detail, note: "", text: "", image: "", ...over });
+    if (item.kind === "selection" && item.text) {
+      openPreview([plain({ detail: item.window ?? "", text: item.text })], null, true);
+      return;
+    }
+    if (item.path && (item.kind === "shot" || PICTURE_NAME.test(item.label))) {
+      const image = (await chatPicture(item.path)) ?? item.thumb ?? "";
+      if (image) {
+        openPreview(item.kind === "shot" ? [plain({ image })] : filePreview({ name: item.label, path: item.path }, image), null, true);
+        return;
+      }
+    }
+    if (item.kind === "file" && item.path) {
+      const done = await Bridge.chatFileOpen(item.path).catch(() => "missing");
+      if (done === "missing") {
+        Sound.play("error");
+        openPreview([plain({ detail: item.path, note: t(STRINGS.fileMissing) })], null, true);
+      }
+      return;
+    }
+    openPreview([plain({})], null, true);
   }
 
   /**
@@ -2587,6 +3044,7 @@ export function buildPrompt(
     if (file?.sent && file.sentWith === id) file.sent = false;
     State.chatHistory = kept;
     State.chatSession = null;
+    setChatCli(State.chatId, null);
     // The cards of the dropped messages (a quiz's answers) are not the next answer's.
     forgetCardsFrom(State.chatId, kept.filter((m) => !m.failed).length);
     // So are the agents the dropped answers started: the next answer's start a card of their own.
@@ -2601,6 +3059,43 @@ export function buildPrompt(
     drawChatFiles();
     if (State.chatId) chatRewound(State.chatId);
     await Bridge.chatRewind(State.chatId, keep);
+  }
+
+  /** The small pictures of the screenshots and picture files that went with a question, made once it went. */
+  async function addThumbs(items: SentItem[], shots: readonly { path: string; preview: string }[]) {
+    let changed = false;
+    for (const item of items) {
+      let src: string | null | undefined = null;
+      if (item.kind === "shot") src = shots.find((x) => x.path === item.path)?.preview;
+      else if (item.kind === "file" && item.path && PICTURE_NAME.test(item.label)) {
+        src = filePicturesHere.get(item.path) ?? (await Bridge.filePreview(item.path).catch(() => null));
+      }
+      const small = src ? await smallPicture(src) : undefined;
+      if (small) {
+        item.thumb = small;
+        changed = true;
+      }
+    }
+    if (changed) {
+      renderedCount = -1;
+      State.notify();
+    }
+  }
+
+  /** Over the field while a question is edited: what comes back with it, and what leaves the context. */
+  function drawEditStrip() {
+    const shown = editing != null ? editSent : null;
+    const key = shown ? JSON.stringify([shown.back.map((i) => [i.kind, i.key, !!i.thumb]), shown.lost.map((i) => [i.kind, i.key, !!i.thumb])]) : "";
+    if (editStrip.dataset.key === key) return;
+    editStrip.dataset.key = key;
+    clear(editStrip);
+    editStrip.hidden = !shown || (!shown.back.length && !shown.lost.length);
+    if (!shown) return;
+    const line = (label: string, items: SentItem[], cls: string) =>
+      h("div", { class: `edit-strip-line ${cls}` }, h("span", { class: "edit-strip-label", text: t(label) }), sentBadges(items, "sent-badges static"));
+    if (shown.back.length) editStrip.append(line(STRINGS.comeBack, shown.back, "back"));
+    if (shown.lost.length) editStrip.append(line(STRINGS.leaveContext, shown.lost, "lost"));
+    if (shown.back.length) editStrip.append(h("div", { class: "edit-strip-hint", text: t(STRINGS.comeBackHint) }));
   }
 
   // ── Permissions ───────────────────────────────────────────────────────────
@@ -2952,7 +3447,9 @@ export function buildPrompt(
 
   /** Forgets the screenshots that were not sent, and deletes them. */
   function dropShots(paths: string[]) {
-    if (paths.length > 0) void Bridge.screenDiscard(paths);
+    // One that went with a question is the chat's: it goes with the chat.
+    const gone = paths.filter((p) => !keptShots.has(p));
+    if (gone.length > 0) void Bridge.screenDiscard(gone);
   }
 
   function closeScreen() {
@@ -3314,7 +3811,8 @@ export function buildPrompt(
    * Close keeps it; either way the attachments it was opened from come back.
    * A chat's file has no Remove (`onRemove` null).
    */
-  function openPreview(blocks: PreviewBlock[], onRemove: (() => void) | null) {
+  /** `toChat`: Close goes back to the chat (a question's list of what went with it), not to the attachments. */
+  function openPreview(blocks: PreviewBlock[], onRemove: (() => void) | null, toChat = false) {
     if (picker.isOpen) picker.close();
     closeHistory();
     closeFiles();
@@ -3351,7 +3849,7 @@ export function buildPrompt(
     });
     close.addEventListener("click", () => {
       closeScreen();
-      openFiles();
+      if (!toChat) openFiles();
       input.focus();
     });
     screenList.append(items, h("div", { class: "screen-actions" }, remove, close));
@@ -3423,8 +3921,10 @@ export function buildPrompt(
         forgetChat(agentStore, c.id);
         askFor.delete(c.id);
         queuedAsk.delete(c.id);
-        // What it heard goes with it, and no longer waits to be seen.
+        // What it heard goes with it, and no longer waits to be seen; a task
+        // still waiting to go to it goes too, or it would bring the chat back.
         dropHeard(c.id);
+        forgetHeard(c.id);
         seen(c.id);
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
@@ -3501,6 +4001,8 @@ export function buildPrompt(
   });
 
   function openChat(c: SavedChat) {
+    // What an edit put back in the attachments was this chat's.
+    takeBackAgain();
     editing = null;
     const run = runs.get(c.id);
     if (run) {
@@ -3509,15 +4011,17 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, ...fromSavedTurn(turn) }));
+      State.chatHistory = c.turns.map((turn, i) => messageOf(turn, i));
       State.chatSession = c.session;
-      void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
+      void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id), cliOf(c.id));
       // Its answers' agents come back under them, unless the island still holds them.
       restoreAgents(agentStore, c.id, c.turns, c.provider);
     }
     State.chatId = c.id;
-    // The picker shows the provider and model this chat is on (as it was left).
-    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model } : { provider: c.provider, model: c.model }));
+    // The picker shows the provider and model this chat is on (as it was left);
+    // a voice call's transcript has none, and leaves the picker as it is.
+    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model } : null));
+    void checkChatModel(c.id);
     State.droppedFile = null;
     State.promptContext = null;
     if (picker.isOpen) picker.close();
@@ -3539,9 +4043,52 @@ export function buildPrompt(
     saveSettings();
   }
 
+  /** The model check of a chat still under way, by chat: its question waits for it. */
+  const modelChecks = new Map<string, Promise<void>>();
+
+  /**
+   * Chat `id`'s model, checked against its provider's list: one no longer
+   * offered (retired since the chat was on it) gives way to the one the
+   * picker would pick, in the chat and, where it is the provider's model in
+   * the settings, there too, so a new chat does not start on it either.
+   */
+  function checkChatModel(id: string): Promise<void> {
+    const known = modelChecks.get(id);
+    if (known) return known;
+    const on = chatModelOf(id);
+    if (!on?.model) return Promise.resolve();
+    const { provider, model } = on;
+    const check = picker.replacementFor(provider, model)
+      .then((next) => {
+        if (!next) return;
+        // Picked again meanwhile: that pick stands.
+        const now = chatModelOf(id);
+        if (now?.provider === provider && now.model === model) setChatModel(id, provider, next);
+        if (modelFor(State.settings, provider) === model) {
+          State.settings = withModel(State.settings, provider as ProviderId, next);
+          saveSettings();
+          State.notify();
+        }
+      })
+      // No list (offline, the key refused): the model stays, and says so itself if it fails.
+      .catch(() => {})
+      .finally(() => modelChecks.delete(id));
+    modelChecks.set(id, check);
+    return check;
+  }
+
+  /** The check of chat `id`'s model, waited for at most `MODEL_CHECK_WAIT_MS`. */
+  function modelChecked(id: string): Promise<void> {
+    const check = modelChecks.get(id) ?? checkChatModel(id);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, MODEL_CHECK_WAIT_MS)));
+    return Promise.race([check, late]).finally(() => clearTimeout(timer));
+  }
+
   /** A new chat; an answer still being written in the one before goes on in the background. */
   function newChat() {
     if (editing != null) setInput("");
+    takeBackAgain();
     editing = null;
     State.startChat();
     State.droppedFile = null;
@@ -3646,7 +4193,7 @@ export function buildPrompt(
       State.chatSession = going.session;
     } else if (State.chatHistory.length > 0) {
       State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, turn: i }));
-      void Bridge.chatRestore(State.chatId, State.chatHistory.map(conversationTurn), State.chatSession, compactOf(State.chatId));
+      void Bridge.chatRestore(State.chatId, State.chatHistory.map(conversationTurn), State.chatSession, compactOf(State.chatId), cliOf(State.chatId));
     }
     const workshop = State.chatSlot === "forge";
     cardEl.classList.toggle("forge", workshop);
@@ -3695,6 +4242,7 @@ export function buildPrompt(
       { role: "assistant", content: `${t(FORGE_STRINGS.editHere, { name: tool.name })}\n\n${blocksOf(seed)}` },
     ];
     State.chatHistory = turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
+    setChatCli(State.chatId, null);
     void Bridge.chatRestore(State.chatId, turns, null);
     const parsed = latestDraft(State.chatHistory);
     if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
@@ -3709,7 +4257,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map(toSavedTurn);
+    const turns = savedTurns(run.history);
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -3967,13 +4515,16 @@ export function buildPrompt(
   }
 
   /**
-   * The seconds next to the dots move once a second while something timed is
-   * on show (a local model reading the prompt, reasoning, asked again); the
-   * timer stops as soon as nothing is.
+   * The seconds next to the dots, and on the closed island, move once a
+   * second while something timed is on show (thinking, a local model reading
+   * the prompt, asked again), from the moment the question goes: a CLI that
+   * thinks without a word (agy) sends no activity to start them. The timer
+   * stops as soon as nothing is timed, and while the island is hidden (0 %
+   * CPU); it starts again when the island shows.
    */
   let secondsTimer: ReturnType<typeof setInterval> | null = null;
+  const timed = () => State.mode !== "hidden" && [...runs.values()].some((r) => (!r.text || r.dots) && TIMED.has(r.activity.kind));
   function tickSeconds() {
-    const timed = () => [...runs.values()].some((r) => (!r.text || r.dots) && TIMED.has(r.activity.kind));
     if (secondsTimer != null || !timed()) return;
     secondsTimer = setInterval(() => {
       if (!timed()) {
@@ -3989,6 +4540,13 @@ export function buildPrompt(
     // Under Node (the tests), an answer left going doesn't keep the process alive.
     (secondsTimer as { unref?: () => void }).unref?.();
   }
+  // The island shows again: the seconds go on from where they are, not from
+  // the number left while it was hidden.
+  State.subscribe(() => {
+    if (secondsTimer != null || !timed()) return;
+    tickSeconds();
+    queueMicrotask(drawIslandActivity);
+  });
 
   // A file the answer read, edited or created: the chat's files list it.
   void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
@@ -4254,8 +4812,16 @@ export function buildPrompt(
     drawAgents(ev.chat);
     drawIslandActivity();
     tickAgents();
-    // An agent that just ended is kept with the chat.
-    if (isFinal(ev.agent.state) && before !== ev.agent.state) saveAgents(ev.chat);
+    // An agent that just started, or just ended, is kept with the chat: one
+    // at work as ended halfway, should Lumo close before it ends (savedAgents).
+    if (before === undefined || (isFinal(ev.agent.state) && before !== ev.agent.state)) saveAgents(ev.chat);
+    // A message held for the agents: their count, and it goes once they finish.
+    const hold = held.get(ev.chat);
+    if (hold?.stuck) hold.stuck = false;
+    if (ev.chat === State.chatId) {
+      drawHold();
+      releaseHeld();
+    }
   });
 
   void onEvent<ChatSignalEvent>("chat-signal", (ev) => {
@@ -4304,7 +4870,12 @@ export function buildPrompt(
   }
   // The island hides or shows again, the chat leaves the screen or comes back:
   // the pace follows (a pace unchanged costs nothing).
-  State.subscribe(() => tickAgents());
+  State.subscribe(() => {
+    tickAgents();
+    // Another chat on screen: its own held message, if any; a chat back on screen sends one whose agents finished.
+    drawHold();
+    releaseHeld();
+  });
 
   /** The answers a queued question waits for (`sendAfter`). */
   const waitingFor = new Set<Run>();
@@ -4404,6 +4975,117 @@ export function buildPrompt(
     askFor.delete(State.chatId);
     drawAsk();
     Sound.play("pop");
+    input.focus();
+  });
+
+  // ── A message held for the agents at work ─────────────────────────────────
+
+
+  /** The number of agents a turn's error says it would have ended (chat_agents.rs WOULD_STOP), or null. */
+  function agentsInTheWay(err: unknown): number | null {
+    const m = /lumo-agents-would-stop:(\d+)/.exec(String(err));
+    return m ? Number(m[1]) : null;
+  }
+
+  /**
+   * The message `text` of `chatId` did not go: it would have ended `count`
+   * agents at work. Typed, it goes back in the field (with its agent's quote)
+   * and the bar asks; Lumo's own, or one that waited, waits for them.
+   */
+  function holdForAgents(chatId: string, text: string, quote: AskQuote | undefined, count: number, typed: boolean, name: string) {
+    const before = held.get(chatId);
+    if (typed && chatId === State.chatId) {
+      const now = input.value.trim();
+      setInput(now ? `${text}\n${now}` : text);
+      if (quote) {
+        askFor.set(chatId, quote);
+        drawAsk();
+      }
+      held.set(chatId, { text: "", count, name, waiting: false });
+    } else {
+      held.set(chatId, { text, quote, count, name, waiting: true, stuck: before?.waiting === true || !typed });
+    }
+    Sound.play("pop");
+    drawHold();
+  }
+
+  function drawHold() {
+    const entry = held.get(State.chatId);
+    const open = openCount(agentStore.get(State.chatId));
+    const count = open || entry?.count || 0;
+    const key = entry ? `${State.chatId}:${entry.waiting}:${count}:${entry.text}` : "";
+    if (key === holdShown) return;
+    holdShown = key;
+    holdEl.hidden = !entry;
+    if (entry) {
+      holdEl.classList.toggle("waiting", entry.waiting);
+      holdText.textContent = entry.waiting
+        ? tn("Your message goes when the agent still working finishes.", HOLD_TEXT.waiting, count)
+        : tn("{name} starts again with the new settings and stops the agent still working.", HOLD_TEXT.stops, count, { name: entry.name });
+      holdSub.textContent = entry.waiting ? entry.text : t(HOLD_TEXT.choose);
+      holdSub.title = holdSub.textContent;
+      holdWait.hidden = entry.waiting;
+    }
+    onHeightChange();
+  }
+
+  /** The chat on screen's held message goes, once the agents it waited for finished. */
+  function releaseHeld() {
+    const chatId = State.chatId;
+    const entry = held.get(chatId);
+    if (!entry?.waiting || entry.stuck || preparing || editing != null || answering()) return;
+    if (openCount(agentStore.get(chatId)) > 0) return;
+    held.delete(chatId);
+    drawHold();
+    void submit(undefined, entry.text, undefined, entry.quote);
+  }
+
+  holdWait.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const entry = held.get(State.chatId);
+    const text = input.value.trim();
+    if (!entry || !text) return;
+    const quote = askFor.get(State.chatId);
+    askFor.delete(State.chatId);
+    drawAsk();
+    setInput("");
+    held.set(State.chatId, { ...entry, text, quote, waiting: true, stuck: false });
+    Sound.play("blip");
+    drawHold();
+    releaseHeld();
+  });
+
+  holdNow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const chatId = State.chatId;
+    const entry = held.get(chatId);
+    if (!entry) return;
+    held.delete(chatId);
+    drawHold();
+    // The next message may start the CLI again: its agents stop with the old one.
+    void invoke("chat_allow_restart", { chatId }).then(() => {
+      if (State.chatId !== chatId) return;
+      if (entry.waiting) void submit(undefined, entry.text, undefined, entry.quote);
+      else void submit();
+    });
+  });
+
+  holdCancel.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const entry = held.get(State.chatId);
+    if (!entry) return;
+    held.delete(State.chatId);
+    // A message that waited goes back in the field, its quote with it.
+    if (entry.waiting && entry.text) {
+      const now = input.value.trim();
+      setInput(now ? `${entry.text}\n${now}` : entry.text);
+      if (entry.quote) {
+        askFor.set(State.chatId, entry.quote);
+        drawAsk();
+      }
+    }
+    Sound.play("pop");
+    drawHold();
     input.focus();
   });
 
@@ -4579,14 +5261,23 @@ export function buildPrompt(
     preparing = true;
     try {
       // An edited question replaces the one it came from, and what followed it.
+      // Edit just clicked: what went with the question is back in the attachments first.
+      if (!auto && editing != null && bringing) await bringing;
       const edited = auto ? null : editing;
-      if (!auto) editing = null;
+      if (!auto) {
+        editing = null;
+        // What the edit put back goes with it now.
+        editBack = null;
+        editSent = null;
+      }
       if (edited != null) await rewindTo(edited);
 
       // What the screen button added goes once, then the chip goes.
       const waiting = screen;
       const shared = auto ? waiting : await withAuto(waiting);
       if (!auto && (shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], query);
+      // A chat's model that may be retired is checked first: just opened, or not on screen.
+      if (away || modelChecks.has(askedIn)) await modelChecked(askedIn);
       // Another chat came on screen meanwhile: the question goes back to the
       // field rather than into it.
       if (!away && State.chatId !== askedIn) {
@@ -4607,11 +5298,21 @@ export function buildPrompt(
       // The chat it is asked in, whichever is on screen when its answer comes.
       const chatId = askedIn;
       const history = away?.history ?? State.chatHistory;
-      // Its copies in the inbox now belong to the chat: they go when it is deleted.
-      noteSentCopies(chatId, sent.map((f) => f.path));
+      // Its copies in the inbox now belong to the chat, its screenshots too
+      // (Edit sends them again): they go when it is deleted.
+      const shots = screenContext ? shared.shots.map((x) => x.path) : [];
+      for (const path of shots) keptShots.add(path);
+      noteSentCopies(chatId, [...sent.map((f) => f.path), ...shots]);
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: nextId++, role: "user", content: query, at: Date.now() };
+      // What went with it shows on its bubble, and goes again on Edit.
+      const went = screenContext || sent.length ? sentItems(screenContext ? shared : emptyScreen(), sent, fileDetail) : [];
+      if (went.length) {
+        question.sent = went;
+        question.again = sentAgain(screenContext ? shared : emptyScreen(), sent);
+        void addThumbs(went, screenContext ? shared.shots : []);
+      }
       // The bubble shows the quote and what was typed; Rust's conversation holds what went.
       if (quoted) {
         question.ask = quoted;
@@ -4674,6 +5375,8 @@ export function buildPrompt(
     remember(run);
     State.stateOverride = "thinking";
     drawIslandActivity();
+    // Thinking… counts its seconds from now, on the chat and the closed island.
+    tickSeconds();
     drawModelButton();
     State.notify();
     onHeightChange();
@@ -4715,6 +5418,8 @@ export function buildPrompt(
         giveBack(false);
       }
       if (reply.session) run.session = reply.session;
+      // What each CLI session of the chat saw, for opening it again (chat.rs cli_state).
+      if (!run.forgotten) setChatCli(run.chatId, reply.cli ?? null);
       if (State.chatId === run.chatId) {
         State.chatSession = run.session;
         void peekExplorer(true);
@@ -4725,9 +5430,20 @@ export function buildPrompt(
       if (antigravityUsage()) refreshAntigravityPlanUsage();
       outcome = reply.stopped ? null : "finished";
       Sound.play(reply.stopped ? "pop" : "finish");
-      if (!reply.stopped) noticeAway(COMPACT_TEXT.answered, runSpeaker(run));
+      // Ended with an error after the answer: the closed island says so, in amber.
+      if (!reply.stopped) noticeAway(reply.warning ? COMPACT_TEXT.answeredWithProblem : COMPACT_TEXT.answered, reply.warning ? { ...runSpeaker(run), color: WARNING_COLOR } : runSpeaker(run));
     } catch (err) {
       giveBack(true);
+      // It would have ended the agents the chat's CLI left at work: the
+      // question leaves the chat, and the bar above the field asks what to do.
+      const inTheWay = agentsInTheWay(err);
+      if (inTheWay != null) {
+        const at = run.history.indexOf(question);
+        if (at >= 0) run.history.splice(at, 1);
+        remember(run);
+        holdForAgents(run.chatId, query, quoted, inTheWay, typed && !away, runSpeaker(run).who);
+        return;
+      }
       outcome = "error";
       noticeAway(COMPACT_TEXT.failed, runSpeaker(run));
       const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who });
@@ -4837,7 +5553,7 @@ export function buildPrompt(
     const agents = agentStore.get(chatId);
     if (history) {
       if (!joinOwnAnswer(history, content)) return;
-      const turns = history.filter((m) => !m.failed).map(toSavedTurn);
+      const turns = savedTurns(history);
       if (run) remember(run);
       else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns: withAgents(agents, turns) });
       if (onScreen) renderedCount = -1;
@@ -4853,16 +5569,38 @@ export function buildPrompt(
     State.notify();
   }
 
-  void onEvent<{ chat: string; text: string; session: string | null }>("chat-own-answer", (own) => {
+  void onEvent<{ chat: string; text: string; session: string | null; cli?: string | null }>("chat-own-answer", (own) => {
+    if (own?.chat && typeof own.cli === "string") setChatCli(own.chat, own.cli);
     if (own?.chat && own.text) void ownAnswer(own.chat, own.text, own.session ?? null);
   });
 
   // ── Listening to GitHub ───────────────────────────────────────────────────
 
-  /** Events with something for Claude to do, each with its chat, waiting for that chat to be free. */
-  const heard: { text: string; chatId: string }[] = [];
+  /**
+   * Events with something for Claude to do, each with its chat and its line
+   * (core/heard.ts, `queued` there until it goes), waiting for that chat to be free.
+   */
+  const heard: { text: string; chatId: string; lineId: string }[] = [];
   /** Chats whose conversation Rust is loading for such a message (submitAway). */
   const loadingAway = new Set<string>();
+  /**
+   * A deleted chat's watch: the chat its task was done in instead, so its next
+   * events go there too rather than to a new chat each time (until Rust's
+   * list says the watch moved, listen_move).
+   */
+  const movedChat = new Map<string, { id: string; title: string }>();
+  // Tasks that still waited when Lumo closed never went: their lines say so, with Ask.
+  unsentOnOpen();
+
+  /** A chat was deleted: what still waited to go to it goes too. */
+  function forgetHeard(chatId: string) {
+    for (let i = heard.length - 1; i >= 0; i--) if (heard[i].chatId === chatId) heard.splice(i, 1);
+  }
+
+  /** A message of `heard` goes to its chat now: its line no longer waits. */
+  function handOver(next: { chatId: string; lineId: string }) {
+    markSent(next.chatId, next.lineId);
+  }
 
   /**
    * The next one goes to Claude in the chat that asked for it, where that
@@ -4883,8 +5621,10 @@ export function buildPrompt(
       }
       heard.splice(i, 1);
       held.add(next.chatId);
-      if (next.chatId === State.chatId) void submit(next.text);
-      else void submitAway(next.chatId, next.text);
+      if (next.chatId === State.chatId) {
+        handOver(next);
+        void submit(next.text);
+      } else void submitAway(next);
     }
   }
 
@@ -4894,28 +5634,30 @@ export function buildPrompt(
    * in the background, as a chat left while it is answered is. Opened
    * meanwhile, it goes there as on screen.
    */
-  async function submitAway(chatId: string, text: string) {
+  async function submitAway(next: { text: string; chatId: string; lineId: string }) {
+    const { chatId, text } = next;
     const saved = loadChats().find((c) => c.id === chatId);
     // Rust takes every turn back as it is: each one's place there is its place here (as openChat).
-    const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => ({
-      id: nextId++, role: turn.role, content: turn.content, turn: i, ...fromSavedTurn(turn),
-    }));
+    const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => messageOf(turn, i));
     const session = saved?.session ?? null;
     if (saved) restoreAgents(agentStore, chatId, saved.turns, saved.provider);
     loadingAway.add(chatId);
     try {
-      await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId));
+      await Bridge.chatLoad(chatId, history.map(conversationTurn), session, compactOf(chatId), cliOf(chatId));
     } finally {
       loadingAway.delete(chatId);
     }
+    // Deleted while it loaded: the message goes with it, rather than bring it back.
+    if (saved && !loadChats().some((c) => c.id === chatId)) return;
     if (preparing || runs.has(chatId)) {
       // Something else went first: it waits for its turn again, before its
       // chat's next ones (an answer that ends calls for it; a moment later in any case).
       const at = heard.findIndex((h) => h.chatId === chatId);
-      heard.splice(at < 0 ? heard.length : at, 0, { text, chatId });
+      heard.splice(at < 0 ? heard.length : at, 0, next);
       window.setTimeout(() => runHeard(), 2000);
       return;
     }
+    handOver(next);
     if (State.chatId === chatId) void submit(text);
     else void submit(text, undefined, { chatId, history, session });
   }
@@ -4954,12 +5696,30 @@ export function buildPrompt(
         compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
         return;
       }
-      chatId = newChatId();
-      name = chatTitle([{ role: "user", content: listenMessage(fired) }]);
+      // That chat was deleted, and an earlier event of it made a new one,
+      // still there (saved, answered, or waiting to be): it goes there too.
+      const moved = chatId ? movedChat.get(chatId) : undefined;
+      const there = moved && (chatNamed(moved.id) != null || runs.has(moved.id) || loadingAway.has(moved.id) || heard.some((x) => x.chatId === moved.id));
+      if (moved && there) {
+        chatId = moved.id;
+        name = chatNamed(moved.id) ?? moved.title;
+      } else {
+        const gone = chatId;
+        chatId = newChatId();
+        name = chatTitle([{ role: "user", content: listenMessage(fired) }]);
+        if (gone) movedChat.set(gone, { id: chatId, title: name });
+        // Listening every time: its next events go to this new chat, not to another new one each.
+        if (fired.ended === false) void Bridge.listenMove(fired.watch.id, chatId);
+      }
     }
     const line = heardLine({ ...fired, watch: { ...fired.watch, chatId } }, name);
-    // With a task, Claude is asked already: no Ask button.
-    if (asks) line.asked = true;
+    // With a task, Claude is asked already: no Ask button. Until the message
+    // goes, the line waits (`queued`): a task Lumo closed on before it went
+    // says so when Lumo opens again, and Ask is back (core/heard.ts unsentOnOpen).
+    if (asks) {
+      line.asked = true;
+      line.queued = true;
+    }
     // Lines of chats not saved yet stay: on screen, being answered, waiting to be seen or to be answered.
     const kept = [...loadChats().map((c) => c.id), State.chatId, State.parkedChatId() ?? "", chatId, ...runs.keys(), ...loadingAway, ...heard.map((x) => x.chatId), ...State.listenPending.map((p) => p.chatId)];
     addHeard(line, new Set(kept));
@@ -4975,7 +5735,7 @@ export function buildPrompt(
     drawHistoryBadge();
     if (body.classList.contains("browsing")) drawHistory();
     if (asks) {
-      heard.push({ text: listenMessage({ ...fired, watch: line.watch }), chatId });
+      heard.push({ text: listenMessage({ ...fired, watch: line.watch }), chatId, lineId: line.id });
       runHeard();
     }
     State.notify();
@@ -5013,6 +5773,9 @@ export function buildPrompt(
         Sound.play("pop");
       },
     }, h("span", { text: t(LISTENING_STRINGS.stop) })) : null;
+    // Its task never went (Lumo closed first): said under the line, in the Listening panel's warning.
+    const unsent = line.unsent ? h("span", { class: "listen-warn heard-unsent" },
+      h("span", { class: "listen-warn-text" }, h("span", { class: "listen-warn-dot" }), t(STRINGS.heardUnsent))) : null;
     return h("div", { class: "chat-row heard-row" },
       h("div", { class: line.met ? "heard-pill" : "heard-pill not-met", style: `--watch:${line.color}` },
         watchTile(line.watch),
@@ -5021,6 +5784,7 @@ export function buildPrompt(
           h("span", { class: "heard-summary", text: line.summary }),
           h("span", { class: "heard-dot", text: " · " }),
           when)),
+      unsent,
       ask || stop ? h("div", { class: "heard-actions" }, ask, stop) : null);
   }
 
@@ -5452,7 +6216,11 @@ export function buildPrompt(
         if (every.folders || every.tabs) void peekExplorer(true);
       }
       // The edited question left the chat another way (a new chat, a file): nothing to replace.
-      if (editing != null && !State.chatHistory.some((m) => m.id === editing)) editing = null;
+      if (editing != null && !State.chatHistory.some((m) => m.id === editing)) {
+        editing = null;
+        editBack = null;
+        editSent = null;
+      }
       // The file that went with a question is the chat's now: only what waits is listed.
       const file = State.droppedFile && !State.droppedFile.sent ? State.droppedFile : null;
       const moreFiles = State.moreFiles;
@@ -5553,6 +6321,7 @@ export function buildPrompt(
         if (editing != null) chipRow.append(noteChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
         else if (uploaded) chipRow.append(uploadedChip(uploaded.name));
       }
+      drawEditStrip();
 
       // The queued question shows with its chat, and goes if it ended meanwhile.
       if (!run && stoppedAway.delete(State.chatId)) unqueue();
@@ -5597,7 +6366,7 @@ export function buildPrompt(
           const shown = editing == null && (unanswered ? i === lastAsked : last);
           lastBubble = bubble(m, {
             onEdit: startEdit, onRetry: retries && asked ? () => retry(asked) : undefined, shown,
-            editing: i === at, dropped: at >= 0 && i > at, workshop, scope,
+            editing: i === at, dropped: at >= 0 && i > at, workshop, scope, onOpenSent: (msg, item) => void openSent(msg, item),
           });
           // The messages the CLI sent its agents meanwhile, before its answer.
           if (m.role === "assistant" && !m.failed) log.append(...talkBoxesFor(State.chatId, answer));
