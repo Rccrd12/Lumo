@@ -5002,19 +5002,19 @@ html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
   opacity: 0.4;
 }
 
-/* What went with a question (views/chat.ts sentBadges): a small capsule half
-   over the bubble's top right corner, one icon for each kind in its colour
+/* What went with a question (views/chat.ts sentBadges): a small capsule on
+   the bubble's top right corner, above its edge, one icon for each kind in its colour
    (the attachments' tiles), how many beside it, a picture's own small
    picture. A click lists them under the bubble. */
 .bubble-wrap {
   position: relative;
   display: flex;
   max-width: 100%;
-  margin-top: 9px;
+  margin-top: 12px;
 }
 
 .bubble.has-sent {
-  padding-top: 10px;
+  padding-top: 8px;
 }
 
 .sent-badges {
@@ -5034,7 +5034,7 @@ html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
 
 .bubble-wrap > .sent-badges {
   position: absolute;
-  top: -9px;
+  top: -12px;
   right: 10px;
 }
 
