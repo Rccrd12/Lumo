@@ -22,6 +22,7 @@ mod acp_chat;
 mod codex_chat;
 mod codex_plan;
 mod computer;
+mod computer_turns;
 mod config_file;
 mod confirmed;
 mod desk;
@@ -911,6 +912,13 @@ fn chat_stop_agent(chat_id: String, agent_id: String) -> Result<(), String> {
     chat_agents::stop(&chat_id, &agent_id)
 }
 
+/// "Give it the turn" on an agent waiting for the computer: first in line
+/// (computer_turns.rs); it gets the computer once the holder lets it go.
+#[tauri::command]
+fn chat_computer_first(app: AppHandle, chat_id: String, agent_id: String) {
+    computer_turns::put_first(&app, &chat_id, &agent_id);
+}
+
 /// "Send now and stop them": the chat's next message may start its CLI again
 /// with other settings, ending the agents still at work (chat_agents.rs WOULD_STOP).
 #[tauri::command]
@@ -1496,6 +1504,7 @@ pub fn run() {
             chat_commands,
             chat_stop,
             chat_stop_agent,
+            chat_computer_first,
             chat_allow_restart,
             chat_rewind,
             chat_forget_file,
