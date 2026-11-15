@@ -1032,10 +1032,14 @@ Each chat has its own folder in the inbox (`inbox\chats\<chat>`): the files
 and screenshots of a chat are linked there as they go to its CLI (the same
 file on disk, not a second copy), and the chat's Claude Code and Antigravity
 CLI read only that folder without asking, never the files of another chat.
-**Settings → Security → Other chats' files** (off by default) gives them the
-whole inbox instead, the files of every chat of the last week. A task Gemini
-Live hands to Claude Code or Antigravity CLI gets no inbox folder unless that
-switch is on. A deleted chat takes its folder with it.
+An email's file that an agent saves with `mail_attachment` goes in its
+chat's folder too. **Settings → Security → Other chats' files** (off by
+default) gives them the whole inbox instead: every file Lumo received in the
+last week. A task Gemini Live hands to Claude Code or Antigravity CLI gets no
+inbox folder unless that switch is on; Gemini Live itself can read any file
+of the inbox, switch or not. A deleted chat takes its folder with it, and a
+link whose file left the inbox (a chat past the 40 kept in the history) goes
+at the next sweep.
 
 Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
 and OpenRouter receive them as images; the local model servers take the window
