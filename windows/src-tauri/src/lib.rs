@@ -1507,6 +1507,7 @@ pub fn run() {
             listen_events::listen_webhook_url,
             listen::listen_list,
             listen::listen_stop,
+            listen::listen_move,
             listen::listen_pause,
             listen::listen_history,
             listen::listen_history_clear,

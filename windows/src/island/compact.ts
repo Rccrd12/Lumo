@@ -13,6 +13,7 @@ import {
   type MediaActivity,
 } from "../core/compact";
 import { gitHubRunning, readPulse } from "../core/github";
+import { waitingLine } from "../core/heard";
 import { islandAgents } from "../core/chat-agents";
 import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
@@ -111,9 +112,9 @@ function agentInputs(): AgentActivityInput[] {
 
 /**
  * What the services are doing: GitHub's CI running on a PR or a default
- * branch, and what a watch heard for a chat the user has not opened since
- * (core/heard.ts): that chat's name, then what happened, "+2" when two more
- * chats wait. What is only being listened to says nothing here: the waves
+ * branch, and that a watch heard something for a chat the user has not
+ * opened since (core/heard.ts waitingLine): that chat's name and where it
+ * heard, never what, "+2" when two more chats wait. What is only being listened to says nothing here: the waves
  * in the chat say it.
  */
 function serviceLines(): CompactLine[] {
@@ -121,13 +122,8 @@ function serviceLines(): CompactLine[] {
   const info = State.integrations["integration_github"];
   const running = gitHub && info ? gitHubRunning(readPulse(info.data)) : null;
   const lines: CompactLine[] = running ? [{ text: `${gitHub!.name} · ${running}`, color: gitHub!.color }] : [];
-  const waiting = State.listenPending;
-  const newest = waiting.at(-1);
-  if (newest) {
-    const chat = `«${newest.chatTitle || t("Chat")}»`;
-    const more = waiting.length > 1 ? ` · +${waiting.length - 1}` : "";
-    lines.push({ text: `${chat} · ${newest.summary}${more}`, color: newest.color, lead: chat });
-  }
+  const waiting = waitingLine(State.listenPending, t("Chat"));
+  if (waiting) lines.push(waiting);
   return lines;
 }
 
