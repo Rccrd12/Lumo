@@ -158,6 +158,9 @@ export function onDialogsChanged(fn: () => void) {
   dialogsChanged = fn;
 }
 
+/** What hold_clicks was last asked (null: not since the island took the keyboard). */
+let clicksHeld: boolean | null = null;
+
 export const Bridge = {
   boot: () => call<BootInfo>("boot"),
   /** The system's languages as the webview sees them, for Rust's own texts (i18n.rs). */
@@ -176,7 +179,21 @@ export const Bridge = {
     call<void>("set_island_rect", { x, y, width, height }),
 
   /** Give the window keyboard focus (chat field) and take it away again. */
-  focusWindow: (focused: boolean) => call<void>("focus_window", { focused }),
+  focusWindow: (focused: boolean) => {
+    // Given the keyboard, the island's clicks are its own again (lib.rs).
+    if (focused) clicksHeld = null;
+    return call<void>("focus_window", { focused });
+  },
+
+  /**
+   * While the computer is in use, a click on the island leaves the front to
+   * the window the agent works in (click_hold.rs). Asked when it changes.
+   */
+  holdClicks: async (hold: boolean) => {
+    if (clicksHeld === hold) return;
+    clicksHeld = hold;
+    await call<void>("hold_clicks", { hold });
+  },
 
   /** Computer use paused with Esc goes on (computer.rs resume): the agent's next action runs. */
   computerResume: () => call<void>("computer_resume"),

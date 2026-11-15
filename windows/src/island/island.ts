@@ -47,7 +47,7 @@ import { Feed, UPLOADED_TEXT, compactNotice, compactTimer, setCompactNewsHandler
 import { agentPlanWanted, refreshAntigravityPlanUsage, refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
-import { isComputerTool } from "../core/computer";
+import { isComputerTool, islandHoldsClicks } from "../core/computer";
 import type { ComputerState } from "../core/computer-use";
 import { ComputerPill, clearComputerReveal, computerShowing, setComputerReveal } from "../views/computer-plan";
 import { type PlanSpot, afterCard, pausedPlanWaits, planLeave, planMove } from "../core/computer-plan";
@@ -1138,6 +1138,18 @@ export class Island {
     this.fsm.holdOpen(SHARE_GRACE);
   }
 
+  /**
+   * While the computer is in use, a click on the island must not bring it to
+   * the front: what the agent opened would close (core/computer.ts,
+   * click_hold.rs). Not while the island has the keyboard anyway (its Ask
+   * field, given on purpose).
+   */
+  private syncHeldClicks() {
+    const card = State.pendingApproval;
+    const hold = islandHoldsClicks(card?.tool ?? null, State.computer, State.computerActive) && !document.hasFocus();
+    void Bridge.holdClicks(hold);
+  }
+
   takeKeyboard() {
     this.lastGesture = performance.now();
     void Bridge.focusWindow(true);
@@ -1730,6 +1742,9 @@ export class Island {
     });
     // The window grows and shrinks around the island: its rect moves with it.
     window.addEventListener("resize", () => this.ensureRunning());
+    // Its clicks are held only while the island hasn't the keyboard (syncHeldClicks).
+    window.addEventListener("focus", () => this.syncHeldClicks());
+    window.addEventListener("blur", () => this.syncHeldClicks());
     this.watchScale();
 
     this.islandEl.addEventListener("mousedown", (e) => {
@@ -2263,6 +2278,7 @@ export class Island {
     } else {
       this.newLookSize = "";
     }
+    this.syncHeldClicks();
     if (this.lastSyncedView !== State.view) {
       // A permission card can have taken the keyboard too, for Y and N.
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"

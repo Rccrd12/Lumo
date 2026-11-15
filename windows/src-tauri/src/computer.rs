@@ -2508,12 +2508,29 @@ mod imp {
             return;
         }
         let target = HWND(TARGET.load(Ordering::Relaxed) as *mut _);
-        if target.is_invalid() || !unsafe { IsWindow(Some(target)) }.as_bool() {
+        if target.is_invalid() || !unsafe { IsWindow(Some(target)) }.as_bool() || !on_screen(target) {
             return;
         }
         // Lumo is in front, so Windows lets it hand the front over.
         let _ = unsafe { SetForegroundWindow(target) };
         std::thread::sleep(Duration::from_millis(80));
+    }
+
+    /// Whether `hwnd` can still be seen: the Start menu and Search are not
+    /// destroyed when they close, only hidden or cloaked. Handing them the
+    /// front again would send the keys nowhere; Lumo keeps it instead and the
+    /// agent is told to click first (LUMO_IN_FRONT).
+    fn on_screen(hwnd: HWND) -> bool {
+        use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+        use ::windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
+        if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            return false;
+        }
+        let mut cloaked = 0u32;
+        let ok = unsafe {
+            DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &mut cloaked as *mut u32 as *mut _, std::mem::size_of::<u32>() as u32)
+        };
+        !(ok.is_ok() && cloaked != 0)
     }
 
     /// UTF-16 units typed at once; a pause between batches lets slow apps keep up.
@@ -2609,7 +2626,8 @@ mod imp {
         !front.is_invalid() && is_lumo(front)
     }
 
-    const LUMO_IN_FRONT: &str = "The keyboard is in Lumo's island: click the window to type in first.";
+    const LUMO_IN_FRONT: &str =
+        "The keyboard is in Lumo's island: no key was sent. Take a screenshot (what was open may have closed), then click where to type first.";
 
     fn keyboard_ready() -> Result<(), String> {
         if lumo_in_front() {

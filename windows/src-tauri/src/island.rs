@@ -450,6 +450,11 @@ impl PollGate {
         }
     }
 
+    /// The island lets the mouse through right now (the cursor is off its shape).
+    pub fn lets_mouse_through(&self) -> bool {
+        self.ignoring.load(Ordering::Relaxed)
+    }
+
     pub fn set_rect(&self, rect: IslandRect) {
         *self.rect.lock().unwrap() = rect;
     }

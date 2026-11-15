@@ -16,6 +16,7 @@ mod chat_files;
 mod chat_usage;
 mod claude;
 mod claude_code;
+mod click_hold;
 mod clipboard;
 mod acp_chat;
 mod codex_chat;
@@ -234,8 +235,18 @@ fn focus_window(app: AppHandle, focused: bool) {
     let Some(win) = island::window(&app) else { return };
     platform::set_activating(&win, focused);
     if focused {
+        // Given the keyboard on purpose: its clicks are its own again.
+        click_hold::set(&app, false);
         let _ = win.set_focus();
     }
+}
+
+/// While the computer is in use, a click on the island leaves the front to the
+/// window the agent works in (click_hold.rs; core/computer.ts islandHoldsClicks
+/// says when).
+#[tauri::command]
+fn hold_clicks(app: AppHandle, hold: bool) {
+    click_hold::set(&app, hold);
 }
 
 #[tauri::command]
@@ -1428,6 +1439,7 @@ pub fn run() {
             set_collapsed,
             set_island_rect,
             focus_window,
+            hold_clicks,
             reposition,
             list_monitors,
             open_url,

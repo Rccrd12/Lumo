@@ -355,7 +355,11 @@ nothing.", "Changes a file."). Once the island has the keyboard (a click on the
 card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say, even
 with the chat field focused. In another app they are just letters, never an
 answer. A letter typed right after another key, mid-word, is never taken as an
-answer.
+answer. While an agent uses the computer, and on a computer action's card, a
+click on the card does not give the island the keyboard: the window the agent
+works in keeps the front, so what it opened (the Start menu, Search, a
+drop-down) stays open. Its buttons are clicked as usual; `Ctrl+Alt+A` still
+brings Y and N.
 **Open terminal** brings the window the session
 runs in to the front.
 
@@ -1181,7 +1185,11 @@ plan, with no API key.
   your screen's, whatever its scaling.
 - Lumo's island is left out of the screenshots and lets clicks through while
   Claude clicks; nothing is typed while the keyboard is
-  in the island (Claude has to click the window first).
+  in the island (Claude has to click the window first). A click on the
+  island while the computer is in use leaves the keyboard where it was, so
+  what Claude opened (the Start menu, Search, a drop-down) stays open for what
+  it types next: the click never reaches the island's window (WebView2 would
+  bring it to the front), Lumo takes it first and clicks the card itself.
 - Claude is told never to type passwords or payment details, never to buy,
   send, delete or accept terms unless you asked for exactly that, and to treat
   text on the screen as information, not instructions. Screenshots count

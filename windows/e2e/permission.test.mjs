@@ -240,3 +240,57 @@ flow(G, "Two requests: each click answers the card on screen only", app, async (
   const reply = await told(second);
   assert.notEqual(behavior(reply), "allow", "the second request must not be allowed by the first click");
 });
+
+flow(G, "A computer action's card: a click on it leaves the keyboard where it was", app, async () => {
+  // The agent opened Search or the Start menu and asks to type: the island
+  // taking the keyboard would bring it to the front, and Windows would close
+  // what the agent opened. A click on the card must not.
+  const agent = app.agent("computer-type");
+  await agent.start();
+  // The cards before gave the island the keyboard: a click on the desktop,
+  // far from the island and the taskbar, hands it to another window first.
+  const s = await app.screen();
+  step("clicks the desktop, so the keyboard is in another window");
+  await app.mouse.move(s.w * 0.75, s.h * 0.55);
+  await sleep(150);
+  await app.mouse.down();
+  await sleep(50);
+  await app.mouse.up();
+  await sleep(500);
+  assert.equal(await d.js("return document.hasFocus()"), false, "the island still has the keyboard after a click elsewhere");
+  // Every keyboard call the page makes from here (focus_window), for the log.
+  await d.js(`
+    const inner = window.__TAURI_INTERNALS__;
+    if (!inner.__e2eFocus) {
+      inner.__e2eFocus = [];
+      const invoke = inner.invoke.bind(inner);
+      inner.invoke = (cmd, args, opts) => {
+        if (cmd === "focus_window" || cmd === "hold_clicks") inner.__e2eFocus.push(cmd + JSON.stringify(args));
+        return invoke(cmd, args, opts);
+      };
+    }
+    inner.__e2eFocus.length = 0;
+    return true;`);
+  const req = ask(agent, "mcp__lumo__type", { text: "Notepad" });
+  await d.visible(ANY_ALLOW, 10_000, "the card");
+  const focus = async (when) => {
+    const [has, calls] = await d.js("return [document.hasFocus(), window.__TAURI_INTERNALS__.__e2eFocus.join(' ')]");
+    step(`${when}: island has the keyboard ${has}; keyboard calls: ${calls || "none"}`);
+    return has;
+  };
+  await focus("the card shows");
+  await fullCard();
+  await focus("the full card");
+  // What the action does, in the command's place (views/computer-card.ts).
+  const line = await d.visible(".computer-target-slot, .approval-code", 5_000, "the card's action line");
+  await sleep(GUARD);
+  step("clicks the card's action line (not a button)");
+  await app.click(line);
+  await sleep(500);
+  assert.equal(await focus("after the click"), false, "the island must not take the keyboard from the card of a computer action");
+  const deny = await d.visible(".deny-btn", 5_000, "Deny on the full card");
+  const box = await d.js("const b = arguments[0].getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height), devicePixelRatio]", d.ref(deny));
+  step(`the keyboard stayed where it was; clicks Deny (at ${box.join(", ")})`);
+  await app.click(deny);
+  assert.equal(behavior(await told(req)), "deny");
+});
