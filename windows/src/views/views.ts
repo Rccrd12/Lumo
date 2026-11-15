@@ -39,7 +39,7 @@ import { mailEditor, type MailEditor } from "./mail-editor";
 import type { MailRevision } from "../core/mail-edit";
 import { isComputerTool } from "../core/computer";
 import { stepPlace } from "../core/computer-plan";
-import { computerTargetBox } from "./computer-card";
+import { computerTargetBox, pausedCardLine } from "./computer-card";
 import { buildComputerView } from "./computer-plan";
 
 export interface ViewActions {
@@ -638,6 +638,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   code.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
   // A computer use action: what it acts on (views/computer-card.ts), in the command's place.
   const targetSlot = h("div", { class: "computer-target-slot" });
+  // Under a computer action's box while computer use is paused: it won't be done, whatever the answer.
+  const targetPaused = h("div", { class: "cu-target-paused" });
   let targetFor: string | null = null;
   let targetBox: HTMLElement | null = null;
   const cutNote = h("div", { class: "approval-cut" });
@@ -793,9 +795,12 @@ function buildApproval(actions: ViewActions): ViewHost {
         targetFor = targetReq;
         clear(targetSlot);
         targetBox = pending && targetReq ? computerTargetBox(pending) : null;
-        if (targetBox) targetSlot.append(targetBox);
+        if (targetBox) targetSlot.append(targetBox, targetPaused);
       }
       targetSlot.hidden = !targetBox;
+      const pausedLine = targetBox ? pausedCardLine() : null;
+      targetPaused.hidden = !pausedLine;
+      if (targetPaused.textContent !== (pausedLine ?? "")) targetPaused.textContent = pausedLine ?? "";
       code.hidden = !!email || !!plan || !!targetBox;
       row.hidden = !!email;
       mailRow.hidden = !email;

@@ -345,6 +345,11 @@ fn state_value(job: &Job, engaged: bool, paused: bool, reveal: Option<&str>, now
     if let Some(a) = &job.asked {
         v["asked"] = json!(a);
     }
+    // Whose plan it is (the island chat, "" for Gemini Live's helper): a
+    // permission card says its step only to a request of the same chat.
+    if let Some(c) = &job.shown {
+        v["chat"] = json!(c);
+    }
     if let Some(r) = reveal {
         v["reveal"] = json!(r);
         v["revealMs"] = json!(if r == "start" { START_MS } else { STEP_MS });
@@ -475,7 +480,8 @@ pub fn note_plan(app: &AppHandle, request: &Value) -> Value {
         (job.who(), newly, went_up)
     };
     chat_plan(&who);
-    let step = went_up && ENGAGED.load(Ordering::SeqCst);
+    // Paused, the screen is the user's: no reveal, and no picture of it for the recap.
+    let step = went_up && ENGAGED.load(Ordering::SeqCst) && !PAUSED.load(Ordering::SeqCst);
     emit_state(app, step.then_some("step"));
     if step && !newly.is_empty() {
         thumbnails(app, newly);
@@ -489,12 +495,21 @@ fn thumbnails(app: &AppHandle, steps: Vec<String>) {
     let Some(view) = *VIEW.lock().unwrap_or_else(|e| e.into_inner()) else { return };
     let app = app.clone();
     let turn = TURNS_STARTED.load(Ordering::SeqCst);
+    let pauses = PAUSES.load(Ordering::SeqCst);
     std::thread::spawn(move || {
+        // Paused since: the screen is the user's, never pictured.
+        if PAUSED.load(Ordering::SeqCst) {
+            return;
+        }
         let (w, h) = thumb_size(view.rect.2 - view.rect.0, view.rect.3 - view.rect.1);
         let Ok(png) = grab(&app, view.rect, w, h) else { return };
         let image = base64(&png);
         // The turn ended and another started meanwhile: not its picture.
         if TURNS_STARTED.load(Ordering::SeqCst) != turn || TURN.load(Ordering::SeqCst) == 0 {
+            return;
+        }
+        // Paused while it was taken: it may show what the user did.
+        if PAUSES.load(Ordering::SeqCst) != pauses {
             return;
         }
         let mut job = job();
@@ -2606,20 +2621,65 @@ mod imp {
         Ok(())
     }
 
+    /// What `what_is_at` finds: the element's name, its kind, the app.
+    type Found = (Option<String>, Option<String>, Option<String>);
+    type Ask = ((i32, i32), std::sync::mpsc::Sender<Found>);
+
+    /// The one thread that asks UI Automation, woken by each card.
+    static UIA: Mutex<Option<std::sync::mpsc::Sender<Ask>>> = Mutex::new(None);
+    /// It is still waiting on an app (one that doesn't answer keeps it).
+    static UIA_BUSY: AtomicBool = AtomicBool::new(false);
+
     /// What Windows says is at `p`: the element's name and kind (UI
     /// Automation) and the app, within `budget`; nothing for Lumo's own
-    /// windows. On a thread of its own: an app that doesn't answer keeps it, not Lumo.
-    pub fn what_is_at(p: (i32, i32), budget: Duration) -> (Option<String>, Option<String>, Option<String>) {
+    /// windows. Asked on a thread of its own, the same one each time: an app
+    /// that doesn't answer keeps it, not Lumo, and while it does the next
+    /// cards go without a name rather than leave one more thread waiting.
+    pub fn what_is_at(p: (i32, i32), budget: Duration) -> Found {
+        if UIA_BUSY.swap(true, Ordering::SeqCst) {
+            return Found::default();
+        }
         let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = tx.send(automation_at(p));
-        });
+        let sent = {
+            let mut uia = UIA.lock().unwrap_or_else(|e| e.into_inner());
+            let worker = uia.get_or_insert_with(automation_thread);
+            let sent = worker.send((p, tx)).is_ok();
+            if !sent {
+                // Its thread is gone: a new one next time.
+                *uia = None;
+            }
+            sent
+        };
+        if !sent {
+            UIA_BUSY.store(false, Ordering::SeqCst);
+            return Found::default();
+        }
         rx.recv_timeout(budget).unwrap_or_default()
     }
 
-    fn automation_at(p: (i32, i32)) -> (Option<String>, Option<String>, Option<String>) {
+    /// The thread that asks UI Automation: COM and the automation object
+    /// made once, then asleep on its channel until a card asks.
+    fn automation_thread() -> std::sync::mpsc::Sender<Ask> {
         use ::windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
         use ::windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation};
+        let (tx, rx) = std::sync::mpsc::channel::<Ask>();
+        std::thread::spawn(move || {
+            let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            let uia: Option<IUIAutomation> = unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }.ok();
+            while let Ok((p, reply)) = rx.recv() {
+                let found = automation_at(p, uia.as_ref());
+                UIA_BUSY.store(false, Ordering::SeqCst);
+                let _ = reply.send(found);
+            }
+            drop(uia);
+            if com.is_ok() {
+                unsafe { CoUninitialize() };
+            }
+        });
+        tx
+    }
+
+    fn automation_at(p: (i32, i32), uia: Option<&::windows::Win32::UI::Accessibility::IUIAutomation>) -> Found {
         use ::windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetWindowTextW, WindowFromPoint, GA_ROOT};
         let pt = POINT { x: p.0, y: p.1 };
         let hit = unsafe { WindowFromPoint(pt) };
@@ -2637,18 +2697,13 @@ mod imp {
         let mut pid = 0u32;
         unsafe { GetWindowThreadProcessId(root, Some(&mut pid)) };
         let app = super::app_label(&title, &crate::screen::exe_name(pid));
-        let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-        let found = (|| -> ::windows::core::Result<(String, String)> {
-            let uia: IUIAutomation = unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)? };
+        let found = uia.map(|uia| -> ::windows::core::Result<(String, String)> {
             let element = unsafe { uia.ElementFromPoint(pt)? };
             let name = unsafe { element.CurrentName() }.map(|b| b.to_string()).unwrap_or_default();
             let role = unsafe { element.CurrentLocalizedControlType() }.map(|b| b.to_string()).unwrap_or_default();
             Ok((name, role))
-        })();
-        if com.is_ok() {
-            unsafe { CoUninitialize() };
-        }
-        let (name, role) = found.unwrap_or_default();
+        });
+        let (name, role) = found.and_then(Result::ok).unwrap_or_default();
         let some = |text: String, max: usize| Some(super::short(&text, max)).filter(|t| !t.is_empty());
         (some(name, 80), some(role, 40), app)
     }
@@ -3548,6 +3603,8 @@ mod tests {
         assert_eq!(v["explanation"], "Sì, uso l'altra scheda.");
         assert_eq!(v["asked"], "Usa l'altra scheda");
         assert_eq!(state_value(&job, true, false, Some("step"), 0)["revealMs"], STEP_MS);
+        // Whose plan it is, for the permission card's step.
+        assert_eq!(v["chat"], "c1");
         // Another provider: its own name and colour, never Claude's.
         let codex = Job { who: Some(Who::of("codex")), ..Job::EMPTY };
         assert_eq!(state_value(&codex, false, false, None, 0)["agent"], "Codex");

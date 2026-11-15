@@ -325,7 +325,7 @@ function sampleMail() {
 }
 sampleMail();
 
-// Computer use with a plan, with ?computer=start|step|work|paused|ask|reply|card|recap
+// Computer use with a plan, with ?computer=start|step|work|paused|ask|reply|card|recap (card&paused: a card while paused)
 // (computer.rs computer-state; main.ts would pass these events on).
 const computerScene = params.get("computer");
 if (computerScene) await computerPreview(computerScene);
@@ -377,6 +377,8 @@ async function computerPreview(scene: string) {
     mocks.__lumoMock = { ...mocks.__lumoMock, computer_peek: () => ({ image: btoa(bin), width: 360, height: 200, at: [80, 152],
       name: it ? "Salva con nome…" : "Save as…", role: it ? "voce di menu" : "menu item", app: it ? "Blocco note" : "Notepad" }) };
     hook({ hook_event_name: "PermissionRequest", cwd, request_id: "rc", tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [207, 236] }, lumo_island: true });
+    // ?computer=card&paused: the card waiting while computer use is paused.
+    if (params.has("paused")) state({ steps: plan(2), paused: true });
     island.holdOpen();
     State.notify();
     return;
