@@ -144,7 +144,7 @@ Quit. The look of 0.17, with the ring of light and the tabs, is gone since
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted |
 | `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
 | The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab, folder and selected text on its own, even two of the same screen; what comes from the computer (screenshots, windows, tabs, folders, selected text) sits in a **Computer** folder, with how many it holds on its right, that a click opens — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
-| **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code (its subagents too), Codex or Antigravity CLI read, edited or created while answering, in a folder for each: **Attached**, **Read by the AI**, **Edited by the AI**, **Created by the AI** (a file attached and then read is in both; only the folders with something in them show, with how many on their right). Each row has the folder the file is in, and a × (or **Remove from the chat's context** in its right click) that takes it out of the chat: the AI is told with your next question to leave it alone, and a fresh Claude Code session isn't given it again. Editing a message takes out the files of the messages after it, and what the AI read or wrote for them. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
+| **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code (its subagents too), Codex or Antigravity CLI (its subagents too, from their transcripts) read, edited or created while answering, in a folder for each: **Attached**, **Read by the AI**, **Edited by the AI**, **Created by the AI** (a file attached and then read is in both; only the folders with something in them show, with how many on their right). Each row has the folder the file is in, and a × (or **Remove from the chat's context** in its right click) that takes it out of the chat: the AI is told with your next question to leave it alone, and a fresh Claude Code session isn't given it again. Editing a message takes out the files of the messages after it, and what the AI read or wrote for them. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
 | Under a message in the chat | Its actions, as in Claude's app, under the mouse (always under the last answer): under an answer **Copy**, **Retry** and when it came ("2 min ago"); under a question when you sent it, **Retry**, **Edit** and **Copy**. **Copy** takes the text as written, Markdown included. **Edit** puts the question back in the field: sending it replaces it and drops what followed. **Retry** is on the last question and its answer only: the question goes again, unchanged, in place of its answer; when an answer failed, it stays in sight under the question. Chats saved before 0.21.0 have no times |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last; with several folders open (windows or tabs), **Folders open in File Explorer** lists them, to share one or all. Their files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
@@ -1052,22 +1052,57 @@ with `--mcp-config` to the chat's runs only; your Claude Code settings are not
 touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
 `left_click`, `right_click`, `double_click`, `triple_click`, `middle_click`,
 `mouse_move`, `left_click_drag`, `scroll`, `type`, `key`, `wait` and
-`cursor_position`. It runs on your plan, with no API key.
+`cursor_position`, and Lumo's `update_plan` for its plan. It runs on your
+plan, with no API key.
+
+- **Antigravity CLI** gets the same tools when it is the chat's provider
+  (in its own MCP configuration for the chat's runs, as for the email's
+  tools). It calls Lumo's tools without asking, so Lumo asks itself: with
+  *Ask every time* each click, key or text is the same Allow / Deny card,
+  under Antigravity's name; in *Plan* mode it may only look; in *Auto* (or
+  Antigravity's own auto mode) it acts without a card. Same glow, mouse, Esc
+  and rules as Claude Code's. A note in front of every question tells it how
+  the tools work. Its Gemini models give and read points on a 0–999 grid
+  over the screenshot, the way Gemini counts them: Lumo turns them into the
+  screenshot's pixels and back, so a click lands where the model meant.
+  Codex, Copilot CLI and Cursor CLI don't get the computer.
 
 - **Gemini Live** hands what is to be done on the screen ("click Send", "open
   the display settings and turn on night light") to Claude Code with its own
   tool, `use_computer`: always Claude Code on Haiku 5.5 at medium effort,
   whoever helps Gemini otherwise (Settings → Voice), and only when Claude
-  Code is set up for Lumo (installed, with Lumo's hooks). Same cards, glow,
-  orange mouse and Esc as in the chat.
+  Code is set up for Lumo (installed, with Lumo's hooks). Same plan, cards,
+  glow, orange mouse and Esc as in the chat.
 
+- **A plan comes first**: Lumo refuses every computer tool, screenshots
+  included, until Claude has said what it is going to do with Lumo's
+  `update_plan` (one step is enough). It keeps the plan up to date as it goes,
+  and may change or add steps at any time.
+- **The plan is on the island**: as computer use starts, the island opens on
+  the plan for 2 seconds ("Starts in 2 s") and the first action waits for it;
+  then, on the top or bottom edge, it closes to a short line with the agent's
+  colour, the step under way, a dash for each step, how far it is (2/5) and
+  Esc (upright on a side, the island keeps its short pill). Each step marked
+  done opens the plan again for 2 seconds, and Claude goes on meanwhile.
 - **Every action asks first**, with the chat set to *Ask every time*: a click,
-  a key or a text is an Allow / Deny card on the island that says what will
-  happen ("Click · 640, 320", "Type · …", "Press · ctrl+s"). Screenshots,
-  zooms and waits don't ask. In *Auto* mode Claude Code decides, as for its
-  other tools.
-- **Esc, anywhere, stops it** for the rest of the answer: the key is Lumo's
-  while Claude acts, and every later action is refused.
+  a key or a text is an Allow / Deny card on the island. It says who asks, in
+  the provider's name and colour, at which step of the plan ("wants to use the
+  computer · step 3 of 5"), why (the step under way), and what: for a click, a
+  move, a scroll or a drag, the screen around the point with the point ringed
+  and what Windows calls the thing there ("Click on «Save as…»", "Menu item ·
+  Notepad"), the coordinates still under it, small; for typing and keys, the
+  whole text (each Enter and Tab shown where it falls) and the keys, since
+  that is what Allow allows. Screenshots, zooms and waits don't ask. In *Auto*
+  mode Claude Code decides, as for its other tools.
+- **Esc, anywhere, pauses it**: the mouse is yours again at once, the glow
+  turns grey, and Claude waits at its next action. The island stays open on
+  the plan with **Stop** (nothing more is done in this answer), **Ask Claude
+  Code** (a field: what you write reaches Claude as the answer of the action it
+  is waiting on; it answers above the plan, may change the plan, and waits
+  again; Esc in the field closes it, nothing sent) and **Resume**. Only
+  Resume gives Claude the mouse back: Esc pressed again, by a panic double
+  press or in another app, never does. While it is paused, Esc is yours
+  again, for your apps and the island.
 - **You can see it work**: the screen it uses glows softly around its edges
   (on whichever display it is), the mouse turns into an orange arrow and
   glides from point to point instead of jumping, and each action shows where
@@ -1076,10 +1111,18 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
   Claude's screenshots.
 - **The mouse is Claude's while it answers**: your hand's moves and clicks
   are held back (a low-level mouse hook drops them; only Lumo's own input goes
-  through), except while a card on the island waits for your click. Esc
-  gives it back at once, and so does the end of the answer. Should Lumo close
-  meanwhile, the hook goes with it, and the usual arrow comes back at the next
-  start (or at once on quitting).
+  through), except while a card on the island waits for your click. Move or
+  click it meanwhile and a small note by your pointer says who is using the
+  mouse and that Esc pauses. Esc gives it back at once, and so does the end of
+  the answer. Should Lumo close meanwhile, the hook goes with it, and the
+  usual arrow comes back at the next start (or at once on quitting).
+- **A recap under the answer**: "Used the computer · 5 steps · 41 s", which a
+  click opens on the plan's steps as they ended, each with a small picture of
+  the screen taken when it was done. Stopped before the end, an amber line
+  says at which step and what was done last, even when Claude had written
+  nothing yet. It is saved with the chat, on this computer only, with the
+  pictures of the last few recaps (older ones keep their steps without
+  pictures, and pictures go first, never a chat, when space runs short).
 - One screen at a time: the one under the mouse at the first screenshot (or
   the one Claude asks for). Screenshots are sent at 1456 px on the long edge
   at most, about 1.15 megapixels; Lumo turns Claude's coordinates back into
