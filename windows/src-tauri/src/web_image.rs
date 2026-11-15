@@ -5,8 +5,9 @@
 // The address is the AI's to write: a page or an email it read could have it
 // put the user's data in one (`https://site/p.png?d=…`), and an automatic
 // download would hand that to the site. The island's Email view asks for the
-// pictures an email links to the same way, only after a click on Load images
-// (views/mail-view.ts): the sender's site then learns the email was opened.
+// pictures an email links to (and its backgrounds; an http one on https) the
+// same way, only after a click on Load images (views/mail-view.ts): the
+// sender's site then learns the email was opened.
 // Settings → Security → Images from the web turns it off, and then nothing is
 // downloaded here either.
 //

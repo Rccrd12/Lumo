@@ -60,6 +60,7 @@ import { Live } from "../live/session";
 import "../views/plan.css";
 import { presentApproval } from "./hooks";
 import { DOZE_DISTANCE, SAVER_FPS, STILL_AFTER_MS, distanceTo } from "../core/energy";
+import { heldByWindowMove } from "./window-move";
 
 /** Saving energy, the wait before each frame of the closed island: about SAVER_FPS a second. */
 const SPARING_FRAME_MS = 1000 / SAVER_FPS - 8;
@@ -180,6 +181,8 @@ export class Island {
   private settleTimer: number | null = null;
   /** Opens the closed island once the mouse has rested on it (Settings → Island). */
   private hoverOpenTimer: number | null = null;
+  /** The cursor is carrying a window moved or sized over the island (window-move.ts). */
+  private windowMoveHold = false;
   /** The mouse is on the closed island's own buttons. */
   private onControls = false;
   /** Page pixels the island is drawn off its usual place (a floating island, island.rs shift). */
@@ -374,6 +377,8 @@ export class Island {
       setView: (v) => this.setView(v),
       collapse: () => this.collapse(),
       closeSettings: () => {
+        // As Escape in the island: a pinned island stays open (a waiting card is folded).
+        if (State.isPinned && !State.pendingApproval) return;
         this.collapse();
         State.settingsLeftOpen = false;
       },
@@ -1501,7 +1506,10 @@ export class Island {
   private refit() {
     const size = this.targetSize();
     const key = `${size.w}x${size.h}`;
-    if (key === this.newLookSize) return;
+    // The size can have been noted while another move took the island
+    // elsewhere (the opening from the closed island, measured before the card
+    // had its room): where the island is really going decides.
+    if (key === this.newLookSize && this.width.target === size.w && this.height.target === size.h) return;
     this.newLookSize = key;
     this.animateGeometry(false);
   }
@@ -1849,8 +1857,11 @@ export class Island {
     });
   }
 
-  /** Cursor in window-logical coordinates. */
-  onCursor(x: number, y: number) {
+  /**
+   * Cursor in window-logical coordinates. `windowMoving`: Windows is moving or
+   * sizing a window (island.rs), so passing over the island is not a hover.
+   */
+  onCursor(x: number, y: number, windowMoving = false) {
     if (x !== State.mouse.x || y !== State.mouse.y) this.mouseMovedAt = performance.now();
     State.mouse = { x, y };
     const rect = this.islandRect();
@@ -1869,9 +1880,13 @@ export class Island {
     // over the island never opens it. A card hands it back to the user.
     // Paused with Esc it is the user's again: the plan's buttons are for clicking.
     const claudes = State.computerActive && !State.pendingApproval && !State.computer?.paused;
-    const inIsland = !claudes &&
+    const over =
       x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
       y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN;
+    // A window dragged or resized across the island carries the cursor over
+    // it: that never opens the island, nor does letting go of it there.
+    this.windowMoveHold = heldByWindowMove(this.windowMoveHold, windowMoving, over);
+    const inIsland = !claudes && !this.windowMoveHold && over;
 
     // Mid-resize the cursor rides the edge, a little in or out: not a leave.
     if (!this.resizing && !this.moving) {
@@ -1899,7 +1914,7 @@ export class Island {
     }
 
     // Bot hover → love
-    const overBot = !claudes && State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
+    const overBot = !claudes && !this.windowMoveHold && State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
     if (overBot && !this.botHovering) this.botHoverIn(x, y);
     if (!overBot && this.botHovering) this.cancelBotHover();
     this.botHovering = overBot;

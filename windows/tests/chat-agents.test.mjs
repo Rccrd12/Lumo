@@ -3,7 +3,7 @@
 // the `chat-agent` and `chat-signal` events, when an answer or an agent is said
 // to give no sign, what is saved with the chat, and the card drawn from it.
 
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeDom } from "./fakedom.mjs";
 
@@ -15,7 +15,7 @@ const {
 } = await import("../src/core/chat-agents.ts");
 const { joinOwnAnswer } = await import("../src/core/chats.ts");
 const { conversationTurn } = await import("../src/views/chat.ts");
-const { agentsCard, fillAgentsCard } = await import("../src/views/agents-card.ts");
+const { agentsCard, fillAgentsCard, STOP_UNDO_MS, stopPending } = await import("../src/views/agents-card.ts");
 
 const T0 = 1_700_000_000_000;
 const S = 1000;
@@ -64,22 +64,25 @@ test("an agent keeps its last steps, newest first, each once", () => {
   assert.equal(steps[0].at, T0 + 7 * S, "when it began");
 });
 
-test("agents started together share a card; a new batch goes under the answer then", () => {
+test("agents started together share a card; a later answer's agents have a card of their own under it", () => {
   const store = newAgentStore();
   send(store, "c", agent("a1"), 1);
   send(store, "c", agent("a2"), 1);
-  // Still at work: a third joins them, whatever the anchor asked.
+  // A later answer starts one while those still work: its own card, under that answer.
   send(store, "c", agent("a3"), 2);
   const c = store.get("c");
-  assert.deepEqual(c.batches.map((b) => [b.anchor, b.ids]), [[1, ["a1", "a2", "a3"]]]);
-  for (const id of ["a1", "a2", "a3"]) send(store, "c", agent(id, { state: "done" }));
-  // All over: the next one starts a batch under the answer given…
+  assert.deepEqual(c.batches.map((b) => [b.anchor, b.ids]), [[1, ["a1", "a2"]], [2, ["a3"]]]);
+  // One more of the first answer (started between two turns under it): with its own.
+  send(store, "c", agent("a4"), 1);
+  assert.deepEqual(c.batches.map((b) => [b.anchor, b.ids]), [[1, ["a1", "a2", "a4"]], [2, ["a3"]]]);
+  for (const id of ["a1", "a2", "a3", "a4"]) send(store, "c", agent(id, { state: "done" }));
+  // The next one starts a batch under the answer given…
   send(store, "c", agent("b1"), 3);
   // …asked only for a new agent.
   let asked = 0;
   applyAgent(store, { chat: "c", agent: agent("b1", { steps: 1 }) }, () => ++asked);
   assert.equal(asked, 0);
-  assert.deepEqual(c.batches.map((b) => [b.anchor, b.ids]), [[1, ["a1", "a2", "a3"]], [3, ["b1"]]]);
+  assert.deepEqual(c.batches.map((b) => [b.anchor, b.ids]), [[1, ["a1", "a2", "a4"]], [2, ["a3"]], [3, ["b1"]]]);
 });
 
 test("the sign of life moves forward only, and says when the answer waits for the user", () => {
@@ -254,6 +257,38 @@ test("the agents of an answer that never came are saved with its question, and c
   assert.equal(answered[2].agents, undefined);
 });
 
+test("agents at work when Lumo closes come back ended halfway, with Resume until it is sent", () => {
+  const store = newAgentStore();
+  send(store, "c", agent("w1", { title: "Transcribe L03", steps: 4, lastSignalAt: T0 + 9 * S }), 0);
+  send(store, "c", agent("d1", { state: "done", summary: "L01 ready", endedAt: T0 + S }), 0);
+  const turns = [{ role: "user", content: "q1" }, { role: "assistant", content: "r1" }];
+  const saved = withAgents(store.get("c"), turns);
+  assert.deepEqual(saved[1].agents.map((a) => [a.id, a.state, a.endedBy, a.endedAt]), [["w1", "failed", "lumo", T0 + 9 * S], ["d1", "done", undefined, T0 + S]]);
+
+  // Lumo opens again: the one at work ended halfway, and the card offers Resume.
+  const back = newAgentStore();
+  restoreAgents(back, "c", saved, "claude-code");
+  const c = back.get("c");
+  assert.equal(c.batches[0].resumed, false);
+  assert.equal(c.rows.get("w1").row.endedBy, "lumo");
+  const { host: h, log } = host();
+  const el = agentsCard({ chatId: "c", chat: c, batch: c.batches[0], now: T0 + 60 * S }, h);
+  assert.equal(el.querySelector(".agents-ended-text").textContent, "Lumo ended: 1 agent stopped halfway");
+  el.querySelector(".agents-btn.resume").fire("click");
+  assert.match(log.sent[0], /^Lumo ended while these agents were still working[^\n]*\n- Transcribe L03$/);
+
+  // Resumed: saved so, it never offers Resume again.
+  const resumed = withAgents(c, turns);
+  assert.equal(resumed[1].agents[0].resumed, true);
+  const third = newAgentStore();
+  restoreAgents(third, "c", resumed, "claude-code");
+  assert.equal(third.get("c").batches[0].resumed, true);
+  // A chat saved before this (no endedBy): nothing to resume, as before.
+  const old = newAgentStore();
+  restoreAgents(old, "c", [turns[0], { ...turns[1], agents: [{ id: "x", title: "t", state: "failed", error: "Claude Code ended", steps: 0, startedAt: T0 }] }]);
+  assert.equal(old.get("c").batches[0].resumed, true);
+});
+
 test("a deleted chat never comes back from its CLI's late news", () => {
   const store = newAgentStore();
   send(store, "gone", agent("a1"));
@@ -329,8 +364,21 @@ test("the card: how many are done, a segment each, a row each with what it does"
   assert.equal(rows[1].querySelector(".agents-time").textContent, "14 min · 2 s ago");
   // No sign: Wait and Stop; waiting: See request.
   assert.deepEqual(texts(rows[2], ".agents-btn"), ["Wait", "Stop"]);
-  rows[2].querySelector(".agents-btn.stop").fire("click");
+  mock.timers.enable({ apis: ["setTimeout", "Date"], now });
+  try {
+    // Stop waits a moment, its row saying so with Undo; then it goes.
+    rows[2].querySelector(".agents-btn.stop").fire("click");
+    assert.deepEqual(log.stopped, []);
+    assert.equal(stopPending("card1", "L05"), STOP_UNDO_MS);
+    const stopping = el.find(".agents-row")[2];
+    assert.equal(stopping.querySelector(".agents-line").textContent, "Stopping in 4 s…");
+    assert.deepEqual(texts(stopping, ".agents-btn"), ["Undo"]);
+    mock.timers.tick(STOP_UNDO_MS);
+  } finally {
+    mock.timers.reset();
+  }
   assert.deepEqual(log.stopped, ["L05"]);
+  assert.equal(stopPending("card1", "L05"), null);
   rows[3].querySelector(".agents-btn.see").fire("click");
   assert.deepEqual(log.seen, ["L10"]);
   rows[2].querySelector(".agents-btn.wait").fire("click");
@@ -379,7 +427,19 @@ test("a row opens on its summary, its last steps and its numbers, with Stop this
   assert.deepEqual(texts(el, ".agents-step-what"), ["edit L04.tex", "read pag-036.png"]);
   assert.match(el.querySelector(".agents-numbers").textContent, /^87 steps · 212K tokens · 1 min$/);
   assert.ok(log.changed > 0, "the chat hears the card grew");
-  el.querySelector(".agents-btn.stop").fire("click");
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    // Undo takes the Stop back: nothing goes.
+    el.querySelector(".agents-btn.stop").fire("click");
+    assert.equal(el.querySelector(".agents-detail").querySelector(".agents-btn.stop"), null, "no second Stop meanwhile");
+    el.querySelector(".agents-btn.undo").fire("click");
+    mock.timers.tick(STOP_UNDO_MS);
+    assert.deepEqual(log.stopped, []);
+    el.querySelector(".agents-detail").querySelector(".agents-btn.stop").fire("click");
+    mock.timers.tick(STOP_UNDO_MS);
+  } finally {
+    mock.timers.reset();
+  }
   assert.deepEqual(log.stopped, ["a"]);
   el.querySelector(".agents-btn.close").fire("click");
   assert.equal(el.querySelector(".agents-detail"), null);
@@ -402,8 +462,10 @@ test("all over, the card folds into one line that opens again", () => {
 test("the CLI ended under its agents: a red line, and Resume sends a message only on its click", () => {
   const store = newAgentStore();
   send(store, "card4", agent("a", { state: "done" }));
-  send(store, "card4", agent("b", { title: "Transcribe L10", state: "failed", error: "Claude Code ended" }));
-  send(store, "card4", agent("c", { title: "Transcribe L16", state: "failed", error: "Claude Code ended" }));
+  send(store, "card4", agent("b", { title: "Transcribe L10", state: "failed", error: "Claude Code ended", endedBy: "cli" }));
+  send(store, "card4", agent("c", { title: "Transcribe L16", state: "failed", error: "Claude Code ended", endedBy: "cli" }));
+  // The same words from an agent's own error are no CLI ending: Rust's field says.
+  send(store, "card4", agent("d", { title: "Check", state: "failed", error: "Claude Code ended" }));
   const c = store.get("card4");
   const { host: h, log } = host();
   const el = agentsCard({ chatId: "card4", chat: c, batch: c.batches[0], now: T0 }, h);
@@ -417,7 +479,7 @@ test("the CLI ended under its agents: a red line, and Resume sends a message onl
 
   // Not sent (a question being edited): the red line stays, Resume with it.
   const store2 = newAgentStore();
-  send(store2, "card6", agent("b", { state: "failed", error: "Claude Code ended" }));
+  send(store2, "card6", agent("b", { state: "failed", error: "Claude Code ended", endedBy: "cli" }));
   const c2 = store2.get("card6");
   const refused = agentsCard({ chatId: "card6", chat: c2, batch: c2.batches[0], now: T0 }, host({ send: () => false }).host);
   refused.querySelector(".agents-btn.resume").fire("click");

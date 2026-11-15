@@ -594,6 +594,28 @@ test("a computer use action's card says why (the plan's step) and where (the poi
     assert.equal(card("mcp__lumo__key", { text: "ctrl+s" }).computerAt, undefined);
     assert.equal(card("mcp__lumo__left_click", {}).computerAt, undefined);
     assert.equal(card("mcp__lumo__left_click", { coordinate: ["1", 2] }).computerAt, undefined);
+    // Two chats using the computer at once: the step said is the asking chat's
+    // own plan's, never the other chat's shown on the island.
+    const chatCard = (chat) => {
+      State.pendingApproval = null;
+      ask("c1", { tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [1, 1] }, lumo_island: true, ...(chat ? { lumo_chat: chat } : {}) });
+      return State.pendingApproval;
+    };
+    State.computer = { ...State.computer, chat: "chat-2" };
+    c = chatCard("chat-1");
+    assert.equal(c.reason, undefined, "another chat's plan");
+    assert.equal(c.chat, "chat-1");
+    assert.equal(chatCard(undefined).reason, undefined, "Gemini Live's helper asks: not the chat's plan");
+    c = chatCard("chat-2");
+    assert.equal(c.reason, "Save the text on the Desktop", "its own plan");
+    State.computer = { ...State.computer, chat: "" };
+    assert.equal(chatCard(undefined).reason, "Save the text on the Desktop", "the helper's own plan (no chat)");
+    assert.equal(chatCard("chat-1").reason, undefined);
+    // A session's card (not the island's chat) never carries a chat.
+    State.pendingApproval = null;
+    ask("c1", { tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [1, 1] }, lumo_chat: "chat-2" });
+    assert.equal(State.pendingApproval.chat, undefined);
+    State.computer = { ...State.computer, chat: undefined };
     // Every step done: nothing under way, nothing said.
     State.computer = { ...State.computer, steps: [{ text: "Open Notepad", status: "done" }] };
     assert.equal(card("mcp__lumo__left_click", { coordinate: [1, 1] }).reason, undefined);
@@ -909,6 +931,8 @@ test("a plan the chat asks to start brings the chat back over the tool workshop"
   assert.equal(State.requestView(plan), "prompt");
   assert.equal(State.chatSlot, "chat");
   assert.equal(State.requestView({ ...plan, fromChat: undefined }), "approval");
+  // A plan too long to show whole goes on the card, which says so in amber.
+  assert.equal(State.requestView({ ...plan, cut: true }), "approval");
   assert.equal(State.requestView({ ...plan, fromChat: undefined, questions: [] }), "question");
 });
 
@@ -1107,10 +1131,27 @@ test("Claude Code's Auto is not Antigravity's: its own mode, which asks until pi
 });
 
 test("a request the relay had to cut is never offered Allow for this session, and says so", () => {
-  ask("c1", { tool_name: "Bash", tool_input: { command: "npm run build && …" }, lumo_input_cut: true, lumo_input_bytes: 210 * 1024, lumo_session_allow: true });
+  ask("c1", { tool_name: "Bash", tool_input: { command: "npm run build && …" }, lumo_input_cut: true, lumo_input_bytes: 210 * 1024, lumo_input_hidden: 148 * 1024, lumo_session_allow: true });
   assert.equal(State.pendingApproval.cut, true);
   assert.equal(State.pendingApproval.cutBytes, 210 * 1024);
+  assert.equal(State.pendingApproval.cutHidden, 148 * 1024);
   assert.equal(State.pendingApproval.sessionAllow, undefined);
+  assert.equal(State.pendingApproval.unread, undefined);
+});
+
+test("arguments the relay couldn't read are shown as they came, marked unread, and never on the closed island", () => {
+  // Copilot CLI's toolArgs that serde refuses (a lone surrogate): lumo-hook normalize.rs.
+  const raw = '{"command":"Remove-Item -Recurse C:\\\\Users\\\\me\\\\proj","x":"\\ud800"}';
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "u1", session_id: "s1", cwd: "C:\\p", lumo_agent: "copilot",
+    tool_name: "bash", tool_input: { arguments: raw }, lumo_input_unread: true, lumo_session_allow: true,
+  });
+  const p = State.pendingApproval;
+  assert.equal(p.unread, true);
+  assert.equal(p.command, `bash · ${raw}`, "the arguments as they came, not JSON around them");
+  assert.equal(p.sessionAllow, undefined);
+  assert.equal(p.quick, undefined);
+  assert.deepEqual(asked, ["alert:approval"]);
 });
 
 test("a big change whose text the relay cut is an ordinary card, with the relay's numbers", () => {

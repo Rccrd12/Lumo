@@ -270,10 +270,11 @@ fn safe_effort(effort: &str) -> Option<&'static str> {
     EFFORTS.iter().copied().find(|e| *e == effort.trim())
 }
 
-/// A model alias or id we are willing to put on the command line.
+/// A model alias or id we are willing to put on the command line: never one
+/// that reads as an option.
 fn safe_model(model: &str) -> Option<&str> {
     let m = model.trim();
-    (!m.is_empty() && m != DEFAULT_MODEL && m.len() <= 64 && m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | '[' | ']')))
+    (!m.is_empty() && !m.starts_with('-') && m != DEFAULT_MODEL && m.len() <= 64 && m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | '[' | ']')))
         .then_some(m)
 }
 
@@ -2100,6 +2101,20 @@ fn reap_idle() {
     });
 }
 
+/// The agents at work that answering with `key` would end: the chat's Claude
+/// Code is alive in the same session, but with another key (model, effort,
+/// mode, folders, tools), so a new one would take its place and end them.
+/// None when none would end, or the user said to send all the same. Another
+/// session (an edited question) goes on as before: its answers leave the chat.
+fn agents_in_the_way(chat_id: &str, key: &str, session: Option<&str>) -> Option<usize> {
+    let open = lives(|all| {
+        let live = all.get_mut(chat_id)?;
+        let other = live.key != key && live.session.as_deref() == session && matches!(live.child.try_wait(), Ok(None));
+        Some(if other { live.link.open() } else { 0 })
+    })?;
+    chat_agents::in_the_way(chat_id, open)
+}
+
 /// The chat's Claude Code that can answer with `key` in `session`, or a new
 /// one, whose agents are told with `tell`.
 #[allow(clippy::too_many_arguments)]
@@ -2169,6 +2184,11 @@ fn live_turn(
     tell: Tell,
 ) -> Result<Run, String> {
     let key = live_key(&exe, &args);
+    // Another model, effort, mode, folder or tools would end the agents it
+    // left at work: not without the user (chat_agents.rs WOULD_STOP).
+    if let Some(open) = agents_in_the_way(chat_id, &key, session.as_deref()) {
+        return Err(chat_agents::would_stop(open));
+    }
     let mut live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
     // Claude Code is answering by itself: the message goes once it is done.
     if !live.take_output(&stop) {
@@ -3217,6 +3237,8 @@ mod tests {
         assert_eq!(safe_model("claude-opus-5-5[1m]"), Some("claude-opus-5-5[1m]"));
         assert_eq!(safe_model(""), None);
         assert_eq!(safe_model("default"), None, "no --model: Claude Code's own choice");
+        assert_eq!(safe_model("--dangerously-skip-permissions"), None, "a flag is no model");
+        assert_eq!(safe_model("-p"), None);
     }
 
     #[test]

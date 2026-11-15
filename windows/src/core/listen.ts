@@ -595,6 +595,26 @@ export function firedTitle(w: ListenWatch): string {
   return onGitHub(w) ? "GitHub" : watchLabel(w);
 }
 
+/**
+ * Where a watch hears, without what it heard (the closed island while its
+ * chat waits to be seen): "Email", "GitHub", "Web pages", a service's or an
+ * agent's name, the tool's. Never an email's subject, a page's words, a
+ * notification's text or what a webhook was sent.
+ */
+export function sourceName(w: ListenWatch): string {
+  if (onGitHub(w)) return "GitHub";
+  switch (w.source) {
+    case "fs": return t(N_("Files and folders"));
+    case "process": return t(N_("Programs and ports"));
+    case "web": return t(N_("Web pages"));
+    case "email": return t(N_("Email"));
+    case "windows": return "Windows";
+    case "webhook": return t(N_("Webhook"));
+    // A service, an agent, a tool of the user's: its own name says where, not what.
+    default: return watchLabel(w);
+  }
+}
+
 /** The colour of what the island says about a watch. */
 export function watchColor(w: ListenWatch): string {
   return onGitHub(w) ? LISTEN_COLOR : SOURCE_COLOR[w.source as LocalSource] ?? LISTEN_COLOR;

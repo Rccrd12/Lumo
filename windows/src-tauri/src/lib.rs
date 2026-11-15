@@ -380,10 +380,24 @@ fn open_url(url: String) {
         outlook::open(&url);
         return;
     }
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
+    if !(url.starts_with("http://") || url.starts_with("https://") || plain_mailto(&url)) {
         return;
     }
     platform::open_url(&url);
+}
+
+/// A mailto: link the mail program may be handed: an address and nothing
+/// else (no `?subject=`, no `?attach=` a mail program could read a file
+/// with). The island's Email view sends these (views/mail-view.ts).
+fn plain_mailto(url: &str) -> bool {
+    let Some(address) = url.strip_prefix("mailto:") else { return false };
+    let Some((user, domain)) = address.split_once('@') else { return false };
+    !user.is_empty()
+        && user.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '%' | '+' | '-'))
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && domain.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
 }
 
 /// "Open terminal" opens the working folder in VS Code when `code` is on PATH,
@@ -888,6 +902,13 @@ fn chat_stop_agent(chat_id: String, agent_id: String) -> Result<(), String> {
     chat_agents::stop(&chat_id, &agent_id)
 }
 
+/// "Send now and stop them": the chat's next message may start its CLI again
+/// with other settings, ending the agents still at work (chat_agents.rs WOULD_STOP).
+#[tauri::command]
+fn chat_allow_restart(chat_id: String) {
+    chat_agents::allow_restart(&chat_id);
+}
+
 /// An edited message: the conversation goes back to its first `keep` turns
 /// (as `chat_send` counted them) before the edited one is sent.
 #[tauri::command]
@@ -1211,6 +1232,10 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn secret_clear(app: AppHandle, key: String) -> Result<(), String> {
+    // Google's permission leaves only through google_calendar_sign_out, which tells Google too.
+    if key == google_calendar::REFRESH_KEY {
+        return Err("use google_calendar_sign_out".into());
+    }
     let had = key == "github-token" && secrets::present(&key);
     secrets::clear(&key)?;
     secret_changed(&app, &key);
@@ -1461,6 +1486,7 @@ pub fn run() {
             chat_commands,
             chat_stop,
             chat_stop_agent,
+            chat_allow_restart,
             chat_rewind,
             chat_forget_file,
             island_drag,
@@ -1489,6 +1515,7 @@ pub fn run() {
             listen_events::listen_webhook_url,
             listen::listen_list,
             listen::listen_stop,
+            listen::listen_move,
             listen::listen_pause,
             listen::listen_history,
             listen::listen_history_clear,
@@ -1625,8 +1652,22 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{diff_file, keep_size};
+    use super::{diff_file, keep_size, plain_mailto};
     use crate::settings::{Settings, ViewSize};
+
+    #[test]
+    fn only_a_plain_mailto_address_goes_to_the_mail_program() {
+        assert!(plain_mailto("mailto:ada@example.com"));
+        assert!(plain_mailto("mailto:ada.l+news@mail.example.co.uk"));
+        assert!(!plain_mailto("mailto:ada@example.com?attach=C:\\Users\\a\\secret.txt"));
+        assert!(!plain_mailto("mailto:ada@example.com?subject=hi"));
+        assert!(!plain_mailto("mailto:ada@localhost"));
+        assert!(!plain_mailto("mailto:@example.com"));
+        assert!(!plain_mailto("mailto:a b@example.com"));
+        assert!(!plain_mailto("mailto:ada@example..com"));
+        assert!(!plain_mailto("file:///C:/Windows"));
+        assert!(!plain_mailto("mailto:ada@example.com\" & calc"));
+    }
 
     #[test]
     fn a_resized_view_keeps_its_size_and_leaves_the_others_alone() {

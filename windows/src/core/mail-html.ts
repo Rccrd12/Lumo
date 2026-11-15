@@ -2,7 +2,9 @@
 // rules that need no page, so tests/mail-html.test.mjs runs them as they are.
 // The HTML comes from mail.rs (mail_html); the view shows it in a frame with
 // no scripts, its links opened in the browser by a click, the images it links
-// to hidden until Load images (the island's CSP keeps them out anyway).
+// to (and its backgrounds) hidden until Load images. The frame has its own
+// CSP (EMAIL_FRAME_CSP): nothing of the email reaches the web, whatever the
+// island's own CSP lets in.
 
 /** The images an email may load after Load images; the ones after stay hidden. */
 export const MAX_EMAIL_IMAGES = 60;
@@ -16,14 +18,104 @@ const MIN_ZOOM = 0.5;
 /** Elements an email can't keep: they run, load or go somewhere. */
 export const DROPPED_TAGS = ["script", "noscript", "iframe", "frame", "frameset", "object", "embed", "applet", "base", "link", "meta", "form", "portal", "template"];
 
+/**
+ * The frame's sandbox: no scripts, no forms, no pop-ups, no navigation. Same
+ * origin only so the island can fit it and hear its clicks: with scripts
+ * allowed too, the email would be the island itself (its IPC), so never add
+ * allow-scripts here (tests/mail-html.test.mjs checks it).
+ */
+export const EMAIL_FRAME_SANDBOX = "allow-same-origin";
+
+/**
+ * The frame's own CSP, put first in its document: nothing of the email is
+ * fetched (its CSS, fonts, SVG, videos, forms), only the images Lumo hands
+ * over (data:, blob:) are shown. It stands whatever the island's CSP is.
+ */
+export const EMAIL_FRAME_CSP = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
+
 /** Whether `url` is an image on the web, which waits for Load images (https only: web_image.rs). */
 export function webImageUrl(url: string): boolean {
   return /^https:\/\//i.test(url.trim());
 }
 
+/** Whether `url` is a data: URL, the pictures that come inside the email (mail.rs turns its cid: into them). */
+export function isDataUrl(url: string): boolean {
+  return /^data:/i.test(url.trim());
+}
+
+/**
+ * The address an image of the email is asked at by Load images: its own when
+ * https; an http one, or a "//site/…" one, on https (most image sites serve
+ * both; web_image.rs only ever asks https, and one that doesn't answer stays
+ * hidden). null for anything else (cid:, a path).
+ */
+export function httpsImage(url: string): string | null {
+  const u = url.trim();
+  if (/^https:\/\//i.test(u)) return u;
+  if (/^http:\/\//i.test(u)) return `https://${u.slice(7)}`;
+  if (u.startsWith("//") && u.length > 2) return `https:${u}`;
+  return null;
+}
+
+/**
+ * The web address of an element's background, which Load images downloads
+ * too: its background attribute, else the first url() of background or
+ * background-image in its style. null when it has none (or one of data:).
+ */
+export function backgroundUrl(attr: string | null, style: string): string | null {
+  const own = attr?.trim();
+  if (own) return httpsImage(own);
+  const m = /(?:^|;)\s*background(?:-image)?\s*:[^;]*?url\(\s*(['"]?)([^'")\s]+)\1\s*\)/i.exec(style);
+  return m ? httpsImage(m[2]) : null;
+}
+
 /** Whether a link of the email opens in the browser on a click: http and https only. */
 export function opensInBrowser(href: string): boolean {
   return /^https?:\/\//i.test(href.trim());
+}
+
+/**
+ * What a click on a link of the email hands to the browser: the address as
+ * the corner shows it (linkParts reads it the same way), with its spaces,
+ * tabs and backslashes made what a browser makes of them. null for one that
+ * opens nothing.
+ */
+export function browserUrl(href: string): string | null {
+  if (!opensInBrowser(href)) return null;
+  try {
+    const u = new URL(href.trim());
+    return u.hostname && /^https?:$/.test(u.protocol) ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A mailto: link of the email, as the mail program is handed it: only its
+ * address ("mailto:ada@example.com"), never what it asks to fill in or attach
+ * (?subject=, ?attach=). null for anything else.
+ */
+export function mailtoUrl(href: string): string | null {
+  const m = /^mailto:([^?#]*)/i.exec(href.trim());
+  if (!m) return null;
+  let address: string;
+  try {
+    address = decodeURIComponent(m[1]).trim();
+  } catch {
+    return null;
+  }
+  return /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(address) ? `mailto:${address}` : null;
+}
+
+/** The place a link inside the email goes to ("#offerte" → "offerte"), or null for one that goes elsewhere. */
+export function anchorOf(href: string): string | null {
+  const h = href.trim();
+  if (!h.startsWith("#") || h.length < 2) return null;
+  try {
+    return decodeURIComponent(h.slice(1));
+  } catch {
+    return h.slice(1);
+  }
 }
 
 /**
@@ -66,6 +158,11 @@ export function imagesToLoad(urls: string[]): string[] {
   return [...new Set(urls.map((u) => u.trim()).filter(webImageUrl))].slice(0, MAX_EMAIL_IMAGES);
 }
 
+/** How many of an email's web images Load images leaves out: past MAX_EMAIL_IMAGES, each address once. */
+export function imagesLeftOut(urls: string[]): number {
+  return Math.max(0, new Set(urls.map((u) => u.trim()).filter(webImageUrl)).size - MAX_EMAIL_IMAGES);
+}
+
 /**
  * The box a hidden image keeps (its stand-in is a 1×1 pixel): its own size
  * when the email gives its height; with only a width, "h" (48 px tall rather
@@ -85,16 +182,60 @@ export function hiddenBox(width: string | null, height: string | null, style: st
 const TRACKER_HOSTS = /(^|\.)(list-manage\.com|mailtrack\.io|mailstat\.us|sidekickopen\d*\.com|getnotify\.com|bananatag\.com|yesware\.com|mixmax\.com|mailfoogae\.appspot\.com)$/i;
 const TRACKER_PATHS = /\/(track\/open(\.php)?|wf\/open|e\/o\/[^/]+|tr\/op\/[^/]+|trk\/open|open\.php|o\.gif|open\.gif|open\.png|pixel(\.gif|\.png)?|beacon(\.gif|\.png)?)\/?$/i;
 
+/** The width an email's picture is wanted at, given by widths in a srcset: the frame's (600 px) twice, for a sharp screen. */
+const SRCSET_WIDTH = 1200;
+
+/**
+ * The candidates of a srcset, as a browser reads them: each address (which
+ * may hold commas itself) with its width ("800w") or density ("2x", 1 when
+ * it says none).
+ */
+function srcsetCandidates(srcset: string): { url: string; w: number; x: number }[] {
+  const out: { url: string; w: number; x: number }[] = [];
+  let at = 0;
+  while (at < srcset.length) {
+    while (at < srcset.length && /[\s,]/.test(srcset[at])) at++;
+    let end = at;
+    while (end < srcset.length && !/\s/.test(srcset[end])) end++;
+    let url = srcset.slice(at, end);
+    at = end;
+    let descriptor = "";
+    if (url.endsWith(",")) {
+      url = url.replace(/,+$/, "");
+    } else {
+      // Up to the comma that ends the candidate (one inside brackets is the descriptor's own).
+      let depth = 0;
+      while (at < srcset.length && (srcset[at] !== "," || depth > 0)) {
+        if (srcset[at] === "(") depth++;
+        else if (srcset[at] === ")") depth = Math.max(0, depth - 1);
+        descriptor += srcset[at++];
+      }
+    }
+    if (!url) continue;
+    const w = /(?:^|\s)(\d+)w(?:\s|$)/.exec(descriptor);
+    const x = /(?:^|\s)(\d+(?:\.\d+)?|\.\d+)x(?:\s|$)/.exec(descriptor);
+    out.push({ url, w: w ? Number(w[1]) : 0, x: x ? Number(x[1]) : 1 });
+  }
+  return out;
+}
+
 /**
  * The address an image of an email shows: its src, or with none (a picture
- * given only by srcset), the first of its srcset, as a browser would read it.
- * The frame takes srcset out (views/mail-view.ts), so without this such an
- * image would never load, not even after Load images.
+ * given only by srcset), the one of its srcset a browser would take in the
+ * frame: by widths, the smallest at least SRCSET_WIDTH wide (else the
+ * widest); by densities, the highest up to 2x (else the lowest). The frame
+ * takes srcset out (views/mail-view.ts), so without this such an image would
+ * never load, not even after Load images.
  */
 export function imageSource(src: string, srcset: string): string {
   const own = src.trim();
   if (own) return own;
-  return (srcset.trim().split(/\s+/)[0] ?? "").replace(/,+$/, "");
+  const all = srcsetCandidates(srcset);
+  const wide = all.filter((c) => c.w > 0).sort((a, b) => a.w - b.w);
+  if (wide.length) return (wide.find((c) => c.w >= SRCSET_WIDTH) ?? wide[wide.length - 1]).url;
+  const dense = all.filter((c) => c.x > 0).sort((a, b) => a.x - b.x);
+  if (!dense.length) return "";
+  return (dense.filter((c) => c.x <= 2).pop() ?? dense[0]).url;
 }
 
 /**
@@ -112,7 +253,7 @@ export function trackingPixel(src: string, width: string | null, height: string 
   const zero = (attr: string | null) => /^\s*0+(\.0+)?\s*(px)?\s*$/i.test(attr ?? "");
   if ((tiny(width, "width") && tiny(height, "height")) || zero(width) || zero(height)) return true;
   try {
-    const u = new URL(src.trim());
+    const u = new URL(httpsImage(src) ?? src.trim());
     return TRACKER_HOSTS.test(u.hostname) || TRACKER_PATHS.test(u.pathname);
   } catch {
     return false;

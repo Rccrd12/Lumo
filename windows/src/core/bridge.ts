@@ -352,6 +352,8 @@ export const Bridge = {
   listenList: () => call<ListenWatch[]>("listen_list"),
   /** Stops one watch, by its id. */
   listenStop: (id: number) => call<boolean>("listen_stop", { id }),
+  /** The chat a watch answers to was deleted: its events go to `chatId` from now on. */
+  listenMove: (id: number, chatId: string) => call<boolean>("listen_move", { id, chatId }),
   /** Pauses or resumes one watch (`id` null: every one). */
   listenPause: (id: number | null, paused: boolean) => call<number>("listen_pause", { id, paused }),
   /** What fired, oldest first. */
@@ -649,8 +651,8 @@ export const Bridge = {
   googleCalendarSignIn: () => callOrThrow<void>("google_calendar_sign_in"),
   /** Ends a sign-in still waiting for the browser. */
   googleCalendarCancel: () => call<void>("google_calendar_cancel"),
-  /** Forgets the account: Google is told, the client and the permission leave the credential store. */
-  googleCalendarSignOut: () => callOrThrow<void>("google_calendar_sign_out"),
+  /** Forgets the account: Google is told, the permission leaves the credential store (the client stays). False when Google could not be reached. */
+  googleCalendarSignOut: () => callOrThrow<boolean>("google_calendar_sign_out"),
   /** A GET to the Calendar API (the calendar list or a calendar's events); null when not signed in; throws "paused" while Lumo is paused. */
   googleCalendarGet: (path: string, query: [string, string][] = []) =>
     callOrThrow<{ status: number; body: unknown } | null>("google_calendar_get", { path, query }),
@@ -813,6 +815,12 @@ export interface ChatAgent {
   round?: number;
   /** The last message its CLI sent it, and its answer once it came. */
   talk?: ChatAgentTalk;
+  /**
+   * What ended it while it was still at work: "cli", its CLI ended under it
+   * (Rust says so); "lumo", Lumo closed under it (a saved chat, core/chat-agents.ts).
+   * The Agents card offers Resume for those.
+   */
+  endedBy?: "cli" | "lumo";
 }
 
 /** A message the chat's CLI sent one of its agents, and the agent's answer (the "Talking to …" box). */
@@ -879,10 +887,14 @@ export interface ChatReply {
   warning?: ChatWarning;
 }
 
-/** A problem under an answer: one short line, and what to know, opened with a click. */
+/**
+ * A problem under an answer (chat.rs ChatWarning): its kind ("malformed": the
+ * model sent a tool call the CLI could not read; "error": any other) and the
+ * CLI's own words. The island says it in its language (views/chat.ts warningWords).
+ */
 export interface ChatWarning {
-  line: string;
-  detail: string;
+  kind: "malformed" | "error";
+  message: string;
 }
 
 /** A display the screen button can capture; `index` is its place in the menu. */
@@ -1112,6 +1124,8 @@ export interface GoogleCalendarStatus {
   needsSignIn: boolean;
   /** A sign-in waits for the browser. */
   signingIn: boolean;
+  /** The calendars Google no longer lets the account read (no longer shared, deleted), by ID, with why. */
+  unreadable: Record<string, string>;
 }
 
 export interface DragDropPayload {

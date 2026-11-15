@@ -559,13 +559,25 @@ test("plain words in a question are one paragraph, as they were written", async 
   assert.equal(bubble.textContent, "fix the export button\non Safari");
 });
 
-test("a long question folds to its first lines, with Show more and Show less in its bubble", async () => {
-  let measure = null;
+/** The chat's one ResizeObserver (made once, with the first long question): the tests call its measures. */
+let foldMeasure = null;
+
+/** A ResizeObserver whose measures the test calls, while `run` lasts; without one, questions are never folded. */
+async function withMeasure(run) {
   globalThis.ResizeObserver = class {
-    constructor(cb) { measure = cb; }
+    constructor(cb) { foldMeasure ??= cb; }
     observe() {}
   };
   try {
+    await run((...targets) => foldMeasure(targets.map((target) => ({ target }))));
+  } finally {
+    delete globalThis.ResizeObserver;
+  }
+}
+
+test("a long question folds to its first lines, with Show more and Show less in its bubble", async () => {
+  await withMeasure(async (measureOf) => {
+    const measure = (entries) => measureOf(...entries.map((e) => e.target));
     answers.chat_send = { text: "ok", turns: 2 };
     await ask("a short one");
     await ask("a long one\n".repeat(40));
@@ -599,9 +611,63 @@ test("a long question folds to its first lines, with Show more and Show less in 
     fold(again).fire("click");
     assert.ok(again.querySelector(".bubble-body").classList.contains("folded"));
     assert.equal(fold(again).textContent, "Show more");
-  } finally {
-    delete globalThis.ResizeObserver;
-  }
+  });
+});
+
+const userRows = () => rows().filter((r) => r.classList.contains("user"));
+
+test("a question opened with Show more stays open when its chat comes back with new ids", async () => {
+  await withMeasure(async (measure) => {
+    answers.chat_send = { text: "ok", turns: 2 };
+    const text = "a question opened, then its chat left\n".repeat(40);
+    await ask(text);
+    const bubble = userRows()[0].querySelector(".bubble");
+    bubble.scrollHeight = 600;
+    measure(bubble);
+    userRows()[0].querySelector(".bubble-body").scrollHeight = 600;
+    userRows()[0].querySelector(".msg-fold").fire("click");
+    assert.equal(userRows()[0].querySelector(".msg-fold").textContent, "Show less");
+
+    // Opened again, a saved chat's messages are given new ids (openChat).
+    State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, id: 10_000 + i }));
+    await ask("and now");
+    const again = userRows()[0].querySelector(".bubble");
+    again.scrollHeight = 600;
+    measure(again);
+    assert.equal(userRows()[0].querySelector(".msg-fold").textContent, "Show less");
+  });
+});
+
+test("measured again at the same size, Show more's label is left as it is", async () => {
+  await withMeasure(async (measure) => {
+    answers.chat_send = { text: "ok", turns: 2 };
+    await ask("a question measured at each frame\n".repeat(40));
+    const bubble = userRows()[0].querySelector(".bubble");
+    bubble.scrollHeight = 600;
+    measure(bubble);
+    const btn = userRows()[0].querySelector(".msg-fold");
+    const label = btn.firstChild;
+    userRows()[0].querySelector(".bubble-body").scrollHeight = 600;
+    measure(bubble);
+    measure(bubble);
+    assert.equal(btn.firstChild, label, "the same text, not written again");
+  });
+});
+
+test("the keyboard reaching a folded question's hidden lines opens it", async () => {
+  await withMeasure(async (measure) => {
+    answers.chat_send = { text: "ok", turns: 2 };
+    await ask("a question with a link further down\n".repeat(40));
+    const bubble = userRows()[0].querySelector(".bubble");
+    bubble.scrollHeight = 600;
+    measure(bubble);
+    const body = userRows()[0].querySelector(".bubble-body");
+    body.scrollHeight = 600;
+    assert.ok(body.classList.contains("folded"));
+    body.fire("focusin");
+    assert.ok(!body.classList.contains("folded"));
+    assert.equal(userRows()[0].querySelector(".msg-fold").textContent, "Show less");
+  });
 });
 
 test("Edit puts a question back; sending it replaces it and drops what followed", async () => {
@@ -690,6 +756,107 @@ test("a question whose answer failed keeps its Retry in sight", async () => {
   await flush();
   await flush();
   assert.deepEqual(State.chatHistory.map((m) => m.content), ["hello", "hi"]);
+});
+
+test("an answer agy ended with an error keeps its warning in sight on its Copy/Retry bar, its detail on a click", async () => {
+  const words = "Malformed function call: Function call is empty - no input to parse.";
+  answers.chat_send = { text: "Ecco gli appunti.", turns: 2, warning: { kind: "malformed", message: words } };
+  await ask("appunti in LaTeX");
+  answers.chat_send = { text: "Fatto.", turns: 4 };
+  await ask("e l'indice?");
+  const answer = rows()[1];
+  const line = answer.find(".msg-warning")[0];
+  assert.equal(line.textContent, "Antigravity CLI reported a problem at the end");
+  // On the actions' bar, which stays in sight under a past answer with a warning.
+  assert.equal(answer.find(".msg-actions")[0].find(".msg-warning").length, 1);
+  assert.ok(answer.find(".msg-actions")[0].classList.contains("shown"), "in sight without the mouse");
+  const detail = answer.find(".msg-warning-detail")[0];
+  assert.equal(detail.hidden, true);
+  line.fire("click");
+  assert.equal(detail.hidden, false);
+  assert.match(detail.textContent, /empty tool call/);
+  assert.ok(detail.textContent.endsWith(`Antigravity CLI's message: ${words}`));
+  assert.equal(rows()[3].find(".msg-warning").length, 0, "an answer without one has none");
+  // A past answer without one hides its bar until hovered, as always.
+  answers.chat_send = { text: "Ok.", turns: 6 };
+  await ask("grazie");
+  assert.ok(!rows()[3].find(".msg-actions")[0].classList.contains("shown"));
+});
+
+test("away from the chat, an answer with a warning is noted in amber, with a problem", async () => {
+  const { Feed } = await import("../src/core/compact.ts");
+  const pending = heldAnswers();
+  await ask("appunti");
+  const before = { mode: State.mode, view: State.view };
+  State.view = "home";
+  try {
+    pending[0]({ text: "Ecco.", turns: 2, warning: { kind: "error", message: "boom" } });
+    await flush();
+    await flush();
+    const note = Feed.notices.at(-1);
+    assert.match(note.text, /answered, with a problem$/);
+    assert.equal(note.color, "#f5a524");
+  } finally {
+    Object.assign(State, before);
+  }
+});
+
+test("a warning is said in the island's language when shown; one saved by a beta keeps its words", async () => {
+  const { warningWords, failedParts } = await import("../src/views/chat.ts");
+  const { savedWarning } = await import("../src/core/chats.ts");
+  const { setLanguage } = await import("../src/i18n/i18n.ts");
+  const saved = savedWarning({ kind: "error", message: "quota exceeded" });
+  assert.deepEqual(saved, { kind: "error", message: "quota exceeded" });
+  setLanguage("it");
+  try {
+    const w = warningWords(saved);
+    assert.equal(w.line, "Antigravity CLI ha segnalato un problema alla fine");
+    assert.match(w.detail, /ha chiuso questo turno con un errore/);
+    assert.ok(w.detail.endsWith("Messaggio di Antigravity CLI: quota exceeded"));
+  } finally {
+    setLanguage("en");
+  }
+  // Saved by the 0.22.2 betas: the words as they were.
+  const beta = savedWarning({ line: "L", detail: "D" });
+  assert.deepEqual(warningWords(beta), { line: "L", detail: "D" });
+  // Anything else is no warning.
+  assert.equal(savedWarning({ kind: "other", message: "x" }), undefined);
+  assert.equal(savedWarning("x"), undefined);
+  assert.equal(savedWarning(null), undefined);
+  // A failed answer's words: Lumo's, then the CLI's after U+2063.
+  assert.deepEqual(failedParts("Stopped.\n\u2063Antigravity CLI's message: x"), ["Stopped.", "Antigravity CLI's message: x"]);
+  assert.deepEqual(failedParts("offline"), ["offline", ""]);
+});
+
+test("a failed answer shows the CLI's own words apart, the note only Lumo's", async () => {
+  answers.chat_send = () => Promise.reject(new Error("Antigravity CLI stopped.\n\u2063Antigravity CLI's message: Malformed function call"));
+  await ask("hello");
+  const failed = rows()[1];
+  assert.equal(failed.find(".msg-failed")[0].textContent, "Antigravity CLI stopped.");
+  assert.equal(failed.find(".msg-warning-detail")[0].textContent, "Antigravity CLI's message: Malformed function call");
+});
+
+test("Past chats keep an answer's warning, also when Claude Code adds to the chat by itself", async (t) => {
+  if (!globalThis.localStorage) {
+    t.after(() => delete globalThis.localStorage);
+    const mem = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+      setItem: (k, v) => mem.set(k, String(v)),
+      removeItem: (k) => mem.delete(k),
+    };
+  }
+  const { loadChats } = await import("../src/core/chats.ts");
+  const warning = { kind: "malformed", message: "Malformed function call" };
+  answers.chat_send = { text: "Ecco.", turns: 2, session: "s1", warning };
+  await ask("appunti");
+  const saved = () => loadChats().find((c) => c.id === State.chatId);
+  assert.deepEqual(saved().turns[1].warning, warning);
+  // Claude Code writes by itself into the chat on screen: the chat is saved again, its warning with it.
+  emit("chat-own-answer", { chat: State.chatId, text: "E poi.", session: "s1" });
+  await flush();
+  await flush();
+  assert.deepEqual(saved().turns[1].warning, warning);
 });
 
 test("each message says when it was sent or answered", async () => {
@@ -981,6 +1148,45 @@ test("Unsloth Studio still starting: the chat says so with the picker's seconds,
   pending[0]({ text: "Ciao!", turns: 2 });
   await flush();
   view.sync();
+});
+
+test("a CLI that thinks without a word: the seconds move on the closed island from the question on, and rest while it hides", async (t) => {
+  // agy sends no activity while it thinks: nothing but the question starts the seconds.
+  State.settings = { ...State.settings, chatProvider: "antigravity-cli" };
+  State.mode = "compact";
+  const pending = heldAnswers();
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: Date.now() });
+  try {
+    await ask("think hard");
+    const island = () => State.chatActivity?.label ?? null;
+    assert.equal(island(), "Thinks…");
+    t.mock.timers.tick(5000);
+    assert.equal(island(), "Thinks… 5 s", "no chat-activity came, the seconds still go on");
+    assert.equal(label(), "Thinking… 5 s");
+    t.mock.timers.tick(115_000);
+    assert.equal(island(), "Thinks… 120 s");
+    t.mock.timers.tick(30_000);
+    assert.equal(island(), "Thinks… 150 s", "past 120 s too");
+
+    // Hidden: nothing ticks (0 % CPU); shown again, the seconds are where they are at once.
+    State.mode = "hidden";
+    State.notify();
+    t.mock.timers.tick(10_000);
+    assert.equal(island(), "Thinks… 150 s", "nothing redrawn while hidden");
+    State.mode = "compact";
+    State.notify();
+    await Promise.resolve();
+    assert.equal(island(), "Thinks… 160 s");
+    t.mock.timers.tick(1000);
+    assert.equal(island(), "Thinks… 161 s");
+  } finally {
+    t.mock.timers.reset();
+    pending[0]({ text: "Done.", turns: 2 });
+    await flush();
+    State.mode = "hidden";
+    view.sync();
+  }
+  assert.equal(State.chatActivity, null, "the answer came: nothing on the closed island");
 });
 
 test("each activity has its words, with a file name, a host or a tool", () => {

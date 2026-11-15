@@ -18,7 +18,7 @@ import {
 } from "./usage";
 import { buildDiffCard } from "./diff";
 import { lastTextStep, toOneLine } from "../core/diff";
-import { approvalKey, approvalKeysArmed, approvalOffer, armApprovalKeys } from "../core/approvals";
+import { approvalKey, approvalKeysArmed, approvalOffer, armApprovalKeys, cutEnds } from "../core/approvals";
 import { formatSize } from "../core/screen";
 import { Bridge, type Decision } from "../core/bridge";
 import { buildRecap } from "./recap";
@@ -39,7 +39,7 @@ import { mailEditor, type MailEditor } from "./mail-editor";
 import type { MailRevision } from "../core/mail-edit";
 import { isComputerTool } from "../core/computer";
 import { stepPlace } from "../core/computer-plan";
-import { computerTargetBox } from "./computer-card";
+import { computerTargetBox, pausedCardLine } from "./computer-card";
 import { buildComputerView } from "./computer-plan";
 
 export interface ViewActions {
@@ -623,10 +623,18 @@ function planWords(button: HTMLElement, words: string): HTMLElement {
 /** Under the buttons of a card whose Allow is kept for the rest of the chat. */
 const REMEMBERED_TEXT = N_("In Auto, Allow counts for the rest of the chat");
 
-/** A request too long to reach the island whole (`cut`): the card shows its beginning, and says so. */
+/**
+ * A request too long to reach the island whole (`cut`): the card shows its
+ * beginning and its end, and says so. Arguments the relay couldn't read
+ * (`unread`): no Allow at all.
+ */
 const CUT_TEXT = {
-  note: N_("Too long to show here whole: this is its beginning."),
-  noteSize: N_("Too long to show here whole: this is its beginning ({size} in all)."),
+  note: N_("Too long to show here whole: its beginning and its end."),
+  noteSize: N_("Too long to show here whole: its beginning and its end, not the {hidden} in between ({size} in all)."),
+  unread: N_("Lumo can't read these arguments, so it can't allow them."),
+  elsewhere: N_("Reply in its own window"),
+  gap: N_("{hidden} not shown"),
+  gapAny: N_("The middle is not shown"),
 };
 
 function buildApproval(actions: ViewActions): ViewHost {
@@ -638,9 +646,16 @@ function buildApproval(actions: ViewActions): ViewHost {
   code.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
   // A computer use action: what it acts on (views/computer-card.ts), in the command's place.
   const targetSlot = h("div", { class: "computer-target-slot" });
+  // Under a computer action's box while computer use is paused: it won't be done, whatever the answer.
+  const targetPaused = h("div", { class: "cu-target-paused" });
   let targetFor: string | null = null;
   let targetBox: HTMLElement | null = null;
   const cutNote = h("div", { class: "approval-cut" });
+  // A command cut short: where its middle was taken out, then its end, always in sight.
+  const gapLine = h("div", { class: "approval-gap" });
+  const codeTail = h("div", { class: "code approval-code approval-code-tail" });
+  codeTail.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
+  let tailFor = "";
   // A file to write: its lines added and removed, and a new text's size (the text is not shown).
   const stat = h("div", { class: "approval-stat" });
   const mail = h("div", { class: "mail-slot" });
@@ -667,7 +682,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   // Copilot CLI and Cursor CLI in Auto: Allow stands for the rest of the chat, and the card says so (new look only).
   const rememberedNote = h("div", { class: "session-allow session-note", text: tl(REMEMBERED_TEXT) });
   const allowBtn = withClass(planWords(btn(tl("Allow"), "primary", () => guarded("allow")(), "Y"), PLAN_ASK_TEXT.approve), "allow-btn");
-  const body = stack(116, 16, who, about, planSlot, code, targetSlot, stat, cutNote, mail, row, mailRow);
+  const body = stack(116, 16, who, about, planSlot, code, gapLine, codeTail, targetSlot, stat, cutNote, mail, row, mailRow);
   let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
   let mailFor: string | null = null;
@@ -681,6 +696,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   let fitChrome: { w: number; h: number } | null = null;
   const guarded = (d: Decision) => () => {
     if (performance.now() - shownAt < CLICK_GUARD_MS) return;
+    // Arguments Lumo couldn't read are never allowed from here (pipe.rs refuses them too).
+    if (State.pendingApproval?.unread && d !== "deny") return;
     // The request on screen: one that just took its place from the line is not drawn yet.
     if (shownFor != null) actions.decide(d, shownFor);
   };
@@ -706,6 +723,8 @@ function buildApproval(actions: ViewActions): ViewHost {
     const previous = lastKeyAt;
     lastKeyAt = performance.now();
     if (lastKeyAt - previous < KEY_QUIET_MS) return;
+    // Y never allows what can't be allowed.
+    if (d === "allow" && State.pendingApproval?.unread) return;
     guarded(d)();
   };
   window.addEventListener(
@@ -793,9 +812,12 @@ function buildApproval(actions: ViewActions): ViewHost {
         targetFor = targetReq;
         clear(targetSlot);
         targetBox = pending && targetReq ? computerTargetBox(pending) : null;
-        if (targetBox) targetSlot.append(targetBox);
+        if (targetBox) targetSlot.append(targetBox, targetPaused);
       }
       targetSlot.hidden = !targetBox;
+      const pausedLine = targetBox ? pausedCardLine() : null;
+      targetPaused.hidden = !pausedLine;
+      if (targetPaused.textContent !== (pausedLine ?? "")) targetPaused.textContent = pausedLine ?? "";
       code.hidden = !!email || !!plan || !!targetBox;
       row.hidden = !!email;
       mailRow.hidden = !email;
@@ -804,18 +826,39 @@ function buildApproval(actions: ViewActions): ViewHost {
       // name of the tool asking.
       const target = pending?.command || pending?.tool || "…";
       const tool = pending?.tool ?? "";
+      // Cut short: its beginning above, its end below, how much is between them in the middle.
+      const ends = pending?.cut && !email && !plan && !targetBox ? cutEnds(target) : null;
+      const shown = ends?.head ?? target;
       // The tool's name stands apart, in Lumo's amber, from what it runs on.
-      if (tool && target.startsWith(`${tool} · `)) {
+      if (tool && shown.startsWith(`${tool} · `)) {
         clear(code);
-        code.append(h("span", { class: "code-tool", text: tool }), target.slice(tool.length + 3));
+        code.append(h("span", { class: "code-tool", text: tool }), shown.slice(tool.length + 3));
       } else {
-        code.textContent = target;
+        code.textContent = shown;
       }
-      code.title = target;
+      code.title = shown;
+      gapLine.hidden = !ends;
+      codeTail.hidden = !ends;
+      if (ends) {
+        const gapText = `⋯ ${pending?.cutHidden ? t(CUT_TEXT.gap, { hidden: formatSize(pending.cutHidden) }) : t(CUT_TEXT.gapAny)} ⋯`;
+        if (gapLine.textContent !== gapText) gapLine.textContent = gapText;
+        const tailKey = `${req}\n${ends.tail}`;
+        if (tailFor !== tailKey) {
+          tailFor = tailKey;
+          codeTail.textContent = ends.tail;
+          codeTail.title = ends.tail;
+          // Its very end in sight: where an addition to a long command hides best.
+          requestAnimationFrame(() => (codeTail.scrollTop = codeTail.scrollHeight));
+        }
+      } else {
+        tailFor = "";
+      }
       // Which of the card's buttons and lines it offers (core/approvals.ts).
       const offer = approvalOffer(pending);
-      cutNote.hidden = !offer.cutNote;
-      const cutText = pending?.cutBytes ? t(CUT_TEXT.noteSize, { size: formatSize(pending.cutBytes) }) : t(CUT_TEXT.note);
+      cutNote.hidden = !offer.cutNote && !offer.unreadNote;
+      const cutText = offer.unreadNote ? t(CUT_TEXT.unread)
+        : pending?.cutBytes && pending.cutHidden ? t(CUT_TEXT.noteSize, { size: formatSize(pending.cutBytes), hidden: formatSize(pending.cutHidden) })
+          : t(CUT_TEXT.note);
       if (cutNote.textContent !== cutText) cutNote.textContent = cutText;
       allowBtn.style.display = offer.allow ? "" : "none";
       const edit = !email && !plan ? pending?.edit ?? null : null;
@@ -838,7 +881,8 @@ function buildApproval(actions: ViewActions): ViewHost {
       planEdits.style.display = offer.planEdits ? "" : "none";
       answerThere.style.display = offer.answerThere ? "" : "none";
       rememberedNote.style.display = pending?.remembered === true && !plan ? "" : "none";
-      const answerWords = offer.answerThere === "agent" && pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn }) : "";
+      const answerWords = offer.answerThere === "agent" && pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn })
+        : offer.answerThere === "elsewhere" ? t(CUT_TEXT.elsewhere) : "";
       if (answerThere.firstElementChild && answerThere.firstElementChild.textContent !== answerWords) answerThere.firstElementChild.textContent = answerWords;
 
       sessionAllow.title = t("Allowed again without asking until this session ends");

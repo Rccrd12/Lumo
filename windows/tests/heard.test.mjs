@@ -5,7 +5,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_LINES_PER_CHAT, addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, placeHeard, seenChat, waitingElsewhere, wavesLit,
+  MAX_LINES_PER_CHAT, addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, markSent, placeHeard, seenChat, unsentOnOpen, waitingElsewhere, waitingLine, wavesLit,
 } from "../src/core/heard.ts";
 
 const mem = new Map();
@@ -98,4 +98,50 @@ test("the waves light for this chat's watches, or another chat waiting", () => {
   assert.equal(wavesLit([{ ...w, paused: true }], [], "a"), false);
   assert.equal(wavesLit([], [line("b", 1)], "a"), true);
   assert.equal(wavesLit([], [line("a", 1)], "a"), false, "this chat's own line is seen here");
+});
+
+test("two events of a watch in the same millisecond each keep their line", () => {
+  const w = watch(7, "c1", { source: "webhook", mode: "every" });
+  const a = heardLine({ watch: w, met: true, summary: "deploys was called: A", ended: false }, "Chat", 5000);
+  const b = heardLine({ watch: w, met: true, summary: "deploys was called: B", ended: false }, "Chat", 5000);
+  assert.notEqual(a.id, b.id);
+  addHeard(a);
+  addHeard(b);
+  assert.deepEqual(heardIn("c1").map((l) => l.summary), ["deploys was called: A", "deploys was called: B"]);
+  // Another millisecond: the plain id again.
+  assert.equal(heardLine({ watch: w, met: true, summary: "C" }, "Chat", 5001).id, "7:5001");
+});
+
+test("a task that still waited when Lumo closed says so when it opens, with Ask back", () => {
+  const sent = { ...line("c1", 100, 1), asked: true, queued: true };
+  const waiting = { ...line("c1", 200, 2), asked: true, queued: true };
+  addHeard(sent);
+  addHeard(waiting);
+  addHeard(line("c2", 300, 3));
+  markSent("c1", sent.id);
+  assert.equal(unsentOnOpen(), 1);
+  const [went, never] = heardIn("c1");
+  assert.equal(went.asked, true);
+  assert.ok(!went.unsent && !went.queued);
+  assert.equal(never.asked, false, "Ask is back");
+  assert.equal(never.unsent, true);
+  assert.ok(!never.queued);
+  assert.equal(unsentOnOpen(), 0, "said once");
+  markAsked("c1", never.id);
+  assert.ok(!heardIn("c1")[1].unsent, "asked: no longer unsent");
+});
+
+test("the closed island names the chat and where it heard, never what", () => {
+  assert.equal(waitingLine([], "Chat"), null);
+  const bank = heardLine({ watch: watch(20, "c1"), met: true, summary: "New email from Bank: Your October statement" }, "Mail for Giulia", 1);
+  const one = waitingLine([bank], "Chat");
+  assert.equal(one.text, "«Mail for Giulia» · Email");
+  assert.equal(one.lead, "«Mail for Giulia»");
+  assert.doesNotMatch(one.text, /Bank|October/);
+  const pr = heardLine({ watch: { ...watch(21, "c2"), source: "github.pr", repo: "o/r", number: 7 }, met: true, summary: "o/r#7 is ready to merge" }, "", 2);
+  const page = heardLine({ watch: watch(22, "c3", { source: "web", until: "changed", target: "https://shop.example/item" }), met: true, summary: "shop.example/item changed: “10” → “12”" }, "Prices", 3);
+  const hook = heardLine({ watch: watch(23, "c4", { source: "webhook", until: "called", target: "deploys" }), met: true, summary: "deploys was called: secret body" }, "Deploys", 4);
+  assert.equal(waitingLine([bank, pr], "Chat").text, "«Chat» · GitHub · +1", "a chat with no name yet");
+  assert.equal(waitingLine([bank, pr, page], "Chat").text, "«Prices» · Web pages · +2");
+  assert.equal(waitingLine([hook], "Chat").text, "«Deploys» · Webhook");
 });

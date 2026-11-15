@@ -49,7 +49,10 @@ async function main() {
   State.loadIntegrationTasks();
   if (boot?.shift) island.onShift(boot.shift);
 
-  await onEvent<{ x: number; y: number }>("cursor", ({ x, y }) => island.onCursor(x, y));
+  await onEvent<{ x: number; y: number; windowMoving?: boolean }>(
+    "cursor",
+    ({ x, y, windowMoving }) => island.onCursor(x, y, windowMoving === true),
+  );
   // A press elsewhere on the screen: folds the open island when set to (Settings → Island).
   await onEvent<null>("outside-press", () => island.onOutsidePress());
   // The left button let go anywhere on the screen: ends a file drag the page never saw end.
@@ -88,7 +91,8 @@ async function main() {
       case "open":
         setPaused(false);
         island.takeKeyboard();
-        island.alert(State.defaultView());
+        // Settings the island folded on its own come back here too, as on a click.
+        island.alert(State.openingView());
         break;
       case "recap":
         setPaused(false);

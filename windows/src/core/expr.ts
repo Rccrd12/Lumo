@@ -114,8 +114,8 @@ type Token =
 const isDigit = (c: string) => c >= "0" && c <= "9";
 const isLatin = (c: string) => (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c === "_";
 const NAME_REST = /[A-Za-z0-9_]/;
-/** The primes a name may end with (x', y′), all read as `'`. */
-const PRIME = new Set(["'", "’", "′", "ʹ"]);
+/** The primes a name may end with (x', y′, y″), each read as that many `'`. */
+const PRIMES: Record<string, string> = { "'": "'", "’": "'", "′": "'", "ʹ": "'", "″": "''", "‴": "'''" };
 const SAME_AS: Record<string, string> = { "×": "*", "·": "*", "⋅": "*", "∗": "*", "÷": "/", "−": "-", "–": "-" };
 const SUPERSCRIPT: Record<string, string> = { "²": "2", "³": "3" };
 
@@ -155,8 +155,8 @@ function tokenize(source: string): Token[] {
         else break;
       }
       // Primes end a name: x' and x'' are names of their own.
-      while (PRIME.has(source[j] ?? "")) {
-        name += "'";
+      while (PRIMES[source[j] ?? ""]) {
+        name += PRIMES[source[j]];
         j++;
       }
       tokens.push({ t: "name", v: name, at });
@@ -210,6 +210,8 @@ export function fromTeX(source: string): string {
   if (!/[\\{}$]/.test(source)) return source;
   // A command ends where its letters do: `3\times10^{8}` is 3*10^(8), never "times10".
   let s = source.replace(/\$/g, "").replace(/\\(?:left|right|q?quad)\b|\\[,;!: ]/g, " ");
+  // x^{\prime}, x^\prime: the x' its input declared (normalizeName).
+  s = s.replace(/\^\s*\{((?:\s*\\prime)+)\s*\}|\^\s*\\prime(?![A-Za-z])/g, (_, p?: string) => "'".repeat(p ? p.split("\\prime").length - 1 : 1));
   s = s.replace(/\\(?:cdot|times|ast)(?![A-Za-z])/g, "*").replace(/\\div(?![A-Za-z])/g, "/");
   // The comparisons and the "and" of a region: x \le y \land y \leq 3x.
   s = s.replace(/\\(?:leq?|leqslant)(?![A-Za-z])/g, "<=").replace(/\\(?:geq?|geqslant)(?![A-Za-z])/g, ">=");
@@ -412,6 +414,6 @@ export function normalizeName(text: string): string | null {
   let s = text.trim().replace(/^\$+|\$+$/g, "").trim();
   s = s.replace(/\^\{?((?:\s*\\prime)+)\s*\}?$/, (_, p: string) => "'".repeat(p.split("\\prime").length - 1));
   s = s.replace(/^\\/, "").replace(/[{}]/g, "");
-  s = [...s].map((c) => (PRIME.has(c) ? "'" : (GREEK[c] ?? c))).join("");
+  s = [...s].map((c) => PRIMES[c] ?? GREEK[c] ?? c).join("");
   return /^[A-Za-z_][A-Za-z0-9_]*'*$/.test(s) ? s : null;
 }

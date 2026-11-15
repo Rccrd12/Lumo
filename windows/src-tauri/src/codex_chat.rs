@@ -139,19 +139,17 @@ fn policy(mode: &str) -> (&'static str, Value) {
 /// (MAIL_SEND_BUDGET, 442 s in all); one of the user's tools waits for its
 /// card and runs up to 600 s (TOOL_CALL_BUDGET, 720 s). lumo-hook then
 /// answers that Lumo may still have done it; cut off sooner by Codex, the AI
-/// would hear "failed" for an email that still goes.
+/// would hear "failed" for an email that still goes. The test
+/// `lumo_hook_gives_up_before_codex` reads those budgets in hook/src/mcp.rs.
 const TOOL_TIMEOUT_SECS: u64 = 750;
-const _: () = assert!(TOOL_TIMEOUT_SECS > crate::pipe::MAIL_CARD_TIMEOUT.as_secs() + 130 + 12 && TOOL_TIMEOUT_SECS > 108 + 600 + 12);
 
 /// Lumo's MCP servers for the chat's thread, as Codex configuration: the
 /// island's timer and GitHub tools (`lumo`, island_tools.rs), and the user's
 /// tools while one of them is on (`lumo_tools`, which ask on the island
 /// themselves, tools.rs), with the email's tools as Security lets the AI have
-/// them (`mail`, mail.rs ai_tools; sending and changing an email ask on Lumo's own card), and
-/// the computer while the turn may use it (`computer`: each
-/// action asked for by Lumo, computer.rs `OtherTurn`). Codex calls Lumo's own
-/// tools without asking.
-fn mcp_config(chat_id: &str, tools: bool, mail: &str, computer: bool) -> Value {
+/// them (`mail`, mail.rs ai_tools; sending and changing an email ask on Lumo's own card). Codex
+/// calls Lumo's own tools without asking.
+fn mcp_config(chat_id: &str, tools: bool, mail: &str) -> Value {
     let server = |args: &[&str]| {
         let mut entry = crate::computer::server_entry();
         entry["args"] = json!(args);
@@ -164,7 +162,7 @@ fn mcp_config(chat_id: &str, tools: bool, mail: &str, computer: bool) -> Value {
         entry
     };
     let mut servers = serde_json::Map::new();
-    let kit = crate::computer::kit("", computer, mail);
+    let kit = if mail.is_empty() { "--tools=island".to_string() } else { format!("--tools={mail},island") };
     servers.insert("lumo".into(), server(&["--mcp", &kit]));
     if tools {
         servers.insert(crate::tools::SERVER.into(), server(&["--mcp", "--tools=user"]));
@@ -887,6 +885,18 @@ fn lives<T>(f: impl FnOnce(&mut HashMap<String, Live>) -> T) -> T {
     f(LIVES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default))
 }
 
+/// The agents at work that answering with `key` would end: the chat's Codex
+/// is alive with another key, so a new one would take its place and end
+/// them. None when none would end, or the user said to send all the same.
+fn agents_in_the_way(chat_id: &str, key: &str) -> Option<usize> {
+    let open = lives(|all| {
+        let live = all.get_mut(chat_id)?;
+        let other = live.key != key && matches!(live.child.try_wait(), Ok(None));
+        Some(if other { live.agents.agents.open() } else { 0 })
+    })?;
+    chat_agents::in_the_way(chat_id, open)
+}
+
 /// A request of a thread that is not `main` (an agent's).
 fn is_other_thread(params: &Value, main: &str) -> bool {
     params["threadId"].as_str().is_some_and(|t| t != main)
@@ -1035,6 +1045,11 @@ fn live_turn(
     tell: Tell,
 ) -> Result<(Run, Option<String>), String> {
     let key = format!("{}\n{}", spec.exe.to_string_lossy(), spec.config);
+    // Another model, effort or mode would end the agents it left at work:
+    // not without the user (chat_agents.rs WOULD_STOP).
+    if let Some(open) = agents_in_the_way(&spec.chat_id, &key) {
+        return Err(chat_agents::would_stop(open));
+    }
     let mut live = live_for(&spec.chat_id, &key, &spec.exe, &spec.dir)?;
     let fresh = match live.open_thread(spec.thread.as_deref(), &spec.dir, &spec.config) {
         Ok(fresh) => fresh,
@@ -1256,14 +1271,11 @@ pub async fn send(
     model: &str,
     effort: &str,
     mode: &str,
-    computer: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
 ) -> Result<ChatReply, String> {
     let exe = platform::codex_candidates().into_iter().next().ok_or_else(not_installed)?;
-    let computer = computer && cfg!(windows);
-    let grid = crate::computer::uses_grid(PROVIDER, model);
 
     let turn = chat.begin(PROVIDER);
     // Only a Codex thread: never another CLI's session.
@@ -1284,7 +1296,7 @@ pub async fn send(
         dir: claude_code::work_dir(),
         chat_id: chat.id().to_string(),
         thread,
-        config: mcp_config(chat.id(), tools, mail, computer),
+        config: mcp_config(chat.id(), tools, mail),
         model: model.to_string(),
         effort: effort.to_string(),
         mode: mode.to_string(),
@@ -1298,16 +1310,12 @@ pub async fn send(
         // A resumed session gets the turns another provider answered since it last did.
         let unseen = if fresh { "" } else { catch_up.as_str() };
         let text = format!("{unseen}{}", claude_code::prompt(context2.as_ref(), carried, &files, &query2));
-        let text = if fresh && workshop {
+        if fresh && workshop {
             format!("<lumo_instructions>\n{}\n</lumo_instructions>\n\n{text}", crate::chat::workshop_note!().trim())
         } else {
             text
-        };
-        // Computer use: the note in front of every question.
-        if computer { crate::computer::with_note(&text, grid) } else { text }
+        }
     };
-    // The computer usable while this turn runs, each action asked for by Lumo.
-    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "codex", mode, grid));
 
     // The agents Codex starts, and the turn's sign of life.
     let tell = chat_agents::teller(app, chat.id());
@@ -1414,6 +1422,23 @@ mod tests {
     fn feed(run: &mut Run, line: &str) -> bool {
         let v: Value = serde_json::from_str(line).unwrap();
         run.feed(v["method"].as_str().unwrap(), &v["params"])
+    }
+
+    /// lumo-hook's budgets as written in hook/src/mcp.rs (another crate):
+    /// each starts from Lumo's own waits, and Codex waits longer than all.
+    #[test]
+    fn lumo_hook_gives_up_before_codex() {
+        let source = include_str!("../../hook/src/mcp.rs");
+        let budget = |name: &str| -> Vec<u64> {
+            let line = source.lines().find(|l| l.contains(&format!("const {name}: Duration"))).unwrap_or_else(|| panic!("{name} in mcp.rs"));
+            let inner = line.split("from_secs(").nth(1).and_then(|r| r.split(')').next()).unwrap_or_else(|| panic!("{name}'s seconds"));
+            inner.split('+').map(|n| n.trim().parse().unwrap_or_else(|_| panic!("{name}: {inner}"))).collect()
+        };
+        let mail = budget("MAIL_SEND_BUDGET");
+        let tool = budget("TOOL_CALL_BUDGET");
+        assert_eq!(mail[0], crate::pipe::MAIL_CARD_TIMEOUT.as_secs(), "an email's card, as pipe.rs waits for it");
+        assert_eq!(tool[..2], [crate::pipe::DECISION_TIMEOUT.as_secs(), crate::tools::MAX_TIMEOUT_S], "a tool's card and its run");
+        assert!(TOOL_TIMEOUT_SECS > mail.iter().sum::<u64>() && TOOL_TIMEOUT_SECS > tool.iter().sum::<u64>());
     }
 
     #[test]
@@ -1555,7 +1580,7 @@ mod tests {
 
     #[test]
     fn lumos_tools_go_to_codex_as_its_mcp_servers() {
-        let config = mcp_config("chat-1", false, "", false);
+        let config = mcp_config("chat-1", false, "");
         let lumo = &config["mcp_servers"]["lumo"];
         assert_eq!(lumo["args"], json!(["--mcp", "--tools=island"]));
         assert_eq!(lumo["env"]["LUMO_ISLAND_RUN"], "1");
@@ -1564,13 +1589,10 @@ mod tests {
         // An email's card and its send, a user's tool and its run: lumo-hook answers before Codex gives up.
         assert_eq!(lumo["tool_timeout_sec"], json!(TOOL_TIMEOUT_SECS));
         assert!(config["mcp_servers"].get(crate::tools::SERVER).is_none());
-        let both = mcp_config("chat-1", true, "", false);
+        let both = mcp_config("chat-1", true, "");
         assert_eq!(both["mcp_servers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));
-        let mail = mcp_config("chat-1", false, "mail,mailsend", false);
+        let mail = mcp_config("chat-1", false, "mail,mailsend");
         assert_eq!(mail["mcp_servers"]["lumo"]["args"], json!(["--mcp", "--tools=mail,mailsend,island"]));
-        let computer = mcp_config("chat-1", false, "mail", true);
-        assert_eq!(computer["mcp_servers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,plan,mail,island"]));
-        assert_eq!(computer["mcp_servers"]["lumo"]["tool_timeout_sec"], json!(TOOL_TIMEOUT_SECS), "room for the card");
     }
 
     #[test]

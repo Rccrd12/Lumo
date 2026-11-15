@@ -67,10 +67,6 @@ export function mailReadable(m: Pick<MailPeek, "body" | "preview">): string {
 }
 
 /**
- * The text cut where it names a web address: each one becomes a link
- * labelled with its site, so a long tracking URL never fills the card.
- */
-/**
  * An address as written in a sentence, without the punctuation that closes
  * the sentence. A ")" is the address's own when the address opened it (a
  * Wikipedia page, "…/Roma_(città)"), the sentence's otherwise ("(see https://…)").
@@ -85,13 +81,18 @@ function addressEnd(found: string): string {
   }
 }
 
+/**
+ * The text cut where it names a web address: each one becomes a link
+ * labelled with its site, so a long tracking URL never fills the card.
+ */
 export function mailPieces(text: string): MailPiece[] {
   const out: MailPiece[] = [];
   const re = /<?(https?:\/\/[^\s<>"]+)>?/g;
   let at = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
-    const raw = addressEnd(m[1]);
+    // Between < and >, the address is all of it: they say where it ends.
+    const raw = m[0].startsWith("<") && m[0].endsWith(">") ? m[1] : addressEnd(m[1]);
     let label: string;
     try {
       label = new URL(raw).hostname.replace(/^www\./, "");
@@ -214,6 +215,8 @@ export const COMPACT_TEXT = {
   question: N_("Has a question"),
   // The same words as under a Gemini Live call (live/strings.ts).
   answered: N_("{helper} answered"),
+  // The answer came, but its CLI ended the turn with an error (ChatReply.warning).
+  answeredWithProblem: N_("{helper} answered, with a problem"),
   failed: N_("{helper} · Error"),
   finished: N_("{helper} finished"),
   timerDone: N_("Time's up"),
