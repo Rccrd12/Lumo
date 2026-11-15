@@ -1150,6 +1150,45 @@ test("Unsloth Studio still starting: the chat says so with the picker's seconds,
   view.sync();
 });
 
+test("a CLI that thinks without a word: the seconds move on the closed island from the question on, and rest while it hides", async (t) => {
+  // agy sends no activity while it thinks: nothing but the question starts the seconds.
+  State.settings = { ...State.settings, chatProvider: "antigravity-cli" };
+  State.mode = "compact";
+  const pending = heldAnswers();
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: Date.now() });
+  try {
+    await ask("think hard");
+    const island = () => State.chatActivity?.label ?? null;
+    assert.equal(island(), "Thinks…");
+    t.mock.timers.tick(5000);
+    assert.equal(island(), "Thinks… 5 s", "no chat-activity came, the seconds still go on");
+    assert.equal(label(), "Thinking… 5 s");
+    t.mock.timers.tick(115_000);
+    assert.equal(island(), "Thinks… 120 s");
+    t.mock.timers.tick(30_000);
+    assert.equal(island(), "Thinks… 150 s", "past 120 s too");
+
+    // Hidden: nothing ticks (0 % CPU); shown again, the seconds are where they are at once.
+    State.mode = "hidden";
+    State.notify();
+    t.mock.timers.tick(10_000);
+    assert.equal(island(), "Thinks… 150 s", "nothing redrawn while hidden");
+    State.mode = "compact";
+    State.notify();
+    await Promise.resolve();
+    assert.equal(island(), "Thinks… 160 s");
+    t.mock.timers.tick(1000);
+    assert.equal(island(), "Thinks… 161 s");
+  } finally {
+    t.mock.timers.reset();
+    pending[0]({ text: "Done.", turns: 2 });
+    await flush();
+    State.mode = "hidden";
+    view.sync();
+  }
+  assert.equal(State.chatActivity, null, "the answer came: nothing on the closed island");
+});
+
 test("each activity has its words, with a file name, a host or a tool", () => {
   const cases = [
     [{ kind: "thinking", detail: "" }, "Thinking…"],
