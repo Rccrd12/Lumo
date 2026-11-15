@@ -51,7 +51,7 @@ test("the model button shows the active provider's model", () => {
   assert.equal($(".model-name").textContent, "Choose a model");
 });
 
-test("Antigravity CLI needs no key, and has no effort to pick: its model's name carries it", async () => {
+test("Antigravity CLI needs no key, and a model with one level only keeps its name, with no slider", async () => {
   State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatEffort: "high" };
   view.sync();
   assert.equal($(".model-name").textContent, "default", "a saved effort never reaches agy");
@@ -63,6 +63,62 @@ test("Antigravity CLI needs no key, and has no effort to pick: its model's name 
   assert.deepEqual(models(), ["Default", "gemini-3.8-flash-low"]);
   assert.equal($(".picker-efforts").hidden, true);
   assert.equal($(".effort-slider"), null);
+});
+
+test("Antigravity CLI's variants by effort are one model, with Claude Code's slider and no Auto", async () => {
+  State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatModels: { "antigravity-cli": "gemini-4-hydrogen-medium" } };
+  view.sync();
+  // Before agy is asked for its list, the name says the level.
+  assert.equal($(".model-name").textContent, "gemini-4-hydrogen · Medium");
+
+  answers.chat_models = [
+    "default", "gemini-4-argon-medium", "gemini-4-argon-high", "gemini-4-argon-low",
+    "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-low",
+    "gemini-pro-orchestrator-g1-pro", "gemini-3.8-flash-high", "gemini-3.8-flash-medium",
+  ].map((id) => ({ id, label: id === "default" ? "Default" : id }));
+  $(".model-btn").fire("click");
+  await flush();
+  assert.deepEqual(models(), ["Default", "gemini-4-argon", "gemini-4-hydrogen", "gemini-pro-orchestrator-g1-pro", "gemini-3.8-flash"]);
+  assert.equal($(".picker-model.on").textContent, "gemini-4-hydrogen");
+
+  // The slider has the model's own levels, and no Auto.
+  assert.equal($(".picker-efforts").hidden, false);
+  assert.equal($(".effort-auto"), null);
+  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-track", "effort-value"]);
+  assert.equal($(".effort-slider").getAttribute("aria-valuemax"), "3", "low, medium, high, extra high");
+  assert.equal($(".effort-value").textContent, "Medium");
+
+  // A level is that variant of the model: the effort Claude Code keeps is left alone.
+  const before = State.settings.chatEffort;
+  $(".effort-slider").fire("keydown", { key: "End" });
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-4-hydrogen-xhigh");
+  assert.equal(sent("save_settings").at(-1).settings.chatModels["antigravity-cli"], "gemini-4-hydrogen-xhigh");
+  assert.equal(State.settings.chatEffort, before);
+  assert.equal($(".effort-value").textContent, "Extra high");
+  view.sync();
+  assert.equal($(".model-name").textContent, "gemini-4-hydrogen · Extra high");
+
+  // Another model keeps the level when it has it, else takes medium.
+  $(".effort-slider").fire("keydown", { key: "ArrowLeft" });
+  view.el.find(".picker-model").find((m) => m.textContent === "gemini-3.8-flash").fire("click");
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-3.8-flash-high");
+  $(".model-btn").fire("click");
+  await flush();
+  view.el.find(".picker-model").find((m) => m.textContent === "gemini-4-argon").fire("click");
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-4-argon-high");
+  $(".model-btn").fire("click");
+  await flush();
+  $(".effort-slider").fire("keydown", { key: "End" });
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-4-argon-high", "argon's highest is high");
+
+  // A model with no levels: its name as it is, and no slider.
+  view.el.find(".picker-model").find((m) => m.textContent === "gemini-pro-orchestrator-g1-pro").fire("click");
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-pro-orchestrator-g1-pro");
+  view.sync();
+  assert.equal($(".model-name").textContent, "gemini-pro-orchestrator-g1-pro");
+  $(".model-btn").fire("click");
+  await flush();
+  assert.equal($(".picker-efforts").hidden, true);
 });
 
 test("Claude Code's effort is one row: a filled slider, its level, and Auto at the end", async () => {
