@@ -1,5 +1,7 @@
 // App state: what the island shows and remembers.
 
+import type { ComputerRecap, ComputerState } from "./computer-use";
+import { pausedPlanWaits } from "./computer-plan";
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
 import { newChatId, type AskQuote } from "./chats";
@@ -117,6 +119,14 @@ export interface ApprovalInfo {
   cut?: boolean;
   /** With `cut`: the whole request's size (`lumo_input_bytes`), for the line that says so. */
   cutBytes?: number;
+  /**
+   * A computer use action of the chat (core/computer.ts): the point it acts on,
+   * in the pixels of the agent's last screenshot, when it has one (a click, a
+   * move, a scroll, a drag's end). The card shows the screen around it.
+   */
+  computerAt?: [number, number];
+  /** A computer use scroll's way, from its request (core/computer.ts scrollDirection). */
+  computerScroll?: "up" | "down" | "left" | "right";
 }
 
 /**
@@ -159,6 +169,8 @@ export interface ChatMessage {
   stopped?: boolean;
   /** No answer: what went wrong, said in the chat where it was asked (never saved). */
   failed?: boolean;
+  /** The answer came, but the CLI ended its turn with an error: said under it (ChatReply.warning). */
+  warning?: { line: string; detail: string };
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
   /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing, a question asked of an agent). */
@@ -168,6 +180,8 @@ export interface ChatMessage {
   /** The files a local model changed or made in its folder of copies while
    * answering (workspace.rs), listed under the answer to open or put back. */
   copies?: { chat: string; path: string; made?: boolean }[];
+  /** The answer's turn used the computer: its plan as it ended, shown under it (computer.rs, saved with the chat). */
+  computer?: ComputerRecap;
 }
 
 /** A chat currently answering, thinking, calling tools, compacting, or just finished, for the home's list. */
@@ -550,6 +564,11 @@ class AppState {
   liveActive = false;
   /** Claude is using the computer for the chat: the island stays compact and on screen. */
   computerActive = false;
+  /**
+   * The turn that uses the computer, as Rust last said (`computer-state`):
+   * who, the plan, paused or not. Null when no computer use is under way.
+   */
+  computer: ComputerState | null = null;
   /**
    * The chat is answering: who answers (the model the answer was asked of, not
    * the one picked since), in its colour, and what it is doing, in words
@@ -1028,9 +1047,12 @@ class AppState {
 
   /**
    * What the opening island shows: the Settings it closed on, unless a card
-   * waits for an answer; otherwise defaultView. Asked once per opening.
+   * waits for an answer or computer use is paused (its plan, where Stop, Ask
+   * and Resume are; the Settings wait for the next opening); otherwise
+   * defaultView. Asked once per opening.
    */
   openingView(): IslandViewName {
+    if (!this.pendingApproval && pausedPlanWaits(this.computerActive, this.computer)) return "computer";
     const back = this.settingsLeftOpen && !this.pendingApproval;
     this.settingsLeftOpen = false;
     return back ? "settings" : this.defaultView();
@@ -1043,6 +1065,8 @@ class AppState {
    */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.requestView(this.pendingApproval);
+    // Computer use paused with Esc: the plan, else Stop and Ask could not be reached.
+    if (pausedPlanWaits(this.computerActive, this.computer)) return "computer";
     // A file dropped and not yet asked about waits in the chat, so the island
     // opens there rather than on the home.
     if (this.droppedFile && !this.droppedFile.sent) return "prompt";
