@@ -397,8 +397,10 @@ fn args_with(
     .map(|s| s.to_string())
     .collect();
     a.extend(instructions(append));
-    a.push("--add-dir".into());
-    a.push(inbox.to_string());
+    if !inbox.is_empty() {
+        a.push("--add-dir".into());
+        a.push(inbox.to_string());
+    }
     for dir in folders.iter().filter_map(|d| safe_dir(d)) {
         a.push("--add-dir".into());
         a.push(dir.to_string());
@@ -1710,7 +1712,8 @@ pub async fn send(
     } else {
         format!("{}{}", catch_up(&unseen), prompt(context.as_ref(), &carried, &chat.files(), &query))
     };
-    let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    // This chat's folder of the inbox, or all of it with "Other chats' files" on.
+    let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
     // Computer use: the chat's own instructions, Lumo's MCP server, and the
     // computer only usable while this turn runs.
     let base = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
@@ -1867,7 +1870,8 @@ pub(crate) fn help(
         .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
     let folder = helper_folder(folder);
     let dir = work_dir();
-    let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    // No chat's: the inbox only with "Other chats' files" on.
+    let inbox = if crate::settings::load().chat_other_files { crate::files::inbox_dir().to_string_lossy().to_string() } else { String::new() };
     let folders: Vec<String> = folder.into_iter().collect();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
     let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders));
@@ -1981,6 +1985,9 @@ mod tests {
         assert!(a.windows(2).any(|w| w == ["--effort", "max"]));
         let a = args_with(HELPER_PROMPT, "opus & calc", "lots", "default", None, "/inbox", &[]);
         assert!(!a.iter().any(|s| s == "--model" || s == "--effort"));
+        // No inbox (Gemini Live's task with "Other chats' files" off): no --add-dir for it.
+        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "default", None, "", &[]);
+        assert!(!a.iter().any(|s| s == "--add-dir" || s.is_empty()), "{a:?}");
     }
 
     #[test]

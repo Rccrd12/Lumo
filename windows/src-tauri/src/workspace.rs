@@ -167,7 +167,7 @@ fn root() -> PathBuf {
     crate::platform::local_dir().join("workspaces")
 }
 
-fn safe_id(chat: &str) -> String {
+pub(crate) fn safe_id(chat: &str) -> String {
     let id: String = chat.chars().take(80).map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
     if id.is_empty() { "chat".into() } else { id }
 }
@@ -776,6 +776,8 @@ pub fn workspace_put_back(chat: String, path: String) -> Result<(), String> {
 #[tauri::command(async)]
 pub fn workspace_delete(chat: String) {
     delete(&chat);
+    // Its folder in the inbox too (files.rs for_chat).
+    crate::files::forget_chat(&chat);
 }
 
 #[derive(Debug, Serialize, PartialEq)]

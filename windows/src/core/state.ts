@@ -342,10 +342,12 @@ export interface Settings {
    * from the screen button. Off until the user turns it on in Settings → Security.
    */
   chatShareExplorer: boolean;
-  /** Every message carries the open windows and their documents (desk.rs). */
+  /** Every message carries the open windows and their documents (desk.rs). Off by default. */
   chatShareOpen: boolean;
   /** Every message carries the browsers' open tabs (core/screen.ts autoShare). Off by default. */
   chatShareTabs: boolean;
+  /** The CLIs a chat runs may read the files given to the other chats too, the whole inbox (files.rs). Off by default: each chat's own folder only. */
+  chatOtherFiles: boolean;
   /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
   chatComputerUse: boolean;
   /** Lumo's own web search for the providers without one (web_search.rs). Off until turned on. */
@@ -355,16 +357,16 @@ export interface Settings {
   /**
    * Whether an image line in the chat's answers is downloaded and shown at once
    * (views/rich/image.ts, web_image.rs). Off: the card shows only its site and a
-   * way to open it in the browser. From Settings → Security, on by default.
+   * way to open it in the browser. From Settings → Security, off at the first start.
    */
   webImages: boolean;
   /** An email's images shown at once in the Email view, with no click on Load images (its tracking pixels never). Settings → Security, off by default, only with webImages. */
   mailImagesAlways: boolean;
-  /** What the AI may do with the email, from Settings → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
+  /** What the AI may do with the email, from Settings → Security: "manage" (the first start), "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
   aiCalendarAccess: string;
-  /** Whether the chat's AI may read the GitHub account set in Lumo: "read" or "none" (github_tools.rs). Off until turned on. */
+  /** Whether the chat's AI may read the GitHub account set in Lumo: "read" (the first start) or "none" (github_tools.rs). */
   aiGithubAccess: string;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
@@ -464,7 +466,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mailHidePromotions: false,
   mailImap: true,
   mailOutlook: false,
-  outlookStart: false,
+  outlookStart: true,
   mailPaused: [],
   hiddenChatProviders: [],
   energyMode: "auto",
@@ -478,16 +480,17 @@ export const DEFAULT_SETTINGS: Settings = {
   localSandbox: "high",
   chatShowUsage: false,
   chatShareExplorer: false,
-  chatShareOpen: true,
+  chatShareOpen: false,
   chatShareTabs: false,
+  chatOtherFiles: false,
   chatComputerUse: false,
   chatWebSearch: false,
   chatAutoCompact: true,
-  webImages: true,
+  webImages: false,
   mailImagesAlways: false,
-  aiMailAccess: "read",
+  aiMailAccess: "manage",
   aiCalendarAccess: "read",
-  aiGithubAccess: "none",
+  aiGithubAccess: "read",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
