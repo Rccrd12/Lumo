@@ -9249,8 +9249,9 @@ button.bg-row:hover {
 }
 
 /* Under an answer the CLI ended with an error (views/chat.ts bubble): one
-   line on its bar, in amber, and what to know under it once clicked. The
-   same box holds a failed answer's own words from the CLI (failedParts). */
+   line on its bar, in amber, the bar then in sight without the mouse, and
+   what to know under it once clicked. The same box holds a failed answer's
+   own words from the CLI (failedParts). */
 .msg-warning {
   display: inline-flex;
   align-items: center;
