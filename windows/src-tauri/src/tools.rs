@@ -56,7 +56,7 @@ const MAX_ID: usize = 48;
 /// What a run may print that goes back: the rest is cut.
 const MAX_OUTPUT: usize = 32 * 1024;
 const DEFAULT_TIMEOUT_S: u64 = 120;
-const MAX_TIMEOUT_S: u64 = 600;
+pub(crate) const MAX_TIMEOUT_S: u64 = 600;
 /// Where a run may write: one folder per tool, under Lumo's local data.
 const WORK_DIR: &str = "tool-runs";
 /// The guard Python tools run under, written next to Lumo's local data.
