@@ -3339,6 +3339,13 @@ math.mx .mx-cancel.mx-sout {
   color: #fda4af;
 }
 
+/* Under a line Lumo heard whose task never went (chat.ts heardRow). */
+.listen-warn.heard-unsent {
+  --warn: #fbbf24;
+  align-items: center;
+  color: #fbbf24;
+}
+
 .listen-warn-dot {
   display: inline-block;
   width: 6px;
