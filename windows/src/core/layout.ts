@@ -414,6 +414,24 @@ export interface BotPlacement {
   opacity: number;
 }
 
+/**
+ * Whether a point (measured from the island's top-left corner) is on Lumo:
+ * the circle of his canvas around him. Sitting in the open island's top bar
+ * (his eyes there), he ends at its lower edge: below it the press, and the
+ * mouse resting there, belong to the view — the model picker's provider
+ * chips, a list — never to him (no poke, no blink).
+ */
+export function onLumo(
+  x: number,
+  y: number,
+  bot: { cx: number; cy: number; size: number },
+  topBarH: number | null,
+): boolean {
+  if (topBarH != null && bot.cy < topBarH && y >= topBarH) return false;
+  const r = bot.size / 2;
+  return (x - bot.cx) ** 2 + (y - bot.cy) ** 2 <= r * r;
+}
+
 /** IslandRootView.botPosition — cy is measured from the island's top edge. */
 export function botPosition(
   mode: IslandMode,
