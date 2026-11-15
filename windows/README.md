@@ -165,7 +165,10 @@ and grows a little to say it (on the top and bottom edges; upright on a side
 it stays as it is), only as wide as what it says. One thing alone sits in
 the middle; several sit side by side, each more compact (what the AI is doing, the next
 event, up to two timers, the music). Their buttons work: resting the mouse on
-them never opens the island, even with Open on hover.
+them never opens the island, even with Open on hover. Nor does a window
+dragged or resized across it, nor letting go of that window on it: the
+island opens on hover again once the mouse has left it and come back. A
+file dragged near it still opens it for the drop.
 
 - **What the AI is doing**: "Haiku · Reading main.ts", "Haiku · Writing…",
   "Gemini Live · Looking at the screen", "Claude Code · Waiting for your
