@@ -11639,6 +11639,54 @@
    "id": "File baru, berubah, atau terhapus, unduhan selesai",
    "it": "File nuovi, modificati, eliminati, download finiti"
   },
+  "Sent with this message": {
+   "zh-Hans": "随此消息发送",
+   "hi": "इस संदेश के साथ भेजा गया",
+   "es": "Enviado con este mensaje",
+   "ar": "أُرسل مع هذه الرسالة",
+   "fr": "Envoyé avec ce message",
+   "bn": "এই বার্তার সাথে পাঠানো",
+   "pt-BR": "Enviado com esta mensagem",
+   "ru": "Отправлено с этим сообщением",
+   "id": "Dikirim bersama pesan ini",
+   "it": "Inviati con questo messaggio"
+  },
+  "Come back with the message": {
+   "zh-Hans": "随消息一起恢复",
+   "hi": "संदेश के साथ वापस आते हैं",
+   "es": "Vuelven con el mensaje",
+   "ar": "تعود مع الرسالة",
+   "fr": "Reviennent avec le message",
+   "bn": "বার্তার সাথে ফিরে আসে",
+   "pt-BR": "Voltam com a mensagem",
+   "ru": "Вернутся с сообщением",
+   "id": "Kembali bersama pesan",
+   "it": "Tornano con il messaggio"
+  },
+  "Leave the context": {
+   "zh-Hans": "移出上下文",
+   "hi": "संदर्भ से हट जाते हैं",
+   "es": "Salen del contexto",
+   "ar": "تخرج من السياق",
+   "fr": "Quittent le contexte",
+   "bn": "প্রসঙ্গ থেকে বেরিয়ে যায়",
+   "pt-BR": "Saem do contexto",
+   "ru": "Выйдут из контекста",
+   "id": "Keluar dari konteks",
+   "it": "Escono dal contesto"
+  },
+  "What comes back waits in the attachments: take anything out with its ×.": {
+   "zh-Hans": "恢复的内容会在附件中等待：用 × 可将其移除。",
+   "hi": "जो वापस आता है वह अटैचमेंट में इंतज़ार करता है: × से कुछ भी हटा दें।",
+   "es": "Lo que vuelve espera en los adjuntos: quita lo que quieras con su ×.",
+   "ar": "ما يعود ينتظر في المرفقات: أزل أي شيء بعلامة × الخاصة به.",
+   "fr": "Ce qui revient attend dans les pièces jointes : retirez-en ce que vous voulez avec son ×.",
+   "bn": "যা ফিরে আসে তা সংযুক্তিতে অপেক্ষা করে: × দিয়ে যেকোনোটি সরিয়ে দিন।",
+   "pt-BR": "O que volta espera nos anexos: tire o que quiser com o ×.",
+   "ru": "Вернувшееся ждёт во вложениях: уберите лишнее его ×.",
+   "id": "Yang kembali menunggu di lampiran: keluarkan apa pun dengan ×-nya.",
+   "it": "Ciò che torna aspetta negli allegati: togli quello che vuoi con la sua ×."
+  },
   "Web pages": {
    "zh-Hans": "网页",
    "hi": "वेब पेज",
@@ -19054,54 +19102,6 @@
    "ru": "Остров читает не больше {max} календарей: отключите ненужные.",
    "id": "Pulau membaca paling banyak {max} kalender: matikan yang tidak Anda perlukan.",
    "it": "L'isola legge al massimo {max} calendari: spegni quelli che non ti servono."
-  },
-  "Sent with this message": {
-   "zh-Hans": "随此消息发送",
-   "hi": "इस संदेश के साथ भेजा गया",
-   "es": "Enviado con este mensaje",
-   "ar": "أُرسل مع هذه الرسالة",
-   "fr": "Envoyé avec ce message",
-   "bn": "এই বার্তার সাথে পাঠানো",
-   "pt-BR": "Enviado com esta mensagem",
-   "ru": "Отправлено с этим сообщением",
-   "id": "Dikirim bersama pesan ini",
-   "it": "Inviati con questo messaggio"
-  },
-  "Come back with the message": {
-   "zh-Hans": "随消息一起恢复",
-   "hi": "संदेश के साथ वापस आते हैं",
-   "es": "Vuelven con el mensaje",
-   "ar": "تعود مع الرسالة",
-   "fr": "Reviennent avec le message",
-   "bn": "বার্তার সাথে ফিরে আসে",
-   "pt-BR": "Voltam com a mensagem",
-   "ru": "Вернутся с сообщением",
-   "id": "Kembali bersama pesan",
-   "it": "Tornano con il messaggio"
-  },
-  "Leave the context": {
-   "zh-Hans": "移出上下文",
-   "hi": "संदर्भ से हट जाते हैं",
-   "es": "Salen del contexto",
-   "ar": "تخرج من السياق",
-   "fr": "Quittent le contexte",
-   "bn": "প্রসঙ্গ থেকে বেরিয়ে যায়",
-   "pt-BR": "Saem do contexto",
-   "ru": "Выйдут из контекста",
-   "id": "Keluar dari konteks",
-   "it": "Escono dal contesto"
-  },
-  "What comes back waits in the attachments: take anything out with its ×.": {
-   "zh-Hans": "恢复的内容会在附件中等待：用 × 可将其移除。",
-   "hi": "जो वापस आता है वह अटैचमेंट में इंतज़ार करता है: × से कुछ भी हटा दें।",
-   "es": "Lo que vuelve espera en los adjuntos: quita lo que quieras con su ×.",
-   "ar": "ما يعود ينتظر في المرفقات: أزل أي شيء بعلامة × الخاصة به.",
-   "fr": "Ce qui revient attend dans les pièces jointes : retirez-en ce que vous voulez avec son ×.",
-   "bn": "যা ফিরে আসে তা সংযুক্তিতে অপেক্ষা করে: × দিয়ে যেকোনোটি সরিয়ে দিন।",
-   "pt-BR": "O que volta espera nos anexos: tire o que quiser com o ×.",
-   "ru": "Вернувшееся ждёт во вложениях: уберите лишнее его ×.",
-   "id": "Yang kembali menunggu di lampiran: keluarkan apa pun dengan ×-nya.",
-   "it": "Ciò che torna aspetta negli allegati: togli quello che vuoi con la sua ×."
   },
   "Antigravity CLI reported a problem at the end": {
    "zh-Hans": "Antigravity CLI 在结束时报告了一个问题",

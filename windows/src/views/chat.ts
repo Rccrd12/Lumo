@@ -95,13 +95,8 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  PICTURE_NAME, THUMB_EDGE, comingBack, groupKey, joinScreen, keptItems, leaveScreen, readSent, restored, sentAgain, sentGroups, sentItems,
-  type SentGroup, type SentItem,
-} from "../core/sent";
-import {
   chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact,
   toSavedTurn, type ChatHit, type SavedChat,
-  type SavedTurn,
 } from "../core/chats";
 import {
   agentAsk, applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
@@ -111,6 +106,11 @@ import {
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, talkBox, type AgentsCardHost } from "./agents-card";
 import { updateChatTurns, type AskQuote } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
+import {
+  PICTURE_NAME, THUMB_EDGE, comingBack, groupKey, joinScreen, keptItems, leaveScreen, readSent, restored, sentAgain, sentGroups, sentItems,
+  type SentGroup, type SentItem,
+} from "../core/sent";
+import type { SavedTurn } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
 } from "../core/checklists";
@@ -448,6 +448,7 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     // Asked of an agent: that agent on top of the question, as WhatsApp's quoted Reply.
     if (message.ask) sent.insertBefore(askQuote(message.ask), sent.firstChild);
     foldLong(sent, message.id);
+    row = h("div", { class: `chat-row user${state}` }, sent, bar);
     const went = message.sent?.length ? message.sent : null;
     if (went) {
       // What went with it: its icons on the bubble's top right corner, and their list under it on a click.
@@ -466,8 +467,8 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
         if (!list.hidden) list.scrollIntoView?.({ block: "nearest" });
       });
       badges.setAttribute("aria-expanded", String(!list.hidden));
-      row = h("div", { class: `chat-row user${state}` }, h("div", { class: "bubble-wrap" }, sent, badges), list, bar);
-    } else row = h("div", { class: `chat-row user${state}` }, sent, bar);
+      row.replaceChildren(h("div", { class: "bubble-wrap" }, sent, badges), list, bar);
+    }
   } else {
     const reply = h("div", { class: "reply" });
     drawReply(reply, message.content, !!opts.workshop, opts.scope);
@@ -2364,10 +2365,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  // While a question is edited: what comes back with it, and what leaves the context (drawEditStrip).
-  const editStrip = h("div", { class: "edit-strip" });
-  editStrip.hidden = true;
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, askEl, planAsk, listenAsk, heardBar, editStrip, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, askEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -2388,6 +2386,12 @@ export function buildPrompt(
     });
     return img;
   }
+
+  // While a question is edited: what comes back with it, and what leaves the
+  // context (drawEditStrip), just over the model's row.
+  const editStrip = h("div", { class: "edit-strip" });
+  editStrip.hidden = true;
+  body.insertBefore(editStrip, modelRow);
 
   // A click anywhere else — in the island or, through Rust's outside-press,
   // anywhere on the screen — closes the list that is open: the models, the
