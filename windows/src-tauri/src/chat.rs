@@ -849,6 +849,47 @@ pub fn api_tools_note(mail: &str) -> String {
     note
 }
 
+/// More of a CLI's text added to `shown`, everything the turn wrote so far.
+/// `new`: `text` starts a message (one after a tool, or a step of its own),
+/// a paragraph of its own after those before; it stays set while only
+/// blank space came. What showed is never taken back: a sentence written
+/// before a tool stays on the island once the next one comes, as an API's.
+pub fn add_shown(shown: &mut String, text: &str, new: &mut bool) {
+    if !*new {
+        shown.push_str(text);
+        return;
+    }
+    let text = text.trim_start();
+    if text.is_empty() {
+        return;
+    }
+    *new = false;
+    shown.truncate(shown.trim_end().len());
+    if !shown.is_empty() {
+        shown.push_str("\n\n");
+    }
+    shown.push_str(text);
+}
+
+/// The messages of a turn, one paragraph each, as the island showed them
+/// (`add_shown`).
+pub fn join_shown<'a>(messages: impl IntoIterator<Item = &'a str>) -> String {
+    messages.into_iter().map(str::trim).filter(|m| !m.is_empty()).collect::<Vec<_>>().join("\n\n")
+}
+
+/// The answer of a CLI's turn: everything it wrote (`shown`), its last
+/// message as the CLI gave it at the end (`last`, its `result`) in place of
+/// the one streamed (`writing`). The CLIs give only their last message: the
+/// sentences written before the tools would go once the answer is saved.
+pub fn turn_answer(shown: &str, writing: &str, last: &str) -> String {
+    let (shown, last) = (shown.trim(), last.trim());
+    if last.is_empty() || shown.ends_with(last) {
+        return shown.to_string();
+    }
+    let earlier = shown.strip_suffix(writing.trim()).unwrap_or(shown).trim_end();
+    if earlier.is_empty() { last.to_string() } else { format!("{earlier}\n\n{last}") }
+}
+
 /// `answer`, with the lines for Lumo (`[[timer …]]`, `[[listen …]]`,
 /// `[[unlisten …]]`) that were written earlier in the turn, in a message
 /// before a tool call, added back: the CLIs return only their last message.
@@ -1506,6 +1547,30 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sentences_before_the_tools_stay_shown_and_in_the_answer() {
+        // A CLI's messages, as they stream: each one after the tools a paragraph of its own.
+        let mut shown = String::new();
+        let mut new = true;
+        let mut seen = Vec::new();
+        for (text, starts) in [("Let me ", true), ("read it.\n", false), ("\n", true), ("  The PDF", false), (" says hi.", false)] {
+            if starts {
+                new = true;
+            }
+            add_shown(&mut shown, text, &mut new);
+            seen.push(shown.clone());
+        }
+        assert_eq!(shown, "Let me read it.\n\nThe PDF says hi.");
+        // What showed only ever grows: nothing on the island is taken back.
+        assert!(seen.windows(2).all(|w| w[1].starts_with(w[0].trim_end())), "{seen:?}");
+        // The answer: every message, the last as the CLI gave it.
+        assert_eq!(turn_answer(&shown, "The PDF says hi.", "The PDF says hi."), shown);
+        assert_eq!(turn_answer(&shown, "The PDF says hi.", "The PDF says hello."), "Let me read it.\n\nThe PDF says hello.");
+        assert_eq!(turn_answer(&shown, "The PDF says hi.", ""), shown);
+        assert_eq!(turn_answer("", "", "Compacted."), "Compacted.");
+        assert_eq!(join_shown(["Let me check. ", "", "  Done."]), "Let me check.\n\nDone.");
+    }
 
     #[test]
     fn lumo_lines_are_kept_wherever_they_were_written() {
