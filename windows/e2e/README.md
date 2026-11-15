@@ -22,7 +22,7 @@ touches `windows/` (`.github/workflows/windows-e2e.yml`, on `windows-latest`).
 
 | File | What it checks |
 | --- | --- |
-| `chat-text.test.mjs` | A sent question's multiplications (`8*10^-9`) keep their stars, with no italics |
+| `chat-text.test.mjs` | A sent question's multiplications (`8*10^-9`) keep their stars, with no italics; a long question folds, Show more opens it downwards from where it is read (the log is not carried to its end), Show less stays in sight in the middle of it and folds it back in view |
 | `formula-ink.test.mjs` | No box cuts a formula's ink (subscripts, fractions, the last letter's lean): the chat's formulas, the steps card's step, the step before and the list, the calculator's top line; each box photographed as shown and with nothing cut, the two compared (`lib/ink.mjs`, `lib/png.mjs`) |
 | `permission.test.mjs` | Allow and Deny reach Claude Code (closed island and full card), the 600 ms click guard, a small and a 400 KB Write (its whole numbers, and Allow), a long plan, a question, two requests in line |
 | `never-block.test.mjs` | The relay answers at once when Lumo is closed, events nobody waits on, Lumo quitting while a card waits |
