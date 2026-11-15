@@ -57,6 +57,24 @@ export function isComputerTool(tool: string): boolean {
   return computerToolName(tool) != null;
 }
 
+/**
+ * Whether a click on a permission card may give the island the keyboard (for
+ * Y and N). Not for a computer action, nor while computer use is under way:
+ * the island taking the keyboard brings it to the front, and Windows then
+ * closes whatever the agent opened that goes away when it loses the front
+ * (the Start menu, Search, a browser's suggestions, a drop-down), so the
+ * next action would type into nothing. The card's buttons work without the
+ * keyboard; its shortcut still gives it, the user's own choice.
+ */
+export function cardClickTakesKeyboard(
+  tool: string,
+  computer: { engaged: boolean; stopped: boolean } | null,
+  computerActive: boolean,
+): boolean {
+  if (isComputerTool(tool) || computerActive) return false;
+  return !(computer?.engaged && !computer.stopped);
+}
+
 /** Typed text for the card: ⏎ at each Enter (then a new line), ⇥ at each Tab. */
 function typedText(text: string): string {
   return text.replace(/\r\n?|\n/g, "⏎\n").replace(/\t/g, "⇥");

@@ -221,3 +221,23 @@ flow(G, "Two requests: each click answers the card on screen only", app, async (
   const reply = await told(second);
   assert.notEqual(behavior(reply), "allow", "the second request must not be allowed by the first click");
 });
+
+flow(G, "A computer action's card: a click on it leaves the keyboard where it was", app, async () => {
+  // The agent opened Search or the Start menu and asks to type: the island
+  // taking the keyboard would bring it to the front, and Windows would close
+  // what the agent opened. A click on the card must not.
+  const agent = app.agent("computer-type");
+  await agent.start();
+  const req = ask(agent, "mcp__lumo__type", { text: "Notepad" });
+  await d.visible(ANY_ALLOW, 10_000, "the card");
+  await fullCard();
+  const about = await d.visible(".approval-about", 5_000, "the card's line");
+  await sleep(GUARD);
+  step("clicks the card's line (not a button)");
+  await app.click(about);
+  await sleep(500);
+  assert.equal(await d.js("return document.hasFocus()"), false, "the island must not take the keyboard from the card of a computer action");
+  step("the keyboard stayed where it was; clicks Deny");
+  await app.click(await d.visible(".deny-btn", 5_000, "Deny on the full card"));
+  assert.equal(behavior(await told(req)), "deny");
+});
