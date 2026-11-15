@@ -504,6 +504,7 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
     }
 
     fn doing(&mut self, doing: Doing) {
+        self.events.signal(self.app);
         self.events.activity(self.app, match doing {
             Doing::Prompt => Activity::new("prompt", ""),
             Doing::Thinking => Activity::thinking(),
@@ -552,6 +553,11 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
 
     fn hush(&mut self, on: bool) {
         self.hushed = on;
+    }
+
+    /// The island's sign of life (chat_agents.rs): once a second at most, so every piece of the stream may call it.
+    fn signal(&mut self) {
+        self.events.signal(self.app);
     }
 
     fn call(&mut self, name: &str, input: Value) -> impl std::future::Future<Output = (String, bool)> + Send {
@@ -615,6 +621,14 @@ fn log_turn(server: &Server, model: &str, prompt: usize, tools: usize, outcome: 
         Err(f) => format!("failed: {f:?}"),
     };
     crate::log::line(format!("[local] {} {model}: ~{prompt} tokens of prompt, {tools} tools; {how}", server.id));
+}
+
+/// `work` (a model's load), with a sign of life for the chat every
+/// chat_agents::HEARTBEAT while it runs: Ollama's load answers nothing until the model
+/// is in, which can take minutes, and the island would take it for stuck. The
+/// timer lives only as long as the load (no CPU while the island is idle).
+async fn alive_while<T>(app: &AppHandle, events: &chat::ChatEvents, work: impl std::future::Future<Output = T> + Unpin) -> T {
+    crate::chat_agents::alive_while(app, events.chat_id(), work).await
 }
 
 /// One chat turn with a model server.
@@ -709,20 +723,26 @@ pub async fn send(
         // The picker is loading this model already: that load is waited for,
         // with its percent, rather than taken for a model in memory.
         let mut caps = caps.clone();
+        // Each step of the load is a sign of life: a big model takes minutes,
+        // and one whose server tells no percent still gives one now and then.
         if let Some(load) = crate::local_models::picker_load(server, model) {
+            events.signal(app);
             events.activity(app, Activity::new("loading", ""));
-            crate::local_models::wait_for_picker(load, |percent| {
+            let waited = Box::pin(crate::local_models::wait_for_picker(load, |percent| {
+                events.signal(app);
                 events.activity(app, Activity::new("loading", percent.to_string()));
-            })
-            .await;
+            }));
+            alive_while(app, &events, waited).await;
             caps = crate::local_models::caps(server, model).await;
         }
         if caps.loaded == Some(false) {
+            events.signal(app);
             events.activity(app, Activity::new("loading", ""));
-            let loaded = crate::local_models::load(server, model, |percent| {
+            let loading = Box::pin(crate::local_models::load(server, model, |percent| {
+                events.signal(app);
                 events.activity(app, Activity::new("loading", percent.to_string()));
-            })
-            .await;
+            }));
+            let loaded = alive_while(app, &events, loading).await;
             if let Err(e) = loaded {
                 crate::log::line(format!("[local] loading {model}: {e}"));
                 // Unsloth Studio answers nothing until a model is in: its reason, said.
