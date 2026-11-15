@@ -40,19 +40,26 @@ use tokio::sync::Notify;
 
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
+use crate::listen_github::{self, Look};
 use crate::listen_local::{self, Listing};
 use crate::{log, platform, secrets};
 
-/// What a watch can wait for on a pull request (listen_local.rs: on this PC).
-pub const UNTILS: &[&str] = &["checks", "green", "approved", "ready", "merged", "closed"];
+/// What a watch can wait for on a pull request (listen_local.rs: on this PC;
+/// listen_github.rs: the rest of GitHub, and the pull request's new comments,
+/// reviews and commits, its PR_EVENTS).
+pub const UNTILS: &[&str] = &["checks", "green", "approved", "ready", "merged", "closed", "comment", "review", "changes", "commit"];
 /// Once: the watch ends when it fires. Every: it fires for each new commit.
 pub const MODES: &[&str] = &["once", "every"];
-/// What can listen every time: what happens again with each push.
-pub const EVERY_UNTILS: &[&str] = &["checks", "green"];
+/// What can listen every time: what happens again with each push, and what happens again and again.
+pub const EVERY_UNTILS: &[&str] = &["checks", "green", "comment", "review", "changes", "commit"];
 /// Where a watch listens: GitHub's pull requests, a file or a folder, a
 /// program or a port, a web page, the inbox, a service (or the calendar),
-/// Windows, an agent, a webhook, one of the user's tools.
-pub const SOURCES: &[&str] = &["github.pr", "fs", "process", "web", "email", "service", "windows", "agent", "webhook", "tool"];
+/// Windows, an agent, a webhook, one of the user's tools; and the rest of
+/// GitHub (listen_github.rs SOURCES, in the same order).
+pub const SOURCES: &[&str] = &[
+    "github.pr", "fs", "process", "web", "email", "service", "windows", "agent", "webhook", "tool", "github.issue", "github.branch", "github.workflow",
+    "github.release", "github.deploy", "github.notifications", "github.security", "github.discussion", "github.stars",
+];
 /// The sources the loop on this PC looks at; the others are heard (listen_events.rs).
 const POLLED: &[&str] = &["fs", "process", "web", "windows", "tool"];
 pub const GITHUB: &str = "github.pr";
@@ -65,7 +72,7 @@ const MAX_AGE_MS: u64 = 7 * 24 * 3_600_000;
 /// Right after a push GitHub lists no checks yet: none counts as none only after
 /// this, and only when no Actions run of the commit is still queued or running
 /// (actions_of): a run GitHub has not given its jobs yet lists no checks either.
-const NO_CHECKS_GRACE_MS: u64 = 3 * 60_000;
+pub(crate) const NO_CHECKS_GRACE_MS: u64 = 3 * 60_000;
 /// GitHub answering "not found" (or no access) this many times running ends the watch.
 const MAX_MISSES: u32 = 3;
 /// How often GitHub is asked, signed in or not (60 calls an hour without).
@@ -159,13 +166,26 @@ impl Watch {
     pub fn label(&self) -> String {
         if self.source == GITHUB {
             format!("{}#{}", self.repo, self.number)
+        } else if listen_github::is_source(&self.source) {
+            listen_github::label(&self.source, &self.target, &self.text)
         } else {
             listen_local::label(&self.source, &self.until, &self.target)
         }
     }
 
+    /// A watch on a pull request.
     pub fn github(&self) -> bool {
         self.source == GITHUB
+    }
+
+    /// Asked of GitHub: a pull request, or the rest of GitHub (listen_github.rs).
+    pub fn on_github(&self) -> bool {
+        self.github() || listen_github::is_source(&self.source)
+    }
+
+    /// Looked at by listen_github.rs: what happens, rather than a pull request's state.
+    fn event_on_github(&self) -> bool {
+        listen_github::is_source(&self.source) || (self.github() && listen_github::PR_EVENTS.contains(&self.until.as_str()))
     }
 
     /// Looked at by the loop on this PC (else heard, or GitHub's).
@@ -405,7 +425,7 @@ pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str
         repo: String::new(),
         number: 0,
         // `soon`: the words an event's title has, when it names some.
-        text: if matches!(until.as_str(), "contains" | "soon" | "gone") { text } else { String::new() },
+        text: if matches!(until.as_str(), "contains" | "soon" | "gone") || listen_github::takes_text(&source, &until) { text } else { String::new() },
         amount: listen_local::amount_of(&source, &until, amount),
         until,
         task: task.to_string(),
@@ -895,7 +915,7 @@ pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
 
 // ── Asking GitHub ─────────────────────────────────────────────────────────────
 
-enum Answer {
+pub(crate) enum Answer {
     Found(Value),
     /// 404, or 401/403 for a repository it can't see.
     Missing,
@@ -956,11 +976,37 @@ async fn rest(token: Option<&str>, path: &str) -> Answer {
     }
 }
 
+/// A POST to GitHub's API (GraphQL), with the GitHub pill's token.
+pub(crate) async fn post(token: Option<&str>, path: &str, body: &Value) -> Answer {
+    let mut req = client()
+        .post(format!("https://api.github.com/{path}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Lumo")
+        .json(body);
+    if let Some(token) = token {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let Ok(response) = req.send().await else { return Answer::Unknown };
+    let headers = response.headers();
+    let remaining = headers.get("x-ratelimit-remaining").and_then(|v| v.to_str().ok());
+    match kind_of(response.status().as_u16(), remaining, headers.contains_key("retry-after"), token.is_some()) {
+        Kind::Found => response.json().await.map(Answer::Found).unwrap_or(Answer::Unknown),
+        Kind::Missing => Answer::Missing,
+        Kind::Unauthorized => Answer::Unauthorized,
+        Kind::Unknown => Answer::Unknown,
+    }
+}
+
 /// `gh api <path>`: the user's own GitHub CLI, signed in by itself.
-async fn gh(path: String) -> Answer {
+pub(crate) async fn gh(path: String) -> Answer {
+    gh_args(vec!["api".into(), "-H".into(), "Accept: application/vnd.github+json".into(), path]).await
+}
+
+/// `gh` with these arguments (`api …`), its JSON answer.
+pub(crate) async fn gh_args(args: Vec<String>) -> Answer {
     let out = tauri::async_runtime::spawn_blocking(move || {
         let mut cmd = std::process::Command::new("gh");
-        cmd.args(["api", "-H", "Accept: application/vnd.github+json", &path]);
+        cmd.args(&args);
         platform::no_console(&mut cmd);
         cmd.output()
     })
@@ -978,7 +1024,7 @@ async fn gh(path: String) -> Answer {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Via {
+pub(crate) enum Via {
     Token,
     Gh,
     Anonymous,
@@ -986,7 +1032,7 @@ enum Via {
 
 /// How GitHub is asked this round: the pill's token, else `gh` when it is
 /// there and signed in, else without signing in.
-async fn via() -> (Via, Option<String>) {
+pub(crate) async fn via() -> (Via, Option<String>) {
     if let Some(token) = secrets::get("github-token") {
         return (Via::Token, Some(token));
     }
@@ -1005,7 +1051,7 @@ async fn via() -> (Via, Option<String>) {
     }
 }
 
-async fn ask(via: Via, token: Option<&str>, path: String) -> Answer {
+pub(crate) async fn ask(via: Via, token: Option<&str>, path: String) -> Answer {
     match via {
         Via::Gh => gh(path).await,
         _ => rest(token, &path).await,
@@ -1121,17 +1167,78 @@ pub fn changed(app: &AppHandle) {
     let _ = app.emit_to(WINDOW_LABEL, "listen-changed", watches);
 }
 
+/// GitHub can't read what the watch names (`Answer::Missing`): after
+/// MAX_MISSES answers running, the watch ends, saying `summary`.
+fn missed(app: &AppHandle, w: &Watch, summary: impl FnOnce() -> String) {
+    let misses = with_store(|s| {
+        current(s, w)?;
+        let n = s.misses.entry(w.id).or_insert(0);
+        *n += 1;
+        Some(*n)
+    })
+    .unwrap_or(0);
+    if misses >= MAX_MISSES {
+        fire(app, w, false, summary(), None);
+    }
+}
+
+/// GitHub answered about the watch: no miss counts any more, and the token
+/// is fine (again). False when the watch was edited or stopped meanwhile.
+fn answered(app: &AppHandle, w: &Watch) -> bool {
+    if with_store(|s| current(s, w).map(|_| s.misses.remove(&w.id))).is_none() {
+        return false;
+    }
+    if warn(w.id, Some(TOKEN), "") {
+        changed(app);
+    }
+    true
+}
+
+/// One look at a watch on what happens on GitHub (listen_github.rs).
+async fn github_event(app: &AppHandle, ask: &listen_github::Asker, w: &Watch, now: u64) {
+    let look = listen_github::look(ask, w, |sha| with_store(|s| head_age(&mut s.heads, w.id, sha, now))).await;
+    match look {
+        Look::Fire { met, summary, cursor } => {
+            if answered(app, w) {
+                fire(app, w, met, summary, cursor.as_deref());
+            }
+        }
+        Look::Hold(cursor) => {
+            if answered(app, w) {
+                if let Some(cursor) = cursor {
+                    first_print(w, cursor);
+                }
+            }
+        }
+        Look::Missing => missed(app, w, || listen_github::cant_read(w)),
+        Look::Unauthorized => {
+            if warn(w.id, None, TOKEN) {
+                log::line(format!("listen: {}: GitHub turned the token down", w.label()));
+                changed(app);
+            }
+        }
+        Look::Unknown => {}
+    }
+}
+
 /// One look at every watch.
 async fn round(app: &AppHandle) -> Via {
     let (via, token) = via().await;
     let now = now_ms();
-    for w in list().into_iter().filter(|w| w.github()) {
+    let asker = listen_github::Asker::new(via, token.clone());
+    for w in list().into_iter().filter(|w| w.on_github()) {
         let age = now.saturating_sub(w.started_at);
-        if age >= MAX_AGE_MS {
+        // A pull request's state, and whatever listens once, ends after a
+        // week; what listens every time to the rest of GitHub goes on.
+        if age >= MAX_AGE_MS && (w.github() || w.mode != "every") {
             fire(app, &w, false, tf("Stopped listening to {pr} after a week", &[("pr", &w.label())]), None);
             continue;
         }
         if w.paused {
+            continue;
+        }
+        if w.event_on_github() {
+            github_event(app, &asker, &w, now).await;
             continue;
         }
         match fetch(via, token.as_deref(), &w).await {
@@ -1153,18 +1260,7 @@ async fn round(app: &AppHandle) -> Via {
                     fire(app, &w, met, summary, again_on);
                 }
             }
-            Read::Missing => {
-                let misses = with_store(|s| {
-                    current(s, &w)?;
-                    let n = s.misses.entry(w.id).or_insert(0);
-                    *n += 1;
-                    Some(*n)
-                })
-                .unwrap_or(0);
-                if misses >= MAX_MISSES {
-                    fire(app, &w, false, tf("Lumo can't read {pr} on GitHub", &[("pr", &w.label())]), None);
-                }
-            }
+            Read::Missing => missed(app, &w, || tf("Lumo can't read {pr} on GitHub", &[("pr", &w.label())])),
             // An expired or revoked token ends no watch: the Listening panel
             // says so, and the watch goes on once GitHub takes the token again.
             Read::Unauthorized => {
@@ -1196,12 +1292,12 @@ pub fn start(app: AppHandle) {
             crate::listen_events::ensure_server(&app);
         }
         loop {
-            if list().iter().all(|w| w.paused || !w.github()) {
+            if list().iter().all(|w| w.paused || !w.on_github()) {
                 WAKE.notified().await;
                 continue;
             }
             let via = if crate::integrations::PAUSED.load(Ordering::Relaxed) { Via::Token } else { round(&app).await };
-            let on = list().iter().filter(|w| !w.paused && w.github()).count();
+            let on = list().iter().filter(|w| !w.paused && w.on_github()).count();
             let every = if via == Via::Anonymous { anonymous_every(on) } else { EVERY_SIGNED_IN };
             let _ = tokio::time::timeout(every, WAKE.notified()).await;
         }

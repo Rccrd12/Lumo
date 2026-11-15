@@ -39,6 +39,7 @@ mod island;
 mod island_tools;
 mod listen;
 mod listen_events;
+mod listen_github;
 mod listen_local;
 mod live;
 mod local_chat;
@@ -1492,6 +1493,7 @@ pub fn run() {
             listen_events::listen_fire,
             listen_events::listen_webhook_url,
             listen::listen_list,
+            listen_github::listen_github_names,
             listen::listen_stop,
             listen::listen_pause,
             listen::listen_history,

@@ -356,6 +356,8 @@ export const Bridge = {
   listenPause: (id: number | null, paused: boolean) => call<number>("listen_pause", { id, paused }),
   /** What fired, oldest first. */
   listenHistory: () => call<ListenPast[]>("listen_history"),
+  /** The names a repository has for a watch's text: its workflows, environments, labels, discussion categories (listen_github.rs). */
+  listenGitHubNames: (source: string, repo: string) => call<string[]>("listen_github_names", { source, repo }),
   listenHistoryClear: () => call<void>("listen_history_clear"),
   // The user's own tools (the Tools tab, tools.rs).
   toolsList: () => call<ToolInfo[]>("tools_list"),
