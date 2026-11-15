@@ -3,6 +3,8 @@
 // confirmed in the island itself. Since the page can't tell Rust it is
 // Settings, the write goes only after Windows' own Yes / No box, which no
 // page can click (confirmed.rs by_hand); the separate Settings window stays shut.
+// Settings the island folded on its own come back from the tray icon's Open,
+// and Escape in them leaves a pinned island open (#258).
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -117,6 +119,56 @@ flow(G, "No write without its preview, even from the island", app, async () => {
   // Refused before any box: none comes up.
   const box = answerBox(app.proc.pid, "Cancel", 2);
   assert.equal(box.found, false, `no box for a write with no preview: ${box.raw}`);
+});
+
+/** Picks an item of the island's ⋯ menu, with the real mouse. */
+async function moreItem(label) {
+  await app.click(await d.visible(".more-btn", 8_000, "the island's ⋯ button"));
+  await d.visible(".ctx-menu .ctx-item", 5_000, "the ⋯ menu");
+  let item = null;
+  for (const id of await d.all(".ctx-menu .ctx-item")) {
+    if ((await d.displayed(id)) && label.test((await d.text(id)).trim())) item = id;
+  }
+  assert.ok(item, `an item ${label} in the ⋯ menu`);
+  await app.click(item);
+  await sleep(400);
+}
+
+const onSettings = "return !!document.querySelector('.settings-frame iframe')?.offsetParent && document.getElementById('island').getBoundingClientRect().height > 100";
+
+flow(G, "Settings the island folded on its own come back when it is opened from the tray icon's Open", app, async () => {
+  await app.closed(30_000);
+  await openSettingsInIsland();
+  step("the cursor leaves: the island folds away on its own, Settings left open");
+  await app.closed(30_000);
+  step("Open in the tray icon's menu (the event tray.rs sends the island)");
+  await d.js(`return window.__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "tray", payload: "open" }).then(() => true);`);
+  await d.until(onSettings, 8_000, "the island open again on its Settings");
+});
+
+flow(G, "Escape in Settings leaves a pinned island open and pinned", app, async () => {
+  if (!(await d.js(onSettings))) {
+    await app.closed(30_000);
+    await openSettingsInIsland();
+  }
+  step("⋯ → Keep the island open");
+  await moreItem(/^keep the island open$/i);
+  await d.until(onSettings, 5_000, "Settings still in the island");
+  step("Escape in Settings");
+  await d.js(`${FRAME}.defaultView.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return true;`);
+  step("the cursor leaves the island for a while");
+  await app.away();
+  await sleep(3_000);
+  const h = await app.islandHeight();
+  step(`the island: ${Math.round(h)} px tall`);
+  assert.ok(h > 100, "a pinned island stays open after Escape in its Settings");
+
+  step("⋯ → Keep the island open again: unpinned, it folds away as usual");
+  const box = await app.islandBox();
+  await app.mouse.move(box.x + box.w / 2, box.y + 20);
+  await sleep(400);
+  await moreItem(/^keep the island open$/i);
+  await app.closed(30_000);
 });
 
 flow(G, "The separate Settings window, made only when first opened, shows its page", app, async () => {

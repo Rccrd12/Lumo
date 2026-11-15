@@ -603,6 +603,21 @@ pub fn may_carry_file(thread: u32) -> bool {
     !info.hwndCapture.0.is_null() && info.flags.0 & GUI_INMOVESIZE.0 == 0
 }
 
+/// Whether Windows is moving or sizing a window right now: the window in the
+/// foreground is in its move or size loop (`GUI_INMOVESIZE`), from a press on
+/// its title bar or an edge, or from its system menu's Move or Size. A cursor
+/// carried over the island that way is the window's, not a hover (island.rs
+/// CursorPayload::window_moving). A file being dragged is not a window being
+/// moved, so a drop still finds the island.
+pub fn window_moving() -> bool {
+    let mut info = GUITHREADINFO { cbSize: std::mem::size_of::<GUITHREADINFO>() as u32, ..Default::default() };
+    // Thread 0: the foreground thread, the one a move or size loop runs in.
+    if unsafe { GetGUIThreadInfo(0, &mut info) }.is_err() {
+        return false;
+    }
+    info.flags.0 & GUI_INMOVESIZE.0 != 0
+}
+
 /// Waits for the display's next frame (DwmFlush), so a window moved once per
 /// wait moves on every frame, by even steps. Moved on a clock of its own (8 ms
 /// sleeps), it drifted against the display's: two moves in one frame, none in

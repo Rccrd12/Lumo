@@ -37,7 +37,7 @@ import type { ComputerCursor } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 import { mailEditor, type MailEditor } from "./mail-editor";
 import type { MailRevision } from "../core/mail-edit";
-import { isComputerTool } from "../core/computer";
+import { cardClickTakesKeyboard, isComputerTool } from "../core/computer";
 import { stepPlace } from "../core/computer-plan";
 import { computerTargetBox, pausedCardLine } from "./computer-card";
 import { buildComputerView } from "./computer-plan";
@@ -703,10 +703,13 @@ function buildApproval(actions: ViewActions): ViewHost {
   };
   // The island never takes the keyboard by itself (typing in another app is
   // never cut off): a click on the card gives it, as the shortcut to the
-  // waiting card does.
+  // waiting card does. Not while the computer is in use: the window the agent
+  // works in keeps the front, and what it opened stays open
+  // (cardClickTakesKeyboard).
   el.addEventListener("mousedown", () => {
-    if (State.pendingApproval && !State.pendingApproval.questions) {
-      armApprovalKeys(State.pendingApproval.requestId);
+    const req = State.pendingApproval;
+    if (req && !req.questions && cardClickTakesKeyboard(req.tool, State.computer, State.computerActive)) {
+      armApprovalKeys(req.requestId);
       actions.takeKeyboard();
     }
   });

@@ -51,7 +51,7 @@ test("the model button shows the active provider's model", () => {
   assert.equal($(".model-name").textContent, "Choose a model");
 });
 
-test("Antigravity CLI needs no key, and has no effort to pick: its model's name carries it", async () => {
+test("Antigravity CLI needs no key, and a model with one level only keeps its name, with no slider", async () => {
   State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatEffort: "high" };
   view.sync();
   assert.equal($(".model-name").textContent, "default", "a saved effort never reaches agy");
@@ -63,6 +63,62 @@ test("Antigravity CLI needs no key, and has no effort to pick: its model's name 
   assert.deepEqual(models(), ["Default", "gemini-3.8-flash-low"]);
   assert.equal($(".picker-efforts").hidden, true);
   assert.equal($(".effort-slider"), null);
+});
+
+test("Antigravity CLI's variants by effort are one model, with Claude Code's slider and no Auto", async () => {
+  State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatModels: { "antigravity-cli": "gemini-4-hydrogen-medium" } };
+  view.sync();
+  // Before agy is asked for its list, the name says the level.
+  assert.equal($(".model-name").textContent, "gemini-4-hydrogen · Medium");
+
+  answers.chat_models = [
+    "default", "gemini-4-argon-medium", "gemini-4-argon-high", "gemini-4-argon-low",
+    "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-low",
+    "gemini-pro-orchestrator-g1-pro", "gemini-3.8-flash-high", "gemini-3.8-flash-medium",
+  ].map((id) => ({ id, label: id === "default" ? "Default" : id }));
+  $(".model-btn").fire("click");
+  await flush();
+  assert.deepEqual(models(), ["Default", "gemini-4-argon", "gemini-4-hydrogen", "gemini-pro-orchestrator-g1-pro", "gemini-3.8-flash"]);
+  assert.equal($(".picker-model.on").textContent, "gemini-4-hydrogen");
+
+  // The slider has the model's own levels, and no Auto.
+  assert.equal($(".picker-efforts").hidden, false);
+  assert.equal($(".effort-auto"), null);
+  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-track", "effort-value"]);
+  assert.equal($(".effort-slider").getAttribute("aria-valuemax"), "3", "low, medium, high, extra high");
+  assert.equal($(".effort-value").textContent, "Medium");
+
+  // A level is that variant of the model: the effort Claude Code keeps is left alone.
+  const before = State.settings.chatEffort;
+  $(".effort-slider").fire("keydown", { key: "End" });
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-4-hydrogen-xhigh");
+  assert.equal(sent("save_settings").at(-1).settings.chatModels["antigravity-cli"], "gemini-4-hydrogen-xhigh");
+  assert.equal(State.settings.chatEffort, before);
+  assert.equal($(".effort-value").textContent, "Extra high");
+  view.sync();
+  assert.equal($(".model-name").textContent, "gemini-4-hydrogen · Extra high");
+
+  // Another model keeps the level when it has it, else takes medium.
+  $(".effort-slider").fire("keydown", { key: "ArrowLeft" });
+  view.el.find(".picker-model").find((m) => m.textContent === "gemini-3.8-flash").fire("click");
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-3.8-flash-high");
+  $(".model-btn").fire("click");
+  await flush();
+  view.el.find(".picker-model").find((m) => m.textContent === "gemini-4-argon").fire("click");
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-4-argon-high");
+  $(".model-btn").fire("click");
+  await flush();
+  $(".effort-slider").fire("keydown", { key: "End" });
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-4-argon-high", "argon's highest is high");
+
+  // A model with no levels: its name as it is, and no slider.
+  view.el.find(".picker-model").find((m) => m.textContent === "gemini-pro-orchestrator-g1-pro").fire("click");
+  assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-pro-orchestrator-g1-pro");
+  view.sync();
+  assert.equal($(".model-name").textContent, "gemini-pro-orchestrator-g1-pro");
+  $(".model-btn").fire("click");
+  await flush();
+  assert.equal($(".picker-efforts").hidden, true);
 });
 
 test("Claude Code's effort is one row: a filled slider, its level, and Auto at the end", async () => {
@@ -911,15 +967,18 @@ test("editing a message takes the files of the questions after it out of the cha
   };
   await ask("one, again");
   assert.deepEqual(sent("chat_rewind").at(-1), { chatId: State.chatId, keep: 0 });
-  assert.equal(sent("chat_send").at(-1).context, null, "the later question's file doesn't go again");
-  assert.deepEqual(chatFiles(State.chatId).map((f) => f.name), ["new.md"]);
+  // Its own file goes again with it (core/sent.ts); the later question's doesn't.
+  assert.equal(sent("chat_send").at(-1).context?.name, "first.pdf");
+  assert.equal(sent("chat_send").at(-1).screen, undefined, "the later question's file doesn't go again");
+  assert.deepEqual(chatFiles(State.chatId).map((f) => f.name).sort(), ["first.pdf", "new.md"]);
 
   // Its ×: out of the list, and Rust tells the AI with the next question.
-  const row = view.el.find(".chat-files-list")[0].find(".attach-row")[0];
+  const row = view.el.find(".chat-files-list")[0].find(".attach-row").find((r) => r.find(".attach-name")[0].textContent === "new.md");
   row.find(".attach-remove")[0].fire("click");
   assert.deepEqual(sent("chat_forget_file").at(-1), { chatId: State.chatId, name: "new.md", path: String.raw`C:\Docs\new.md` });
-  assert.deepEqual(chatFiles(State.chatId), []);
-  assert.equal(view.el.find(".chat-files-list")[0].find(".attach-group").length, 0, "an empty kind shows no folder");
+  assert.deepEqual(chatFiles(State.chatId).map((f) => f.name), ["first.pdf"]);
+  assert.deepEqual(view.el.find(".chat-files-list")[0].find(".attach-group").map((g) => g.find(".attach-name")[0].textContent), ["Attached"],
+    "an empty kind shows no folder");
 });
 
 test("Escape or the chip's × leaves an edit", async () => {
@@ -1148,6 +1207,45 @@ test("Unsloth Studio still starting: the chat says so with the picker's seconds,
   pending[0]({ text: "Ciao!", turns: 2 });
   await flush();
   view.sync();
+});
+
+test("a CLI that thinks without a word: the seconds move on the closed island from the question on, and rest while it hides", async (t) => {
+  // agy sends no activity while it thinks: nothing but the question starts the seconds.
+  State.settings = { ...State.settings, chatProvider: "antigravity-cli" };
+  State.mode = "compact";
+  const pending = heldAnswers();
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: Date.now() });
+  try {
+    await ask("think hard");
+    const island = () => State.chatActivity?.label ?? null;
+    assert.equal(island(), "Thinks…");
+    t.mock.timers.tick(5000);
+    assert.equal(island(), "Thinks… 5 s", "no chat-activity came, the seconds still go on");
+    assert.equal(label(), "Thinking… 5 s");
+    t.mock.timers.tick(115_000);
+    assert.equal(island(), "Thinks… 120 s");
+    t.mock.timers.tick(30_000);
+    assert.equal(island(), "Thinks… 150 s", "past 120 s too");
+
+    // Hidden: nothing ticks (0 % CPU); shown again, the seconds are where they are at once.
+    State.mode = "hidden";
+    State.notify();
+    t.mock.timers.tick(10_000);
+    assert.equal(island(), "Thinks… 150 s", "nothing redrawn while hidden");
+    State.mode = "compact";
+    State.notify();
+    await Promise.resolve();
+    assert.equal(island(), "Thinks… 160 s");
+    t.mock.timers.tick(1000);
+    assert.equal(island(), "Thinks… 161 s");
+  } finally {
+    t.mock.timers.reset();
+    pending[0]({ text: "Done.", turns: 2 });
+    await flush();
+    State.mode = "hidden";
+    view.sync();
+  }
+  assert.equal(State.chatActivity, null, "the answer came: nothing on the closed island");
 });
 
 test("each activity has its words, with a file name, a host or a tool", () => {

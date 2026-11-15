@@ -18,6 +18,7 @@ import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
 import type { EdgeLight } from "./layout";
 import type { BackgroundInfo } from "./background";
+import type { SentAgain, SentItem } from "./sent";
 import { DEFAULT_COMPUTER_CURSOR } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
@@ -196,6 +197,10 @@ export interface ChatMessage {
   copies?: { chat: string; path: string; made?: boolean }[];
   /** The answer's turn used the computer: its plan as it ended, shown under it (computer.rs, saved with the chat). */
   computer?: ComputerRecap;
+  /** A question: what went with it (core/sent.ts), shown on its bubble; saved with the chat. */
+  sent?: SentItem[];
+  /** The same, as it went, to send again on Edit: kept in memory only. */
+  again?: SentAgain;
 }
 
 /** A chat currently answering, thinking, calling tools, compacting, or just finished, for the home's list. */

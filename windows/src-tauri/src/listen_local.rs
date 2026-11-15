@@ -70,6 +70,9 @@ pub const ANY: &str = "any";
 /// The minutes before an event, the battery's percent, the minutes away, the
 /// minutes between two runs of a tool, when a watch gives none, and the most each can be.
 pub fn amount_of(source: &str, until: &str, amount: u32) -> u32 {
+    if let Some(stars) = crate::listen_github::amount_of(source, until, amount) {
+        return stars;
+    }
     let (default, max) = match (source, until) {
         ("service", "soon") => (10, 24 * 60),
         ("windows", "battery_low") => (20, 99),
@@ -105,7 +108,7 @@ pub fn untils(source: &str) -> &'static [&'static str] {
         "agent" => AGENT_UNTILS,
         "webhook" => WEBHOOK_UNTILS,
         "tool" => TOOL_UNTILS,
-        _ => &[],
+        _ => crate::listen_github::untils(source),
     }
 }
 
@@ -169,9 +172,13 @@ pub fn target(source: &str, until: &str, target: &str, text: &str, home: &Path) 
     }
     if !untils(source).contains(&until) {
         if untils(source).is_empty() {
-            return Err("source must be fs, process, web, email, service, windows, agent, webhook or tool.".into());
+            return Err("source must be fs, process, web, email, service, windows, agent, webhook, tool or one of GitHub's.".into());
         }
         return Err(format!("event must be one of {} for {source}.", untils(source).join(", ")));
+    }
+    // The rest of GitHub: a repository, a branch, an issue (listen_github.rs).
+    if crate::listen_github::is_source(source) {
+        return crate::listen_github::target(source, until, target, text);
     }
     // What has only one thing to listen to, whatever was given.
     if matches!((source, until), ("email", "new") | ("windows", "battery_low" | "plugged" | "unplugged" | "offline" | "online" | "usb" | "back")) {
@@ -278,6 +285,7 @@ pub fn target(source: &str, until: &str, target: &str, text: &str, home: &Path) 
 /// the page's address, the service, the agent, the app.
 pub fn label(source: &str, until: &str, target: &str) -> String {
     match source {
+        _ if crate::listen_github::is_source(source) => crate::listen_github::label(source, target, ""),
         "fs" => last_part(target).to_string(),
         "email" if until == "new" => "Email".into(),
         "service" => SERVICES.iter().find(|s| s.0 == target).map_or(target, |s| s.1).to_string(),

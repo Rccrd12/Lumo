@@ -158,6 +158,9 @@ export function onDialogsChanged(fn: () => void) {
   dialogsChanged = fn;
 }
 
+/** What hold_clicks was last asked (null: not since the island took the keyboard). */
+let clicksHeld: boolean | null = null;
+
 export const Bridge = {
   boot: () => call<BootInfo>("boot"),
   /** The system's languages as the webview sees them, for Rust's own texts (i18n.rs). */
@@ -176,7 +179,21 @@ export const Bridge = {
     call<void>("set_island_rect", { x, y, width, height }),
 
   /** Give the window keyboard focus (chat field) and take it away again. */
-  focusWindow: (focused: boolean) => call<void>("focus_window", { focused }),
+  focusWindow: (focused: boolean) => {
+    // Given the keyboard, the island's clicks are its own again (lib.rs).
+    if (focused) clicksHeld = null;
+    return call<void>("focus_window", { focused });
+  },
+
+  /**
+   * While the computer is in use, a click on the island leaves the front to
+   * the window the agent works in (click_hold.rs). Asked when it changes.
+   */
+  holdClicks: async (hold: boolean) => {
+    if (clicksHeld === hold) return;
+    clicksHeld = hold;
+    await call<void>("hold_clicks", { hold });
+  },
 
   /** Computer use paused with Esc goes on (computer.rs resume): the agent's next action runs. */
   computerResume: () => call<void>("computer_resume"),
@@ -358,6 +375,8 @@ export const Bridge = {
   listenPause: (id: number | null, paused: boolean) => call<number>("listen_pause", { id, paused }),
   /** What fired, oldest first. */
   listenHistory: () => call<ListenPast[]>("listen_history"),
+  /** The names a repository has for a watch's text: its workflows, environments, labels, discussion categories (listen_github.rs). */
+  listenGitHubNames: (source: string, repo: string) => call<string[]>("listen_github_names", { source, repo }),
   listenHistoryClear: () => call<void>("listen_history_clear"),
   // The user's own tools (the Tools tab, tools.rs).
   toolsList: () => call<ToolInfo[]>("tools_list"),
@@ -404,16 +423,19 @@ export const Bridge = {
   /** Double click on a grip: the usual width, height, or both, for that view's slot. */
   islandResetSize: (width: boolean, height: boolean, view: string | null = null) =>
     call<void>("island_reset_size", { width, height, view }),
-  /** Reopens a chat from the history, and the Claude Code session that answered it. */
-  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
-    call<void>("chat_restore", { chatId, turns, session, compact }),
+  /**
+   * Reopens a chat from the history, and the Claude Code session that answered it.
+   * `cli`: its CLI sessions and what each saw (ChatReply.cli), null for a chat saved before.
+   */
+  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null, cli: string | null = null) =>
+    call<void>("chat_restore", { chatId, turns, session, cli, compact }),
   /**
    * The same for a chat that is not on screen (a watch's task answered in its
    * own chat): Rust keeps the conversation on screen too, which chat_restore
    * would let go.
    */
-  chatLoad: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
-    call<void>("chat_load", { chatId, turns, session, compact }),
+  chatLoad: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null, cli: string | null = null) =>
+    call<void>("chat_load", { chatId, turns, session, cli, compact }),
   /** /compact with a provider called by its API: the summary that now stands for the chat's turns; null with nothing new. */
   /** The summary, and the history sent to the model before and after it (characters). */
   chatCompact: (chatId: string) => callOrThrow<(ChatCompact & { before: number; after: number }) | null>("chat_compact", { chatId }),
@@ -883,6 +905,8 @@ export interface ChatReply {
   turns?: number;
   /** What Rust's conversation kept for it, when not `text` ("(No answer.)"): given back as that by `chatRestore`. */
   kept?: string;
+  /** The chat's CLI sessions and what each saw, kept with the chat (chats.ts `setChatCli`); none without one. */
+  cli?: string;
   /** The turn used the computer: its plan as it ended, for the recap under the answer (computer.rs). */
   computer?: ComputerRecap;
   /** The answer came, but the CLI ended its turn with an error (antigravity_cli.rs): said under the answer. */

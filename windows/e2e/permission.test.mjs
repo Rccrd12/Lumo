@@ -240,3 +240,113 @@ flow(G, "Two requests: each click answers the card on screen only", app, async (
   const reply = await told(second);
   assert.notEqual(behavior(reply), "allow", "the second request must not be allowed by the first click");
 });
+
+flow(G, "A computer action's card: a click on it leaves the keyboard where it was", app, async () => {
+  // The agent opened Search or the Start menu and asks to type: the island
+  // taking the keyboard would bring it to the front, and Windows would close
+  // what the agent opened. A click on the card must not.
+  const agent = app.agent("computer-type");
+  await agent.start();
+  // The cards before gave the island the keyboard: a click on the desktop,
+  // far from the island and the taskbar, hands it to another window first.
+  const s = await app.screen();
+  step("clicks the desktop, so the keyboard is in another window");
+  await app.mouse.move(s.w * 0.75, s.h * 0.55);
+  await sleep(150);
+  await app.mouse.down();
+  await sleep(50);
+  await app.mouse.up();
+  await sleep(500);
+  assert.equal(await d.js("return document.hasFocus()"), false, "the island still has the keyboard after a click elsewhere");
+  // Every keyboard call the page makes from here (focus_window), for the log.
+  await d.js(`
+    const inner = window.__TAURI_INTERNALS__;
+    if (!inner.__e2eFocus) {
+      inner.__e2eFocus = [];
+      const invoke = inner.invoke.bind(inner);
+      inner.invoke = (cmd, args, opts) => {
+        if (cmd === "focus_window" || cmd === "hold_clicks") inner.__e2eFocus.push(cmd + JSON.stringify(args));
+        return invoke(cmd, args, opts);
+      };
+    }
+    inner.__e2eFocus.length = 0;
+    return true;`);
+  const req = ask(agent, "mcp__lumo__type", { text: "Notepad" });
+  await d.visible(ANY_ALLOW, 10_000, "the card");
+  const focus = async (when) => {
+    const [has, calls] = await d.js("return [document.hasFocus(), window.__TAURI_INTERNALS__.__e2eFocus.join(' ')]");
+    step(`${when}: island has the keyboard ${has}; keyboard calls: ${calls || "none"}`);
+    return has;
+  };
+  await focus("the card shows");
+  await fullCard();
+  await focus("the full card");
+  // What the action does, in the command's place (views/computer-card.ts).
+  const line = await d.visible(".computer-target-slot, .approval-code", 5_000, "the card's action line");
+  await sleep(GUARD);
+  step("clicks the card's action line (not a button)");
+  await app.click(line);
+  await sleep(500);
+  assert.equal(await focus("after the click"), false, "the island must not take the keyboard from the card of a computer action");
+  const deny = await d.visible(".deny-btn", 5_000, "Deny on the full card");
+  const box = await d.js("const b = arguments[0].getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height), devicePixelRatio]", d.ref(deny));
+  step(`the keyboard stayed where it was; clicks Deny (at ${box.join(", ")})`);
+  await app.click(deny);
+  assert.equal(behavior(await told(req)), "deny");
+});
+
+flow(G, "Arguments Lumo can't read: the card says so, offers no Allow, and Deny reaches the agent", app, async () => {
+  const agent = app.agent("unread");
+  await agent.start();
+  // Arguments as an agent may send them (Copilot's toolArgs), that are no JSON
+  // the relay can read: the agent may read them one way and Lumo another.
+  const raw = '{"command": "echo hi" ,, "then": rm -rf build}';
+  const req = agent.send({ hook_event_name: "PermissionRequest", tool_name: "bash", toolArgs: raw, permission_suggestions: [] });
+  open.push(req);
+  step(`${agent.id} asks: bash with arguments ${raw}`);
+  await fullCard();
+  const deny = await d.visible(".deny-btn", 10_000, "the full card (never the closed island's)");
+  const note = (await d.text(await d.visible(".approval-cut", 5_000, "the line that says Lumo can't read them"))).trim();
+  step(`the card says: ${note}`);
+  assert.match(note, /can't read/i);
+  assert.equal(await d.find(".allow-btn"), null, "no Allow on the card");
+  assert.equal(await d.find(CLOSED_ALLOW), null, "nor on the closed island");
+  const sessionAllow = await d.js("return [...document.querySelectorAll('button, .session-allow')].some((e) => e.offsetParent && /this session/i.test(e.textContent))");
+  assert.equal(sessionAllow, false, "no Allow for this session");
+  await sleep(GUARD);
+  step("clicks Deny");
+  await app.click(deny);
+  assert.equal(behavior(await told(req)), "deny");
+});
+
+flow(G, "Two cut commands in a row: the second card grows too, its Allow inside the island", app, async () => {
+  const a = app.agent("cut-first");
+  const b = app.agent("cut-second");
+  await a.start();
+  await b.start();
+  const command = (end) => `$data = @'\n${'{"id":2},\n'.repeat(20_000)}'@ | Set-Content data.json; Write-Output ${end}`;
+  const first = ask(a, "PowerShell", { command: command("end-of-first"), description: "First" });
+  await d.visible(".allow-btn", 10_000, "the first card");
+  const second = ask(b, "PowerShell", { command: command("end-of-second"), description: "Second" });
+  await sleep(GUARD);
+  step("Deny on the first");
+  await app.click(await d.visible(".deny-btn"));
+  assert.equal(behavior(await told(first)), "deny");
+  await d.until(
+    "return [...document.querySelectorAll('.approval-code-tail')].some((e) => e.offsetParent && e.textContent.trim().endsWith('end-of-second'))",
+    10_000,
+    "the second card, with its end",
+  );
+  // The card grows to what it holds (anim.ts): let it settle.
+  await sleep(1_200);
+  const fits = await d.js(`
+    const b = [...document.querySelectorAll('.allow-btn')].find((e) => e.offsetParent).getBoundingClientRect();
+    const i = document.getElementById('island').getBoundingClientRect();
+    return { button: [b.top, b.bottom], island: [i.top, i.bottom], window: innerHeight };`);
+  step(`button ${JSON.stringify(fits.button)}, island ${JSON.stringify(fits.island)}, window ${fits.window}`);
+  assert.ok(fits.button[1] <= fits.island[1] + 1 && fits.island[1] <= fits.window + 1, "Allow must be inside the island, and the island inside its window");
+  await sleep(GUARD);
+  step("clicks Allow on the second");
+  await app.click(await d.visible(".allow-btn"));
+  assert.equal(behavior(await told(second)), "allow");
+});

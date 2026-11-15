@@ -236,8 +236,9 @@ export function capsContext(caps: LocalCaps | undefined): string {
 
 /**
  * The effort levels the picker offers for `id`; none for a provider without
- * any. Antigravity CLI has none to pick: each of its models carries its effort
- * in its name (`gemini-3.8-flash-low`), so the model is the choice. A local
+ * any. Antigravity CLI has none here: each of its models carries its effort
+ * in its name (`gemini-3.8-flash-low`), so the model is the choice; the picker
+ * shows those variants as one model with a slider of its own (effort-groups.ts). A local
  * model offers the reasoning levels its server says it takes; a provider
  * called by its API, those its model list says (apiCaps).
  */

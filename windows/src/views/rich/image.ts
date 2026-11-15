@@ -135,7 +135,7 @@ export function loadsAtOnce(url: string): boolean {
 
 /** Whether images from the web are on (Settings → Security; on unless turned off). */
 export function webImagesOn(): boolean {
-  return State.settings.webImages !== false;
+  return State.settings.webImages === true;
 }
 
 /**

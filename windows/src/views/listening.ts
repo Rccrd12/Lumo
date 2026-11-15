@@ -17,8 +17,8 @@ import { State } from "../core/state";
 import { loadChats } from "../core/chats";
 import {
   EVERY_UNTILS, LISTEN_AGENTS, LISTEN_SERVICES, LISTEN_UNTILS, LOCAL_UNTILS, LOCAL_UNTIL_TEXT, SOURCE_COLOR, UNTIL_TEXT,
-  activeWatches, amountOf, onGitHub, readPullRequest, untilText, watchLabel,
-  type ListenMode, type ListenPast, type ListenSource, type ListenUntil, type ListenWatch, type LocalSource, type PrUntil,
+  activeWatches, amountOf, isGitHubSource, onGitHub, readGitHubTarget, readPullRequest, takesText, untilText, watchLabel,
+  type GitHubSource, type ListenMode, type ListenPast, type ListenSource, type ListenUntil, type ListenWatch, type LocalSource, type PrUntil,
 } from "../core/listen";
 import { pillDefinition } from "../core/pills";
 import type { ToolInfo } from "../core/tools";
@@ -120,7 +120,48 @@ export const LISTENING_STRINGS = {
   needCalendar: N_("Add your calendar first, in Settings."),
   needPill: N_("Turn on the {name} pill first."),
   needTool: N_("Lumo runs by itself only a tool that is on, reviewed and trusted."),
+  // The rest of GitHub (listen_github.rs).
+  ghWhat: N_("What to listen to"),
+  ghRepo: N_("Repository"),
+  ghRepoHint: N_("owner/repository"),
+  ghIssue: N_("Repository or issue"),
+  ghIssueHint: N_("owner/repository, or owner/repository#12"),
+  ghBranch: N_("Repository and branch"),
+  ghBranchHint: N_("owner/repository@branch"),
+  ghWorkflowHint: N_("owner/repository, or owner/repository@branch"),
+  ghRepos: N_("Which repositories"),
+  ghReposHint: N_("All, or owner/repository"),
+  ghLabel: N_("With the label"),
+  ghEnvironment: N_("Environment"),
+  ghCategory: N_("Category"),
+  ghAnyHint: N_("Leave it empty for all"),
+  ghStars: N_("Number of stars"),
+  ghNotRepo: N_("Write the repository as owner/repository."),
+  ghNotBranch: N_("Write the branch as owner/repository@branch."),
+  ghNotIssue: N_("Write the repository as owner/repository, or one issue as owner/repository#12."),
+  ghNotificationsNote: N_("GitHub gives your notifications only to gh, or to a classic token with the notifications permission: Lumo asks gh when the GitHub pill's token can't read them."),
+  ghSecurityNote: N_("GitHub shows these alerts only to who manages the repository, and the token must be able to read them."),
+  ghAll: N_("All"),
 };
+
+/** What can be listened to on GitHub, in the order of the form's chips. */
+const GITHUB_KINDS: { kind: "github.pr" | GitHubSource; name: string }[] = [
+  { kind: "github.pr", name: N_("Pull request") },
+  { kind: "github.issue", name: N_("Issues") },
+  { kind: "github.branch", name: N_("Branch") },
+  { kind: "github.workflow", name: N_("Workflow") },
+  { kind: "github.release", name: N_("Releases and tags") },
+  { kind: "github.deploy", name: N_("Deploys") },
+  { kind: "github.notifications", name: N_("Notifications") },
+  { kind: "github.security", name: N_("Security") },
+  { kind: "github.discussion", name: N_("Discussions") },
+  { kind: "github.stars", name: N_("Stars and forks") },
+];
+
+/** A pull request, or the rest of GitHub. */
+function onGitHubKind(kind: ListenSource): boolean {
+  return kind === "github.pr" || isGitHubSource(kind);
+}
 
 /** A source in the "Listen for something" menu: what it is and what it hears. */
 interface Source {
@@ -135,7 +176,7 @@ interface Source {
 
 /** Every source the concept names, in its order. */
 const SOURCES: Source[] = [
-  { id: "github", name: N_("GitHub"), hint: N_("Pull requests: checks, approval, ready, merged"), icon: ICONS.pull, color: "#F4505E", kind: "github.pr" },
+  { id: "github", name: N_("GitHub"), hint: N_("PRs, issues, workflows, releases, notifications and more"), icon: ICONS.pull, color: "#F4505E", kind: "github.pr" },
   { id: "fs", name: N_("Files and folders"), hint: N_("New, changed or deleted files, downloads done"), icon: ICONS.folder, color: SOURCE_COLOR.fs, kind: "fs" },
   { id: "programs", name: N_("Programs and ports"), hint: N_("A program that starts or ends, a port that opens"), icon: ICONS.terminal, color: SOURCE_COLOR.process, kind: "process" },
   { id: "web", name: N_("Web pages"), hint: N_("A page or an API that changes, a site that goes down"), icon: ICONS.globe, color: SOURCE_COLOR.web, kind: "web" },
@@ -162,13 +203,29 @@ function targetText(kind: ListenSource, until: ListenUntil): { label: string; hi
     case "agent": return { label: LISTENING_STRINGS.agent, hint: "" };
     case "webhook": return { label: LISTENING_STRINGS.webhookName, hint: LISTENING_STRINGS.webhookHint };
     case "tool": return { label: LISTENING_STRINGS.tool, hint: "" };
+    case "github.issue": return { label: LISTENING_STRINGS.ghIssue, hint: LISTENING_STRINGS.ghIssueHint };
+    case "github.branch": return { label: LISTENING_STRINGS.ghBranch, hint: LISTENING_STRINGS.ghBranchHint };
+    case "github.workflow": return { label: LISTENING_STRINGS.ghBranch, hint: LISTENING_STRINGS.ghWorkflowHint };
+    case "github.notifications": return { label: LISTENING_STRINGS.ghRepos, hint: LISTENING_STRINGS.ghReposHint };
+    default: return { label: LISTENING_STRINGS.ghRepo, hint: LISTENING_STRINGS.ghRepoHint };
   }
+}
+
+/** What a watch on the rest of GitHub calls its text (takesText), and its example. */
+function gitHubTextLabel(kind: ListenSource): { label: string; hint: string } {
+  if (kind === "github.workflow") return { label: N_("Workflow"), hint: LISTENING_STRINGS.ghAnyHint };
+  if (kind === "github.deploy") return { label: LISTENING_STRINGS.ghEnvironment, hint: LISTENING_STRINGS.ghAnyHint };
+  if (kind === "github.discussion") return { label: LISTENING_STRINGS.ghCategory, hint: LISTENING_STRINGS.ghAnyHint };
+  return { label: LISTENING_STRINGS.ghLabel, hint: LISTENING_STRINGS.ghAnyHint };
 }
 
 /** The event a new watch on each source starts with. */
 const FIRST_UNTIL: Record<ListenSource, ListenUntil> = {
   "github.pr": "ready", fs: "created", process: "exited", web: "changed", email: "new", service: "soon",
   windows: "notification", agent: "finished", webhook: "called", tool: "changed",
+  "github.issue": "opened", "github.branch": "green", "github.workflow": "finished", "github.release": "release",
+  "github.deploy": "failed", "github.notifications": "mention", "github.security": "dependabot", "github.discussion": "opened",
+  "github.stars": "star",
 };
 
 /** What a new watch on each source names first, where it picks from a list. */
@@ -181,6 +238,7 @@ const PICKS = new Set<ListenSource>(["service", "agent", "tool"]);
 function amountLabel(kind: ListenSource, until: ListenUntil): string {
   if (kind === "service") return LISTENING_STRINGS.minutesBefore;
   if (kind === "tool") return LISTENING_STRINGS.runEvery;
+  if (kind === "github.stars") return LISTENING_STRINGS.ghStars;
   return until === "battery_low" ? LISTENING_STRINGS.batteryAt : LISTENING_STRINGS.awayFor;
 }
 
@@ -210,7 +268,7 @@ export interface ListeningPanel {
 
 /** The source a watch listens on, as the menu shows it. */
 function sourceOf(w: ListenWatch): Source {
-  const kind = w.source ?? "github.pr";
+  const kind = isGitHubSource(w.source ?? "github.pr") ? "github.pr" : w.source ?? "github.pr";
   return SOURCES.find((s) => s.kind === kind) ?? SOURCES[0];
 }
 
@@ -302,6 +360,15 @@ export function buildListeningPanel(opts: {
   }) as HTMLInputElement;
   const untilChips = h("div", { class: "listen-chips" });
   const modeChips = h("div", { class: "listen-chips" });
+  // GitHub: what on it (a pull request, issues, a workflow…), a word about
+  // what GitHub asks for, and the names the repository has for the text.
+  const kindLabel = h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.ghWhat) });
+  const kindChips = h("div", { class: "listen-chips" });
+  const ghNote = h("div", { class: "listen-note" });
+  const nameChips = h("div", { class: "listen-chips" });
+  /** The names the repository has for the text (workflows, environments, labels, categories), once asked. */
+  let names: { for: string; list: string[] } = { for: "", list: [] };
+  let namesTimer: ReturnType<typeof setTimeout> | null = null;
   const formError = h("div", { class: "listen-error" });
   let kind: ListenSource = "github.pr";
   let until: ListenUntil = "ready";
@@ -313,9 +380,10 @@ export function buildListeningPanel(opts: {
   const startBtn = h("button", { class: "listen-head-btn listen-add" });
   const cancelBtn = h("button", { class: "listen-head-btn", text: tl(LISTENING_STRINGS.cancel) });
   const fields = h("div", { class: "listen-form-fields" },
-    targetLabel, targetRow, targetChips, noTools, noToolsRow,
+    kindLabel, kindChips,
+    targetLabel, targetRow, ghNote, targetChips, noTools, noToolsRow,
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.when) }), untilChips,
-    textLabel, textInput,
+    textLabel, textInput, nameChips,
     amountLabelEl, amountInput,
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.how) }), modeChips,
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.task) }), taskInput,
@@ -335,8 +403,30 @@ export function buildListeningPanel(opts: {
     return h("button", { class: on ? "picker-chip on" : "picker-chip", title, onclick: onClick }, label);
   }
 
-  /** On GitHub, every time only for what happens again with each push; elsewhere, always. */
-  const canRepeat = () => kind !== "github.pr" || EVERY_UNTILS.includes(until as PrUntil);
+  /** On a pull request, every time only for what happens again; a number of stars is reached once; elsewhere, always. */
+  const canRepeat = () => kind === "github.pr" ? EVERY_UNTILS.includes(until as PrUntil) : !(kind === "github.stars" && until === "stars");
+
+  /** The repository the form names, for the names it has (null: not one yet). */
+  function namesRepo(): string | null {
+    if (!isGitHubSource(kind) || !takesText(kind, until)) return null;
+    const target = readGitHubTarget(kind, "comment", targetInput.value);
+    return target && target !== "all" ? target.split(/[@#]/)[0] : null;
+  }
+
+  /** Asks GitHub for the names the repository has, a moment after it is written. */
+  function askNames() {
+    if (namesTimer) clearTimeout(namesTimer);
+    namesTimer = setTimeout(async () => {
+      const repo = namesRepo();
+      const key = `${kind} ${repo}`;
+      if (!repo || names.for === key) return;
+      names = { for: key, list: [] };
+      const list = (await Bridge.listenGitHubNames(kind, repo)) ?? [];
+      if (names.for !== key) return;
+      names = { for: key, list };
+      drawChoices();
+    }, 500);
+  }
 
   /** The events the form offers: on the calendar, only one coming up; on a service, the rest. */
   function untilsNow(): readonly ListenUntil[] {
@@ -357,6 +447,26 @@ export function buildListeningPanel(opts: {
   function drawChoices() {
     const untils = untilsNow();
     if (!untils.includes(until)) until = untils[0];
+    // On GitHub: what on it, a chip each.
+    clear(kindChips);
+    for (const k of GITHUB_KINDS) {
+      kindChips.append(chip(t(k.name), k.kind === kind, () => {
+        if (k.kind === kind) return;
+        kind = k.kind;
+        until = FIRST_UNTIL[kind];
+        mode = "once";
+        formError.textContent = "";
+        textInput.value = "";
+        amountInput.value = "";
+        taskInput.placeholder = t(kind === "github.pr" ? LISTENING_STRINGS.taskHint : LISTENING_STRINGS.taskHintOther);
+        drawChoices();
+        askNames();
+      }));
+    }
+    kindLabel.hidden = !onGitHubKind(kind);
+    kindChips.hidden = !onGitHubKind(kind);
+    ghNote.textContent = kind === "github.notifications" ? t(LISTENING_STRINGS.ghNotificationsNote) : kind === "github.security" ? t(LISTENING_STRINGS.ghSecurityNote) : "";
+    ghNote.hidden = !ghNote.textContent;
     // What to listen to: written, picked, or nothing (Windows' battery, any new email).
     const writes = !PICKS.has(kind) && !(kind === "email" && until === "new") && !(kind === "windows" && until !== "notification");
     const text = targetText(kind, until);
@@ -388,12 +498,33 @@ export function buildListeningPanel(opts: {
         drawChoices();
       }));
     }
-    // The text a page or a tool shows; the words of an event's title.
-    const wantsText = until === "contains" || until === "gone" || until === "soon";
-    textLabel.textContent = t(until === "soon" ? LISTENING_STRINGS.titleWords : until === "gone" ? LISTENING_STRINGS.goneText : LISTENING_STRINGS.text);
-    textInput.placeholder = t(until === "soon" ? LISTENING_STRINGS.titleWordsHint : until === "gone" ? LISTENING_STRINGS.goneHint : LISTENING_STRINGS.textHint);
+    // The text a page or a tool shows; the words of an event's title; on
+    // GitHub, a label, a workflow, an environment, a category.
+    const onRest = isGitHubSource(kind);
+    const wantsText = onRest ? takesText(kind, until) : until === "contains" || until === "gone" || until === "soon";
+    const ghText = gitHubTextLabel(kind);
+    textLabel.textContent = t(onRest ? ghText.label : until === "soon" ? LISTENING_STRINGS.titleWords : until === "gone" ? LISTENING_STRINGS.goneText : LISTENING_STRINGS.text);
+    textInput.placeholder = t(onRest ? ghText.hint : until === "soon" ? LISTENING_STRINGS.titleWordsHint : until === "gone" ? LISTENING_STRINGS.goneHint : LISTENING_STRINGS.textHint);
     textLabel.hidden = !wantsText;
     textInput.hidden = !wantsText;
+    // The names the repository has: a click writes one; All empties it.
+    clear(nameChips);
+    const repo = namesRepo();
+    const shown = wantsText && repo && names.for === `${kind} ${repo}` ? names.list : [];
+    if (shown.length) {
+      const now = textInput.value.trim().toLowerCase();
+      nameChips.append(chip(t(LISTENING_STRINGS.ghAll), now === "", () => {
+        textInput.value = "";
+        drawChoices();
+      }));
+      for (const name of shown) {
+        nameChips.append(chip(name, now === name.toLowerCase(), () => {
+          textInput.value = name;
+          drawChoices();
+        }));
+      }
+    }
+    nameChips.hidden = shown.length === 0;
     const amount = amountOf(kind, until);
     amountLabelEl.hidden = !amount;
     amountInput.hidden = !amount;
@@ -412,7 +543,7 @@ export function buildListeningPanel(opts: {
       modeChips.append(chip(t(LISTENING_STRINGS.every), mode === "every", () => {
         mode = "every";
         drawChoices();
-      }, t(kind === "github.pr" ? LISTENING_STRINGS.everyHint : LISTENING_STRINGS.everyLocal)));
+      }, t(kind === "github.pr" && (until === "checks" || until === "green") ? LISTENING_STRINGS.everyHint : LISTENING_STRINGS.everyLocal)));
     }
   }
 
@@ -475,7 +606,7 @@ export function buildListeningPanel(opts: {
     formError.textContent = "";
     const writes = !PICKS.has(kind);
     targetInput.value = !watch ? "" : onGitHub(watch) ? `${watch.repo}#${watch.number}` : writes ? watch.target ?? "" : "";
-    if (watch && ["pc", "any", "inbox", "webhook"].includes(watch.target ?? "") && writes && !onGitHub(watch)) targetInput.value = "";
+    if (watch && ["pc", "any", "inbox", "webhook", "all"].includes(watch.target ?? "") && writes && !onGitHub(watch)) targetInput.value = "";
     picked = watch && !writes ? watch.target ?? "" : FIRST_TARGET[kind] ?? "";
     chooseBtn.hidden = kind !== "fs";
     taskInput.placeholder = t(
@@ -489,7 +620,9 @@ export function buildListeningPanel(opts: {
     until = watch?.until ?? FIRST_UNTIL[kind];
     mode = watch?.mode ?? (kind === "webhook" ? "every" : "once");
     startBtn.textContent = t(watch ? LISTENING_STRINGS.save : LISTENING_STRINGS.start);
+    names = { for: "", list: [] };
     drawChoices();
+    askNames();
     draw();
     if (kind === "tool") void loadTools();
     if (!targetRow.hidden) targetInput.focus();
@@ -521,6 +654,21 @@ export function buildListeningPanel(opts: {
         return;
       }
       watch = await Bridge.listenAdd(pr.repo, pr.number, until, task, chatId, mode, replace);
+    } else if (isGitHubSource(kind)) {
+      const target = readGitHubTarget(kind, until, targetInput.value);
+      if (!target) {
+        formError.textContent = t(kind === "github.branch" ? LISTENING_STRINGS.ghNotBranch : kind === "github.issue" ? LISTENING_STRINGS.ghNotIssue : LISTENING_STRINGS.ghNotRepo);
+        targetInput.focus();
+        return;
+      }
+      const text = textInput.hidden ? "" : textInput.value.trim().replace(/["“”[\]]/g, "");
+      const amount = amountInput.hidden ? 0 : Math.max(0, Math.round(Number(amountInput.value) || 0));
+      const got = await Bridge.listenTryLocal(kind, target, until, text, task, chatId, mode, amount, replace);
+      watch = got.watch ?? null;
+      if (!watch) {
+        formError.textContent = t(LISTENING_STRINGS.failed);
+        return;
+      }
     } else {
       const target = PICKS.has(kind) ? picked : targetRow.hidden ? "" : targetInput.value.trim().replace(/^["“]|["”]$/g, "");
       const wrong = wrongTarget(target);
@@ -558,6 +706,12 @@ export function buildListeningPanel(opts: {
   chooseBtn.addEventListener("click", async () => {
     const folder = await Bridge.pickFolder();
     if (folder) targetInput.value = folder;
+  });
+  targetInput.addEventListener("input", () => {
+    if (isGitHubSource(kind)) askNames();
+  });
+  textInput.addEventListener("input", () => {
+    if (!nameChips.hidden) drawChoices();
   });
   for (const input of [targetInput, textInput, amountInput, taskInput]) {
     input.addEventListener("keydown", (e) => {

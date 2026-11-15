@@ -47,7 +47,7 @@ import { Feed, UPLOADED_TEXT, compactNotice, compactTimer, setCompactNewsHandler
 import { agentPlanWanted, refreshAntigravityPlanUsage, refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
-import { isComputerTool } from "../core/computer";
+import { isComputerTool, islandHoldsClicks } from "../core/computer";
 import type { ComputerState } from "../core/computer-use";
 import { ComputerPill, clearComputerReveal, computerShowing, setComputerReveal } from "../views/computer-plan";
 import { type PlanSpot, afterCard, pausedPlanWaits, planLeave, planMove } from "../core/computer-plan";
@@ -60,6 +60,7 @@ import { Live } from "../live/session";
 import "../views/plan.css";
 import { presentApproval } from "./hooks";
 import { DOZE_DISTANCE, SAVER_FPS, STILL_AFTER_MS, distanceTo } from "../core/energy";
+import { heldByWindowMove } from "./window-move";
 
 /** Saving energy, the wait before each frame of the closed island: about SAVER_FPS a second. */
 const SPARING_FRAME_MS = 1000 / SAVER_FPS - 8;
@@ -180,6 +181,8 @@ export class Island {
   private settleTimer: number | null = null;
   /** Opens the closed island once the mouse has rested on it (Settings → Island). */
   private hoverOpenTimer: number | null = null;
+  /** The cursor is carrying a window moved or sized over the island (window-move.ts). */
+  private windowMoveHold = false;
   /** The mouse is on the closed island's own buttons. */
   private onControls = false;
   /** Page pixels the island is drawn off its usual place (a floating island, island.rs shift). */
@@ -1135,6 +1138,18 @@ export class Island {
     this.fsm.holdOpen(SHARE_GRACE);
   }
 
+  /**
+   * While the computer is in use, a click on the island must not bring it to
+   * the front: what the agent opened would close (core/computer.ts,
+   * click_hold.rs). Not while the island has the keyboard anyway (its Ask
+   * field, given on purpose).
+   */
+  private syncHeldClicks() {
+    const card = State.pendingApproval;
+    const hold = islandHoldsClicks(card?.tool ?? null, State.computer, State.computerActive) && !document.hasFocus();
+    void Bridge.holdClicks(hold);
+  }
+
   takeKeyboard() {
     this.lastGesture = performance.now();
     void Bridge.focusWindow(true);
@@ -1727,6 +1742,9 @@ export class Island {
     });
     // The window grows and shrinks around the island: its rect moves with it.
     window.addEventListener("resize", () => this.ensureRunning());
+    // Its clicks are held only while the island hasn't the keyboard (syncHeldClicks).
+    window.addEventListener("focus", () => this.syncHeldClicks());
+    window.addEventListener("blur", () => this.syncHeldClicks());
     this.watchScale();
 
     this.islandEl.addEventListener("mousedown", (e) => {
@@ -1854,8 +1872,11 @@ export class Island {
     });
   }
 
-  /** Cursor in window-logical coordinates. */
-  onCursor(x: number, y: number) {
+  /**
+   * Cursor in window-logical coordinates. `windowMoving`: Windows is moving or
+   * sizing a window (island.rs), so passing over the island is not a hover.
+   */
+  onCursor(x: number, y: number, windowMoving = false) {
     if (x !== State.mouse.x || y !== State.mouse.y) this.mouseMovedAt = performance.now();
     State.mouse = { x, y };
     const rect = this.islandRect();
@@ -1874,9 +1895,13 @@ export class Island {
     // over the island never opens it. A card hands it back to the user.
     // Paused with Esc it is the user's again: the plan's buttons are for clicking.
     const claudes = State.computerActive && !State.pendingApproval && !State.computer?.paused;
-    const inIsland = !claudes &&
+    const over =
       x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
       y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN;
+    // A window dragged or resized across the island carries the cursor over
+    // it: that never opens the island, nor does letting go of it there.
+    this.windowMoveHold = heldByWindowMove(this.windowMoveHold, windowMoving, over);
+    const inIsland = !claudes && !this.windowMoveHold && over;
 
     // Mid-resize the cursor rides the edge, a little in or out: not a leave.
     if (!this.resizing && !this.moving) {
@@ -1904,7 +1929,7 @@ export class Island {
     }
 
     // Bot hover → love
-    const overBot = !claudes && State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
+    const overBot = !claudes && !this.windowMoveHold && State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
     if (overBot && !this.botHovering) this.botHoverIn(x, y);
     if (!overBot && this.botHovering) this.cancelBotHover();
     this.botHovering = overBot;
@@ -2253,6 +2278,7 @@ export class Island {
     } else {
       this.newLookSize = "";
     }
+    this.syncHeldClicks();
     if (this.lastSyncedView !== State.view) {
       // A permission card can have taken the keyboard too, for Y and N.
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"

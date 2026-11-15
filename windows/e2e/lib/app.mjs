@@ -3,7 +3,7 @@
 // WebDriver attached to its windows, the real mouse, and a fake agent.
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -75,8 +75,12 @@ export class Lumo {
     };
   }
 
-  /** Starts Lumo; `fresh` starts from an empty profile. */
-  async launch({ fresh = true } = {}) {
+  /**
+   * Starts Lumo; `fresh` starts from an empty profile. `settings`, when given,
+   * is written as its settings.json before it starts (fields in settings.rs's
+   * camelCase; the ones left out take their defaults).
+   */
+  async launch({ fresh = true, settings = null } = {}) {
     if (fresh) {
       rmSync(this.profile, { recursive: true, force: true });
       // The webview keeps its own storage under the real %LOCALAPPDATA%
@@ -84,6 +88,11 @@ export class Lumo {
       if (ON_CI) rmSync(join(process.env.LOCALAPPDATA, "com.rccrd12.lumo", "EBWebView"), { recursive: true, force: true });
     }
     for (const dir of ["home", "roaming", "local", "home/e2e-app"]) mkdirSync(join(this.profile, dir), { recursive: true });
+    if (settings) {
+      const dir = join(this.profile, "roaming", "com.rccrd12.lumo");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "settings.json"), JSON.stringify(settings, null, 2));
+    }
     await ensureDriver();
     this.proc = spawn(EXE, [], { env: this.env, stdio: "ignore", detached: false });
     await devtoolsUp(true);
