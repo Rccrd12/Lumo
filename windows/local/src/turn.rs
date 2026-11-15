@@ -40,7 +40,8 @@ pub enum Doing {
 pub enum Correction {
     /// It wrote a tool call in its text instead of making it.
     Written,
-    /// It said a file changed, or that it was done, and no tool did it.
+    /// It said a file changed, or that it was done, and no tool did it. Its
+    /// answer stays shown: what it says or does then comes under it.
     SaidDone,
     /// It stopped before the tool it announced, or left the change undone.
     Stopped,
@@ -126,7 +127,8 @@ pub enum End {
 /// A turn's answer, and what it took.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outcome {
-    /// What the model said before each round of tools.
+    /// What the model said before each round of tools, and an answer it was
+    /// sent back from for saying it did what no tool did (kept as shown).
     pub said: Vec<String>,
     /// Its last answer.
     pub text: String,
@@ -176,6 +178,14 @@ pub fn hung(key: &str, now: bool) -> bool {
 /// The names of the tools `body` offers.
 fn offered(body: &Value) -> Vec<String> {
     body["tools"].as_array().map(|t| t.iter().filter_map(|t| t.pointer("/function/name").and_then(Value::as_str)).map(str::to_string).collect()).unwrap_or_default()
+}
+
+/// An answer the model is sent back from, kept where it was shown: what it
+/// says next comes under it, on the island and in the answer.
+fn keep(said: &mut Vec<String>, text: &str) {
+    if !text.trim().is_empty() {
+        said.push(text.to_string());
+    }
 }
 
 fn push(body: &mut Value, messages: impl IntoIterator<Item = Value>) {
@@ -390,15 +400,18 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 continue;
             }
         }
-        // "I changed the file" with no tool that changed one: the model is told once.
+        // "I changed the file" with no tool that changed one: the model is
+        // told once. Its answer stays shown (it may be right, or say much
+        // else of use): the call it makes then, or the sentence that says
+        // nothing was done, comes under it.
         if answer.calls.is_empty() && !claimed && rules.workspace && !changed && asks_change(rules.query) && claims_change(&answer.text) {
             claimed = true;
             fixes.push("change said, not made");
             push(body, [
                 json!({ "role": "assistant", "content": answer.text }),
-                json!({ "role": "user", "content": "(Lumo: you said a file was changed, but no tool changed one in this answer: nothing changed. Call workspace_write or workspace_edit on the copy now, or tell the user plainly that it wasn't done.)" }),
+                json!({ "role": "user", "content": "(Lumo: you said a file was changed, but no tool changed one in this answer: nothing changed. The user still sees your answer, so don't repeat it. Call workspace_write or workspace_edit on the copy now, or write only one short sentence telling the user plainly that it wasn't done.)" }),
             ]);
-            hooks.shown(&before);
+            keep(&mut said, &answer.text);
             next = Some(Doing::Correcting(Correction::SaidDone));
             continue;
         }
@@ -413,12 +426,18 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             let said_done = nothing_ran && claims_done(&answer.text);
             fixes.push(if said_done { "done said, not made" } else { "stopped before the tool" });
             let note = if said_done {
-                "(Lumo: you said it was done, but you called no tool: nothing was done. Call the tool that does it now, or tell the user plainly that you can't.)"
+                "(Lumo: you said it was done, but you called no tool: nothing was done. The user still sees your answer, so don't repeat it. Call the tool that does it now, or write only one short sentence telling the user plainly that you can't.)"
             } else {
                 "(Lumo: you said what you would do next, but called no tool, so nothing happened and the user is still waiting. Call the tool now and finish the task.)"
             };
             push(body, [json!({ "role": "assistant", "content": answer.text }), json!({ "role": "user", "content": note })]);
-            hooks.shown(&before);
+            // Said done: the answer stays shown, as above. Only announced
+            // ("Now I'll read the file"): what comes next takes its place.
+            if said_done {
+                keep(&mut said, &answer.text);
+            } else {
+                hooks.shown(&before);
+            }
             next = Some(Doing::Correcting(if said_done { Correction::SaidDone } else { Correction::Stopped }));
             continue;
         }
