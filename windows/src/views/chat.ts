@@ -95,9 +95,11 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatModelOf, chatTitle, cleanRecap, cliOf, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatCli,
-  setChatModel, setCompact, toSavedTurn, type ChatHit, type SavedChat,
+  chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact,
+  toSavedTurn, type ChatHit, type SavedChat,
 } from "../core/chats";
+// The chat's CLI sessions, kept with it: apart, so the list above stays as other changes edit it.
+import { cliOf, setChatCli } from "../core/chats";
 import {
   agentAsk, applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents,
