@@ -10,7 +10,7 @@ import {
   EMAIL_CARD_H,
   APPROVAL_MAX_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
-  zoomStep,
+  onLumo, zoomStep,
 } from "../core/layout";
 import { Sound } from "../core/sound";
 import { NEUTRAL_PILL } from "../core/pill-colors";
@@ -1950,10 +1950,10 @@ export class Island {
 
   private isBotHit(x: number, y: number): boolean {
     const rect = this.islandRect();
-    const cx = rect.x + this.botCx.value;
-    const cy = rect.y + this.botCy.value;
-    const radius = this.botSize.value / 2;
-    return (x - cx) ** 2 + (y - cy) ** 2 <= radius * radius;
+    // On the open island he is his eyes alone, and only they are him.
+    return onLumo(x - rect.x, y - rect.y,
+      { cx: this.botCx.value, cy: this.botCy.value, size: this.botSize.value },
+      State.mode === "expanded" && this.engine.eyesOnly);
   }
 
   private botHoverIn(x: number, y: number) {
