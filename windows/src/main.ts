@@ -59,7 +59,9 @@ async function main() {
   await onEvent<null>("computer-stopped", () => compactNotice(t(COMPUTER_TEXT.stopped), "#F5A524"));
   // A click on the island kept from its window while the computer is in use (click_hold.rs).
   await onEvent<{ down?: unknown; x?: unknown; y?: unknown }>("held-click", (c) => {
-    if (c && typeof c === "object") heldClick(c.down === true, Number(c.x), Number(c.y));
+    // In the window's pixels: the page's own are devicePixelRatio of them (the island's zoom included).
+    const r = window.devicePixelRatio || 1;
+    if (c && typeof c === "object") heldClick(c.down === true, Number(c.x) / r, Number(c.y) / r);
   });
   // Claude starts or stops using the computer (computer.rs): the island closes to Lumo's ring.
   await onEvent<boolean>("computer-engaged", (on) => island.onComputer(on === true));

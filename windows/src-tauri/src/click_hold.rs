@@ -150,7 +150,9 @@ unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRE
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
 
-/// The page clicks what is at `p` (screen pixels), in its own CSS pixels.
+/// The page clicks what is at `p` (screen pixels): told in the window's own
+/// pixels, which it turns into its CSS pixels (its devicePixelRatio holds the
+/// island's zoom too, which the window's scale factor does not).
 fn tell_page(app: &AppHandle, down: bool, p: POINT) {
     let Some(win) = crate::island::window(app) else { return };
     let Ok(hwnd) = win.hwnd() else { return };
@@ -158,10 +160,5 @@ fn tell_page(app: &AppHandle, down: bool, p: POINT) {
     if !unsafe { ScreenToClient(HWND(hwnd.0), &mut at) }.as_bool() {
         return;
     }
-    let scale = win.scale_factor().unwrap_or(1.0).max(0.5);
-    let _ = app.emit_to(
-        crate::island::WINDOW_LABEL,
-        "held-click",
-        json!({ "down": down, "x": at.x as f64 / scale, "y": at.y as f64 / scale }),
-    );
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, "held-click", json!({ "down": down, "x": at.x, "y": at.y }));
 }
