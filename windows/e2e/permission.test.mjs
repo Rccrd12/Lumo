@@ -269,7 +269,9 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
   await app.click(line);
   await sleep(500);
   assert.equal(await focus("after the click"), false, "the island must not take the keyboard from the card of a computer action");
-  step("the keyboard stayed where it was; clicks Deny");
-  await app.click(await d.visible(".deny-btn", 5_000, "Deny on the full card"));
+  const deny = await d.visible(".deny-btn", 5_000, "Deny on the full card");
+  const box = await d.js("const b = arguments[0].getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height), devicePixelRatio]", d.ref(deny));
+  step(`the keyboard stayed where it was; clicks Deny (at ${box.join(", ")})`);
+  await app.click(deny);
   assert.equal(behavior(await told(req)), "deny");
 });
