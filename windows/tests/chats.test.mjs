@@ -3,7 +3,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_CHATS, PICTURE_CHARS, RECAP_PICTURES, boundPictures, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, saveChat, setCompact, toSavedTurn,
+  MAX_CHATS, PICTURE_CHARS, RECAP_PICTURES, boundPictures, chatTitle, cliOf, compactOf, deleteChat, joinOwnAnswer, loadChats, saveChat, setChatCli, setCompact, toSavedTurn,
 } from "../src/core/chats.ts";
 
 const mem = new Map();
@@ -85,6 +85,28 @@ test("a compacted chat keeps its summary until it is deleted", () => {
   assert.deepEqual(compactOf("b"), { upto: 4, summary: "T" });
   setCompact("b", null);
   assert.equal(compactOf("b"), null);
+});
+
+test("a chat keeps what its CLI sessions saw until it is deleted or edited", () => {
+  saveChat(chat("a"));
+  saveChat(chat("b"));
+  const state = '{"last":"claude-code","sessions":[{"provider":"claude-code","id":"s","seen":2}]}';
+  setChatCli("a", state);
+  assert.equal(cliOf("a"), state);
+  assert.equal(cliOf("b"), null);
+  // A chat whose first answer is still coming keeps it too.
+  setChatCli("new", state);
+  assert.equal(cliOf("new"), state);
+  setChatCli("b", state);
+  deleteChat("a");
+  assert.equal(cliOf("a"), null);
+  assert.equal(cliOf("b"), state);
+  setChatCli("b", null);
+  assert.equal(cliOf("b"), null);
+  // Storage full: nothing breaks, the chat opens as before (every turn seen).
+  quota = 10;
+  setChatCli("b", state);
+  assert.equal(cliOf("b"), null);
 });
 
 test("what Claude Code writes by itself joins the last answer, before a question still waiting", () => {

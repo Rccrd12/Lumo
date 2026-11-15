@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { computerPoint, describeComputerAction, isComputerTool, peekPlacement, splitComputerLine } = await import("../src/core/computer.ts");
+const { cardClickTakesKeyboard, islandHoldsClicks, computerPoint, describeComputerAction, isComputerTool, peekPlacement, splitComputerLine } = await import("../src/core/computer.ts");
 const { setLanguage } = await import("../src/i18n/i18n.ts");
 
 const say = (name, input = {}) => describeComputerAction(`mcp__lumo__${name}`, input);
@@ -94,4 +94,29 @@ test("the screen's crop fills the card's thumbnail, its point inside it", () => 
   assert.deepEqual([corner.left, corner.top, corner.x, corner.y], [0, 0, 0, 0], "the crop's corner can't move further");
   // Smaller than the box: scaled up to fill it.
   assert.equal(peekPlacement({ width: 56, height: 36, at: [28, 18] }, 112, 72).scale, 2);
+});
+
+test("a click on a card never takes the keyboard while the computer is in use", () => {
+  const on = { engaged: true, stopped: false };
+  // Outside computer use, a click on the card gives the island Y and N, as before.
+  assert.equal(cardClickTakesKeyboard("Bash", null, false), true);
+  assert.equal(cardClickTakesKeyboard("Bash", { engaged: false, stopped: false }, false), true);
+  // A computer action's card: the window it acts on keeps the front (the Start menu, Search stay open).
+  assert.equal(cardClickTakesKeyboard("mcp__lumo__type", null, false), false);
+  assert.equal(cardClickTakesKeyboard("mcp_lumo_left_click", null, false), false);
+  // Any other card while an agent uses the computer, engaged or paused.
+  assert.equal(cardClickTakesKeyboard("Bash", on, false), false);
+  assert.equal(cardClickTakesKeyboard("Bash", { engaged: true, stopped: false, paused: true }, false), false);
+  assert.equal(cardClickTakesKeyboard("Write", null, true), false);
+  // Stopped for good: back to the usual card.
+  assert.equal(cardClickTakesKeyboard("Bash", { engaged: true, stopped: true }, false), true);
+});
+
+test("the island's clicks leave the front where it is while the computer is in use", () => {
+  assert.equal(islandHoldsClicks(null, null, false), false);
+  assert.equal(islandHoldsClicks("Bash", null, false), false);
+  assert.equal(islandHoldsClicks("mcp__lumo__left_click", null, false), true);
+  assert.equal(islandHoldsClicks(null, { engaged: true, stopped: false }, false), true);
+  assert.equal(islandHoldsClicks(null, null, true), true);
+  assert.equal(islandHoldsClicks(null, { engaged: true, stopped: true }, false), false);
 });

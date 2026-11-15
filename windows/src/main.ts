@@ -10,6 +10,7 @@ import { Island } from "./island/island";
 import { registerHookHandlers, releaseAllApprovals } from "./island/hooks";
 import { registerIntegrationHandlers, refreshConfigured } from "./island/integrations";
 import { startCalendarListening } from "./island/listen-calendar";
+import { heldClick } from "./island/held-clicks";
 import { registerShortcutHandlers } from "./island/shortcuts";
 import { Recap } from "./recap/recap";
 import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t } from "./i18n/i18n";
@@ -49,13 +50,22 @@ async function main() {
   State.loadIntegrationTasks();
   if (boot?.shift) island.onShift(boot.shift);
 
-  await onEvent<{ x: number; y: number }>("cursor", ({ x, y }) => island.onCursor(x, y));
+  await onEvent<{ x: number; y: number; windowMoving?: boolean }>(
+    "cursor",
+    ({ x, y, windowMoving }) => island.onCursor(x, y, windowMoving === true),
+  );
   // A press elsewhere on the screen: folds the open island when set to (Settings → Island).
   await onEvent<null>("outside-press", () => island.onOutsidePress());
   // The left button let go anywhere on the screen: ends a file drag the page never saw end.
   await onEvent<null>("left-up", () => island.onLeftUp());
   // Computer use was stopped (the plan's Stop, computer.rs): Esc only pauses it.
   await onEvent<null>("computer-stopped", () => compactNotice(t(COMPUTER_TEXT.stopped), "#F5A524"));
+  // A click on the island kept from its window while the computer is in use (click_hold.rs).
+  await onEvent<{ down?: unknown; x?: unknown; y?: unknown }>("held-click", (c) => {
+    // In the window's pixels: the page's own are devicePixelRatio of them (the island's zoom included).
+    const r = window.devicePixelRatio || 1;
+    if (c && typeof c === "object") heldClick(c.down === true, Number(c.x) / r, Number(c.y) / r);
+  });
   // Claude starts or stops using the computer (computer.rs): the island closes to Lumo's ring.
   await onEvent<boolean>("computer-engaged", (on) => island.onComputer(on === true));
   // How computer use goes, with its plan (computer.rs): the plan opens a moment

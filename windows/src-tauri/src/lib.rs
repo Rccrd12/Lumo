@@ -16,6 +16,7 @@ mod chat_files;
 mod chat_usage;
 mod claude;
 mod claude_code;
+mod click_hold;
 mod clipboard;
 mod acp_chat;
 mod codex_chat;
@@ -235,8 +236,18 @@ fn focus_window(app: AppHandle, focused: bool) {
     let Some(win) = island::window(&app) else { return };
     platform::set_activating(&win, focused);
     if focused {
+        // Given the keyboard on purpose: its clicks are its own again.
+        click_hold::set(&app, false);
         let _ = win.set_focus();
     }
+}
+
+/// While the computer is in use, a click on the island leaves the front to the
+/// window the agent works in (click_hold.rs; core/computer.ts islandHoldsClicks
+/// says when).
+#[tauri::command]
+fn hold_clicks(app: AppHandle, hold: bool) {
+    click_hold::set(&app, hold);
 }
 
 #[tauri::command]
@@ -751,14 +762,11 @@ async fn chat_send(
     // while this answer is written goes with the next message. The chat's own
     // provider and model, when the page names them, answer it.
     let settings = chat::with_pick(shared.settings.lock().unwrap().clone(), provider.as_deref(), model.as_deref());
-    let shots: Vec<String> = screen.as_ref().map(|s| s.shots.iter().map(|r| r.path.clone()).collect()).unwrap_or_default();
-    let reply = chat::send(&app, &chat, &settings, query, context, screen).await;
-    // Screenshots are read once the turn is answered: they don't stay on disk.
-    // A failed turn keeps them, so the same message can be sent again.
-    if reply.is_ok() {
-        screen::discard(&shots);
-    }
-    reply
+    // The screenshots stay in the inbox with the chat that sent them, like its
+    // dropped files: its question shows them, and editing it sends them again.
+    // They go when the chat is deleted (files.rs release), or with the inbox's
+    // tidying once no chat names them.
+    chat::send(&app, &chat, &settings, query, context, screen).await
 }
 
 /// The models a provider offers, for the picker in the chat view. Only asked
@@ -951,8 +959,8 @@ struct SavedTurn {
 /// or Antigravity CLI conversation that answered it, if any, so the next
 /// question continues it.
 #[tauri::command]
-fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
-    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, cli: Option<String>, compact: Option<SavedCompact>) {
+    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, cli, compact.map(|c| (c.upto, c.summary)));
 }
 
 /// chat_restore for a chat that is not on screen: the Listening events use it
@@ -963,10 +971,10 @@ fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, ses
 /// chat on screen, or an answer to an earlier event still being written) its
 /// own is the newer one, and restoring would drop that answer.
 #[tauri::command]
-fn chat_load(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
+fn chat_load(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, cli: Option<String>, compact: Option<SavedCompact>) {
     let (chat, fresh) = chats.load(&chat_id);
     if fresh {
-        chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+        chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, cli, compact.map(|c| (c.upto, c.summary)));
     }
 }
 
@@ -1436,6 +1444,7 @@ pub fn run() {
             set_collapsed,
             set_island_rect,
             focus_window,
+            hold_clicks,
             reposition,
             list_monitors,
             open_url,

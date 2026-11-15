@@ -146,7 +146,8 @@ Quit. The look of 0.17, with the ring of light and the tabs, is gone since
 | `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
 | The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab, folder and selected text on its own, even two of the same screen; what comes from the computer (screenshots, windows, tabs, folders, selected text) sits in a **Computer** folder, with how many it holds on its right, that a click opens — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
 | **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code (its subagents too), Codex or Antigravity CLI (its subagents too, from their transcripts) read, edited or created while answering, in a folder for each: **Attached**, **Read by the AI**, **Edited by the AI**, **Created by the AI** (a file attached and then read is in both; only the folders with something in them show, with how many on their right). Each row has the folder the file is in, and a × (or **Remove from the chat's context** in its right click) that takes it out of the chat: the AI is told with your next question to leave it alone, and a fresh Claude Code session isn't given it again. Editing a message takes out the files of the messages after it, and what the AI read or wrote for them. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
-| Under a message in the chat | Its actions, as in Claude's app, under the mouse (always under the last answer): under an answer **Copy**, **Retry** and when it came ("2 min ago"); under a question when you sent it, **Retry**, **Edit** and **Copy**. **Copy** takes the text as written, Markdown included. **Edit** puts the question back in the field: sending it replaces it and drops what followed. **Retry** is on the last question and its answer only: the question goes again, unchanged, in place of its answer; when an answer failed, it stays in sight under the question. Chats saved before 0.21.0 have no times |
+| On a question in the chat | **What went with it**, as small icons in a capsule on its bubble's top right corner: one for each kind (a file, a picture with its own small picture, a screenshot, a window, a web page, a folder, selected text), in the attachments' colours, with how many beside it. A click lists them under the bubble; a click on one opens it: a file in its app, a picture or a screenshot big, the selected text, what a window or a page showed. Kept with the chat |
+| Under a message in the chat | Its actions, as in Claude's app, under the mouse (always under the last answer): under an answer **Copy**, **Retry** and when it came ("2 min ago"); under a question when you sent it, **Retry**, **Edit** and **Copy**. **Copy** takes the text as written, Markdown included. **Edit** puts the question back in the field, and what went with it back in the attachments (its × takes any of it out): sending it replaces it and drops what followed. Over the field, a line says what comes back with it and what leaves the context — what went with the questions after it, and in a chat opened again what can't come back (a window, a tab or a folder showed what it showed then; a file deleted since). **Retry** sends it again with the same. **Retry** is on the last question and its answer only: the question goes again, unchanged, in place of its answer; when an answer failed, it stays in sight under the question. Chats saved before 0.21.0 have no times |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last; with several folders open (windows or tabs), **Folders open in File Explorer** lists them, to share one or all. Their files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
@@ -166,7 +167,10 @@ and grows a little to say it (on the top and bottom edges; upright on a side
 it stays as it is), only as wide as what it says. One thing alone sits in
 the middle; several sit side by side, each more compact (what the AI is doing, the next
 event, up to two timers, the music). Their buttons work: resting the mouse on
-them never opens the island, even with Open on hover.
+them never opens the island, even with Open on hover. Nor does a window
+dragged or resized across it, nor letting go of that window on it: the
+island opens on hover again once the mouse has left it and come back. A
+file dragged near it still opens it for the drop.
 
 - **What the AI is doing**: "Haiku · Reading main.ts", "Haiku · Writing…",
   "Gemini Live · Looking at the screen", "Claude Code · Waiting for your
@@ -352,7 +356,11 @@ nothing.", "Changes a file."). Once the island has the keyboard (a click on the
 card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say, even
 with the chat field focused. In another app they are just letters, never an
 answer. A letter typed right after another key, mid-word, is never taken as an
-answer.
+answer. While an agent uses the computer, and on a computer action's card, a
+click on the card does not give the island the keyboard: the window the agent
+works in keeps the front, so what it opened (the Start menu, Search, a
+drop-down) stays open. Its buttons are clicked as usual; `Ctrl+Alt+A` still
+brings Y and N.
 **Open terminal** brings the window the session
 runs in to the front.
 
@@ -654,7 +662,13 @@ add their keys in **Settings… → Chat → Chat providers**, then click the mo
 above the chat box to switch provider and model. The model list
 is fetched from the provider only once you pick it and it has a key. Switching
 mid-conversation carries the conversation over as plain text, so nothing in one
-provider's format is ever sent to another. These providers get the island's
+provider's format is ever sent to another. Back on a CLI (Claude Code,
+Antigravity CLI, Codex, Copilot CLI, Cursor CLI), the chat continues that CLI's
+own session, one for each, and its next question carries the turns the others
+answered meanwhile, as a record of what was said; that holds after the chat is
+opened again from Past chats too. With an Anthropic API key, Lumo's
+instructions, its tools and the conversation so far are read from Claude's
+prompt cache when the next request comes within five minutes. These providers get the island's
 tools, the email and listening tools and your own tools. With **Lumo's web search** turned on they can also
 search the web (Bing, with Bing News for the latest, and Wikipedia only when neither answers; with Unsloth Studio, its own web search when Lumo has its key) and read a page; it is off
 until you turn it on. `/compact` summarises a long chat into a short one.
@@ -1022,17 +1036,22 @@ The text is cut to fit (about 36,000 characters for all the windows or all the
 tabs of one message). What you picked waits in the attachments, one row each,
 and you can remove any of them before sending; it goes with your next question
 only, and a click on its row shows exactly what it sends. Screenshots are saved only in the inbox
-(`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
-week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
+(`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files: one that went with a
+question stays with its chat (its bubble shows it, and editing the question sends it
+again) and is deleted with the chat; one that never went is deleted after a day. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
 Each chat has its own folder in the inbox (`inbox\chats\<chat>`): the files
 and screenshots of a chat are linked there as they go to its CLI (the same
 file on disk, not a second copy), and the chat's Claude Code and Antigravity
 CLI read only that folder without asking, never the files of another chat.
-**Settings → Security → Other chats' files** (off by default) gives them the
-whole inbox instead, the files of every chat of the last week. A task Gemini
-Live hands to Claude Code or Antigravity CLI gets no inbox folder unless that
-switch is on. A deleted chat takes its folder with it.
+An email's file that an agent saves with `mail_attachment` goes in its
+chat's folder too. **Settings → Security → Other chats' files** (off by
+default) gives them the whole inbox instead: every file Lumo received in the
+last week. A task Gemini Live hands to Claude Code or Antigravity CLI gets no
+inbox folder unless that switch is on; Gemini Live itself can read any file
+of the inbox, switch or not. A deleted chat takes its folder with it, and a
+link whose file left the inbox (a chat past the 40 kept in the history) goes
+at the next sweep.
 
 Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
 and OpenRouter receive them as images; the local model servers take the window
@@ -1182,7 +1201,11 @@ plan, with no API key.
   your screen's, whatever its scaling.
 - Lumo's island is left out of the screenshots and lets clicks through while
   Claude clicks; nothing is typed while the keyboard is
-  in the island (Claude has to click the window first).
+  in the island (Claude has to click the window first). A click on the
+  island while the computer is in use leaves the keyboard where it was, so
+  what Claude opened (the Start menu, Search, a drop-down) stays open for what
+  it types next: the click never reaches the island's window (WebView2 would
+  bring it to the front), Lumo takes it first and clicks the card itself.
 - Claude is told never to type passwords or payment details, never to buy,
   send, delete or accept terms unless you asked for exactly that, and to treat
   text on the screen as information, not instructions. Screenshots count

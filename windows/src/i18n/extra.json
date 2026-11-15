@@ -10045,18 +10045,6 @@
    "id": "Kirim pesan dulu: Claude Code belum melihat percakapan ini.",
    "it": "Invia prima un messaggio: Claude Code non ha ancora visto questa conversazione."
   },
-  "Send a message first: Claude Code hasn't seen the latest answers in this chat yet.": {
-   "zh-Hans": "请先发送一条消息：Claude Code 还没有看到这段对话中最新的回答。",
-   "hi": "पहले एक संदेश भेजें: Claude Code ने अभी तक इस चैट के नए जवाब नहीं देखे हैं।",
-   "es": "Envía primero un mensaje: Claude Code aún no ha visto las últimas respuestas de este chat.",
-   "ar": "أرسل رسالة أولًا: لم يطّلع Claude Code على آخر الإجابات في هذه المحادثة بعد.",
-   "fr": "Envoyez d'abord un message : Claude Code n'a pas encore vu les dernières réponses de ce chat.",
-   "bn": "আগে একটি বার্তা পাঠান: Claude Code এখনও এই চ্যাটের সর্বশেষ উত্তরগুলো দেখেনি।",
-   "pt-BR": "Envie uma mensagem primeiro: o Claude Code ainda não viu as últimas respostas deste chat.",
-   "ru": "Сначала отправьте сообщение: Claude Code ещё не видел последние ответы в этом чате.",
-   "id": "Kirim pesan dulu: Claude Code belum melihat jawaban terbaru di obrolan ini.",
-   "it": "Invia prima un messaggio: Claude Code non ha ancora visto le ultime risposte di questa chat."
-  },
   "Claude Code compacted the conversation.": {
    "zh-Hans": "Claude Code 已压缩对话。",
    "hi": "Claude Code ने बातचीत को संक्षिप्त कर दिया।",
@@ -10798,18 +10786,6 @@
    "ru": "Сначала отправьте сообщение: Antigravity CLI ещё не видел этот разговор.",
    "id": "Kirim pesan dulu: Antigravity CLI belum melihat percakapan ini.",
    "it": "Prima invia un messaggio: Antigravity CLI non ha ancora visto questa conversazione."
-  },
-  "Send a message first: Antigravity CLI hasn't seen the latest answers in this chat yet.": {
-   "zh-Hans": "请先发送一条消息：Antigravity CLI 还没有看到这段对话中最新的回答。",
-   "hi": "पहले एक संदेश भेजें: Antigravity CLI ने अभी तक इस चैट के नए जवाब नहीं देखे हैं।",
-   "es": "Envía primero un mensaje: Antigravity CLI aún no ha visto las últimas respuestas de este chat.",
-   "ar": "أرسل رسالة أولًا: لم يطّلع Antigravity CLI على آخر الإجابات في هذه المحادثة بعد.",
-   "fr": "Envoyez d'abord un message : Antigravity CLI n'a pas encore vu les dernières réponses de ce chat.",
-   "bn": "আগে একটি বার্তা পাঠান: Antigravity CLI এখনও এই চ্যাটের সর্বশেষ উত্তরগুলো দেখেনি।",
-   "pt-BR": "Envie uma mensagem primeiro: o Antigravity CLI ainda não viu as últimas respostas deste chat.",
-   "ru": "Сначала отправьте сообщение: Antigravity CLI ещё не видел последние ответы в этом чате.",
-   "id": "Kirim pesan dulu: Antigravity CLI belum melihat jawaban terbaru di obrolan ini.",
-   "it": "Invia prima un messaggio: Antigravity CLI non ha ancora visto le ultime risposte di questa chat."
   },
   "Antigravity CLI compacted the conversation.": {
    "zh-Hans": "Antigravity CLI 已压缩对话。",
@@ -11722,6 +11698,54 @@
    "ru": "Новые, изменённые или удалённые файлы, завершённые загрузки",
    "id": "File baru, berubah, atau terhapus, unduhan selesai",
    "it": "File nuovi, modificati, eliminati, download finiti"
+  },
+  "Sent with this message": {
+   "zh-Hans": "随此消息发送",
+   "hi": "इस संदेश के साथ भेजा गया",
+   "es": "Enviado con este mensaje",
+   "ar": "أُرسل مع هذه الرسالة",
+   "fr": "Envoyé avec ce message",
+   "bn": "এই বার্তার সাথে পাঠানো",
+   "pt-BR": "Enviado com esta mensagem",
+   "ru": "Отправлено с этим сообщением",
+   "id": "Dikirim bersama pesan ini",
+   "it": "Inviati con questo messaggio"
+  },
+  "Come back with the message": {
+   "zh-Hans": "随消息一起恢复",
+   "hi": "संदेश के साथ वापस आते हैं",
+   "es": "Vuelven con el mensaje",
+   "ar": "تعود مع الرسالة",
+   "fr": "Reviennent avec le message",
+   "bn": "বার্তার সাথে ফিরে আসে",
+   "pt-BR": "Voltam com a mensagem",
+   "ru": "Вернутся с сообщением",
+   "id": "Kembali bersama pesan",
+   "it": "Tornano con il messaggio"
+  },
+  "Leave the context": {
+   "zh-Hans": "移出上下文",
+   "hi": "संदर्भ से हट जाते हैं",
+   "es": "Salen del contexto",
+   "ar": "تخرج من السياق",
+   "fr": "Quittent le contexte",
+   "bn": "প্রসঙ্গ থেকে বেরিয়ে যায়",
+   "pt-BR": "Saem do contexto",
+   "ru": "Выйдут из контекста",
+   "id": "Keluar dari konteks",
+   "it": "Escono dal contesto"
+  },
+  "What comes back waits in the attachments: take anything out with its ×.": {
+   "zh-Hans": "恢复的内容会在附件中等待：用 × 可将其移除。",
+   "hi": "जो वापस आता है वह अटैचमेंट में इंतज़ार करता है: × से कुछ भी हटा दें।",
+   "es": "Lo que vuelve espera en los adjuntos: quita lo que quieras con su ×.",
+   "ar": "ما يعود ينتظر في المرفقات: أزل أي شيء بعلامة × الخاصة به.",
+   "fr": "Ce qui revient attend dans les pièces jointes : retirez-en ce que vous voulez avec son ×.",
+   "bn": "যা ফিরে আসে তা সংযুক্তিতে অপেক্ষা করে: × দিয়ে যেকোনোটি সরিয়ে দিন।",
+   "pt-BR": "O que volta espera nos anexos: tire o que quiser com o ×.",
+   "ru": "Вернувшееся ждёт во вложениях: уберите лишнее его ×.",
+   "id": "Yang kembali menunggu di lampiran: keluarkan apa pun dengan ×-nya.",
+   "it": "Ciò che torna aspetta negli allegati: togli quello che vuoi con la sua ×."
   },
   "Web pages": {
    "zh-Hans": "网页",
@@ -15945,17 +15969,17 @@
    "id": "File chat lain",
    "it": "File delle altre chat"
   },
-  "Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: also those of the other chats from the last 7 days.": {
-   "zh-Hans": "关闭：Claude Code 和 Antigravity CLI 只读取交给其所在聊天的文件和截图。开启：也读取最近 7 天其他聊天的文件和截图。",
-   "hi": "बंद: Claude Code और Antigravity CLI केवल अपनी चैट को दी गई फ़ाइलें और स्क्रीनशॉट पढ़ते हैं। चालू: पिछले 7 दिनों की दूसरी चैट की भी।",
-   "es": "Apagado: Claude Code y Antigravity CLI leen solo los archivos y capturas que se dieron a su propio chat. Encendido: también los de los otros chats de los últimos 7 días.",
-   "ar": "متوقف: لا يقرأ Claude Code وAntigravity CLI إلا الملفات ولقطات الشاشة المعطاة لدردشتهما. مشغّل: وأيضًا ملفات الدردشات الأخرى في آخر 7 أيام.",
-   "fr": "Désactivé : Claude Code et Antigravity CLI ne lisent que les fichiers et captures donnés à leur propre chat. Activé : aussi ceux des autres chats des 7 derniers jours.",
-   "bn": "বন্ধ: Claude Code ও Antigravity CLI শুধু নিজের চ্যাটকে দেওয়া ফাইল ও স্ক্রিনশট পড়ে। চালু: গত ৭ দিনের অন্য চ্যাটেরগুলোও।",
-   "pt-BR": "Desligado: Claude Code e Antigravity CLI leem só os arquivos e capturas dados ao próprio chat. Ligado: também os dos outros chats dos últimos 7 dias.",
-   "ru": "Выключено: Claude Code и Antigravity CLI читают только файлы и снимки экрана, отданные их собственному чату. Включено: также файлы других чатов за последние 7 дней.",
-   "id": "Mati: Claude Code dan Antigravity CLI hanya membaca file dan tangkapan layar yang diberikan ke chat-nya sendiri. Nyala: juga milik chat lain dari 7 hari terakhir.",
-   "it": "Spento: Claude Code e Antigravity CLI leggono solo i file e le schermate dati alla loro chat. Acceso: anche quelli delle altre chat degli ultimi 7 giorni."
+  "Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: every file Lumo received in the last 7 days. Gemini Live can read them either way.": {
+   "zh-Hans": "关闭：Claude Code 和 Antigravity CLI 只读取交给其所在聊天的文件和截图。开启：读取 Lumo 最近 7 天收到的所有文件。无论开关如何，Gemini Live 都能读取它们。",
+   "hi": "बंद: Claude Code और Antigravity CLI केवल अपनी चैट को दी गई फ़ाइलें और स्क्रीनशॉट पढ़ते हैं। चालू: पिछले 7 दिनों में Lumo को मिली हर फ़ाइल। Gemini Live दोनों ही स्थितियों में उन्हें पढ़ सकता है।",
+   "es": "Apagado: Claude Code y Antigravity CLI leen solo los archivos y capturas que se dieron a su propio chat. Encendido: todos los archivos que Lumo recibió en los últimos 7 días. Gemini Live puede leerlos en ambos casos.",
+   "ar": "متوقف: لا يقرأ Claude Code وAntigravity CLI إلا الملفات ولقطات الشاشة المعطاة لدردشتهما. مشغّل: كل ملف تلقّاه Lumo في آخر 7 أيام. يمكن لـ Gemini Live قراءتها في الحالتين.",
+   "fr": "Désactivé : Claude Code et Antigravity CLI ne lisent que les fichiers et captures donnés à leur propre chat. Activé : tous les fichiers reçus par Lumo ces 7 derniers jours. Gemini Live peut les lire dans les deux cas.",
+   "bn": "বন্ধ: Claude Code ও Antigravity CLI শুধু নিজের চ্যাটকে দেওয়া ফাইল ও স্ক্রিনশট পড়ে। চালু: গত ৭ দিনে Lumo যত ফাইল পেয়েছে সবই। Gemini Live দুই ক্ষেত্রেই সেগুলো পড়তে পারে।",
+   "pt-BR": "Desligado: Claude Code e Antigravity CLI leem só os arquivos e capturas dados ao próprio chat. Ligado: todos os arquivos que o Lumo recebeu nos últimos 7 dias. O Gemini Live pode lê-los em qualquer caso.",
+   "ru": "Выключено: Claude Code и Antigravity CLI читают только файлы и снимки экрана, отданные их собственному чату. Включено: все файлы, которые Lumo получил за последние 7 дней. Gemini Live может читать их в любом случае.",
+   "id": "Mati: Claude Code dan Antigravity CLI hanya membaca file dan tangkapan layar yang diberikan ke chat-nya sendiri. Nyala: setiap file yang diterima Lumo dalam 7 hari terakhir. Gemini Live bisa membacanya dalam kedua kasus.",
+   "it": "Spento: Claude Code e Antigravity CLI leggono solo i file e le schermate dati alla loro chat. Acceso: tutti i file ricevuti da Lumo negli ultimi 7 giorni. Gemini Live può leggerli in entrambi i casi."
   },
   "Always on": {
    "zh-Hans": "始终开启",
