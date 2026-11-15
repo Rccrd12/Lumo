@@ -94,13 +94,18 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
+  PICTURE_NAME, THUMB_EDGE, comingBack, groupKey, joinScreen, keptItems, leaveScreen, readSent, restored, sentAgain, sentGroups, sentItems,
+  type SentGroup, type SentItem,
+} from "../core/sent";
+import {
   chatChecklists, chatModelOf, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact, type ChatHit, type SavedChat,
+  type SavedTurn,
 } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
 } from "../core/checklists";
 import {
-  addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
+  addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
 import { ageLabel } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
@@ -204,6 +209,10 @@ const STRINGS = {
   retry: N_("Retry"),
   editing: N_("Editing a message"),
   editingHint: N_("Sending replaces this message and everything after it."),
+  sentWith: N_("Sent with this message"),
+  comeBack: N_("Come back with the message"),
+  leaveContext: N_("Leave the context"),
+  comeBackHint: N_("What comes back waits in the attachments: take anything out with its ×."),
   queued: N_("Queued"),
   queuedHint: N_("Sent as soon as this answer ends"),
 };
@@ -329,6 +338,8 @@ interface BubbleOptions {
   workshop?: boolean;
   /** Which message it is (core/checklists.ts messageScope): its cards keep their own state. */
   scope?: string;
+  /** A click on one of the things that went with a question, in the list under it. */
+  onOpenSent?: (message: ChatMessage, item: SentItem) => void;
 }
 
 /** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
@@ -338,6 +349,25 @@ let sendFromCard: ((text: string) => boolean) | undefined;
 let sentTimes: { el: HTMLElement; at: number }[] = [];
 
 /** "just now", "12 min ago", "3 h ago", then the day: when a message was sent or answered. */
+/** The chat's messages as Past chats keeps them: what failed left out, what went with a question kept small. */
+function savedTurns(history: readonly ChatMessage[]): SavedTurn[] {
+  return history.filter((m) => !m.failed).map((m) => ({
+    role: m.role, content: m.content, at: m.at,
+    ...(m.kept ? { kept: m.kept } : {}),
+    ...(m.sent?.length ? { sent: keptItems(m.sent) } : {}),
+  }));
+}
+
+/** A kept message back on screen: Rust takes every turn back as it is, so its place there is its index. */
+function messageOf(turn: SavedTurn, i: number): ChatMessage {
+  const sent = readSent(turn.sent);
+  return {
+    id: nextId++, role: turn.role, content: turn.content, turn: i,
+    at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined,
+    ...(sent ? { sent } : {}),
+  };
+}
+
 /** A message as Rust's conversation holds it (chat_restore): what it kept, when not what shows. */
 export function conversationTurn(m: { role: "user" | "assistant"; content: string; kept?: string }): { role: "user" | "assistant"; content: string } {
   return { role: m.role, content: m.kept ?? m.content };
@@ -399,7 +429,26 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     bar.append(...[when, retry, edit, copy].filter((x): x is HTMLElement => x != null));
     const sent = sentBubble(message.content);
     foldLong(sent, message.id);
-    row = h("div", { class: `chat-row user${state}` }, sent, bar);
+    const went = message.sent?.length ? message.sent : null;
+    if (went) {
+      // What went with it: its icons on the bubble's top right corner, and their list under it on a click.
+      sent.classList.add("has-sent");
+      const key = `${State.chatId}:${message.id}`;
+      const list = sentList(message, went, opts.onOpenSent);
+      list.hidden = openSentList !== key;
+      const badges = sentBadges(went, "sent-badges");
+      badges.classList.toggle("open", !list.hidden);
+      badges.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openSentList = list.hidden ? key : null;
+        list.hidden = !list.hidden;
+        badges.classList.toggle("open", !list.hidden);
+        badges.setAttribute("aria-expanded", String(!list.hidden));
+        if (!list.hidden) list.scrollIntoView?.({ block: "nearest" });
+      });
+      badges.setAttribute("aria-expanded", String(!list.hidden));
+      row = h("div", { class: `chat-row user${state}` }, h("div", { class: "bubble-wrap" }, sent, badges), list, bar);
+    } else row = h("div", { class: `chat-row user${state}` }, sent, bar);
   } else {
     const reply = h("div", { class: "reply" });
     drawReply(reply, message.content, !!opts.workshop, opts.scope);
@@ -412,6 +461,98 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
   return row;
+}
+
+/** The question whose list of what went with it is open (chat id and message id): a redrawn log keeps it open. */
+let openSentList: string | null = null;
+
+/** Each kind's colour (the attachments' tiles) and icon, drawn as a stroke. */
+const SENT_ICONS: Record<SentGroup["key"], { cls: string; path: string }> = {
+  file: { cls: "attach-file", path: ICONS.docLine },
+  picture: { cls: "attach-file", path: ICONS.photo },
+  shot: { cls: "attach-shot", path: ICONS.display },
+  window: { cls: "attach-window", path: ICONS.window },
+  tab: { cls: "attach-tab", path: ICONS.globe },
+  selection: { cls: "attach-selection", path: ICONS.textLines },
+  folder: { cls: "attach-folder", path: ICONS.folder },
+};
+
+/**
+ * What went with a question, small: one icon for each kind of thing, in its
+ * colour, with how many beside it when more than one; a picture shows its
+ * own small picture. A button on the bubble, a plain line elsewhere.
+ */
+function sentBadges(items: readonly SentItem[], cls: string): HTMLElement {
+  const groups = sentGroups(items);
+  const names = items.map((i) => i.label).join("\n");
+  const el = cls === "sent-badges"
+    ? h("button", { class: cls, title: `${tl(STRINGS.sentWith)}\n${names}`, "aria-label": tl(STRINGS.sentWith) })
+    : h("span", { class: cls, title: names });
+  for (const g of groups) {
+    const look = SENT_ICONS[g.key];
+    const thumb = g.first.thumb;
+    const mark = thumb
+      ? h("img", { class: "sent-thumb", src: thumb, alt: "", draggable: "false" })
+      : svg(look.path, 11, { stroke: 1.6 });
+    el.append(h("span", { class: `sent-item ${look.cls}` }, mark, g.count > 1 ? h("span", { class: "sent-count", text: String(g.count) }) : null));
+  }
+  return el;
+}
+
+/** Under a question, once its icons are clicked: each thing that went with it, a click opening it. */
+function sentList(message: ChatMessage, items: readonly SentItem[], onOpen?: (message: ChatMessage, item: SentItem) => void): HTMLElement {
+  const list = h("div", { class: "sent-list" },
+    h("div", { class: "sent-list-head" }, h("span", { text: tl(STRINGS.sentWith) }), h("span", { class: "sent-list-count", text: String(items.length) })));
+  for (const item of items) {
+    const look = SENT_ICONS[groupKey(item)];
+    const tile = h("span", { class: `attach-tile ${look.cls}` },
+      item.thumb ? h("img", { class: "attach-thumb", src: item.thumb, alt: "", draggable: "false" }) : svg(look.path, 15, { stroke: 1.6 }));
+    const row = h("div", { class: "sent-row", title: item.title, role: "button", tabindex: "0" },
+      tile,
+      h("span", { class: "attach-text" },
+        h("span", { class: "attach-name", text: item.label }),
+        item.detail ? h("span", { class: "attach-detail", text: item.detail }) : null),
+      h("span", { class: "sent-open" }, svg(ICONS.arrowUpRight, 10, { stroke: 1.8 })));
+    const open = () => onOpen?.(message, item);
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      open();
+    });
+    row.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter") open();
+    });
+    list.append(row);
+  }
+  return list;
+}
+
+/** A picture made small and square (THUMB_EDGE), to keep with a question; none when it can't be drawn. */
+function smallPicture(src: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    if (typeof Image === "undefined" || typeof document === "undefined") {
+      resolve(undefined);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const c = document.createElement("canvas");
+        const g = side > 0 ? c.getContext("2d") : null;
+        if (!g) {
+          resolve(undefined);
+          return;
+        }
+        c.width = c.height = THUMB_EDGE;
+        g.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, THUMB_EDGE, THUMB_EDGE);
+        resolve(c.toDataURL("image/jpeg", 0.75));
+      } catch {
+        resolve(undefined);
+      }
+    };
+    img.onerror = () => resolve(undefined);
+    img.src = src;
+  });
 }
 
 /**
@@ -2147,7 +2288,10 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
+  // While a question is edited: what comes back with it, and what leaves the context (drawEditStrip).
+  const editStrip = h("div", { class: "edit-strip" });
+  editStrip.hidden = true;
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, listenAsk, heardBar, editStrip, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -2461,11 +2605,13 @@ export function buildPrompt(
     State.notify();
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
+    void bringBack(message);
   }
 
   function cancelEdit() {
     if (editing == null) return;
     editing = null;
+    takeBackAgain();
     setInput("");
     Sound.play("pop");
     renderedCount = -1;
@@ -2481,7 +2627,140 @@ export function buildPrompt(
   function retry(message: ChatMessage) {
     if (preparing || answering() || editing != null) return;
     editing = message.id;
-    void submit(undefined, message.content);
+    void bringBack(message).then(() => {
+      if (editing === message.id) void submit(undefined, message.content);
+    });
+  }
+
+  /** Edit is putting back what went with the question: sending waits for it. */
+  let bringing: Promise<void> | null = null;
+
+  // ── What went with a question, again ──────────────────────────────────────
+  //
+  // Edit (and Retry) put back in the attachments what went with the question
+  // (core/sent.ts), so it goes again with it; its × takes any of it out first.
+  // Given up, the edit takes back out only what it put there.
+
+  /** What the edit put back in the attachments, and what the file waiting was before it. */
+  let editBack: {
+    screen: PendingScreen;
+    more: string[];
+    dropped: { was: typeof State.droppedFile; sent: boolean | undefined; context: typeof State.promptContext; now: typeof State.droppedFile } | null;
+  } | null = null;
+  /** For the line over the field while editing: what comes back, and what leaves the context. */
+  let editSent: { back: SentItem[]; lost: SentItem[] } | null = null;
+  /** Screenshots that went with a question: the chat keeps them (chat copies), nothing here deletes them. */
+  const keptShots = new Set<string>();
+
+  /** The things that went with the questions after `at` in the chat on screen. */
+  function sentAfter(at: number): SentItem[] {
+    return State.chatHistory.slice(at + 1).flatMap((m) => (m.role === "user" ? m.sent ?? [] : []));
+  }
+
+  function bringBack(message: ChatMessage): Promise<void> {
+    const done = putBack(message);
+    bringing = done;
+    void done.finally(() => {
+      if (bringing === done) bringing = null;
+    });
+    return done;
+  }
+
+  async function putBack(message: ChatMessage) {
+    const items = message.sent ?? [];
+    const at = State.chatHistory.findIndex((m) => m.id === message.id);
+    const later = at < 0 ? [] : sentAfter(at);
+    editSent = items.length || later.length ? { back: [], lost: later } : null;
+    if (!items.length) return;
+    // A file or a screenshot deleted since can't go again.
+    const paths = items.flatMap((i) => (i.path ? [i.path] : []));
+    let present: boolean[] | null = null;
+    if (paths.length) present = await Bridge.chatFilesPresent(paths).catch(() => null);
+    if (editing !== message.id) return;
+    const gone = new Set(paths.filter((_, i) => present?.[i] === false));
+    const { back, lost } = comingBack(items, message.again, (path) => !gone.has(path));
+    editSent = { back, lost: [...lost, ...later] };
+    const again = restored(back, message.again);
+    for (const shot of again.screen.shots) keptShots.add(shot.path);
+    const dropped = State.droppedFile;
+    const before = { was: dropped, sent: dropped?.sent, context: State.promptContext };
+    const more: string[] = [];
+    for (const f of again.files) {
+      const waiting = State.droppedFile;
+      if (waiting && samePath(waiting.path, f.path)) waiting.sent = false;
+      else if (waiting && !waiting.sent) {
+        if (!State.moreFiles.some((m) => samePath(m.path, f.path))) {
+          State.moreFiles = [...State.moreFiles, { name: f.name, path: f.path }];
+          more.push(f.path);
+        }
+      } else {
+        State.droppedFile = { name: f.name, path: f.path };
+        State.promptContext = { kind: "file", name: f.name, path: f.path };
+      }
+    }
+    editBack = { screen: again.screen, more, dropped: State.droppedFile !== before.was || before.sent !== State.droppedFile?.sent ? { ...before, now: State.droppedFile } : null };
+    screen = joinScreen(screen, again.screen);
+    // A screenshot kept with the chat shows its small picture until its own is read.
+    for (const shot of again.screen.shots) {
+      void chatPicture(shot.path).then((src) => {
+        if (!src || !screen.shots.some((x) => x.path === shot.path && x.preview !== src)) return;
+        screen = { ...screen, shots: screen.shots.map((x) => (x.path === shot.path ? { ...x, preview: src } : x)) };
+        State.notify();
+      });
+    }
+    State.notify();
+  }
+
+  /** The edit was given up: what it put back in the attachments leaves them again. */
+  function takeBackAgain() {
+    const back = editBack;
+    editBack = null;
+    editSent = null;
+    if (!back) return;
+    screen = leaveScreen(screen, back.screen);
+    if (back.more.length) State.moreFiles = State.moreFiles.filter((f) => !back.more.includes(f.path));
+    const d = back.dropped;
+    if (d && State.droppedFile === d.now) {
+      if (d.was && d.was === d.now) d.was.sent = d.sent;
+      else {
+        State.droppedFile = d.was;
+        if (d.was && d.sent !== undefined) d.was.sent = d.sent;
+        State.promptContext = d.context;
+      }
+    }
+  }
+
+  /** A click in the list under a question: what it was, as it went. */
+  async function openSent(message: ChatMessage, item: SentItem) {
+    const again = message.again;
+    if (again && item.kind !== "file" && item.kind !== "shot") {
+      const blocks = itemPreview(again.screen, { kind: item.kind, key: item.key });
+      if (blocks.length) {
+        openPreview(blocks, null, true);
+        return;
+      }
+    }
+    const plain = (over: Partial<PreviewBlock>): PreviewBlock => ({ heading: item.label, detail: item.detail, note: "", text: "", image: "", ...over });
+    if (item.kind === "selection" && item.text) {
+      openPreview([plain({ detail: item.window ?? "", text: item.text })], null, true);
+      return;
+    }
+    if (item.path && (item.kind === "shot" || PICTURE_NAME.test(item.label))) {
+      const image = (await chatPicture(item.path)) ?? item.thumb ?? "";
+      if (image) {
+        openPreview(item.kind === "shot" ? [plain({ image })] : filePreview({ name: item.label, path: item.path }, image), null, true);
+        return;
+      }
+    }
+    if (item.kind === "file" && item.path) {
+      const done = await Bridge.chatFileOpen(item.path).catch(() => "missing");
+      if (done === "missing") {
+        Sound.play("error");
+        openPreview([plain({ detail: item.path, note: t(STRINGS.fileMissing) })], null, true);
+      }
+      return;
+    }
+    openPreview([plain({})], null, true);
   }
 
   /**
@@ -2512,6 +2791,43 @@ export function buildPrompt(
     drawChatFiles();
     if (State.chatId) chatRewound(State.chatId);
     await Bridge.chatRewind(State.chatId, keep);
+  }
+
+  /** The small pictures of the screenshots and picture files that went with a question, made once it went. */
+  async function addThumbs(items: SentItem[], shots: readonly { path: string; preview: string }[]) {
+    let changed = false;
+    for (const item of items) {
+      let src: string | null | undefined = null;
+      if (item.kind === "shot") src = shots.find((x) => x.path === item.path)?.preview;
+      else if (item.kind === "file" && item.path && PICTURE_NAME.test(item.label)) {
+        src = filePicturesHere.get(item.path) ?? (await Bridge.filePreview(item.path).catch(() => null));
+      }
+      const small = src ? await smallPicture(src) : undefined;
+      if (small) {
+        item.thumb = small;
+        changed = true;
+      }
+    }
+    if (changed) {
+      renderedCount = -1;
+      State.notify();
+    }
+  }
+
+  /** Over the field while a question is edited: what comes back with it, and what leaves the context. */
+  function drawEditStrip() {
+    const shown = editing != null ? editSent : null;
+    const key = shown ? JSON.stringify([shown.back.map((i) => [i.kind, i.key, !!i.thumb]), shown.lost.map((i) => [i.kind, i.key, !!i.thumb])]) : "";
+    if (editStrip.dataset.key === key) return;
+    editStrip.dataset.key = key;
+    clear(editStrip);
+    editStrip.hidden = !shown || (!shown.back.length && !shown.lost.length);
+    if (!shown) return;
+    const line = (label: string, items: SentItem[], cls: string) =>
+      h("div", { class: `edit-strip-line ${cls}` }, h("span", { class: "edit-strip-label", text: t(label) }), sentBadges(items, "sent-badges static"));
+    if (shown.back.length) editStrip.append(line(STRINGS.comeBack, shown.back, "back"));
+    if (shown.lost.length) editStrip.append(line(STRINGS.leaveContext, shown.lost, "lost"));
+    if (shown.back.length) editStrip.append(h("div", { class: "edit-strip-hint", text: t(STRINGS.comeBackHint) }));
   }
 
   // ── Permissions ───────────────────────────────────────────────────────────
@@ -2863,7 +3179,9 @@ export function buildPrompt(
 
   /** Forgets the screenshots that were not sent, and deletes them. */
   function dropShots(paths: string[]) {
-    if (paths.length > 0) void Bridge.screenDiscard(paths);
+    // One that went with a question is the chat's: it goes with the chat.
+    const gone = paths.filter((p) => !keptShots.has(p));
+    if (gone.length > 0) void Bridge.screenDiscard(gone);
   }
 
   function closeScreen() {
@@ -3225,7 +3543,8 @@ export function buildPrompt(
    * Close keeps it; either way the attachments it was opened from come back.
    * A chat's file has no Remove (`onRemove` null).
    */
-  function openPreview(blocks: PreviewBlock[], onRemove: (() => void) | null) {
+  /** `toChat`: Close goes back to the chat (a question's list of what went with it), not to the attachments. */
+  function openPreview(blocks: PreviewBlock[], onRemove: (() => void) | null, toChat = false) {
     if (picker.isOpen) picker.close();
     closeHistory();
     closeFiles();
@@ -3262,7 +3581,7 @@ export function buildPrompt(
     });
     close.addEventListener("click", () => {
       closeScreen();
-      openFiles();
+      if (!toChat) openFiles();
       input.focus();
     });
     screenList.append(items, h("div", { class: "screen-actions" }, remove, close));
@@ -3406,6 +3725,8 @@ export function buildPrompt(
   });
 
   function openChat(c: SavedChat) {
+    // What an edit put back in the attachments was this chat's.
+    takeBackAgain();
     editing = null;
     const run = runs.get(c.id);
     if (run) {
@@ -3414,7 +3735,7 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined }));
+      State.chatHistory = c.turns.map((turn, i) => messageOf(turn, i));
       State.chatSession = c.session;
       void Bridge.chatRestore(c.id, State.chatHistory.map(conversationTurn), c.session, compactOf(c.id));
     }
@@ -3445,6 +3766,7 @@ export function buildPrompt(
   /** A new chat; an answer still being written in the one before goes on in the background. */
   function newChat() {
     if (editing != null) setInput("");
+    takeBackAgain();
     editing = null;
     State.startChat();
     State.droppedFile = null;
@@ -3612,7 +3934,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at, ...(m.kept ? { kept: m.kept } : {}) }));
+    const turns = savedTurns(run.history);
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -4088,8 +4410,15 @@ export function buildPrompt(
     preparing = true;
     try {
       // An edited question replaces the one it came from, and what followed it.
+      // Edit just clicked: what went with the question is back in the attachments first.
+      if (!auto && editing != null && bringing) await bringing;
       const edited = auto ? null : editing;
-      if (!auto) editing = null;
+      if (!auto) {
+        editing = null;
+        // What the edit put back goes with it now.
+        editBack = null;
+        editSent = null;
+      }
       if (edited != null) await rewindTo(edited);
 
       // What the screen button added goes once, then the chip goes.
@@ -4116,11 +4445,21 @@ export function buildPrompt(
       // The chat it is asked in, whichever is on screen when its answer comes.
       const chatId = askedIn;
       const history = away?.history ?? State.chatHistory;
-      // Its copies in the inbox now belong to the chat: they go when it is deleted.
-      noteSentCopies(chatId, sent.map((f) => f.path));
+      // Its copies in the inbox now belong to the chat, its screenshots too
+      // (Edit sends them again): they go when it is deleted.
+      const shots = screenContext ? shared.shots.map((x) => x.path) : [];
+      for (const path of shots) keptShots.add(path);
+      noteSentCopies(chatId, [...sent.map((f) => f.path), ...shots]);
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: nextId++, role: "user", content: query, at: Date.now() };
+      // What went with it shows on its bubble, and goes again on Edit.
+      const went = screenContext || sent.length ? sentItems(screenContext ? shared : emptyScreen(), sent, fileDetail) : [];
+      if (went.length) {
+        question.sent = went;
+        question.again = sentAgain(screenContext ? shared : emptyScreen(), sent);
+        void addThumbs(went, screenContext ? shared.shots : []);
+      }
       history.push(question);
 
       // What went with it leaves the field, which is ready for the next question.
@@ -4326,7 +4665,7 @@ export function buildPrompt(
     if (session && known && known !== session) return;
     if (history) {
       if (!joinOwnAnswer(history, content)) return;
-      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
+      const turns = savedTurns(history);
       if (run) remember(run);
       else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns });
       if (onScreen) renderedCount = -1;
@@ -4386,10 +4725,7 @@ export function buildPrompt(
   async function submitAway(chatId: string, text: string) {
     const saved = loadChats().find((c) => c.id === chatId);
     // Rust takes every turn back as it is: each one's place there is its place here (as openChat).
-    const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => ({
-      id: nextId++, role: turn.role, content: turn.content, turn: i,
-      at: typeof turn.at === "number" ? turn.at : undefined, kept: typeof turn.kept === "string" ? turn.kept : undefined,
-    }));
+    const history: ChatMessage[] = (saved?.turns ?? []).map((turn, i) => messageOf(turn, i));
     const session = saved?.session ?? null;
     loadingAway.add(chatId);
     try {
@@ -4941,7 +5277,11 @@ export function buildPrompt(
         if (every.folders || every.tabs) void peekExplorer(true);
       }
       // The edited question left the chat another way (a new chat, a file): nothing to replace.
-      if (editing != null && !State.chatHistory.some((m) => m.id === editing)) editing = null;
+      if (editing != null && !State.chatHistory.some((m) => m.id === editing)) {
+        editing = null;
+        editBack = null;
+        editSent = null;
+      }
       // The file that went with a question is the chat's now: only what waits is listed.
       const file = State.droppedFile && !State.droppedFile.sent ? State.droppedFile : null;
       const moreFiles = State.moreFiles;
@@ -5042,6 +5382,7 @@ export function buildPrompt(
         if (editing != null) chipRow.append(noteChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
         else if (uploaded) chipRow.append(uploadedChip(uploaded.name));
       }
+      drawEditStrip();
 
       // The queued question shows with its chat, and goes if it ended meanwhile.
       if (!run && stoppedAway.delete(State.chatId)) unqueue();
@@ -5079,7 +5420,7 @@ export function buildPrompt(
           const shown = editing == null && (unanswered ? i === lastAsked : last);
           log.append(bubble(m, {
             onEdit: startEdit, onRetry: retries && asked ? () => retry(asked) : undefined, shown,
-            editing: i === at, dropped: at >= 0 && i > at, workshop, scope,
+            editing: i === at, dropped: at >= 0 && i > at, workshop, scope, onOpenSent: (msg, item) => void openSent(msg, item),
           }));
         });
         // An answer just finished: the ink goes on in its bubble until all is uncovered.

@@ -4,6 +4,7 @@
 // without a webview.
 
 import { cleanChecklists, type ChatChecklists } from "./checklists";
+import type { SentItem } from "./sent";
 
 export interface SavedTurn {
   role: "user" | "assistant";
@@ -12,6 +13,8 @@ export interface SavedTurn {
   at?: number;
   /** What the conversation holds for it, when not `content` (ChatMessage.kept). */
   kept?: string;
+  /** A question: what went with it (core/sent.ts ChatMessage.sent). */
+  sent?: SentItem[];
 }
 
 export interface SavedChat {
