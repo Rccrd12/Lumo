@@ -248,7 +248,7 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             started = true;
             on(Seen::Reasoning);
         }
-        if let Some(Event::Calls(pieces)) = &event {
+        if let Some(Event::Calls(pieces, _)) = &event {
             for name in pieces.iter().filter_map(|p| p.pointer("/function/name").and_then(Value::as_str)).filter(|n| !n.is_empty()) {
                 if calling.last().map(String::as_str) != Some(name) {
                     calling.push(name.to_string());
@@ -256,7 +256,7 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
                 }
             }
         }
-        if matches!(event, Some(Event::Text(_) | Event::Reasoning | Event::Calls(_))) {
+        if matches!(event, Some(Event::Text(_) | Event::Reasoning | Event::Calls(..))) {
             flowing.store(true, Ordering::Relaxed);
         }
         match event {
@@ -275,7 +275,9 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             }
             Some(Event::Reasoning) | None => {}
             Some(Event::Usage(total)) => used = Some(total),
-            Some(Event::Calls(pieces)) => {
+            Some(Event::Calls(pieces, words)) => {
+                // The words that came with the calls go before them, as said.
+                text.push_str(&words);
                 calls.feed(&pieces);
                 call_bytes.store(calls.size(), Ordering::Relaxed);
             }
