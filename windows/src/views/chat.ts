@@ -95,8 +95,8 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists, setChatModel, setCompact,
-  toSavedTurn, type ChatHit, type SavedChat,
+  chatChecklists, chatModelOf, chatTitle, cleanRecap, compactOf, deleteChat, fromSavedTurn, joinOwnAnswer, loadChats, newChatId, saveChat, searchChats, setChatChecklists,
+  setChatModel, setCompact, toSavedTurn, type AnswerWarning, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
   agentAsk, applyAgent, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
@@ -410,7 +410,8 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     times.push({ el: when, at });
     sentTimes.push(...times);
   }
-  const bar = h("div", { class: opts.shown ? "msg-actions shown" : "msg-actions" });
+  // An answer with a warning keeps its bar in sight, the warning on it.
+  const bar = h("div", { class: opts.shown || message.warning ? "msg-actions shown" : "msg-actions" });
   let row: HTMLElement;
   if (message.role === "user") {
     const onEdit = opts.onEdit;
@@ -426,8 +427,9 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     drawReply(reply, message.content, !!opts.workshop, opts.scope);
     // A stopped answer says so on the same line.
     const stopped = message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null;
-    // The CLI ended with an error after this answer: one line on the bar, what to know on a click.
-    const warned = message.warning;
+    // The CLI ended with an error after this answer: one line on the bar,
+    // which stays in sight, what to know on a click.
+    const warned = message.warning ? warningWords(message.warning) : null;
     const detail = warned ? h("div", { class: "msg-warning-detail", text: warned.detail }) : null;
     let warning: HTMLElement | null = null;
     if (warned && detail) {
@@ -456,6 +458,28 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
 
 /** The answers whose warning (ChatMessage.warning) is open: a redrawn log keeps it open. */
 const openWarnings = new WeakSet<ChatMessage>();
+
+/** The closed island's note for an answer with a warning: the island's amber (--amber). */
+const WARNING_COLOR = "#f5a524";
+
+/** What a warning under an answer says (antigravity_cli.rs answer_warning). */
+const WARNING_TEXT = {
+  line: N_("Antigravity CLI reported a problem at the end"),
+  malformed: N_("While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”."),
+  error: N_("Antigravity CLI ended this turn with an error after writing the answer above: check that the work is done, and if it isn't, write “continue”."),
+  message: N_("Antigravity CLI's message: {error}"),
+};
+
+/**
+ * A warning's line and what to know, in the island's language now (a chat
+ * opened later in another language reads in that one); one saved by the
+ * 0.22.2 betas keeps the words it was saved with.
+ */
+export function warningWords(w: AnswerWarning): { line: string; detail: string } {
+  if ("line" in w) return w;
+  const why = t(w.kind === "malformed" ? WARNING_TEXT.malformed : WARNING_TEXT.error);
+  return { line: t(WARNING_TEXT.line), detail: `${why}\n\n${t(WARNING_TEXT.message, { error: w.message })}` };
+}
 
 /**
  * A failed answer's text: what Lumo says, and the CLI's own words for it when
@@ -4798,7 +4822,8 @@ export function buildPrompt(
       if (antigravityUsage()) refreshAntigravityPlanUsage();
       outcome = reply.stopped ? null : "finished";
       Sound.play(reply.stopped ? "pop" : "finish");
-      if (!reply.stopped) noticeAway(COMPACT_TEXT.answered, runSpeaker(run));
+      // Ended with an error after the answer: the closed island says so, in amber.
+      if (!reply.stopped) noticeAway(reply.warning ? COMPACT_TEXT.answeredWithProblem : COMPACT_TEXT.answered, reply.warning ? { ...runSpeaker(run), color: WARNING_COLOR } : runSpeaker(run));
     } catch (err) {
       giveBack(true);
       outcome = "error";
