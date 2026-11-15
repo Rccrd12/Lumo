@@ -239,11 +239,12 @@ flow(G, "A window carried across the island with Open on hover on does not open 
   await sleep(400);
   await app.mouse.down();
   await sleep(150);
-  open = await carry(over.x, over.y, 20);
+  const carried = await carry(over.x, over.y, 20);
   await sleep(300);
   await app.mouse.up();
-  open += await watch(1_500);
-  assert.equal(open, 0, "a window let go on the island does not open it either");
+  const after = await watch(1_500);
+  step(`the window now ${JSON.stringify(await source.moverAt())}; looks that found the island open: ${carried} while carried, ${after} after letting go`);
+  assert.equal(carried + after, 0, "a window let go on the island does not open it either");
 
   step("the cursor leaves, then rests on the island: Open on hover opens it");
   await app.mouse.glide(over.x, over.y + 260 * pan.r);
