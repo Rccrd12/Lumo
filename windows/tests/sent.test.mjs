@@ -173,6 +173,7 @@ test("a question shows what went with it on its bubble; a click lists each one u
   assert.deepEqual(icons(first), ["attach-file", "attach-selection", "attach-shot"]);
   assert.deepEqual(icons(second), ["attach-selection"]);
   assert.equal(rows()[1].find(".sent-badges").length, 0, "an answer has none");
+  assert.ok(first.find(".bubble")[0].classList.contains("has-sent"));
 
   const list = first.find(".sent-list")[0];
   assert.equal(list.hidden, true);
