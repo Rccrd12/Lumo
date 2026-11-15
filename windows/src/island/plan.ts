@@ -50,11 +50,14 @@ export class IslandPlan {
     // Antigravity CLI's runs send the checklist it writes as its plan.
     // Each carries the chat it runs for: a chat at work while another is on
     // screen keeps its plan, never the chat shown (only an event naming no
-    // chat falls back to it). A deleted chat's comes too late: it is dropped.
+    // chat falls back to it). One whose chat is there but empty runs for no
+    // chat (Gemini Live's helper): the computer's own plan shows it, and no
+    // chat takes it. A deleted chat's comes too late: it is dropped.
     void onEvent<{ tool: string; input: Record<string, unknown>; agent?: string; color?: string; chat?: string }>("chat-plan", ({ tool, input, agent, color, chat }) => {
+      if (chat === "") return;
       if (chat && this.gone.has(chat)) return;
       this.onTool({
-        pillId: "chat", sessionId: chat || String(State.chatId ?? ""),
+        pillId: "chat", sessionId: typeof chat === "string" ? chat : String(State.chatId ?? ""),
         agent: agent ?? "Claude Code", color: color ?? "#F5F6F8", project: t("Chat"),
       }, tool, input);
     });
