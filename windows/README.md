@@ -379,7 +379,9 @@ two sources, each with its switch, one or both on:
   Lumo. Lumo asks Outlook what the inboxes hold as often as it looks at IMAP
   (every 20 seconds as usual, see Energy), and the row under the switch shows
   the accounts it found. Lumo never starts Outlook, unless **Settings →
-  Security → Open Outlook if it's closed** is on (off by default): then it
+  Security → Open Outlook if it's closed** is on (on when Lumo is first
+  installed, and shown there only while Outlook is one of the Email pill's
+  sources): then it
   starts it once, in the background with no window, when Lumo starts; if you
   close Outlook, Lumo doesn't start it again until it next starts. Outlook
   closed only pauses its emails. The new Outlook for Windows can't be read by
@@ -466,12 +468,10 @@ Settings with your address; the server is found from the address. Your
 Google account's own password is refused ("Application-specific password
 required").
 
-The chat sees the inbox when you ask about it: a question that speaks of
-email ("quali sono le ultime email?", "any new mail?", "la posta") goes with
-the ten newest emails, read or unread (sender, date, subject and the start of
-the text), whichever provider answers, Claude, Gemini, Antigravity CLI or a
-local model. Other questions go without them. Summarize and Draft a reply
-send the whole email with their question, like a selected text.
+No email goes with a question by itself: when you ask about your email, the
+AI reads what it needs with Lumo's email tools (below), each call shown on
+the island. Summarize and Draft a reply send the whole email with their
+question, like a selected text.
 
 Antigravity CLI, which has no email of its own as Claude Code has its Gmail
 tools, also gets Lumo's email tools while the Email pill is on, and so do the
@@ -487,9 +487,10 @@ while an agent answers in the island, in the chat or for Gemini Live. They
 only read, so they need no card.
 
 **Settings… → Security → Email** says what the AI may do with
-it: **Read only** (the default, as above), **No access** (nothing of the
-mailbox reaches any AI: no emails with the question, no email tools, nothing
-for Gemini Live), **Read and send** or **Read, send and manage**. With Read
+it: **Read, send and manage** (when Lumo is first installed; an
+installation from before keeps what it had, Read only unless it was
+changed), **Read and send**, **Read only** or **No access** (nothing of the
+mailbox reaches any AI: no email tools, nothing for Gemini Live). With Read
 and send, the chat's Claude Code, Codex and Antigravity CLI also get
 `mail_send`, `mail_reply` (an answer in the email's own conversation, with
 `In-Reply-To` and `References`, to the sender or everyone, the email quoted
@@ -521,7 +522,9 @@ Gmail keeps a copy in Sent by itself; with another provider, Lumo looks in
 Sent ten seconds later and puts a copy there (IMAP `APPEND`) when the server
 didn't.
 The calendar, read from its address or from Google, stays read only:
-**Calendar** has Read only and No access.
+**Calendar** has Read only and No access, and shows in Security only once a
+calendar is set. **GitHub** shows there only once its token is saved, Read
+only when Lumo is first installed.
 
 ## Claude Code
 
@@ -896,7 +899,7 @@ several). Text pastes as usual.
 
 ### The chat knows what's open
 
-With **Settings → Security → Open windows** (on by default), every
+With **Settings → Security → Open windows** (off when Lumo is first installed), every
 message carries the titles of the open windows and the documents they show:
 Lumo reads file names from the titles ("Contract.pdf - Adobe Acrobat",
 "Budget - Excel") and finds them on disk, from Windows' recent files or a
@@ -962,8 +965,8 @@ models included, and the chat draws them (`src/views/rich/`):
   4 downloads at a time and the first 12 images of an answer (the ones after
   are drawn as when images are off). The site receives the image's full
   address, which the AI writes. **Settings → Security → Images from the
-  web** turns it off: the card then shows only the site and the button, and
-  nothing is downloaded.
+  web** (off when Lumo is first installed) turns it off: the card then shows
+  only the site and the button, and nothing is downloaded.
 
 A block the chat can't read is shown as it was written, as code. The
 blocks forgive the ways small local models slip: a callout without its `>`,
@@ -1007,6 +1010,15 @@ and you can remove any of them before sending; it goes with your next question
 only, and a click on its row shows exactly what it sends. Screenshots are saved only in the inbox
 (`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
 week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
+
+Each chat has its own folder in the inbox (`inbox\chats\<chat>`): the files
+and screenshots of a chat are linked there as they go to its CLI (the same
+file on disk, not a second copy), and the chat's Claude Code and Antigravity
+CLI read only that folder without asking, never the files of another chat.
+**Settings → Security → Other chats' files** (off by default) gives them the
+whole inbox instead, the files of every chat of the last week. A task Gemini
+Live hands to Claude Code or Antigravity CLI gets no inbox folder unless that
+switch is on. A deleted chat takes its folder with it.
 
 Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
 and OpenRouter receive them as images; the local model servers take the window
