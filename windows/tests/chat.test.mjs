@@ -911,15 +911,18 @@ test("editing a message takes the files of the questions after it out of the cha
   };
   await ask("one, again");
   assert.deepEqual(sent("chat_rewind").at(-1), { chatId: State.chatId, keep: 0 });
-  assert.equal(sent("chat_send").at(-1).context, null, "the later question's file doesn't go again");
-  assert.deepEqual(chatFiles(State.chatId).map((f) => f.name), ["new.md"]);
+  // Its own file goes again with it (core/sent.ts); the later question's doesn't.
+  assert.equal(sent("chat_send").at(-1).context?.name, "first.pdf");
+  assert.equal(sent("chat_send").at(-1).screen, undefined, "the later question's file doesn't go again");
+  assert.deepEqual(chatFiles(State.chatId).map((f) => f.name).sort(), ["first.pdf", "new.md"]);
 
   // Its ×: out of the list, and Rust tells the AI with the next question.
-  const row = view.el.find(".chat-files-list")[0].find(".attach-row")[0];
+  const row = view.el.find(".chat-files-list")[0].find(".attach-row").find((r) => r.find(".attach-name")[0].textContent === "new.md");
   row.find(".attach-remove")[0].fire("click");
   assert.deepEqual(sent("chat_forget_file").at(-1), { chatId: State.chatId, name: "new.md", path: String.raw`C:\Docs\new.md` });
-  assert.deepEqual(chatFiles(State.chatId), []);
-  assert.equal(view.el.find(".chat-files-list")[0].find(".attach-group").length, 0, "an empty kind shows no folder");
+  assert.deepEqual(chatFiles(State.chatId).map((f) => f.name), ["first.pdf"]);
+  assert.deepEqual(view.el.find(".chat-files-list")[0].find(".attach-group").map((g) => g.find(".attach-name")[0].textContent), ["Attached"],
+    "an empty kind shows no folder");
 });
 
 test("Escape or the chip's × leaves an edit", async () => {
