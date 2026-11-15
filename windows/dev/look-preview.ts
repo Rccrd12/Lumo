@@ -12,6 +12,7 @@ import type { IslandViewName } from "../src/core/layout";
 import { Feed } from "../src/core/compact";
 import { Calendar } from "../src/island/activities";
 import { setLanguage } from "../src/i18n/i18n";
+import type { ComputerState } from "../src/core/computer-use";
 
 type Listener = (e: { event: string; id: number; payload: unknown }) => void;
 const listeners = (window as unknown as { __lumoListeners: Map<string, Listener> }).__lumoListeners;
@@ -284,6 +285,119 @@ function sampleMail() {
 }
 sampleMail();
 
+// Computer use with a plan, with ?computer=start|step|work|paused|ask|reply|card|recap
+// (computer.rs computer-state; main.ts would pass these events on).
+const computerScene = params.get("computer");
+if (computerScene) await computerPreview(computerScene);
+
+async function computerPreview(scene: string) {
+  const it = lang === "it";
+  const wait = (ms: number) => new Promise((done) => window.setTimeout(done, ms));
+  const texts = it
+    ? ["Clic nel testo di Blocco note", "Apro il menu File", "Scelgo «Salva con nome…»", "Scrivo «appunti.txt» e premo Invio", "Controllo che il file sia sul Desktop"]
+    : ["Click in Notepad's text", "Open the File menu", "Choose “Save as…”", "Type “notes.txt” and press Enter", "Check the file is on the Desktop"];
+  const plan = (done: number, list = texts) => list.map((text, i) => ({ text, status: i < done ? "done" : i === done ? "active" : "pending" } as const));
+  const since = Date.now() - 24_000;
+  const base = { engaged: true, paused: false, stopped: false, agent: "Claude Code", color: "#d97757", since };
+  const state = (extra: Partial<ComputerState>) => island.onComputerState({ ...base, steps: plan(1), ...extra } as ComputerState);
+  State.settings = { ...State.settings, chatProvider: "claude-code" } as typeof State.settings;
+  if (scene === "recap") return computerRecapChat(it);
+  island.setView("prompt");
+  island.holdOpen();
+  State.notify();
+  await wait(300);
+  // The plan as it was first shown (start), so a step reveal counts from it.
+  state({ steps: plan(0, texts.slice(0, 4)), reveal: "start", revealMs: scene === "start" ? 3000 : 200 });
+  island.onComputer(true);
+  if (scene === "start") return;
+  await wait(500);
+  if (scene === "step") return void state({ steps: plan(2), reveal: "step", revealMs: 3000 });
+  state({ steps: plan(2) });
+  if (scene === "work") return;
+  await wait(200);
+  if (scene === "card") {
+    const c = document.createElement("canvas");
+    c.width = 360; c.height = 200;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#f3f3f3"; g.fillRect(0, 0, 360, 200);
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 360, 30);
+    g.fillStyle = "#222"; g.font = "13px Segoe UI, sans-serif";
+    ["File", it ? "Modifica" : "Edit", it ? "Visualizza" : "View"].forEach((w, i) => g.fillText(w, 12 + i * 62, 20));
+    g.fillStyle = "#fff"; g.strokeStyle = "#ccc"; g.fillRect(4, 30, 210, 168); g.strokeRect(4, 30, 210, 168);
+    const items = it ? ["Nuovo", "Nuova finestra", "Apri…", "Salva", "Salva con nome…", "Stampa…"] : ["New", "New window", "Open…", "Save", "Save as…", "Print…"];
+    items.forEach((w, i) => {
+      if (i === 4) { g.fillStyle = "#dbe8f8"; g.fillRect(8, 38 + i * 26, 202, 24); }
+      g.fillStyle = "#222"; g.fillText(w, 20, 55 + i * 26);
+    });
+    const blob = await new Promise<Blob>((done) => c.toBlob((b) => done(b!), "image/png"));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    const mocks = window as unknown as { __lumoMock: Record<string, unknown> };
+    mocks.__lumoMock = { ...mocks.__lumoMock, computer_peek: () => ({ image: btoa(bin), width: 360, height: 200, at: [80, 152],
+      name: it ? "Salva con nome…" : "Save as…", role: it ? "voce di menu" : "menu item", app: it ? "Blocco note" : "Notepad" }) };
+    hook({ hook_event_name: "PermissionRequest", cwd, request_id: "rc", tool_name: "mcp__lumo__left_click", tool_input: { coordinate: [207, 236] }, lumo_island: true });
+    island.holdOpen();
+    State.notify();
+    return;
+  }
+  state({ steps: plan(2), paused: true });
+  if (scene === "paused" || scene === "ask") return;
+  if (scene === "reply") {
+    // The question went (Rust sends it back as `asked`), then the agent's new plan answers it.
+    (document.querySelector(".cu-ask") as HTMLButtonElement | null)?.click();
+    await wait(200);
+    const input = document.querySelector(".cu-input") as HTMLInputElement;
+    input.value = it ? "Salvalo in Documenti, non sul Desktop" : "Save it in Documents, not on the Desktop";
+    input.dispatchEvent(new Event("input"));
+    (document.querySelector(".cu-send") as HTMLButtonElement).click();
+    state({ steps: plan(2), paused: true, asked: input.value });
+    await wait(300);
+    const changed = [...texts.slice(0, 4), it ? "Controllo che il file sia in Documenti" : "Check the file is in Documents"];
+    changed.splice(3, 0, it ? "Apro la cartella Documenti" : "Open the Documents folder");
+    state({ steps: plan(2, changed), paused: true, explanation: it
+      ? "Va bene: prima di salvare apro la cartella Documenti, e alla fine controllo lì. Riprendi quando vuoi."
+      : "Sure: before saving I open the Documents folder, and check there at the end. Resume when you like." });
+  }
+}
+
+// A chat whose answer used the computer: the recap under it (views/computer-recap.ts).
+async function computerRecapChat(it: boolean) {
+  const shot = async (hue: number, label: string) => {
+    const c = document.createElement("canvas");
+    c.width = 160; c.height = 90;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#1d6fb8"; g.fillRect(0, 0, 160, 90);
+    g.fillStyle = "#fff"; g.fillRect(18, 10, 124, 66);
+    g.fillStyle = `hsl(${hue} 60% 92%)`; g.fillRect(18, 10, 124, 10);
+    g.fillStyle = "#555"; g.font = "8px sans-serif"; g.fillText(label, 24, 34);
+    g.fillStyle = "#202020"; g.fillRect(0, 80, 160, 10);
+    const blob = await new Promise<Blob>((done) => c.toBlob((b) => done(b!), "image/png"));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return btoa(bin);
+  };
+  const steps = it
+    ? ["Clic nel testo di Blocco note", "Apro il menu File", "Scelgo «Salva con nome…»", "Scrivo «appunti.txt» e premo Invio", "Controllo che il file sia sul Desktop"]
+    : ["Click in Notepad's text", "Open the File menu", "Choose “Save as…”", "Type “notes.txt” and press Enter", "Check the file is on the Desktop"];
+  const images = await Promise.all(steps.map((s, i) => shot(200 + i * 30, s.slice(0, 24))));
+  const stopped = params.has("stopped");
+  State.chatHistory = [
+    { id: 1, role: "user", content: it ? "Salva quello che ho scritto in Blocco note come appunti.txt sul Desktop" : "Save what I wrote in Notepad as notes.txt on the Desktop" },
+    { id: 2, role: "assistant", content: stopped
+      ? (it ? "Mi sono fermato come mi hai chiesto: il file non è ancora salvato." : "I stopped as you asked: the file isn't saved yet.")
+      : (it ? "Fatto: **appunti.txt** è sul Desktop, con il testo che avevi scritto." : "Done: **notes.txt** is on the Desktop, with the text you wrote."),
+      computer: { agent: "Claude Code", color: "#d97757", actions: stopped ? 5 : 9, ms: stopped ? 21_000 : 48_000, ...(stopped ? { stopped: true } : {}),
+        steps: steps.map((text, i) => stopped
+          ? { text, status: i < 2 ? "done" : i === 2 ? "active" : "pending", ...(i < 2 ? { image: images[i] } : {}) }
+          : { text, status: "done", image: images[i] }) } },
+  ] as typeof State.chatHistory;
+  island.setView("prompt");
+  island.holdOpen();
+  State.notify();
+}
+
 const bar = document.getElementById("bar")!;
 const views: [IslandViewName, string][] = [["overview", "Sessions"], ["approval", "Permission"], ["prompt", "Chat"], ["tools", "Tools"], ["mail", "Email"], ["upload", "Drop"]];
 const buttons = new Map<string, HTMLButtonElement>();
@@ -308,4 +422,4 @@ function sync() {
   for (const [view, b] of buttons) b.classList.toggle("on", State.view === view);
 }
 
-show((params.get("view") as IslandViewName | null) ?? "overview", params.has("wait") || params.get("view") === "approval");
+if (!computerScene) show((params.get("view") as IslandViewName | null) ?? "overview", params.has("wait") || params.get("view") === "approval");

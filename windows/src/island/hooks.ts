@@ -4,7 +4,8 @@
 // The relay has already mapped every agent's events and fields onto Claude
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
-import { describeComputerAction } from "../core/computer";
+import { computerPoint, computerToolName, describeComputerAction, scrollDirection } from "../core/computer";
+import { currentStep } from "../core/computer-use";
 import { userToolTarget } from "../core/tools";
 import { clipUnits } from "../core/clip";
 import { COMPACT_TEXT, compactNotice } from "../core/compact";
@@ -77,6 +78,8 @@ function dropPendingCard(island: Island): void {
     else State.view = State.agentsView();
   }
   presentApproval(island);
+  // Computer use paused meanwhile: back to its plan, where Stop, Ask and Resume are.
+  if (State.computerActive && State.computer?.paused) island.reopenPausedPlan();
   State.notify();
 }
 
@@ -301,6 +304,8 @@ interface HookPayload {
   term_editor?: string;
   /** The island's own chat started this Claude Code run (only its permission requests arrive). */
   lumo_island?: boolean;
+  /** PermissionRequest from inside an agent Claude Code started: that agent's id (the chat's Agents card matches it). */
+  agent_id?: string;
   /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
   lumo_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
@@ -566,10 +571,15 @@ const REASON_KEYS = new Set(["description", "Description", "justification", "exp
 /**
  * The line under the who-row that says what the request is for: the agent's
  * own words when it gave some, else what the request does, read off it.
- * Nothing for the chat's computer use, whose target already says it.
+ * For computer use, the step of its plan under way (computer-state), which
+ * is why it acts; nothing without a plan, the target says the rest.
  */
 function approvalAbout(tool: string, input: Record<string, unknown>): { reason?: string; kind?: { text: string; vars?: Record<string, string> } } {
-  if (describeComputerAction(tool, input)) return {};
+  if (describeComputerAction(tool, input)) {
+    const step = State.computer ? currentStep(State.computer.steps) : null;
+    const why = step?.step.text.trim();
+    return why ? { reason: why } : {};
+  }
   // An MCP tool's `description` is one of its arguments, shown whole below: the line says what kind of call it is.
   const reason = MCP_TOOL.test(tool) ? null : requestReason(input);
   if (reason) return { reason };
@@ -1072,6 +1082,8 @@ function handleHook(island: Island, payload: HookPayload) {
           added: payload.lumo_write_added, removed: payload.lumo_write_removed, bytes: payload.lumo_write_bytes,
         })
         : null;
+      const computerAt = !questions && !email && !change && !userTool ? computerPoint(tool, input) : null;
+      const computerScroll = computerAt && computerToolName(tool) === "scroll" ? scrollDirection(input) : null;
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -1083,6 +1095,8 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(email ? { email } : change ? { reason: change.reason } : userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
+        // Asked inside one of the chat's agents: its row in the Agents card says so.
+        ...(fromChat && typeof payload.agent_id === "string" && payload.agent_id ? { subagentId: payload.agent_id } : {}),
         ...(payload.lumo_session_allow === true && payload.lumo_input_cut !== true && !questions && !agyGate ? { sessionAllow: true } : {}),
         ...(payload.lumo_remembered === true && !questions ? { remembered: true } : {}),
         ...(payload.lumo_input_cut === true && !questions && !email && !change && !userTool
@@ -1093,6 +1107,9 @@ function handleHook(island: Island, payload: HookPayload) {
         // The plan Claude Code asks to start, step by step, for the new look's card and chat.
         ...(planSteps.length ? { plan: planSteps } : {}),
         ...(edit ? { edit } : {}),
+        // A computer use action: the point it acts on, for the screen around it on the card.
+        ...(computerAt ? { computerAt } : {}),
+        ...(computerScroll ? { computerScroll } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how

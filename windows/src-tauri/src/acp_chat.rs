@@ -21,6 +21,9 @@
 //   Its plan (`plan`, Cursor's to-dos) goes to the Plan island.
 // - Stop sends `session/cancel`; one that does not end in time is ended with
 //   everything it started.
+// - The tasks Cursor's agent hands to subagents (`cursor/task`) are the
+//   chat's agents (`Tasks`, chat_agents.rs), each done when the tool call it
+//   runs in is.
 //
 // Permissions are the CLI's own: what it would ask in a terminal comes to Lumo
 // as `session/request_permission`, and Lumo shows a card in the island (pipe.rs
@@ -47,6 +50,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
+use crate::chat_agents::{self, AgentRow, AgentState, Agents, Tell};
 use crate::claude_code::{self, cli_command, file_name, is_screenshot, kill_tree, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
@@ -261,9 +265,11 @@ fn server(args: &[&str]) -> Value {
 /// Lumo's MCP servers for the chat: the island's timer and GitHub tools
 /// (`lumo`, island_tools.rs) with the email's as Security lets the AI have
 /// them (mail.rs ai_tools), and the user's tools while one of them is on
-/// (`lumo_tools`, tools.rs). By name.
-fn servers(tools: bool, mail: &str) -> Vec<(String, Value)> {
-    let kit = if mail.is_empty() { "--tools=island".to_string() } else { format!("--tools={mail},island") };
+/// (`lumo_tools`, tools.rs), with the computer while the turn may use it
+/// (each action asked for by Lumo, computer.rs `OtherTurn`).
+/// By name.
+fn servers(tools: bool, mail: &str, computer: bool) -> Vec<(String, Value)> {
+    let kit = crate::computer::kit("", computer, mail);
     let mut out = vec![(LUMO_SERVER.to_string(), server(&["--mcp", &kit]))];
     if tools {
         out.push((crate::tools::SERVER.to_string(), server(&["--mcp", "--tools=user"])));
@@ -273,9 +279,9 @@ fn servers(tools: bool, mail: &str) -> Vec<(String, Value)> {
 
 /// The servers as ACP's `session/new` takes them (Copilot): command, args,
 /// and the environment as a list, with the chat they serve.
-fn acp_servers(chat_id: &str, tools: bool, mail: &str) -> Value {
+fn acp_servers(chat_id: &str, tools: bool, mail: &str, computer: bool) -> Value {
     Value::Array(
-        servers(tools, mail)
+        servers(tools, mail, computer)
             .into_iter()
             .map(|(name, entry)| {
                 let mut env: Vec<Value> = entry["env"]
@@ -300,10 +306,10 @@ fn acp_servers(chat_id: &str, tools: bool, mail: &str) -> Value {
 /// themselves). Whatever else either file holds is kept; one Lumo can't read
 /// is the user's and left alone. Returns the servers written, for the key
 /// that tells when Cursor must start again to read them.
-fn cursor_workspace(work: &Path, tools: bool, mail: &str) -> Value {
+fn cursor_workspace(work: &Path, tools: bool, mail: &str, computer: bool) -> Value {
     let dir = work.join(".cursor");
     let mut wanted = serde_json::Map::new();
-    for (name, mut entry) in servers(tools, mail) {
+    for (name, mut entry) in servers(tools, mail, computer) {
         entry["env"]["LUMO_CHAT_ID"] = json!("${env:LUMO_CHAT_ID}");
         wanted.insert(name, entry);
     }
@@ -910,6 +916,105 @@ impl Run {
     }
 }
 
+// ── The tasks it hands to subagents ───────────────────────────────────────────
+
+/// The first text of `keys` in `v`.
+fn first_text<'a>(v: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    keys.iter().filter_map(|k| v[*k].as_str()).map(str::trim).find(|s| !s.is_empty())
+}
+
+/// The state a task's (or a tool call's) status ends it in; None while it runs.
+fn final_state(status: &str) -> Option<AgentState> {
+    match status {
+        "completed" | "done" | "success" | "succeeded" => Some(AgentState::Done),
+        "failed" | "error" | "errored" => Some(AgentState::Failed),
+        "cancelled" | "canceled" | "stopped" | "interrupted" | "aborted" => Some(AgentState::Stopped),
+        _ => None,
+    }
+}
+
+/// The tasks of a chat's CLI (Cursor's `cursor/task`), by task id, kept
+/// for as long as its server lives.
+#[derive(Default, Debug)]
+struct Tasks {
+    agents: Agents,
+    /// The tool call each task runs in → its task id.
+    by_call: HashMap<String, String>,
+    /// Tasks that named neither an id nor a call, numbered.
+    unnamed: u64,
+    /// This server's mark (chat_agents::run_mark), made when first needed:
+    /// in the numbered tasks' ids, which the next server numbers from 1 again.
+    mark: Option<String>,
+}
+
+impl Tasks {
+    /// A `cursor/task` of the CLI `source` (a providers.ts id): a new task, or news of one.
+    fn task(&mut self, source: &str, params: &Value) {
+        // Its fields, at the top or in a `task` of their own.
+        let task = if params["task"].is_object() { &params["task"] } else { params };
+        let field = |keys: &[&str]| first_text(task, keys).or_else(|| first_text(params, keys)).map(str::to_string);
+        let call = field(&["toolCallId", "tool_call_id"]);
+        let id = match field(&["taskId", "task_id", "id", "agentId", "subagentId"]).or_else(|| call.clone()) {
+            Some(id) => id,
+            None => {
+                self.unnamed += 1;
+                let mark = self.mark.get_or_insert_with(chat_agents::run_mark);
+                format!("task-{mark}-{}", self.unnamed)
+            }
+        };
+        if let Some(call) = &call {
+            self.by_call.insert(call.clone(), id.clone());
+        }
+        if self.agents.get(&id).is_some_and(|r| r.state.is_final()) {
+            return;
+        }
+        let title = field(&["description", "title", "prompt", "name", "subagentType", "subagent_type"]);
+        let row = self.agents.upsert(&id, || AgentRow::new(id.as_str(), source, &title.clone().unwrap_or_else(|| t("Agent"))));
+        if let Some(title) = &title {
+            row.title = short(title);
+        }
+        if let Some(summary) = field(&["summary", "result"]) {
+            row.summary = Some(chat_agents::summary_of(&summary));
+        }
+        if let Some(state) = field(&["status", "state"]).as_deref().and_then(final_state) {
+            row.end(state, field(&["error"]).filter(|_| state == AgentState::Failed));
+            self.by_call.retain(|_, task| *task != id);
+        }
+    }
+
+    /// A tool call's news (`tool_call`, `tool_call_update`): the task it
+    /// runs ends with it, and its other news is a sign the task is alive.
+    fn call_update(&mut self, update: &Value) {
+        if !matches!(update["sessionUpdate"].as_str(), Some("tool_call" | "tool_call_update")) {
+            return;
+        }
+        let Some(id) = update["toolCallId"].as_str().and_then(|call| self.by_call.get(call)).cloned() else { return };
+        if self.agents.get(&id).is_some_and(|r| r.state.is_final()) {
+            return;
+        }
+        let Some(row) = self.agents.touch(&id) else { return };
+        match update["status"].as_str() {
+            Some("completed") => row.end(AgentState::Done, None),
+            Some("failed") => row.end(AgentState::Failed, None),
+            _ => return,
+        }
+        self.by_call.retain(|_, task| *task != id);
+    }
+
+    /// The turn is over: the tasks still open ended with it (stopped, with
+    /// Stop; failed, with the turn's `error`).
+    fn turn_ended(&mut self, stopped: bool, error: Option<&str>) {
+        if self.agents.open() > 0 {
+            match (stopped, error) {
+                (true, _) => self.agents.end_open(AgentState::Stopped, ""),
+                (false, Some(error)) => self.agents.end_open(AgentState::Failed, error),
+                (false, None) => self.agents.end_open(AgentState::Done, ""),
+            }
+        }
+        self.by_call.clear();
+    }
+}
+
 // ── One CLI per chat ──────────────────────────────────────────────────────────
 
 /// A line for the CLI's server, written whole.
@@ -941,6 +1046,9 @@ struct Live {
     home_mode: Option<String>,
     next_id: u64,
     used: Instant,
+    /// The tasks it handed to subagents, and who hears of them.
+    tasks: Tasks,
+    tell: Tell,
 }
 
 impl Drop for Live {
@@ -948,6 +1056,11 @@ impl Drop for Live {
         if matches!(self.child.try_wait(), Ok(None)) {
             kill_tree(&mut self.child);
         }
+        // Its tasks end with it.
+        if self.tasks.agents.open() > 0 {
+            self.tasks.agents.end_open(AgentState::Failed, &tf("{agent} ended", &[("agent", self.agent.name())]));
+        }
+        (self.tell)(&mut self.tasks.agents, false);
     }
 }
 
@@ -994,6 +1107,8 @@ impl Live {
             home_mode: None,
             next_id: 1,
             used: Instant::now(),
+            tasks: Tasks::default(),
+            tell: chat_agents::silent(),
         };
         let hello = live.call(
             "initialize",
@@ -1237,7 +1352,9 @@ enum Ended {
 /// One turn of the chat through its own CLI (started, or started again, as
 /// needed), blocking. `text(fresh)` is the question: `fresh` when the session
 /// is new and has not seen the chat's turns. `ask` puts a card up and calls
-/// back with the click (true: allowed). The session is returned with the run.
+/// back with the click (true: allowed). `tell` hears of every line (a sign
+/// of life) and of the tasks the CLI hands to subagents. The session is
+/// returned with the run.
 #[allow(clippy::too_many_arguments)]
 fn live_turn(
     spec: TurnSpec,
@@ -1248,6 +1365,7 @@ fn live_turn(
     mut on_activity: impl FnMut(&Activity),
     mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&Value),
+    tell: Tell,
 ) -> Result<(Run, Option<String>), String> {
     let agent = spec.agent;
     let key = format!("{}\n{:?}\n{}\n{}", spec.exe.to_string_lossy(), spec.args, spec.mcp, spec.extra_key);
@@ -1262,6 +1380,7 @@ fn live_turn(
         }
         Err(e) => return Err(e),
     };
+    live.tell = tell;
     let session = live.session.clone().unwrap_or_default();
     let mode = claude_code::permission_mode(&spec.mode);
     let plan_only = mode == "plan";
@@ -1299,6 +1418,15 @@ fn live_turn(
         let Ok(message) = serde_json::from_slice::<Value>(&line) else { continue };
         let method = message["method"].as_str().unwrap_or("");
         let params = &message["params"];
+        // Every line is a sign of life; the session's tasks are its agents.
+        if params["sessionId"].as_str().is_none_or(|s| s == session) {
+            match method {
+                "cursor/task" => live.tasks.task(agent.provider(), params),
+                "session/update" => live.tasks.call_update(&params["update"]),
+                _ => {}
+            }
+        }
+        (live.tell)(&mut live.tasks.agents, true);
         // An answer to Lumo: the end of the turn, or why it could not run.
         if method.is_empty() {
             if message["id"].as_u64() == Some(prompt_id) {
@@ -1402,16 +1530,27 @@ fn live_turn(
     let session = Some(session).filter(|s| !s.is_empty());
     match ended {
         Ended::Completed => {
+            // Nothing reads the CLI between turns: its tasks end with this one.
+            let failed = match &state.done {
+                Some(Err(e)) => Some(e.as_str()),
+                _ => None,
+            };
+            live.tasks.turn_ended(state.stopped, failed);
+            (live.tell)(&mut live.tasks.agents, false);
             live.used = Instant::now();
             let old = lives(|all| all.insert(spec.chat_id.clone(), live));
             drop(old);
             reap_idle();
             Ok((state, session))
         }
-        // Not cancelled in time: ended (Drop), the run so far kept.
-        Ended::Stopped if state.stopped => Ok((state, session)),
+        // Not cancelled in time: ended (Drop), the run so far kept. The
+        // user asked for it: its tasks stopped, not failed.
+        Ended::Stopped | Ended::Closed if state.stopped => {
+            live.tasks.turn_ended(true, None);
+            (live.tell)(&mut live.tasks.agents, false);
+            Ok((state, session))
+        }
         Ended::Stopped => Err(tf("{agent} took too long to answer.", &[("agent", agent.name())])),
-        Ended::Closed if state.stopped => Ok((state, session)),
         Ended::Closed => Err(live.ended()),
     }
 }
@@ -1460,12 +1599,15 @@ pub async fn send(
     model: &str,
     effort: &str,
     mode: &str,
+    computer: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
 ) -> Result<ChatReply, String> {
     let agent = Agent::of(provider).ok_or_else(|| format!("Unknown chat provider: {provider}"))?;
     let exe = agent.exe().ok_or_else(|| agent.not_installed())?;
+    let computer = computer && cfg!(windows);
+    let grid = crate::computer::uses_grid(provider, model);
 
     let turn = chat.begin(agent.provider());
     // Only this CLI's session: never another CLI's.
@@ -1483,10 +1625,10 @@ pub async fn send(
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     let dir = claude_code::work_dir();
     let (mcp, extra_key) = match agent {
-        Agent::Copilot => (acp_servers(chat.id(), tools, mail), String::new()),
+        Agent::Copilot => (acp_servers(chat.id(), tools, mail, computer), String::new()),
         Agent::Cursor => {
             let work = dir.clone();
-            let written = tauri::async_runtime::spawn_blocking(move || cursor_workspace(&work, tools, mail)).await.map_err(|e| e.to_string())?;
+            let written = tauri::async_runtime::spawn_blocking(move || cursor_workspace(&work, tools, mail, computer)).await.map_err(|e| e.to_string())?;
             (json!([]), written.to_string())
         }
     };
@@ -1511,13 +1653,19 @@ pub async fn send(
         // A resumed session gets the turns another provider answered since it last did.
         let unseen = if fresh { "" } else { catch_up.as_str() };
         let text = format!("{unseen}{}", claude_code::prompt(context2.as_ref(), carried, &files, &query2));
+        // Computer use: the note in front of every question.
+        let text = if computer { crate::computer::with_note(&text, grid) } else { text };
         if !fresh {
             return text;
         }
         let workshop = if workshop { format!("\n\n{}", crate::chat::workshop_note!().trim()) } else { String::new() };
         format!("<lumo_instructions>\n{}{workshop}\n</lumo_instructions>\n\n{text}", INSTRUCTIONS.trim())
     };
+    // The computer usable while this turn runs, each action asked for by Lumo.
+    let _computer = computer.then(|| crate::computer::OtherTurn::begin(app, agent.provider(), chat.id(), agent.tag(), mode, grid));
 
+    // The tasks the CLI hands to subagents, and the turn's sign of life.
+    let tell = chat_agents::teller(app, chat.id());
     let app2 = app.clone();
     let app3 = app.clone();
     let events = chat.events();
@@ -1547,6 +1695,7 @@ pub async fn send(
                     json!({ "chat": plan_chat, "tool": "update_plan", "input": plan, "agent": agent.name(), "color": agent.color() }),
                 );
             },
+            tell,
         )
     })
     .await
@@ -1607,7 +1756,7 @@ pub(crate) fn complete(provider: &str, model: &str, prompt: &str) -> Result<Stri
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {});
+    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
     close(REVIEW);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {
@@ -1838,32 +1987,33 @@ mod tests {
 
     #[test]
     fn lumos_tools_go_to_copilot_in_the_session_and_to_cursor_in_its_folder() {
-        let servers = acp_servers("chat-1", true, "mail");
+        let servers = acp_servers("chat-1", true, "mail", false);
         assert_eq!(servers[0]["name"], LUMO_SERVER);
         assert_eq!(servers[0]["args"], json!(["--mcp", "--tools=mail,island"]));
         let env = servers[0]["env"].as_array().unwrap();
         assert!(env.contains(&json!({ "name": "LUMO_ISLAND_RUN", "value": "1" })));
         assert!(env.contains(&json!({ "name": "LUMO_CHAT_ID", "value": "chat-1" })));
         assert_eq!(servers[1]["name"], crate::tools::SERVER);
-        assert_eq!(acp_servers("", false, "").as_array().unwrap().len(), 1);
+        assert_eq!(acp_servers("", false, "", false).as_array().unwrap().len(), 1);
+        assert_eq!(acp_servers("chat-1", false, "", true)[0]["args"], json!(["--mcp", "--tools=computer,plan,island"]), "the computer while the turn may use it, with Lumo's plan tool");
 
         let dir = std::env::temp_dir().join(format!("lumo-acp-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join(".cursor")).unwrap();
         std::fs::write(dir.join(".cursor").join("mcp.json"), r#"{"mcpServers":{"mine":{"command":"x"}}}"#).unwrap();
-        cursor_workspace(&dir, true, "");
+        cursor_workspace(&dir, true, "", false);
         let mcp: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".cursor").join("mcp.json")).unwrap()).unwrap();
         assert_eq!(mcp["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(mcp["mcpServers"]["lumo"]["env"]["LUMO_CHAT_ID"], "${env:LUMO_CHAT_ID}");
         assert!(mcp["mcpServers"][crate::tools::SERVER].is_object());
-        cursor_workspace(&dir, false, "");
+        cursor_workspace(&dir, false, "", false);
         let mcp: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".cursor").join("mcp.json")).unwrap()).unwrap();
         assert!(mcp["mcpServers"].get(crate::tools::SERVER).is_none(), "the user's tools go when off");
         let cli: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".cursor").join("cli.json")).unwrap()).unwrap();
         assert_eq!(cli["permissions"]["allow"], json!(["Mcp(lumo:*)", "Mcp(lumo_tools:*)"]));
         // A file Lumo can't read is left alone.
         std::fs::write(dir.join(".cursor").join("mcp.json"), "{ not json").unwrap();
-        cursor_workspace(&dir, true, "");
+        cursor_workspace(&dir, true, "", false);
         assert_eq!(std::fs::read_to_string(dir.join(".cursor").join("mcp.json")).unwrap(), "{ not json");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1888,5 +2038,56 @@ mod tests {
         assert_eq!(rpc_error(Agent::Cursor, &json!({ "code": -32000, "message": "Authentication required" })), Agent::Cursor.not_signed_in());
         assert_eq!(acp_error(Agent::Copilot, "401 Unauthorized"), Agent::Copilot.not_signed_in());
         assert!(acp_error(Agent::Copilot, "rate limited").contains("rate limited"));
+    }
+
+    #[test]
+    fn each_task_cursor_hands_to_a_subagent_is_a_row_done_with_its_tool_call() {
+        let mut tasks = Tasks::default();
+        tasks.task(CURSOR, &json!({ "sessionId": "s", "toolCallId": "call-1", "taskId": "t1", "description": "Review the auth module", "subagentType": "explore" }));
+        // Its fields in a `task` of their own, and no id: its call names it.
+        tasks.task(CURSOR, &json!({ "sessionId": "s", "task": { "toolCallId": "call-2", "title": "Write the tests" } }));
+        let rows = tasks.agents.changed();
+        assert_eq!(rows.iter().map(|r| (r.id.as_str(), r.title.as_str())).collect::<Vec<_>>(), [("t1", "Review the auth module"), ("call-2", "Write the tests")]);
+        assert!(rows.iter().all(|r| r.source == CURSOR && r.state == AgentState::Working && !r.can_stop));
+
+        // News of a task by its id; its tool call ends it.
+        tasks.task(CURSOR, &json!({ "taskId": "t1", "summary": "3 issues found so far" }));
+        assert_eq!(tasks.agents.get("t1").unwrap().summary.as_deref(), Some("3 issues found so far"));
+        assert_eq!(tasks.agents.get("t1").unwrap().title, "Review the auth module", "a title stays when none comes");
+        tasks.call_update(&json!({ "sessionUpdate": "tool_call_update", "toolCallId": "call-1", "status": "in_progress" }));
+        assert_eq!(tasks.agents.get("t1").unwrap().state, AgentState::Working);
+        tasks.call_update(&json!({ "sessionUpdate": "tool_call_update", "toolCallId": "call-1", "status": "completed" }));
+        tasks.call_update(&json!({ "sessionUpdate": "tool_call_update", "toolCallId": "call-2", "status": "failed" }));
+        assert_eq!(tasks.agents.get("t1").unwrap().state, AgentState::Done);
+        assert_eq!(tasks.agents.get("call-2").unwrap().state, AgentState::Failed);
+        // A call of no task is none of theirs.
+        tasks.call_update(&json!({ "sessionUpdate": "tool_call_update", "toolCallId": "call-9", "status": "completed" }));
+        assert!(tasks.agents.get("call-9").is_none());
+
+        // A task that says its own end; one with nothing to name it is numbered.
+        tasks.task(CURSOR, &json!({ "taskId": "t3", "name": "Lint", "status": "failed", "error": "eslint crashed" }));
+        assert_eq!(tasks.agents.get("t3").unwrap().error.as_deref(), Some("eslint crashed"));
+        tasks.task(CURSOR, &json!({}));
+        let numbered = tasks.agents.changed().pop().unwrap().id;
+        assert!(numbered.starts_with("task-") && numbered.ends_with("-1"), "{numbered}");
+        assert_eq!(tasks.agents.get(&numbered).unwrap().title, "Agent");
+        // The turn ended: the open ones with it.
+        tasks.turn_ended(true, None);
+        assert_eq!(tasks.agents.get(&numbered).unwrap().state, AgentState::Stopped);
+        assert_eq!(tasks.agents.open(), 0);
+        // A turn that failed: its open tasks failed with it, not finished.
+        tasks.task(CURSOR, &json!({ "taskId": "t4", "name": "Refactor" }));
+        tasks.turn_ended(false, Some("Rate limited"));
+        let t4 = tasks.agents.get("t4").unwrap();
+        assert_eq!((t4.state, t4.error.as_deref()), (AgentState::Failed, Some("Rate limited")));
+        tasks.task(CURSOR, &json!({ "taskId": "t5", "name": "Docs" }));
+        tasks.turn_ended(false, None);
+        assert_eq!(tasks.agents.get("t5").unwrap().state, AgentState::Done);
+
+        // The next server numbers its tasks from 1 again: another id all the same.
+        let mut next = Tasks::default();
+        next.task(CURSOR, &json!({}));
+        let again = next.agents.changed().pop().unwrap().id;
+        assert!(again.ends_with("-1") && again != numbered, "{again} {numbered}");
     }
 }
