@@ -15669,18 +15669,6 @@
    "id": "Perbarui beta",
    "it": "Aggiorna la beta"
   },
-  "Lumo downloads the beta, installs it by itself and opens again.": {
-   "zh-Hans": "Lumo 会下载测试版，自动安装并重新打开。",
-   "hi": "Lumo बीटा डाउनलोड करता है, खुद इंस्टॉल करता है और फिर से खुलता है।",
-   "es": "Lumo descarga la beta, la instala solo y se vuelve a abrir.",
-   "ar": "يقوم Lumo بتنزيل الإصدار التجريبي وتثبيته تلقائيًا ثم يفتح من جديد.",
-   "fr": "Lumo télécharge la bêta, l'installe tout seul et se rouvre.",
-   "bn": "Lumo বিটা ডাউনলোড করে, নিজেই ইনস্টল করে আবার খোলে।",
-   "pt-BR": "O Lumo baixa a beta, instala sozinho e abre de novo.",
-   "ru": "Lumo скачает бету, сам установит её и откроется снова.",
-   "id": "Lumo mengunduh beta, memasangnya sendiri, lalu terbuka lagi.",
-   "it": "Lumo scarica la beta, la installa da solo e si riapre."
-  },
   "Back to the release {version}": {
    "zh-Hans": "回到正式版 {version}",
    "hi": "रिलीज़ {version} पर वापस जाएँ",
@@ -15692,18 +15680,6 @@
    "ru": "Вернуться к выпуску {version}",
    "id": "Kembali ke rilis {version}",
    "it": "Torna alla stabile {version}"
-  },
-  "Reinstalls the latest public version. Your settings stay.": {
-   "zh-Hans": "重新安装最新的公开版本。你的设置会保留。",
-   "hi": "नवीनतम सार्वजनिक संस्करण फिर से इंस्टॉल करता है। आपकी सेटिंग्स बनी रहती हैं।",
-   "es": "Reinstala la última versión pública. Tus ajustes se mantienen.",
-   "ar": "يعيد تثبيت أحدث إصدار عام. تبقى إعداداتك كما هي.",
-   "fr": "Réinstalle la dernière version publique. Vos réglages restent.",
-   "bn": "সর্বশেষ সর্বজনীন সংস্করণ আবার ইনস্টল করে। আপনার সেটিংস থাকে।",
-   "pt-BR": "Reinstala a versão pública mais recente. Suas configurações ficam.",
-   "ru": "Переустанавливает последнюю публичную версию. Настройки сохранятся.",
-   "id": "Memasang ulang versi publik terbaru. Pengaturan Anda tetap.",
-   "it": "Reinstalla l'ultima versione pubblica. Le tue impostazioni restano."
   },
   "Lumo beta {version} available": {
    "zh-Hans": "Lumo 测试版 {version} 可用",
