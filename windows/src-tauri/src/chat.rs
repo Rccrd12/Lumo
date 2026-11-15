@@ -54,6 +54,11 @@ pub struct ChatReply {
     /// opened again from the history (NO_ANSWER, never Lumo's words as the agent's).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kept: Option<String>,
+    /// The turn used the computer (computer.rs end_turn): its plan, its
+    /// pictures, how many actions, how long, whether it was stopped. The
+    /// island shows it under the answer and saves it with the chat.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computer: Option<Value>,
     /// The answer came, but the CLI ended its turn with an error: said under
     /// the answer, never in place of it (antigravity_cli.rs).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -76,11 +81,11 @@ pub const ERROR_DETAIL: char = '\u{2063}';
 
 impl ChatReply {
     pub fn answer(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: false, turns: 0, kept: None, warning: None }
+        ChatReply { text, session, stopped: false, turns: 0, kept: None, computer: None, warning: None }
     }
 
     pub fn stopped(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: true, turns: 0, kept: None, warning: None }
+        ChatReply { text, session, stopped: true, turns: 0, kept: None, computer: None, warning: None }
     }
 
     /// The CLI answered with nothing: the island shows `why`, the
@@ -1078,13 +1083,15 @@ async fn dispatch(
     let reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await;
     // What the island's tools asked for during the turn (island_tools.rs), as
     // the lines the island reads; a failed turn, or one stopped before it
-    // said anything, drops them.
+    // said anything, drops them. One stopped that used the computer is kept
+    // (claude_code.rs), as the island keeps it: its recap goes under it.
     let asked = crate::island_tools::take(chat.id());
     let mut reply = reply?;
-    if !(reply.stopped && reply.text.is_empty()) {
+    let kept = !(reply.stopped && reply.text.is_empty()) || reply.computer.is_some();
+    if kept {
         chat.told_forgotten(&forgotten);
     }
-    if !asked.is_empty() && !(reply.stopped && reply.text.is_empty()) {
+    if !asked.is_empty() && kept {
         reply.text = keep_lumo_lines(std::mem::take(&mut reply.text), &asked);
     }
     // Remembered once it went, for a fresh Claude Code session after an edit.
@@ -1175,16 +1182,21 @@ async fn send_to(
                 chat.cli_dirs(Some(dir.to_string_lossy().to_string()));
             }
         }
+        // Computer use: Claude Code's as it always was; Antigravity CLI's
+        // each action asked for by Lumo (computer.rs OtherTurn). Codex,
+        // Copilot CLI and Cursor CLI could take the same tools but are left
+        // out: Copilot CLI answered it can't control Windows, Codex and
+        // Cursor CLI were never tried.
+        let computer = settings.chat_computer_use;
         if provider == antigravity_cli::PROVIDER {
-            return Box::pin(antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), query, context, folder)).await;
+            return Box::pin(antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), computer, query, context, folder)).await;
         }
         if provider == codex_chat::PROVIDER {
-            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
+            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, false, query, context, folder)).await;
         }
         if acp_chat::Agent::of(provider).is_some() {
-            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
+            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, false, query, context, folder)).await;
         }
-        let computer = settings.chat_computer_use;
         return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
