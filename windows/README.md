@@ -1292,8 +1292,9 @@ was deleted, the task is done in a new chat, and the next events of a watch
 that listens every time go to that same chat; a task still waiting for a
 chat you delete goes with it.
 
-Until that chat is opened, the closed island names it («chat» · what
-happened, +N when more chats wait), a bar over the field of the chat on screen
+Until that chat is opened, the closed island names it and where it heard,
+never what («chat» · Email, +N when more chats wait: no subject, sender, page
+or notification text, so a shared screen shows nothing of it), a bar over the field of the chat on screen
 offers **Open that chat** and **Close** (as if it was opened), and Past chats
 marks it, with a count on the clock. Nothing waits after a restart.
 

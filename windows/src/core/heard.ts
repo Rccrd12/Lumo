@@ -11,7 +11,7 @@
 // so they can be tested without a webview.
 
 import type { ListenFired, ListenWatch } from "./listen";
-import { firedTitle, watchColor } from "./listen";
+import { firedTitle, sourceName, watchColor } from "./listen";
 
 /** One event heard for a chat. */
 export interface HeardLine {
@@ -205,6 +205,21 @@ export function placeHeard(messages: { at?: number }[], lines: HeardLine[]): { b
 export function addPending(pending: HeardLine[], line: HeardLine): HeardLine[] {
   if (!line.chatId) return pending;
   return [...pending.filter((p) => p.chatId !== line.chatId), line];
+}
+
+/**
+ * The closed island's line while chats wait to be seen: the newest one's
+ * name and where it heard («Mail for Giulia» · Email), "+2" when two more
+ * wait. Never what was heard (a subject, a sender, a page's words): the
+ * island stays on screen until that chat is opened, shared screens
+ * included; the chat says what happened. `fallback`: a chat with no name yet.
+ */
+export function waitingLine(pending: HeardLine[], fallback: string): { text: string; color: string; lead: string } | null {
+  const newest = pending.at(-1);
+  if (!newest) return null;
+  const chat = `«${newest.chatTitle || fallback}»`;
+  const more = pending.length > 1 ? ` · +${pending.length - 1}` : "";
+  return { text: `${chat} · ${sourceName(newest.watch)}${more}`, color: newest.color, lead: chat };
 }
 
 /** The chat was seen (opened, or its bar closed): it no longer waits. */

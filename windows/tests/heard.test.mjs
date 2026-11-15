@@ -5,7 +5,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_LINES_PER_CHAT, addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, markSent, placeHeard, seenChat, unsentOnOpen, waitingElsewhere, wavesLit,
+  MAX_LINES_PER_CHAT, addHeard, addPending, dropHeard, heardIn, heardLine, markAsked, markSent, placeHeard, seenChat, unsentOnOpen, waitingElsewhere, waitingLine, wavesLit,
 } from "../src/core/heard.ts";
 
 const mem = new Map();
@@ -129,4 +129,19 @@ test("a task that still waited when Lumo closed says so when it opens, with Ask 
   assert.equal(unsentOnOpen(), 0, "said once");
   markAsked("c1", never.id);
   assert.ok(!heardIn("c1")[1].unsent, "asked: no longer unsent");
+});
+
+test("the closed island names the chat and where it heard, never what", () => {
+  assert.equal(waitingLine([], "Chat"), null);
+  const bank = heardLine({ watch: watch(20, "c1"), met: true, summary: "New email from Bank: Your October statement" }, "Mail for Giulia", 1);
+  const one = waitingLine([bank], "Chat");
+  assert.equal(one.text, "«Mail for Giulia» · Email");
+  assert.equal(one.lead, "«Mail for Giulia»");
+  assert.doesNotMatch(one.text, /Bank|October/);
+  const pr = heardLine({ watch: { ...watch(21, "c2"), source: "github.pr", repo: "o/r", number: 7 }, met: true, summary: "o/r#7 is ready to merge" }, "", 2);
+  const page = heardLine({ watch: watch(22, "c3", { source: "web", until: "changed", target: "https://shop.example/item" }), met: true, summary: "shop.example/item changed: “10” → “12”" }, "Prices", 3);
+  const hook = heardLine({ watch: watch(23, "c4", { source: "webhook", until: "called", target: "deploys" }), met: true, summary: "deploys was called: secret body" }, "Deploys", 4);
+  assert.equal(waitingLine([bank, pr], "Chat").text, "«Chat» · GitHub · +1", "a chat with no name yet");
+  assert.equal(waitingLine([bank, pr, page], "Chat").text, "«Prices» · Web pages · +2");
+  assert.equal(waitingLine([hook], "Chat").text, "«Deploys» · Webhook");
 });
