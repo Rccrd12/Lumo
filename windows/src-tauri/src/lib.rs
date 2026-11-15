@@ -19,6 +19,7 @@ mod claude_code;
 mod click_hold;
 mod clipboard;
 mod acp_chat;
+mod api_agents;
 mod codex_chat;
 mod codex_plan;
 mod computer;
