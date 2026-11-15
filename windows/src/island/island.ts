@@ -47,7 +47,7 @@ import { Feed, UPLOADED_TEXT, compactNotice, compactTimer, setCompactNewsHandler
 import { agentPlanWanted, refreshAntigravityPlanUsage, refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
-import { isComputerTool } from "../core/computer";
+import { isComputerTool, islandHoldsClicks } from "../core/computer";
 import type { ComputerState } from "../core/computer-use";
 import { ComputerPill, clearComputerReveal, computerShowing, setComputerReveal } from "../views/computer-plan";
 import { type PlanSpot, afterCard, pausedPlanWaits, planLeave, planMove } from "../core/computer-plan";
@@ -168,6 +168,8 @@ export class Island {
   private moving = false;
   /** When the user last pressed on the island or used a shortcut: what lets the chat take the keyboard. */
   private lastGesture = 0;
+  /** The card the island's clicks were last held for (Bridge.holdClicks). */
+  private heldFor: string | null = null;
   /** Lifted while carried: a little bigger, springing back when put down. */
   private lift = new Tracked(1);
   /** Between the island and its edge of the screen, eased when Settings changes it. */
@@ -2248,6 +2250,12 @@ export class Island {
     } else {
       this.newLookSize = "";
     }
+    // While the computer is in use, a click on the island must not bring it to
+    // the front: what the agent opened would close (core/computer.ts).
+    const card = State.pendingApproval;
+    const newCard = (card?.requestId ?? null) !== this.heldFor;
+    this.heldFor = card?.requestId ?? null;
+    void Bridge.holdClicks(islandHoldsClicks(card?.tool ?? null, State.computer, State.computerActive), newCard && card != null);
     if (this.lastSyncedView !== State.view) {
       // A permission card can have taken the keyboard too, for Y and N.
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"
