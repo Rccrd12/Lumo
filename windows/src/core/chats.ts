@@ -5,6 +5,7 @@
 
 import { cleanChecklists, type ChatChecklists } from "./checklists";
 import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
+import type { SentItem } from "./sent";
 
 export interface SavedTurn {
   role: "user" | "assistant";
@@ -13,6 +14,8 @@ export interface SavedTurn {
   at?: number;
   /** What the conversation holds for it, when not `content` (ChatMessage.kept). */
   kept?: string;
+  /** A question: what went with it (core/sent.ts ChatMessage.sent). */
+  sent?: SentItem[];
   /** The answer's turn used the computer: its plan as it ended (ChatMessage.computer), with the steps' small pictures. */
   computer?: ComputerRecap;
   /** The problem said under an answer (ChatMessage.warning). */
