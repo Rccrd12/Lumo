@@ -37,6 +37,10 @@ import type { ComputerCursor } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 import { mailEditor, type MailEditor } from "./mail-editor";
 import type { MailRevision } from "../core/mail-edit";
+import { isComputerTool } from "../core/computer";
+import { stepPlace } from "../core/computer-plan";
+import { computerTargetBox } from "./computer-card";
+import { buildComputerView } from "./computer-plan";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
@@ -127,7 +131,7 @@ function withClass<T extends HTMLElement>(el: T, cls: string): T {
 }
 
 /** AgentWho — coloured dot + task name + grey label. */
-function agentWho(task: AgentTask | null, label: string): HTMLElement {
+function agentWho(task: Pick<AgentTask, "color" | "name"> | null, label: string): HTMLElement {
   const row = h("div", { class: "who-row" });
   if (task) {
     row.append(dot(task.color, 8), h("span", { class: "n", text: task.name }));
@@ -141,11 +145,26 @@ function agentWho(task: AgentTask | null, label: string): HTMLElement {
  * session that asks, on a pill two sessions can share, and "1/N" while other
  * requests wait in line behind this one.
  */
-function requestWho(label: string): HTMLElement {
+function requestWho(label: string, asker?: Pick<AgentTask, "color" | "name">): HTMLElement {
   const task = State.focusTask;
   const project = State.pendingApproval?.project;
   const waiting = State.approvalQueue.length;
-  return agentWho(task && project ? { ...task, name: project } : task, waiting ? `${label} · 1/${waiting + 1}` : label);
+  return agentWho(asker ?? (task && project ? { ...task, name: project } : task), waiting ? `${label} · 1/${waiting + 1}` : label);
+}
+
+/** A computer use action's card while a plan runs (computer.rs): who uses it, and at which step. */
+const COMPUTER_WHO_TEXT = {
+  wants: N_("wants to use the computer"),
+  wantsStep: N_("wants to use the computer · step {step} of {total}"),
+};
+
+/** Who asks for a computer use action, in the provider's name and colour, or null for the usual who. */
+function computerWho(tool: string | undefined): HTMLElement | null {
+  const c = State.computer;
+  if (!c || !tool || !isComputerTool(tool)) return null;
+  const { step, total } = stepPlace(c.steps);
+  const label = total ? t(COMPUTER_WHO_TEXT.wantsStep, { step, total }) : t(COMPUTER_WHO_TEXT.wants);
+  return requestWho(label, { name: c.agent, color: c.color });
 }
 
 function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElement {
@@ -617,6 +636,10 @@ function buildApproval(actions: ViewActions): ViewHost {
   // The whole command, wrapped, scrolling past a few lines: Allow allows all of it.
   const code = h("div", { class: "code approval-code" });
   code.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
+  // A computer use action: what it acts on (views/computer-card.ts), in the command's place.
+  const targetSlot = h("div", { class: "computer-target-slot" });
+  let targetFor: string | null = null;
+  let targetBox: HTMLElement | null = null;
   const cutNote = h("div", { class: "approval-cut" });
   // A file to write: its lines added and removed, and a new text's size (the text is not shown).
   const stat = h("div", { class: "approval-stat" });
@@ -644,7 +667,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   // Copilot CLI and Cursor CLI in Auto: Allow stands for the rest of the chat, and the card says so (new look only).
   const rememberedNote = h("div", { class: "session-allow session-note", text: tl(REMEMBERED_TEXT) });
   const allowBtn = withClass(planWords(btn(tl("Allow"), "primary", () => guarded("allow")(), "Y"), PLAN_ASK_TEXT.approve), "allow-btn");
-  const body = stack(116, 16, who, about, planSlot, code, stat, cutNote, mail, row, mailRow);
+  const body = stack(116, 16, who, about, planSlot, code, targetSlot, stat, cutNote, mail, row, mailRow);
   let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
   let mailFor: string | null = null;
@@ -739,7 +762,8 @@ function buildApproval(actions: ViewActions): ViewHost {
       // A plan asking to start shows as its steps, with its own words on the buttons.
       const plan = !email && pending?.plan?.length ? pending.plan : null;
       clear(who);
-      who.append(requestWho(email ? t(EMAIL_TEXT.wants) : plan ? t(PLAN_ASK_TEXT.wants) : t("needs permission")));
+      who.append(computerWho(!email && !plan ? pending?.tool : undefined)
+        ?? requestWho(email ? t(EMAIL_TEXT.wants) : plan ? t(PLAN_ASK_TEXT.wants) : t("needs permission")));
       if ((plan ? req : null) !== planFor) {
         planFor = plan ? req : null;
         clear(planSlot);
@@ -763,7 +787,16 @@ function buildApproval(actions: ViewActions): ViewHost {
       mail.hidden = !email;
       // The email fills the card from the top, clear of the fold button and of its edges.
       body.classList.toggle("mail-on", !!email);
-      code.hidden = !!email || !!plan;
+      // Asked again for each new request: the box fills itself in when it can.
+      const targetReq = pending && !email && !plan ? req : null;
+      if (targetReq !== targetFor) {
+        targetFor = targetReq;
+        clear(targetSlot);
+        targetBox = pending && targetReq ? computerTargetBox(pending) : null;
+        if (targetBox) targetSlot.append(targetBox);
+      }
+      targetSlot.hidden = !targetBox;
+      code.hidden = !!email || !!plan || !!targetBox;
       row.hidden = !!email;
       mailRow.hidden = !email;
       // The whole point of approving here rather than in the terminal: this line
@@ -1168,5 +1201,6 @@ export function buildViews(
   map.set("tools", buildTools(actions));
   map.set("mail", buildMailView(actions));
   map.set("home", buildHomeView(actions));
+  map.set("computer", buildComputerView({ takeKeyboard: () => actions.takeKeyboard() }));
   return map;
 }

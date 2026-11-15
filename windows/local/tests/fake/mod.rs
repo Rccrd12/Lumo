@@ -225,10 +225,17 @@ pub struct Island {
     pub plans: Vec<Value>,
     /// When the island was hushed and when it spoke again.
     pub hushed: Vec<bool>,
+    /// How many signs of life the turn gave.
+    pub signals: usize,
+    /// The signs of life given before each tool ran.
+    pub signals_at_call: Vec<usize>,
+    /// The signs of life given before any text showed.
+    pub signals_before_text: Option<usize>,
 }
 
 impl Hooks for Island {
     fn shown(&mut self, text: &str) {
+        self.signals_before_text.get_or_insert(self.signals);
         self.shown.push(text.to_string());
     }
 
@@ -262,6 +269,7 @@ impl Hooks for Island {
 
     fn call(&mut self, name: &str, input: Value) -> impl std::future::Future<Output = (String, bool)> + Send {
         self.ran.push((name.to_string(), input));
+        self.signals_at_call.push(self.signals);
         let answer = (format!("{name} done"), self.failing);
         async move { answer }
     }
@@ -272,6 +280,10 @@ impl Hooks for Island {
 
     fn hush(&mut self, on: bool) {
         self.hushed.push(on);
+    }
+
+    fn signal(&mut self) {
+        self.signals += 1;
     }
 }
 

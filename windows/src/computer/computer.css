@@ -421,3 +421,64 @@ svg.wait circle {
   transform-origin: 50% 50%;
   filter: drop-shadow(0 0 4px var(--warm-soft));
 }
+
+/* ── The pointer hint: the user's hand met the agent's mouse ─────────────── */
+
+/* By the user's pointer (main.ts hint, placed by fx.ts hintBox): who has the
+   mouse, and that Esc pauses. Dark, as the island; gone after a moment. */
+.hint {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 320px;
+  padding: 8px 12px 9px;
+  border-radius: 12px;
+  background: rgba(10, 10, 12, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  color: #f5f6f8;
+  font: 500 12.5px system-ui, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  transition: opacity 0.35s ease;
+  animation: lumo-hint-in 0.18s ease-out;
+}
+
+.hint.out {
+  opacity: 0;
+}
+
+.hint-who {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hint-who b {
+  font-weight: 650;
+  color: var(--warm);
+}
+
+.hint-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+  color: #9398a1;
+  white-space: nowrap;
+}
+
+.hint kbd {
+  font: 600 11px system-ui, "Segoe UI", sans-serif;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-bottom-width: 2px;
+  color: #e8e9ec;
+}
+
+@keyframes lumo-hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
