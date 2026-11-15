@@ -692,7 +692,7 @@ test("a question whose answer failed keeps its Retry in sight", async () => {
   assert.deepEqual(State.chatHistory.map((m) => m.content), ["hello", "hi"]);
 });
 
-test("an answer agy ended with an error keeps its warning in sight under it, its detail on a click", async () => {
+test("an answer agy ended with an error keeps its warning in sight on its Copy/Retry bar, its detail on a click", async () => {
   const words = "Malformed function call: Function call is empty - no input to parse.";
   answers.chat_send = { text: "Ecco gli appunti.", turns: 2, warning: { kind: "malformed", message: words } };
   await ask("appunti in LaTeX");
@@ -701,9 +701,9 @@ test("an answer agy ended with an error keeps its warning in sight under it, its
   const answer = rows()[1];
   const line = answer.find(".msg-warning")[0];
   assert.equal(line.textContent, "Antigravity CLI reported a problem at the end");
-  // Not on the actions' bar, which shows only on hover: in sight under a past answer too.
-  assert.equal(answer.find(".msg-actions")[0].find(".msg-warning").length, 0);
-  assert.ok(!answer.find(".msg-actions")[0].classList.contains("shown"), "the bar of a past answer hides");
+  // On the actions' bar, which stays in sight under a past answer with a warning.
+  assert.equal(answer.find(".msg-actions")[0].find(".msg-warning").length, 1);
+  assert.ok(answer.find(".msg-actions")[0].classList.contains("shown"), "in sight without the mouse");
   const detail = answer.find(".msg-warning-detail")[0];
   assert.equal(detail.hidden, true);
   line.fire("click");
@@ -711,6 +711,10 @@ test("an answer agy ended with an error keeps its warning in sight under it, its
   assert.match(detail.textContent, /empty tool call/);
   assert.ok(detail.textContent.endsWith(`Antigravity CLI's message: ${words}`));
   assert.equal(rows()[3].find(".msg-warning").length, 0, "an answer without one has none");
+  // A past answer without one hides its bar until hovered, as always.
+  answers.chat_send = { text: "Ok.", turns: 6 };
+  await ask("grazie");
+  assert.ok(!rows()[3].find(".msg-actions")[0].classList.contains("shown"));
 });
 
 test("away from the chat, an answer with a warning is noted in amber, with a problem", async () => {

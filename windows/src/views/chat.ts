@@ -407,7 +407,8 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     times.push({ el: when, at });
     sentTimes.push(...times);
   }
-  const bar = h("div", { class: opts.shown ? "msg-actions shown" : "msg-actions" });
+  // An answer with a warning keeps its bar in sight, the warning on it.
+  const bar = h("div", { class: opts.shown || message.warning ? "msg-actions shown" : "msg-actions" });
   let row: HTMLElement;
   if (message.role === "user") {
     const onEdit = opts.onEdit;
@@ -423,9 +424,8 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     drawReply(reply, message.content, !!opts.workshop, opts.scope);
     // A stopped answer says so on the same line.
     const stopped = message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null;
-    // The CLI ended with an error after this answer: one line under it, in
-    // sight without the mouse (not on the bar, which shows only on hover),
-    // what to know on a click.
+    // The CLI ended with an error after this answer: one line on the bar,
+    // which stays in sight, what to know on a click.
     const warned = message.warning ? warningWords(message.warning) : null;
     const detail = warned ? h("div", { class: "msg-warning-detail", text: warned.detail }) : null;
     let warning: HTMLElement | null = null;
@@ -442,9 +442,9 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
         if (!detail.hidden) detail.scrollIntoView?.({ block: "nearest" });
       });
     }
-    bar.append(...[copy, retry, stopped, when].filter((x): x is HTMLElement => x != null));
+    bar.append(...[copy, retry, stopped, warning, when].filter((x): x is HTMLElement => x != null));
     const copies = message.copies?.length ? copiesBox(message.copies) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, warning, detail, bar));
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
