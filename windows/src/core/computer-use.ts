@@ -45,6 +45,8 @@ export interface ComputerState {
   revealMs?: number;
   /** When computer use started in this turn, epoch ms (the plan's clock). */
   since: number;
+  /** The island chat whose plan this is ("" for Gemini Live's helper): a permission card says its step only to the same chat's request. */
+  chat?: string;
 }
 
 /** A step of the recap: the plan's step, how it ended, and a small picture of the screen when it was done. */
