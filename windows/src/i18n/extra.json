@@ -15801,17 +15801,17 @@
    "id": "Yang boleh dilakukannya sendiri",
    "it": "Cosa può fare da sola"
   },
-  "How free Claude Code, Codex and Antigravity CLI are in the chat. The shield in the chat changes it too.": {
-   "zh-Hans": "Claude Code、Codex 和 Antigravity CLI 在聊天中有多大自由。聊天中的盾牌图标也可以更改它。",
-   "hi": "चैट में Claude Code, Codex और Antigravity CLI कितने स्वतंत्र हैं। चैट की ढाल भी इसे बदलती है।",
-   "es": "Cuánta libertad tienen Claude Code, Codex y Antigravity CLI en el chat. El escudo del chat también lo cambia.",
-   "ar": "مدى حرية Claude Code وCodex وAntigravity CLI في الدردشة. يغيّره الدرع في الدردشة أيضًا.",
-   "fr": "La liberté de Claude Code, Codex et Antigravity CLI dans le chat. Le bouclier du chat la change aussi.",
-   "bn": "চ্যাটে Claude Code, Codex ও Antigravity CLI কতটা স্বাধীন। চ্যাটের ঢালও এটি বদলায়।",
-   "pt-BR": "Quanta liberdade Claude Code, Codex e Antigravity CLI têm no chat. O escudo do chat também muda isso.",
-   "ru": "Насколько свободны Claude Code, Codex и Antigravity CLI в чате. Щит в чате тоже это меняет.",
-   "id": "Seberapa bebas Claude Code, Codex, dan Antigravity CLI di obrolan. Perisai di obrolan juga mengubahnya.",
-   "it": "Quanta libertà hanno Claude Code, Codex e Antigravity CLI nella chat. Lo cambia anche lo scudo nella chat."
+  "How free Claude Code, Codex and Antigravity CLI are in a new chat. The shield in a chat changes it for that chat only.": {
+   "zh-Hans": "新聊天中 Claude Code、Codex 和 Antigravity CLI 有多大自由。聊天中的盾牌图标只更改该聊天的设置。",
+   "hi": "नई चैट में Claude Code, Codex और Antigravity CLI कितने स्वतंत्र हैं। किसी चैट की ढाल इसे केवल उसी चैट के लिए बदलती है।",
+   "es": "Cuánta libertad tienen Claude Code, Codex y Antigravity CLI en un chat nuevo. El escudo de un chat la cambia solo para ese chat.",
+   "ar": "مدى حرية Claude Code وCodex وAntigravity CLI في دردشة جديدة. يغيّره الدرع في دردشة لتلك الدردشة فقط.",
+   "fr": "La liberté de Claude Code, Codex et Antigravity CLI dans un nouveau chat. Le bouclier d'un chat la change pour ce chat seulement.",
+   "bn": "নতুন চ্যাটে Claude Code, Codex ও Antigravity CLI কতটা স্বাধীন। কোনো চ্যাটের ঢাল শুধু সেই চ্যাটের জন্য এটি বদলায়।",
+   "pt-BR": "Quanta liberdade Claude Code, Codex e Antigravity CLI têm em um chat novo. O escudo de um chat muda isso só para aquele chat.",
+   "ru": "Насколько свободны Claude Code, Codex и Antigravity CLI в новом чате. Щит в чате меняет это только для этого чата.",
+   "id": "Seberapa bebas Claude Code, Codex, dan Antigravity CLI di obrolan baru. Perisai di sebuah obrolan mengubahnya hanya untuk obrolan itu.",
+   "it": "Quanta libertà hanno Claude Code, Codex e Antigravity CLI in una chat nuova. Lo scudo in una chat la cambia solo per quella chat."
   },
   "For the models that can't search on their own. Free, no account: only the useful passages reach the model.": {
    "zh-Hans": "适用于无法自行搜索的模型。免费，无需帐户：只有有用的段落会发送给模型。",

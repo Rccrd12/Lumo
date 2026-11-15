@@ -178,9 +178,12 @@ test("the shield picks what Claude Code and Antigravity CLI may do without askin
   assert.deepEqual(rows().map((r) => r.querySelector(".picker-model-name").textContent), ["Ask every time", "Auto", "Plan only"]);
   assert.ok(rows()[0].classList.contains("on"));
 
+  const saves = sent("save_settings").length;
   rows()[1].fire("click");
-  assert.equal(State.settings.chatPermissionMode, "auto");
-  assert.equal(sent("save_settings").at(-1).settings.chatPermissionMode, "auto");
+  // This chat's alone: the default in the settings, which a new chat starts with, stays.
+  assert.equal(State.settings.chatPermissionMode, "default");
+  assert.equal(sent("save_settings").length, saves);
+  assert.deepEqual(sent("chat_permissions").at(-1), { chatId: State.chatId, permissionMode: "auto", permissionModeAgy: "" });
   assert.ok(!$(".chat-body").classList.contains("authorizing"), "picking closes the list");
   view.sync();
   assert.ok($(".perm-btn").classList.contains("lit"), "lit while it may do more than ask");
@@ -1040,7 +1043,7 @@ test("mid-answer every control stays usable", async () => {
   $(".perm-btn").fire("click");
   assert.ok($(".chat-body").classList.contains("authorizing"));
   view.el.find(".perm-row")[1].fire("click");
-  assert.equal(State.settings.chatPermissionMode, "auto");
+  assert.equal(sent("chat_permissions").at(-1).permissionMode, "auto");
 
   // Past chats and the attachments open.
   view.el.find(".tool-btn").find((b) => b.getAttribute("title") === "Past chats").fire("click");

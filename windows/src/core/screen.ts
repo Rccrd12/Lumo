@@ -551,6 +551,11 @@ export function filePreview(file: Pick<DroppedFile, "name" | "path"> & { size?: 
   return [block({ heading: file.name, detail: file.path, note: file.size == null ? "" : formatSize(file.size), image })];
 }
 
+/** Whether anything the user added waits in `p` (what rides along by itself aside). */
+export function screenWaits(p: PendingScreen): boolean {
+  return p.windows.length > 0 || p.tabs.length > 0 || p.shots.length > 0 || !!p.selection || (p.selections?.length ?? 0) > 0 || (p.folders?.length ?? 0) > 0;
+}
+
 /** The paths of the screenshots waiting, for deleting the ones never sent. */
 export function shotPaths(p: PendingScreen): string[] {
   return p.shots.map((s) => s.path);
