@@ -135,6 +135,7 @@ Quit. The look of 0.17, with the ring of light and the tabs, is gone since
 | **…** → Hide in the edge of the screen | Hides the island into the edge of the screen it hangs from, as **Hide when unused** does; bring the mouse to that piece of the edge and it comes back. A request waiting for your answer is folded instead, never hidden |
 | **…** → Quit | Quits Lumo altogether, tray icon included (open it again from the Start menu) |
 | Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
+| Take a screen capture: `Win+Shift+S`, `Print Screen`, or ShareX, Greenshot, Lightshot, Snagit, PicPick, Flameshot, Snipaste, FastStone Capture, Screenpresso, PowerToys' Text Extractor | The island stays under the capture, dimmed with the rest of the screen, so it can be captured where it is; it neither opens under the capture's mouse nor covers its toolbar. An image such a tool pins to the screen is no capture: the island goes on opening under the mouse while it is in front. Once the capture ends, the island is back on top (Windows) |
 | In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
 | Tray icon | A left click hides the island into its edge, or brings it back (Windows). A right click: Open, Weekly recap, Wardrobe…, Settings…, Pause (**Resume** while paused), Quit |
@@ -165,7 +166,10 @@ and grows a little to say it (on the top and bottom edges; upright on a side
 it stays as it is), only as wide as what it says. One thing alone sits in
 the middle; several sit side by side, each more compact (what the AI is doing, the next
 event, up to two timers, the music). Their buttons work: resting the mouse on
-them never opens the island, even with Open on hover.
+them never opens the island, even with Open on hover. Nor does a window
+dragged or resized across it, nor letting go of that window on it: the
+island opens on hover again once the mouse has left it and come back. A
+file dragged near it still opens it for the drop.
 
 - **What the AI is doing**: "Haiku · Reading main.ts", "Haiku · Writing…",
   "Gemini Live · Looking at the screen", "Claude Code · Waiting for your
@@ -256,8 +260,13 @@ default, the ones Google Calendar shows; 20 at most). With both set, the
 events of the iCal address and of Google join, each once; when the iCal
 address is one of the calendars Google sign-in reads, its copy (hours behind)
 is left out. A calendar that can't be read keeps its last events while the
-others go on; when Google ends the access, the tile says to sign in again. Disconnect tells Google to forget the access and
-removes all three from the keychain. Lumo talks only to Google
+others go on; one Google no longer lets the account read (no longer shared,
+or deleted) says so on its row in Settings. Invitations you declined are left
+out, as Google Calendar does. When Google ends the access, the tile says to
+sign in again. Disconnect tells Google to forget the access (and says so when
+Google can't be reached) and removes it from the keychain; the client's ID
+and secret stay, since Google Cloud Console may not show the secret again,
+and go with Remove client. Lumo talks only to Google
 (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`), only
 once you signed in.
 
@@ -292,7 +301,10 @@ first tools becomes the plan, and it is told so; and each new question in a
 chat whose plan isn't done says where the plan stands.
 
 Each chat shows its own plan: a chip beside the model says how far along it
-is and opens its steps over the chat, and the home lists the plans under way.
+is and opens its steps over the chat, and the home lists the plans under way
+of the chats at work, each under its agent's name and its chat's title. A chat
+stopped, or done without ticking its last step, keeps its plan in its own chat
+but is no longer "In progress" on the home.
 A plan made while the island is closed is there when it opens. Its **–**
 folds it into an icon left of the usage ring, which brings it back; a new
 plan opens it again. A finished plan stays a few seconds, then folds into its
@@ -443,18 +455,23 @@ marked read.
 An email with HTML is shown as its sender drew it (**Original**), on a white
 page shrunk to fit, or as its text (**Text only**), the choice kept for the
 next emails. It is shown in a frame where nothing of it runs (no scripts,
-forms or plug-ins) and nothing of it is fetched from the web: its links open
-in the browser only on a click, the corner saying where each really goes, and
-the pictures it links to stay hidden, so the sender can't tell it was opened,
-until **Load images** downloads them as the chat's images are (https, public
-sites, images only; **Images from the web** off in Settings → Security keeps
-them hidden). **Always load**, or **Email images always** in Settings →
-Security, shows every email's pictures at once. Either way the tracking
-pixels Lumo recognises (2 × 2 px or less, or from a service made to
-count openings) are never downloaded, and the email says how many were left
-out. The pictures inside the email itself come with it. From
-Outlook, the HTML is read through MAPI, with no prompt; where MAPI can't be
-had (a 32-bit Office), the text is shown.
+forms or plug-ins) and nothing of it is fetched from the web (the frame has a
+CSP of its own: its CSS, fonts, SVG and videos reach nowhere): its links open
+in the browser only on a click, as the corner shows them, the corner saying
+where each really goes (a mailto: link opens the mail program with its
+address only; a link to a place in the email scrolls there), and the pictures
+it links to and its backgrounds stay hidden, so the sender can't tell it was
+opened, until **Load images** downloads them as the chat's images are (https,
+an http picture asked on https, public sites, images only, the first 60;
+**Images from the web** off in Settings → Security keeps them hidden).
+**Always load**, or **Email images always** in Settings → Security, shows
+every email's pictures at once, and the email says so, with **Turn off**.
+Either way the tracking pixels Lumo recognises (2 × 2 px or less, or from a
+service made to count openings) are never downloaded, and the email says how
+many were left out. The pictures inside the email itself come with it. From
+Outlook, the HTML is read through MAPI, with no prompt, in the code page
+Outlook keeps it in when it doesn't say its own; where MAPI can't be had (a
+32-bit Office), the text is shown.
 
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
@@ -753,8 +770,8 @@ configure yourself, and to the sites of the images in chat answers: Lumo
 downloads such an image at once (https and public addresses only, image files
 only, 8 MB at most), so its site sees your IP address and the image's full
 address, which the AI writes and could fill with words from your chat. The
-pictures an email links to, in the Email view, are downloaded the same way
-only after a click on **Load images** (or at once with **Email images
+pictures an email links to (and its backgrounds), in the Email view, are
+downloaded the same way (an http one on https) only after a click on **Load images** (or at once with **Email images
 always**), and the sender's site then learns that you opened it; the tracking
 pixels Lumo recognises are never downloaded. **Settings → Security → Images from the web** turns both off.
 
@@ -1075,15 +1092,20 @@ plan, with no API key.
 
 - **Antigravity CLI** gets the same tools when it is the chat's provider
   (in its own MCP configuration for the chat's runs, as for the email's
-  tools). It calls Lumo's tools without asking, so Lumo asks itself: with
-  *Ask every time* each click, key or text is the same Allow / Deny card,
-  under Antigravity's name; in *Plan* mode it may only look; in *Auto* (or
-  Antigravity's own auto mode) it acts without a card. Same glow, mouse, Esc
-  and rules as Claude Code's. A note in front of every question tells it how
-  the tools work. Its Gemini models give and read points on a 0–999 grid
-  over the screenshot, the way Gemini counts them: Lumo turns them into the
-  screenshot's pixels and back, so a click lands where the model meant.
-  Codex, Copilot CLI and Cursor CLI don't get the computer.
+  tools). It calls Lumo's tools without asking, so Lumo asks itself, as the
+  chat's mode says: with *Ask every time* each click, key or text is the same
+  Allow / Deny card, under Antigravity's name; in *Plan* mode it may only
+  look; in *Auto* (or Antigravity's own auto mode) it acts without a card.
+  A mode that asks more, picked while it
+  works, counts from its next action; one that asks less, from the next
+  question. Each chat by its own mode: a Claude Code chat using the computer
+  at the same time asks as it always does. Same glow, mouse, Esc, rules and
+  recap under the answer as Claude Code's. A note in front of the question
+  tells it how the tools work, whole the first time its conversation hears
+  it, then as a short reminder. Its Gemini models give and read points on a
+  0–999 grid over the screenshot, the way Gemini counts them: Lumo turns them
+  into the screenshot's pixels and back, so a click lands where the model
+  meant. Codex, Copilot CLI and Cursor CLI don't get the computer.
 
 - **Gemini Live** hands what is to be done on the screen ("click Send", "open
   the display settings and turn on night light") to Claude Code with its own
@@ -1105,13 +1127,20 @@ plan, with no API key.
 - **Every action asks first**, with the chat set to *Ask every time*: a click,
   a key or a text is an Allow / Deny card on the island. It says who asks, in
   the provider's name and colour, at which step of the plan ("wants to use the
-  computer · step 3 of 5"), why (the step under way), and what: for a click, a
-  move, a scroll or a drag, the screen around the point with the point ringed
-  and what Windows calls the thing there ("Click on «Save as…»", "Menu item ·
-  Notepad"), the coordinates still under it, small; for typing and keys, the
-  whole text (each Enter and Tab shown where it falls) and the keys, since
-  that is what Allow allows. Screenshots, zooms and waits don't ask. In *Auto*
-  mode Claude Code decides, as for its other tools.
+  computer · step 3 of 5"), why (the step under way of that chat's own plan,
+  never of another chat using the computer at the same time), and what: for
+  a click, a move, a scroll or a drag, the action on the point ("Click · at
+  the marked point") beside the screen around it with the point ringed (a
+  click on the picture, or on Enlarge, shows it at its own size), then, apart
+  and in grey, what the app says the thing is ("The app calls it «Save
+  as…»", "Menu item · Notepad"): the app or the web page chooses that name,
+  so it is never what the card says will be done; the coordinates stay under
+  it, small. For typing and keys, the whole text (each Enter and Tab shown
+  where it falls) and the keys, since that is what Allow allows. A card
+  waiting while computer use is paused says that its action won't be done:
+  after Resume, Claude looks at the screen again and asks again. Screenshots,
+  zooms and waits don't ask. In *Auto* mode Claude Code decides, as for its
+  other tools.
 - **Esc, anywhere, pauses it**: the mouse is yours again at once, the glow
   turns grey, and Claude waits at its next action. The island stays open on
   the plan with **Stop** (nothing more is done in this answer), **Ask Claude
@@ -1120,7 +1149,8 @@ plan, with no API key.
   again; Esc in the field closes it, nothing sent) and **Resume**. Only
   Resume gives Claude the mouse back: Esc pressed again, by a panic double
   press or in another app, never does. While it is paused, Esc is yours
-  again, for your apps and the island.
+  again, for your apps and the island. The pause lasts until you resume or
+  stop it, or the answer ends; no picture for the recap is taken meanwhile.
 - **You can see it work**: the screen it uses glows softly around its edges
   (on whichever display it is), the mouse turns into an orange arrow and
   glides from point to point instead of jumping, and each action shows where
@@ -1334,7 +1364,8 @@ grey.
   Edit keeps the watch (a webhook keeps its address). A watch says on its
   card when GitHub stops accepting the token (it keeps listening; Update opens
   Settings) or when it was paused for firing too often (Resume).
-- **History** keeps what Lumo heard, and whether it happened or no longer can.
+- **History** keeps what Lumo heard, and whether it happened or no longer can,
+  and a watch that ended because an edited one now listens to the same thing.
 - **Listen for something** picks a source, then what to listen to, the event,
   once or every time, and what Lumo should do then.
 
@@ -1345,10 +1376,16 @@ something to do, the AI gets a message in that chat saying what happened and
 what it meant to do, and answers it there, even when another chat is on
 screen: the chat on screen stays as it is. When the event is not the one
 waited for (the pull request was closed instead of merged), the AI is told
-not to do what was planned.
+not to do what was planned. A task that was still waiting for its chat to be
+free when Lumo closed is not sent by itself when Lumo opens again: its line
+says the task did not start, and **Ask** is back. When the chat that asked
+was deleted, the task is done in a new chat, and the next events of a watch
+that listens every time go to that same chat; a task still waiting for a
+chat you delete goes with it.
 
-Until that chat is opened, the closed island names it («chat» · what
-happened, +N when more chats wait), a bar over the field of the chat on screen
+Until that chat is opened, the closed island names it and where it heard,
+never what («chat» · Email, +N when more chats wait: no subject, sender, page
+or notification text, so a shared screen shows nothing of it), a bar over the field of the chat on screen
 offers **Open that chat** and **Close** (as if it was opened), and Past chats
 marks it, with a count on the clock. Nothing waits after a restart.
 

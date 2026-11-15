@@ -70,11 +70,13 @@ pub struct ChatReply {
     pub warning: Option<ChatWarning>,
 }
 
-/// A problem under an answer: one short line, and what to know, shown on a click.
+/// A problem under an answer: what kind ("malformed": the model sent a tool
+/// call the CLI could not read; "error": any other), and the CLI's own words.
+/// The island says it in its language (src/views/chat.ts warningWords).
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct ChatWarning {
-    pub line: String,
-    pub detail: String,
+    pub kind: String,
+    pub message: String,
 }
 
 /// Between what an error says to the user and the words the CLI gave for it,
@@ -1018,9 +1020,14 @@ pub fn model_for(settings: &Settings, provider: &str) -> String {
 
 /// `settings` with the provider and model a chat is on (the page keeps them
 /// by chat, chats.ts): that chat is answered by them, whatever the picker
-/// shows for another chat meanwhile. None, or empty, leaves the settings' own.
+/// shows for another chat meanwhile. None, or empty, leaves the settings' own;
+/// so does a provider the user took out of the chat (Settings → Chat → Show
+/// in the chat), as the page does (providers.ts onChatModel).
 pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>) -> Settings {
     let Some(provider) = provider.map(str::trim).filter(|p| !p.is_empty()) else { return settings };
+    if provider != settings.chat_provider && settings.hidden_chat_providers.iter().any(|h| h == provider) {
+        return settings;
+    }
     settings.chat_provider = provider.to_string();
     if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
         if provider == ANTHROPIC {
@@ -1325,18 +1332,16 @@ async fn send_to(
         }
         // Computer use: Claude Code's as it always was; Antigravity CLI's
         // each action asked for by Lumo (computer.rs OtherTurn). Codex,
-        // Copilot CLI and Cursor CLI could take the same tools but are left
-        // out: Copilot CLI answered it can't control Windows, Codex and
-        // Cursor CLI were never tried.
+        // Copilot CLI and Cursor CLI don't get it.
         let computer = settings.chat_computer_use;
         if provider == antigravity_cli::PROVIDER {
             return Box::pin(antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), computer, query, context, folder)).await;
         }
         if provider == codex_chat::PROVIDER {
-            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, false, query, context, folder)).await;
+            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
         }
         if acp_chat::Agent::of(provider).is_some() {
-            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, false, query, context, folder)).await;
+            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
         }
         return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)).await;
     }
@@ -2150,6 +2155,10 @@ mod tests {
         // Nothing named: the settings as they are.
         let d = with_pick(settings.clone(), None, Some("x"));
         assert_eq!((d.chat_provider.as_str(), model_for(&d, "openai").as_str()), ("openai", "gpt-4o"));
-        assert_eq!(with_pick(settings, Some(" "), None).chat_provider, "openai");
+        assert_eq!(with_pick(settings.clone(), Some(" "), None).chat_provider, "openai");
+        // A provider taken out of the chat: the settings' own answers.
+        let hidden = Settings { hidden_chat_providers: vec!["codex".into()], ..settings };
+        let e = with_pick(hidden.clone(), Some("codex"), Some("gpt-5"));
+        assert_eq!((e.chat_provider.as_str(), model_for(&e, "codex").as_str()), ("openai", model_for(&hidden, "codex").as_str()));
     }
 }

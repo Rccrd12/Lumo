@@ -40,7 +40,7 @@ use crate::log;
 use crate::session_window;
 
 /// Slightly under lumo-hook's own 110 s wait, so we always answer first.
-const DECISION_TIMEOUT: Duration = Duration::from_secs(108);
+pub(crate) const DECISION_TIMEOUT: Duration = Duration::from_secs(108);
 /// An email's card waits longer: its fields can be changed before Send
 /// (mail.rs deliver). lumo-hook's MAIL_SEND_BUDGET counts on it.
 pub const MAIL_CARD_TIMEOUT: Duration = Duration::from_secs(300);
@@ -220,11 +220,13 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // plan tool, of the island's timer and GitHub tools or of the user's own
     // tools (lumo-hook --mcp): one answer line.
     let answer = if let Some(request) = payload.get("lumo_computer") {
-        Some(crate::computer::serve(&app, request).await)
+        // As the chat's own: a card Lumo raises for another agent's action
+        // puts the chat in "waiting for your permission" (computer.rs serve).
+        Some(in_chat(&app, request, Box::pin(crate::computer::serve(&app, request))).await)
     } else if let Some(request) = payload.get("lumo_mail") {
-        Some(in_chat(&app, request, Box::pin(crate::mail::serve(&app, request))).await)
+        Some(while_relay_waits(&mut pipe, in_chat(&app, request, Box::pin(crate::mail::serve(&app, request)))).await)
     } else if let Some(request) = payload.get("lumo_tool") {
-        Some(in_chat(&app, request, Box::pin(crate::tools::serve_call(&app, request))).await)
+        Some(while_relay_waits(&mut pipe, in_chat(&app, request, Box::pin(crate::tools::serve_call(&app, request)))).await)
     } else if payload.get("lumo_tools").is_some() {
         Some(crate::tools::serve_list())
     } else if let Some(request) = payload.get("lumo_island").filter(|r| r.is_object()) {
@@ -315,6 +317,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     }
     payload["request_id"] = json!(id);
     let payload_cut = payload.get("lumo_input_cut") == Some(&json!(true));
+    // Arguments the relay couldn't read (lumo-hook normalize.rs): the agent
+    // reads them one way, Lumo another, so nothing allows them from here.
+    let payload_unread = payload.get("lumo_input_unread") == Some(&json!(true));
     log::line(format!("hook PermissionRequest id={id}"));
     let tool_name = payload.get("tool_name").and_then(Value::as_str).map(str::to_string);
     let tool_input = payload.get("tool_input").cloned().unwrap_or(Value::Null);
@@ -344,8 +349,18 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // the chat's Auto nothing waits for them. Only "Allow for this session"
     // never remembers it (session_rules.rs).
     if payload_cut {
-        log::line(format!("hook id={id} was cut on its way: the card showed its beginning"));
+        log::line(format!("hook id={id} was cut on its way: the card showed its beginning and its end"));
     }
+    // What Lumo couldn't read is never allowed from here, whatever came back
+    // (a mistake in the page, a key): the agent asks in its own window, as if
+    // Lumo were closed; the island chat's Antigravity run is told why.
+    let reply = match reply {
+        Ok(d) if payload_unread && is_allow(&d) => {
+            log::line(format!("hook id={id} allow refused: Lumo couldn't read its arguments"));
+            Err(Unanswered::Unread)
+        }
+        other => other,
+    };
     let decision = reply.as_ref().ok().cloned();
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     with_auto_allowable(|set| set.remove(&id));
@@ -387,6 +402,13 @@ enum Unanswered {
     TimedOut,
     /// Taken down before anyone answered: Lumo paused, the turn moved on.
     Released,
+    /// Allowed, but its arguments are ones Lumo couldn't read: refused.
+    Unread,
+}
+
+/// A decision that lets the request run.
+fn is_allow(decision: &str) -> bool {
+    matches!(decision.trim(), "allow" | "always" | "edits")
 }
 
 impl Unanswered {
@@ -395,6 +417,7 @@ impl Unanswered {
             Unanswered::NotShown => "busy",
             Unanswered::TimedOut => "timeout",
             Unanswered::Released => "released",
+            Unanswered::Unread => "unread",
         }
     }
 }
@@ -408,6 +431,41 @@ async fn client_gone(pipe: &mut impl Relay) {
             Ok(0) | Err(_) => return,
             Ok(_) => {}
         }
+    }
+}
+
+tokio::task_local! {
+    /// Within a call of Lumo's email tools or the user's tools (lumo-hook
+    /// --mcp): whether the relay that asked has gone (`while_relay_waits`).
+    static RELAY_GONE: tokio::sync::watch::Receiver<bool>;
+}
+
+/// Serves a call that may put a card up (an email to send, one of the user's
+/// tools), watching the relay that asked meanwhile. Gone (Stop ended the
+/// chat's turn, and the agent with its lumo-hook), the card it asked for
+/// leaves the island (`ask`): nobody hears its answer any more, and an email
+/// must not go after the AI was told the turn was over. What a click already
+/// started (an email being sent, a tool running) carries on to its end.
+async fn while_relay_waits<T>(pipe: &mut impl Relay, served: impl std::future::Future<Output = T>) -> T {
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    let served = RELAY_GONE.scope(rx, served);
+    let watch = async {
+        client_gone(pipe).await;
+        let _ = tx.send(true);
+        // Only says so: the call itself goes on.
+        std::future::pending::<T>().await
+    };
+    first_of(served, watch).await
+}
+
+/// Resolves once the relay of the call being served has gone (`while_relay_waits`);
+/// never outside one (a card asked by Lumo itself).
+async fn relay_gone() {
+    let Ok(mut rx) = RELAY_GONE.try_with(|rx| rx.clone()) else {
+        return std::future::pending().await;
+    };
+    if rx.wait_for(|gone| *gone).await.is_err() {
+        std::future::pending::<()>().await;
     }
 }
 
@@ -485,7 +543,12 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
                 let _ = app.emit_to(WINDOW_LABEL, "hook-settled", id.clone());
             }
         },
-        wait_for_decision(&id, &mut rx, wait),
+        // The relay that asked for it gone: the card goes (while_relay_waits).
+        first_of(wait_for_decision(&id, &mut rx, wait), async {
+            relay_gone().await;
+            log::line(format!("tool card id={id} withdrawn: the relay that asked has gone"));
+            None
+        }),
     )
     .await;
     // A card of Lumo's own is never kept for a session.
@@ -694,6 +757,38 @@ mod tests {
         });
     }
 
+    /// A call of Lumo's email or the user's tools whose relay hangs up while
+    /// the card waits: the card hears it and gives up; the call itself is not
+    /// dropped (what a click started goes on), and a relay still there is not
+    /// mistaken for one that left.
+    #[test]
+    fn a_card_hears_its_relay_hang_up() {
+        block_on(async {
+            let (mut ours, theirs) = tokio::io::duplex(64);
+            let card = async {
+                tokio::time::timeout(Duration::from_secs(5), relay_gone()).await.is_ok()
+            };
+            let call = while_relay_waits(&mut ours, async {
+                let heard = card.await;
+                // The call carries on after the card gave up, and its answer is the one returned.
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                heard
+            });
+            let hang_up = async {
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                drop(theirs);
+                std::future::pending::<bool>().await
+            };
+            assert!(first_of(call, hang_up).await, "the card hears the relay go");
+
+            let (mut ours, _theirs) = tokio::io::duplex(64);
+            let still = while_relay_waits(&mut ours, async { tokio::time::timeout(Duration::from_millis(50), relay_gone()).await.is_ok() }).await;
+            assert!(!still, "a relay still there is not gone");
+            // Outside a call (a card asked by Lumo itself): never.
+            assert!(tokio::time::timeout(Duration::from_millis(20), relay_gone()).await.is_err());
+        });
+    }
+
     /// A card of Lumo's own (`ask`) that Stop drops while it waits: the hand's
     /// count goes down all the same, and the card is said to be gone.
     #[test]
@@ -767,6 +862,9 @@ mod tests {
             assert_eq!(Unanswered::TimedOut.word(), "timeout");
             assert_eq!(Unanswered::NotShown.word(), "busy");
             assert_eq!(Unanswered::Released.word(), "released");
+            assert_eq!(Unanswered::Unread.word(), "unread");
+            assert!(is_allow("allow") && is_allow("always") && is_allow(" edits\n"));
+            assert!(!is_allow("deny") && !is_allow(r#"{"answers":{}}"#));
         });
     }
 }

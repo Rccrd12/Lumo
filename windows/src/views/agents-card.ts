@@ -55,7 +55,6 @@ export const AGENTS_CARD_TEXT = {
   /** What Rust says of an agent whose CLI ended under it (chat_agents.rs end_open). */
   cliEnded: N_("{agent} ended"),
   resume: N_("Resume"),
-  resumeAsk: N_("{name} ended while these agents were still working. Please resume their tasks where they stopped:"),
   finished: N_("{count} agents finished"),
   inTime: N_("in {time}"),
   lastSignal: N_("last signal {time} ago"),
@@ -73,7 +72,60 @@ export const AGENTS_CARD_TEXT = {
   waitingReply: N_("waiting for the reply… {time}"),
   notReached: N_("The message did not reach {name}"),
   noReply: N_("No reply came"),
+  /** Stop clicked: it goes after STOP_UNDO_MS, unless Undo takes it back. */
+  stopping: N_("Stopping in {time}…"),
+  undo: N_("agents|Undo"),
 };
+
+/**
+ * What goes to the CLI for Resume: in English, as Ask's words (core/chat-agents.ts
+ * agentAsk), since it is for the AI, which answers in the user's language.
+ */
+export function resumeAsk(name: string, titles: string[]): string {
+  return `${name} ended while these agents were still working. Please resume their tasks where they stopped:\n${titles.map((x) => `- ${x}`).join("\n")}`;
+}
+
+// ── Stop, with Undo ───────────────────────────────────────────────────────────
+
+/** How long a Stop waits before it goes: the row says so and offers Undo meanwhile. */
+export const STOP_UNDO_MS = 4000;
+
+/** The Stops clicked and not gone yet, by chat and agent: when each goes, and its timer. */
+const stopping = new Map<string, { at: number; timer: ReturnType<typeof setTimeout> }>();
+
+function stopKey(chatId: string, agentId: string): string {
+  return `${chatId}\n${agentId}`;
+}
+
+/** The time left before a Stop clicked on the agent goes; null for none. */
+export function stopPending(chatId: string, agentId: string, now = Date.now()): number | null {
+  const s = stopping.get(stopKey(chatId, agentId));
+  return s ? Math.max(0, s.at - now) : null;
+}
+
+/** Stop clicked: the agent stops in STOP_UNDO_MS, unless Undo comes first. */
+function stopLater(chatId: string, agentId: string, host: AgentsCardHost, redraw: () => void) {
+  const key = stopKey(chatId, agentId);
+  if (stopping.has(key)) return;
+  const timer = setTimeout(() => {
+    stopping.delete(key);
+    host.stop(agentId);
+    redraw();
+  }, STOP_UNDO_MS);
+  (timer as { unref?: () => void }).unref?.();
+  stopping.set(key, { at: Date.now() + STOP_UNDO_MS, timer });
+  redraw();
+}
+
+/** Undo: the Stop clicked on the agent never goes. */
+function undoStop(chatId: string, agentId: string, redraw: () => void) {
+  const key = stopKey(chatId, agentId);
+  const s = stopping.get(key);
+  if (!s) return;
+  clearTimeout(s.timer);
+  stopping.delete(key);
+  redraw();
+}
 
 /** A key with its context ("agents|Wait"): its translation, else its English after the "|". */
 function tc(key: string): string {
@@ -168,18 +220,17 @@ function chevron(down: boolean, title: string): HTMLElement {
   return h("span", { class: down ? "agents-chev down" : "agents-chev", title, "aria-label": title }, svg(ICONS.chevronUp, 12, { stroke: 1.8 }));
 }
 
-/** Whether an agent failed because its CLI ended under it: Rust says "{agent} ended", in the user's language or in English. */
+/** Whether an agent failed because what ran it ended under it: its CLI (Rust says so), or Lumo closing. */
 function cliEnded(e: AgentEntry): boolean {
-  if (e.row.state !== "failed" || !e.row.error || !e.row.source) return false;
-  const agent = providerDef(e.row.source).name;
-  return e.row.error === t(AGENTS_CARD_TEXT.cliEnded, { agent }) || e.row.error === `${agent} ended`;
+  return e.row.state === "failed" && (e.row.endedBy === "cli" || e.row.endedBy === "lumo");
 }
 
-/** The agents their CLI ended under ("Claude Code ended"), with that CLI's name. */
+/** The agents ended under their work, with what ended: their CLI ("Claude Code ended"), else Lumo. */
 function endedByCli(entries: AgentEntry[]): { name: string; entries: AgentEntry[] } | null {
   const ended = entries.filter(cliEnded);
   if (!ended.length) return null;
-  return { name: t(providerDef(ended[0].row.source).name), entries: ended };
+  const cli = ended.find((e) => e.row.endedBy === "cli" && e.row.source);
+  return { name: cli ? t(providerDef(cli.row.source).name) : "Lumo", entries: ended };
 }
 
 /**
@@ -337,17 +388,22 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const marker = look === "done"
     ? h("span", { class: "agents-mark done" }, svg(ICONS.check, 12, { stroke: 2.2 }))
     : h("span", { class: `agents-mark ${look}` }, h("i"));
-  const line = rowLine(e, look, host, now);
+  const left = isFinal(r.state) ? null : stopPending(input.chatId, r.id, now);
+  const line = left != null ? t(AGENTS_CARD_TEXT.stopping, { time: durationText(left + 999) }) : rowLine(e, look, host, now);
   const side = h("span", { class: "agents-side" });
-  const ask = canAsk(e, host) ? () => host.ask!({ agentId: r.id, title: r.title, line, look }) : null;
-  if (look === "stalled") {
+  const ask = canAsk(e, host) && left == null ? () => host.ask!({ agentId: r.id, title: r.title, line, look }) : null;
+  const stop = () => stopLater(input.chatId, r.id, host, redraw);
+  if (left != null) {
+    // Stop clicked: Undo until it goes.
+    side.append(cardButton("undo", tc(AGENTS_CARD_TEXT.undo), () => undoStop(input.chatId, r.id, redraw)));
+  } else if (look === "stalled") {
     if (ask) side.append(cardButton("ask", tc(AGENTS_CARD_TEXT.ask), ask));
     side.append(cardButton("wait", tc(AGENTS_CARD_TEXT.wait), () => {
       // From the click: the button may have been drawn a while before.
       snooze(e);
       redraw();
     }));
-    if (r.canStop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), () => host.stop(r.id)));
+    if (r.canStop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), stop));
   } else if (look === "waiting") {
     // Only on the row whose card is the one up: not while Claude Code checks a call itself (no card), nor for another's card.
     if (r.waitingFor !== "rate_limit" && input.permission?.has(r.id) && host.requestOnTop === r.id) {
@@ -376,7 +432,7 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     else ui.open.add(r.id);
     redraw();
   });
-  if (open) el.append(rowDetail(e, host, ui, now, redraw, ask));
+  if (open) el.append(rowDetail(e, host, ui, now, redraw, ask, left == null ? stop : null));
   return el;
 }
 
@@ -386,7 +442,7 @@ function canAsk(e: AgentEntry, host: AgentsCardHost): boolean {
 }
 
 /** An opened row: the CLI's summary, the last steps, the numbers, and Stop this agent. */
-function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, ask: (() => void) | null): HTMLElement {
+function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, ask: (() => void) | null, stop: (() => void) | null): HTMLElement {
   const r = e.row;
   const box = h("div", { class: "agents-detail" });
   if (r.summary) box.append(h("div", { class: "agents-summary", text: r.summary }));
@@ -405,7 +461,7 @@ function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number,
   box.append(h("div", { class: "agents-numbers", text: numbers.join(" · ") }));
   const actions = h("div", { class: "agents-actions" });
   if (ask) actions.append(cardButton("ask", tc(AGENTS_CARD_TEXT.ask), ask));
-  if (r.canStop && !isFinal(r.state)) actions.append(cardButton("stop", t(AGENTS_CARD_TEXT.stopThis), () => host.stop(r.id)));
+  if (r.canStop && !isFinal(r.state) && stop) actions.append(cardButton("stop", t(AGENTS_CARD_TEXT.stopThis), stop));
   actions.append(cardButton("close", t(AGENTS_CARD_TEXT.close), () => {
     ui.open.delete(r.id);
     redraw();
@@ -445,9 +501,8 @@ function endedBanner(ended: { name: string; entries: AgentEntry[] }, current: ()
     // The agents that ended halfway as the store has them now (the line may have been drawn before one more did).
     const input = current();
     const halfway = endedByCli(batchEntries(input.chat, input.batch)) ?? ended;
-    const tasks = halfway.entries.map((e) => `- ${e.row.title}`).join("\n");
     // Not sent (a question being edited, one being prepared): the line stays, Resume with it.
-    if (!host.send(`${t(AGENTS_CARD_TEXT.resumeAsk, { name: halfway.name })}\n${tasks}`)) return;
+    if (!host.send(resumeAsk(halfway.name, halfway.entries.map((e) => e.row.title)))) return;
     input.batch.resumed = true;
     redraw();
   });

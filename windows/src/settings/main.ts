@@ -810,7 +810,7 @@ const MAIL_IMAGES = {
 
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
-  get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
+  get claudeOnly() { return t("In the chat, pick Claude Code or Antigravity CLI as the provider to use it."); },
 };
 
 /**
@@ -871,7 +871,7 @@ function securitySection(): HTMLElement {
   whileShown(githubRow, "focus", () => void showAccounts());
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
-    // Antigravity CLI uses it too.
+    // The two providers that use it.
     const cli = ["claude-code", "antigravity-cli"].includes(settings.chatProvider);
     note.hidden = !(settings.chatComputerUse && !cli);
   };
@@ -2047,6 +2047,8 @@ const GOOGLE_CAL = {
   get pasteFirst() { return t("Paste your Google client's ID and secret first."); },
   get ended() { return t("Access ended: sign in again."); },
   get pick() { return t("Calendars to show on the island"); },
+  get removeClient() { return t("Remove client"); },
+  get notRevoked() { return t("Google could not be reached: Lumo no longer uses the access, but to end it at Google too, remove Lumo in your Google account (Security → Third-party connections)."); },
   shown: (shown: number, count: number) => t("Calendars on the island: {shown} of {count}", { shown, count }),
 };
 
@@ -2124,7 +2126,20 @@ function googleCalendarRow(): HTMLElement {
       h("ol", { style: "margin:6px 0 8px 18px;display:flex;flex-direction:column;gap:3px" },
         ...GOOGLE_CAL.guide.map((step) => h("li", { text: step }))),
       consoleBtn);
-    return [guide, h("div", { class: "field-rows" }, id.row, secret.row), h("div", { class: "mail-account-actions", style: "justify-content:flex-start" }, go)];
+    // Disconnect keeps the client (Google Cloud Console may not show its secret again): it goes only from here.
+    const remove = stored ? h("button", { class: "danger", text: GOOGLE_CAL.removeClient }) as HTMLButtonElement : null;
+    remove?.addEventListener("click", async () => {
+      remove.disabled = true;
+      try {
+        await Bridge.secretClear("google-calendar-client-id");
+        await Bridge.secretClear("google-calendar-client-secret");
+        problem = "";
+      } catch (err) {
+        problem = errorText(err);
+      }
+      void render();
+    });
+    return [guide, h("div", { class: "field-rows" }, id.row, secret.row), h("div", { class: "mail-account-actions", style: "justify-content:flex-start" }, go, remove)];
   };
 
   const signOutButton = () => {
@@ -2132,9 +2147,9 @@ function googleCalendarRow(): HTMLElement {
     out.addEventListener("click", async () => {
       out.disabled = true;
       try {
-        await Bridge.googleCalendarSignOut();
+        const revoked = await Bridge.googleCalendarSignOut();
         sync.reset();
-        problem = "";
+        problem = revoked ? "" : GOOGLE_CAL.notRevoked;
         for (const redraw of declaredViews) redraw();
       } catch (err) {
         problem = errorText(err);
@@ -2144,7 +2159,7 @@ function googleCalendarRow(): HTMLElement {
     return out;
   };
 
-  const calendarsList = async (list: HTMLElement, account: HTMLElement, line: HTMLElement) => {
+  const calendarsList = async (list: HTMLElement, account: HTMLElement, line: HTMLElement, unreadable: Record<string, string>) => {
     try {
       const calendars = await sync.list();
       const picks = () => settings.googleCalendars ?? {};
@@ -2163,7 +2178,9 @@ function googleCalendarRow(): HTMLElement {
       list.replaceChildren(h("span", { class: "hint", text: GOOGLE_CAL.pick, style: "margin:4px 0 0 2px" }), tooMany,
         ...calendars.map((c) => h("div", { class: "mail-account", style: "grid-template-columns:auto minmax(0,1fr) auto" },
           h("i", { class: "dot", style: `background:${c.color}` }),
-          h("div", { class: "mail-account-text" }, h("span", { class: "mail-account-address", text: c.name, title: c.name })),
+          h("div", { class: "mail-account-text" }, h("span", { class: "mail-account-address", text: c.name, title: c.name }),
+            // Google no longer lets the account read it (no longer shared, deleted): its events left the island, and this says why.
+            unreadable[c.id] ? h("span", { class: "mail-account-line bad", text: unreadable[c.id], title: unreadable[c.id] }) : null),
           toggle(isShown(c, picks()), (on) => {
             settings.googleCalendars = { ...picks(), [c.id]: on };
             count();
@@ -2222,7 +2239,7 @@ function googleCalendarRow(): HTMLElement {
         again, signOutButton()));
       const list = h("div", { class: "mail-account-list" });
       parts.push(list);
-      if (!bad) void calendarsList(list, account, line);
+      if (!bad) void calendarsList(list, account, line, status.unreadable ?? {});
     } else {
       dotEl.style.background = "#f4505e";
       parts.push(...clientForm(status.client));
@@ -2235,7 +2252,8 @@ function googleCalendarRow(): HTMLElement {
   const recheck = async () => {
     if (waitTimer != null || !row.isConnected) return;
     const status = await Bridge.googleCalendarStatus();
-    if (status && (status.signedIn !== drawn?.signedIn || status.needsSignIn !== drawn?.needsSignIn)) void render();
+    if (status && (status.signedIn !== drawn?.signedIn || status.needsSignIn !== drawn?.needsSignIn
+      || JSON.stringify(status.unreadable ?? {}) !== JSON.stringify(drawn?.unreadable ?? {}))) void render();
   };
   const onMessage = (e: MessageEvent) => {
     if (!row.isConnected) {

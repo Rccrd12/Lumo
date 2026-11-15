@@ -11,7 +11,8 @@ installFakeDom();
 
 const { cleanRecap, fromSavedTurn, toSavedTurn } = await import("../src/core/chats.ts");
 const { computerRecapBox, recapDuration, stoppedLine, stoppedPlace } = await import("../src/views/computer-recap.ts");
-const { computerTargetBox } = await import("../src/views/computer-card.ts");
+const { computerTargetBox, pausedCardLine } = await import("../src/views/computer-card.ts");
+const { State } = await import("../src/core/state.ts");
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const recap = (extra = {}) => ({
@@ -128,8 +129,8 @@ async function withPeek(peek, run) {
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
-test("a click: the screen around it, the point marked, what Windows calls it, the numbers small", async () => {
-  const peek = { image: PNG, width: 224, height: 144, at: [112, 72], name: "Save as…", role: "Menu item", app: "Notepad" };
+test("a click: the screen around it, the point marked, the action on it; the app's name for it apart; the numbers small", async () => {
+  const peek = { image: PNG, width: 300, height: 188, at: [150, 94], name: "Save as…", role: "Menu item", app: "Notepad" };
   await withPeek(peek, async (asked) => {
     const card = info({ requestId: "click-1", tool: "mcp__lumo__left_click", command: "Click · 640, 320 (shift)", computerAt: [640, 320] });
     const box = computerTargetBox(card);
@@ -141,13 +142,18 @@ test("a click: the screen around it, the point marked, what Windows calls it, th
     assert.deepEqual(calls.filter(([c]) => c === "computer_peek").at(-1)[1], { x: 640, y: 320 });
     const img = box.find("IMG")[0];
     assert.equal(img.getAttribute("src"), `data:image/png;base64,${PNG}`);
-    assert.equal(img.style.width, "112px");
+    // The crop fills the 150 × 94 box.
+    assert.equal(img.style.width, "150px");
     const mark = box.querySelector(".cu-target-mark");
-    assert.deepEqual([mark.style.left, mark.style.top], ["56px", "36px"]);
-    assert.equal(box.querySelector(".cu-target-what").textContent, "Click on «Save as…»");
-    assert.equal(box.querySelector(".cu-target-name").textContent, "«Save as…»");
+    assert.deepEqual([mark.style.left, mark.style.top], ["75px", "47px"]);
+    // What will be done is the action on the point the picture marks, never the app's word for it.
+    assert.equal(box.querySelector(".cu-target-what").textContent, "Click · at the marked point");
+    assert.equal(box.querySelector(".cu-target-verb").textContent, "Click");
+    // The app's name for the thing, as its words, apart.
+    assert.equal(box.querySelector(".cu-target-called").textContent, "The app calls it «Save as…»");
+    assert.equal(box.querySelector(".cu-target-name").textContent, "Save as…");
     assert.equal(box.querySelector(".cu-target-where").textContent, "Menu item · Notepad");
-    assert.equal(box.querySelector(".cu-target-at").textContent, "640, 320 (shift)", "what Allow allows, still there");
+    assert.equal(box.querySelector(".cu-target-at").textContent, "640, 320 (shift) · Enlarge", "what Allow allows, still there");
     // The same request drawn again asks nothing more.
     computerTargetBox(card);
     await settle();
@@ -155,22 +161,43 @@ test("a click: the screen around it, the point marked, what Windows calls it, th
   });
 });
 
-test("a scroll and a drag are said on their thing; no name keeps the plain line; no crop, no picture", async () => {
+test("the crop, a click away from its own size, and back", async () => {
+  await withPeek({ image: PNG, width: 360, height: 200, at: [180, 100], name: "OK" }, async () => {
+    const box = computerTargetBox(info({ requestId: "z-1", tool: "mcp__lumo__left_click", command: "Click · 5, 6", computerAt: [5, 6] }));
+    await settle();
+    const img = box.find("IMG")[0];
+    const zoom = box.querySelector(".cu-target-zoom");
+    assert.equal(zoom.textContent, "Enlarge");
+    assert.ok(!box.classList.contains("big"));
+    zoom.fire("click");
+    assert.ok(box.classList.contains("big"));
+    assert.equal(img.style.width, "360px", "its own size");
+    assert.deepEqual([box.querySelector(".cu-target-mark").style.left, box.querySelector(".cu-target-mark").style.top], ["180px", "100px"]);
+    assert.equal(zoom.textContent, "Smaller");
+    // The picture itself toggles it too.
+    box.querySelector(".cu-target-thumb").fire("click");
+    assert.ok(!box.classList.contains("big"));
+    assert.equal(zoom.textContent, "Enlarge");
+  });
+});
+
+test("a scroll and a drag: on the point, a drag to it; no name, no app's words; no crop, no picture", async () => {
   await withPeek({ image: PNG, width: 100, height: 60, at: [50, 30], name: "Results" }, async () => {
-    const scroll = computerTargetBox(info({ requestId: "s-1", tool: "mcp__lumo__scroll", command: "Scroll up · 5, 6 ×3", computerAt: [5, 6], computerScroll: "up" }));
+    const scroll = computerTargetBox(info({ requestId: "s-1", tool: "mcp__lumo__scroll", command: "Scroll up · 5, 6 ×3", computerAt: [5, 6] }));
     const drag = computerTargetBox(info({ requestId: "d-1", tool: "mcp__lumo__left_click_drag", command: "Drag · 1, 2 → 5, 6", computerAt: [5, 6] }));
     await settle();
-    assert.equal(scroll.querySelector(".cu-target-what").textContent, "Scroll up on «Results»");
-    assert.equal(scroll.querySelector(".cu-target-at").textContent, "5, 6 ×3");
+    assert.equal(scroll.querySelector(".cu-target-what").textContent, "Scroll up · at the marked point");
+    assert.equal(scroll.querySelector(".cu-target-at").textContent, "5, 6 ×3 · Enlarge");
     assert.equal(scroll.querySelector(".cu-target-where"), null, "nothing known of its kind or app");
-    assert.equal(drag.querySelector(".cu-target-what").textContent, "Drag to «Results»");
-    assert.equal(drag.querySelector(".cu-target-at").textContent, "1, 2 → 5, 6");
+    assert.equal(drag.querySelector(".cu-target-what").textContent, "Drag · to the marked point");
+    assert.equal(drag.querySelector(".cu-target-at").textContent, "1, 2 → 5, 6 · Enlarge");
   });
   await withPeek({ image: PNG, width: 100, height: 60, at: [50, 30] }, async () => {
     const box = computerTargetBox(info({ requestId: "n-1", tool: "mcp__lumo__left_click", command: "Click · 5, 6", computerAt: [5, 6] }));
     await settle();
     assert.ok(box.find("IMG").length === 1);
-    assert.equal(box.querySelector(".cu-target-what").textContent, "Click 5, 6");
+    assert.equal(box.querySelector(".cu-target-what").textContent, "Click · at the marked point");
+    assert.equal(box.querySelector(".cu-target-called"), null, "no name: nothing said in the app's words");
   });
   for (const peek of [null, { image: "<svg>", width: 1, height: 1, at: [0, 0] }]) {
     await withPeek(peek, async () => {
@@ -183,15 +210,28 @@ test("a scroll and a drag are said on their thing; no name keeps the plain line;
   }
 });
 
-test("a scroll's way comes with the request, never off its translated line: none known, the plain line stays", async () => {
-  await withPeek({ image: PNG, width: 100, height: 60, at: [50, 30], name: "Results" }, async () => {
-    // The line says up (in a language since changed, say), the request says left: the request wins.
-    const left = computerTargetBox(info({ requestId: "s-2", tool: "mcp__lumo__scroll", command: "Scroll up · 5, 6", computerAt: [5, 6], computerScroll: "left" }));
-    // No way with the request: never "Scroll down" made up, the plain line.
-    const none = computerTargetBox(info({ requestId: "s-3", tool: "mcp__lumo__scroll", command: "Scroll up · 5, 6 ×3", computerAt: [5, 6] }));
+test("a name an app or a page chose (one that says the opposite) is never the card's own words", async () => {
+  await withPeek({ image: PNG, width: 100, height: 60, at: [50, 30], name: "Cancel", role: "button", app: "Google Chrome" }, async () => {
+    const box = computerTargetBox(info({ requestId: "p-1", tool: "mcp__lumo__left_click", command: "Click · 5, 6", computerAt: [5, 6] }));
     await settle();
-    assert.equal(left.querySelector(".cu-target-what").textContent, "Scroll left on «Results»");
-    assert.equal(none.querySelector(".cu-target-what").textContent, "Scroll up 5, 6 ×3");
-    assert.equal(none.querySelector(".cu-target-name"), null);
+    assert.equal(box.querySelector(".cu-target-what").textContent, "Click · at the marked point");
+    assert.ok(!box.querySelector(".cu-target-what").textContent.includes("Cancel"));
+    assert.equal(box.querySelector(".cu-target-called").textContent, "The app calls it «Cancel»");
   });
+});
+
+test("paused, a computer action's card says it won't be done", () => {
+  const plan = (extra) => ({ engaged: true, paused: false, stopped: false, agent: "Codex", color: "#000", since: 0, steps: [], ...extra });
+  try {
+    State.computer = null;
+    assert.equal(pausedCardLine(), null);
+    State.computer = plan();
+    assert.equal(pausedCardLine(), null, "running: the card is the usual one");
+    State.computer = plan({ paused: true });
+    assert.equal(pausedCardLine(), "Paused: this action won't be done. After Resume, Codex looks at the screen again and asks again.");
+    State.computer = plan({ paused: true, stopped: true });
+    assert.equal(pausedCardLine(), null, "stopped: nothing more to say");
+  } finally {
+    State.computer = null;
+  }
 });
