@@ -239,8 +239,6 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
   await app.mouse.up();
   await sleep(500);
   assert.equal(await d.js("return document.hasFocus()"), false, "the island still has the keyboard after a click elsewhere");
-  const req = ask(agent, "mcp__lumo__type", { text: "Notepad" });
-  await d.visible(ANY_ALLOW, 10_000, "the card");
   // Every keyboard call the page makes from here (focus_window), for the log.
   await d.js(`
     const inner = window.__TAURI_INTERNALS__;
@@ -254,6 +252,8 @@ flow(G, "A computer action's card: a click on it leaves the keyboard where it wa
     }
     inner.__e2eFocus.length = 0;
     return true;`);
+  const req = ask(agent, "mcp__lumo__type", { text: "Notepad" });
+  await d.visible(ANY_ALLOW, 10_000, "the card");
   const focus = async (when) => {
     const [has, calls] = await d.js("return [document.hasFocus(), window.__TAURI_INTERNALS__.__e2eFocus.join(' ')]");
     step(`${when}: island has the keyboard ${has}; keyboard calls: ${calls || "none"}`);

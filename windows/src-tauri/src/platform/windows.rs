@@ -669,17 +669,25 @@ pub fn set_activating(win: &WebviewWindow, activating: bool) {
 /// the page asks again each time it matters (cheap: a few child windows).
 pub fn hold_clicks(win: &WebviewWindow, hold: bool) {
     let Some(hwnd) = hwnd_of(win) else { return };
+    let mut walk = (hold, 0u32, 0u32);
     unsafe {
-        let _ = EnumChildWindows(Some(hwnd), Some(set_no_activate), LPARAM(hold as isize));
+        let _ = EnumChildWindows(Some(hwnd), Some(set_no_activate), LPARAM(&mut walk as *mut _ as isize));
+    }
+    let (_, seen, changed) = walk;
+    if changed > 0 {
+        crate::log::line(format!("island clicks {}: {changed} of {seen} windows", if hold { "held" } else { "free" }));
     }
 }
 
-unsafe extern "system" fn set_no_activate(hwnd: HWND, hold: LPARAM) -> BOOL {
+unsafe extern "system" fn set_no_activate(hwnd: HWND, walk: LPARAM) -> BOOL {
+    let walk = unsafe { &mut *(walk.0 as *mut (bool, u32, u32)) };
+    walk.1 += 1;
     unsafe {
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let want = if hold.0 != 0 { ex | WS_EX_NOACTIVATE.0 as isize } else { ex & !(WS_EX_NOACTIVATE.0 as isize) };
+        let want = if walk.0 { ex | WS_EX_NOACTIVATE.0 as isize } else { ex & !(WS_EX_NOACTIVATE.0 as isize) };
         if want != ex {
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want);
+            walk.2 += 1;
         }
     }
     true.into()
