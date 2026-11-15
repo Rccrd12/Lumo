@@ -534,7 +534,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate:
         plan: None,
     };
     let names: Vec<String> = l.tools.iter().map(|(id, _, _)| id.clone()).collect();
-    let mut hooks = AgentHooks { app, chat_id, names, asking: l.asking, sandbox_high: l.sandbox_high, sink };
+    let mut hooks = AgentHooks { app, chat_id, server: l.server.id, names, asking: l.asking, sandbox_high: l.sandbox_high, sink };
     let outcome = lumo_local::run(l.to, &mut body, &rules, &mut hooks).await.map_err(|f| failure(l.server, l.model, l.base, f))?;
     let answer = without_note(&outcome.answer());
     if answer.trim().is_empty() {
@@ -547,6 +547,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate:
 struct AgentHooks<'a> {
     app: &'a AppHandle,
     chat_id: &'a str,
+    server: &'static str,
     names: Vec<String>,
     asking: crate::tools::Asking,
     sandbox_high: bool,
@@ -590,8 +591,8 @@ impl lumo_local::Hooks for AgentHooks<'_> {
         } else {
             Activity::new("tool", crate::claude_code::pretty_tool(name))
         });
-        let (app, chat, asking, high, name, sink) = (self.app, self.chat_id.to_string(), self.asking, self.sandbox_high, name.to_string(), self.sink.clone());
-        async move { sink.alive_while(Box::pin(crate::tools::call_for_chat(app, &chat, &name, input, asking, high))).await }
+        let (app, chat, server, asking, high, name, sink) = (self.app, self.chat_id.to_string(), self.server, self.asking, self.sandbox_high, name.to_string(), self.sink.clone());
+        async move { sink.alive_while(Box::pin(crate::tools::call_for_chat(app, &chat, server, &name, input, asking, high))).await }
     }
 }
 
@@ -688,7 +689,7 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         } else {
             name.to_string()
         });
-        let (app, chat, asking, high, name) = (self.app, self.chat.id().to_string(), self.asking, self.sandbox_high, name.to_string());
+        let (app, chat, server, asking, high, name) = (self.app, self.chat.id().to_string(), self.server, self.asking, self.sandbox_high, name.to_string());
         let launch = self.launch;
         async move {
             // Agents of its own (api_agents.rs), one at a time: their reports are the result.
@@ -701,7 +702,7 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
                 let run = Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, 1, turn));
                 return crate::chat_agents::alive_while(app, &chat, run).await;
             }
-            crate::tools::call_for_chat(app, &chat, &name, input, asking, high).await
+            crate::tools::call_for_chat(app, &chat, server, &name, input, asking, high).await
         }
     }
 }

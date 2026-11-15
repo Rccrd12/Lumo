@@ -94,6 +94,9 @@ const HOUR_MS: u64 = 3_600_000;
 /// A page is down only once it failed to answer this many looks running (a
 /// minute apart): one slow answer or a hiccup on the way is not an outage.
 const WEB_DOWN_AFTER: u32 = 3;
+/// The most of a page's words kept between two looks (Seen::text), in bytes:
+/// enough to say what changed, not a whole page (up to MAX_PAGE) per watch.
+const KEPT_TEXT: usize = 64 * 1024;
 /// Watch::warning.
 const TOKEN: &str = "token";
 const TOO_OFTEN: &str = "too_often";
@@ -447,11 +450,16 @@ fn push(mut watch: Watch, replace: Option<u64>) -> Watch {
     watch.chat_id = watch.chat_id.chars().take(64).collect();
     watch.started_at = now_ms();
     let watch = with_store(|s| {
-        let (watch, made_room) = place(s, watch, replace);
+        let (watch, made_room, taken_over) = place(s, watch, replace);
         // The oldest that went for it is in the history, saying so, rather than vanishing.
         let count = MAX_WATCHES.to_string();
         for gone in &made_room {
             let summary = tf("Stopped listening to {what} to make room: at most {count} at once", &[("what", &gone.label()), ("count", &count)]);
+            remember(s, gone, false, &summary);
+        }
+        // So does one whose place an edit took (it listens to the same thing now).
+        for gone in &taken_over {
+            let summary = tf("Stopped listening to {what}: an edited watch listens to it now", &[("what", &gone.label())]);
             remember(s, gone, false, &summary);
         }
         save(&s.watches);
@@ -462,10 +470,12 @@ fn push(mut watch: Watch, replace: Option<u64>) -> Watch {
     watch
 }
 
-/// push's work on the store, the files aside: the watch as kept, and the
-/// oldest watches that went to make room for it.
-fn place(s: &mut Store, mut watch: Watch, replace: Option<u64>) -> (Watch, Vec<Watch>) {
+/// push's work on the store, the files aside: the watch as kept, the oldest
+/// watches that went to make room for it, and the ones an edit took the place
+/// of (it now listens to what they did).
+fn place(s: &mut Store, mut watch: Watch, replace: Option<u64>) -> (Watch, Vec<Watch>, Vec<Watch>) {
     let mut made_room = Vec::new();
+    let mut taken_over = Vec::new();
     if let Some(i) = replace.and_then(|id| s.watches.iter().position(|w| w.id == id)) {
         let before = s.watches[i].clone();
         watch.id = before.id;
@@ -496,7 +506,9 @@ fn place(s: &mut Store, mut watch: Watch, replace: Option<u64>) -> (Watch, Vec<W
         // In its place: the watch is never missing from the list, so the
         // webhook's secret (listen_events::prune) is never let go meanwhile.
         s.watches[i] = watch.clone();
-        s.watches.retain(|w| w.id == watch.id || !same(w, &watch));
+        let (keep, over): (Vec<Watch>, Vec<Watch>) = std::mem::take(&mut s.watches).into_iter().partition(|w| w.id == watch.id || !same(w, &watch));
+        s.watches = keep;
+        taken_over = over;
     } else {
         s.watches.retain(|w| !same(w, &watch));
         while s.watches.len() >= MAX_WATCHES {
@@ -507,7 +519,7 @@ fn place(s: &mut Store, mut watch: Watch, replace: Option<u64>) -> (Watch, Vec<W
         s.watches.push(watch.clone());
     }
     s.forget_gone();
-    (watch, made_room)
+    (watch, made_room, taken_over)
 }
 
 /// Stops listening to a pull request (`until` None: to every event on it).
@@ -682,6 +694,9 @@ pub enum Checks {
     Passed,
     /// The names of the ones that failed.
     Failed(Vec<String>),
+    /// Stopped before they said anything, and nothing else failed: the names
+    /// of the ones cancelled. Not green, as a failure, but said as it is.
+    Cancelled(Vec<String>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -725,6 +740,7 @@ impl PrState {
 pub fn checks_of(runs: Option<&Value>, status: Option<&Value>) -> Checks {
     let mut pending = false;
     let mut failed = Vec::new();
+    let mut cancelled = Vec::new();
     let mut any = false;
     for run in runs.and_then(|r| r["check_runs"].as_array()).into_iter().flatten() {
         any = true;
@@ -733,8 +749,10 @@ pub fn checks_of(runs: Option<&Value>, status: Option<&Value>) -> Checks {
             pending = true;
             continue;
         }
-        if matches!(run["conclusion"].as_str(), Some("failure" | "cancelled" | "timed_out" | "action_required" | "startup_failure")) {
-            failed.push(name);
+        match run["conclusion"].as_str() {
+            Some("failure" | "timed_out" | "action_required" | "startup_failure") => failed.push(name),
+            Some("cancelled" | "stale") => cancelled.push(name),
+            _ => {}
         }
     }
     for st in status.and_then(|s| s["statuses"].as_array()).into_iter().flatten() {
@@ -751,6 +769,8 @@ pub fn checks_of(runs: Option<&Value>, status: Option<&Value>) -> Checks {
         Checks::Failed(failed)
     } else if pending {
         Checks::Pending
+    } else if !cancelled.is_empty() {
+        Checks::Cancelled(cancelled)
     } else if any {
         Checks::Passed
     } else {
@@ -795,7 +815,7 @@ pub fn actions_of(checks: Checks, actions: Option<&Value>) -> Checks {
     } else if pending {
         Checks::Pending
     } else if !ran && !cancelled.is_empty() {
-        Checks::Failed(cancelled)
+        Checks::Cancelled(cancelled)
     } else if any {
         Checks::Passed
     } else {
@@ -838,13 +858,15 @@ fn head_age(heads: &mut HashMap<u64, (String, u64)>, id: u64, sha: &str, now: u6
 pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
     let label = w.label();
     let pr_var = [("pr", label.as_str())];
-    let failed_names = |names: &[String]| {
+    let listed = |names: &[String]| {
         let mut list = names.iter().take(4).cloned().collect::<Vec<_>>().join(", ");
         if names.len() > 4 {
             list.push_str(", …");
         }
-        tf("Checks failed on {pr}: {checks}", &[("pr", &label), ("checks", &list)])
+        list
     };
+    let failed_names = |names: &[String]| tf("Checks failed on {pr}: {checks}", &[("pr", &label), ("checks", &listed(names))]);
+    let cancelled_names = |names: &[String]| tf("Checks were cancelled on {pr}: {checks}", &[("pr", &label), ("checks", &listed(names))]);
     if pr.merged {
         return Some((matches!(w.until.as_str(), "merged" | "closed"), tf("{pr} was merged", &pr_var)));
     }
@@ -858,17 +880,19 @@ pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
     let settled = |c: &Checks| match c {
         Checks::Passed => Some(true),
         Checks::None if age_ms >= NO_CHECKS_GRACE_MS => Some(true),
-        Checks::Failed(_) => Some(false),
+        Checks::Failed(_) | Checks::Cancelled(_) => Some(false),
         _ => None,
     };
     match w.until.as_str() {
         "checks" => match &pr.checks {
             Checks::Failed(names) => Some((true, failed_names(names))),
+            Checks::Cancelled(names) => Some((true, cancelled_names(names))),
             c if settled(c) == Some(true) => Some((true, tf("Checks passed on {pr}", &pr_var))),
             _ => None,
         },
         "green" => match &pr.checks {
             Checks::Failed(names) => Some((false, failed_names(names))),
+            Checks::Cancelled(names) => Some((false, cancelled_names(names))),
             c if settled(c) == Some(true) => Some((true, tf("Checks passed on {pr}", &pr_var))),
             _ => None,
         },
@@ -878,8 +902,10 @@ pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
             Review::None => None,
         },
         "ready" => {
-            if let Checks::Failed(names) = &pr.checks {
-                return Some((false, failed_names(names)));
+            match &pr.checks {
+                Checks::Failed(names) => return Some((false, failed_names(names))),
+                Checks::Cancelled(names) => return Some((false, cancelled_names(names))),
+                _ => {}
             }
             if pr.mergeable == Some(false) || pr.mergeable_state == "dirty" {
                 return Some((false, tf("{pr} has merge conflicts", &pr_var)));
@@ -1253,6 +1279,18 @@ fn state(app: &AppHandle, w: &Watch, holds: bool) {
     }
 }
 
+/// The start of a page's words, at most KEPT_TEXT bytes, never cutting a character.
+fn kept_text(text: &str) -> &str {
+    if text.len() <= KEPT_TEXT {
+        return text;
+    }
+    let mut end = KEPT_TEXT;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 /// A page changed: what is told, with the words that went and came when the
 /// last look's words are known (`before`).
 fn page_changed(w: &Watch, before: Option<&str>, after: &str) -> String {
@@ -1354,11 +1392,13 @@ async fn local_round(app: &AppHandle) {
                 match w.until.as_str() {
                     "changed" => {
                         let print = listen_local::fingerprint(&page.text);
-                        let Some(before) = with_store(|s| seen_mut(s, &w).map(|seen| seen.text.replace(page.text.clone()))) else { continue };
+                        // What is kept, and what it is told against, are cut alike.
+                        let words = kept_text(&page.text);
+                        let Some(before) = with_store(|s| seen_mut(s, &w).map(|seen| seen.text.replace(words.to_string()))) else { continue };
                         if w.last_sha.is_empty() {
                             first_print(&w, print);
                         } else if print != w.last_sha {
-                            fire(app, &w, true, page_changed(&w, before.as_deref(), &page.text), Some(print.as_str()));
+                            fire(app, &w, true, page_changed(&w, before.as_deref(), words), Some(print.as_str()));
                         }
                     }
                     "up" => state(app, &w, up),
@@ -1583,6 +1623,27 @@ pub fn listen_stop(app: AppHandle, id: u64) -> bool {
     done
 }
 
+/// The chat a watch answers to went (deleted): its next events go to the chat
+/// its task was just done in (`chat_id`), not to a new chat each time.
+/// Whether the watch is still there.
+pub fn move_to(id: u64, chat_id: &str) -> bool {
+    with_store(|s| {
+        let Some(w) = s.watches.iter_mut().find(|w| w.id == id) else { return false };
+        w.chat_id = chat_id.chars().take(64).collect();
+        save(&s.watches);
+        true
+    })
+}
+
+#[tauri::command(async)]
+pub fn listen_move(app: AppHandle, id: u64, chat_id: String) -> bool {
+    let moved = move_to(id, &chat_id);
+    if moved {
+        changed(&app);
+    }
+    moved
+}
+
 /// `id` None: every watch.
 #[tauri::command(async)]
 pub fn listen_pause(app: AppHandle, id: Option<u64>, paused: bool) -> usize {
@@ -1690,7 +1751,7 @@ mod tests {
         assert_eq!(current(&s, &page), Some(0));
         assert!(seen_mut(&mut s, &page).is_some());
         // Edited (another page) while a look at the old one went on.
-        let (kept, _) = place(&mut s, Watch { id: 0, target: "https://b.example/".into(), started_at: 100, ..page.clone() }, Some(5));
+        let (kept, _, _) = place(&mut s, Watch { id: 0, target: "https://b.example/".into(), started_at: 100, ..page.clone() }, Some(5));
         assert_eq!(kept.id, 5);
         assert!(kept.started_at > page.started_at, "an edit always starts later, even in the same millisecond");
         assert_eq!(current(&s, &page), None, "the old copy is no longer the watch");
@@ -1707,7 +1768,7 @@ mod tests {
         let shop = Watch { id: 5, source: "web".into(), until: "contains".into(), target: "https://shop.example/x".into(), text: "Sold out".into(), mode: "every".into(), last_sha: "told".into(), ..watch("checks") };
         let mut s = store(vec![shop.clone()]);
         s.seen.insert(5, Seen { on: Some(false), fails: 1, ..Default::default() });
-        let (kept, _) = place(&mut s, Watch { id: 0, text: "Add to cart".into(), last_sha: String::new(), ..shop.clone() }, Some(5));
+        let (kept, _, _) = place(&mut s, Watch { id: 0, text: "Add to cart".into(), last_sha: String::new(), ..shop.clone() }, Some(5));
         assert_eq!(kept.last_sha, "told");
         let seen = &s.seen[&5];
         assert_eq!((seen.on, seen.fails), (None, 1), "whether it held was about the old words");
@@ -1747,8 +1808,8 @@ mod tests {
         s.heads.insert(5, ("abc".into(), 1));
         // What to do then changes: the same webhook, the same event.
         let edit = Watch { id: 0, task: "deploy it".into(), paused: false, fired: 0, last_sha: String::new(), warning: String::new(), ..hook.clone() };
-        let (kept, made_room) = place(&mut s, edit, Some(5));
-        assert!(made_room.is_empty());
+        let (kept, made_room, taken_over) = place(&mut s, edit, Some(5));
+        assert!(made_room.is_empty() && taken_over.is_empty());
         assert_eq!((kept.id, kept.paused, kept.fired, kept.last_sha.as_str(), kept.task.as_str()), (5, true, 3, "seen", "deploy it"));
         assert_eq!(kept.warning, TOO_OFTEN, "still paused for firing too often");
         assert_eq!(s.watches.iter().map(|w| w.id).collect::<Vec<_>>(), [5, 6], "in its place, no new id");
@@ -1756,16 +1817,16 @@ mod tests {
         assert!(s.seen.contains_key(&5) && s.fires.contains_key(&5) && s.misses.contains_key(&5) && s.heads.contains_key(&5));
         // Another name: the same id (so the same address), but what was seen goes.
         let renamed = Watch { target: "releases".into(), last_sha: String::new(), ..kept.clone() };
-        let (kept, _) = place(&mut s, renamed, Some(5));
+        let (kept, _, _) = place(&mut s, renamed, Some(5));
         assert_eq!(kept.id, 5);
         assert!(kept.last_sha.is_empty());
         assert!(!s.seen.contains_key(&5) && !s.fires.contains_key(&5) && !s.misses.contains_key(&5) && !s.heads.contains_key(&5));
         // A token warning goes with the edit: the next look says it again if it must.
         s.watches[1].warning = TOKEN.into();
-        let (kept, _) = place(&mut s, Watch { id: 0, task: "x".into(), ..watch("merged") }, Some(6));
+        let (kept, _, _) = place(&mut s, Watch { id: 0, task: "x".into(), ..watch("merged") }, Some(6));
         assert_eq!((kept.id, kept.warning.as_str()), (6, ""));
         // A watch it no longer names makes a new one.
-        let (kept, _) = place(&mut s, Watch { id: 0, number: 77, ..watch("merged") }, Some(404));
+        let (kept, _, _) = place(&mut s, Watch { id: 0, number: 77, ..watch("merged") }, Some(404));
         assert_eq!(kept.id, 7);
     }
 
@@ -1774,22 +1835,32 @@ mod tests {
         let full: Vec<Watch> = (1..=MAX_WATCHES as u64).map(|id| Watch { id, number: id, ..watch("merged") }).collect();
         let mut s = store(full);
         let edit = Watch { id: 0, task: "merge it".into(), number: 3, ..watch("merged") };
-        let (kept, made_room) = place(&mut s, edit, Some(3));
-        assert!(made_room.is_empty());
+        let (kept, made_room, taken_over) = place(&mut s, edit, Some(3));
+        assert!(made_room.is_empty() && taken_over.is_empty());
         assert_eq!(kept.id, 3);
         assert_eq!(s.watches.len(), MAX_WATCHES);
-        // An edit that now names what another listens to: that one goes.
-        let (kept, made_room) = place(&mut s, Watch { id: 0, number: 4, ..watch("merged") }, Some(3));
+        // An edit that now names what another listens to: that one goes, handed back to be told.
+        let (kept, made_room, taken_over) = place(&mut s, Watch { id: 0, number: 4, ..watch("merged") }, Some(3));
         assert!(made_room.is_empty());
+        assert_eq!(taken_over.iter().map(|w| w.id).collect::<Vec<_>>(), [4]);
         assert_eq!(kept.id, 3);
         assert!(!s.watches.iter().any(|w| w.id == 4));
         assert_eq!(s.watches.len(), MAX_WATCHES - 1);
         place(&mut s, Watch { id: 0, number: 98, ..watch("merged") }, None);
         // Full again: a new one makes the oldest go, handed back to be told.
-        let (kept, made_room) = place(&mut s, Watch { id: 0, number: 99, ..watch("merged") }, None);
+        let (kept, made_room, _) = place(&mut s, Watch { id: 0, number: 99, ..watch("merged") }, None);
         assert_eq!(made_room.iter().map(|w| w.id).collect::<Vec<_>>(), [1]);
         assert_eq!(kept.id, MAX_WATCHES as u64 + 2);
         assert_eq!(s.watches.len(), MAX_WATCHES);
+    }
+
+    #[test]
+    fn a_page_keeps_at_most_kept_text_of_its_words() {
+        assert_eq!(kept_text("short"), "short");
+        let long = "é".repeat(KEPT_TEXT);
+        let kept = kept_text(&long);
+        assert!(kept.len() <= KEPT_TEXT && kept.len() > KEPT_TEXT - 4);
+        assert!(kept.chars().all(|c| c == 'é'), "never half a character");
     }
 
     #[test]
@@ -1924,6 +1995,19 @@ mod tests {
         let status = json!({ "statuses": [{ "context": "vercel", "state": "failure" }] });
         assert_eq!(checks_of(Some(&running), Some(&status)), Checks::Failed(vec!["vercel".into()]));
         assert_eq!(checks_of(Some(&json!({ "check_runs": [] })), Some(&json!({ "statuses": [] }))), Checks::None);
+        // A check cancelled (its run stopped half way): not green, said as cancelled;
+        // beside one that failed, a failure; beside one still running, wait for it.
+        let stopped = json!({ "check_runs": [
+            { "name": "build", "status": "completed", "conclusion": "success" },
+            { "name": "e2e", "status": "completed", "conclusion": "cancelled" },
+        ]});
+        assert_eq!(checks_of(Some(&stopped), None), Checks::Cancelled(vec!["e2e".into()]));
+        assert_eq!(checks_of(Some(&stopped), Some(&status)), Checks::Failed(vec!["vercel".into()]));
+        let still = json!({ "check_runs": [
+            { "name": "e2e", "status": "completed", "conclusion": "cancelled" },
+            { "name": "test", "status": "in_progress", "conclusion": null },
+        ]});
+        assert_eq!(checks_of(Some(&still), None), Checks::Pending);
     }
 
     #[test]
@@ -1981,8 +2065,12 @@ mod tests {
             { "name": "Windows E2E", "status": "completed", "conclusion": "cancelled" },
         ]});
         let stopped = actions_of(Checks::None, Some(&stopped));
-        assert_eq!(stopped, Checks::Failed(vec!["Windows CI".into(), "Windows E2E".into()]));
-        assert_ne!(judge(&watch("green"), &open(stopped), 10 * NO_CHECKS_GRACE_MS).map(|j| j.0), Some(true), "never green");
+        assert_eq!(stopped, Checks::Cancelled(vec!["Windows CI".into(), "Windows E2E".into()]));
+        assert_ne!(judge(&watch("green"), &open(stopped.clone()), 10 * NO_CHECKS_GRACE_MS).map(|j| j.0), Some(true), "never green");
+        // Said as cancelled, not as failed.
+        let said = judge(&watch("green"), &open(stopped), 0).expect("it ends the wait").1;
+        let as_failed = judge(&watch("green"), &open(Checks::Failed(vec!["Windows CI".into(), "Windows E2E".into()])), 0).unwrap().1;
+        assert!(said.contains("Windows CI") && said != as_failed, "{said}");
     }
 
     #[test]

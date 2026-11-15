@@ -374,6 +374,8 @@ export class Island {
       setView: (v) => this.setView(v),
       collapse: () => this.collapse(),
       closeSettings: () => {
+        // As Escape in the island: a pinned island stays open (a waiting card is folded).
+        if (State.isPinned && !State.pendingApproval) return;
         this.collapse();
         State.settingsLeftOpen = false;
       },
@@ -1501,7 +1503,10 @@ export class Island {
   private refit() {
     const size = this.targetSize();
     const key = `${size.w}x${size.h}`;
-    if (key === this.newLookSize) return;
+    // The size can have been noted while another move took the island
+    // elsewhere (the opening from the closed island, measured before the card
+    // had its room): where the island is really going decides.
+    if (key === this.newLookSize && this.width.target === size.w && this.height.target === size.h) return;
     this.newLookSize = key;
     this.animateGeometry(false);
   }

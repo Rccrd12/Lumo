@@ -88,3 +88,19 @@ test("Escape in Settings closes them for good: the island opens where it usually
     State.view = "home";
   }
 });
+
+test("the shortcut that opens the island brings back Settings it folded on its own, as a click does", async () => {
+  const { runGlobalShortcut } = await import("../src/island/shortcuts.ts");
+  const opened = [];
+  const host = { alert: (v) => opened.push(v), takeKeyboard() {}, emote() {}, collapse() {}, setView() {}, holdOpen() {} };
+  State.noteTab("home");
+  State.mode = "compact";
+  State.settingsLeftOpen = true;
+  try {
+    runGlobalShortcut(host, "toggleIsland", () => {});
+    assert.deepEqual(opened, ["settings"]);
+    assert.equal(State.settingsLeftOpen, false, "once");
+  } finally {
+    State.settingsLeftOpen = false;
+  }
+});

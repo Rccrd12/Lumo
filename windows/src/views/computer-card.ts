@@ -2,21 +2,37 @@
 // what will be done, on what, where.
 //
 // An action on a point (a click, a move, a scroll, a drag's end) shows the
-// screen around that point, the point marked, and what Windows calls the thing
-// there ("Click on «Save as…»", "Menu item · Notepad"), the coordinates still
-// under it, small. Typing and keys show, whole, the text and the keys: that is
-// what Allow allows, so it is never shortened.
+// screen around that point, the point marked ("Click · at the marked point"),
+// a click away from its whole size, and, apart, what the app says the thing
+// there is ("The app calls it «Save as…»", "Menu item · Notepad"): the app
+// chooses that name (a web page writes what it likes in it), so it is never
+// what the card says will be done. The coordinates stay under it, small.
+// Typing and keys show, whole, the text and the keys: that is what Allow
+// allows, so it is never shortened.
 
 import "./computer-card.css";
 import { Bridge } from "../core/bridge";
-import { computerActionOn, computerToolName, peekPlacement, splitComputerLine } from "../core/computer";
+import { computerToolName, peekPlacement, splitComputerLine } from "../core/computer";
 import type { ComputerPeek } from "../core/computer-use";
-import type { ApprovalInfo } from "../core/state";
+import { State, type ApprovalInfo } from "../core/state";
+import { N_, t } from "../i18n/i18n";
 import { h } from "./dom";
 
 /** The thumbnail's size, CSS pixels (computer-card.css .cu-target-thumb). */
-export const THUMB_W = 112;
-export const THUMB_H = 72;
+export const THUMB_W = 150;
+export const THUMB_H = 94;
+/** Enlarged: the crop at its own size (computer.rs PEEK_SIZE), CSS pixels (.cu-target-point.big). */
+export const BIG_W = 360;
+export const BIG_H = 200;
+
+export const COMPUTER_CARD_TEXT = {
+  atPoint: N_("at the marked point"),
+  toPoint: N_("to the marked point"),
+  calls: N_("The app calls it «{name}»"),
+  enlarge: N_("Enlarge"),
+  smaller: N_("Smaller"),
+  paused: N_("Paused: this action won't be done. After Resume, {agent} looks at the screen again and asks again."),
+};
 
 /** The screen around the point of the request on screen: asked once per request. */
 let peekFor: { requestId: string; peek: Promise<ComputerPeek | null> } | null = null;
@@ -38,6 +54,23 @@ function usablePeek(p: ComputerPeek | null): ComputerPeek | null {
 }
 
 const text = (v: unknown): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
+
+/** The words with `{name}` in them, the name drawn apart (its own span). */
+function withName(words: string, name: string): (Node | string)[] {
+  const at = words.indexOf("{name}");
+  if (at < 0) return [words];
+  return [words.slice(0, at), h("span", { class: "cu-target-name", text: name }), words.slice(at + 6)];
+}
+
+/**
+ * While computer use is paused, the line under a computer action's card: it
+ * won't be done, whatever the answer (the agent looks again and asks again
+ * once resumed). Null otherwise. views.ts shows it under the box.
+ */
+export function pausedCardLine(): string | null {
+  const c = State.computer;
+  return c?.engaged && c.paused && !c.stopped ? t(COMPUTER_CARD_TEXT.paused, { agent: c.agent }) : null;
+}
 
 /** The action in words, as describeComputerAction says it: what is done in Lumo's amber, then on what. */
 function plainLine(line: string): HTMLElement {
@@ -75,33 +108,48 @@ export function computerTargetBox(info: ApprovalInfo): HTMLElement | null {
       thumb.remove();
       return;
     }
-    const place = peekPlacement(peek, THUMB_W, THUMB_H);
     const img = h("img", { class: "cu-target-shot", alt: "", draggable: "false", src: `data:image/png;base64,${peek.image}` });
-    img.style.width = `${peek.width * place.scale}px`;
-    img.style.height = `${peek.height * place.scale}px`;
-    img.style.left = `${place.left}px`;
-    img.style.top = `${place.top}px`;
     const mark = h("i", { class: "cu-target-mark" });
-    mark.style.left = `${place.x}px`;
-    mark.style.top = `${place.y}px`;
+    /** The crop and its point in the box, small or at its own size. */
+    const placeIn = (big: boolean) => {
+      const place = peekPlacement(peek, big ? BIG_W : THUMB_W, big ? BIG_H : THUMB_H);
+      img.style.width = `${peek.width * place.scale}px`;
+      img.style.height = `${peek.height * place.scale}px`;
+      img.style.left = `${place.left}px`;
+      img.style.top = `${place.top}px`;
+      mark.style.left = `${place.x}px`;
+      mark.style.top = `${place.y}px`;
+    };
+    placeIn(false);
     thumb.replaceChildren(img, mark);
     thumb.classList.add("loaded");
-    // What Windows calls the thing there: the action said on it, the numbers small under it.
+    // What will be done is what the picture shows: the action, on the point
+    // marked in it. What the app calls the thing there comes apart, as the
+    // app's words: never the card's own.
+    const { label, detail } = splitComputerLine(line);
+    const drag = computerToolName(info.tool) === "left_click_drag";
+    const zoom = h("button", { class: "cu-target-zoom", type: "button", text: t(COMPUTER_CARD_TEXT.enlarge) });
+    const toggle = () => {
+      const big = !box.classList.contains("big");
+      box.classList.toggle("big", big);
+      placeIn(big);
+      zoom.textContent = t(big ? COMPUTER_CARD_TEXT.smaller : COMPUTER_CARD_TEXT.enlarge);
+      // The card grows or shrinks with it (views.ts fitHeight).
+      State.notify();
+    };
+    zoom.addEventListener("click", toggle);
+    thumb.addEventListener("click", toggle);
+    thumb.removeAttribute("aria-hidden");
+    thumb.title = t(COMPUTER_CARD_TEXT.enlarge);
     const name = text(peek.name);
-    // A scroll's way comes with the request (hooks.ts, scrollDirection), never
-    // read back off the translated line: without it, the plain line stays.
-    const on = name ? computerActionOn(info.tool, { scroll_direction: info.computerScroll }, name) : null;
-    if (!on) return;
-    const { detail } = splitComputerLine(line);
-    const said = `${on.before}${on.name}${on.after}`;
     const where = [text(peek.role), text(peek.app)].filter(Boolean).join(" · ");
+    const on = t(drag ? COMPUTER_CARD_TEXT.toPoint : COMPUTER_CARD_TEXT.atPoint);
     what.replaceChildren(...[
-      h("div", { class: "cu-target-what", title: said },
-        on.before ? h("span", { class: "cu-target-verb", text: on.before }) : null,
-        h("span", { class: "cu-target-name", text: on.name }),
-        on.after ? h("span", { class: "cu-target-verb", text: on.after }) : null),
+      h("div", { class: "cu-target-what", title: `${label} · ${on}` },
+        h("span", { class: "cu-target-verb", text: label }), h("span", { class: "cu-target-on", text: ` · ${on}` })),
+      name ? h("div", { class: "cu-target-called", title: t(COMPUTER_CARD_TEXT.calls, { name }) }, ...withName(t(COMPUTER_CARD_TEXT.calls), name)) : null,
       where ? h("div", { class: "cu-target-where", text: where, title: where }) : null,
-      detail ? h("div", { class: "cu-target-at", text: detail, title: line }) : null,
+      h("div", { class: "cu-target-at", title: line }, detail ? `${detail} · ` : "", zoom),
     ].filter((x): x is HTMLDivElement => x != null));
   });
   return box;

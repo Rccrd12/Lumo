@@ -330,12 +330,6 @@ pub fn ai_tools(app: &AppHandle) -> &'static str {
     }
 }
 
-/// The Email pill is on and the AI may read what it reads: the chat, Gemini
-/// Live's helper and Lumo's email tools go by it.
-pub fn for_ai(app: &AppHandle) -> bool {
-    !ai_tools(app).is_empty()
-}
-
 pub fn concerned(before: &Settings, after: &Settings) -> bool {
     let on = |s: &Settings| s.active_integrations.iter().any(|id| id == ID);
     on(before) != on(after)
@@ -845,8 +839,9 @@ pub async fn mail_html(app: AppHandle, id: String) -> Result<MailHtml, String> {
         if !crate::outlook::on(&app) {
             return Ok(MailHtml::default());
         }
-        let (html, pictures) = crate::outlook::html(own.to_string(), HTML_PART_BYTES, INLINE_IMAGE_BYTES, INLINE_IMAGES_BYTES).await?;
-        return Ok(assemble(vec![(html, String::new())], pictures));
+        let (html, pictures, codepage) = crate::outlook::html(own.to_string(), HTML_PART_BYTES, INLINE_IMAGE_BYTES, INLINE_IMAGES_BYTES).await?;
+        let charset = outlook_charset(&html, codepage);
+        return Ok(assemble(vec![(html, charset)], pictures));
     }
     let slot: usize = key.strip_prefix("imap:").and_then(|n| n.parse().ok()).ok_or_else(|| bad_id(&id))?;
     let acct = live_accounts(&app).into_iter().find(|a| a.slot == slot).ok_or_else(|| gone(&id))?;
@@ -1144,6 +1139,50 @@ pub(crate) fn html_charset(bytes: &[u8]) -> String {
         .unwrap_or_default()
 }
 
+/// The charset of an Outlook email's HTML: the one its own bytes say (a
+/// byte-order mark, its `<meta>`), else the code page Outlook keeps it in
+/// (`InternetCodepage`); "" when neither says (read as UTF-8, else Windows-1252).
+fn outlook_charset(html: &[u8], codepage: u32) -> String {
+    if !html_charset(html).is_empty() {
+        return String::new();
+    }
+    codepage_charset(codepage).to_string()
+}
+
+/// The charset a Windows code page stands for, as a browser's TextDecoder
+/// knows it; "" for one Lumo doesn't know.
+fn codepage_charset(codepage: u32) -> &'static str {
+    match codepage {
+        65001 => "utf-8",
+        1200 => "utf-16le",
+        1201 => "utf-16be",
+        20127 => "us-ascii",
+        874 => "windows-874",
+        1250..=1258 => ["windows-1250", "windows-1251", "windows-1252", "windows-1253", "windows-1254", "windows-1255", "windows-1256", "windows-1257", "windows-1258"][(codepage - 1250) as usize],
+        28591 => "iso-8859-1",
+        28592 => "iso-8859-2",
+        28593 => "iso-8859-3",
+        28594 => "iso-8859-4",
+        28595 => "iso-8859-5",
+        28596 => "iso-8859-6",
+        28597 => "iso-8859-7",
+        28598 => "iso-8859-8",
+        28599 => "iso-8859-9",
+        28603 => "iso-8859-13",
+        28605 => "iso-8859-15",
+        20866 => "koi8-r",
+        21866 => "koi8-u",
+        932 => "shift_jis",
+        50220..=50222 => "iso-2022-jp",
+        51932 => "euc-jp",
+        936 => "gbk",
+        54936 => "gb18030",
+        949 | 51949 => "euc-kr",
+        950 => "big5",
+        _ => "",
+    }
+}
+
 /// The view's HTML from the email's HTML parts (their bytes and charset, ""
 /// when the part names none) and its pictures (Content-ID, bytes): the parts
 /// one after the other, cut at HTML_KEPT_BYTES, the pictures put in for their
@@ -1170,8 +1209,22 @@ pub(crate) fn assemble(parts: Vec<(Vec<u8>, String)>, pictures: Vec<(String, Vec
         }
         (text.as_bytes()[..end].to_vec(), None)
     } else {
-        let (b, cs) = parts.into_iter().find(|(_, cs)| !read_here(cs)).unwrap_or_default();
-        (b[..b.len().min(HTML_KEPT_BYTES)].to_vec(), Some(cs))
+        // The island reads one charset: the first Lumo doesn't read, with every
+        // part in it and every part in plain ASCII (the same in all but UTF-16),
+        // in their order; a part in yet another charset is left out.
+        let cs = parts.iter().find(|(_, cs)| !read_here(cs)).map(|(_, cs)| cs.clone()).unwrap_or_default();
+        let wide = cs.to_ascii_lowercase().contains("16") || cs.eq_ignore_ascii_case("ucs-2") || cs.eq_ignore_ascii_case("unicode");
+        let mut b: Vec<u8> = Vec::new();
+        for (bytes, part_cs) in &parts {
+            if part_cs.eq_ignore_ascii_case(&cs) || (!wide && bytes.is_ascii()) {
+                if !b.is_empty() {
+                    b.push(b'\n');
+                }
+                b.extend_from_slice(bytes);
+            }
+        }
+        b.truncate(HTML_KEPT_BYTES);
+        (b, Some(cs))
     };
     let mut urls: BTreeMap<String, String> = BTreeMap::new();
     let mut total = 0;
@@ -1222,60 +1275,6 @@ fn inline_pictures(html: &[u8], urls: &BTreeMap<String, String>) -> Vec<u8> {
     out
 }
 
-// ── For the chat ──────────────────────────────────────────────────────────────
-
-/// Of each email's text, what goes to the chat with a question about email.
-const CHAT_BODY_CHARS: usize = 1500;
-
-/// The inbox as last read, while the pill is on and signed in.
-pub fn inbox() -> Option<(usize, Vec<Message>)> {
-    let mut read: Vec<Read> = IMAP_NOW.lock().unwrap().values().filter_map(|r| r.as_ref().ok().cloned()).collect();
-    read.extend(OUTLOOK_NOW.lock().unwrap().clone().and_then(Result::ok));
-    (!read.is_empty()).then(|| together(read))
-}
-
-/// Whether `query` speaks of email ("le ultime email", "any new mail?",
-/// "la posta", "my inbox"): only then does the inbox go with it.
-pub fn asks_about(query: &str) -> bool {
-    const WORDS: &[&str] = &["mail", "email", "inbox", "posta", "correo", "courriel", "postfach", "newsletter"];
-    // Each keyword starts a word of the question, as desk.rs does: "proposta"
-    // and "impostazioni" are not about the post, nor "Mailchimp" about mail.
-    let q = query.to_lowercase();
-    q.split(|c: char| !c.is_alphanumeric()).any(|word| WORDS.iter().any(|w| word.starts_with(w)))
-}
-
-/// The newest unread emails, as the chat's provider reads them.
-pub fn context_text(unread: usize, messages: &[Message]) -> String {
-    let mut out = String::from(CAN);
-    if messages.is_empty() {
-        out.push_str("Right now there is no unread email.\n");
-        return out;
-    }
-    out.push_str(&format!(
-        "Their newest unread emails, newest first ({} of {} unread; emails already read are not listed):\n",
-        messages.len(),
-        unread.max(messages.len())
-    ));
-    for m in messages {
-        let from = match (m.from.trim(), m.address.trim()) {
-            ("", a) => a.to_string(),
-            (f, "") => f.to_string(),
-            (f, a) => format!("{f} <{a}>"),
-        };
-        let subject = if m.subject.trim().is_empty() { "(no subject)" } else { m.subject.trim() };
-        out.push_str(&format!("- From {from}, {}: {subject}\n", m.date.trim()));
-        let text = if m.body.trim().is_empty() { &m.preview } else { &m.body };
-        let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-        if !text.is_empty() {
-            let cut: String = text.chars().take(CHAT_BODY_CHARS).collect();
-            let more = if cut.len() < text.len() { "…" } else { "" };
-            out.push_str(&format!("  {cut}{more}\n"));
-        }
-    }
-    out.push_str("Answer questions about the user's email from this list. To reply, use mail_reply (or mail_send) if you have it, else write a draft for them to send themselves.\n");
-    out
-}
-
 // ── For the agents ────────────────────────────────────────────────────────────
 
 /// What the agents' tools give at most, and by default.
@@ -1296,8 +1295,6 @@ const SLOW_TIMEOUT: Duration = Duration::from_secs(55);
 const MAX_ATTACHMENT_READ: usize = 32 * 1024 * 1024;
 /// The same, decoded: what an Outlook file may weigh (outlook.rs).
 pub(crate) const MAX_ATTACHMENT_BYTES: usize = MAX_ATTACHMENT_READ / 4 * 3;
-/// How long the chat waits for the newest emails before it makes do with the unread ones.
-const CHAT_WAIT: Duration = Duration::from_secs(12);
 
 /// Agents of the island at work (a chat turn of a signed-in CLI, Gemini Live's
 /// helper): Lumo's email tools answer only meanwhile.
@@ -2363,40 +2360,6 @@ pub fn list_text(found: &[Found], text_chars: usize) -> String {
         }
     }
     out
-}
-
-/// What the AI is told of what Lumo lets it do with the email.
-const CAN: &str = "Lumo reads the user's mailbox (the Email pill). It sends, moves, marks or trashes an email only through its email tools, when they are offered, and only once the user clicks on the email's card in Lumo; it never deletes one for good. ";
-
-/// The newest emails, read or not, as the chat's provider reads them.
-pub fn recent_text(found: &[Found], unread: Option<usize>) -> String {
-    let mut out = String::from(CAN);
-    if found.is_empty() {
-        out.push_str("The inbox is empty.\n");
-        return out;
-    }
-    out.push_str(&format!("Their {} newest emails, newest first, read or not", found.len()));
-    if let Some(n) = unread {
-        out.push_str(&format!(" ({n} unread in all)"));
-    }
-    out.push_str(":\n");
-    out.push_str(&list_text(found, CHAT_BODY_CHARS));
-    out.push_str("Answer questions about the user's email from this list. To reply, use mail_reply (or mail_send) if you have it, else write a draft for them to send themselves.\n");
-    out
-}
-
-/// What a question about email brings to the chat: the newest emails read or
-/// not, or, when the server is slow or says no, the unread ones last read.
-pub async fn for_chat(app: &AppHandle) -> Option<String> {
-    let cached = inbox();
-    match tokio::time::timeout(CHAT_WAIT, newest_anywhere(app, DEFAULT_COUNT, false, None)).await {
-        Ok(Ok(found)) => Some(recent_text(&found, cached.map(|(n, _)| n))),
-        Ok(Err(e)) => {
-            log::line(format!("[mail] for the chat: {e}"));
-            cached.map(|(n, m)| context_text(n, &m))
-        }
-        Err(_) => cached.map(|(n, m)| context_text(n, &m)),
-    }
 }
 
 /// The tools that send or write an email: Security's "Read and send" and up.
@@ -4871,6 +4834,42 @@ mod tests {
     }
 
     #[test]
+    fn every_html_part_in_the_islands_charset_is_kept() {
+        // Apple Mail's parts around a picture, in Shift_JIS, and one in plain ASCII between them.
+        let a = b"<p>\x82\xa0</p>".to_vec();
+        let b = b"<p>ok</p>".to_vec();
+        let c = b"<p>\x82\xa2</p>".to_vec();
+        let out = assemble(vec![(a.clone(), "Shift_JIS".into()), (b.clone(), "us-ascii".into()), (c.clone(), "shift_jis".into())], vec![]);
+        assert_eq!(out.charset.as_deref(), Some("Shift_JIS"));
+        assert_eq!(out.bytes, Some(crate::claude::base64_for(&[a.clone(), b"\n".to_vec(), b, b"\n".to_vec(), c].concat())));
+        // A part in yet another charset (and not ASCII) is left out.
+        let cyr = b"<p>\xcf\xf0</p>".to_vec();
+        let out = assemble(vec![(a.clone(), "Shift_JIS".into()), (cyr, "windows-1251".into())], vec![]);
+        assert_eq!(out.bytes, Some(crate::claude::base64_for(&a)));
+    }
+
+    #[test]
+    fn an_outlook_email_without_its_charset_is_read_in_its_code_page() {
+        // Its <meta> says: that one (assemble reads it).
+        assert_eq!(outlook_charset(b"<meta charset=\"utf-8\"><p>ciao</p>", 1252), "");
+        // None: Outlook's code page.
+        assert_eq!(outlook_charset(b"<p>Perch\xe8</p>", 1252), "windows-1252");
+        assert_eq!(outlook_charset(b"<p>x</p>", 932), "shift_jis");
+        assert_eq!(outlook_charset(b"<p>x</p>", 0), "");
+        assert_eq!(codepage_charset(1250), "windows-1250");
+        assert_eq!(codepage_charset(1258), "windows-1258");
+        assert_eq!(codepage_charset(28605), "iso-8859-15");
+        assert_eq!(codepage_charset(65001), "utf-8");
+        assert_eq!(codepage_charset(12345), "");
+        // Windows-1252 bytes are read here, as Lumo reads that charset.
+        let out = assemble(vec![(b"<p>Perch\xe8</p>".to_vec(), outlook_charset(b"<p>Perch\xe8</p>", 1252))], vec![]);
+        assert!(out.html.contains("Perchè"), "{}", out.html);
+        // Windows-1251 goes to the island with its charset.
+        let out = assemble(vec![(b"<p>\xcf</p>".to_vec(), outlook_charset(b"<p>\xcf</p>", 1251))], vec![]);
+        assert_eq!(out.charset.as_deref(), Some("windows-1251"));
+    }
+
+    #[test]
     fn the_email_view_lists_every_account_newest_first_and_says_which_failed() {
         let button = |key: &str, unread: usize| ViewAccount {
             key: key.into(), label: key.into(), state: "ok", error: None, unread, inbox: None,
@@ -4904,7 +4903,8 @@ mod tests {
 
     #[test]
     fn the_ai_reads_the_email_unless_security_says_none() {
-        assert_eq!(access(&Settings::default()), "read", "as before the setting");
+        assert_eq!(access(&Settings::default()), "manage", "the first start: each change waits for a click");
+        assert_eq!(access(&Settings { ai_mail_access: "read".into(), ..Settings::default() }), "read");
         assert_eq!(access(&Settings { ai_mail_access: "none".into(), ..Settings::default() }), "none");
         assert_eq!(access(&Settings { ai_mail_access: "send".into(), ..Settings::default() }), "send");
         assert_eq!(access(&Settings { ai_mail_access: "manage".into(), ..Settings::default() }), "manage");
@@ -4978,34 +4978,6 @@ mod tests {
     }
 
     #[test]
-    fn questions_about_email_bring_the_inbox() {
-        assert!(asks_about("quali sono le ultime email?"));
-        assert!(asks_about("Any new MAIL from Ada?"));
-        assert!(asks_about("cosa c'è nella posta"));
-        assert!(asks_about("leggi la mia e-mail"));
-        assert!(!asks_about("what is Claude doing?"));
-        // The inbox is the user's: a word that merely holds one of ours never brings it.
-        assert!(!asks_about("fammi una proposta"));
-        assert!(!asks_about("apri le impostazioni"));
-        assert!(!asks_about("l'ho fatto apposta"));
-    }
-
-    #[test]
-    fn the_inbox_reads_as_a_list_for_the_chat() {
-        let m = Message {
-            id: "a@x:4".into(), from: "Ada".into(), address: "ada@example.org".into(), subject: "Lunch".into(),
-            preview: "Shall we".into(), body: "Shall we\n  meet at noon?".into(), date: "Wed, 14 Oct 2026 12:00".into(),
-            link: None,
-        };
-        let text = context_text(5, std::slice::from_ref(&m));
-        assert!(text.contains("1 of 5 unread"));
-        assert!(text.contains("- From Ada <ada@example.org>, Wed, 14 Oct 2026 12:00: Lunch\n  Shall we meet at noon?\n"));
-        let long = Message { body: "x".repeat(CHAT_BODY_CHARS + 10), ..m };
-        assert!(context_text(1, &[long]).contains(&format!("{}…", "x".repeat(CHAT_BODY_CHARS))));
-        assert!(context_text(0, &[]).contains("no unread email"));
-    }
-
-    #[test]
     fn the_agents_get_read_and_unread_emails_with_ids() {
         let m = Message {
             id: "imap.gmail.com:42".into(), from: "Ada".into(), address: "ada@example.org".into(), subject: "Lunch".into(),
@@ -5014,13 +4986,9 @@ mod tests {
         };
         let read = Found { id: "inbox:42".into(), message: m.clone(), unread: false };
         let unread = Found { id: "inbox:43".into(), message: Message { subject: String::new(), ..m }, unread: true };
-        let text = list_text(&[unread.clone(), read.clone()], 100);
+        let text = list_text(&[unread, read], 100);
         assert!(text.contains("- [inbox:43] unread, from Ada <ada@example.org>, Wed, 14 Oct 2026 12:00: (no subject)\n"), "{text}");
         assert!(text.contains("- [inbox:42] read, from Ada"), "{text}");
-        let chat = recent_text(&[unread, read], Some(3));
-        assert!(chat.contains("2 newest emails, newest first, read or not (3 unread in all)"), "{chat}");
-        assert!(!chat.contains("already read are not listed"));
-        assert!(recent_text(&[], None).contains("inbox is empty"));
     }
 
     #[test]

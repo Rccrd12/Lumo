@@ -53,9 +53,10 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
         host.collapse();
       } else {
         resume();
-        // A waiting card is what the island opens on (State.defaultView), and
-        // Y and N answer it: the user turned to it.
-        host.alert(State.defaultView());
+        // A waiting card is what the island opens on (State.openingView), and
+        // Y and N answer it: the user turned to it. Settings the island folded
+        // on its own come back, as on a click.
+        host.alert(State.openingView());
         armApprovalKeys(State.pendingApproval?.requestId);
         host.takeKeyboard();
         // Opened from the keyboard, the mouse is elsewhere: it stays open a

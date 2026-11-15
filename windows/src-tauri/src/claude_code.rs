@@ -270,10 +270,11 @@ fn safe_effort(effort: &str) -> Option<&'static str> {
     EFFORTS.iter().copied().find(|e| *e == effort.trim())
 }
 
-/// A model alias or id we are willing to put on the command line.
+/// A model alias or id we are willing to put on the command line: never one
+/// that reads as an option.
 fn safe_model(model: &str) -> Option<&str> {
     let m = model.trim();
-    (!m.is_empty() && m != DEFAULT_MODEL && m.len() <= 64 && m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | '[' | ']')))
+    (!m.is_empty() && !m.starts_with('-') && m != DEFAULT_MODEL && m.len() <= 64 && m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | '[' | ']')))
         .then_some(m)
 }
 
@@ -422,8 +423,10 @@ fn args_with(
     .map(|s| s.to_string())
     .collect();
     a.extend(instructions(append));
-    a.push("--add-dir".into());
-    a.push(inbox.to_string());
+    if !inbox.is_empty() {
+        a.push("--add-dir".into());
+        a.push(inbox.to_string());
+    }
     for dir in folders.iter().filter_map(|d| safe_dir(d)) {
         a.push("--add-dir".into());
         a.push(dir.to_string());
@@ -2123,6 +2126,20 @@ fn reap_idle() {
     });
 }
 
+/// The agents at work that answering with `key` would end: the chat's Claude
+/// Code is alive in the same session, but with another key (model, effort,
+/// mode, folders, tools), so a new one would take its place and end them.
+/// None when none would end, or the user said to send all the same. Another
+/// session (an edited question) goes on as before: its answers leave the chat.
+fn agents_in_the_way(chat_id: &str, key: &str, session: Option<&str>) -> Option<usize> {
+    let open = lives(|all| {
+        let live = all.get_mut(chat_id)?;
+        let other = live.key != key && live.session.as_deref() == session && matches!(live.child.try_wait(), Ok(None));
+        Some(if other { live.link.open() } else { 0 })
+    })?;
+    chat_agents::in_the_way(chat_id, open)
+}
+
 /// The chat's Claude Code that can answer with `key` in `session`, or a new
 /// one, whose agents are told with `tell`.
 #[allow(clippy::too_many_arguments)]
@@ -2192,6 +2209,11 @@ fn live_turn(
     tell: Tell,
 ) -> Result<Run, String> {
     let key = live_key(&exe, &args);
+    // Another model, effort, mode, folder or tools would end the agents it
+    // left at work: not without the user (chat_agents.rs WOULD_STOP).
+    if let Some(open) = agents_in_the_way(chat_id, &key, session.as_deref()) {
+        return Err(chat_agents::would_stop(open));
+    }
     let mut live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
     // Claude Code is answering by itself: the message goes once it is done.
     if !live.take_output(&stop) {
@@ -2368,7 +2390,8 @@ pub async fn send(
     } else {
         format!("{}{}", catch_up(&unseen), prompt(context.as_ref(), &carried, &chat.files(), &query))
     };
-    let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    // This chat's folder of the inbox, or all of it with "Other chats' files" on.
+    let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
     // Computer use: the chat's own instructions, Lumo's MCP server, and the
     // computer only usable while this turn runs.
     let base = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
@@ -2555,7 +2578,8 @@ pub(crate) fn help(
         .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
     let folder = helper_folder(folder);
     let dir = work_dir();
-    let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    // No chat's: the inbox only with "Other chats' files" on.
+    let inbox = if crate::settings::load().chat_other_files { crate::files::inbox_dir().to_string_lossy().to_string() } else { String::new() };
     let folders: Vec<String> = folder.into_iter().collect();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
     let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders));
@@ -2669,6 +2693,9 @@ mod tests {
         assert!(a.windows(2).any(|w| w == ["--effort", "max"]));
         let a = args_with(HELPER_PROMPT, "opus & calc", "lots", "default", None, "/inbox", &[]);
         assert!(!a.iter().any(|s| s == "--model" || s == "--effort"));
+        // No inbox (Gemini Live's task with "Other chats' files" off): no --add-dir for it.
+        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "default", None, "", &[]);
+        assert!(!a.iter().any(|s| s == "--add-dir" || s.is_empty()), "{a:?}");
     }
 
     #[test]
@@ -3263,6 +3290,8 @@ mod tests {
         assert_eq!(safe_model("claude-opus-5-5[1m]"), Some("claude-opus-5-5[1m]"));
         assert_eq!(safe_model(""), None);
         assert_eq!(safe_model("default"), None, "no --model: Claude Code's own choice");
+        assert_eq!(safe_model("--dangerously-skip-permissions"), None, "a flag is no model");
+        assert_eq!(safe_model("-p"), None);
     }
 
     #[test]
