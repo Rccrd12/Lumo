@@ -171,6 +171,17 @@ test("a task for another chat goes to that chat's provider and model; the picker
   assert.equal(sent("save_settings").length, 0);
 });
 
+test("a task for another chat on a model since retired goes to the one its provider offers now", async () => {
+  saveChat({ ...loadChats().find((c) => c.id === "release"), provider: "anthropic", model: "claude-retired-3" });
+  answers.secret_present = true;
+  answers.chat_models = [{ id: "claude-opus-5-5", label: "claude-opus-5-5" }, { id: "claude-sonnet-5-5", label: "claude-sonnet-5-5" }];
+  answers.chat_send = { text: "Merged.", turns: 4 };
+  emit("listen-fired", { watch: watch(8, "release", "merge it"), met: true, summary: "#241 is ready to merge", ended: true });
+  for (let i = 0; i < 6; i++) await flush();
+  assert.deepEqual(sent("chat_send").map((a) => [a.chatId, a.provider, a.model]), [["release", "anthropic", "claude-opus-5-5"]]);
+  assert.equal(loadChats().find((c) => c.id === "release").model, "claude-opus-5-5");
+});
+
 test("a watch that goes on offers Stop listening on its line", async () => {
   const w = watch(4, State.chatId, "", { mode: "every" });
   emit("listen-changed", [w]);
