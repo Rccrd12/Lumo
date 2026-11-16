@@ -8,7 +8,7 @@ The [MIT License](LICENSE) covers the **source code** of Lumo. It does **not** c
 - the **Lumo character** — its looks (the ring of light, the dot, the drop and the firefly), expressions and animations as a character;
 - the **app icon** (`windows/src-tauri/icons/`);
 - the **sounds** (`windows/assets/sounds/`);
-- the **images** in `windows/screenshots/`.
+- the **images** in `windows/screenshots/` and the **videos** in `docs/media/`.
 
 ## Not covered here
 
