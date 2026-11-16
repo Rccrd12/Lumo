@@ -76,8 +76,8 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     }
     // Lumo's email tools only read the user's mailbox, or have Lumo's own
     // card (an email to send, a change), its plan tool only shows, its island
-    // tools only start a timer or a watch, its browser tools are Lumo's own
-    // and asked for by the chat's own permission (mcp.rs).
+    // tools only start a timer or a watch, its browser tools have Lumo's own
+    // card for agy's turn in the island's chat (browser.rs `AskTurn`).
     // Its computer tools have Lumo's own card in the island's chat (computer.rs
     // `OtherTurn`, which asks as the chat's mode says).
     if crate::mcp::lumo_call(tool, input).is_some_and(|name| {

@@ -813,11 +813,10 @@ const COMPUTER_SETTINGS = {
   get claudeOnly() { return t("In the chat, pick Claude Code or Antigravity CLI as the provider to use it."); },
 };
 
-/** The agents' own hidden browser tabs (browser.rs): Claude Code alone for now. */
+/** The agents' own hidden browser tabs (browser.rs), for every chat provider. */
 const BROWSER_SETTINGS = {
   get label() { return t("Let agents browse the web"); },
   get hint() { return t("Agents open websites in hidden tabs of their own."); },
-  get claudeOnly() { return t("For now only Claude Code browses."); },
 };
 
 /**
@@ -883,11 +882,6 @@ function securitySection(): HTMLElement {
     note.hidden = !(settings.chatComputerUse && !cli);
   };
   showNote();
-  const browserNote = h("p", { class: "hint", text: BROWSER_SETTINGS.claudeOnly });
-  const showBrowserNote = () => {
-    browserNote.hidden = !(settings.chatBrowser && settings.chatProvider !== "claude-code");
-  };
-  showBrowserNote();
   return h(
     "section",
     {},
@@ -905,11 +899,9 @@ function securitySection(): HTMLElement {
     setting(BROWSER_SETTINGS.label, BROWSER_SETTINGS.hint,
       toggle(settings.chatBrowser === true, (on) => {
         settings.chatBrowser = on;
-        showBrowserNote();
         void save();
       }),
     ),
-    browserNote,
     setting(WEB_SETTINGS.label, SECURITY.webHint,
       toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
     ),

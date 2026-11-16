@@ -112,6 +112,31 @@ pub fn without_images(body: &mut Value) -> bool {
     true
 }
 
+/// The first words of the message that brings a round's screenshots.
+pub const PICTURES: &str = "The screenshots the browser tools just took, in the order they were called.";
+/// What stands in their place for a model that refused them.
+pub const NO_PICTURES: &str = "(The browser's screenshots can't be shown to this model: use browser_read to see a page as text.)";
+
+/// A round's screenshots (PNG, base64), as one user message after its tool answers.
+pub fn pictures_message(pictures: &[String]) -> Value {
+    let mut parts = vec![json!({ "type": "text", "text": PICTURES })];
+    parts.extend(pictures.iter().map(|png| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{png}") } })));
+    json!({ "role": "user", "content": parts })
+}
+
+/// The screenshots of the request, said in words instead (a model that sees
+/// no pictures refused them): whether there were any.
+pub fn without_pictures(body: &mut Value) -> bool {
+    let mut changed = false;
+    for m in body["messages"].as_array_mut().into_iter().flatten() {
+        if m["role"] == "user" && m.pointer("/content/0/text").and_then(Value::as_str) == Some(PICTURES) {
+            m["content"] = json!(NO_PICTURES);
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// The input of a call from its arguments (a JSON text): `{}` when there are
 /// none, None when they aren't a JSON object (cut off, or made up).
 pub fn call_input(arguments: &str) -> Option<Value> {

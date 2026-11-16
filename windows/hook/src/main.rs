@@ -31,6 +31,7 @@ use serde_json::Value;
 
 mod agy_rules;
 mod background;
+mod browser_tools;
 mod mail_tools;
 mod mcp;
 mod normalize;

@@ -560,10 +560,11 @@ pub fn server_entry() -> Value {
 
 /// `--tools=…` for Lumo's server in agy's workspace: its plan tool, always
 /// (no plan, no computer: `gate`), the computer while a chat turn may use it
-/// (`computer`), the email as Security lets the AI have it (`mail`), and the
-/// island's tools.
-fn kit(computer: bool, mail: &str) -> String {
-    let parts: Vec<&str> = ["plan", if computer { "computer" } else { "" }, mail, "island"].into_iter().filter(|p| !p.is_empty()).collect();
+/// (`computer`), the email as Security lets the AI have it (`mail`), the
+/// agents' browser while agents may browse (`browser`), and the island's tools.
+fn kit(computer: bool, mail: &str, browser: bool) -> String {
+    let parts: Vec<&str> =
+        ["plan", if computer { "computer" } else { "" }, mail, if browser { "browsercard" } else { "" }, "island"].into_iter().filter(|p| !p.is_empty()).collect();
     format!("--tools={}", parts.join(","))
 }
 
@@ -575,10 +576,11 @@ fn kit(computer: bool, mail: &str) -> String {
 /// as a server of their own while any is on (`tools`, tools.rs, which asks
 /// for each call itself); the computer only for a chat turn that may use it
 /// (`computer`: Lumo asks for each action itself, `OtherTurn`;
-/// Gemini Live's screen work stays Claude Code's). An entry an earlier build
-/// put there is replaced. Whatever else the file holds is kept, and the
+/// Gemini Live's screen work stays Claude Code's), and the browser for a chat
+/// turn while agents may browse (`browser`: Lumo asks for what changes a
+/// page itself, browser.rs `AskTurn`). An entry an earlier build put there is replaced. Whatever else the file holds is kept, and the
 /// user's global configuration is never touched.
-pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool, computer: bool) {
+pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool, computer: bool, browser: bool) {
     let path = work.join(".agents").join("mcp_config.json");
     let read = match std::fs::read_to_string(&path) {
         Ok(text) => Some(text),
@@ -593,7 +595,7 @@ pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool, computer: 
         None => json!({}),
     };
     let mut entry = server_entry();
-    entry["args"] = json!(["--mcp", kit(computer, mail)]);
+    entry["args"] = json!(["--mcp", kit(computer, mail, browser)]);
     let Some(root) = config.as_object_mut() else { return };
     let servers = root.entry("mcpServers").or_insert_with(|| json!({}));
     let Some(servers) = servers.as_object_mut() else { return };
@@ -3329,22 +3331,22 @@ mod tests {
         let file = dir.join(".agents").join("mcp_config.json");
         let read = || serde_json::from_str::<Value>(&std::fs::read_to_string(&file).unwrap()).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        agy_workspace(&dir, "", false, false);
+        agy_workspace(&dir, "", false, false, false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the plan always");
-        agy_workspace(&dir, "mail", false, false);
+        agy_workspace(&dir, "mail", false, false, false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]));
-        agy_workspace(&dir, "mail,mailsend", false, false);
+        agy_workspace(&dir, "mail,mailsend", false, false, false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,mailsend,island"]), "sending too");
 
         // An earlier build's computer use entry, next to the user's own.
         std::fs::write(&file, r#"{"mcpServers":{"mine":{"command":"x"},"lumo":{"command":"lumo-hook","args":["--mcp"]}},"other":1}"#).unwrap();
-        agy_workspace(&dir, "mail", false, false);
+        agy_workspace(&dir, "mail", false, false, false);
         let v = read();
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]), "no computer unless the turn may use it");
         assert_eq!(v["mcpServers"]["lumo"]["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(v["other"], 1);
-        agy_workspace(&dir, "", false, false);
+        agy_workspace(&dir, "", false, false, false);
         let v = read();
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the email goes with the pill");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
@@ -3353,27 +3355,27 @@ mod tests {
 
         // The user's tools, as a server of their own while any is on.
         // A chat turn that may use the computer, and the next without.
-        agy_workspace(&dir, "mail", false, true);
+        agy_workspace(&dir, "mail", false, true, false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,computer,mail,island"]));
-        agy_workspace(&dir, "", false, false);
+        agy_workspace(&dir, "", false, false, false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]));
 
-        agy_workspace(&dir, "", true, false);
+        agy_workspace(&dir, "", true, false, false);
         let v = read();
         assert_eq!(v["mcpServers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]));
-        agy_workspace(&dir, "", false, false);
+        agy_workspace(&dir, "", false, false, false);
         let v = read();
         assert!(v["mcpServers"].get(crate::tools::SERVER).is_none(), "gone once none is on");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
 
         std::fs::write(&file, "not json").unwrap();
-        agy_workspace(&dir, "mail", false, false);
+        agy_workspace(&dir, "mail", false, false, false);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json", "what Lumo can't read is left alone");
         // Saved as UTF-16 (Notepad's "Unicode"): not text Lumo reads, so not written over.
         let utf16: Vec<u8> = [0xFEFFu16].into_iter().chain("{}".encode_utf16()).flat_map(u16::to_le_bytes).collect();
         std::fs::write(&file, &utf16).unwrap();
-        agy_workspace(&dir, "mail", false, false);
+        agy_workspace(&dir, "mail", false, false, false);
         assert_eq!(std::fs::read(&file).unwrap(), utf16, "a UTF-16 file is left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3388,9 +3390,10 @@ mod tests {
 
     #[test]
     fn antigravity_gets_the_computer_in_its_kit_and_a_note_in_front() {
-        assert_eq!(kit(false, ""), "--tools=plan,island");
-        assert_eq!(kit(true, "mail,mailsend"), "--tools=plan,computer,mail,mailsend,island");
-        assert_eq!(kit(true, ""), "--tools=plan,computer,island", "the computer always with Lumo's plan tool");
+        assert_eq!(kit(false, "", false), "--tools=plan,island");
+        assert_eq!(kit(true, "mail,mailsend", false), "--tools=plan,computer,mail,mailsend,island");
+        assert_eq!(kit(true, "", false), "--tools=plan,computer,island", "the computer always with Lumo's plan tool");
+        assert_eq!(kit(false, "mail", true), "--tools=plan,mail,browsercard,island", "agents may browse");
         let text = with_note("click Send", false, true);
         assert!(text.starts_with("<lumo_computer>\n") && text.ends_with("</lumo_computer>\n\nclick Send"));
         assert!(text.contains("lumo MCP server") && text.contains("Esc") && text.contains("never normalized"));

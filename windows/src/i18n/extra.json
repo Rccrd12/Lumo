@@ -21773,18 +21773,6 @@
    "id": "Agen membuka situs di tab tersembunyi milik mereka sendiri.",
    "it": "Gli agenti aprono i siti in schede nascoste tutte loro."
   },
-  "For now only Claude Code browses.": {
-   "zh-Hans": "目前只有 Claude Code 会浏览网页。",
-   "hi": "अभी केवल Claude Code ब्राउज़ करता है।",
-   "es": "Por ahora solo Claude Code navega.",
-   "ar": "حاليًا يتصفح Claude Code وحده.",
-   "fr": "Pour l'instant, seul Claude Code navigue.",
-   "bn": "আপাতত কেবল Claude Code ব্রাউজ করে।",
-   "pt-BR": "Por enquanto só o Claude Code navega.",
-   "ru": "Пока сайты открывает только Claude Code.",
-   "id": "Untuk saat ini hanya Claude Code yang menjelajah.",
-   "it": "Per ora naviga solo Claude Code."
-  },
   "Open in a new browser tab": {
    "zh-Hans": "在新的浏览器标签页中打开",
    "hi": "नए ब्राउज़र टैब में खोलें",

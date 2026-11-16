@@ -1,5 +1,9 @@
 // Lumo for Windows — app wiring and the commands the island calls.
 
+/// Lumo's browser tools as lumo-hook lists them: the same file, for the chat's API providers and local models (tools.rs).
+#[path = "../../hook/src/browser_tools.rs"]
+#[allow(dead_code)]
+mod browser_tool_defs;
 /// Lumo's email tools as lumo-hook lists them: the same file, for the chat's API providers (tools.rs).
 #[path = "../../hook/src/mail_tools.rs"]
 #[allow(dead_code)]
@@ -1682,7 +1686,7 @@ pub fn run() {
             computer::recover();
             // Antigravity CLI's plan tool, its email tools following the Email pill
             // and the user's tools while any is on (set again before each run).
-            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled(), false);
+            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled(), false, false);
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             energy::start(handle.clone());

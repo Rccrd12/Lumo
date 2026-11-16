@@ -1334,16 +1334,17 @@ async fn send_to(
         // each action asked for by Lumo (computer.rs OtherTurn). Codex,
         // Copilot CLI and Cursor CLI don't get it.
         let computer = settings.chat_computer_use;
-        // Lumo's browser for agents (browser.rs): Claude Code's only, for now.
+        // Lumo's browser for agents (browser.rs): every CLI's. Claude Code asks
+        // for its own calls; the others' wait for Lumo's card (AskTurn).
         let browser = settings.chat_browser;
         if provider == antigravity_cli::PROVIDER {
-            return Box::pin(antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), computer, query, context, folder)).await;
+            return Box::pin(antigravity_cli::send(app, chat, &model, &settings.permission_mode_for(antigravity_cli::PROVIDER), computer, browser, query, context, folder)).await;
         }
         if provider == codex_chat::PROVIDER {
-            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
+            return Box::pin(codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, browser, query, context, folder)).await;
         }
         if acp_chat::Agent::of(provider).is_some() {
-            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)).await;
+            return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, browser, query, context, folder)).await;
         }
         return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, browser, query, context, folder)).await;
     }

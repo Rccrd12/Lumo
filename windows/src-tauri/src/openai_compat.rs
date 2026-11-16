@@ -357,9 +357,18 @@ pub async fn send(
     let asking = crate::tools::Asking::for_local(mode);
     let sandbox_high = sandbox != "low";
     let plan = if mode == "plan" { crate::tools::PLAN_ONLY_NOTE } else { "" };
-    let system = format!("{}{}{}{plan}{}", chat::system_prompt_in(chat, web, true), chat::api_tools_note(mail), if web { crate::web_search::NOTE } else { "" }, crate::api_agents::NOTE);
+    // Lumo's browser, when agents may browse (browser.rs).
+    let browser = tauri::async_runtime::spawn_blocking(crate::browser::enabled).await.unwrap_or(false);
+    let browsing = if browser && mode != "plan" { crate::browser::note() } else { String::new() };
+    let system = format!(
+        "{}{}{}{browsing}{plan}{}",
+        chat::system_prompt_in(chat, web, true),
+        chat::api_tools_note(mail),
+        if web { crate::web_search::NOTE } else { "" },
+        crate::api_agents::NOTE
+    );
     let mut body = request_body(model, &system, &turn.history, &user);
-    let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false)).await.unwrap_or_default();
+    let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false, browser)).await.unwrap_or_default();
     let mut tools = crate::tools::tools_for_mode(all, mode);
     // Agents of its own, with the chat's tools but none that start more (api_agents.rs).
     let launch = Launch { p, model: model.to_string(), effort: effort.to_string(), key: key.clone(), tools: crate::api_agents::sub_tools(&tools), asking, sandbox_high };
@@ -434,6 +443,8 @@ pub async fn send(
                     body[p.max_tokens_field] = json!(affordable(&e));
                     continue;
                 }
+                // A model that sees no pictures refused the browser's screenshots: in words instead.
+                Err((400 | 404 | 415 | 422, _)) if without_pictures(&mut body) => continue,
                 // A model that takes no tools refuses the request: once more without them.
                 // Only on the first request: later ones carry the tools' answers,
                 // which no server takes without the tools they answer.
@@ -469,6 +480,7 @@ pub async fn send(
                 said.push(text.to_string());
             }
             let mut turn_messages = vec![message.clone()];
+            let mut pictures: Vec<String> = Vec::new();
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 // Arguments that aren't whole JSON (a call cut short) never run as `{}`.
@@ -481,6 +493,8 @@ pub async fn send(
                     crate::web_search::activity(name)
                 } else if crate::github_tools::NAMES.contains(&name) {
                     crate::github_tools::activity(name, &input)
+                } else if crate::browser::NAMES.contains(&name) {
+                    crate::browser::activity(&input)
                 } else {
                     crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
                 };
@@ -501,8 +515,13 @@ pub async fn send(
                     continue;
                 }
                 chat.events().activity(app, act);
-                let (text, _) = crate::tools::call_for_chat(app, chat.id(), p.id, name, input, asking, sandbox_high).await;
+                let (text, _, image) = crate::tools::call_for_chat(app, chat.id(), p.id, None, name, input, asking, sandbox_high).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
+                pictures.extend(image);
+            }
+            // The tools' answers come right after the calls; their pictures after them all.
+            if !pictures.is_empty() {
+                turn_messages.push(pictures_message(&pictures));
             }
             if let Some(messages) = body["messages"].as_array_mut() {
                 messages.extend(turn_messages);
@@ -663,6 +682,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
                 body[p.max_tokens_field] = json!(affordable(&e));
                 continue;
             }
+            Err((400 | 404 | 415 | 422, _)) if without_pictures(&mut body) => continue,
             Err((_, e)) => return Err(e),
             Ok(json) => json,
         };
@@ -686,6 +706,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
         rounds += 1;
         said.extend(text);
         let mut turn_messages = vec![message.clone()];
+        let mut pictures: Vec<String> = Vec::new();
         for call in &calls {
             let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
             let Some(input) = call_input(call) else {
@@ -698,16 +719,49 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
             }
             sink.step(if crate::web_search::NAMES.contains(&name) {
                 crate::web_search::activity(name)
+            } else if crate::browser::NAMES.contains(&name) {
+                crate::browser::activity(&input)
             } else {
                 crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
             });
-            let (text, _) = sink.alive_while(Box::pin(crate::tools::call_for_chat(app, chat_id, l.p.id, name, input, l.asking, l.sandbox_high))).await;
+            let job = crate::tools::call_for_chat(app, chat_id, l.p.id, Some(sink.id()), name, input, l.asking, l.sandbox_high);
+            let (text, _, image) = sink.alive_while(Box::pin(job)).await;
             turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
+            pictures.extend(image);
+        }
+        if !pictures.is_empty() {
+            turn_messages.push(pictures_message(&pictures));
         }
         if let Some(messages) = body["messages"].as_array_mut() {
             messages.extend(turn_messages);
         }
     }
+}
+
+/// The first words of the message that brings a round's browser screenshots
+/// (a tool's answer can't hold a picture here): marks it for `without_pictures`.
+const PICTURES: &str = "The screenshots the browser tools just took, in the order they were called.";
+/// What stands in their place for a model that refused them.
+const NO_PICTURES: &str = "(The browser's screenshots can't be shown to this model: use browser_read to see a page as text.)";
+
+/// The round's screenshots (PNG, base64), as one user message after its tool answers.
+fn pictures_message(pictures: &[String]) -> Value {
+    let mut parts = vec![json!({ "type": "text", "text": PICTURES })];
+    parts.extend(pictures.iter().map(|png| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{png}") } })));
+    json!({ "role": "user", "content": parts })
+}
+
+/// The screenshots of the request, said in words instead (a model that sees
+/// no pictures refused them): whether there were any.
+fn without_pictures(body: &mut Value) -> bool {
+    let mut changed = false;
+    for m in body["messages"].as_array_mut().into_iter().flatten() {
+        if m["role"] == "user" && m.pointer("/content/0/text").and_then(Value::as_str) == Some(PICTURES) {
+            m["content"] = json!(NO_PICTURES);
+            changed = true;
+        }
+    }
+    changed
 }
 
 fn call_input(call: &Value) -> Option<Value> {
@@ -1710,5 +1764,20 @@ mod tests {
         let list = json!({"data":[{"id":"x/think","name":"Think","context_length":64_000,"supported_parameters":["reasoning"]}]});
         let models = parse_models(p("openrouter"), &list);
         assert_eq!((models[0].reasoning.len(), models[0].context), (3, 64_000));
+    }
+
+    #[test]
+    fn the_browsers_screenshots_go_as_pictures_and_words_for_a_model_that_refuses_them() {
+        let pictures = pictures_message(&["iVBOR".into(), "AAAA".into()]);
+        assert_eq!(pictures["role"], "user");
+        assert_eq!(pictures["content"][0]["text"], PICTURES);
+        assert_eq!(pictures["content"][1]["image_url"]["url"], "data:image/png;base64,iVBOR");
+        assert_eq!(pictures["content"].as_array().unwrap().len(), 3);
+        let question = json!({ "role": "user", "content": [{ "type": "text", "text": "Hi" }, { "type": "image_url", "image_url": { "url": "data:image/png;base64,Q" } }] });
+        let mut body = json!({ "messages": [question.clone(), { "role": "tool", "content": "ok" }, pictures] });
+        assert!(without_pictures(&mut body));
+        assert_eq!(body["messages"][2]["content"], NO_PICTURES);
+        assert_eq!(body["messages"][0], question, "the user's own pictures stay");
+        assert!(!without_pictures(&mut body), "none left");
     }
 }

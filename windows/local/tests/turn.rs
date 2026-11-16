@@ -323,6 +323,32 @@ fn pictures_a_model_refuses_are_taken_out_and_the_question_asked_again() {
 }
 
 #[test]
+fn the_browsers_screenshots_follow_the_rounds_answers_and_go_as_words_once_refused() {
+    use lumo_local::guard::{NO_PICTURES, PICTURES};
+    let mut island = Island::default();
+    let mut body = question("Guarda la pagina", &["browser_screenshot"]);
+    let shot = || calls("c1", "browser_screenshot", "{\"tab\":1}");
+    let replies = vec![shot(), answer("Vedo la pagina.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("shots", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Vedo la pagina.");
+    let messages = requests[1]["messages"].as_array().unwrap();
+    assert_eq!(messages[3]["role"], "tool");
+    assert_eq!(messages[4]["role"], "user");
+    assert_eq!(messages[4]["content"][0]["text"], PICTURES);
+    assert_eq!(messages[4]["content"][1]["image_url"]["url"], "data:image/png;base64,SHOT1");
+    // A model that refuses them gets words in their place, and no more pictures.
+    let mut island = Island::default();
+    let mut body = question("Guarda la pagina", &["browser_screenshot"]);
+    let refused = Reply::Json(400, json!({ "error": "image input is not supported" }).to_string());
+    let replies = vec![shot(), refused, calls("c2", "browser_screenshot", "{\"tab\":1}"), answer("Non vedo.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("shots-refused", ""), &mut island);
+    assert!(outcome.unwrap().fixes.contains(&"without pictures"));
+    assert_eq!(requests[2]["messages"][4]["content"], NO_PICTURES);
+    assert_eq!(requests[3]["messages"].as_array().unwrap().last().unwrap()["role"], "tool", "none after the refusal");
+    assert_eq!(requests[3]["messages"][1]["content"], "Guarda la pagina", "the question as it was");
+}
+
+#[test]
 fn a_pdf_s_pages_a_model_refuses_go_again_as_its_text() {
     let mut island = Island::default();
     let user = json!({ "role": "user", "content": [{ "type": "image_url", "image_url": { "url": "data:image/png;base64,AA" } }, { "type": "text", "text": "Cosa c'è?" }] });
