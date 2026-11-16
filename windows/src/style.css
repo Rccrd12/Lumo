@@ -9934,45 +9934,129 @@ button.bg-row:hover {
   background: #fff;
 }
 
+/* The box of what the agent clicked or typed in. */
 .bw-ring {
   position: absolute;
+  /* A little larger than what it shows, so its line doesn't cover its edge. */
+  margin: -5px 0 0 -5px;
+  padding: 3px;
+  box-sizing: content-box;
   border: 2px solid #3b9eff;
-  border-radius: 10px;
-  box-shadow: 0 0 0 4px rgba(59, 158, 255, 0.22), 0 0 18px rgba(59, 158, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(59, 158, 255, 0.1);
   pointer-events: none;
 }
 
-.bw-tag {
+.bw-ring.typing {
+  background: rgba(59, 158, 255, 0.06);
+}
+
+/* The agent's pointer: it glides from where it was to where it clicks or types. */
+.bw-cursor {
   position: absolute;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 90%;
-  margin-top: 6px;
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: rgba(12, 13, 15, 0.88);
-  color: var(--ink);
-  font: 500 10.5px var(--font);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  z-index: 3;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  transition: left 0.45s cubic-bezier(0.3, 0.7, 0.3, 1), top 0.45s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+
+.bw-cursor svg {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.bw-cursor .bw-arrow {
+  left: -4px;
+  top: -2px;
+}
+
+.bw-cursor .bw-ibeam {
+  left: -11px;
+  top: -11px;
+  display: none;
+}
+
+.bw-cursor.text .bw-arrow {
+  display: none;
+}
+
+.bw-cursor.text .bw-ibeam {
+  display: block;
+}
+
+.bw-frame.small .bw-cursor svg {
+  width: 15px;
+  height: 15px;
+}
+
+.bw-frame.small .bw-cursor .bw-ibeam {
+  left: -7.5px;
+  top: -7.5px;
+}
+
+/* A click: a ring that opens and fades where it landed, once. */
+.bw-ripple {
+  position: absolute;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 2px solid rgba(59, 158, 255, 0.85);
+  border-radius: 50%;
+  background: rgba(59, 158, 255, 0.18);
+  opacity: 0;
   pointer-events: none;
 }
 
-/* Over the ring: its bottom just above it. */
-.bw-tag.over {
-  margin-top: 0;
-  transform: translateY(calc(-100% - 6px));
+.bw-ripple.on {
+  animation: bw-ripple 0.9s ease-out 0.4s both;
 }
 
-.bw-tag i {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+@keyframes bw-ripple {
+  0% { opacity: 1; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(1.7); }
+}
+
+.bw-frame.small .bw-ripple {
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+}
+
+/* A page loading: the last picture dimmed, a bar running along its top. */
+.bw-frame.loading .bw-shot img {
+  opacity: 0.38;
+  filter: saturate(0.4);
+  transition: opacity 0.3s ease;
+}
+
+.bw-load {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 4;
+  height: 2px;
+  overflow: hidden;
+  background: rgba(59, 158, 255, 0.18);
+}
+
+.bw-load i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  border-radius: 2px;
   background: #3b9eff;
+  animation: bw-load 1.2s ease-in-out infinite;
+}
+
+@keyframes bw-load {
+  0% { left: -38%; }
+  100% { left: 100%; }
 }
 
 .bw-wait,
@@ -9986,9 +10070,125 @@ button.bg-row:hover {
   text-align: center;
 }
 
+/* Over the picture: what opens, or why there is none; on the dark page without one. */
 .bw-wait {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  display: inline-flex;
+  min-height: 0;
+  max-width: 86%;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(20, 22, 26, 0.92);
+  color: var(--ink);
+  font: 500 11.5px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.bw-wait.plain {
+  background: none;
+  box-shadow: none;
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.bw-frame.small .bw-wait {
+  padding: 5px 9px;
+  font-size: 10.5px;
+}
+
+/* Under the picture: what the agent does now, and in small the steps before. */
+.bw-steps {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bw-steps:not([hidden]) + .bw-note {
+  display: none;
+}
+
+.bw-now {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font: 500 12px var(--font);
+  color: var(--ink);
+}
+
+.bw-now-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bw-now-ico {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: #3b9eff;
+}
+
+.bw-now-ico.up svg {
+  transform: rotate(180deg);
+}
+
+.bw-now-ico.busy {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(59, 158, 255, 0.25);
+  border-top-color: #3b9eff;
+  border-radius: 50%;
+  animation: bw-spin 0.8s linear infinite;
+}
+
+@keyframes bw-spin {
+  to { transform: rotate(360deg); }
+}
+
+.bw-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.bw-done span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.75;
+}
+
+.bw-done em {
+  font-style: normal;
+  opacity: 0.5;
+}
+
+.bw-note.now .bw-steps,
+.bw-cap-now .bw-steps {
+  flex: 1;
+}
+
+.bw-cap-now .bw-now {
+  font-size: 11px;
 }
 
 .bw-foot {

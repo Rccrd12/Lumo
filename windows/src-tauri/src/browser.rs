@@ -114,15 +114,24 @@ struct Tab {
     opened: Instant,
     /// Its agent was listed open on the Agents card once.
     seen: bool,
-    /// What its agent last did in it, for the island's picture.
-    act: Option<Act>,
+    /// What its agent did in it, oldest first (at most STEPS_KEPT), for
+    /// the island's picture: the last one now, the others as steps done.
+    acts: Vec<Act>,
+    /// A page is loading in it (from its start to its end).
+    loading: bool,
 }
 
-/// What an agent last did in its tab: the island draws a ring where, and
-/// says what, over the tab's picture while the user watches it.
+/// The steps each tab keeps for the island's picture.
+const STEPS_KEPT: usize = 6;
+/// Numbers each action, so the island sees a new one even when it is the same as the last.
+static ACT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// What an agent did in its tab: the island draws its pointer where, the
+/// box of what it clicked or typed in, and says what, under the tab's
+/// picture while the user watches it.
 #[derive(Debug, Clone, PartialEq)]
 struct Act {
-    /// "open", "click", "type" or "scroll".
+    /// "open", "click", "type", "scroll" or "read" (a read or a screenshot).
     kind: &'static str,
     /// The site opened, the name of what was clicked, what was typed
     /// ("•••" in a password field), or "down" or "up".
@@ -130,9 +139,34 @@ struct Act {
     /// Where on the page, in CSS pixels of the tab's viewport, when the
     /// action has a place: x, y, width, height.
     rect: Option<[f64; 4]>,
-    /// The page's scroll then: the ring moves with the page after.
+    /// The point the mouse went to, in the same pixels.
+    point: Option<(f64, f64)>,
+    /// The page's scroll then: the box moves with the page after.
     scroll_y: f64,
     at: Instant,
+    /// Its number, one more than the action before (of any tab).
+    seq: u64,
+}
+
+impl Act {
+    fn new(kind: &'static str, what: String, rect: Option<[f64; 4]>, point: Option<(f64, f64)>, scroll_y: f64) -> Act {
+        let seq = ACT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Act { kind, what, rect, point, scroll_y, at: Instant::now(), seq }
+    }
+}
+
+/// Adds `act` to a tab's steps: a read, or a scroll the same way, after
+/// the same takes its place (an agent reading again and again is one step).
+fn remember(acts: &mut Vec<Act>, act: Act) {
+    let same = acts.last().is_some_and(|last| last.kind == act.kind && last.what == act.what && matches!(act.kind, "read" | "scroll"));
+    if same {
+        acts.pop();
+    }
+    acts.push(act);
+    if acts.len() > STEPS_KEPT {
+        let extra = acts.len() - STEPS_KEPT;
+        acts.drain(..extra);
+    }
 }
 
 /// Which agent is about to open a tab, as the chat's PreToolUse hook said.
@@ -373,9 +407,25 @@ pub fn close_all(app: &AppHandle) {
 /// The newest tab of `agent` in `chat`, the one the Agents card names
 /// (chat-agents.ts browserOf): its window's label, number, last action, and
 /// the address and title Lumo last saw there.
-fn newest(t: &Tabs, chat: &str, agent: &str) -> Option<(String, u32, Option<Act>, Page)> {
+fn newest(t: &Tabs, chat: &str, agent: &str) -> Option<Newest> {
     let tab = t.open.iter().filter(|tab| tab.chat == chat && tab.agent == agent).max_by_key(|tab| tab.n)?;
-    Some((tab.label.clone(), tab.n, tab.act.clone(), Page { title: tab.title.clone(), url: tab.url.clone() }))
+    Some(Newest {
+        label: tab.label.clone(),
+        n: tab.n,
+        acts: tab.acts.clone(),
+        page: Page { title: tab.title.clone(), url: tab.url.clone() },
+        loading: tab.loading,
+    })
+}
+
+/// `newest`'s answer.
+#[derive(Debug, Clone, PartialEq)]
+struct Newest {
+    label: String,
+    n: u32,
+    acts: Vec<Act>,
+    page: Page,
+    loading: bool,
 }
 
 /// `frame`'s error for an agent with no tab: the island stops asking.
@@ -389,11 +439,20 @@ pub const NO_TAB: &str = "This agent has no browser tab open.";
 /// Destroyed takes a closed one off the list, so it is never forgotten
 /// here: that would fail the agent's browser_open).
 pub async fn frame(app: &AppHandle, chat: &str, agent: &str) -> Result<Value, String> {
-    let (label, n, act, known) = with_tabs(|t| newest(t, chat, agent)).ok_or_else(|| NO_TAB.to_string())?;
+    let Newest { label, n, acts, page: known, loading } = with_tabs(|t| newest(t, chat, agent)).ok_or_else(|| NO_TAB.to_string())?;
     let Some(win) = app.get_webview_window(&label) else {
-        return Ok(json!({ "tab": n, "opening": true, "url": known.url, "host": host_of(&known.url), "title": known.title }));
+        return Ok(json!({
+            "tab": n, "opening": true, "url": known.url, "host": host_of(&known.url), "title": known.title,
+            "steps": steps_json(&acts, Instant::now()),
+        }));
     };
-    let shot = cdp(&win, "Page.captureScreenshot", json!({ "format": "jpeg", "quality": FRAME_QUALITY }), SHOT_LIMIT).await?;
+    let shot = match cdp(&win, "Page.captureScreenshot", json!({ "format": "jpeg", "quality": FRAME_QUALITY }), SHOT_LIMIT).await {
+        Ok(shot) => shot,
+        Err(err) => {
+            log_frame_error(&err);
+            return Err(err);
+        }
+    };
     let image = shot["data"].as_str().filter(|d| !d.is_empty()).ok_or("The tab gave no picture.")?;
     // The page answers where it is scrolled; one changing, or one that
     // breaks the script, still has its picture, with the last address seen
@@ -409,24 +468,44 @@ pub async fn frame(app: &AppHandle, chat: &str, agent: &str) -> Result<Value, St
             json!([w, h, m["cssVisualViewport"]["pageY"], known.title, known.url])
         }
     };
-    Ok(frame_json(n, &at, image, act.as_ref(), Instant::now()))
+    Ok(frame_json(n, &at, image, &acts, loading, Instant::now()))
+}
+
+/// A picture that failed goes in Lumo's log once, not every time it is asked again.
+fn log_frame_error(err: &str) {
+    static LAST: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if *last != err {
+        *last = err.to_string();
+        crate::log::line(format!("chat_browser_frame: {err}"));
+    }
+}
+
+/// The steps for the island, oldest first.
+fn steps_json(acts: &[Act], now: Instant) -> Value {
+    Value::Array(acts.iter().map(|a| act_json(a, now)).collect())
+}
+
+fn act_json(a: &Act, now: Instant) -> Value {
+    json!({
+        "seq": a.seq,
+        "kind": a.kind,
+        "what": a.what,
+        "rect": a.rect.map(|[x, y, w, h]| json!({ "x": x, "y": y, "w": w, "h": h })),
+        "point": a.point.map(|(x, y)| json!({ "x": x, "y": y })),
+        "scrollY": a.scroll_y,
+        "ago": now.saturating_duration_since(a.at).as_millis() as u64,
+    })
 }
 
 /// What `frame` gives the island: the picture (a JPEG, base64), the
 /// viewport it shows in CSS pixels, where the page is scrolled, its address,
-/// and the last action with how long ago it was (ms).
-fn frame_json(n: u32, at: &Value, image: &str, act: Option<&Act>, now: Instant) -> Value {
+/// whether a page is loading, the last action with how long ago it was (ms)
+/// and the steps before it.
+fn frame_json(n: u32, at: &Value, image: &str, acts: &[Act], loading: bool, now: Instant) -> Value {
     let num = |i: usize| at[i].as_f64().filter(|v| v.is_finite()).unwrap_or(0.0);
     let url = at[4].as_str().unwrap_or("");
-    let action = act.map(|a| {
-        json!({
-            "kind": a.kind,
-            "what": a.what,
-            "rect": a.rect.map(|[x, y, w, h]| json!({ "x": x, "y": y, "w": w, "h": h })),
-            "scrollY": a.scroll_y,
-            "ago": now.saturating_duration_since(a.at).as_millis() as u64,
-        })
-    });
+    let action = acts.last().map(|a| act_json(a, now));
     json!({
         "tab": n,
         "image": image,
@@ -436,7 +515,9 @@ fn frame_json(n: u32, at: &Value, image: &str, act: Option<&Act>, now: Instant) 
         "title": at[3].as_str().unwrap_or(""),
         "url": url,
         "host": host_of(url),
+        "loading": loading,
         "action": action,
+        "steps": steps_json(acts, now),
     })
 }
 
@@ -444,7 +525,7 @@ fn frame_json(n: u32, at: &Value, image: &str, act: Option<&Act>, now: Instant) 
 fn note_act(label: &str, act: Act) {
     with_tabs(|t| {
         if let Some(tab) = t.open.iter_mut().find(|tab| tab.label == label) {
-            tab.act = Some(act);
+            remember(&mut tab.acts, act);
         }
     });
 }
@@ -785,7 +866,7 @@ async fn open(app: &AppHandle, chat: &str, agent: Option<&str>, input: &Value) -
         // makes none now) is not left for another agent's new tab.
         with_tabs(|t| t.take_claim(chat, url.as_str(), Instant::now()));
         let (n, win) = tab_window(app, chat, input)?;
-        note_act(win.label(), Act { kind: "open", what: host_of(url.as_str()), rect: None, scroll_y: 0.0, at: Instant::now() });
+        note_act(win.label(), Act::new("open", host_of(url.as_str()), None, None, 0.0));
         load(&win, &url).await?;
         let now = page(&win).await;
         note_page(app, win.label(), &now);
@@ -799,6 +880,15 @@ async fn open(app: &AppHandle, chat: &str, agent: Option<&str>, input: &Value) -
         // The caller's own agent (in Lumo, it can't be faked), else a claim.
         let claimed = t.take_claim(chat, url.as_str(), now);
         let agent = agent.filter(|a| !a.trim().is_empty()).map(str::to_string).or(claimed).unwrap_or_else(|| MAIN.to_string());
+        // The agent's steps go on in its new tab: what it did before stays told.
+        let mut acts = t
+            .open
+            .iter()
+            .filter(|tab| tab.chat == chat && tab.agent == agent)
+            .max_by_key(|tab| tab.n)
+            .map(|tab| tab.acts.clone())
+            .unwrap_or_default();
+        remember(&mut acts, Act::new("open", host_of(url.as_str()), None, None, 0.0));
         let n = t.next.max(1);
         t.next = n + 1;
         let label = format!("{LABEL}{n}");
@@ -812,7 +902,8 @@ async fn open(app: &AppHandle, chat: &str, agent: Option<&str>, input: &Value) -
             used: now,
             opened: now,
             seen: false,
-            act: Some(Act { kind: "open", what: host_of(url.as_str()), rect: None, scroll_y: 0.0, at: now }),
+            acts,
+            loading: true,
         });
         Ok((n, label))
     })?;
@@ -900,6 +991,7 @@ fn create(app: &AppHandle, label: &str) -> Result<WebviewWindow, String> {
                         tab.title.clear();
                     }
                     tab.url = url;
+                    tab.loading = started;
                 }
             });
             show(win.app_handle());
@@ -957,6 +1049,7 @@ async fn settle(win: &WebviewWindow) {
 async fn read(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, String> {
     let (n, win) = tab_window(app, chat, input)?;
     let max = whole(input, "max_chars").map(|m| m as usize).unwrap_or(READ_CHARS).clamp(200, READ_CHARS_MAX);
+    note_act(win.label(), Act::new("read", String::new(), None, None, 0.0));
     let found = eval(&win, READ_JS).await?;
     let now = Page { title: found["title"].as_str().unwrap_or("").into(), url: found["url"].as_str().unwrap_or("").into() };
     note_page(app, win.label(), &now);
@@ -1059,7 +1152,7 @@ async fn click(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, Stri
     let (n, win) = tab_window(app, chat, input)?;
     let before = page(&win).await;
     let (at, what) = target(&win, input).await?;
-    note_act(win.label(), Act { kind: "click", what: at.name.clone(), rect: Some(at.rect), scroll_y: at.scroll_y, at: Instant::now() });
+    note_act(win.label(), Act::new("click", at.name.clone(), Some(at.rect), Some(at.point), at.scroll_y));
     mouse_click(&win, at.point).await?;
     settle(&win).await;
     let after = page(&win).await;
@@ -1086,13 +1179,16 @@ async fn type_text(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, 
         Some(spot) => spot.secret,
         None => false,
     } || eval(&win, SECRET_JS).await.ok().and_then(|v| v.as_bool()).unwrap_or(true);
-    note_act(win.label(), Act {
-        kind: "type",
-        what: if secret { "•••".into() } else { text.chars().take(60).collect() },
-        rect: spot.as_ref().map(|s| s.rect),
-        scroll_y: spot.as_ref().map_or(0.0, |s| s.scroll_y),
-        at: Instant::now(),
-    });
+    note_act(
+        win.label(),
+        Act::new(
+            "type",
+            if secret { "•••".into() } else { text.chars().take(60).collect() },
+            spot.as_ref().map(|s| s.rect),
+            spot.as_ref().map(|s| s.point),
+            spot.as_ref().map_or(0.0, |s| s.scroll_y),
+        ),
+    );
     if flag(input, "clear", true) {
         let selected = eval(&win, CLEAR_JS).await?;
         if selected == "none" {
@@ -1152,7 +1248,7 @@ async fn scroll(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, Str
     with_tabs(|t| {
         if let Some(tab) = t.find(chat, n) {
             tab.used = Instant::now();
-            tab.act = Some(Act { kind: "scroll", what: way.into(), rect: None, scroll_y: y, at: Instant::now() });
+            remember(&mut tab.acts, Act::new("scroll", way.into(), None, None, y));
         }
     });
     let int = |v: &Value| v.as_f64().unwrap_or(0.0).round() as i64;
@@ -1161,6 +1257,7 @@ async fn scroll(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, Str
 
 async fn screenshot(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, String> {
     let (n, win) = tab_window(app, chat, input)?;
+    note_act(win.label(), Act::new("read", String::new(), None, None, 0.0));
     let shot = cdp(&win, "Page.captureScreenshot", json!({ "format": "png" }), SHOT_LIMIT).await?;
     let data = shot["data"].as_str().filter(|d| !d.is_empty()).ok_or("The tab gave no picture.")?;
     let (w, h) = png_size(data).unwrap_or((0, 0));
@@ -1551,7 +1648,8 @@ mod tests {
             used: at,
             opened: at,
             seen: false,
-            act: None,
+            acts: Vec::new(),
+            loading: false,
         }
     }
 
@@ -1656,31 +1754,73 @@ mod tests {
         let t0 = Instant::now();
         let mut tabs = Tabs { next: 4, ..Tabs::default() };
         tabs.open = vec![tab(1, "c1", "a1", t0), tab(2, "c1", "a1", t0), tab(3, "c2", "a1", t0)];
-        let click = Act { kind: "click", what: "Trastevere · Casa".into(), rect: Some([10.0, 20.0, 300.0, 120.5]), scroll_y: 640.0, at: t0 };
-        tabs.open[1].act = Some(click.clone());
+        let opened = Act { kind: "open", what: "example.com".into(), rect: None, point: None, scroll_y: 0.0, at: t0, seq: 7 };
+        let click = Act {
+            kind: "click",
+            what: "Trastevere · Casa".into(),
+            rect: Some([10.0, 20.0, 300.0, 120.5]),
+            point: Some((160.0, 80.0)),
+            scroll_y: 640.0,
+            at: t0,
+            seq: 8,
+        };
+        tabs.open[1].acts = vec![opened.clone(), click.clone()];
         tabs.open[1].url = "https://www.example.com/s/Rome".into();
         tabs.open[1].title = "Rome · stays".into();
-        let (label, n, act, page) = newest(&tabs, "c1", "a1").unwrap();
-        assert_eq!((label.as_str(), n, act.as_ref()), ("agent-browser-2", 2, Some(&click)), "the newest of this chat's agent");
-        assert_eq!(page, Page { title: "Rome · stays".into(), url: "https://www.example.com/s/Rome".into() }, "its last address, for a picture the page can't describe");
+        tabs.open[1].loading = true;
+        let got = newest(&tabs, "c1", "a1").unwrap();
+        assert_eq!((got.label.as_str(), got.n, got.acts.last()), ("agent-browser-2", 2, Some(&click)), "the newest of this chat's agent");
+        assert_eq!(got.page, Page { title: "Rome · stays".into(), url: "https://www.example.com/s/Rome".into() }, "its last address, for a picture the page can't describe");
+        assert!(got.loading);
         assert_eq!(newest(&tabs, "c1", "zz"), None);
-        assert_eq!(newest(&tabs, "c2", "a1").map(|(_, n, _, _)| n), Some(3), "another chat's agent of the same id is another");
+        assert_eq!(newest(&tabs, "c2", "a1").map(|x| x.n), Some(3), "another chat's agent of the same id is another");
 
         let at = json!([1280, 800, 700.5, "Rome · stays", "https://www.example.com/s/Rome"]);
-        let frame = frame_json(2, &at, "AAAA", Some(&click), t0 + Duration::from_millis(1500));
+        let frame = frame_json(2, &at, "AAAA", &got.acts, true, t0 + Duration::from_millis(1500));
+        let clicked = json!({
+            "seq": 8, "kind": "click", "what": "Trastevere · Casa", "rect": { "x": 10.0, "y": 20.0, "w": 300.0, "h": 120.5 },
+            "point": { "x": 160.0, "y": 80.0 }, "scrollY": 640.0, "ago": 1500,
+        });
         assert_eq!(
             frame,
             json!({
                 "tab": 2, "image": "AAAA", "width": 1280.0, "height": 800.0, "scrollY": 700.5,
-                "title": "Rome · stays", "url": "https://www.example.com/s/Rome", "host": "example.com",
-                "action": { "kind": "click", "what": "Trastevere · Casa", "rect": { "x": 10.0, "y": 20.0, "w": 300.0, "h": 120.5 }, "scrollY": 640.0, "ago": 1500 },
+                "title": "Rome · stays", "url": "https://www.example.com/s/Rome", "host": "example.com", "loading": true,
+                "action": clicked,
+                "steps": [
+                    { "seq": 7, "kind": "open", "what": "example.com", "rect": null, "point": null, "scrollY": 0.0, "ago": 1500 },
+                    clicked,
+                ],
             })
         );
-        let scrolled = Act { kind: "scroll", what: "down".into(), rect: None, scroll_y: 800.0, at: t0 };
-        let frame = frame_json(1, &json!([]), "B", Some(&scrolled), t0);
+        let scrolled = Act { kind: "scroll", what: "down".into(), rect: None, point: None, scroll_y: 800.0, at: t0, seq: 9 };
+        let frame = frame_json(1, &json!([]), "B", &[scrolled], false, t0);
         assert_eq!(frame["action"]["rect"], Value::Null);
         assert_eq!((frame["width"].clone(), frame["host"].clone()), (json!(0.0), json!("")), "a page that couldn't say is drawn as nothing");
-        assert_eq!(frame_json(1, &at, "B", None, t0)["action"], Value::Null);
+        assert_eq!(frame_json(1, &at, "B", &[], false, t0)["action"], Value::Null);
+        assert_eq!(frame_json(1, &at, "B", &[], false, t0)["steps"], json!([]));
+    }
+
+    #[test]
+    fn the_steps_keep_the_last_ones_and_a_read_again_is_one_step() {
+        let mut acts = Vec::new();
+        let first = Act::new("open", "example.com".into(), None, None, 0.0);
+        let read = Act::new("read", String::new(), None, None, 0.0);
+        assert!(read.seq > first.seq, "each action has the next number");
+        remember(&mut acts, first);
+        remember(&mut acts, read.clone());
+        remember(&mut acts, Act::new("read", String::new(), None, None, 0.0));
+        assert_eq!(acts.iter().map(|a| a.kind).collect::<Vec<_>>(), ["open", "read"], "reading again is the same step");
+        assert!(acts[1].seq > read.seq, "with the newer number, so the island sees it again");
+        remember(&mut acts, Act::new("click", "Go".into(), Some([0.0, 0.0, 10.0, 10.0]), Some((5.0, 5.0)), 0.0));
+        remember(&mut acts, Act::new("click", "Go".into(), Some([0.0, 0.0, 10.0, 10.0]), Some((5.0, 5.0)), 0.0));
+        assert_eq!(acts.len(), 4, "a click again is another click");
+        for _ in 0..10 {
+            remember(&mut acts, Act::new("scroll", "down".into(), None, None, 0.0));
+            remember(&mut acts, Act::new("type", "Rome".into(), None, None, 0.0));
+        }
+        assert_eq!(acts.len(), STEPS_KEPT);
+        assert_eq!(acts.last().map(|a| a.kind), Some("type"));
     }
 
     #[test]
