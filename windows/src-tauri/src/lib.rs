@@ -50,6 +50,10 @@ mod local_models;
 mod local_profile;
 mod log;
 mod mail;
+mod mail_agents;
+mod mail_imap;
+mod mail_parse;
+mod mail_send;
 mod media;
 mod migrate;
 mod net;
@@ -1493,7 +1497,7 @@ pub fn run() {
             approval_decision,
             approval_answer,
             approval_mail_send,
-            mail::pick_attachments,
+            mail_send::pick_attachments,
             approval_ack,
             approval_auto_allow,
             approval_decline,
