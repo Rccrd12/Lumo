@@ -823,7 +823,7 @@ export interface ChatAgent {
   state: ChatAgentState;
   /** With "waiting": what it waits for. */
   waitingFor?: "permission" | "rate_limit" | "queue";
-  /** Waiting for "queue": its place in line (a local model's agents run one at a time). */
+  /** Waiting for "queue": its place in line (a local model's agents run as many at once as its server's slots). */
   queue?: number;
   /** What it is doing now, worded as the typing line is (activityLabel). */
   now?: ChatActivity;
