@@ -205,3 +205,36 @@ test("in the chat: the tabs come as an event, and Watch asks Rust", async () => 
   assert.equal($(".agents-btn.watch"), null);
   internals.invoke = plain;
 });
+
+test("one agent open at a time: opening a row folds the others and closes another's picture", () => {
+  const store = newAgentStore();
+  for (const id of ["o1", "o2", "o3"]) send(store, "j", agent(id));
+  const c = store.get("j");
+  const { host: h } = host();
+  const el = agentsCard({ chatId: "j", chat: c, batch: c.batches[0], now: T0 + 30 * S }, h);
+  const heads = () => el.find(".agents-row-head");
+  const opened = () => el.find(".agents-row").map((r) => r.className.includes(" open"));
+  // Without a browser: one row's details at a time.
+  heads()[0].fire("click");
+  assert.deepEqual(opened(), [true, false, false]);
+  heads()[2].fire("click");
+  assert.deepEqual(opened(), [false, false, true]);
+  heads()[2].fire("click");
+  assert.deepEqual(opened(), [false, false, false]);
+  // With a browser: Watch on one folds the opened row of another...
+  applyBrowserTabs({ tabs: [tab("j", "o1", 7, "example.com"), tab("j", "o2", 8, "example.org")] });
+  fillAgentsCard(el, { chatId: "j", chat: c, batch: c.batches[0], now: T0 + 31 * S }, h);
+  heads()[1].fire("click");
+  el.find(".agents-row")[0].querySelector(".agents-btn.watch").fire("click");
+  assert.deepEqual(opened(), [false, false, false]);
+  assert.ok(el.find(".agents-row")[0].className.includes("watching"));
+  // ...and opening another row closes that picture; its own stays with it.
+  heads()[1].fire("click");
+  assert.deepEqual(opened(), [false, true, false]);
+  assert.equal(el.querySelector(".bw-inline"), null);
+  el.querySelector(".agents-detail").querySelector(".agents-btn.watch").fire("click");
+  assert.deepEqual(opened(), [false, true, false], "Watch in its own opened row keeps it open");
+  assert.ok(el.find(".agents-row")[1].className.includes("watching"));
+  el.querySelector(".agents-detail").querySelector(".agents-btn.watch").fire("click");
+  applyBrowserTabs({ tabs: [] });
+});

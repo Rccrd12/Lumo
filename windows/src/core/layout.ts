@@ -200,7 +200,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   // The Email view (views/mail-view.ts): the addresses' buttons and a list, as the Tools tab.
   mail: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
   // The agents' browser (views/browser-watch.ts): room for a tab's page, wide as a page wants (BROWSER_VIEW_W),
-  // as tall as the island's window holds without a height picked (APPROVAL_MAX_H; dragged taller, it grows).
+  // and tall enough for its whole page at that width (browserViewHeight), within BROWSER_VIEW_MAX_H.
   browser: { height: 440, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
   // The computer use plan (views/computer-plan.ts): its own height, for its steps (computerViewHeight).
   computer: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
@@ -268,6 +268,21 @@ export const MIN_ISLAND_W = 560;
 export const MAX_ISLAND_W = 1200;
 /** The agents' browser view's least width (views/browser-watch.ts): a page's picture big enough to read. */
 export const BROWSER_VIEW_W = 860;
+/** The agents' browser view's tallest by itself (island.rs BROWSER_H: its window keeps room for it). */
+export const BROWSER_VIEW_MAX_H = 720;
+/** The browser view less its page: the top bar, the tabs, the page's address bar, the line under it. */
+const BROWSER_CHROME_H = 187;
+/** The browser view's page less the island's width: the view's sides and the frame's border. */
+const BROWSER_PAGE_SIDES = 56;
+
+/**
+ * The agents' browser view as tall as its whole page needs at the island's
+ * width `w` (a tab is 1280 × 800, 16:10), within BROWSER_VIEW_MAX_H: a
+ * taller page than there is room for shows whole too, smaller (style.css .bw-body.one).
+ */
+export function browserViewHeight(w: number): number {
+  return Math.min(BROWSER_VIEW_MAX_H, BROWSER_CHROME_H + Math.ceil(((w - BROWSER_PAGE_SIDES) * 10) / 16));
+}
 /** A height the user dragged the island to — island.rs clamps it the same. */
 export const MIN_ISLAND_H = 160;
 export const MAX_ISLAND_H = 640;

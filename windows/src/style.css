@@ -9940,10 +9940,6 @@ button.bg-row:hover {
   background: #0e0f11;
 }
 
-.bw-inline .bw-page {
-  height: 232px;
-}
-
 .bw-shot {
   position: relative;
   width: 100%;
@@ -10283,8 +10279,18 @@ button.bg-row:hover {
   flex: 1;
 }
 
+/* The whole page, as large as the view holds (the view is as tall as it needs when the screen allows). */
 .bw-body.one .bw-page {
+  display: flex;
   flex: 1;
+  justify-content: center;
+  align-items: flex-start;
+  container-type: size;
+}
+
+.bw-body.one .bw-shot {
+  flex: none;
+  width: min(100cqw, 160cqh);
 }
 
 .bw-body.all {
