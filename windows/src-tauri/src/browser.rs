@@ -54,6 +54,8 @@ use tauri::{AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindow, Webview
 const MAIN: &str = crate::computer_turns::MAIN;
 /// The most tabs open at once, every chat together.
 pub const MAX_TABS: usize = 8;
+/// The MCP server the CLIs know Lumo's tools by (lumo-hook --mcp).
+const SERVER: &str = "lumo";
 /// A tab unused this long closes.
 const IDLE: Duration = Duration::from_secs(10 * 60);
 /// A claim no call took within this long is forgotten: longer than the
@@ -86,8 +88,11 @@ const PROFILE_DIR: &str = "AgentBrowser";
 /// BROWSER_ARGS are the island's, and must stay as they are). A hidden tab
 /// keeps running as if on screen: no throttled timers, no paused rendering,
 /// so pages load, scroll and can be photographed. Never a debugging port.
+/// Never a sound: a tab nobody sees plays none (`--mute-audio`, and each
+/// tab muted too, `mute`), and a video waits for a click to start.
 const AGENT_BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion \
---disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling";
+--disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling \
+--mute-audio --autoplay-policy=user-gesture-required";
 
 const OFF: &str = "Browsing is off in Lumo. Turn it on in Lumo's Settings, under Security.";
 /// The user said no on the island's card.
@@ -109,6 +114,9 @@ struct Tab {
     agent: String,
     label: String,
     url: String,
+    /// The address browser_open asked for, as `normalize` wrote it: what
+    /// a CLI's stream names when it tells whose call it was (`agent_called`).
+    asked: String,
     title: String,
     used: Instant,
     opened: Instant,
@@ -211,6 +219,48 @@ impl Tabs {
         self.claims.retain(|c| now.duration_since(c.at) < CLAIM_LIFE);
         let i = self.claims.iter().position(|c| c.chat == chat && c.url == url)?;
         Some(self.claims.remove(i).agent)
+    }
+
+    /// Notes that `agent` of `chat` is about to open `url`, for CLAIM_LIFE.
+    fn add_claim(&mut self, chat: &str, agent: &str, url: String, now: Instant) {
+        self.claims.retain(|c| now.duration_since(c.at) < CLAIM_LIFE);
+        // A handful at most: an agent that never calls is soon forgotten.
+        if self.claims.len() >= 64 {
+            self.claims.remove(0);
+        }
+        self.claims.push(Claim { chat: chat.to_string(), agent: agent.to_string(), url, at: now });
+    }
+
+    /// `agent_called`: true when a tab became the agent's.
+    fn agent_called(&mut self, chat: &str, agent: &str, tool: &str, input: &Value, now: Instant) -> bool {
+        let n = input.get("tab").filter(|t| !t.is_null()).map(|_| whole(input, "tab"));
+        let Some(n) = n else {
+            if tool != "browser_open" {
+                return false;
+            }
+            let Some(url) = input.get("url").and_then(Value::as_str) else { return false };
+            let url = normalize(url).map(|u| u.to_string()).unwrap_or_else(|_| url.trim().to_string());
+            let recent = |tab: &Tab| tab.chat == chat && tab.asked == url && now.duration_since(tab.opened) < CLAIM_LIFE;
+            // Told again (agy repeats a step): the tab is the agent's already.
+            if self.open.iter().any(|tab| recent(tab) && tab.agent == agent) {
+                return false;
+            }
+            // The call reached Lumo first: the tab it opened as the conversation's.
+            if let Some(tab) = self.open.iter_mut().filter(|tab| recent(tab) && tab.agent == MAIN).max_by_key(|tab| tab.n) {
+                tab.agent = agent.to_string();
+                return true;
+            }
+            self.add_claim(chat, agent, url, now);
+            return false;
+        };
+        // A tab of the conversation the agent uses: the agent's (another agent's stays its own).
+        match self.open.iter_mut().find(|tab| Some(tab.n) == n && tab.chat == chat && tab.agent == MAIN) {
+            Some(tab) => {
+                tab.agent = agent.to_string();
+                true
+            }
+            None => false,
+        }
     }
 
     fn find(&mut self, chat: &str, n: u32) -> Option<&mut Tab> {
@@ -363,15 +413,42 @@ fn normalize(raw: &str) -> Result<Url, String> {
 pub fn claim(chat: &str, agent: &str, url: &str) {
     let url = normalize(url).map(|u| u.to_string()).unwrap_or_else(|_| url.trim().to_string());
     let agent = if agent.trim().is_empty() { MAIN } else { agent.trim() };
-    with_tabs(|t| {
-        let now = Instant::now();
-        t.claims.retain(|c| now.duration_since(c.at) < CLAIM_LIFE);
-        // A handful at most: an agent that never calls is soon forgotten.
-        if t.claims.len() >= 64 {
-            t.claims.remove(0);
-        }
-        t.claims.push(Claim { chat: chat.to_string(), agent: agent.to_string(), url, at: now });
-    });
+    with_tabs(|t| t.add_claim(chat, agent, url, Instant::now()));
+}
+
+/// Lumo's browser tool an MCP call names, as a CLI's stream tells it: the
+/// server `lumo` and one of NAMES, or, with no server, the two together
+/// ("mcp__lumo__browser_open", Antigravity's "mcp_lumo_browser_open").
+pub fn tool_of(server: &str, tool: &str) -> Option<&'static str> {
+    let (server, tool) = (server.trim(), tool.trim());
+    let name = if server.is_empty() {
+        let lower = tool.to_ascii_lowercase();
+        let rest = ["mcp__lumo__", "mcp_lumo_"].iter().find_map(|p| lower.strip_prefix(p).map(str::len))?;
+        &tool[tool.len() - rest..]
+    } else if server.eq_ignore_ascii_case(SERVER) {
+        tool
+    } else {
+        return None;
+    };
+    NAMES.iter().find(|n| n.eq_ignore_ascii_case(name)).copied()
+}
+
+/// A call of Lumo's browser by agent `agent` of `chat`, as its CLI's own
+/// stream tells it: Antigravity's and Codex's subagents, whose calls reach
+/// Lumo through the conversation's one MCP server, which can't say whose
+/// they are, so their tabs would all be the conversation's. The stream may
+/// tell before the call reaches Lumo or after: a browser_open is claimed
+/// for the agent, or the tab it just opened as the conversation's becomes
+/// the agent's; a call on one of the conversation's tabs makes it the
+/// agent's too. Then the agent's row says its site and has Watch.
+pub fn agent_called(app: &AppHandle, chat: &str, agent: &str, tool: &str, input: &Value) {
+    let agent = agent.trim();
+    if chat.is_empty() || agent.is_empty() || agent == MAIN || !NAMES.contains(&tool) {
+        return;
+    }
+    if with_tabs(|t| t.agent_called(chat, agent, tool, input, Instant::now())) {
+        show(app);
+    }
 }
 
 /// The agents of `chat` still open (chat_agents.rs, on each change): the
@@ -765,7 +842,9 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
 
 /// What the island's typing line says of a browser call: the site it opens, else "web".
 pub fn activity(input: &Value) -> crate::claude_code::Activity {
-    match input.get("url").and_then(Value::as_str).map(host_of).filter(|h| !h.is_empty()) {
+    // As browser_open reads it: "example.com" is https://example.com/.
+    let url = input.get("url").and_then(Value::as_str).map(|u| normalize(u).map(|u| u.to_string()).unwrap_or_else(|_| u.to_string()));
+    match url.as_deref().map(host_of).filter(|h| !h.is_empty()) {
         Some(h) => crate::claude_code::Activity::new("read", h),
         None => crate::claude_code::Activity::new("web", ""),
     }
@@ -947,6 +1026,7 @@ async fn open(app: &AppHandle, chat: &str, agent: Option<&str>, input: &Value) -
             agent,
             label: label.clone(),
             url: url.to_string(),
+            asked: url.to_string(),
             title: String::new(),
             used: now,
             opened: now,
@@ -1058,11 +1138,12 @@ fn create(app: &AppHandle, label: &str) -> Result<WebviewWindow, String> {
     Ok(win)
 }
 
-/// What a new tab needs before its first page: Lumo's own pages blocked as
-/// anything a page loads (a frame of tauri.localhost could call Lumo), and
-/// the page kept acting focused while hidden. A tab that can't be guarded
-/// doesn't open.
+/// What a new tab needs before its first page: muted, Lumo's own pages
+/// blocked as anything a page loads (a frame of tauri.localhost could call
+/// Lumo), and the page kept acting focused while hidden. A tab that can't be
+/// guarded doesn't open.
 async fn setup(win: &WebviewWindow) -> Result<(), String> {
+    mute(win).await?;
     cdp(win, "Network.enable", json!({}), STEP).await?;
     cdp(win, "Network.setBlockedURLs", json!({ "urls": blocked_urls() }), STEP).await?;
     cdp(win, "Page.enable", json!({}), STEP).await?;
@@ -1623,6 +1704,35 @@ async fn cdp(win: &WebviewWindow, method: &str, params: Value, limit: Duration) 
     }
 }
 
+/// Mutes a tab: a page it opens (a video, an ad) never plays a sound the
+/// user would hear with nothing on screen. The browser runs with
+/// `--mute-audio` too; this holds even when a WebView2 doesn't take it.
+#[cfg(windows)]
+async fn mute(win: &WebviewWindow) -> Result<(), String> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_8;
+    use wv2_core::Interface;
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+    let queued = win.with_webview(move |webview| {
+        // SAFETY: WebView2's own calls, on the main thread with_webview runs us on.
+        let done = unsafe { webview.controller().CoreWebView2().and_then(|core| core.cast::<ICoreWebView2_8>()).and_then(|core| core.SetIsMuted(true)) };
+        let _ = tx.send(done.map_err(|err| format!("The tab could not be muted: {}", err.message())));
+    });
+    if let Err(err) = queued {
+        return Err(format!("The tab could not be reached: {err}"));
+    }
+    match tokio::time::timeout(STEP, rx).await {
+        Ok(Ok(done)) => done,
+        Ok(Err(_)) => Err("The tab closed.".into()),
+        Err(_) => Err(format!("The tab didn't answer within {} s (mute).", STEP.as_secs())),
+    }
+}
+
+#[cfg(not(windows))]
+async fn mute(_win: &WebviewWindow) -> Result<(), String> {
+    Ok(())
+}
+
 #[cfg(not(windows))]
 async fn cdp(_win: &WebviewWindow, _method: &str, _params: Value, _limit: Duration) -> Result<Value, String> {
     Err("The browser needs Windows.".into())
@@ -1693,6 +1803,7 @@ mod tests {
             agent: agent.into(),
             label: format!("{LABEL}{n}"),
             url: format!("https://www.site{n}.com/page"),
+            asked: format!("https://www.site{n}.com/page"),
             title: format!("Site {n}"),
             used: at,
             opened: at,
@@ -1719,6 +1830,46 @@ mod tests {
         let late = t0 + CLAIM_LIFE + Duration::from_secs(1);
         assert_eq!(tabs.take_claim("c2", "https://other.com/", late), None);
         assert!(tabs.claims.is_empty());
+    }
+
+    #[test]
+    fn a_cli_s_stream_gives_its_agent_the_tab_it_opened_before_or_after_the_call() {
+        let t0 = Instant::now();
+        let open = |url: &str| json!({ "url": url });
+        // The call reached Lumo first: its tab was the conversation's, and becomes the agent's.
+        let mut tabs = Tabs { next: 3, ..Tabs::default() };
+        tabs.open = vec![tab(1, "c1", MAIN, t0), tab(2, "c1", MAIN, t0)];
+        assert!(tabs.agent_called("c1", "agy-1", "browser_open", &open("www.site2.com/page"), t0 + Duration::from_secs(2)));
+        assert_eq!(tabs.open.iter().map(|t| t.agent.as_str()).collect::<Vec<_>>(), [MAIN, "agy-1"]);
+        // Told again (agy repeats a step): nothing more, and no claim left for another tab.
+        assert!(!tabs.agent_called("c1", "agy-1", "browser_open", &open("https://www.site2.com/page"), t0 + Duration::from_secs(3)));
+        assert!(tabs.claims.is_empty());
+        // Another chat's tab, or one opened long ago, is not this call's.
+        assert!(!tabs.agent_called("c2", "agy-2", "browser_open", &open("https://www.site1.com/page"), t0));
+        assert_eq!(tabs.take_claim("c2", "https://www.site1.com/page", t0).as_deref(), Some("agy-2"));
+        assert!(!tabs.agent_called("c1", "agy-2", "browser_open", &open("https://www.site1.com/page"), t0 + CLAIM_LIFE));
+        assert_eq!(tabs.open[0].agent, MAIN);
+        // The stream came first: the call that comes takes the claim.
+        assert_eq!(tabs.take_claim("c1", "https://www.site1.com/page", t0 + CLAIM_LIFE).as_deref(), Some("agy-2"));
+        // A call on a tab of the conversation makes it the agent's; another agent's stays its own.
+        assert!(tabs.agent_called("c1", "agy-3", "browser_read", &json!({ "tab": 1 }), t0));
+        assert_eq!(tabs.open[0].agent, "agy-3");
+        assert!(!tabs.agent_called("c1", "agy-4", "browser_click", &json!({ "tab": 1, "ref": 2 }), t0));
+        assert!(!tabs.agent_called("c1", "agy-4", "browser_read", &json!({ "tab": 9 }), t0), "no such tab");
+        assert!(!tabs.agent_called("c1", "agy-4", "browser_read", &json!({}), t0), "no tab named");
+        assert_eq!(tabs.open.iter().map(|t| t.agent.as_str()).collect::<Vec<_>>(), ["agy-3", "agy-1"]);
+    }
+
+    #[test]
+    fn lumo_s_browser_tools_are_known_by_server_or_by_their_full_name() {
+        assert_eq!(tool_of("lumo", "browser_open"), Some("browser_open"));
+        assert_eq!(tool_of(" Lumo ", "BROWSER_READ"), Some("browser_read"));
+        assert_eq!(tool_of("", "mcp__lumo__browser_click"), Some("browser_click"));
+        assert_eq!(tool_of("", "mcp_lumo_browser_close"), Some("browser_close"));
+        assert_eq!(tool_of("github", "browser_open"), None, "another server's tool of the same name");
+        assert_eq!(tool_of("lumo", "update_plan"), None);
+        assert_eq!(tool_of("", "browser_open"), None, "no server, no full name");
+        assert_eq!(tool_of("", "mcp_github_browser_open"), None);
     }
 
     #[test]

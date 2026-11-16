@@ -255,6 +255,18 @@ fn activity_for(name: &str, params: &Value) -> Activity {
     if n.is_empty() {
         return Activity::thinking();
     }
+    // Lumo's browser, called through call_mcp_tool or by its own name: the
+    // site it opens, as for Claude Code (browser.rs activity).
+    if let Some((_, input)) = browser_call(name, params) {
+        return crate::browser::activity(&input);
+    }
+    // Any other MCP tool called through call_mcp_tool: that tool, by its name.
+    if let Some((_, tool, _)) = mcp_call(name, params) {
+        return match pretty_tool(&tool) {
+            p if p.is_empty() => Activity::new("tool", ""),
+            p => Activity::new("tool", p),
+        };
+    }
     if has(&["screenshot"]) {
         return Activity::new("screen", "");
     }
@@ -293,6 +305,33 @@ fn activity_for(name: &str, params: &Value) -> Activity {
         p if p.is_empty() => Activity::thinking(),
         p => Activity::new("tool", p),
     }
+}
+
+/// An MCP tool call agy makes through its own `call_mcp_tool` (`params`:
+/// ServerName, ToolName and Arguments, an object or its JSON text, as
+/// hook/src/mcp.rs lumo_call reads them): the server, the tool, and its
+/// arguments. None for any other tool.
+fn mcp_call(name: &str, params: &Value) -> Option<(String, String, Value)> {
+    let n = name.to_ascii_lowercase();
+    if !(n.contains("mcp") && n.contains("call")) {
+        return None;
+    }
+    let params = params_of(params);
+    let text = |keys: &[&str]| keys.iter().filter_map(|k| params.get(*k).and_then(Value::as_str)).map(str::trim).find(|s| !s.is_empty()).map(str::to_string);
+    let tool = text(&["ToolName", "toolName", "tool_name", "tool", "Name", "name"])?;
+    let server = text(&["ServerName", "serverName", "server_name", "Server", "server"]).unwrap_or_default();
+    let args = ["Arguments", "arguments", "Args", "args", "Input", "input"].iter().find_map(|k| params.get(*k)).map(params_of).filter(Value::is_object);
+    Some((server, tool, args.unwrap_or_else(|| json!({}))))
+}
+
+/// A call of Lumo's browser (browser.rs): through `call_mcp_tool`, or by
+/// its own name ("mcp_lumo_browser_open"). The tool and its input.
+fn browser_call(name: &str, params: &Value) -> Option<(&'static str, Value)> {
+    if let Some(tool) = crate::browser::tool_of("", name) {
+        return Some((tool, params_of(params)));
+    }
+    let (server, tool, args) = mcp_call(name, params)?;
+    crate::browser::tool_of(&server, &tool).map(|tool| (tool, args))
 }
 
 /// What calling tool `name` with `params` does to a file, matched by name
@@ -590,6 +629,12 @@ fn call_failed(content: &str) -> bool {
         || [" was denied", " is not allowed", " not permitted", "access is denied", "permission denied"].iter().any(|w| text.contains(w))
 }
 
+/// The calls of Lumo's browser in one line of a subagent's transcript.
+fn transcript_browsing(line: &Value) -> Vec<(&'static str, Value)> {
+    let calls = line["tool_calls"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    calls.iter().filter_map(|call| browser_call(call["name"].as_str().unwrap_or(""), &transcript_args(&call["args"]))).collect()
+}
+
 /// One line of a subagent's transcript on its row: its steps, what it does
 /// now, its tokens, its report, and the files it wrote (`pending` until the
 /// call's result says it went through). True once it is done: its answer,
@@ -754,12 +799,18 @@ impl Subagents {
             }
             let Some(row) = self.agents.touch(&spawn.row) else { continue };
             changed = true;
+            // Its calls of Lumo's browser: the tabs they open or use are its own.
+            let mut browsed = Vec::new();
             for line in whole.split(|b| *b == b'\n').filter(|l| l.len() <= MAX_LINE) {
                 let Ok(v) = serde_json::from_slice::<Value>(line) else { continue };
+                browsed.extend(transcript_browsing(&v));
                 if transcript_line(row, &mut spawn.report, &mut spawn.pending, &mut self.files, &v) {
                     row.end(AgentState::Done, None);
                     break;
                 }
+            }
+            for (tool, input) in browsed {
+                self.agents.browsed(&spawn.row, tool, input);
             }
         }
         (changed, read_any)
@@ -819,6 +870,15 @@ impl Subagents {
             return;
         }
         let first = !done && v["step_type"] == "tool" && self.counted.insert(format!("{id}:{index}"));
+        // A call of Lumo's browser: the tab it opens or uses is this
+        // subagent's (told again with each update: browser.rs takes it once).
+        if !done && v["step_type"] == "tool" {
+            let info = &v["tool_info"];
+            let name = info["name"].as_str().filter(|s| !s.is_empty()).or_else(|| v["tool_name"].as_str()).unwrap_or("");
+            if let Some((tool, input)) = browser_call(name, &info["parameters"]) {
+                self.agents.browsed(&id, tool, input);
+            }
+        }
         let Some(row) = self.agents.touch(&id) else { return };
         if done {
             return;
@@ -2338,6 +2398,36 @@ mod tests {
         assert_eq!(a("", json!({})), Activity::thinking());
         // Parameters sent as the JSON text of an object read the same.
         assert_eq!(a("view_file", json!("{\"AbsolutePath\":\"/a/b/c.txt\"}")), Activity::new("read", "c.txt"));
+    }
+
+    #[test]
+    fn lumo_s_browser_through_call_mcp_tool_says_the_site_and_other_mcp_tools_their_name() {
+        let a = |name: &str, params: Value| activity_for(name, &params);
+        let open = json!({ "ServerName": "lumo", "ToolName": "browser_open", "Arguments": "{\"url\":\"https://www.borsaitaliana.it/indici\"}", "toolSummary": "Open" });
+        assert_eq!(a("call_mcp_tool", open.clone()), Activity::new("read", "borsaitaliana.it"));
+        assert_eq!(a("call_mcp_tool", json!(open.to_string())), Activity::new("read", "borsaitaliana.it"), "its input as JSON text");
+        let read = json!({ "ServerName": "lumo", "ToolName": "browser_read", "Arguments": { "tab": 2 } });
+        assert_eq!(a("call_mcp_tool", read), Activity::new("web", ""));
+        assert_eq!(a("mcp_lumo_browser_open", json!({ "url": "example.com" })), Activity::new("read", "example.com"));
+        assert_eq!(a("call_mcp_tool", json!({ "ServerName": "github", "ToolName": "create_issue" })), Activity::new("tool", "create issue"));
+        assert_eq!(a("call_mcp_tool", json!({})), Activity::new("tool", "call mcp tool"), "before the parameters are known");
+        // Another server's tool named like Lumo's is not Lumo's browser.
+        assert_eq!(browser_call("call_mcp_tool", &json!({ "ServerName": "github", "ToolName": "browser_open", "Arguments": { "url": "x.com" } })), None);
+        assert_eq!(browser_call("call_mcp_tool", &open), Some(("browser_open", json!({ "url": "https://www.borsaitaliana.it/indici" }))));
+    }
+
+    #[test]
+    fn a_subagent_s_browser_calls_make_its_tabs_its_own() {
+        // In its transcript: each argument is its JSON text.
+        let line: Value = serde_json::from_str(r#"{"step_index":4,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"call_mcp_tool","args":{"ServerName":"\"lumo\"","ToolName":"\"browser_open\"","Arguments":"{\"url\":\"https://finance.yahoo.com\"}"}},{"name":"view_file","args":{"AbsolutePath":"\"C:\\\\a.txt\""}}]}"#).unwrap();
+        assert_eq!(transcript_browsing(&line), [("browser_open", json!({ "url": "https://finance.yahoo.com" }))]);
+        // A subagent agy delegated to, in the stream: its row is told, once the step starts.
+        let mut run = Run::default();
+        run.feed(br#"{"event":"step_update","step_index":3,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"browser_subagent","parameters":{"TaskName":"Markets"}}}"#);
+        run.feed(br#"{"event":"step_update","step_index":1,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"sub-1"},"tool_info":{"name":"call_mcp_tool","parameters":{"ServerName":"lumo","ToolName":"browser_read","Arguments":{"tab":4}}}}"#);
+        run.feed(br#"{"event":"step_update","step_index":1,"state":"DONE","step_type":"tool","subagent_info":{"conversation_id":"sub-1"},"tool_info":{"name":"call_mcp_tool"}}"#);
+        assert_eq!(run.subagents.agents.take_browsed(), [("sub-1".to_string(), "browser_read", json!({ "tab": 4 }))]);
+        assert_eq!(run.subagents.agents.get("sub-1").unwrap().now, Some(Activity::new("web", "")));
     }
 
     /// Feeds lines; the activities told along the way, as take_activity gives them.
