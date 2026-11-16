@@ -26,7 +26,7 @@ function agent(id, extra = {}) {
 
 const send = (store, chat, a) => applyAgent(store, { chat, agent: a }, 0);
 
-const tab = (chat, agent, n, host, extra = {}) => ({ chat, agent, tab: n, host, title: `${host} page`, ...extra });
+const tab = (chat, agent, n, host, extra = {}) => ({ chat, agent, tab: n, host, title: `${host} page`, seq: 0, ...extra });
 
 function host(extra = {}) {
   const log = {};
@@ -68,6 +68,9 @@ test("a tab is its agent's in its chat, and the newest is the one shown", () => 
   assert.equal(browserOf("c", "main").host, "three.example");
   assert.equal(browserOf("d", "main").host, "two.example");
   assert.equal(browserOf("e", "main"), undefined);
+  // Several open at once: the one it used last, whatever its number.
+  applyBrowserTabs({ tabs: [tab("c", "a1", 1, "one.example", { seq: 9 }), tab("c", "a1", 4, "four.example", { seq: 5 })] });
+  assert.equal(browserOf("c", "a1").host, "one.example");
   applyBrowserTabs({ tabs: [] });
 });
 
