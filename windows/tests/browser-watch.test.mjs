@@ -11,10 +11,12 @@ import { installFakeDom } from "./fakedom.mjs";
 installFakeDom();
 const { calls, internals, sent } = await import("./tauri.mjs");
 const { applyBrowserTabs, browserAgentsOf } = await import("../src/core/chat-agents.ts");
-const { LivePicture, RING_MS, actText, addressParts, buildBrowserView, openBrowserView, ringBox, setBrowserViewHost } = await import("../src/views/browser-watch.ts");
+const { LivePicture, RING_MS, actText, addressParts, browserTabsChanged, buildBrowserView, openBrowserView, ringBox, setBrowserViewHost } = await import("../src/views/browser-watch.ts");
 const { State } = await import("../src/core/state.ts");
 
 const tab = (chat, agent, n, host) => ({ chat, agent, tab: n, host, title: `${host} page` });
+/** On screen: in the view shown, not faded out by a drop. */
+const onScreen = (sel) => (sel === ".view.on" ? {} : null);
 
 test("what the agent did, in words", () => {
   const act = (kind, what) => ({ kind, what, rect: null, scrollY: 0, ago: 0 });
@@ -67,7 +69,7 @@ test("a picture is asked only while it is on screen in the open island, one afte
   assert.equal(calls.length, before, "not on screen: nothing asked");
   // On screen: in the page, in the view on screen, the island open.
   live.el.isConnected = true;
-  live.el.closest = () => ({});
+  live.el.closest = onScreen;
   State.mode = "compact";
   live.ensure();
   assert.equal(frames.length, 0, "the island closed: nothing asked");
@@ -87,21 +89,64 @@ test("a picture is asked only while it is on screen in the open island, one afte
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(frames.length, 1);
   live.drop();
-  // A tab that closed: said so, and nothing more asked.
+  // Faded out while a file is dropped: nothing asked.
+  const faded = new LivePicture("c", "a1");
+  faded.el.isConnected = true;
+  faded.el.closest = (sel) => (sel === ".view.on" || sel === ".hidden-by-upload" ? {} : null);
+  State.mode = "expanded";
+  faded.ensure();
+  assert.equal(frames.length, 1, "faded out: nothing asked");
+  faded.drop();
+  // A picture that fails while the tab is open (a page changing): the last
+  // one stays, nothing says closed, and it is asked again.
+  let fail = true;
   internals.invoke = async (cmd, args) => {
     if (cmd !== "chat_browser_frame") return plain(cmd, args);
     frames.push(args);
-    throw new Error("This agent's tab has closed.");
+    if (fail) throw new Error("The page refused: Execution context was destroyed.");
+    return { tab: 1, image: "BBBB", width: 1280, height: 800, scrollY: 0, title: "Example", url: "https://example.com/next", host: "example.com", action: null };
+  };
+  const busy = new LivePicture("c", "a1");
+  busy.el.isConnected = true;
+  busy.el.closest = onScreen;
+  busy.ensure();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.notEqual(busy.el.querySelector(".bw-wait").textContent, "The tab has closed.");
+  fail = false;
+  await new Promise((r) => setTimeout(r, 1600));
+  assert.equal(busy.el.find("IMG")[0].src, "data:image/jpeg;base64,BBBB", "asked again after a while");
+  busy.drop();
+  // A tab still opening: its address, and waiting for the page.
+  internals.invoke = async (cmd, args) => {
+    if (cmd !== "chat_browser_frame") return plain(cmd, args);
+    frames.push(args);
+    return { tab: 2, opening: true, url: "https://example.com/new", host: "example.com", title: "" };
+  };
+  const opening = new LivePicture("c", "a1");
+  opening.el.isConnected = true;
+  opening.el.closest = onScreen;
+  opening.ensure();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(opening.el.querySelector(".bw-wait").textContent, "Waiting for the page…");
+  assert.equal(opening.el.querySelector(".bw-url").textContent, "example.com/new");
+  assert.equal(opening.el.find("IMG")[0].hidden, true);
+  opening.drop();
+  // A tab that closed: said so, and nothing more asked.
+  const askedBefore = frames.length;
+  internals.invoke = async (cmd, args) => {
+    if (cmd !== "chat_browser_frame") return plain(cmd, args);
+    frames.push(args);
+    throw new Error("This agent has no browser tab open.");
   };
   const gone = new LivePicture("c", "a1");
   gone.el.isConnected = true;
-  gone.el.closest = () => ({});
+  gone.el.closest = onScreen;
   State.mode = "expanded";
   gone.ensure();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(gone.el.querySelector(".bw-wait").textContent, "The tab has closed.");
   await new Promise((r) => setTimeout(r, 500));
-  assert.equal(frames.length, 2);
+  assert.equal(frames.length, askedBefore + 1);
   gone.drop();
   internals.invoke = plain;
   State.mode = "compact";
@@ -128,6 +173,13 @@ test("the agents' browser: a tab per agent and All; one large with its name, or 
   $(".bw-foot").querySelector(".agents-btn.ask").fire("click");
   $(".bw-foot").querySelector(".agents-btn.stop").fire("click");
   assert.deepEqual(asked, [["ask", "a1"], ["stop", "a1"]]);
+  // Back on the view: the tabs follow the agents' browser-tabs as they change.
+  State.view = "browser";
+  applyBrowserTabs({ tabs: [tab("c", "a2", 3, "booking.example"), tab("c", "a1", 4, "rooms.example"), tab("c", "a3", 6, "trips.example")] });
+  browserTabsChanged();
+  assert.deepEqual(view.el.querySelector(".bw-seg").find(".mv-seg-btn").map((b) => b.textContent), ["booking.example", "rooms.example", "trips.example", "All"]);
+  applyBrowserTabs({ tabs: [tab("c", "a2", 3, "booking.example"), tab("c", "a1", 4, "rooms.example")] });
+  browserTabsChanged();
   // × goes back to the chat.
   $(".bw-bar").querySelector(".bw-ico").fire("click", { stopPropagation() {} });
   assert.deepEqual(views, ["browser", "prompt"]);
@@ -138,6 +190,13 @@ test("the agents' browser: a tab per agent and All; one large with its name, or 
   assert.deepEqual(tiles.map((x) => x.querySelector(".bw-agent").textContent), ["Look on Booking", "Look on Rooms"]);
   tiles[0].fire("click");
   assert.equal($(".bw-foot").querySelector(".bw-agent").textContent, "Look on Booking");
+  // All with one tab left: that tab, large.
+  view.el.querySelector(".bw-seg").find(".mv-seg-btn")[2].fire("click");
+  assert.equal($(".bw-body").className, "bw-body all");
+  applyBrowserTabs({ tabs: [tab("c", "a1", 4, "rooms.example")] });
+  browserTabsChanged();
+  assert.equal($(".bw-body").className, "bw-body one");
+  assert.equal($(".bw-foot").querySelector(".bw-agent").textContent, "Look on Rooms");
   // The conversation's own tab: named so, without Ask or Stop.
   applyBrowserTabs({ tabs: [tab("c", "main", 5, "example.com")] });
   openBrowserView("c", "main");

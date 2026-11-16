@@ -199,8 +199,9 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   tools: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
   // The Email view (views/mail-view.ts): the addresses' buttons and a list, as the Tools tab.
   mail: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
-  // The agents' browser (views/browser-watch.ts): room for a tab's page, wide as a page wants (BROWSER_VIEW_W).
-  browser: { height: 560, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
+  // The agents' browser (views/browser-watch.ts): room for a tab's page, wide as a page wants (BROWSER_VIEW_W),
+  // as tall as the island's window holds without a height picked (APPROVAL_MAX_H; dragged taller, it grows).
+  browser: { height: 440, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
   // The computer use plan (views/computer-plan.ts): its own height, for its steps (computerViewHeight).
   computer: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
 };

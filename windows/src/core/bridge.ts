@@ -911,6 +911,8 @@ export interface BrowserAct {
 /** A picture of an agent's tab for Watch (browser.rs frame): a JPEG, base64, of the tab's viewport. */
 export interface BrowserFrame {
   tab: number;
+  /** The tab's window is still being built: no picture yet, only its address (browser.rs frame). */
+  opening?: boolean;
   image: string;
   /** The viewport the picture shows, in CSS pixels. */
   width: number;

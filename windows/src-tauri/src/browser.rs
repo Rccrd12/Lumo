@@ -354,26 +354,41 @@ pub fn close_all(app: &AppHandle) {
 }
 
 /// The newest tab of `agent` in `chat`, the one the Agents card names
-/// (chat-agents.ts browserOf): its window's label, number and last action.
-fn newest(t: &Tabs, chat: &str, agent: &str) -> Option<(String, u32, Option<Act>)> {
+/// (chat-agents.ts browserOf): its window's label, number, last action, and
+/// the address and title Lumo last saw there.
+fn newest(t: &Tabs, chat: &str, agent: &str) -> Option<(String, u32, Option<Act>, Page)> {
     let tab = t.open.iter().filter(|tab| tab.chat == chat && tab.agent == agent).max_by_key(|tab| tab.n)?;
-    Some((tab.label.clone(), tab.n, tab.act.clone()))
+    Some((tab.label.clone(), tab.n, tab.act.clone(), Page { title: tab.title.clone(), url: tab.url.clone() }))
 }
+
+/// `frame`'s error for an agent with no tab: the island stops asking.
+pub const NO_TAB: &str = "This agent has no browser tab open.";
 
 /// Watch (views/browser-watch.ts): a picture of what `agent`'s tab shows
 /// now, its address, and what the agent last did there. Asked only while
 /// the picture is on screen in the island; it neither shows the tab's
-/// window nor keeps the tab from closing when unused.
+/// window nor keeps the tab from closing when unused. A tab whose window is
+/// still being built answers `opening` with no picture (its window's
+/// Destroyed takes a closed one off the list, so it is never forgotten
+/// here: that would fail the agent's browser_open).
 pub async fn frame(app: &AppHandle, chat: &str, agent: &str) -> Result<Value, String> {
-    let (label, n, act) = with_tabs(|t| newest(t, chat, agent)).ok_or_else(|| "This agent has no browser tab open.".to_string())?;
+    let (label, n, act, known) = with_tabs(|t| newest(t, chat, agent)).ok_or_else(|| NO_TAB.to_string())?;
     let Some(win) = app.get_webview_window(&label) else {
-        forget(&label);
-        show(app);
-        return Err("This agent's tab has closed.".into());
+        return Ok(json!({ "tab": n, "opening": true, "url": known.url, "host": host_of(&known.url), "title": known.title }));
     };
-    let at = eval(&win, FRAME_JS).await?;
     let shot = cdp(&win, "Page.captureScreenshot", json!({ "format": "jpeg", "quality": FRAME_QUALITY }), SHOT_LIMIT).await?;
     let image = shot["data"].as_str().filter(|d| !d.is_empty()).ok_or("The tab gave no picture.")?;
+    // The page answers where it is scrolled; one changing, or one that
+    // breaks the script, still has its picture, with the last address seen
+    // and the viewport DevTools reports.
+    let at = match eval(&win, FRAME_JS).await {
+        Ok(at) if at.is_array() => at,
+        _ => {
+            let m = cdp(&win, "Page.getLayoutMetrics", json!({}), STEP).await.unwrap_or(Value::Null);
+            let v = &m["cssVisualViewport"];
+            json!([v["clientWidth"], v["clientHeight"], v["pageY"], known.title, known.url])
+        }
+    };
     Ok(frame_json(n, &at, image, act.as_ref(), Instant::now()))
 }
 
@@ -888,8 +903,8 @@ async fn type_text(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, 
     // What the island says was typed: never a password field's text.
     let secret = match &spot {
         Some(spot) => spot.secret,
-        None => eval(&win, SECRET_JS).await.ok().and_then(|v| v.as_bool()).unwrap_or(false),
-    };
+        None => false,
+    } || eval(&win, SECRET_JS).await.ok().and_then(|v| v.as_bool()).unwrap_or(true);
     note_act(win.label(), Act {
         kind: "type",
         what: if secret { "•••".into() } else { text.chars().take(60).collect() },
@@ -1171,10 +1186,21 @@ const REF_POINT_JS: &str = r#"(function () {
   };
 })()"#;
 
-/// The field that has the focus is a password field.
+/// The field that has the focus is a password field, or may be: the focus
+/// is in a frame of another site, which can't be looked into.
 const SECRET_JS: &str = r#"(function () {
   var el = document.activeElement;
-  while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
+  for (;;) {
+    if (el && el.shadowRoot && el.shadowRoot.activeElement) { el = el.shadowRoot.activeElement; continue; }
+    if (el && (el.tagName === 'IFRAME' || el.tagName === 'FRAME')) {
+      var doc = null;
+      try { doc = el.contentDocument; } catch (e) { doc = null; }
+      if (!doc) return true;
+      el = doc.activeElement;
+      continue;
+    }
+    break;
+  }
   return !!el && el.tagName === 'INPUT' && String(el.type).toLowerCase() === 'password';
 })()"#;
 
@@ -1451,10 +1477,13 @@ mod tests {
         tabs.open = vec![tab(1, "c1", "a1", t0), tab(2, "c1", "a1", t0), tab(3, "c2", "a1", t0)];
         let click = Act { kind: "click", what: "Trastevere · Casa".into(), rect: Some([10.0, 20.0, 300.0, 120.5]), scroll_y: 640.0, at: t0 };
         tabs.open[1].act = Some(click.clone());
-        let (label, n, act) = newest(&tabs, "c1", "a1").unwrap();
+        tabs.open[1].url = "https://www.example.com/s/Rome".into();
+        tabs.open[1].title = "Rome · stays".into();
+        let (label, n, act, page) = newest(&tabs, "c1", "a1").unwrap();
         assert_eq!((label.as_str(), n, act.as_ref()), ("agent-browser-2", 2, Some(&click)), "the newest of this chat's agent");
+        assert_eq!(page, Page { title: "Rome · stays".into(), url: "https://www.example.com/s/Rome".into() }, "its last address, for a picture the page can't describe");
         assert_eq!(newest(&tabs, "c1", "zz"), None);
-        assert_eq!(newest(&tabs, "c2", "a1").map(|(_, n, _)| n), Some(3), "another chat's agent of the same id is another");
+        assert_eq!(newest(&tabs, "c2", "a1").map(|(_, n, _, _)| n), Some(3), "another chat's agent of the same id is another");
 
         let at = json!([1280, 800, 700.5, "Rome · stays", "https://www.example.com/s/Rome"]);
         let frame = frame_json(2, &at, "AAAA", Some(&click), t0 + Duration::from_millis(1500));

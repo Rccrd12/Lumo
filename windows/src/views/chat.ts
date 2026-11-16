@@ -106,8 +106,8 @@ import {
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns,
   type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry,
 } from "../core/chat-agents";
-import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, talkBox, type AgentsCardHost } from "./agents-card";
-import { openBrowserView, setBrowserViewHost } from "./browser-watch";
+import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
+import { browserTabsChanged, openBrowserView, setBrowserViewHost } from "./browser-watch";
 import { updateChatTurns, type AskQuote } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
 import {
@@ -4849,7 +4849,14 @@ export function buildPrompt(
       State.notify();
       askAgent(chatId, { agentId, title: row.title, line: row.now ? activityLabel(row.now) : "", look: "working" });
     },
-    stop: (chatId, agentId) => agentsHost(chatId).stop(agentId),
+    // As Stop on its row: back to the chat, where the row says it stops and offers Undo.
+    stop: (chatId, agentId) => {
+      if (chatId === State.chatId && editing == null) {
+        State.view = "prompt";
+        State.notify();
+      }
+      stopLater(chatId, agentId, agentsHost(chatId), () => drawAgents(chatId));
+    },
   });
 
   void onEvent<ChatAgentEvent>("chat-agent", (ev) => {
@@ -4890,6 +4897,7 @@ export function buildPrompt(
     for (const chat of new Set([...chats, ...tabChats])) drawAgents(chat);
     tabChats = chats;
     drawMainBrowser();
+    browserTabsChanged();
   });
 
   void onEvent<ChatSignalEvent>("chat-signal", (ev) => {

@@ -9,7 +9,8 @@
 //
 // Pictures are asked of Rust (`chat_browser_frame`) one after the other, and
 // only while one is on screen in the open island: none while the island is
-// closed or hidden, or the view is another one.
+// closed or hidden, the view is another one, or the picture is scrolled out
+// of sight.
 
 import { Bridge, type AgentWebTab, type BrowserAct, type BrowserFrame } from "../core/bridge";
 import { browserAgentsOf, browserOf } from "../core/chat-agents";
@@ -54,6 +55,10 @@ function tc(key: string): string {
 /** How often a picture on screen is asked again: the large one, and each of a row. */
 const FRAME_MS = 450;
 const SMALL_FRAME_MS = 1000;
+/** After a picture that failed while the tab is still open (a page changing, a busy page): asked again this much later. */
+const RETRY_MS = 1500;
+/** Rust's answer for an agent with no tab (browser.rs NO_TAB): the picture stops asking. */
+const NO_TAB = "This agent has no browser tab open.";
 /** The ring stays on what the agent did this long after it did it. */
 export const RING_MS = 8000;
 
@@ -129,6 +134,9 @@ export class LivePicture {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
   private gone = false;
+  /** In sight on the screen (an IntersectionObserver says): not scrolled away in the chat, nor faded out. */
+  private inSight = true;
+  private readonly sight: IntersectionObserver | null = null;
   last: BrowserFrame | null = null;
 
   readonly chatId: string;
@@ -153,12 +161,22 @@ export class LivePicture {
       this.page);
     const tab = browserOf(chatId, agentId);
     if (tab) this.drawAddress(tab.host ? `https://${tab.host}/` : "");
+    if (typeof IntersectionObserver !== "undefined") {
+      this.inSight = false;
+      this.sight = new IntersectionObserver((seen) => {
+        const last = seen[seen.length - 1];
+        this.inSight = !!last?.isIntersecting;
+        if (this.inSight) this.ensure();
+      });
+      this.sight.observe(this.el);
+    }
     lives.add(this);
   }
 
   /** On screen in the open island: pictures are asked. */
   private shown(): boolean {
-    return this.el.isConnected && State.mode === "expanded" && !document.hidden && !!this.el.closest(".view.on");
+    return this.el.isConnected && this.inSight && State.mode === "expanded" && !document.hidden
+      && !!this.el.closest(".view.on") && !this.el.closest(".hidden-by-upload");
   }
 
   /** Asks for pictures again if it is on screen and isn't already. */
@@ -176,20 +194,30 @@ export class LivePicture {
   drop() {
     if (this.timer != null) clearTimeout(this.timer);
     this.timer = null;
+    this.sight?.disconnect();
     lives.delete(this);
   }
 
   private async pull() {
     this.busy = true;
+    let wait = this.opts.small ? SMALL_FRAME_MS : FRAME_MS;
     try {
       const f = await Bridge.browserFrame(this.chatId, this.agentId);
-      if (f) this.draw(f);
-    } catch {
-      this.gone = true;
-      this.liveMark.hidden = true;
-      this.ring.hidden = true;
-      this.note.textContent = t(WATCH_TEXT.closed);
-      this.note.hidden = false;
+      if (f?.opening) this.waiting(f.url);
+      else if (f) this.draw(f);
+    } catch (err) {
+      // Only a tab that is gone stops the pictures: a page changing, or one
+      // too busy to answer, keeps the last picture and is asked again.
+      if (String(err).includes(NO_TAB) || !browserOf(this.chatId, this.agentId)) {
+        this.gone = true;
+        this.liveMark.hidden = true;
+        this.ring.hidden = true;
+        this.tag.hidden = true;
+        this.note.textContent = t(WATCH_TEXT.closed);
+        this.note.hidden = false;
+      } else {
+        wait = RETRY_MS;
+      }
     } finally {
       this.busy = false;
     }
@@ -197,8 +225,17 @@ export class LivePicture {
       this.timer = setTimeout(() => {
         this.timer = null;
         if (this.shown()) void this.pull();
-      }, this.opts.small ? SMALL_FRAME_MS : FRAME_MS);
+      }, wait);
     }
+  }
+
+  /** A tab still opening: its address, no picture yet. */
+  private waiting(url: string) {
+    if (url) this.drawAddress(url);
+    if (this.last) return;
+    this.liveMark.hidden = true;
+    this.note.textContent = t(WATCH_TEXT.waiting);
+    this.note.hidden = false;
   }
 
   private drawAddress(url: string) {
@@ -258,9 +295,18 @@ function iconButton(path: string, title: string, run: () => void, filled = false
   }, filled ? svg(path, 10) : svg(path, 11, { stroke: 1.8 }));
 }
 
-// The island opening (State changes) asks the pictures on screen again.
+// The island opening (State changes) asks the pictures on screen again,
+// once the island has drawn the change (its own subscriber draws in the next
+// animation frame, after this one's).
+let ensuring = false;
 State.subscribe(() => {
-  for (const live of lives) live.ensure();
+  if (ensuring) return;
+  ensuring = true;
+  const later = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => setTimeout(run, 16);
+  later(() => later(() => {
+    ensuring = false;
+    for (const live of lives) live.ensure();
+  }));
 });
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
@@ -342,6 +388,12 @@ let viewActions: ViewActions | null = null;
 /** The chat the view shows the tabs of, and the one large ("all": side by side). */
 let focus: { chatId: string; agentId: string } | null = null;
 let redrawView: (() => void) | null = null;
+let tabsChanged: (() => void) | null = null;
+
+/** The agents' tabs changed (chat.ts, on browser-tabs): the view on screen follows them. */
+export function browserTabsChanged() {
+  tabsChanged?.();
+}
 
 export function setBrowserViewHost(host: BrowserViewHost) {
   viewHost = host;
@@ -383,7 +435,8 @@ export function buildBrowserView(actions: ViewActions): ViewHost {
   function draw() {
     const list = tabs();
     const chatId = focus?.chatId ?? "";
-    if (focus && focus.agentId !== "all" && !list.some((x) => x.agent === focus!.agentId) && list.length) {
+    // The agent shown has no tab now, or All has one tab left: the tab there is.
+    if (focus && list.length && (focus.agentId === "all" ? list.length < 2 : !list.some((x) => x.agent === focus!.agentId))) {
       focus = { chatId, agentId: list[0].agent };
     }
     const one = focus?.agentId !== "all" ? list.find((x) => x.agent === focus?.agentId) : undefined;
@@ -456,6 +509,9 @@ export function buildBrowserView(actions: ViewActions): ViewHost {
   redrawView = () => {
     drawn = "";
     draw();
+  };
+  tabsChanged = () => {
+    if (State.view === "browser") draw();
   };
 
   return {

@@ -113,8 +113,8 @@ export function stopPending(chatId: string, agentId: string, now = Date.now()): 
   return s ? Math.max(0, s.at - now) : null;
 }
 
-/** Stop clicked: the agent stops in STOP_UNDO_MS, unless Undo comes first. */
-function stopLater(chatId: string, agentId: string, host: AgentsCardHost, redraw: () => void) {
+/** Stop clicked: the agent stops in STOP_UNDO_MS, unless Undo comes first (its row offers it; the agents' browser view sends here too). */
+export function stopLater(chatId: string, agentId: string, host: AgentsCardHost, redraw: () => void) {
   const key = stopKey(chatId, agentId);
   if (stopping.has(key)) return;
   const timer = setTimeout(() => {
