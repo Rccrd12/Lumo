@@ -336,6 +336,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         };
         // The next request has its own retries.
         engine_retries = 0;
+        // A request with screenshots was answered: the model takes them.
+        seen = seen || has_pictures(body);
         let mut answer = answer;
         // Calls the model wrote in its own format, that the server left in
         // the text (Gemma's `<|tool_call>…`): made into calls.
@@ -547,7 +549,6 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         }
         let pictures = hooks.pictures();
         if !pictures.is_empty() && !blind {
-            seen = seen || has_pictures(body);
             replies.push(pictures_message(&pictures));
         } else if !pictures.is_empty() {
             if let Some(content) = replies.last_mut().filter(|r| r["role"] == "tool").and_then(|r| r.get_mut("content")) {

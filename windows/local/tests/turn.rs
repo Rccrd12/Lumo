@@ -335,7 +335,8 @@ fn the_browsers_screenshots_follow_the_rounds_answers_and_go_as_words_once_refus
     assert_eq!(messages[3]["role"], "tool");
     assert_eq!(messages[4]["role"], "user");
     assert_eq!(messages[4]["content"][0]["text"], PICTURES);
-    assert_eq!(messages[4]["content"][1]["image_url"]["url"], "data:image/png;base64,SHOT1");
+    assert_eq!(messages[4]["content"][1]["text"], "Screenshot 1:");
+    assert_eq!(messages[4]["content"][2]["image_url"]["url"], "data:image/png;base64,SHOT1");
     // A model that refuses them gets words in their place, and no more pictures.
     let mut island = Island::default();
     let mut body = question("Guarda la pagina", &["browser_screenshot"]);
@@ -353,8 +354,9 @@ fn the_browsers_screenshots_follow_the_rounds_answers_and_go_as_words_once_refus
     assert_eq!(requests[3]["messages"][1]["content"], "Guarda la pagina", "the question as it was");
     // Once a request with them was answered, a refusal is about something else: asked again as it was.
     let mut island = Island::default();
-    let mut body = question("Guarda la pagina", &["browser_screenshot"]);
-    let replies = vec![shot(), calls("c2", "browser_screenshot", "{\"tab\":2}"), refused_again(), answer("Fatto.")];
+    // (the round in between takes none: what counts is that they were answered)
+    let mut body = question("Guarda la pagina", &["browser_screenshot", "browser_click"]);
+    let replies = vec![shot(), calls("c2", "browser_click", "{\"tab\":1,\"ref\":3}"), refused_again(), answer("Fatto.")];
     let (outcome, requests) = turn(replies, &mut body, &rules("shots-seen", ""), &mut island);
     assert_eq!(outcome.unwrap().fixes, ["asked again"]);
     assert_eq!(requests[3]["messages"][4]["content"][0]["text"], PICTURES, "the pictures still go");
@@ -379,6 +381,13 @@ fn a_long_turn_keeps_only_the_newest_screenshots() {
     let urls: Vec<&str> = m.iter().filter_map(|m| m["content"].as_array()).flatten().filter_map(|p| p.pointer("/image_url/url").and_then(Value::as_str)).collect();
     assert_eq!(urls, ["data:image/png;base64,B", "data:image/png;base64,C", "data:image/png;base64,D"]);
     assert_eq!(m.len(), 8);
+    // B keeps its name: it can't pass for the first call's.
+    let first: Vec<&str> = m[3]["content"].as_array().unwrap().iter().filter_map(|p| p["text"].as_str()).collect();
+    assert_eq!(first[0], PICTURES);
+    assert!(first[1].starts_with("(The first of these were left out"));
+    assert_eq!(first[2], "Screenshot 2:");
+    keep_last_pictures(&mut body, 3);
+    assert_eq!(body["messages"][3]["content"].as_array().unwrap().len(), 4, "said once");
     keep_last_pictures(&mut body, 1);
     let m = body["messages"].as_array().unwrap();
     assert_eq!(m.len(), 6, "the emptied ones are taken out");

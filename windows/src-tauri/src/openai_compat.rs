@@ -1768,8 +1768,9 @@ mod tests {
         add_pictures(&mut body, vec![tool(1)], &["iVBOR".into(), "AAAA".into()], false);
         let pictures = &body["messages"][2];
         assert_eq!(pictures["role"], "user");
-        assert_eq!(pictures["content"][1]["image_url"]["url"], "data:image/png;base64,iVBOR");
-        assert_eq!(pictures["content"].as_array().unwrap().len(), 3);
+        assert_eq!(pictures["content"][1]["text"], "Screenshot 1:");
+        assert_eq!(pictures["content"][2]["image_url"]["url"], "data:image/png;base64,iVBOR");
+        assert_eq!(pictures["content"].as_array().unwrap().len(), 5);
         // Refused: taken out, said in the tool's answer.
         assert!(without_pictures(&mut body));
         assert_eq!(body["messages"].as_array().unwrap().len(), 2);
@@ -1785,7 +1786,7 @@ mod tests {
         for n in 0..5 {
             add_pictures(&mut body, vec![tool(n)], &[format!("P{n}")], false);
         }
-        let urls: Vec<&str> = body["messages"].as_array().unwrap()[1..].iter().filter_map(|m| m.pointer("/content/1/image_url/url").and_then(Value::as_str)).collect();
+        let urls: Vec<&str> = body["messages"].as_array().unwrap()[1..].iter().filter_map(|m| m.pointer("/content/2/image_url/url").and_then(Value::as_str)).collect();
         assert_eq!(urls, ["data:image/png;base64,P2", "data:image/png;base64,P3", "data:image/png;base64,P4"]);
     }
 }

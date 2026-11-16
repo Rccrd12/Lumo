@@ -596,6 +596,8 @@ struct Asker {
     agent: &'static str,
     /// How the turn started.
     started: Asks,
+    /// When it began (ms since 1970): a call the CLI sent before is an earlier turn's.
+    begun_ms: u64,
 }
 
 static ASKERS: Mutex<Vec<Asker>> = Mutex::new(Vec::new());
@@ -615,7 +617,8 @@ pub struct AskTurn {
 impl AskTurn {
     pub fn begin(provider: &'static str, chat: &str, agent: &'static str, mode: &str) -> AskTurn {
         let id = ASKER_IDS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        askers().push(Asker { id, chat: chat.to_string(), provider, agent, started: asks_for(provider, mode) });
+        let begun_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+        askers().push(Asker { id, chat: chat.to_string(), provider, agent, started: asks_for(provider, mode), begun_ms });
         AskTurn { id }
     }
 }
@@ -623,6 +626,21 @@ impl AskTurn {
 impl Drop for AskTurn {
     fn drop(&mut self) {
         askers().retain(|a| a.id != self.id);
+        TURN_ENDED.notify_waiters();
+    }
+}
+
+/// Rings each time a turn ends: its cards leave the island.
+static TURN_ENDED: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+/// Resolves once the turn `id` has ended (Stop, or its answer done).
+async fn turn_over(id: u64) {
+    loop {
+        let woken = TURN_ENDED.notified();
+        if !askers().iter().any(|a| a.id == id) {
+            return;
+        }
+        woken.await;
     }
 }
 
@@ -720,9 +738,22 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         return refuse(TURN_OVER);
     }
     if let Some((_, a)) = &asker {
+        // Sent before this turn began: an earlier turn's, which was stopped.
+        let sent = request.get("sent_ms").and_then(Value::as_u64);
+        if changes(&tool) && sent.is_some_and(|s| s < a.begun_ms) {
+            return refuse(TURN_OVER);
+        }
         let mode = app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).permission_mode_for(a.provider);
-        if let Err(why) = ask(app, a.started.stricter(asks_for(a.provider, &mode)), Some(a.agent), &tool, &input).await {
-            return refuse(why);
+        let asked = async { Some(ask(app, a.started.stricter(asks_for(a.provider, &mode)), Some(a.agent), &tool, &input).await) };
+        // The turn ending takes its card off the island (dropped, it settles).
+        let ended = async {
+            turn_over(a.id).await;
+            None
+        };
+        match crate::pipe::first_of(asked, ended).await {
+            None => return refuse(TURN_OVER),
+            Some(Err(why)) => return refuse(why),
+            Some(Ok(())) => {}
         }
         // Stop while the card waited: the turn is over, nothing is done.
         if changes(&tool) && !askers().iter().any(|x| x.id == a.id) {
@@ -1897,14 +1928,14 @@ mod tests {
 
     #[test]
     fn a_call_naming_no_chat_is_for_the_only_one_asking() {
-        let asker = |id, chat: &str| Asker { id, chat: chat.into(), provider: crate::antigravity_cli::PROVIDER, agent: "antigravity", started: Asks::Card };
+        let asker = |id, chat: &str| Asker { id, chat: chat.into(), provider: crate::antigravity_cli::PROVIDER, agent: "antigravity", started: Asks::Card, begun_ms: 0 };
         assert_eq!(only_asking_chat(&[]), None);
         assert_eq!(only_asking_chat(&[asker(1, "a")]).as_deref(), Some("a"));
         assert_eq!(only_asking_chat(&[asker(1, "a"), asker(2, "a")]).as_deref(), Some("a"));
         assert_eq!(only_asking_chat(&[asker(1, "a"), asker(2, "b")]), None, "two chats: neither");
         assert_eq!(only_asking_chat(&[asker(1, "")]), None);
         // Another CLI's turn: its calls name their chat, and one that doesn't is nobody's.
-        let codex = Asker { id: 3, chat: "a".into(), provider: "codex", agent: "codex", started: Asks::Card };
+        let codex = Asker { id: 3, chat: "a".into(), provider: "codex", agent: "codex", started: Asks::Card, begun_ms: 0 };
         assert_eq!(only_asking_chat(std::slice::from_ref(&codex)), None);
         assert_eq!(only_asking_chat(&[asker(1, "a"), codex]), None);
         // The mode as the chat shows it: an old "turbo" is Ask, but Antigravity's own.
@@ -1916,7 +1947,11 @@ mod tests {
         // A turn asks from its start until it ends.
         let turn = AskTurn::begin("codex", "chat-turn-test", "codex", "default");
         assert!(askers().iter().any(|a| a.chat == "chat-turn-test" && a.started == Asks::Card));
+        let id = askers().iter().find(|a| a.chat == "chat-turn-test").map(|a| a.id).unwrap();
+        let ended = std::thread::spawn(move || tauri::async_runtime::block_on(turn_over(id)));
+        std::thread::sleep(std::time::Duration::from_millis(50));
         drop(turn);
+        ended.join().unwrap();
         assert!(!askers().iter().any(|a| a.chat == "chat-turn-test"));
     }
 }

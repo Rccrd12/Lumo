@@ -673,19 +673,36 @@ fn user_tool_call_with(tool: &str, input: Option<&Value>, exists: &dyn Fn(&str) 
 /// Runs the server until the agent closes stdin.
 pub fn run() -> ! {
     let kit = Kit::from_args(std::env::args().skip(1));
-    let stdin = std::io::stdin();
     let mut out = std::io::stdout();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
+    // Each line read as soon as the CLI writes it, with when (`SENT_MS`): a
+    // call that waited behind a card may belong to a turn that has ended.
+    let (tx, rx) = std::sync::mpsc::channel::<(String, u64)>();
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            if tx.send((line, now_ms())).is_err() {
+                break;
+            }
+        }
+    });
+    for (line, sent) in rx {
         if line.trim().is_empty() {
             continue;
         }
+        SENT_MS.store(sent, std::sync::atomic::Ordering::Relaxed);
         if let Some(answer) = handle_with(&line, kit, &call_lumo) {
             let _ = writeln!(out, "{answer}");
             let _ = out.flush();
         }
     }
     std::process::exit(0);
+}
+
+/// When the CLI wrote the message being handled (ms since 1970), 0 if not known.
+static SENT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 /// The answer to one message, or nothing for a notification. `lumo` hands a
@@ -786,6 +803,10 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         let mut call = json!({ "tool": name, "input": input, "chat": chat_id() });
         if kit.browser_card {
             call["card"] = json!(true);
+            match SENT_MS.load(std::sync::atomic::Ordering::Relaxed) {
+                0 => {}
+                sent => call["sent_ms"] = json!(sent),
+            }
         }
         return answer(lumo(&json!({ "lumo_browser": call })));
     }
@@ -1231,8 +1252,11 @@ mod tests {
     fn a_cli_that_asks_nothing_has_its_browser_calls_asked_for_by_lumo() {
         let kit = Kit::from_args(["--mcp", "--tools=browsercard,island"].iter().map(|s| s.to_string()));
         assert!(kit.browser && kit.browser_card);
+        // With when the CLI sent it: one sent before the turn began is an earlier turn's.
+        SENT_MS.store(1_700_000_000_000, std::sync::atomic::Ordering::Relaxed);
         let lumo = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_browser"]["card"], true);
+            assert_eq!(req["lumo_browser"]["sent_ms"], 1_700_000_000_000u64);
             Ok(json!({ "text": "ok" }))
         };
         let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"browser_click","arguments":{"tab":1,"element":3}}}"#;

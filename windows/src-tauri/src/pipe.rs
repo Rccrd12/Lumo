@@ -496,7 +496,7 @@ async fn relay_gone() {
 }
 
 /// Whichever of two futures finishes first; `a` when both are ready.
-async fn first_of<T>(a: impl std::future::Future<Output = T>, b: impl std::future::Future<Output = T>) -> T {
+pub(crate) async fn first_of<T>(a: impl std::future::Future<Output = T>, b: impl std::future::Future<Output = T>) -> T {
     use std::task::Poll;
     let mut a = std::pin::pin!(a);
     let mut b = std::pin::pin!(b);

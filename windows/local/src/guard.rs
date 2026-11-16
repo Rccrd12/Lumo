@@ -121,10 +121,15 @@ pub const PICTURES: &str = "The screenshots the browser tools just took, in the 
 /// What stands in their place for a model that refused them.
 pub const NO_PICTURES: &str = "(The browser's screenshots can't be shown to this model: use browser_read to see a page as text.)";
 
-/// A round's screenshots (PNG, base64), as one user message after its tool answers.
+/// A round's screenshots (PNG, base64), as one user message after its tool
+/// answers, each named by its place ("Screenshot 2:"), so leaving the older
+/// ones out never makes a picture pass for another call's.
 pub fn pictures_message(pictures: &[String]) -> Value {
     let mut parts = vec![json!({ "type": "text", "text": PICTURES })];
-    parts.extend(pictures.iter().map(|png| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{png}") } })));
+    for (k, png) in pictures.iter().enumerate() {
+        parts.push(json!({ "type": "text", "text": format!("Screenshot {}:", k + 1) }));
+        parts.push(json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{png}") } }));
+    }
     json!({ "role": "user", "content": parts })
 }
 
@@ -174,7 +179,8 @@ pub fn without_pictures(body: &mut Value) -> bool {
 }
 
 /// Only the newest `keep` screenshots stay in the request; the older ones
-/// are taken out, said in words in the tools' answers.
+/// are taken out (each with its name), said in words: in the message where
+/// some stay, in the tools' answers where none does.
 pub fn keep_last_pictures(body: &mut Value, keep: usize) {
     let Some(messages) = body["messages"].as_array_mut() else { return };
     let mut kept = 0;
@@ -191,27 +197,35 @@ pub fn keep_last_pictures(body: &mut Value, keep: usize) {
             kept += images;
             continue;
         }
-        // The newest of the message are its last ones.
-        let mut drop = images - room;
-        let left: Vec<Value> = parts
-            .into_iter()
-            .filter(|p| {
-                let out = p["type"] == "image_url" && drop > 0;
-                if out {
-                    drop -= 1;
-                }
-                !out
-            })
-            .collect();
         kept = keep;
-        if left.iter().any(|p| p["type"] == "image_url") {
-            messages[i]["content"] = json!(left);
-        } else {
+        if room == 0 {
             note_before(messages, i, EARLIER_PICTURES);
             messages.remove(i);
+            continue;
         }
+        // The newest of the message are its last ones: the first ones go,
+        // each with the name before it.
+        let mut drop = images - room;
+        let mut left: Vec<Value> = Vec::new();
+        for part in parts {
+            if part["type"] == "image_url" && drop > 0 {
+                drop -= 1;
+                if left.last().is_some_and(|p| p["type"] == "text" && p["text"].as_str().is_some_and(|t| t.starts_with("Screenshot "))) {
+                    left.pop();
+                }
+                continue;
+            }
+            left.push(part);
+        }
+        if !left.iter().any(|p| p["text"] == EARLIER_SOME) {
+            left.insert(1, json!({ "type": "text", "text": EARLIER_SOME }));
+        }
+        messages[i]["content"] = json!(left);
     }
 }
+
+/// What a message of screenshots says when its first ones were left out.
+const EARLIER_SOME: &str = "(The first of these were left out to keep the request small: each one left is named by its call's place.)";
 
 /// The input of a call from its arguments (a JSON text): `{}` when there are
 /// none, None when they aren't a JSON object (cut off, or made up).
