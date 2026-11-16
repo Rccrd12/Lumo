@@ -21,11 +21,12 @@
 // only the card is drawn again, never the chat around it. When only its words
 // changed (the times, each second), they are written into the card as it is,
 // so a button pressed or a summary being selected stays under the mouse.
-// What the user opened or folded is kept per card.
+// What the user opened or folded is kept per card; one agent is open at a time
+// (its details or its picture), opening another folds it.
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
-import { isWatching, mountInline, toggleWatch, WATCH_TEXT, type InlineActions } from "./browser-watch";
+import { isWatching, mountInline, toggleWatch, unwatchOthers, WATCH_TEXT, type InlineActions } from "./browser-watch";
 import type { ChatActivity } from "../core/bridge";
 import {
   AGENT_TEXT, agentStall, askable, browserOf, computerOf, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
@@ -446,6 +447,8 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const tab = isFinal(r.state) ? undefined : browserOf(input.chatId, r.id);
   const watch = tab && host.watchBrowser && left == null ? () => {
     toggleWatch(input.chatId, r.id);
+    // One agent open at a time: its picture folds the others' rows.
+    if (isWatching(input.chatId, r.id)) onlyOpen(ui, input.chatId, r.id);
     redraw();
   } : null;
   const watching = !!watch && isWatching(input.chatId, r.id);
@@ -499,7 +502,11 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}${watching ? " watching" : ""}` }, head);
   head.addEventListener("click", () => {
     if (open) ui.open.delete(r.id);
-    else ui.open.add(r.id);
+    else {
+      // One agent open at a time: the others fold, and another's picture closes.
+      onlyOpen(ui, input.chatId, r.id);
+      ui.open.add(r.id);
+    }
     redraw();
   });
   if (watching) {
@@ -509,6 +516,12 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   }
   if (open) el.append(rowDetail(e, host, ui, now, redraw, ask, left == null ? stop : null, watch ? watchButton : null));
   return el;
+}
+
+/** Opening `agentId` folds every other agent of the card: their details and their picture. */
+function onlyOpen(ui: CardUi, chatId: string, agentId: string) {
+  for (const id of [...ui.open]) if (id !== agentId) ui.open.delete(id);
+  unwatchOthers(chatId, agentId);
 }
 
 /** Whether Ask shows on an agent: its CLI can pass it a message, and the chat can ask now. */

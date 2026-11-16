@@ -391,7 +391,7 @@ export class LivePicture {
     this.opts.onFrame?.(f);
   }
 
-  /** A picture cut by its frame (the one under a row) moves so the pointer shows. */
+  /** A picture cut by its frame (a tile of All, cut to fit its row) moves so the pointer shows. */
   private follow(box: { top: number; height: number } | null) {
     const shotH = this.shot.offsetHeight;
     const pageH = this.page.offsetHeight;
@@ -527,6 +527,11 @@ export function toggleWatch(chatId: string, agentId: string) {
     inline.live.drop();
     inline = null;
   }
+}
+
+/** Another agent of the chat opens: the picture under a row other than `agentId`'s closes (one agent open at a time). */
+export function unwatchOthers(chatId: string, agentId: string) {
+  if (watching && watching.chatId === chatId && watching.agentId !== agentId) toggleWatch(watching.chatId, watching.agentId);
 }
 
 /** Puts the picture of the watched agent in `slot`, under its row; the same one each time the card is drawn. */
