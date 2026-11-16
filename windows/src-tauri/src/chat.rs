@@ -849,6 +849,47 @@ pub fn api_tools_note(mail: &str) -> String {
     note
 }
 
+/// More of a CLI's text added to `shown`, everything the turn wrote so far.
+/// `new`: `text` starts a message (one after a tool, or a step of its own),
+/// a paragraph of its own after those before; it stays set while only
+/// blank space came. What showed is never taken back: a sentence written
+/// before a tool stays on the island once the next one comes, as an API's.
+pub fn add_shown(shown: &mut String, text: &str, new: &mut bool) {
+    if !*new {
+        shown.push_str(text);
+        return;
+    }
+    let text = text.trim_start();
+    if text.is_empty() {
+        return;
+    }
+    *new = false;
+    shown.truncate(shown.trim_end().len());
+    if !shown.is_empty() {
+        shown.push_str("\n\n");
+    }
+    shown.push_str(text);
+}
+
+/// The messages of a turn, one paragraph each, as the island showed them
+/// (`add_shown`).
+pub fn join_shown<'a>(messages: impl IntoIterator<Item = &'a str>) -> String {
+    messages.into_iter().map(str::trim).filter(|m| !m.is_empty()).collect::<Vec<_>>().join("\n\n")
+}
+
+/// The answer of a CLI's turn: everything it wrote (`shown`), its last
+/// message as the CLI gave it at the end (`last`, its `result`) in place of
+/// the one streamed (`writing`). The CLIs give only their last message: the
+/// sentences written before the tools would go once the answer is saved.
+pub fn turn_answer(shown: &str, writing: &str, last: &str) -> String {
+    let (shown, last) = (shown.trim(), last.trim());
+    if last.is_empty() || shown.ends_with(last) {
+        return shown.to_string();
+    }
+    let earlier = shown.strip_suffix(writing.trim()).unwrap_or(shown).trim_end();
+    if earlier.is_empty() { last.to_string() } else { format!("{earlier}\n\n{last}") }
+}
+
 /// `answer`, with the lines for Lumo (`[[timer …]]`, `[[listen …]]`,
 /// `[[unlisten …]]`) that were written earlier in the turn, in a message
 /// before a tool call, added back: the CLIs return only their last message.
@@ -1036,6 +1077,64 @@ pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&
             settings.chat_models.insert(provider.to_string(), model.to_string());
         }
     }
+    settings
+}
+
+/// What a chat may do without asking, its own (the page keeps it by chat,
+/// chats.ts chatPermissionsOf): the shared mode and Antigravity CLI's, as in
+/// the settings (`chat_permission_mode`, `chat_permission_mode_agy`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChatPermissions {
+    pub mode: String,
+    pub agy: String,
+}
+
+/// Each chat's own permissions, by chat id, as the page last named them
+/// (`chat_send`, `chat_permissions`): a computer use turn of that chat asks
+/// as its chat says now (computer.rs), whatever another chat on screen says.
+static CHAT_PERMISSIONS: Mutex<Option<HashMap<String, ChatPermissions>>> = Mutex::new(None);
+
+/// Keeps chat `chat`'s own permissions; None forgets them (a deleted chat).
+pub fn set_chat_permissions(chat: &str, permissions: Option<ChatPermissions>) {
+    if chat.is_empty() {
+        return;
+    }
+    let mut all = CHAT_PERMISSIONS.lock().unwrap_or_else(|e| e.into_inner());
+    let map = all.get_or_insert_with(HashMap::new);
+    match permissions {
+        Some(p) => {
+            map.insert(chat.to_string(), p);
+        }
+        None => {
+            map.remove(chat);
+        }
+    }
+}
+
+/// Chat `chat`'s own permissions, if the page named them.
+pub fn chat_permissions(chat: &str) -> Option<ChatPermissions> {
+    CHAT_PERMISSIONS.lock().unwrap_or_else(|e| e.into_inner()).as_ref()?.get(chat).cloned()
+}
+
+/// The page's two modes as a chat's permissions: None when it named none
+/// (an older page), and an empty mode left as the settings have it.
+pub fn permissions_of(mode: Option<&str>, agy: Option<&str>) -> Option<ChatPermissions> {
+    if mode.is_none() && agy.is_none() {
+        return None;
+    }
+    Some(ChatPermissions { mode: mode.unwrap_or("").trim().to_string(), agy: agy.unwrap_or("").trim().to_string() })
+}
+
+/// `settings` with a chat's own permissions: that chat runs with them,
+/// whatever another chat on screen picked. An empty shared mode leaves the
+/// settings' own; an empty Antigravity CLI mode is its own "not picked yet"
+/// (settings.rs permission_mode_for), as in the settings.
+pub fn with_permissions(mut settings: Settings, permissions: Option<&ChatPermissions>) -> Settings {
+    let Some(p) = permissions else { return settings };
+    if !p.mode.is_empty() {
+        settings.chat_permission_mode = p.mode.clone();
+    }
+    settings.chat_permission_mode_agy = p.agy.clone();
     settings
 }
 
@@ -1450,6 +1549,30 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sentences_before_the_tools_stay_shown_and_in_the_answer() {
+        // A CLI's messages, as they stream: each one after the tools a paragraph of its own.
+        let mut shown = String::new();
+        let mut new = true;
+        let mut seen = Vec::new();
+        for (text, starts) in [("Let me ", true), ("read it.\n", false), ("\n", true), ("  The PDF", false), (" says hi.", false)] {
+            if starts {
+                new = true;
+            }
+            add_shown(&mut shown, text, &mut new);
+            seen.push(shown.clone());
+        }
+        assert_eq!(shown, "Let me read it.\n\nThe PDF says hi.");
+        // What showed only ever grows: nothing on the island is taken back.
+        assert!(seen.windows(2).all(|w| w[1].starts_with(w[0].trim_end())), "{seen:?}");
+        // The answer: every message, the last as the CLI gave it.
+        assert_eq!(turn_answer(&shown, "The PDF says hi.", "The PDF says hi."), shown);
+        assert_eq!(turn_answer(&shown, "The PDF says hi.", "The PDF says hello."), "Let me read it.\n\nThe PDF says hello.");
+        assert_eq!(turn_answer(&shown, "The PDF says hi.", ""), shown);
+        assert_eq!(turn_answer("", "", "Compacted."), "Compacted.");
+        assert_eq!(join_shown(["Let me check. ", "", "  Done."]), "Let me check.\n\nDone.");
+    }
 
     #[test]
     fn lumo_lines_are_kept_wherever_they_were_written() {
@@ -2135,6 +2258,43 @@ mod tests {
         assert!(!is_inside(&inbox, &inbox.join("missing.txt")));
         assert!(!is_inside(&inbox, &inbox));
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_chat_runs_with_its_own_permissions() {
+        let settings = Settings { chat_permission_mode: "auto".into(), chat_permission_mode_agy: "auto".into(), ..Settings::default() };
+        // None named (an older page): the settings' own.
+        let same = with_permissions(settings.clone(), None);
+        assert_eq!((same.chat_permission_mode.as_str(), same.chat_permission_mode_agy.as_str()), ("auto", "auto"));
+        assert_eq!(permissions_of(None, None), None);
+        // The chat's: Ask for approval, and Antigravity CLI not picked yet (asks too).
+        let own = permissions_of(Some("default"), Some("")).unwrap();
+        let s = with_permissions(settings.clone(), Some(&own));
+        assert_eq!(s.permission_mode_for("claude-code"), "default");
+        assert_eq!(s.permission_mode_for(crate::antigravity_cli::PROVIDER), "default");
+        // Plan only for Antigravity CLI alone.
+        let s = with_permissions(settings.clone(), permissions_of(Some(" auto "), Some("plan")).as_ref());
+        assert_eq!(s.permission_mode_for("codex"), "auto");
+        assert_eq!(s.permission_mode_for(crate::antigravity_cli::PROVIDER), "plan");
+        // No shared mode: the settings' one stays.
+        let s = with_permissions(settings.clone(), permissions_of(None, Some("plan")).as_ref());
+        assert_eq!(s.chat_permission_mode, "auto");
+    }
+
+    #[test]
+    fn each_chat_keeps_its_permissions_until_it_is_deleted() {
+        let (a, b) = ("perm-test-chat-a", "perm-test-chat-b");
+        set_chat_permissions(a, permissions_of(Some("plan"), None));
+        set_chat_permissions(b, permissions_of(Some("auto"), Some("default")));
+        assert_eq!(chat_permissions(a).map(|p| p.mode), Some("plan".into()));
+        assert_eq!(chat_permissions(b).map(|p| p.agy), Some("default".into()));
+        set_chat_permissions(a, None);
+        assert_eq!(chat_permissions(a), None);
+        assert!(chat_permissions(b).is_some());
+        set_chat_permissions(b, None);
+        // No chat id: nothing kept.
+        set_chat_permissions("", permissions_of(Some("auto"), None));
+        assert_eq!(chat_permissions(""), None);
     }
 
     #[test]

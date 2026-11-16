@@ -24,6 +24,7 @@ import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
 import { editStat, isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode, storedPermissionMode } from "../core/providers";
+import { permissionsFor } from "../core/chats";
 import { rememberFolder } from "../core/sessions";
 import {
   BACKGROUND_COLOR, BACKGROUND_TEXT, BackgroundRuns, QUIET_MS, STALE_MS, answerLine, answerText, backgroundGroupId, batchTotal, backgroundLine,
@@ -1051,7 +1052,8 @@ function handleHook(island: Island, payload: HookPayload) {
       const liveFile = email ? null : liveFileChange(payload.lumo_live_file, payload.tool_input ?? {});
       const change = email ? null : mailChange(payload.lumo_mail_action) ?? liveFile;
       // The chat's Antigravity CLI run in Auto, agy's own Turbo preset: everything runs.
-      const agyMode = chatAgy ? parsePermissionMode(storedPermissionMode(State.settings, "antigravity-cli"), "antigravity-cli") : "default";
+      // That chat's own mode (chats.ts permissionsFor), the default where it names none.
+      const agyMode = chatAgy ? parsePermissionMode(storedPermissionMode(permissionsFor(payload.lumo_chat ?? "", State.settings), "antigravity-cli"), "antigravity-cli") : "default";
       if (chatAgy && requestId && !email && !change && agyMode === "auto") {
         void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by ${agyMode})`);
         void Bridge.approvalAutoAllow(requestId);

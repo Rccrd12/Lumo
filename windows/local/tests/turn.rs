@@ -273,18 +273,59 @@ fn a_tool_call_written_as_text_sends_the_model_back_once() {
 fn a_change_said_but_not_made_sends_the_model_back_once() {
     let query = "Modifica il file e allungalo";
     let mut island = Island::default();
-    let replies = vec![answer("Ho modificato il file."), calls("c1", "workspace_edit", "{}"), answer("Ho modificato il file.")];
+    let replies = vec![answer("Ho modificato il file: ora ha tre righe in più."), calls("c1", "workspace_edit", "{}"), answer("Ora è modificato davvero.")];
     let (outcome, requests) = turn(replies, &mut question(query, &["workspace_edit"]), &rules("claimed", query), &mut island);
     let outcome = outcome.unwrap();
     assert_eq!(outcome.fixes, ["change said, not made"]);
     assert!(last_said(&requests[1]).contains("no tool changed one"));
+    assert!(last_said(&requests[1]).contains("don't repeat it"));
     assert_eq!((island.ran.len(), requests.len()), (1, 3));
+    // The answer sent back stays shown, never wiped: what the model did then comes under it.
+    let first = "Ho modificato il file: ora ha tre righe in più.";
+    let at = island.shown.iter().position(|s| s == first).unwrap();
+    assert!(island.shown[at..].iter().all(|s| s.starts_with(first)), "{:?}", island.shown);
+    assert_eq!(island.shown.last().unwrap(), "Ho modificato il file: ora ha tre righe in più.\n\nOra è modificato davvero.");
+    assert_eq!(outcome.answer(), "Ho modificato il file: ora ha tre righe in più.\n\nOra è modificato davvero.");
+    // Sent back, it answers in words: its sentence comes under the answer, which stays.
+    let mut island = Island::default();
+    let replies = vec![answer("Ho modificato il file."), answer("Nota: nessun file è stato modificato.")];
+    let (outcome, requests) = turn(replies, &mut question(query, &["workspace_edit"]), &rules("claimed-words", query), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.fixes.as_slice(), requests.len()), (["change said, not made"].as_slice(), 2));
+    assert!(island.shown.iter().skip_while(|s| *s != "Ho modificato il file.").all(|s| s.starts_with("Ho modificato il file.")), "{:?}", island.shown);
+    assert_eq!(outcome.answer(), "Ho modificato il file.\n\nNota: nessun file è stato modificato.");
+    assert_eq!(island.shown.last().unwrap(), &outcome.answer());
+    // Said again word for word: once.
+    let replies = vec![answer("Ho modificato il file."), answer("Ho modificato il file.")];
+    let (outcome, _) = turn(replies, &mut question(query, &["workspace_edit"]), &rules("claimed-again", query), &mut Island::default());
+    assert_eq!(outcome.unwrap().answer(), "Ho modificato il file.");
     // A question that asks for no change, or a chat with no workspace: nothing to check.
     let mut island = Island::default();
     let (_, requests) = turn(vec![answer("Ho modificato il file.")], &mut question("Cosa c'è?", &["workspace_edit"]), &rules("claimed2", "Cosa c'è?"), &mut island);
     assert_eq!(requests.len(), 1);
     let no_workspace = Rules { workspace: false, ..rules("claimed3", query) };
     let (_, requests) = turn(vec![answer("Ho modificato il file.")], &mut question(query, &["workspace_edit"]), &no_workspace, &mut island);
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
+fn a_change_said_not_to_be_made_and_not_made_is_the_answer() {
+    // Qwen on Unsloth Studio: asked to read a project and change nothing, it
+    // read the files and said, rightly, that it changed nothing. No "said,
+    // not made", no "left undone": the answer is the one it gave.
+    let query = "Leggi il progetto in C:\\Users\\r\\lumo-bench e spiegami cosa fa, file per file. Non modificare niente.";
+    let said = "main.rs avvia il banco di prova, bench.rs misura i tempi.\n\nCome richiesto non ho modificato nulla. Se vuoi che sistemi questi bug, dimmelo.";
+    let mut island = Island::default();
+    let replies = vec![calls("c1", "workspace_read", "{\"path\":\"main.rs\"}"), answer(said)];
+    let (outcome, requests) = turn(replies, &mut question(query, &["workspace_read", "workspace_edit"]), &rules("not-asked", query), &mut island);
+    let outcome = outcome.unwrap();
+    assert!(outcome.fixes.is_empty(), "{:?}", outcome.fixes);
+    assert_eq!((outcome.text.as_str(), requests.len()), (said, 2));
+    assert_eq!(island.shown.last().unwrap(), said);
+    // "No timer set": nothing said done.
+    let replies = vec![answer("Non ho impostato nessun timer: dimmi tu quando.")];
+    let (outcome, requests) = turn(replies, &mut question("Ti va un timer?", &["set_timer"]), &rules("not-done", ""), &mut Island::default());
+    assert!(outcome.unwrap().fixes.is_empty());
     assert_eq!(requests.len(), 1);
 }
 
@@ -473,6 +514,9 @@ fn a_thing_said_done_with_no_tool_or_only_announced_goes_back_once() {
     let outcome = outcome.unwrap();
     assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Fatto.", ["done said, not made"].as_slice()));
     assert!(requests[1]["messages"].to_string().contains("you called no tool"));
+    // Its answer stays shown, the tool's round under it.
+    assert_eq!(outcome.answer(), "Ho impostato l'ascolto per la cartella Downloads.\n\nFatto.");
+    assert_eq!(island.shown.last().unwrap(), "Ho impostato l'ascolto per la cartella Downloads.\n\nFatto.");
     // "Let me read it first" and nothing more: back once; a second time, it is the answer.
     let mut island = Island::default();
     let replies = vec![answer("Let me read the file first."), answer("Let me read the file first.")];
@@ -778,4 +822,37 @@ fn every_piece_of_the_stream_is_a_sign_of_life() {
     let (outcome, _) = turn(vec![whole("Ciao.", &[])], &mut question("Ciao", &[]), &rules("signal-whole", ""), &mut island);
     assert_eq!(outcome.unwrap().text, "Ciao.");
     assert_eq!(island.signals, 2, "the request and the whole answer");
+}
+
+#[test]
+fn the_words_that_come_with_a_call_are_kept() {
+    // Ollama, and servers that decode several tokens at once (MTP, a draft
+    // model), send the last words of the text in the same piece as the call.
+    let mut island = Island::default();
+    let mut body = question("Leggi il progetto", &["workspace_read"]);
+    let with_call = json!({ "choices": [{ "delta": { "content": " file uno per uno.", "tool_calls": [{ "index": 0, "id": "c1", "function": { "name": "workspace_read", "arguments": "{}" } }] } }] });
+    let replies = vec![Reply::Events(vec![text("Ora leggo ogni"), with_call.to_string(), finish("tool_calls"), DONE.into()]), answer("Fatto.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("with call", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.said, ["Ora leggo ogni file uno per uno."]);
+    assert!(island.shown.iter().any(|s| s == "Ora leggo ogni file uno per uno."), "{:?}", island.shown);
+    assert_eq!(requests[1]["messages"][2]["content"], "Ora leggo ogni file uno per uno.");
+    assert_eq!(island.ran.len(), 1);
+}
+
+#[test]
+fn the_same_words_said_again_after_a_tool_show_once_while_the_turn_goes_on() {
+    let mut island = Island::default();
+    let mut body = question("Leggi il progetto", &["workspace_read"]);
+    let said = "Ho copiato la cartella. Ora leggo i file uno per uno.";
+    let replies = vec![calls_after(said, "c1"), calls_after(said, "c2"), answer("Ecco cosa fa.")];
+    let (outcome, _) = turn(replies, &mut body, &rules("again", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.answer(), format!("{said}\n\nEcco cosa fa."));
+    // Never twice on the island, before the end either.
+    assert!(island.shown.iter().all(|s| s.matches(said).count() <= 1), "{:?}", island.shown);
+}
+
+fn calls_after(said: &str, id: &str) -> Reply {
+    Reply::Events(vec![text(said), call(id, "workspace_read", "{}"), finish("tool_calls"), DONE.into()])
 }

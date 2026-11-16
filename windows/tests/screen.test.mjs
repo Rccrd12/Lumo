@@ -516,13 +516,13 @@ test("when the screen can't be read the menu says so, and nothing else happens",
   assert.ok(nothingCaptured());
 });
 
-test("a new chat deletes screenshots that were never sent", async () => {
+test("a new chat starts without the screenshots not sent: they wait with their chat, not deleted", async () => {
   await openMenu();
   pickKind("Screens");
   await share("Screen 1");
   view.el.find(".btn").find((b) => b.textContent === "Attach").fire("click");
   view.el.find(".tool-btn")[0].fire("click"); // New chat
-  assert.deepEqual(sent("screen_discard"), [{ paths: [shot(0).path] }]);
+  assert.deepEqual(sent("screen_discard"), [], "kept for the chat it was attached in (chat-drafts.test.mjs)");
   view.sync();
   assert.equal(rows().length, 0);
 });

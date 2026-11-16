@@ -350,7 +350,7 @@ struct Run {
 }
 
 impl Run {
-    /// The text of Codex's message being written: what the island shows.
+    /// The text of Codex's message being written.
     fn visible(&self) -> &str {
         self.messages.last().map(|(_, t)| t.as_str()).unwrap_or("")
     }
@@ -360,9 +360,15 @@ impl Run {
         self.messages.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join("\n")
     }
 
-    /// The answer: Codex's last message.
+    /// Codex's last message: the supervisor's answer (tool_review.rs).
     fn answer(&self) -> String {
         self.visible().trim().to_string()
+    }
+
+    /// Every message of the turn, one paragraph each: what the island shows,
+    /// and the chat's answer. The sentences written before the tools stay.
+    fn shown(&self) -> String {
+        chat::join_shown(self.messages.iter().map(|(_, t)| t.as_str()))
     }
 
     /// Message `id` now reads `text` (`append`: `text` is more of it); true
@@ -380,7 +386,8 @@ impl Run {
         // The text shows instead: a later item is news again.
         self.activity = None;
         self.activity_changed = false;
-        self.messages.last().is_some_and(|(i, _)| i == id)
+        // Every message shows (`shown`): any one that changed is news.
+        true
     }
 
     /// One notification of the turn; true when the visible text changed.
@@ -1179,7 +1186,7 @@ fn live_turn(
         if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL || state.done.is_some()) && !state.stopped {
             unsent = false;
             last_emit = Instant::now();
-            on_text(state.visible());
+            on_text(&state.shown());
         }
         if let Some(activity) = activity.filter(|_| !state.stopped) {
             on_activity(&activity);
@@ -1356,7 +1363,7 @@ pub async fn send(
     }
     let plain = chat::plain_question(true, context.as_ref(), &query);
     if state.stopped {
-        let shown = state.answer();
+        let shown = state.shown();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
         }
@@ -1365,7 +1372,8 @@ pub async fn send(
     if let Some(Err(e)) = &state.done {
         return Err(codex_error(e));
     }
-    let answer = chat::keep_lumo_lines(state.answer(), &state.said());
+    // Every message it wrote, not only the last: none disappears once the answer is saved.
+    let answer = chat::keep_lumo_lines(state.shown(), &state.said());
     if answer.trim().is_empty() {
         crate::log::line(format!("codex: empty answer; {} declined", state.denied));
         let why = match &state.error {
@@ -1464,6 +1472,8 @@ mod tests {
         assert!(feed(&mut run, r#"{"method":"turn/completed","params":{"turn":{"status":"completed","items":[{"type":"agentMessage","id":"m2","text":"Done."}]}}}"#));
         assert_eq!(run.answer(), "Done.");
         assert_eq!(chat::keep_lumo_lines(run.answer(), &run.said()).trim_end(), "Done.\n[[timer 60s: tea]]");
+        // The chat shows and keeps every message: the one before the tools too.
+        assert_eq!(run.shown(), "Let me check. [[timer 60s: tea]]\n\nDone.");
         assert_eq!(run.done, Some(Ok(())));
     }
 

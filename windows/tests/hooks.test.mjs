@@ -1112,6 +1112,32 @@ test("in Auto, every request of the chat's Antigravity CLI run goes through with
   assert.deepEqual(asked, []);
 });
 
+test("the chat's Antigravity CLI run goes by that chat's own mode, the default where it names none", async () => {
+  const { setChatPermissions } = await import("../src/core/chats.ts");
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionModeAgy: "auto" };
+  setChatPermissions("agy-asks", { chatPermissionMode: "default", chatPermissionModeAgy: "default" });
+  setChatPermissions("agy-turbo", { chatPermissionMode: "default", chatPermissionModeAgy: "auto" });
+  const request = (id, chat) => hook({
+    hook_event_name: "PermissionRequest", request_id: id, lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "run_command", tool_input: { command: "npm install" }, ...(chat ? { lumo_chat: chat } : {}),
+  });
+  // Auto in the default, but this chat picked Ask for approval: a card.
+  request("p1", "agy-asks");
+  assert.deepEqual(sent("approval_auto_allow"), []);
+  assert.equal(State.pendingApproval?.requestId, "p1");
+  State.pendingApproval = null;
+  // Auto picked in this chat, whatever the default.
+  State.settings = { ...DEFAULT_SETTINGS };
+  request("p2", "agy-turbo");
+  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "p2" }]);
+  // A chat that never picked one, or none named: the default (Ask).
+  request("p3", "agy-never-picked");
+  request("p4");
+  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "p2" }]);
+  State.pendingApproval = null;
+  State.approvalQueue = [];
+});
+
 test("Claude Code's Auto is not Antigravity's: its own mode, which asks until picked", () => {
   State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto" };
   hook({

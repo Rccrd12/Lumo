@@ -810,9 +810,11 @@ impl Drop for OtherTurn {
 }
 
 /// How Lumo asks for the action of another agent's turn now: as the turn
-/// started, or stricter if the chat's mode asks more since.
+/// started, or stricter if the chat's mode asks more since (that chat's own,
+/// chat.rs chat_permissions, else the settings').
 fn asks_now(app: &AppHandle, other: &Other) -> Asks {
-    let mode = app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).permission_mode_for(other.provider);
+    let settings = app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let mode = crate::chat::with_permissions(settings, crate::chat::chat_permissions(&other.chat).as_ref()).permission_mode_for(other.provider);
     other.started.stricter(Asks::of(&mode))
 }
 
