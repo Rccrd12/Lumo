@@ -492,8 +492,9 @@ struct Island<'a, P> {
 }
 
 /// What an agent of a local model's chat runs with (api_agents.rs): the
-/// chat's server, model and tools. Its agents run one at a time: a local
-/// server answers one request at a time, or splits the machine between them.
+/// chat's server, model and tools. As many of its agents run together as the
+/// server writes answers at once (its slots, local_models.rs `slots`): more
+/// would only wait in the server's own line, or split the machine between them.
 struct Launch<'a> {
     server: &'a Server,
     base: &'a Url,
@@ -696,14 +697,17 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         let (app, chat, server, asking, high, name) = (self.app, self.chat.id().to_string(), self.server, self.asking, self.sandbox_high, name.to_string());
         let launch = self.launch;
         async move {
-            // Agents of its own (api_agents.rs), one at a time: their reports are the result.
+            // Agents of its own (api_agents.rs): as many together as the
+            // server writes answers at once (local_models.rs slots), the
+            // others in line; one at a time when it doesn't say. Their reports are the result.
             if name == crate::api_agents::RUN {
+                let at_once = crate::local_models::slots(launch.server, launch.model).await.map_or(1, |s| s.room(crate::api_agents::MAX_AGENTS));
                 let chat_id = chat.clone();
                 let turn: crate::api_agents::Turn = Box::new(move |task, sink| {
                     let chat_id = chat_id.clone();
                     Box::pin(async move { agent_turn(app, &chat_id, launch, task, sink).await })
                 });
-                let run = Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, 1, turn));
+                let run = Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, at_once, turn));
                 return crate::chat_agents::alive_while(app, &chat, run).await;
             }
             crate::tools::call_for_chat(app, &chat, server, &name, input, asking, high).await

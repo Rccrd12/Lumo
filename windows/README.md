@@ -980,8 +980,14 @@ tools (none that start more agents, make the chat's plan or set timers),
 seeing only its task. They show on the chat's Agents card as Claude Code's
 do — what each does now, its steps and tokens, **Stop this agent** — and are
 said to give no signal past 45 s for an API model, 90 s for a local one.
-An API model's agents all run at once (six at most); a local model's run one
-at a time, the others "Waiting its turn · 2 in line". Their calls ask for
+An API model's agents all run at once (six at most); a local model's run as
+many at once as its server writes answers at once, the others "Waiting its
+turn · 2 in line". Lumo asks the server when the agents start: llama.cpp's
+llama-server and Unsloth Studio say their slots (`--parallel`) and which are
+busy with another chat, LM Studio its Max Concurrent Predictions (in the
+model loader's advanced settings), Ollama nothing, so its
+`OLLAMA_NUM_PARALLEL` is read when Ollama runs on this computer. A server
+that says nothing gets one agent at a time. Their calls ask for
 your click as the chat's own do. The model that started them waits for all
 of them and answers from their reports: nothing runs after the answer, and
 the chat's Stop stops them all.
