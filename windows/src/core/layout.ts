@@ -349,22 +349,42 @@ export type Grip = "left" | "right" | "top" | "bottom" | "top-left" | "top-right
 export const GRIPS: Grip[] = ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"];
 
 /**
+ * An offset this far along its edge, either way, puts the island in that
+ * end's corner (Rust island.rs CORNER): the window stops against the end of
+ * the edge and the island is drawn against it, closed or open.
+ */
+export const CORNER_OFFSET = 100_000;
+
+/** The end of its edge the island is in the corner of: the left (or top) one, the right (or bottom) one, or none. */
+export type Corner = "start" | "end" | null;
+
+export function cornerOf(offset: number): Corner {
+  if (!Number.isFinite(offset) || Math.abs(offset) < CORNER_OFFSET) return null;
+  return offset < 0 ? "start" : "end";
+}
+
+/**
  * How a grip changes the size, given the edge the island hangs from: 2 for a
  * side whose opposite side follows it (the island stays centred), ±1 for a
  * free edge, 0 for a size it leaves alone. Null: that grip is on the docked
- * edge, so it is not offered. island.rs applies the same factors.
+ * edge, or on the side against the corner it is in, so it is not offered; in
+ * a corner the other side is free. island.rs applies the same factors.
  */
-export function gripFactors(grip: Grip, dock: Dock): { fx: number; fy: number } | null {
+export function gripFactors(grip: Grip, dock: Dock, corner: Corner = null): { fx: number; fy: number } | null {
   const sides = grip.split("-");
   if (sides.includes(dock)) return null;
   const across = isUpright(dock);
+  const held = corner == null ? null : across ? (corner === "start" ? "top" : "bottom") : corner === "start" ? "left" : "right";
+  if (held && sides.includes(held)) return null;
+  // Along the edge a side's opposite follows it, keeping the island centred; not in a corner.
+  const along = corner == null ? 2 : 1;
   let fx = 0;
   let fy = 0;
   for (const side of sides) {
-    if (side === "left") fx = across ? -1 : -2;
-    if (side === "right") fx = across ? 1 : 2;
-    if (side === "top") fy = across ? -2 : -1;
-    if (side === "bottom") fy = across ? 2 : 1;
+    if (side === "left") fx = across ? -1 : -along;
+    if (side === "right") fx = across ? 1 : along;
+    if (side === "top") fy = across ? -along : -1;
+    if (side === "bottom") fy = across ? along : 1;
   }
   return { fx, fy };
 }
