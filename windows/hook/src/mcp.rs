@@ -117,8 +117,9 @@ computer, each doing the job its description says. Use one when it fits what the
 each call on Lumo's island.";
 
 const ISLAND_INSTRUCTIONS: &str = "Lumo's island tools: set_timer starts a timer the user sees on the island; \
-listen has Lumo listen for an event, such as a pull request on GitHub being ready, a download finishing, a \
-program exiting or a web page changing, and tell the user (and you, \
+listen has Lumo listen for an event, on all of GitHub (a pull request being ready, the checks on a branch \
+such as main or a workflow's runs finishing, an issue, a release…) or on this PC (a download finishing, a program \
+exiting, a web page changing), and tell the user (and you, \
 with something to do then) once it happens, instead of you waiting for it; stop_listening ends that and \
 list_listening says what Lumo listens to.";
 
@@ -396,91 +397,11 @@ time a step is done (completed) and the next one starts (in_progress). Keep step
 /// `listen_pull_request`, `listen`'s name before, still handed on to Lumo.
 pub const ISLAND_NAMES: &[&str] = &["set_timer", "listen", "stop_listening", "list_listening", "listen_pull_request"];
 
-/// The island's timer and listening tools (island_tools.rs in the app). Lumo
-/// turns each call into the line for Lumo it stands for, for the chat the call
-/// came from (`LUMO_CHAT_ID`, set by the app on the agent it starts).
-pub fn island_tools() -> Vec<Value> {
-    let target = || {
-        json!({
-            "source": {
-                "type": "string",
-                "enum": ["github.pr", "fs", "process", "web", "email", "service", "windows", "agent", "webhook", "tool"],
-                "description": "Where to listen. github.pr: a pull request on GitHub. fs: a file or a folder on this PC. \
-process: a program running on this PC, or a port on it. web: a web page. email: the user's inbox (the Email pill). \
-service: one of the user's services (vercel, stripe, n8n, resend, notion, calcom) or their calendar. windows: Windows \
-itself. agent: a coding agent's session (Claude Code, Codex and the others). webhook: an address on this PC that other \
-programs can call. tool: one of the user's own tools, run now and then.",
-            },
-            "target": {
-                "type": "string",
-                "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link; \
-for fs, the full path (C:\\Users\\name\\Downloads, or ~\\Downloads); for process, the executable's name (node.exe) or, \
-with port_open or port_closed, the port number; for web, the link; for email, the sender (from) or words of the \
-subject (subject), nothing for new; for service, the service, or calendar; for windows, the app whose notifications \
-to wait for, else nothing; for agent, any or one of claude, codex, gemini, antigravity, cursor, copilot, opencode, \
-amp, hermes, muse; for webhook, a short name; for tool, the tool's id.",
-            },
-        })
-    };
-    let mut watch = target();
-    watch["event"] = json!({
-        "type": "string",
-        "enum": ["checks", "green", "approved", "ready", "merged", "closed", "created", "changed", "deleted", "download", "started", "exited", "port_open", "port_closed", "up", "down", "contains", "new", "from", "subject", "event", "succeeded", "failed", "soon", "notification", "battery_low", "plugged", "unplugged", "offline", "online", "usb", "back", "finished", "permission", "called"],
-        "description": "github.pr: checks (finished, passed or failed), green (passed), approved, ready (checks \
-passed and it can be merged), merged, closed. fs: created, changed, deleted, download (a download finished in the \
-folder). process: started, exited, port_open, port_closed. web: changed (what the page shows), up, down, contains \
-(the page shows text). email: new, from, subject. service: event, succeeded, failed, or soon for the calendar (an \
-event starts within amount minutes). windows: notification, battery_low, plugged, unplugged, offline, online, usb (a \
-drive is connected), back (the user is back after amount minutes away). agent: finished, permission (it asks for a \
-permission or a reply), failed. webhook: called. tool: changed (what it prints), contains.",
-    });
-    watch["mode"] = json!({
-        "type": "string",
-        "enum": ["once", "every"],
-        "description": "once (the default): it ends when the event happens. every: it fires again each time; on \
-github.pr only for checks or green, once for each new commit, until the pull request is merged or closed.",
-    });
-    watch["text"] = json!({
-        "type": "string",
-        "maxLength": 200,
-        "description": "contains only (web, tool): the text to wait for.",
-    });
-    watch["amount"] = json!({
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 1440,
-        "description": "service soon: the minutes before the event (10). windows battery_low: the percent (20); \
-back: the minutes away (5). tool: the minutes between two runs (15). Leave it out for the rest.",
-    });
-    watch["then"] = json!({
-        "type": "string",
-        "maxLength": 500,
-        "description": "What you will do then, e.g. merge it with gh pr merge --squash. Leave it out when the user \
-only wants to be told.",
-    });
-    vec![
-        tool(
-            "set_timer",
-            "Starts a timer on Lumo's island. Use it only when the user asks for a timer or to be reminded in some \
-time, then say in a few words that it is set.",
-            json!({
-                "seconds": { "type": "integer", "minimum": 1, "maximum": 86400, "description": "How long: 600 for 10 minutes." },
-                "label": { "type": "string", "maxLength": 80, "description": "What it is for, in a few words, in the user's language." },
-            }),
-            &["seconds"],
-        ),
-        tool(
-            "listen",
-            "Lumo listens for an event and tells the user once it happens; with something to do then, it sends you a \
-message in this chat that says what happened, and you do it then. Use it instead of waiting, sleeping or polling \
-yourself, then say in a few words that Lumo is listening and end your answer.",
-            watch,
-            &["source", "target", "event"],
-        ),
-        tool("stop_listening", "Stops listening to something Lumo listens to.", target(), &["target"]),
-        tool("list_listening", "Lists what Lumo is listening to, in every chat.", json!({}), &[]),
-    ]
-}
+/// The island's timer and listening tools (island_tools.rs here, the same
+/// file the app offers its API providers). Lumo turns each call into the line
+/// for Lumo it stands for, for the chat the call came from (`LUMO_CHAT_ID`,
+/// set by the app on the agent it starts).
+pub use crate::island_tools::island_tools;
 
 
 /// The name the server has in the island's `--mcp-config`: its tools are `mcp__lumo__<tool>`.

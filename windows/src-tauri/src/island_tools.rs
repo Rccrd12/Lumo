@@ -24,21 +24,15 @@ use std::sync::Mutex;
 
 use serde_json::{json, Value};
 
-pub const SET_TIMER: &str = "set_timer";
-pub const LISTEN: &str = "listen";
+pub use crate::island_tool_defs::{LISTEN, LIST, SET_TIMER, UNLISTEN};
+use crate::island_tool_defs::{MAX_LABEL, MAX_SECONDS, MAX_TASK};
+
 /// `listen`'s name before: still answered, no longer offered.
 pub const LISTEN_PULL_REQUEST: &str = "listen_pull_request";
-pub const UNLISTEN: &str = "stop_listening";
-pub const LIST: &str = "list_listening";
 /// Plan island checklist tool for the chat's API and local providers (matching hook/src/mcp.rs).
 pub const UPDATE_PLAN: &str = "update_plan";
 /// Every timer/listening tool offered (Claude Code allows these on mcp__lumo__).
 pub const NAMES: &[&str] = &[SET_TIMER, LISTEN, UNLISTEN, LIST];
-
-/// The longest timer: a day.
-const MAX_SECONDS: u64 = 24 * 3600;
-const MAX_LABEL: usize = 80;
-const MAX_TASK: usize = 500;
 
 /// The lines for Lumo the tools asked for, by chat id, until its answer comes back.
 static PENDING: Mutex<Option<HashMap<String, Vec<String>>>> = Mutex::new(None);
@@ -135,118 +129,15 @@ the plan step by step and must see each one move on, not all of them at the end.
 }
 
 /// The tools, as the chat's API providers take them: name, the words the
-/// model reads, the JSON schema of the input. `listen`: the GitHub ones too,
-/// for the agents that can act once it happens.
+/// model reads, the JSON schema of the input. `listen`: the listening ones
+/// too, for the agents that can act once it happens. The very tools lumo-hook
+/// gives the CLIs (hook/src/island_tools.rs), so both are told the same.
 pub fn api_tools(listen: bool) -> Vec<(String, String, Value)> {
-    let mut all = vec![tool(
-        SET_TIMER,
-        "Starts a timer on Lumo's island. Use it only when the user asks for a timer or to be reminded in some \
-time, then say in a few words that it is set.",
-        json!({
-            "seconds": { "type": "integer", "minimum": 1, "maximum": MAX_SECONDS, "description": "How long: 600 for 10 minutes." },
-            "label": { "type": "string", "maxLength": MAX_LABEL, "description": "What it is for, in a few words, in the user's language." },
-        }),
-        &["seconds"],
-    )];
-    if listen {
-        let target = json!({
-            "source": {
-                "type": "string",
-                "enum": crate::listen::SOURCES,
-                "description": "Where to listen. github.pr: a pull request on GitHub. fs: a file or a folder on this PC. \
-process: a program running on this PC, or a port on it. web: a web page. email: the user's inbox (the Email pill). \
-service: one of the user's services (vercel, stripe, n8n, resend, notion, calcom) or their calendar. windows: Windows \
-itself. agent: a coding agent's session (Claude Code, Codex and the others). webhook: an address on this PC that other \
-programs can call. tool: one of the user's own tools, run now and then. The rest of GitHub: github.issue (a repository's \
-issues, or one issue), github.branch (a branch's commits and checks), github.workflow (a GitHub Actions workflow's runs), \
-github.release (releases and tags), github.deploy (deployments), github.notifications (the user's own notifications: \
-mentions, review requests), github.security (Dependabot, code scanning and secret scanning alerts), github.discussion, \
-github.stars (stars, forks, watchers).",
-            },
-            "target": {
-                "type": "string",
-                "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link; \
-for fs, the full path (C:\\Users\\name\\Downloads, or ~\\Downloads); for process, the executable's name (node.exe) or, \
-with port_open or port_closed, the port number; for web, the link; for email, the sender (from) or words of the \
-subject (subject), nothing for new; for service, the service, or calendar; for windows, the app whose notifications \
-to wait for, else nothing; for agent, any or one of claude, codex, gemini, antigravity, cursor, copilot, opencode, \
-amp, hermes, muse; for webhook, a short name; for tool, the tool's id. For github.branch, owner/repository@branch; for \
-github.workflow, owner/repository, or owner/repository@branch for the runs on one branch; for github.issue, \
-owner/repository, or owner/repository#number for one issue; for github.notifications, all or owner/repository; for the \
-other github sources, owner/repository.",
-            },
-        });
-        let mut watch = target.clone();
-        watch["event"] = json!({
-            "type": "string",
-            "enum": events(),
-            "description": "github.pr: checks (finished, passed or failed), green (passed), approved, ready (checks \
-passed and it can be merged), merged, closed. fs: created, changed, deleted, download (a download finished in the \
-folder). process: started, exited, port_open, port_closed. web: changed (what the page shows), up, down, contains \
-(the page shows text), gone (the page no longer shows text). email: new, from, subject. service: event, succeeded, failed, or soon for the calendar (an \
-event starts within amount minutes). windows: notification, battery_low, plugged, unplugged, offline, online, usb (a \
-drive is connected), back (the user is back after amount minutes away). agent: finished, permission (it asks for a \
-permission or a reply), failed. webhook: called. tool: changed (what it prints), contains. github.pr also: comment, \
-review, changes (changes requested), commit (a new commit pushed). github.issue: opened, comment, labeled, assigned, \
-closed, reopened. github.branch: commit, checks, green, red (checks failed). github.workflow: finished, succeeded, \
-failed, started. github.release: release, prerelease, tag. github.deploy: started, succeeded, failed, waiting (for \
-approval). github.notifications: mention, review_requested, assign, comment, any. github.security: dependabot, \
-code_scanning, secret, critical. github.discussion: opened, answer, answered (an answer marked). github.stars: star, \
-fork, watcher, stars (amount stars reached).",
-        });
-        watch["mode"] = json!({
-            "type": "string",
-            "enum": crate::listen::MODES,
-            "description": "once (the default): it ends when the event happens. every: it fires again each time; on \
-github.pr for checks or green once for each new commit, and for comment, review, changes or commit each time, until \
-the pull request is merged or closed; on the rest of GitHub, each time it happens.",
-        });
-        watch["text"] = json!({
-            "type": "string",
-            "maxLength": 200,
-            "description": "contains and gone (web, tool): the text; soon (calendar): words the event's title must have. \
-github.issue: the label the issues must have; github.workflow: the workflow's name or file (Windows CI, ci.yml); \
-github.deploy: the environment (production); github.discussion opened: the category. Leave it out for any.",
-        });
-        watch["amount"] = json!({
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100_000_000,
-            "description": "service soon: the minutes before the event (10). windows battery_low: the percent (20); \
-back: the minutes away (5). tool: the minutes between two runs (15), at most 1440. github.stars stars: the stars to \
-reach (100). Leave it out for the rest.",
-        });
-        watch["then"] = json!({
-            "type": "string",
-            "maxLength": MAX_TASK,
-            "description": "What you will do then, e.g. merge it with gh pr merge --squash. Leave it out when the user \
-only wants to be told.",
-        });
-        all.push(tool(
-            LISTEN,
-            "Lumo listens for an event and tells the user once it happens; with something to do then, it sends you a \
-message in this chat that says what happened, and you do it then. Use it instead of waiting, sleeping or polling \
-yourself, then say in a few words that Lumo will listen once the user confirms (they click Listen) and end your answer.",
-            watch,
-            &["source", "target", "event"],
-        ));
-        all.push(tool(UNLISTEN, "Stops listening to something Lumo listens to.", target, &["target"]));
-        all.push(tool(LIST, "Lists what Lumo is listening to, in every chat.", json!({}), &[]));
-    }
-    all
-}
-
-/// Every event of every source, once each.
-fn events() -> Vec<&'static str> {
-    let mut all: Vec<&str> = crate::listen::UNTILS.to_vec();
-    for source in &crate::listen::SOURCES[1..] {
-        for until in crate::listen_local::untils(source) {
-            if !all.contains(until) {
-                all.push(until);
-            }
-        }
-    }
-    all
+    crate::island_tool_defs::island_tools()
+        .into_iter()
+        .filter(|t| listen || t["name"] == SET_TIMER)
+        .map(|v| (v["name"].as_str().unwrap_or("").to_string(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone()))
+        .collect()
 }
 
 /// The source a call names, as listen.rs calls it (GitHub when it names none).
@@ -600,5 +491,27 @@ mod tests {
         let names = |listen| api_tools(listen).into_iter().map(|t| t.0).collect::<Vec<_>>();
         assert_eq!(names(false), [SET_TIMER]);
         assert_eq!(names(true), NAMES);
+    }
+
+    /// What lumo-hook tells the CLIs it can listen to is what Lumo listens to:
+    /// the same file (hook/src/island_tools.rs), with the lists Lumo keeps.
+    #[test]
+    fn the_cli_and_api_tools_name_every_source_and_event_lumo_knows() {
+        use crate::island_tool_defs as defs;
+        assert_eq!(defs::SOURCES, crate::listen::SOURCES);
+        assert_eq!(defs::MODES, crate::listen::MODES);
+        let mut events: Vec<&str> = crate::listen::UNTILS.to_vec();
+        for source in &crate::listen::SOURCES[1..] {
+            for until in crate::listen_local::untils(source) {
+                if !events.contains(until) {
+                    events.push(until);
+                }
+            }
+        }
+        assert_eq!(defs::EVENTS, events);
+        let tools = api_tools(true);
+        let (_, words, schema) = tools.iter().find(|t| t.0 == LISTEN).unwrap();
+        assert_eq!(schema["properties"]["source"]["enum"], json!(crate::listen::SOURCES));
+        assert!(words.contains("all of GitHub"));
     }
 }
