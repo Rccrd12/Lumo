@@ -337,7 +337,7 @@ fn date_words(year: i64, month: u32, day: u32) -> String {
 
 /// The rich blocks shown once, for a local model: here the prompt goes over
 /// HTTP, never on a command line, so it may hold line breaks and backticks.
-const LOCAL_RICH_EXAMPLE: &str = r#" A small model writes the blocks right when it copies them: here is one of each, written the way Lumo reads it. Copy their shape exactly, with the same keys and signs, and never invent keys; only the words and numbers change. A fenced block starts with three backticks and its name and ends with three backticks, each on a line of its own.
+const LOCAL_RICH_EXAMPLE: &str = r#" A small model writes the blocks right when it copies them: here is one of each, written the way Lumo reads it. Copy their shape exactly, with the same keys and signs, and never invent keys; only the words and numbers change. A fenced block starts with three backticks and its name and ends with three backticks, each on a line of its own. Write it straight in your answer: never inside another fenced block, a quote or a list. Lumo checks every block, and one that breaks the rule under its example is shown as plain code, so when what you have doesn't fit a block (one thing, one step, one date), write plain text instead.
 
 > [!TIP] Before the exam
 > Every line of a callout starts with >, the first one with its kind.
@@ -354,6 +354,7 @@ $$A \approx \pi r \cdot r$$
 ## Simplify
 $$A = \pi r^2$$
 ```
+2 to 20 steps, each starting with ## and its name: a single step is plain text.
 
 ```lumo-cards Coffees
 ## Espresso
@@ -368,6 +369,7 @@ icon: 🥛 pink
 - Milk: steamed, with foam
 Cocoa on top.
 ```
+2 to 8 cards, each starting with ## and its name, to set things side by side: never a single card; for one thing, write plain text.
 
 ```lumo-calc Ohm's law
 formula: I = \frac{V}{R}
@@ -375,6 +377,7 @@ input: V | voltage | 0..24 | 12 | V
 input: R | resistance | 1..100 | 10 | Ω
 output: I | current | V/R | A
 ```
+1 to 6 input: lines and 1 to 6 output: lines, each symbol used once; an output's expression uses only the inputs and the outputs above it.
 
 ```lumo-plot A damped wave
 formula: y = A e^{-x/5} \sin x
@@ -382,7 +385,7 @@ y: A*exp(-x/5)*sin(x)
 x: 0..4*pi
 input: A | amplitude | 0..3 | 1
 ```
-In y:, x: and region: write plain arithmetic (sin(x), 2*pi, x**2), never TeX. Only when the user asks for an area, add a line like region: y ≥ 0 and y ≤ sin(x).
+1 to 6 y: lines and at most 4 input: lines, never one named x or y. In y:, x: and region: write plain arithmetic (sin(x), 2*pi, x**2), never TeX. Only when the user asks for an area, add a line like region: y ≥ 0 and y ≤ sin(x).
 
 ```lumo-quiz The planets
 ? Which planet is the largest?
@@ -392,7 +395,7 @@ In y:, x: and region: write plain arithmetic (sin(x), 2*pi, x**2), never TeX. On
 > Jupiter has more mass than all the other planets together.
 = The largest planet
 ```
-Exactly one + per question: check it is really the right answer.
+1 to 10 questions, each with 2 to 6 answers and exactly one +: check it is really the right answer.
 
 ```lumo-chart bar Sales
 unit: €
@@ -401,12 +404,14 @@ Q1: 1200, 1450
 Q2: 1350, 1600
 Q3: 1100, 1280
 ```
+2 to 30 label lines, at most 4 series, and after each label's colon only numbers, one per series.
 
 ```lumo-timeline The space race
 1957 Sputnik: the first satellite
 1961 Gagarin: the first person in space
 1969-07-20 Apollo 11: the first Moon landing
 ```
+2 to 20 lines, each starting with its date.
 
 Use them without being asked; if the user asks what you can show, describe them in plain words, never by these names."#;
 
@@ -520,6 +525,12 @@ mod tests {
         }
         assert!(p.contains("input: V | voltage | 0..24 | 12 | V") && p.contains("Q1: 1200, 1450") && p.contains("never TeX"));
         assert!(p.contains("never by these names"));
+        // The limits Lumo checks, under each example: a single card was shown as code.
+        assert!(p.contains("never a single card; for one thing, write plain text."));
+        for limit in ["2 to 20 steps", "1 to 6 input: lines", "1 to 6 y: lines", "1 to 10 questions", "2 to 30 label lines", "2 to 20 lines, each starting with its date"] {
+            assert!(p.contains(limit), "{limit}");
+        }
+        assert!(p.contains("never inside another fenced block"));
     }
 
     fn tool(id: &str) -> (String, String, Value) {

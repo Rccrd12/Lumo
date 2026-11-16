@@ -619,7 +619,9 @@ export function buildMailView(actions: ViewActions): ViewHost {
         h("span", { class: "mv-banner-text" },
           h("b", { text: t(MAIL_VIEW_TEXT.cantRead, { address: a.label }) }),
           h("span", { text: a.error ?? "" })),
-        h("button", { class: "mv-btn", onclick: () => actions.openSettingsWindow() }, t(MAIL_VIEW_TEXT.settings))));
+        // Settings inside the island, on the page that helps (Outlook closed:
+        // Security, with "Open Outlook if it's closed"; else Pills, the accounts).
+        h("button", { class: "mv-btn", onclick: () => actions.openSettingsAt(a.settings ?? "pills") }, t(MAIL_VIEW_TEXT.settings))));
     }
     const shown = visibleMessages(d, filter);
     if (!shown.length && !failing.length) {

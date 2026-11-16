@@ -16125,6 +16125,54 @@
    "id": "Lumo tidak bisa membaca Outlook. Ia akan mencoba lagi sebentar lagi.",
    "it": "Lumo non è riuscito a leggere Outlook. Ci riprova tra poco."
   },
+  "Lumo opens Outlook in a moment, in the background.": {
+   "zh-Hans": "Lumo 稍后会在后台打开 Outlook。",
+   "hi": "Lumo थोड़ी देर में Outlook को बैकग्राउंड में खोलेगा।",
+   "es": "Lumo abre Outlook en un momento, en segundo plano.",
+   "ar": "سيفتح Lumo برنامج Outlook بعد لحظات، في الخلفية.",
+   "fr": "Lumo ouvre Outlook dans un instant, en arrière-plan.",
+   "bn": "Lumo কিছুক্ষণের মধ্যে ব্যাকগ্রাউন্ডে Outlook খুলবে।",
+   "pt-BR": "O Lumo abre o Outlook em instantes, em segundo plano.",
+   "ru": "Lumo сейчас откроет Outlook в фоновом режиме.",
+   "id": "Lumo membuka Outlook sebentar lagi, di latar belakang.",
+   "it": "Lumo apre Outlook tra un attimo, in background."
+  },
+  "Lumo couldn't open Outlook ({error}). Open it yourself: the emails come in as soon as it's open.": {
+   "zh-Hans": "Lumo 无法打开 Outlook（{error}）。请自行打开：打开后邮件就会出现。",
+   "hi": "Lumo Outlook नहीं खोल सका ({error})। इसे खुद खोलें: खुलते ही ईमेल आ जाएँगे।",
+   "es": "Lumo no pudo abrir Outlook ({error}). Ábrelo tú: los correos llegan en cuanto esté abierto.",
+   "ar": "تعذّر على Lumo فتح Outlook ({error}). افتحه بنفسك: تصل الرسائل بمجرد فتحه.",
+   "fr": "Lumo n'a pas pu ouvrir Outlook ({error}). Ouvrez-le vous-même : les e-mails arrivent dès qu'il est ouvert.",
+   "bn": "Lumo Outlook খুলতে পারেনি ({error})। নিজে খুলুন: খোলা হলেই ইমেলগুলো আসবে।",
+   "pt-BR": "O Lumo não conseguiu abrir o Outlook ({error}). Abra-o você mesmo: os e-mails chegam assim que ele estiver aberto.",
+   "ru": "Lumo не удалось открыть Outlook ({error}). Откройте его сами: письма появятся, как только он откроется.",
+   "id": "Lumo tidak dapat membuka Outlook ({error}). Buka sendiri: email masuk begitu Outlook terbuka.",
+   "it": "Lumo non è riuscito ad aprire Outlook ({error}). Aprilo tu: le email arrivano appena è aperto."
+  },
+  "Outlook is closed. Open it, or turn on “Open Outlook if it's closed” in Settings → Security.": {
+   "zh-Hans": "Outlook 已关闭。请打开它，或在“设置 → 安全”中开启“Outlook 关闭时自动打开”。",
+   "hi": "Outlook बंद है। इसे खोलें, या सेटिंग्स → सुरक्षा में “Outlook बंद हो तो खोलें” चालू करें।",
+   "es": "Outlook está cerrado. Ábrelo o activa «Abrir Outlook si está cerrado» en Configuración → Seguridad.",
+   "ar": "Outlook مغلق. افتحه، أو فعّل «افتح Outlook إن كان مغلقًا» في الإعدادات ← الأمان.",
+   "fr": "Outlook est fermé. Ouvrez-le, ou activez « Ouvrir Outlook s'il est fermé » dans Réglages → Sécurité.",
+   "bn": "Outlook বন্ধ। এটি খুলুন, অথবা সেটিংস → নিরাপত্তায় “Outlook বন্ধ থাকলে খুলুন” চালু করুন।",
+   "pt-BR": "O Outlook está fechado. Abra-o ou ative “Abrir o Outlook se estiver fechado” em Configurações → Segurança.",
+   "ru": "Outlook закрыт. Откройте его или включите «Открывать Outlook, если он закрыт» в разделе Настройки → Безопасность.",
+   "id": "Outlook tertutup. Buka Outlook, atau aktifkan “Buka Outlook jika tertutup” di Pengaturan → Keamanan.",
+   "it": "Outlook è chiuso. Aprilo, oppure attiva «Apri Outlook se è chiuso» in Impostazioni → Sicurezza."
+  },
+  "Outlook didn't answer in time: a window of Outlook may be waiting for you.": {
+   "zh-Hans": "Outlook 未及时响应：可能有一个 Outlook 窗口在等你操作。",
+   "hi": "Outlook ने समय पर जवाब नहीं दिया: Outlook की कोई विंडो आपका इंतज़ार कर रही हो सकती है।",
+   "es": "Outlook no respondió a tiempo: puede que una ventana de Outlook esté esperándote.",
+   "ar": "لم يستجب Outlook في الوقت المحدد: ربما تنتظرك نافذة من Outlook.",
+   "fr": "Outlook n'a pas répondu à temps : une fenêtre d'Outlook vous attend peut-être.",
+   "bn": "Outlook সময়মতো সাড়া দেয়নি: Outlook-এর কোনো উইন্ডো হয়তো আপনার অপেক্ষায় আছে।",
+   "pt-BR": "O Outlook não respondeu a tempo: talvez uma janela do Outlook esteja esperando por você.",
+   "ru": "Outlook не ответил вовремя: возможно, вас ждёт окно Outlook.",
+   "id": "Outlook tidak menjawab tepat waktu: mungkin ada jendela Outlook yang menunggu Anda.",
+   "it": "Outlook non ha risposto in tempo: forse una finestra di Outlook ti sta aspettando."
+  },
   "Open Outlook if it's closed": {
    "zh-Hans": "Outlook 关闭时自动打开",
    "hi": "Outlook बंद हो तो खोलें",
@@ -16137,17 +16185,17 @@
    "id": "Buka Outlook jika tertutup",
    "it": "Apri Outlook se è chiuso"
   },
-  "Starts Outlook in the background when Lumo starts.": {
-   "zh-Hans": "Lumo 启动时在后台打开 Outlook。",
-   "hi": "Lumo शुरू होने पर Outlook को बैकग्राउंड में खोलता है।",
-   "es": "Abre Outlook en segundo plano cuando se inicia Lumo.",
-   "ar": "يفتح Outlook في الخلفية عند بدء تشغيل Lumo.",
-   "fr": "Ouvre Outlook en arrière-plan au démarrage de Lumo.",
-   "bn": "Lumo চালু হলে পটভূমিতে Outlook চালু করে।",
-   "pt-BR": "Abre o Outlook em segundo plano quando o Lumo inicia.",
-   "ru": "Запускает Outlook в фоне при запуске Lumo.",
-   "id": "Membuka Outlook di latar belakang saat Lumo dimulai.",
-   "it": "Avvia Outlook in background quando parte Lumo."
+  "Starts Outlook in the background when Lumo starts, and when you open the Email view.": {
+   "zh-Hans": "Lumo 启动时以及你打开“电子邮件”视图时，在后台打开 Outlook。",
+   "hi": "Lumo शुरू होने पर और ईमेल व्यू खोलने पर Outlook को बैकग्राउंड में खोलता है।",
+   "es": "Abre Outlook en segundo plano cuando se inicia Lumo y cuando abres la vista Correo.",
+   "ar": "يفتح Outlook في الخلفية عند بدء تشغيل Lumo وعند فتحك عرض البريد.",
+   "fr": "Ouvre Outlook en arrière-plan au démarrage de Lumo et quand vous ouvrez la vue E-mail.",
+   "bn": "Lumo চালু হলে এবং আপনি ইমেল ভিউ খুললে পটভূমিতে Outlook চালু করে।",
+   "pt-BR": "Abre o Outlook em segundo plano quando o Lumo inicia e quando você abre a visualização de E-mail.",
+   "ru": "Запускает Outlook в фоне при запуске Lumo и когда вы открываете раздел «Почта».",
+   "id": "Membuka Outlook di latar belakang saat Lumo dimulai dan saat Anda membuka tampilan Email.",
+   "it": "Avvia Outlook in background quando parte Lumo e quando apri la vista Email."
   },
   "Only your Windows account can talk to Lumo.": {
    "zh-Hans": "只有你的 Windows 账户可以与 Lumo 通信。",

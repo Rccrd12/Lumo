@@ -462,6 +462,7 @@ export class Island {
         State.notify();
       },
       openSettingsWindow: () => void Bridge.openSettingsWindow(),
+      openSettingsAt: (page) => this.openSettingsAt(page),
       blip: () => Sound.play("blip"),
       chooseComputerCursor: (cursor) => {
         if (parseComputerCursor(State.settings.computerCursor) === cursor) return;

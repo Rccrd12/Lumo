@@ -1,7 +1,9 @@
-// Draws Lumo, a ring of light (Filo), into the PNG/ICO set Tauri needs. No
-// dependencies: the icons are rasterised here (painted back to front, sample by
-// sample) and encoded with node:zlib, so the app icon stays "drawn in code"
-// like the character itself. Same shapes as src/character/looks.ts.
+// Draws Lumo, his two eyes on a black disc with the island's light under it,
+// into the PNG/ICO set Tauri needs. No dependencies: the icons are rasterised
+// here (painted back to front, sample by sample) and encoded with node:zlib, so
+// the app icon stays "drawn in code" like the character itself. The eyes are
+// those of src/character/looks.ts (LOOK_EYES, lookInk of LOOK_IDLE), the light
+// under the disc the island's own (look-new.css --lumo-light, the "glow" edge).
 //
 //   node scripts/gen-icons.mjs
 
@@ -13,91 +15,96 @@ import { fileURLToPath } from "node:url";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri", "icons");
 
 // ── Lumo ──────────────────────────────────────────────────────────────────────
-// Filo, his look by default: a ring of light with two lit eyes, as drawn by
-// src/character/looks.ts, on a dark disc so it reads on light taskbars too.
 
-const LIGHT = [255, 224, 158]; // #FFE09E, LOOK_IDLE
-const RING = [255, 241, 214]; // the light, whitened as the ring draws it
-const EYES = [255, 244, 224];
-const DISC = [20, 18, 17];
-const RIM = [26, 20, 18]; // #1A1412, a hairline outside the ring
+const LIGHT = [255, 214, 140]; // #FFD68C, look-new.css --lumo-light
+const EYES = [255, 244, 218]; // #FFF4DA, looks.ts lookInk(LOOK_IDLE)
+const DISC_TOP = [31, 31, 36]; // #1F1F24
+const DISC_BOTTOM = [6, 6, 7]; // #060607
+const WHITE = [255, 255, 255];
 
 const SS = 4; // supersampling factor
 
 const mixc = (a, b, t) => [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * t);
 
-function insidePill(x, y, w, h) {
-  const hw = w / 2;
-  const hh = h / 2;
-  const r = Math.min(hw, hh);
-  const cx = Math.max(-hw + r, Math.min(hw - r, x));
-  const cy = Math.max(-hh + r, Math.min(hh - r, y));
-  return (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
+/** Inside a rounded rectangle (x, y the point; X, Y its top left corner). */
+function insideRRect(x, y, X, Y, W, H, R) {
+  const cx = Math.max(X + R, Math.min(X + W - R, x));
+  const cy = Math.max(Y + R, Math.min(Y + H - R, y));
+  return x >= X && x <= X + W && y >= Y && y <= Y + H && (x - cx) ** 2 + (y - cy) ** 2 <= R * R;
 }
 
-/** Distance from a point to a pill's outline (0 inside). */
-function pillDistance(x, y, w, h) {
-  const hw = w / 2;
-  const hh = h / 2;
-  const r = Math.min(hw, hh);
-  const cx = Math.max(-hw + r, Math.min(hw - r, x));
-  const cy = Math.max(-hh + r, Math.min(hh - r, y));
-  return Math.max(0, Math.hypot(x - cx, y - cy) - r);
+/** 1 − Φ(z): how much of a Gaussian blur reaches z standard deviations out. */
+function tail(z) {
+  const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2);
+  const erf = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t
+    * Math.exp(-(z * z) / 2);
+  return z >= 0 ? (1 - erf) / 2 : (1 + erf) / 2;
 }
 
-/** The layers, back to front: each returns [r, g, b, a] at a centred point, or null. */
+/** The light under the disc: how strong, how far down and how soft (of the size). */
+const GLOW = { alpha: 0.45, drop: 0.05, blur: 0.05 };
+/** The disc's lower part, lit from below: how much (small icons have no glow, so more). */
+const LIT = 0.22;
+const LIT_SMALL = 0.45;
+
+/** The layers, back to front: each returns [r, g, b, a] at a point of the square, or null. */
 function lumoLayers(size) {
-  // Small icons fill more of their square and get thicker lines.
-  const small = size <= 32;
-  const R = size * (small ? 0.4 : 0.36);
-  const lw = Math.max(1.6, R * (small ? 0.17 : 0.11));
-  const rim = Math.max(0.6, R * 0.035);
-  const glow = small ? R * 0.18 : R * 0.34;
+  // Small icons fill their square, drop the soft glow and set the eyes on whole pixels.
+  const small = size < 40;
+  const c = size / 2;
+  const R = small ? size / 2 - 1 : size * 0.4;
+  const cy = small ? c : c - size * 0.03;
   const layers = [];
 
-  // The light around the ring.
+  // The island's light under the disc: its shadow, lit and dropped a little.
+  if (!small) {
+    const sigma = size * GLOW.blur;
+    const oy = cy + size * GLOW.drop;
+    layers.push((x, y) => {
+      const d = Math.hypot(x - c, y - oy) - R;
+      return d > 3.5 * sigma ? null : [...LIGHT, GLOW.alpha * tail(d / sigma)];
+    });
+  }
+  // The black disc, darker towards the bottom.
+  const inDisc = (x, y) => Math.hypot(x - c, y - cy) <= R;
+  layers.push((x, y) => (inDisc(x, y) ? [...mixc(DISC_TOP, DISC_BOTTOM, y / size), 1] : null));
+  // Its lower part lit from below.
+  const litTop = cy + R * 0.3;
+  const litMax = small ? LIT_SMALL : LIT;
   layers.push((x, y) => {
-    const d = Math.hypot(x, y) - (R + lw / 2);
-    if (d <= 0 || d >= glow) return null;
-    return [...LIGHT, 0.55 * (1 - d / glow) ** 2];
+    if (!inDisc(x, y) || y <= litTop) return null;
+    return [...LIGHT, litMax * Math.min(1, (y - litTop) / (cy + R - litTop))];
   });
-  // A hairline of ink outside the ring, so it holds on a white taskbar.
-  layers.push((x, y) => {
-    const d = Math.hypot(x, y) - (R + lw / 2);
-    return d > -0.2 && d <= rim ? [...RIM, 0.55] : null;
-  });
-  // The dark disc inside, with the ring's faint light towards the rim.
-  layers.push((x, y) => {
-    const d = Math.hypot(x, y) / R;
-    if (d > 1) return null;
-    return [...mixc(DISC, LIGHT, 0.06 + 0.22 * d ** 3), 1];
-  });
-  // The ring.
-  layers.push((x, y) => (Math.abs(Math.hypot(x, y) - R) <= lw / 2 ? [...RING, 1] : null));
+  // A faint edge, so the disc holds on a dark taskbar.
+  const lw = Math.max(1, size / 128);
+  const rimA = small ? 0.22 : 0.13;
+  layers.push((x, y) => (Math.abs(Math.hypot(x - c, y - cy) - R) <= lw / 2 ? [...WHITE, rimA] : null));
 
-  // The eyes: two lit pills with a soft glow (looks.ts LOOK_EYES.filo).
-  const ew = Math.max(1.7, R * 0.2);
-  const eh = Math.max(3.4, R * 0.42);
-  const ex = Math.max(2.1, R * 0.3);
-  const ey = -R * 0.02;
-  const eg = small ? 0 : ew * 0.9;
-  layers.push((x, y) => {
-    let best = Infinity;
-    for (const sd of [-1, 1]) best = Math.min(best, pillDistance(x - sd * ex, y - ey, ew, eh));
-    if (best === 0 || eg === 0 || best >= eg) return null;
-    return [...LIGHT, 0.5 * (1 - best / eg) ** 2];
-  });
-  layers.push((x, y) => {
-    for (const sd of [-1, 1]) if (insidePill(x - sd * ex, y - ey, ew, eh)) return [...EYES, 1];
-    return null;
-  });
-  return { layers, cy: size / 2 };
+  // The eyes: two crisp lit pills (looks.ts LOOK_EYES: w 0.475 of h, 1.5 h apart).
+  const h0 = R * 0.6;
+  const spread = h0 * 1.5;
+  const ecy = small ? cy : cy - R * 0.04;
+  let eyes;
+  if (small) {
+    const h = h0 * 1.15;
+    const ew = Math.max(2, Math.round(h * 0.475));
+    const eh = Math.max(4, Math.round(h));
+    const half = Math.round(spread / 2 - ew / 2);
+    const lx = Math.round(c - half - ew);
+    const top = Math.round(ecy - eh / 2);
+    const r = ew <= 2 ? 0.6 : ew / 2;
+    eyes = [lx, size - lx - ew].map((X) => [X, top, ew, eh, r]);
+  } else {
+    const ew = h0 * 0.475;
+    eyes = [-1, 1].map((sd) => [c + (sd * spread) / 2 - ew / 2, ecy - h0 / 2, ew, h0, ew / 2]);
+  }
+  layers.push((x, y) => (eyes.some((e) => insideRRect(x, y, ...e)) ? [...EYES, 1] : null));
+  return layers;
 }
 
 function renderLumo(size) {
   const px = new Uint8Array(size * size * 4);
-  const { layers, cy } = lumoLayers(size);
-  const cx = size / 2;
+  const layers = lumoLayers(size);
   const total = SS * SS;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -105,8 +112,8 @@ function renderLumo(size) {
       let r = 0, g = 0, b = 0, a = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const lx = x + (sx + 0.5) / SS - cx;
-          const ly = y + (sy + 0.5) / SS - cy;
+          const lx = x + (sx + 0.5) / SS;
+          const ly = y + (sy + 0.5) / SS;
           let cr = 0, cg = 0, cb = 0, ca = 0;
           for (const layer of layers) {
             const c = layer(lx, ly);

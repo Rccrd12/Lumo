@@ -69,6 +69,8 @@ export interface ViewActions {
   answerInTerminal(): void;
   setVolume(v: number): void;
   openSettingsWindow(): void;
+  /** Settings inside the island, as the gear opens them, on one of its pages (null: the one it was left on). */
+  openSettingsAt(page: string | null): void;
   blip(): void;
   /** Wardrobe click on Claude's mouse (computer use): keeps it. */
   chooseComputerCursor(cursor: ComputerCursor): void;
@@ -357,7 +359,8 @@ function buildOverview(actions: ViewActions): ViewHost {
       cardKey = "";
       State.notify();
     },
-    openSettings: () => actions.openSettingsWindow(),
+    // Inside the island, on Pills & integrations, as the gear's other ways in do.
+    openSettings: () => actions.openSettingsAt("pills"),
     openChat: () => actions.setView("prompt"),
   };
 

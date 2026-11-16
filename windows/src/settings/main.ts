@@ -793,7 +793,7 @@ const SECURITY = {
   get mailHint() { return t("What the AI may do with your email."); },
   get calendarHint() { return t("Read your coming events, or nothing."); },
   get outlookStart() { return t("Open Outlook if it's closed"); },
-  get outlookStartHint() { return t("Starts Outlook in the background when Lumo starts."); },
+  get outlookStartHint() { return t("Starts Outlook in the background when Lumo starts, and when you open the Email view."); },
   get githubHint() { return t("Read your pull requests, issues and checks."); },
   get otherFiles() { return t("Other chats' files"); },
   get otherFilesHint() { return t("Agents also read the files given to other chats."); },
