@@ -779,6 +779,134 @@ pub fn reasoning_effort(caps: &Caps, picked: &str) -> Option<&'static str> {
     }
 }
 
+// ── How many answers at once ──────────────────────────────────────────────────
+//
+// For the agents of a local model's chat (api_agents.rs run_agents): as many
+// start together as the server writes answers at once, the others wait in
+// line. Asked once, when the model starts them; a server that says nothing
+// gets one at a time, as before.
+//
+// - llama.cpp's llama-server (the custom server) and Unsloth Studio, which
+//   serves the same endpoints: `GET /props` says `total_slots` (its
+//   `--parallel`), and `GET /slots` which of them are writing now
+//   (`is_processing`): another chat or another app keeps those. Unsloth
+//   Studio also says `parallel_slots` in `/api/inference/status`. In router
+//   mode llama-server wants the model as `?model=`; one model alone ignores it.
+// - LM Studio (0.4 and later): `GET /api/v1/models`, the loaded instance's
+//   `config.parallel` (Max Concurrent Predictions in its loader, 4 unless
+//   changed). It doesn't say which are busy: those it can't take, it queues.
+// - Ollama says nothing: its OLLAMA_NUM_PARALLEL, when it is set on this
+//   computer and the server is this computer's, as the Ollama CLI reads
+//   OLLAMA_HOST.
+
+/// Asking how many: the server has just answered the chat, so it answers at
+/// once, or the agents don't wait for it.
+const SLOTS_QUICK: Duration = Duration::from_secs(3);
+
+/// The answers a server writes at once for a model, and how many of them it
+/// is writing now for someone else.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Slots {
+    pub total: usize,
+    pub busy: usize,
+}
+
+impl Slots {
+    /// How many agents start together: the free slots, at least one (the
+    /// server queues what it can't take), at most `max`.
+    pub fn room(&self, max: usize) -> usize {
+        self.total.saturating_sub(self.busy).clamp(1, max.max(1))
+    }
+}
+
+/// llama-server's `/props` (or Unsloth Studio's copy of it): its slots.
+fn parse_total_slots(props: &Value) -> Option<usize> {
+    props["total_slots"].as_u64().filter(|n| *n > 0).map(|n| n as usize)
+}
+
+/// llama-server's `/slots`: how many are writing an answer now.
+fn parse_busy_slots(slots: &Value) -> usize {
+    slots.as_array().into_iter().flatten().filter(|s| s["is_processing"].as_bool() == Some(true)).count()
+}
+
+/// Unsloth Studio's `/api/inference/status`: the slots of the model in memory.
+fn parse_unsloth_parallel(status: &Value) -> Option<usize> {
+    status["parallel_slots"].as_u64().filter(|n| *n > 0).map(|n| n as usize)
+}
+
+/// LM Studio's `/api/v1/models`: Max Concurrent Predictions of `model`'s
+/// loaded instance (`lmstudio_entry`).
+fn parse_lmstudio_parallel(model: &str, body: &Value) -> Option<usize> {
+    let (_, instance) = lmstudio_entry(model, body)?;
+    instance?["config"]["parallel"].as_u64().filter(|n| *n > 0).map(|n| n as usize)
+}
+
+/// Ollama's OLLAMA_NUM_PARALLEL, as set on this computer, for a server on it.
+fn ollama_parallel(var: Option<&str>, on_this_computer: bool) -> Option<usize> {
+    let n: usize = var?.trim().parse().ok()?;
+    (on_this_computer && n > 0).then_some(n)
+}
+
+/// `path` with `?model=` (llama-server's router mode).
+fn with_model(base: &Url, path: &str, model: &str) -> Option<Url> {
+    let mut url = Url::parse(&net::join(base, path)).ok()?;
+    url.query_pairs_mut().append_pair("model", model);
+    Some(url)
+}
+
+async fn get_quick(server: &Server, url: Url) -> Option<Value> {
+    let response = net::client(&url, SLOTS_QUICK)
+        .ok()?
+        .get(url)
+        .header("Authorization", local_chat::bearer(server.key.as_deref()))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let bytes = net::read_capped(response, net::MAX_BODY).await.ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// What `server` says of the answers it writes at once for `model`; None
+/// when it says nothing (the agents then run one at a time).
+pub async fn slots(server: &Server, model: &str) -> Option<Slots> {
+    let model = safe_name(model)?;
+    let base = local_chat::base_url(server).ok()?;
+    let slots = match server.id {
+        "lmstudio" => {
+            let body = get_quick(server, Url::parse(&net::join(&base, "api/v1/models")).ok()?).await?;
+            Some(Slots { total: parse_lmstudio_parallel(model, &body)?, busy: 0 })
+        }
+        "ollama" => {
+            let var = std::env::var("OLLAMA_NUM_PARALLEL").ok();
+            Some(Slots { total: ollama_parallel(var.as_deref(), net::is_loopback_url(&base))?, busy: 0 })
+        }
+        "unsloth" | "custom" => {
+            let props = get_quick(server, with_model(&base, "props", model)?).await;
+            let mut total = props.as_ref().and_then(parse_total_slots);
+            if total.is_none() && server.id == "unsloth" {
+                let status = get_quick(server, Url::parse(&net::join(&base, "api/inference/status")).ok()?).await;
+                total = status.as_ref().and_then(parse_unsloth_parallel);
+            }
+            let total = total?;
+            let busy = if total > 1 {
+                get_quick(server, with_model(&base, "slots", model)?).await.map_or(0, |s| parse_busy_slots(&s))
+            } else {
+                0
+            };
+            Some(Slots { total, busy })
+        }
+        _ => None,
+    };
+    crate::log::line(match slots {
+        Some(s) => format!("[local] {} {model}: {} answers at once, {} busy now", server.id, s.total, s.busy),
+        None => format!("[local] {} {model}: doesn't say how many answers at once; agents one at a time", server.id),
+    });
+    slots
+}
+
 // ── Downloads ─────────────────────────────────────────────────────────────────
 
 /// Ollama's progress, layer by layer: what each one has, summed.
@@ -923,6 +1051,70 @@ pub async fn pull(app: &AppHandle, provider: &str, model: &str) -> Result<(), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn llama_cpp_says_its_slots_and_which_are_busy() {
+        let props = json!({ "total_slots": 4, "default_generation_settings": { "n_ctx": 8192 } });
+        assert_eq!(parse_total_slots(&props), Some(4));
+        assert_eq!(parse_total_slots(&json!({ "total_slots": 0 })), None);
+        assert_eq!(parse_total_slots(&json!({ "model_path": "x.gguf" })), None);
+        let slots = json!([
+            { "id": 0, "is_processing": true },
+            { "id": 1, "is_processing": false },
+            { "id": 2, "is_processing": true },
+            { "id": 3 }
+        ]);
+        assert_eq!(parse_busy_slots(&slots), 2);
+        assert_eq!(parse_busy_slots(&json!({ "error": "not enabled" })), 0);
+        assert_eq!(parse_unsloth_parallel(&json!({ "parallel_slots": 2 })), Some(2));
+        assert_eq!(parse_unsloth_parallel(&json!({ "parallel_slots": null })), None);
+    }
+
+    #[test]
+    fn lm_studio_says_max_concurrent_predictions_of_the_loaded_instance() {
+        let body = json!({ "models": [
+            { "key": "google/gemma-3-12b", "loaded_instances": [] },
+            { "key": "unsloth/gemma-4-26b", "loaded_instances": [
+                { "id": "unsloth/gemma-4-26b", "config": { "context_length": 32768, "parallel": 4 } }
+            ] },
+            { "key": "qwen3-8b", "loaded_instances": [
+                { "id": "qwen3-8b", "config": { "context_length": 4096 } }
+            ] }
+        ] });
+        assert_eq!(parse_lmstudio_parallel("unsloth/gemma-4-26b", &body), Some(4));
+        // Not in memory, or an older LM Studio that doesn't say: unknown.
+        assert_eq!(parse_lmstudio_parallel("google/gemma-3-12b", &body), None);
+        assert_eq!(parse_lmstudio_parallel("qwen3-8b", &body), None);
+        assert_eq!(parse_lmstudio_parallel("other", &body), None);
+    }
+
+    #[test]
+    fn ollama_parallel_is_read_only_for_a_server_on_this_computer() {
+        assert_eq!(ollama_parallel(Some("3"), true), Some(3));
+        assert_eq!(ollama_parallel(Some("3"), false), None);
+        assert_eq!(ollama_parallel(Some("0"), true), None);
+        assert_eq!(ollama_parallel(Some("four"), true), None);
+        assert_eq!(ollama_parallel(None, true), None);
+    }
+
+    #[test]
+    fn agents_start_together_as_many_as_the_free_slots() {
+        assert_eq!(Slots { total: 4, busy: 0 }.room(6), 4);
+        // One slot already writes for another chat: one fewer.
+        assert_eq!(Slots { total: 4, busy: 1 }.room(6), 3);
+        // All busy, or none said: still one (the server queues it).
+        assert_eq!(Slots { total: 2, busy: 2 }.room(6), 1);
+        assert_eq!(Slots { total: 0, busy: 0 }.room(6), 1);
+        // Never more than run_agents takes.
+        assert_eq!(Slots { total: 16, busy: 0 }.room(6), 6);
+    }
+
+    #[test]
+    fn the_model_goes_along_for_llama_servers_router_mode() {
+        let base = Url::parse("http://127.0.0.1:8080").unwrap();
+        let url = with_model(&base, "props", "unsloth/gemma-4-26B-A4B-it-qat-GGUF:Q4_K_M").unwrap();
+        assert_eq!(url.as_str(), "http://127.0.0.1:8080/props?model=unsloth%2Fgemma-4-26B-A4B-it-qat-GGUF%3AQ4_K_M");
+    }
 
     #[test]
     fn a_question_waits_for_the_pickers_load_with_its_percent() {

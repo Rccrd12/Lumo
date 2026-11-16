@@ -189,9 +189,27 @@ fn command_activity(actions: &Value) -> Activity {
     }
 }
 
+/// An item that calls Lumo's browser (an `mcpToolCall` of server `lumo`):
+/// the tool and its input.
+fn browser_call(item: &Value) -> Option<(&'static str, Value)> {
+    if item["type"] != "mcpToolCall" {
+        return None;
+    }
+    let tool = crate::browser::tool_of(item["server"].as_str().unwrap_or(""), item["tool"].as_str().unwrap_or(""))?;
+    let input = match &item["arguments"] {
+        Value::String(text) => serde_json::from_str::<Value>(text).unwrap_or(Value::Null),
+        other => other.clone(),
+    };
+    Some((tool, if input.is_object() { input } else { json!({}) }))
+}
+
 /// What an item Codex started is doing, for the island; None for the items
 /// that are text (its answer) or nothing to show.
 fn activity_for(item: &Value) -> Option<Activity> {
+    // Lumo's browser (browser.rs): the site it opens, as for Claude Code.
+    if let Some((_, input)) = browser_call(item) {
+        return Some(crate::browser::activity(&input));
+    }
     Some(match item["type"].as_str()? {
         "reasoning" | "contextCompaction" | "sleep" => Activity::thinking(),
         "commandExecution" => command_activity(&item["commandActions"]),
@@ -654,6 +672,10 @@ impl Subagents {
         let item = &params["item"];
         match method {
             "item/started" => {
+                // Its call of Lumo's browser: the tab it opens or uses is its own.
+                if let Some((tool, input)) = browser_call(item) {
+                    self.agents.browsed(thread, tool, input);
+                }
                 let row = self.agents.upsert(thread, || AgentRow::new(thread, PROVIDER, &t("Agent")));
                 if let Some(now) = activity_for(item) {
                     if now.kind != "thinking" {
@@ -1515,6 +1537,13 @@ mod tests {
         assert_eq!(activity_for(&json!({ "type": "webSearch", "query": "x" })), Some(Activity::new("web", "")));
         assert_eq!(activity_for(&json!({ "type": "reasoning" })), Some(Activity::thinking()));
         assert_eq!(activity_for(&json!({ "type": "agentMessage", "text": "x" })), None);
+        // Lumo's browser: the site it opens; another server's tool, its name.
+        let open = json!({ "type": "mcpToolCall", "server": "lumo", "tool": "browser_open", "arguments": { "url": "https://www.ft.com/markets" } });
+        assert_eq!(activity_for(&open), Some(Activity::new("read", "ft.com")));
+        let read = json!({ "type": "mcpToolCall", "server": "lumo", "tool": "browser_read", "arguments": "{\"tab\":3}" });
+        assert_eq!(browser_call(&read), Some(("browser_read", json!({ "tab": 3 }))), "arguments as JSON text");
+        let other = json!({ "type": "mcpToolCall", "server": "github", "tool": "browser_open", "arguments": {} });
+        assert_eq!((browser_call(&other), activity_for(&other)), (None, Some(Activity::new("tool", "browser open"))));
     }
 
     #[test]
@@ -1655,6 +1684,10 @@ mod tests {
 
         // Its own thread: what it does, how many steps, its last message.
         let on_sub = |method: &str, params: &str| format!(r#"{{"method":"{method}","params":{{"threadId":"{SUB}",{params}}}}}"#);
+        // Its calls of Lumo's browser: the tabs they open or use are its own.
+        feed_agents(&mut sub, &[&on_sub("item/started", r#""item":{"type":"mcpToolCall","id":"m1","server":"lumo","tool":"browser_open","arguments":{"url":"example.com"},"status":"inProgress"}"#)]);
+        assert_eq!(sub.agents.take_browsed(), [(SUB.to_string(), "browser_open", json!({ "url": "example.com" }))]);
+        assert_eq!(sub.agents.get(SUB).unwrap().now, Some(Activity::new("read", "example.com")));
         feed_agents(
             &mut sub,
             &[
@@ -1666,13 +1699,13 @@ mod tests {
         );
         let a = sub.agents.get(SUB).unwrap();
         assert_eq!(a.now, Some(Activity::new("edit", "parser.rs")));
-        assert_eq!(a.steps, 2, "thinking is no step");
+        assert_eq!(a.steps, 3, "thinking is no step");
         assert_eq!(a.summary.as_deref(), Some("The parser fails on empty input."));
         feed_agents(&mut sub, &[&on_sub("turn/completed", r#""turn":{"id":"t9","status":"completed","items":[]}"#)]);
         assert_eq!(sub.agents.get(SUB).unwrap().state, AgentState::Done);
         // Ended: what comes after changes nothing.
         feed_agents(&mut sub, &[&on_sub("item/started", r#""item":{"type":"webSearch","id":"w1"}"#)]);
-        assert_eq!(sub.agents.get(SUB).unwrap().steps, 2);
+        assert_eq!(sub.agents.get(SUB).unwrap().steps, 3);
         // The chat's own thread is no agent.
         sub.agents.changed();
         feed_agents(&mut sub, &[&format!(r#"{{"method":"item/started","params":{{"threadId":"{THREAD}","item":{{"type":"webSearch","id":"w2"}}}}}}"#)]);

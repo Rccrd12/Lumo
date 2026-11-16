@@ -2589,15 +2589,16 @@ math.mx .mx-cancel.mx-sout {
   height: 5px;
   border-radius: 50%;
   background: var(--dim-3);
-  animation: typing 0.9s ease-in-out infinite;
+  opacity: 0.4;
+  animation: typing 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .typing i:nth-child(2) {
-  animation-delay: 0.14s;
+  animation-delay: 0.15s;
 }
 
 .typing i:nth-child(3) {
-  animation-delay: 0.28s;
+  animation-delay: 0.3s;
 }
 
 /* What the answer is doing, next to the dots: Thinking…, Reading report.pdf… */
@@ -2612,9 +2613,10 @@ math.mx .mx-cancel.mx-sout {
   text-overflow: ellipsis;
 }
 
+/* A wave: each dot in turn rises 3 px and lights up (concept: puntini-attesa, A). */
 @keyframes typing {
-  0%, 100% { transform: scale(0.6); }
-  50% { transform: scale(1.2); }
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-3px); opacity: 1; }
 }
 
 /* ── Provider and model switcher (PromptView's model button) ─────────────── */
@@ -4492,6 +4494,20 @@ math.mx .mx-cancel.mx-sout {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* "More models": the older versions (Claude Code's) open under it. */
+.picker-more {
+  color: #8a8f98;
+}
+
+.picker-more > svg {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+
+.picker-more.open > svg {
+  transform: rotate(180deg);
 }
 
 .picker-status {
@@ -10557,15 +10573,16 @@ button.bg-row:hover {
   height: 5px;
   border-radius: 50%;
   background: var(--ag-working);
-  animation: typing 0.9s ease-in-out infinite;
+  opacity: 0.4;
+  animation: typing 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .agents-dots i:nth-child(2) {
-  animation-delay: 0.14s;
+  animation-delay: 0.15s;
 }
 
 .agents-dots i:nth-child(3) {
-  animation-delay: 0.28s;
+  animation-delay: 0.3s;
 }
 
 .agents-live.stalled .agents-dots i { background: var(--ag-stalled); }
@@ -10596,8 +10613,10 @@ button.bg-row:hover {
 .typing-stall.waiting { color: #a78bfa; }
 
 @media (prefers-reduced-motion: reduce) {
-  .agents-dots i {
+  .agents-dots i,
+  .typing i {
     animation: none;
+    opacity: 1;
   }
 }
 

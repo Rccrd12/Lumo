@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::claude_code::Activity;
@@ -115,7 +115,7 @@ pub struct AgentRow {
     /// The last message its CLI sent it, and its answer once it came.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub talk: Option<AgentTalk>,
-    /// With `Waiting` for "queue": its place in line (a local model's agents run one at a time).
+    /// With `Waiting` for "queue": its place in line (a local model's agents run as many at once as its server's slots).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub queue: Option<u32>,
     /// What ended it under its work: "cli" when its CLI ended while it was
@@ -263,9 +263,26 @@ pub fn summary_of(text: &str) -> String {
 pub struct Agents {
     rows: Vec<AgentRow>,
     dirty: Vec<String>,
+    /// Lumo's browser calls the agents made, as the CLI's stream told them,
+    /// not passed on yet: agent, tool, input (browser.rs agent_called).
+    browsed: Vec<(String, &'static str, Value)>,
 }
 
 impl Agents {
+    /// Agent `id` called Lumo's browser tool `tool` with `input`: the tab it
+    /// opens or uses is its own (`teller` passes it on).
+    pub fn browsed(&mut self, id: &str, tool: &'static str, input: Value) {
+        // A handful at most between two tells.
+        if self.browsed.len() < 64 {
+            self.browsed.push((id.to_string(), tool, input));
+        }
+    }
+
+    /// The browser calls not passed on yet.
+    pub fn take_browsed(&mut self) -> Vec<(String, &'static str, Value)> {
+        std::mem::take(&mut self.browsed)
+    }
+
     pub fn get(&self, id: &str) -> Option<&AgentRow> {
         self.rows.iter().find(|r| r.id == id)
     }
@@ -364,6 +381,11 @@ pub fn teller(app: &AppHandle, chat: &str) -> Tell {
     Arc::new(move |agents: &mut Agents, alive: bool| {
         if alive {
             events.signal(&app);
+        }
+        // The tabs its agents opened or use are theirs, before those of the
+        // agents that ended close.
+        for (agent, tool, input) in agents.take_browsed() {
+            crate::browser::agent_called(&app, &chat, &agent, tool, &input);
         }
         // An agent that ended waits for the computer no more, nor keeps it,
         // and its browser tabs close.

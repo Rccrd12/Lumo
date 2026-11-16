@@ -1190,7 +1190,7 @@ fn parse_models(p: &Provider, json: &Value) -> Vec<ModelInfo> {
             let label = if free && !name.to_lowercase().contains("(free)") { format!("{name} (free)") } else { name.to_string() };
             let reasoning = reasoning_levels(p, m, &id);
             let context = context_of(p, m, &id);
-            Some((ModelInfo { id, label, reasoning, context }, created, free))
+            Some((ModelInfo { id, label, reasoning, context, older: false }, created, free))
         })
         .collect();
     match p.id {

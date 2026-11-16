@@ -10,6 +10,7 @@ Lumo for Windows is a Tauri app (`windows/`), a fork of a macOS app by Louis Rai
 - `windows/screenshots/` — reference screenshots of the shipped views.
 - `windows/e2e/` — end-to-end tests of the real app (real mouse, real `lumo-hook`), run on every PR by `.github/workflows/windows-e2e.yml`; see `windows/e2e/README.md`.
 - `docs/AGENTS.md` — the hook payload protocol for agents.
+- `README.md` — short, for people who have never seen Lumo: one sentence, the videos in `docs/media/`, install, privacy in brief. Details go in `windows/README.md`, not here. `windows/dev/readme-media.mjs` records the island's videos again, `windows/dev/readme-hero.mjs` the main one on a real desktop.
 
 ## Build
 ```
@@ -30,4 +31,4 @@ Checks: `cd windows && npx tsc --noEmit && npm test`, then `cargo build --releas
 - Never restyle what already ships (pills, cards, Settings, chat…): existing views stay exactly as they are in `main`, which is the released build. Change the look of an existing view only when explicitly asked.
 - Pill IDs are stable contract values (credential store, settings, hook routing): never rename an existing pill ID.
 - New views follow the existing app style. `windows/screenshots/` are references for new work, not a reason to change existing views.
-- Every release adds its CHANGELOG.md section, a row in the README Versions table, and bumps the version in `windows/src-tauri/tauri.conf.json`, `windows/package.json` and `windows/Cargo.toml` (the release workflows check they match the tag).
+- Every release adds its CHANGELOG.md section and bumps the version in `windows/src-tauri/tauri.conf.json`, `windows/package.json` and `windows/Cargo.toml` (the release workflows check they match the tag).
