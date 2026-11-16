@@ -1059,6 +1059,8 @@ export interface ModelInfo {
   reasoning?: string[];
   /** The same: its context, in tokens. */
   context?: number;
+  /** An older version (Claude Code's list): kept under "More models" in the picker. */
+  older?: boolean;
 }
 
 /** A model a local server holds in memory (local_models.rs). */

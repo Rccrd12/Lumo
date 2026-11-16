@@ -143,6 +143,9 @@ pub struct ModelInfo {
     pub reasoning: Vec<String>,
     #[serde(skip_serializing_if = "is_zero")]
     pub context: u64,
+    /// An older version, which the picker keeps under "More models" (Claude Code's list).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub older: bool,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -1523,7 +1526,7 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
         return claude::models(&key).await;
     }
     if provider == claude_code::PROVIDER {
-        return Ok(claude_code::models());
+        return Ok(claude_code::models().await);
     }
     if provider == antigravity_cli::PROVIDER {
         return antigravity_cli::models().await;

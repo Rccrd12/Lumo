@@ -806,7 +806,15 @@ last one in the chat, is saved with it, and the closed island says so; a
 message sent meanwhile goes once it is written. A message
 sent while Claude is still answering waits in the field and goes as soon as the
 answer ends. Install Claude Code and run `claude` once in a terminal to
-sign in before using it. Its **Effort** is a slider under the models, from
+sign in before using it. Its models are those Claude Code itself lists for
+your plan, asked when the picker opens (the `initialize` request of its
+stream-json input, as the Agent SDK sends it: no message goes to Claude and
+nothing of your plan is used), so a model Anthropic releases shows without
+updating Lumo. The current ones come first, **Default** saying which model it
+is; the older versions wait under **More models**, which opens on a click, and
+by itself when the chat is on one of them. A chat keeps the version it was on.
+When Claude Code doesn't answer (not installed, an older version), the picker
+offers Fable 5.2, Opus 5.5, Sonnet 5.5 and Haiku 5.5. Its **Effort** is a slider under the models, from
 Faster to Smarter (low, medium, high, extra high, max), with **Auto** beside it
 for the level its model is made for; it goes to Claude Code as `--effort`.
 Claude Code's own run never shows up as a session in the island: only its

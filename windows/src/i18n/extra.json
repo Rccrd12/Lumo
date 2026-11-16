@@ -21724,6 +21724,18 @@
    "ru": "GitHub не отдаёт Lumo ваши уведомления: войдите через gh или используйте классический токен с разрешением notifications.",
    "id": "GitHub tidak memberikan notifikasi Anda ke Lumo: masuk dengan gh, atau gunakan token klasik dengan izin notifications.",
    "it": "GitHub non dà le tue notifiche a Lumo: accedi con gh, oppure usa un token classico con il permesso notifications."
+  },
+  "More models ({count})": {
+   "zh-Hans": "更多模型（{count}）",
+   "hi": "और मॉडल ({count})",
+   "es": "Más modelos ({count})",
+   "ar": "نماذج أخرى ({count})",
+   "fr": "Autres modèles ({count})",
+   "bn": "আরও মডেল ({count})",
+   "pt-BR": "Mais modelos ({count})",
+   "ru": "Другие модели ({count})",
+   "id": "Model lainnya ({count})",
+   "it": "Altri modelli ({count})"
   }
  }
 }
