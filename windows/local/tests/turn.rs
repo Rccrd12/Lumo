@@ -364,6 +364,80 @@ fn pictures_a_model_refuses_are_taken_out_and_the_question_asked_again() {
 }
 
 #[test]
+fn the_browsers_screenshots_follow_the_rounds_answers_and_go_as_words_once_refused() {
+    use lumo_local::guard::{NO_PICTURES, PICTURES};
+    let mut island = Island::default();
+    let mut body = question("Guarda la pagina", &["browser_screenshot"]);
+    let shot = || calls("c1", "browser_screenshot", "{\"tab\":1}");
+    let replies = vec![shot(), answer("Vedo la pagina.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("shots", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Vedo la pagina.");
+    let messages = requests[1]["messages"].as_array().unwrap();
+    assert_eq!(messages[3]["role"], "tool");
+    assert_eq!(messages[4]["role"], "user");
+    assert_eq!(messages[4]["content"][0]["text"], PICTURES);
+    assert_eq!(messages[4]["content"][1]["text"], "Screenshot 1:");
+    assert_eq!(messages[4]["content"][2]["image_url"]["url"], "data:image/png;base64,SHOT1");
+    // A model that refuses them gets words in their place, and no more pictures.
+    let mut island = Island::default();
+    let mut body = question("Guarda la pagina", &["browser_screenshot"]);
+    let refused = Reply::Json(400, json!({ "error": "image input is not supported" }).to_string());
+    let replies = vec![shot(), refused, calls("c2", "browser_screenshot", "{\"tab\":1}"), answer("Non vedo.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("shots-refused", ""), &mut island);
+    assert!(outcome.unwrap().fixes.contains(&"without pictures"));
+    // Said in the tool's answer: no message of the user's after it.
+    let retried = requests[2]["messages"].as_array().unwrap();
+    assert_eq!(retried.len(), 4);
+    assert!(retried[3]["content"].as_str().unwrap().ends_with(NO_PICTURES));
+    let last = requests[3]["messages"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["role"], "tool", "none after the refusal");
+    assert!(last["content"].as_str().unwrap().ends_with(NO_PICTURES));
+    assert_eq!(requests[3]["messages"][1]["content"], "Guarda la pagina", "the question as it was");
+    // Once a request with them was answered, a refusal is about something else: asked again as it was.
+    let mut island = Island::default();
+    // (the round in between takes none: what counts is that they were answered)
+    let mut body = question("Guarda la pagina", &["browser_screenshot", "browser_click"]);
+    let replies = vec![shot(), calls("c2", "browser_click", "{\"tab\":1,\"ref\":3}"), refused_again(), answer("Fatto.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("shots-seen", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["asked again"]);
+    assert_eq!(requests[3]["messages"][4]["content"][0]["text"], PICTURES, "the pictures still go");
+}
+
+fn refused_again() -> Reply {
+    Reply::Json(400, json!({ "error": "Failed to parse tool call" }).to_string())
+}
+
+#[test]
+fn a_long_turn_keeps_only_the_newest_screenshots() {
+    use lumo_local::guard::{keep_last_pictures, pictures_message, PICTURES};
+    let tool = |n: u32| json!({ "role": "tool", "tool_call_id": format!("c{n}"), "content": format!("shot {n}") });
+    let mut body = json!({ "messages": [
+        { "role": "system", "content": "s" }, { "role": "user", "content": "q" },
+        tool(1), pictures_message(&["A".into(), "B".into()]),
+        tool(2), pictures_message(&["C".into()]),
+        tool(3), pictures_message(&["D".into()]),
+    ] });
+    keep_last_pictures(&mut body, 3);
+    let m = body["messages"].as_array().unwrap();
+    let urls: Vec<&str> = m.iter().filter_map(|m| m["content"].as_array()).flatten().filter_map(|p| p.pointer("/image_url/url").and_then(Value::as_str)).collect();
+    assert_eq!(urls, ["data:image/png;base64,B", "data:image/png;base64,C", "data:image/png;base64,D"]);
+    assert_eq!(m.len(), 8);
+    // B keeps its name: it can't pass for the first call's.
+    let first: Vec<&str> = m[3]["content"].as_array().unwrap().iter().filter_map(|p| p["text"].as_str()).collect();
+    assert_eq!(first[0], PICTURES);
+    assert!(first[1].starts_with("(The first of these were left out"));
+    assert_eq!(first[2], "Screenshot 2:");
+    keep_last_pictures(&mut body, 3);
+    assert_eq!(body["messages"][3]["content"].as_array().unwrap().len(), 4, "said once");
+    keep_last_pictures(&mut body, 1);
+    let m = body["messages"].as_array().unwrap();
+    assert_eq!(m.len(), 6, "the emptied ones are taken out");
+    assert!(m[2]["content"].as_str().unwrap().starts_with("shot 1\n\n(Its screenshot was left out"));
+    assert!(m[3]["content"].as_str().unwrap().starts_with("shot 2\n\n(Its screenshot"));
+    assert_eq!(m[5]["content"][0]["text"], PICTURES);
+}
+
+#[test]
 fn a_pdf_s_pages_a_model_refuses_go_again_as_its_text() {
     let mut island = Island::default();
     let user = json!({ "role": "user", "content": [{ "type": "image_url", "image_url": { "url": "data:image/png;base64,AA" } }, { "type": "text", "text": "Cosa c'è?" }] });

@@ -21,13 +21,15 @@
 // only the card is drawn again, never the chat around it. When only its words
 // changed (the times, each second), they are written into the card as it is,
 // so a button pressed or a summary being selected stays under the mouse.
-// What the user opened or folded is kept per card.
+// What the user opened or folded is kept per card; one agent is open at a time
+// (its details or its picture), opening another folds it.
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
+import { isWatching, mountInline, toggleWatch, unwatchOthers, WATCH_TEXT, type InlineActions } from "./browser-watch";
 import type { ChatActivity } from "../core/bridge";
 import {
-  AGENT_TEXT, agentStall, askable, computerOf, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
+  AGENT_TEXT, agentStall, askable, browserOf, computerOf, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
   type AgentBatch, type AgentEntry, type AgentLook, type ChatAgents, type TalkEntry,
 } from "../core/chat-agents";
 import type { AskQuote } from "../core/chats";
@@ -77,6 +79,10 @@ export const AGENTS_CARD_TEXT = {
   waitingComputer: N_("Waiting for the computer · {place} of {total} · {time}"),
   inLineComputer: N_("Waiting for the computer"),
   giveTurn: N_("Give it the turn"),
+  /** The site the agent's hidden browser tab is on (browser.rs). */
+  onSite: N_("on {host}"),
+  /** Opens a live picture of the agent's browser tab under its row (views/browser-watch.ts). */
+  watch: N_("agents|Watch"),
   /** Stop clicked: it goes after STOP_UNDO_MS, unless Undo takes it back. */
   stopping: N_("Stopping in {time}…"),
   undo: N_("agents|Undo"),
@@ -108,8 +114,8 @@ export function stopPending(chatId: string, agentId: string, now = Date.now()): 
   return s ? Math.max(0, s.at - now) : null;
 }
 
-/** Stop clicked: the agent stops in STOP_UNDO_MS, unless Undo comes first. */
-function stopLater(chatId: string, agentId: string, host: AgentsCardHost, redraw: () => void) {
+/** Stop clicked: the agent stops in STOP_UNDO_MS, unless Undo comes first (its row offers it; the agents' browser view sends here too). */
+export function stopLater(chatId: string, agentId: string, host: AgentsCardHost, redraw: () => void) {
   const key = stopKey(chatId, agentId);
   if (stopping.has(key)) return;
   const timer = setTimeout(() => {
@@ -154,6 +160,8 @@ export interface AgentsCardHost {
   ask?(quote: AskQuote): void;
   /** Give it the turn: the agent waiting for the computer goes first in line (`chat_computer_first`). */
   computerFirst?(agentId: string): void;
+  /** Watch on the card can show the agents' browser tabs (views/browser-watch.ts): the chat on screen. */
+  watchBrowser?: boolean;
   /** The card changed: its height, or its state worth saving. */
   changed(): void;
 }
@@ -176,6 +184,8 @@ interface CardUi {
   unfolded: boolean;
   /** The rows opened on their details. */
   open: Set<string>;
+  /** This drawing's watched rows and what their picture can do (fillAgentsCard mounts it). */
+  watched?: Map<string, InlineActions>;
 }
 
 const uis = new Map<string, CardUi>();
@@ -223,6 +233,19 @@ function cardButton(cls: string, text: string, run: () => void): HTMLElement {
   });
 }
 
+/**
+ * The conversation's own browser tab (agent "main", browser.rs), next to the
+ * typing dots, as an agent's is on its row: the site it is on, and Watch.
+ * The conversation has no row of its own. Null when it has no tab.
+ */
+export function mainBrowser(chatId: string, watch: () => void): HTMLElement | null {
+  // Watch: the agents' browser, on the conversation's tab (it has no row to open under).
+  const tab = browserOf(chatId, "main");
+  if (!tab) return null;
+  const site = tab.host ? h("span", { class: "agents-badge browser", text: t(AGENTS_CARD_TEXT.onSite, { host: tab.host }), title: tab.title || tab.host }) : null;
+  return h("span", { class: "typing-browser" }, ...(site ? [site] : []), cardButton("watch", tc(AGENTS_CARD_TEXT.watch), watch));
+}
+
 function chevron(down: boolean, title: string): HTMLElement {
   return h("span", { class: down ? "agents-chev down" : "agents-chev", title, "aria-label": title }, svg(ICONS.chevronUp, 12, { stroke: 1.8 }));
 }
@@ -249,13 +272,21 @@ function endedByCli(entries: AgentEntry[]): { name: string; entries: AgentEntry[
 export function fillAgentsCard(el: HTMLElement, input: AgentsCardInput, host: AgentsCardHost) {
   latest.set(el, { input, host });
   const fresh = h("div");
-  drawCard(fresh, el, input, host);
+  const watched = new Map<string, InlineActions>();
+  drawCard(fresh, el, input, host, watched);
   if (sameShape(el, fresh)) {
     copyWords(el, fresh);
-    return;
+  } else {
+    clear(el);
+    el.append(...Array.from(fresh.childNodes));
   }
-  clear(el);
-  el.append(...Array.from(fresh.childNodes));
+  // The picture under a watched row: the same one, wherever the row is drawn.
+  if (!watched.size) return;
+  for (const slot of Array.from(el.querySelectorAll<HTMLElement>(".bw-slot"))) {
+    const agentId = slot.getAttribute("data-agent") ?? "";
+    const acts = watched.get(agentId);
+    if (acts) mountInline(slot, input.chatId, agentId, acts);
+  }
 }
 
 /** The class of an element, as a string also for an SVG one. */
@@ -273,7 +304,9 @@ function sameShape(a: Element, b: Element): boolean {
     if (x.nodeType !== 1) continue;
     const ex = x as Element;
     const ey = y as Element;
-    if (ex.tagName !== ey.tagName || classOf(ex) !== classOf(ey) || !sameShape(ex, ey)) return false;
+    if (ex.tagName !== ey.tagName || classOf(ex) !== classOf(ey)) return false;
+    // A watched agent's picture (views/browser-watch.ts) is its own: only its place counts.
+    if (classOf(ex) === "bw-slot" ? ex.getAttribute("data-agent") !== ey.getAttribute("data-agent") : !sameShape(ex, ey)) return false;
   }
   return true;
 }
@@ -285,6 +318,7 @@ function copyWords(to: Element, from: Element) {
     if (v == null) to.removeAttribute(attr);
     else if (to.getAttribute(attr) !== v) to.setAttribute(attr, v);
   }
+  if (classOf(to) === "bw-slot") return;
   for (let i = 0; i < to.childNodes.length; i++) {
     const x = to.childNodes[i];
     const y = from.childNodes[i];
@@ -296,7 +330,7 @@ function copyWords(to: Element, from: Element) {
 }
 
 /** Draws the card into `into`; `el` is the card itself, which its buttons draw again. */
-function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, given: AgentsCardHost) {
+function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, given: AgentsCardHost, watched: Map<string, InlineActions>) {
   const now = input.now ?? Date.now();
   // From the newest input and host: a button drawn a while ago acts on what is known now.
   const current = () => latest.get(el) ?? { input, host: given };
@@ -308,6 +342,7 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
     seeRequest: (id) => current().host.seeRequest(id),
     ask: given.ask ? (quote) => current().host.ask?.(quote) : undefined,
     computerFirst: given.computerFirst ? (id) => current().host.computerFirst?.(id) : undefined,
+    watchBrowser: given.watchBrowser,
     changed: () => current().host.changed(),
   };
   const key = agentsCardKey(input.chatId, input.batch);
@@ -321,6 +356,7 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
     last.host.changed();
   };
   if (entries.length === 0) return;
+  ui.watched = watched;
 
   const ended = allOver ? endedByCli(entries) : null;
   if (ended && !input.batch.resumed) {
@@ -407,6 +443,16 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const side = h("span", { class: "agents-side" });
   const ask = canAsk(e, host) && left == null ? () => host.ask!({ agentId: r.id, title: r.title, line, look }) : null;
   const stop = () => stopLater(input.chatId, r.id, host, redraw);
+  // A tab it browses in, while it is at work: Watch shows it under the row, Hide closes it.
+  const tab = isFinal(r.state) ? undefined : browserOf(input.chatId, r.id);
+  const watch = tab && host.watchBrowser && left == null ? () => {
+    toggleWatch(input.chatId, r.id);
+    // One agent open at a time: its picture folds the others' rows.
+    if (isWatching(input.chatId, r.id)) onlyOpen(ui, input.chatId, r.id);
+    redraw();
+  } : null;
+  const watching = !!watch && isWatching(input.chatId, r.id);
+  const watchButton = () => cardButton(watching ? "watch on" : "watch", tc(watching ? WATCH_TEXT.hide : AGENTS_CARD_TEXT.watch), watch!);
   if (left != null) {
     // Stop clicked: Undo until it goes.
     side.append(cardButton("undo", tc(AGENTS_CARD_TEXT.undo), () => undoStop(input.chatId, r.id, redraw)));
@@ -428,11 +474,13 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     if (pc?.waits && pc.place > 1 && host.computerFirst) {
       side.append(cardButton("first", t(AGENTS_CARD_TEXT.giveTurn), () => host.computerFirst!(r.id)));
     }
+    if (watch) side.append(watchButton());
   } else if (look === "done") {
     side.append(h("span", { class: "agents-time", text: t(AGENTS_CARD_TEXT.doneIn, { time: durationText((r.endedAt ?? now) - r.startedAt) }) }));
   } else if (look === "failed") {
     if (r.endedAt) side.append(h("span", { class: "agents-time", text: durationText(r.endedAt - r.startedAt) }));
   } else {
+    if (watch) side.append(watchButton());
     side.append(h("span", { class: "agents-time", text: `${durationText(now - r.startedAt)} · ${t(AGENTS_CARD_TEXT.ago, { time: durationText(now - r.lastSignalAt) })}` }));
   }
   const open = ui.open.has(r.id);
@@ -442,21 +490,38 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   const computer = !isFinal(r.state) && computerOf(r.id)?.holds
     ? h("span", { class: "agents-badge computer", text: t(AGENTS_CARD_TEXT.usesComputer) })
     : null;
+  const site = tab?.host ? h("span", { class: "agents-badge browser", text: t(AGENTS_CARD_TEXT.onSite, { host: tab.host }), title: tab.title || tab.host }) : null;
   const head = h("div", { class: "agents-row-head" },
     marker,
     h("span", { class: "agents-name", text: r.title, title: r.title }),
     ...(talking ? [talking] : []),
     ...(computer ? [computer] : []),
+    ...(site ? [site] : []),
     h("span", { class: "agents-line", text: line, title: line }),
     side);
-  const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}` }, head);
+  const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}${watching ? " watching" : ""}` }, head);
   head.addEventListener("click", () => {
     if (open) ui.open.delete(r.id);
-    else ui.open.add(r.id);
+    else {
+      // One agent open at a time: the others fold, and another's picture closes.
+      onlyOpen(ui, input.chatId, r.id);
+      ui.open.add(r.id);
+    }
     redraw();
   });
-  if (open) el.append(rowDetail(e, host, ui, now, redraw, ask, left == null ? stop : null));
+  if (watching) {
+    // The live picture of its tab (views/browser-watch.ts), put in after the card is drawn.
+    el.append(h("div", { class: "bw-slot", "data-agent": r.id }));
+    ui.watched?.set(r.id, { ask, stop: r.canStop && left == null ? stop : null });
+  }
+  if (open) el.append(rowDetail(e, host, ui, now, redraw, ask, left == null ? stop : null, watch ? watchButton : null));
   return el;
+}
+
+/** Opening `agentId` folds every other agent of the card: their details and their picture. */
+function onlyOpen(ui: CardUi, chatId: string, agentId: string) {
+  for (const id of [...ui.open]) if (id !== agentId) ui.open.delete(id);
+  unwatchOthers(chatId, agentId);
 }
 
 /** Whether Ask shows on an agent: its CLI can pass it a message, and the chat can ask now. */
@@ -464,8 +529,10 @@ function canAsk(e: AgentEntry, host: AgentsCardHost): boolean {
   return !!host.ask && askable(e) && !cliEnded(e);
 }
 
-/** An opened row: the CLI's summary, the last steps, the numbers, and Stop this agent. */
-function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, ask: (() => void) | null, stop: (() => void) | null): HTMLElement {
+/** An opened row: the CLI's summary, the last steps, the numbers, Watch for its browser tab, and Stop this agent. */
+function rowDetail(
+  e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, ask: (() => void) | null, stop: (() => void) | null, watch: (() => HTMLElement) | null,
+): HTMLElement {
   const r = e.row;
   const box = h("div", { class: "agents-detail" });
   if (r.summary) box.append(h("div", { class: "agents-summary", text: r.summary }));
@@ -484,6 +551,7 @@ function rowDetail(e: AgentEntry, host: AgentsCardHost, ui: CardUi, now: number,
   box.append(h("div", { class: "agents-numbers", text: numbers.join(" · ") }));
   const actions = h("div", { class: "agents-actions" });
   if (ask) actions.append(cardButton("ask", tc(AGENTS_CARD_TEXT.ask), ask));
+  if (watch) actions.append(watch());
   if (r.canStop && !isFinal(r.state) && stop) actions.append(cardButton("stop", t(AGENTS_CARD_TEXT.stopThis), stop));
   actions.append(cardButton("close", t(AGENTS_CARD_TEXT.close), () => {
     ui.open.delete(r.id);

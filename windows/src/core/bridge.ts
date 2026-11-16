@@ -178,6 +178,9 @@ export const Bridge = {
   setIslandRect: (x: number, y: number, width: number, height: number) =>
     call<void>("set_island_rect", { x, y, width, height }),
 
+  /** A picture of an agent's browser tab, for Watch (browser.rs frame): throws why when there is none. */
+  browserFrame: (chatId: string, agentId: string) => callOrThrow<BrowserFrame>("chat_browser_frame", { chatId, agentId }),
+
   /** Give the window keyboard focus (chat field) and take it away again. */
   focusWindow: (focused: boolean) => {
     // Given the keyboard, the island's clicks are its own again (lib.rs).
@@ -883,6 +886,66 @@ export interface ChatSignalEvent {
   chat: string;
   at: number;
   waiting?: "permission" | null;
+}
+
+/**
+ * One of the hidden browser tabs an agent of the chat's Claude Code opened
+ * (browser.rs): whose it is (`agent`, the row's id or "main"), its number, the
+ * site and title it is on, and whether the user is watching it (Watch).
+ */
+export interface AgentWebTab {
+  chat: string;
+  agent: string;
+  tab: number;
+  host: string;
+  title: string;
+  /** The number of what its agent last did in it: the tab it uses now is the one with the highest. */
+  seq?: number;
+}
+
+/**
+ * What an agent last did in its tab (browser.rs Act): "open", "click",
+ * "type" or "scroll"; `what` is the site, the name of what was clicked, what
+ * was typed ("•••" in a password field), or "down" / "up". `rect` is where on
+ * the page, in the tab's CSS pixels when the page was scrolled to `scrollY`;
+ * `ago` how long ago, in ms.
+ */
+export interface BrowserAct {
+  /** Its number: a new action has a higher one, even when it is the same as the last. */
+  seq?: number;
+  /** "open", "click", "type", "scroll" or "read". */
+  kind: string;
+  what: string;
+  rect: { x: number; y: number; w: number; h: number } | null;
+  /** Where the mouse went, in the same CSS pixels. */
+  point?: { x: number; y: number } | null;
+  scrollY: number;
+  ago: number;
+}
+
+/** A picture of an agent's tab for Watch (browser.rs frame): a JPEG, base64, of the tab's viewport. */
+export interface BrowserFrame {
+  tab: number;
+  /** The tab's window is still being built: no picture yet, only its address (browser.rs frame). */
+  opening?: boolean;
+  image: string;
+  /** The viewport the picture shows, in CSS pixels. */
+  width: number;
+  height: number;
+  scrollY: number;
+  title: string;
+  url: string;
+  host: string;
+  /** A page is loading in the tab: the picture may still show the last one. */
+  loading?: boolean;
+  action: BrowserAct | null;
+  /** What the agent did in its tab, oldest first: `action` is the last. */
+  steps?: BrowserAct[];
+}
+
+/** The `browser-tabs` event: every agent's tab, sent whole when one changes. */
+export interface AgentWebTabs {
+  tabs: AgentWebTab[];
 }
 
 /**

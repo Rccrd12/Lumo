@@ -231,6 +231,8 @@ pub struct Island {
     pub signals_at_call: Vec<usize>,
     /// The signs of life given before any text showed.
     pub signals_before_text: Option<usize>,
+    /// The screenshots taken in the round (browser_screenshot), not sent yet.
+    pub pictures: Vec<String>,
 }
 
 impl Hooks for Island {
@@ -270,8 +272,15 @@ impl Hooks for Island {
     fn call(&mut self, name: &str, input: Value) -> impl std::future::Future<Output = (String, bool)> + Send {
         self.ran.push((name.to_string(), input));
         self.signals_at_call.push(self.signals);
+        if name == "browser_screenshot" {
+            self.pictures.push(format!("SHOT{}", self.ran.len()));
+        }
         let answer = (format!("{name} done"), self.failing);
         async move { answer }
+    }
+
+    fn pictures(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pictures)
     }
 
     fn show_plan(&mut self, input: &Value) {

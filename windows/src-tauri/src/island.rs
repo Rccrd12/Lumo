@@ -145,6 +145,7 @@ impl Placement {
     /// through around the island, whatever the window's size).
     pub fn of(s: &crate::settings::Settings) -> Self {
         let (width, height) = largest_size(s);
+        let height = if s.chat_browser { height.max(BROWSER_H) } else { height };
         Self {
             zoom: s.island_zoom,
             dock: Dock::parse(&s.island_dock),
@@ -165,7 +166,7 @@ impl Placement {
 /// dragged, as the launch greeting keeps its 640 × 150.
 const SIZE_SLOTS: &[&str] = &[
     "home", "chat", "tools", "settings", "overview", "approval", "question", "error", "finished", "note",
-    "recap", "wardrobe", "mail",
+    "recap", "wardrobe", "mail", "browser",
 ];
 
 /// The slot a view's size is kept under, or `None` for a name that is not one.
@@ -206,6 +207,10 @@ const MAX_WIDTH: f64 = 1200.0;
 /// A height the user picked; 0 means each view keeps its own.
 const MIN_HEIGHT: f64 = 160.0;
 const MAX_HEIGHT: f64 = 640.0;
+/// The agents' browser view's tallest by itself, a whole page at its width
+/// (src/core/layout.ts BROWSER_VIEW_MAX_H): with Let agents browse the web on,
+/// the window keeps room for it, past the height a user can pick.
+const BROWSER_H: f64 = 720.0;
 /// Room the window keeps around the island, for the hit margin and Lumo's glow.
 const SIDE_ROOM: f64 = PANEL_W - DEFAULT_WIDTH;
 const BOTTOM_ROOM: f64 = 20.0;
@@ -244,6 +249,11 @@ pub fn clamp_height(h: f64) -> f64 {
     if h.is_finite() && h > 0.0 { h.clamp(MIN_HEIGHT, MAX_HEIGHT) } else { 0.0 }
 }
 
+/// The height the window keeps room for: one picked, or the agents' browser's (BROWSER_H).
+fn window_height(h: f64) -> f64 {
+    if h.is_finite() && h > 0.0 { h.clamp(MIN_HEIGHT, MAX_HEIGHT.max(BROWSER_H)) } else { 0.0 }
+}
+
 fn finite(v: f64) -> f64 {
     if v.is_finite() { v } else { 0.0 }
 }
@@ -258,7 +268,7 @@ fn panel_size(p: Placement) -> (f64, f64) {
     let beside = if p.dock.upright() { 0.0 } else { 2.0 * finite(p.beside).max(0.0) };
     (
         PANEL_W.max(up(clamp_width(p.width) + SIDE_ROOM + beside)),
-        PANEL_H.max(up(clamp_height(p.height) + ends)),
+        PANEL_H.max(up(window_height(p.height) + ends)),
     )
 }
 
@@ -816,7 +826,7 @@ pub fn resize(
         p = next;
         let grown = Placement {
             width: clamp_width(room_for.width).max(clamp_width(p.width)),
-            height: clamp_height(room_for.height).max(clamp_height(p.height)),
+            height: window_height(room_for.height).max(clamp_height(p.height)),
             ..p
         };
         if grown != room_for {
@@ -1442,7 +1452,12 @@ mod placement_tests {
         assert_eq!(size_slot(Some("uploading")), None);
         assert_eq!(size_slot(Some("../x")), None);
         assert_eq!(size_slot(None), None);
-        s.island_sizes.insert("huge".into(), ViewSize { width: 5000.0, height: 5000.0 });
+        // Agents browsing the web: room for the browser view's whole page too, past a height a user picks.
+        let browsing = Settings { chat_browser: true, ..s.clone() };
+        assert_eq!(Placement::of(&browsing).height, BROWSER_H);
+        assert!(panel_size(Placement::of(&browsing)).1 > panel_size(p).1);
+        assert_eq!(clamp_height(BROWSER_H), MAX_HEIGHT, "never a height the grips give");
+                s.island_sizes.insert("huge".into(), ViewSize { width: 5000.0, height: 5000.0 });
         s.island_sizes.insert("note".into(), ViewSize { width: f64::NAN, height: f64::INFINITY });
         let p = Placement::of(&s);
         assert_eq!((p.width, p.height), (1100.0, 600.0));

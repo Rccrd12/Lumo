@@ -177,6 +177,11 @@ pub struct Settings {
     /// The chat's Claude Code may see the screen, click and type (computer.rs,
     /// lumo-hook --mcp), Windows only. Off until the user turns it on.
     pub chat_computer_use: bool,
+    /// Settings → Security → "Let agents browse the web": the chat's Claude
+    /// Code and its agents open the sites they choose in hidden tabs of their
+    /// own (browser.rs, lumo-hook --mcp --tools=browser), apart from the
+    /// user's browser. Off until the user turns it on.
+    pub chat_browser: bool,
     /// Lumo's own web search (web_search.rs) for the chat's providers that
     /// have none of their own: DuckDuckGo, else Mojeek or Wikipedia, and the
     /// pages read from this computer. Off until the user turns it on.
@@ -376,6 +381,7 @@ impl Default for Settings {
             chat_share_tabs: false,
             chat_other_files: false,
             chat_computer_use: false,
+            chat_browser: false,
             chat_web_search: false,
             chat_auto_compact: true,
             web_images: false,
@@ -775,6 +781,7 @@ mod tests {
   "chatShareTabs": true,
   "chatOtherFiles": true,
   "chatComputerUse": true,
+  "chatBrowser": true,
   "chatWebSearch": true,
   "chatAutoCompact": false,
   "webImages": true,
@@ -1054,6 +1061,8 @@ mod tests {
         assert_eq!(first.ai_calendar_access, "read");
         assert_eq!(first.ai_github_access, "read");
         assert_eq!(first.chat_permission_mode, "default");
+        // No agent browses the web before the user says so (browser.rs).
+        assert!(!first.chat_browser);
         // A settings.json written before these were settings: what Lumo did then.
         let mut object = custom().as_object().unwrap().clone();
         for key in ["chatShareOpen", "outlookStart", "aiMailAccess", "aiGithubAccess", "chatOtherFiles"] {
@@ -1359,6 +1368,7 @@ mod tests {
                 "chatShareTabs",
                 "chatOtherFiles",
                 "chatComputerUse",
+                "chatBrowser",
                 "chatWebSearch",
                 "chatAutoCompact",
                 "webImages",

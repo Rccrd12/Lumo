@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { homeWidth, islandSize, newLookQuestionHeight, questionsHeight, sizeSlot, viewShape } from "../src/core/layout.ts";
+import { BROWSER_VIEW_MAX_H, browserViewHeight, homeWidth, islandSize, newLookQuestionHeight, questionsHeight, sizeSlot, viewShape } from "../src/core/layout.ts";
 
 const shared = { islandWidth: 640, islandHeight: 0 };
 
@@ -59,4 +59,11 @@ test("a question in several parts is as tall as its tallest part", () => {
   assert.equal(questionsHeight([q(2), q(4, true)]), newLookQuestionHeight(4, true));
   assert.equal(questionsHeight([q(2)]), newLookQuestionHeight(2, false));
   assert.equal(questionsHeight([q(2), q(20)]), 440);
+});
+
+test("the agents' browser is as tall as its whole page needs at its width, within its tallest", () => {
+  // 860 wide: a page 804 wide, 503 tall, and the view around it.
+  assert.equal(browserViewHeight(860), 187 + 503);
+  assert.ok(browserViewHeight(700) < browserViewHeight(860));
+  assert.equal(browserViewHeight(1200), BROWSER_VIEW_MAX_H);
 });

@@ -387,6 +387,8 @@ export interface Settings {
   chatOtherFiles: boolean;
   /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
   chatComputerUse: boolean;
+  /** The chat's Claude Code and its agents may open websites in hidden tabs of their own (browser.rs). Off by default. */
+  chatBrowser: boolean;
   /** Lumo's own web search for the providers without one (web_search.rs). Off until turned on. */
   chatWebSearch: boolean;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
@@ -521,6 +523,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatShareTabs: false,
   chatOtherFiles: false,
   chatComputerUse: false,
+  chatBrowser: false,
   chatWebSearch: false,
   chatAutoCompact: true,
   webImages: false,

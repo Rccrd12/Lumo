@@ -41,6 +41,7 @@ import { cardClickTakesKeyboard, isComputerTool } from "../core/computer";
 import { stepPlace } from "../core/computer-plan";
 import { computerTargetBox, pausedCardLine } from "./computer-card";
 import { buildComputerView } from "./computer-plan";
+import { buildBrowserView } from "./browser-watch";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
@@ -187,7 +188,8 @@ export function buildHeader(actions: ViewActions): ViewHost {
       actions.moreMenu(r.right, r.bottom + 4);
     },
   }, svg(ICONS.ellipsis, 16));
-  const backBtn = h("button", { class: "tab back-btn", title: tl("Back"), onclick: () => go(State.agentsView()) },
+  // From the agents' browser, back is the chat it was opened from.
+  const backBtn = h("button", { class: "tab back-btn", title: tl("Back"), onclick: () => go(State.view === "browser" ? "prompt" : State.agentsView()) },
     svg(ICONS.chevronLeft, 14, { stroke: 2 }));
   // Plan usage pills (off by default): before the "⋯", Claude first.
   const claudePill = buildPlanPill("claude");
@@ -1252,5 +1254,6 @@ export function buildViews(
   map.set("mail", buildMailView(actions));
   map.set("home", buildHomeView(actions));
   map.set("computer", buildComputerView({ takeKeyboard: () => actions.takeKeyboard() }));
+  map.set("browser", buildBrowserView(actions));
   return map;
 }
