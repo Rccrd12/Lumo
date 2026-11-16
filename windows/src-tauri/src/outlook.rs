@@ -6,9 +6,14 @@
 //
 // Lumo attaches to the Outlook already running (GetActiveObject) and never
 // starts it, but for one case: Settings → Security → "Open Outlook if it's
-// closed", where it starts Outlook once, in the background with no window,
-// a minute after Lumo starts (or when the switch is turned on). If the user
-// then closes Outlook, Lumo doesn't start it again until it next starts.
+// closed", where it starts Outlook in the background with no window, a minute
+// after Lumo starts (or when the switch is turned on), and at once when the
+// Email view is opened while Outlook is closed. A start that fails is tried
+// again a few minutes later, and so is an Outlook started with no window that
+// went away (an Office update, a crash): the user didn't close it. An Outlook
+// whose window the user closed stays closed until the Email view asks for it.
+// A click on Open Outlook, or on an Outlook email's Open, starts it too, with
+// its window, switch or not.
 //
 // It reads as the IMAP side does (mail.rs): the newest unread emails of each
 // account's inbox for the island, and for the agents the newest emails of a
@@ -28,7 +33,7 @@
 
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -46,6 +51,7 @@ use ::windows::Win32::System::Com::{
 use ::windows::Win32::System::Ole::{GetActiveObject, DISPID_PROPERTYPUT};
 use ::windows::Win32::System::Time::TzSpecificLocalTimeToSystemTime;
 use ::windows::Win32::System::Variant::{VARIANT, VT_DATE, VT_DISPATCH};
+use ::windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY};
 
 use crate::log;
 use crate::mail::{Found, Message};
@@ -104,17 +110,65 @@ fn may_start(app: &AppHandle) -> bool {
 // ── Watching the inboxes ──────────────────────────────────────────────────────
 
 static WAKE: Notify = Notify::const_new();
-/// Lumo started Outlook already (or tried to) since it started: never again.
-static STARTED: AtomicBool = AtomicBool::new(false);
 /// "Open Outlook if it's closed" waits this long after Lumo starts: classic
 /// Outlook takes the disk and the processor for a while as it opens, and Lumo's
 /// own start (its webviews, the greeting) should not have to share them.
 /// An Outlook already running is read at once, as before.
 const START_AFTER: Duration = Duration::from_secs(60);
+/// A start that failed, or an Outlook started with no window that went away,
+/// is tried again this long after: an Office update that closed it is done by then.
+const START_AGAIN_AFTER: Duration = Duration::from_secs(5 * 60);
+/// Starts Lumo tries on its own since it started, at most: past them, Outlook
+/// is opened only by the user, or by the Email view.
+const MOST_STARTS: u32 = 4;
 
-/// How long is still left of START_AFTER, `since` Lumo started.
-fn start_wait(since: Duration) -> Option<Duration> {
-    START_AFTER.checked_sub(since).filter(|left| !left.is_zero())
+/// When Lumo starts Outlook on its own ("Open Outlook if it's closed").
+#[derive(Debug, Clone, PartialEq)]
+struct Starter {
+    /// Lumo is to start it, once `not_before` has come.
+    armed: bool,
+    not_before: Instant,
+    /// Starts tried since Lumo started.
+    tries: u32,
+}
+
+impl Starter {
+    /// Lumo just started: a minute later, Outlook is started if it's closed.
+    fn new(launched: Instant) -> Self {
+        Starter { armed: true, not_before: launched + START_AFTER, tries: 0 }
+    }
+
+    /// How long until Lumo starts Outlook (zero: now); None when it doesn't.
+    fn wait(&self, now: Instant) -> Option<Duration> {
+        (self.armed && self.tries < MOST_STARTS).then(|| self.not_before.saturating_duration_since(now))
+    }
+
+    /// Outlook is running: nothing to start. Should the user close it, it stays closed.
+    fn running(&mut self) {
+        self.armed = false;
+    }
+
+    /// A start was tried: done when it worked, else again a while later.
+    fn tried(&mut self, now: Instant, worked: bool) {
+        self.tries += 1;
+        self.armed = !worked;
+        self.not_before = now + START_AGAIN_AFTER;
+    }
+
+    /// Outlook went away with no window open: the user didn't close it (an
+    /// Office update, a crash). It is started again a while later.
+    fn went_away_unseen(&mut self, now: Instant) {
+        self.armed = true;
+        self.not_before = now + START_AGAIN_AFTER;
+    }
+
+    /// The switch was turned on: Outlook is started if it's closed, at once
+    /// past Lumo's first minute.
+    fn switched_on(&mut self, now: Instant, launched: Instant) {
+        self.armed = true;
+        self.tries = 0;
+        self.not_before = (launched + START_AFTER).max(now);
+    }
 }
 
 /// Look again now (Refresh, a change of settings).
@@ -133,6 +187,11 @@ pub async fn run(app: AppHandle) {
     let mut cache: HashMap<String, (Message, f64)> = HashMap::new();
     let mut failures = 0u32;
     let mut was_on = false;
+    let mut starter = Starter::new(launched);
+    let mut switch_was = may_start(&app);
+    // Outlook, at the last look: running, and with a window of its own open.
+    let mut was_running = false;
+    let mut had_window = false;
     loop {
         if !on(&app) || crate::integrations::PAUSED.load(Ordering::Relaxed) {
             if was_on {
@@ -151,25 +210,32 @@ pub async fn run(app: AppHandle) {
             continue;
         }
         was_on = true;
-        if may_start(&app) && !STARTED.load(Ordering::SeqCst) {
-            if let Some(left) = start_wait(launched.elapsed()) {
-                let running = with_outlook(STEP, |s| Ok(s.app()?.is_some())).await.unwrap_or(false);
-                if !running {
-                    // Then round again: the switches may have changed meanwhile.
-                    // Meanwhile it looks as often as usual, so an Outlook opened
-                    // by hand is read at once, and Refresh or a change of
-                    // settings (wake) is heard rather than after the minute.
-                    let every = Duration::from_secs(crate::energy::pick(5, 20, 60));
-                    let _ = tokio::time::timeout(left.min(every), WAKE.notified()).await;
-                    continue;
-                }
-            }
+        let switch = may_start(&app);
+        if switch && !switch_was {
+            starter.switched_on(Instant::now(), launched);
         }
-        if may_start(&app) && !STARTED.swap(true, Ordering::SeqCst) {
-            match with_outlook(SLOW_STEP, |s| s.start()).await {
-                Ok(true) => log::line("[outlook] started in the background"),
-                Ok(false) => {}
-                Err(e) => log::line(format!("[outlook] could not start: {e}")),
+        switch_was = switch;
+        if let Some(left) = starter.wait(Instant::now()).filter(|_| switch) {
+            let running = with_outlook(STEP, |s| Ok(s.app()?.is_some())).await.unwrap_or(false);
+            if running {
+                starter.running();
+            } else if !left.is_zero() {
+                // Then round again: the switches may have changed meanwhile.
+                // Meanwhile it looks as often as usual, so an Outlook opened
+                // by hand is read at once, and Refresh or a change of
+                // settings (wake) is heard rather than after the minute.
+                crate::mail::from_outlook(&app, Some(Err(opening_text())), Vec::new());
+                let every = Duration::from_secs(crate::energy::pick(5, 20, 60));
+                let _ = tokio::time::timeout(left.min(every), WAKE.notified()).await;
+                continue;
+            } else {
+                let started = with_outlook(SLOW_STEP, |s| s.start()).await;
+                match &started {
+                    Ok(true) => log::line("[outlook] started in the background"),
+                    Ok(false) => {}
+                    Err(e) => log::line(format!("[outlook] could not start: {e}")),
+                }
+                starter.tried(Instant::now(), started.is_ok());
             }
         }
         let hide = crate::mail::hides_promotions(&app);
@@ -178,6 +244,8 @@ pub async fn run(app: AppHandle) {
         match looked {
             Ok(Some(inbox)) => {
                 failures = 0;
+                was_running = true;
+                had_window = inbox.windows;
                 let newest = inbox.messages.iter().map(|(_, at)| *at).fold(seen.unwrap_or(0.0), f64::max);
                 let fresh: Vec<Message> = match seen {
                     Some(before) => inbox.messages.iter().filter(|(_, at)| *at > before).map(|(m, _)| m.clone()).collect(),
@@ -191,7 +259,13 @@ pub async fn run(app: AppHandle) {
             Ok(None) => {
                 failures = 0;
                 cache.clear();
-                crate::mail::from_outlook(&app, Some(Err(closed_text())), Vec::new());
+                // Gone with no window open: not closed by the user.
+                if std::mem::take(&mut was_running) && !had_window && switch {
+                    log::line("[outlook] went away with no window open: started again in a while");
+                    starter.went_away_unseen(Instant::now());
+                }
+                let soon = switch && starter.wait(Instant::now()).is_some();
+                crate::mail::from_outlook(&app, Some(Err(if soon { opening_text() } else { closed_text() })), Vec::new());
             }
             Err(e) => {
                 failures += 1;
@@ -212,6 +286,74 @@ pub async fn run(app: AppHandle) {
 
 fn closed_text() -> String {
     crate::i18n::t("Outlook is closed: the emails come back as soon as you open it.")
+}
+
+/// While "Open Outlook if it's closed" is about to start it.
+fn opening_text() -> String {
+    crate::i18n::t("Lumo opens Outlook in a moment, in the background.")
+}
+
+// ── For the Email view ────────────────────────────────────────────────────────
+
+/// What the agents read when Outlook is closed (the Email view says it for the user, view_error).
+const CLOSED: &str = "Outlook is closed on this PC: ask the user to open it.";
+
+/// The Email view's Outlook: its newest emails. With "Open Outlook if it's
+/// closed" on, a closed Outlook is started first: the user asked for their
+/// emails, so with no minute's wait, and even if it was closed since Lumo
+/// last started it. An error comes said for the user, in their language,
+/// with the page of Settings that helps (view_error).
+pub async fn for_view(app: &AppHandle, count: usize, unread_only: bool) -> Result<Vec<Found>, (String, &'static str)> {
+    let may = may_start(app);
+    let mut start_failed = None;
+    if may {
+        match with_outlook(SLOW_STEP, |s| s.start()).await {
+            Ok(true) => {
+                log::line("[outlook] started in the background for the Email view");
+                // The island's count and the watch catch up at once.
+                wake();
+            }
+            Ok(false) => {}
+            // Said as it is just below, by the reading.
+            Err(e) if e == not_installed() => {}
+            Err(e) => {
+                log::line(format!("[outlook] could not start: {e}"));
+                start_failed = Some(e);
+            }
+        }
+    }
+    newest(count, unread_only, None).await.map_err(|e| {
+        log::line(format!("[outlook] Email view: {e}"));
+        view_error(&e, may, start_failed.as_deref())
+    })
+}
+
+/// What the Email view says when Outlook can't be read (`e`, as the agents
+/// read it), and the page of Settings its button opens: Security, where
+/// "Open Outlook if it's closed" is, when Outlook is closed; else Pills,
+/// where the Email pill's sources are.
+fn view_error(e: &str, may_start: bool, start_failed: Option<&str>) -> (String, &'static str) {
+    use crate::i18n::{t, tf};
+    if e == not_installed() {
+        return (t("Classic Outlook isn't installed on this PC. The new Outlook can't be read by other apps: use IMAP."), "pills");
+    }
+    let no_answer = || t("Outlook didn't answer in time: a window of Outlook may be waiting for you.");
+    if e == CLOSED {
+        return match start_failed {
+            // Windows says why in its own language; a wait that ran out, Lumo does.
+            Some(why) => {
+                let why = if why == NO_ANSWER { no_answer() } else { why.to_string() };
+                let why = why.trim_end_matches(['.', '。', '।']);
+                (tf("Lumo couldn't open Outlook ({error}). Open it yourself: the emails come in as soon as it's open.", &[("error", why)]), "security")
+            }
+            None if may_start => (closed_text(), "security"),
+            None => (t("Outlook is closed. Open it, or turn on “Open Outlook if it's closed” in Settings → Security."), "security"),
+        };
+    }
+    if e == NO_ANSWER {
+        return (no_answer(), "pills");
+    }
+    (t("Lumo couldn't read Outlook. It tries again in a moment."), "pills")
 }
 
 // ── For Settings ──────────────────────────────────────────────────────────────
@@ -774,25 +916,54 @@ fn target(app: &Disp, item: &Disp, change: &Change) -> Result<Place, String> {
 // ── Opening in Outlook ────────────────────────────────────────────────────────
 
 /// The island's "Open" on an Outlook email (`lumo-outlook:12`), or on the
-/// pill (`lumo-outlook:inbox`): shown in Outlook, if it is running.
+/// pill and the Email view (`lumo-outlook:inbox`): shown in Outlook, which is
+/// started first when it is closed.
 pub fn open(link: &str) {
     let what = link.trim_start_matches(LINK_PREFIX).to_string();
+    // The click gave Lumo the foreground: Outlook may take it for its window,
+    // rather than only blink in the taskbar.
+    let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
     tauri::async_runtime::spawn(async move {
-        let shown = with_outlook(STEP, move |s| {
+        let shown = with_outlook(SLOW_STEP, move |s| {
+            // Closed, it is started for the click (with a window, below),
+            // whatever "Open Outlook if it's closed" says: the user asked for it.
+            if s.app()?.is_none() {
+                s.start()?;
+                log::line("[outlook] started to show the inbox or an email");
+            }
             let app = s.running()?;
             if what == "inbox" {
                 let inbox = app.obj("Session")?.call("GetDefaultFolder", vec![FOLDER_INBOX.into()])?.dispatch()?;
-                inbox.call("Display", vec![])?;
+                show_inbox(&app, &inbox)?;
             } else {
                 item_of(&app, &format!("{ID_PREFIX}{what}"))?.call("Display", vec![])?;
             }
             Ok(())
         })
         .await;
-        if let Err(e) = shown {
-            log::line(format!("[outlook] open: {e}"));
+        match shown {
+            // The island and the Email view read it at once.
+            Ok(()) => wake(),
+            Err(e) => log::line(format!("[outlook] open: {e}")),
         }
     });
+}
+
+/// The inbox in Outlook's window: the one open, brought back and to the
+/// front, else a new one (an Outlook started in the background has none).
+fn show_inbox(app: &Disp, inbox: &Disp) -> Result<(), String> {
+    const MINIMIZED: i32 = 1;
+    const NORMAL: i32 = 2;
+    let Ok(explorer) = app.call("ActiveExplorer", vec![]).and_then(|v| v.dispatch()) else {
+        inbox.call("Display", vec![])?;
+        return Ok(());
+    };
+    explorer.put_ref("CurrentFolder", inbox.clone_variant())?;
+    if explorer.int("WindowState") == Ok(MINIMIZED) {
+        let _ = explorer.put("WindowState", NORMAL.into());
+    }
+    explorer.call("Activate", vec![])?;
+    Ok(())
 }
 
 // ── The thread that talks to Outlook ──────────────────────────────────────────
@@ -886,7 +1057,7 @@ impl Session {
 
     /// Outlook, or why not.
     fn running(&mut self) -> Result<Disp, String> {
-        self.app()?.ok_or_else(|| "Outlook is closed on this PC: ask the user to open it.".to_string())
+        self.app()?.ok_or_else(|| CLOSED.to_string())
     }
 
     /// "Open Outlook if it's closed": started in the background, with no
@@ -994,7 +1165,9 @@ impl Session {
         if self.promotions.len() > 2_000 {
             self.promotions.clear();
         }
-        Ok(Some(Inbox { unread, messages: all, entries }))
+        // An Outlook started by Lumo has none (Explorers holds its main windows).
+        let windows = app.obj("Explorers").and_then(|e| e.int("Count")).is_ok_and(|n| n > 0);
+        Ok(Some(Inbox { unread, windows, messages: all, entries }))
     }
 }
 
@@ -1011,6 +1184,8 @@ fn cache_of(inbox: &Inbox) -> HashMap<String, (Message, f64)> {
 /// What a look at the inboxes found.
 struct Inbox {
     unread: usize,
+    /// Outlook has a window open: should it go away, the user closed it.
+    windows: bool,
     /// The newest unread emails, newest first, with when each arrived.
     messages: Vec<(Message, f64)>,
     /// Each message's Outlook EntryID, by its id.
@@ -1755,9 +1930,83 @@ mod tests {
 
     #[test]
     fn outlook_is_started_a_minute_after_lumo() {
-        assert_eq!(start_wait(Duration::from_secs(4)), Some(START_AFTER - Duration::from_secs(4)));
-        assert_eq!(start_wait(START_AFTER), None);
-        assert_eq!(start_wait(START_AFTER + Duration::from_secs(30)), None);
+        let launched = Instant::now();
+        let starter = Starter::new(launched);
+        let at = |secs: u64| launched + Duration::from_secs(secs);
+        assert_eq!(starter.wait(at(4)), Some(START_AFTER - Duration::from_secs(4)));
+        assert_eq!(starter.wait(at(60)), Some(Duration::ZERO));
+        assert_eq!(starter.wait(at(90)), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn an_outlook_already_open_or_closed_by_the_user_is_left_as_it_is() {
+        let launched = Instant::now();
+        let mut starter = Starter::new(launched);
+        starter.running();
+        assert_eq!(starter.wait(launched + Duration::from_secs(600)), None);
+        // Started by Lumo, it is not started again while it runs.
+        let mut starter = Starter::new(launched);
+        starter.tried(launched + START_AFTER, true);
+        assert_eq!(starter.wait(launched + Duration::from_secs(3600)), None);
+    }
+
+    #[test]
+    fn a_failed_start_is_tried_again_a_few_times() {
+        let launched = Instant::now();
+        let mut starter = Starter::new(launched);
+        let mut now = launched + START_AFTER;
+        for _ in 0..MOST_STARTS - 1 {
+            starter.tried(now, false);
+            assert_eq!(starter.wait(now), Some(START_AGAIN_AFTER));
+            now += START_AGAIN_AFTER;
+            assert_eq!(starter.wait(now), Some(Duration::ZERO));
+        }
+        starter.tried(now, false);
+        assert_eq!(starter.wait(now + START_AGAIN_AFTER), None);
+        // Turning the switch on again starts afresh.
+        starter.switched_on(now, launched);
+        assert_eq!(starter.wait(now), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn an_outlook_gone_with_no_window_is_started_again_later() {
+        let launched = Instant::now();
+        let mut starter = Starter::new(launched);
+        let now = launched + START_AFTER;
+        starter.tried(now, true);
+        let later = now + Duration::from_secs(3600);
+        starter.went_away_unseen(later);
+        assert_eq!(starter.wait(later), Some(START_AGAIN_AFTER));
+        assert_eq!(starter.wait(later + START_AGAIN_AFTER), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn the_switch_turned_on_waits_out_lumos_first_minute_only() {
+        let launched = Instant::now();
+        let mut starter = Starter::new(launched);
+        starter.running();
+        starter.switched_on(launched + Duration::from_secs(10), launched);
+        assert_eq!(starter.wait(launched + Duration::from_secs(10)), Some(Duration::from_secs(50)));
+        starter.switched_on(launched + Duration::from_secs(600), launched);
+        assert_eq!(starter.wait(launched + Duration::from_secs(600)), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn the_email_view_says_why_for_the_user() {
+        crate::i18n::set_for_test("it");
+        let (text, page) = view_error(CLOSED, false, None);
+        assert!(!text.contains("ask the user"), "{text}");
+        assert!(text.starts_with("Outlook è chiuso"), "{text}");
+        assert_eq!(page, "security");
+        let (text, page) = view_error(CLOSED, true, Some("Accesso negato."));
+        assert!(text.contains("(Accesso negato)"), "{text}");
+        assert_eq!(page, "security");
+        let (text, _) = view_error(CLOSED, true, Some(NO_ANSWER));
+        assert!(!text.contains("the user"), "{text}");
+        assert_eq!(view_error(&not_installed(), true, None).1, "pills");
+        let (text, _) = view_error(NO_ANSWER, true, None);
+        assert!(!text.contains("the user"), "{text}");
+        crate::i18n::set_for_test("en");
     }
 
     #[test]
@@ -1845,11 +2094,11 @@ mod tests {
         // cache (read again next time), where `entries[&m.id]` panicked and,
         // with panic = "abort", closed Lumo.
         let stale = Message { id: old.clone(), subject: "Hi".into(), ..Message::default() };
-        let inbox = Inbox { unread: 1, messages: vec![(stale, 1.0)], entries: HashMap::from([(new.clone(), "E1".to_string())]) };
+        let inbox = Inbox { unread: 1, windows: false, messages: vec![(stale, 1.0)], entries: HashMap::from([(new.clone(), "E1".to_string())]) };
         assert!(cache_of(&inbox).is_empty());
         // As look() gives it now, under the id it has now: kept by its EntryID.
         let fresh = Message { id: new.clone(), subject: "Hi".into(), ..Message::default() };
-        let inbox = Inbox { unread: 1, messages: vec![(fresh.clone(), 2.0)], entries: HashMap::from([(new, "E1".to_string())]) };
+        let inbox = Inbox { unread: 1, windows: false, messages: vec![(fresh.clone(), 2.0)], entries: HashMap::from([(new, "E1".to_string())]) };
         assert_eq!(cache_of(&inbox).get("E1"), Some(&(fresh, 2.0)));
     }
 }
