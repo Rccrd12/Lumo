@@ -4494,6 +4494,20 @@ math.mx .mx-cancel.mx-sout {
   white-space: nowrap;
 }
 
+/* "More models": the older versions (Claude Code's) open under it. */
+.picker-more {
+  color: #8a8f98;
+}
+
+.picker-more > svg {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+
+.picker-more.open > svg {
+  transform: rotate(180deg);
+}
+
 .picker-status {
   display: flex;
   align-items: center;

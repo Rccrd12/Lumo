@@ -184,6 +184,8 @@ const STRINGS = {
   toEnd: N_("Go to the bottom"),
   showMore: N_("Show more"),
   showLess: N_("Show less"),
+  /** The picker's last current row: Claude Code's older versions, as many as {count}, open under it. */
+  moreModels: N_("More models ({count})"),
   switchModel: N_("Switch provider or model"),
   noModel: N_("Choose a model"),
   loading: N_("Loading models…"),
@@ -1694,6 +1696,11 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
   const cache = new Map<string, ModelInfo[]>();
   let isOpen = false;
   let request = 0;
+  /**
+   * "More models" (Claude Code's older versions) opened or shut by a click;
+   * null until then, each time the picker opens: open when the chat is on one.
+   */
+  let olderOpen: boolean | null = null;
 
   function drawChips() {
     clear(chips);
@@ -1803,7 +1810,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
       const now = activeModel(State.settings);
       return [...g.ids.values()].includes(now) ? now : variantFor(g, levelOf(groups, now));
     };
-    for (const m of models) {
+    const rowFor = (m: ModelInfo): HTMLElement => {
       const on = m.id === current;
       const row = h(
         "button",
@@ -1821,7 +1828,29 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
         close();
         refreshCaps();
       });
-      list.append(row);
+      return row;
+    };
+    // Claude Code's older versions wait under "More models", after the current
+    // ones; open by themselves when the chat uses one, so its tick shows.
+    const older = models.filter((m) => m.older);
+    for (const m of older.length ? models.filter((m) => !m.older) : models) list.append(rowFor(m));
+    if (older.length) {
+      const opened = olderOpen ?? older.some((m) => m.id === current);
+      const more = h(
+        "button",
+        { class: opened ? "picker-model picker-more open" : "picker-model picker-more", "aria-expanded": String(opened) },
+        h("span", { class: "picker-model-name", text: t(STRINGS.moreModels, { count: older.length }) }),
+        svg(ICONS.chevronDown, 11, { stroke: 2.2 }),
+      );
+      more.addEventListener("click", () => {
+        olderOpen = !opened;
+        drawModels(p, listed);
+        // Opened: the list moves to the versions it shows, "More models" on top.
+        const now = list.querySelector<HTMLElement>(".picker-more");
+        if (olderOpen && now) list.scrollTop += now.getBoundingClientRect().top - list.getBoundingClientRect().top;
+      });
+      list.append(more);
+      if (opened) for (const m of older) list.append(rowFor(m));
     }
     drawCaps();
     list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
@@ -1955,6 +1984,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
 
   function open() {
     isOpen = true;
+    olderOpen = null;
     el.classList.add("on");
     drawChips();
     drawEfforts();
