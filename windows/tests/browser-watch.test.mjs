@@ -11,7 +11,7 @@ import { installFakeDom } from "./fakedom.mjs";
 installFakeDom();
 const { calls, internals, sent } = await import("./tauri.mjs");
 const { applyBrowserTabs, browserAgentsOf } = await import("../src/core/chat-agents.ts");
-const { LivePicture, RING_MS, actText, addressParts, browserTabsChanged, buildBrowserView, openBrowserView, ringBox, setBrowserViewHost } = await import("../src/views/browser-watch.ts");
+const { LivePicture, RING_MS, StepsLine, actText, addressParts, browserTabsChanged, buildBrowserView, loadingText, openBrowserView, pointerAt, ringBox, setBrowserViewHost, stepsText } = await import("../src/views/browser-watch.ts");
 const { State } = await import("../src/core/state.ts");
 
 const tab = (chat, agent, n, host) => ({ chat, agent, tab: n, host, title: `${host} page` });
@@ -27,7 +27,8 @@ test("what the agent did, in words", () => {
   assert.equal(actText(act("type", "•••")), "Types “•••”", "Rust never gives a password's text");
   assert.equal(actText(act("scroll", "down")), "Scrolls down");
   assert.equal(actText(act("scroll", "up")), "Scrolls up");
-  assert.equal(actText(act("read", "")), "");
+  assert.equal(actText(act("read", "")), "Reads the page");
+  assert.equal(actText(act("look", "")), "", "a kind it doesn't know says nothing");
   assert.equal(actText(null), "");
 });
 
@@ -42,6 +43,43 @@ test("the ring: the action's box in % of the picture, moved by the scroll since,
   assert.equal(ringBox(frame(click({ rect: null }))), null);
   assert.equal(ringBox(frame(null)), null);
   assert.equal(ringBox({ width: 0, height: 0, scrollY: 0, action: click() }), null, "a page that couldn't say its size");
+});
+
+test("the pointer: at the last click or typing since a page opened, moved by the scroll, an I-beam while typing", () => {
+  const step = (kind, point, scrollY = 0) => ({ seq: 1, kind, what: "", rect: null, point, scrollY, ago: 0 });
+  const frame = (steps, scrollY = 0) => ({ width: 1280, height: 800, scrollY, steps });
+  assert.deepEqual(pointerAt(frame([step("open", null), step("click", { x: 128, y: 200 })])), { left: 10, top: 25, text: false });
+  assert.deepEqual(pointerAt(frame([step("click", { x: 128, y: 200 }), step("read", null), step("scroll", null)], 100)), { left: 10, top: 12.5, text: false }, "a read or a scroll leaves it where it was, the page moved under it");
+  assert.deepEqual(pointerAt(frame([step("type", { x: 640, y: 400 })])), { left: 50, top: 50, text: true });
+  assert.equal(pointerAt(frame([step("click", { x: 128, y: 200 }), step("open", null)])), null, "a new page: no pointer from the last one");
+  assert.equal(pointerAt(frame([step("click", { x: 128, y: 200 })], 400)), null, "scrolled out of sight");
+  assert.equal(pointerAt(frame([])), null);
+  assert.equal(pointerAt({ width: 0, height: 0, scrollY: 0, steps: [step("click", { x: 1, y: 1 })] }), null);
+});
+
+test("what it does now, the steps before, and what is loading, in words", () => {
+  const step = (kind, what) => ({ seq: 1, kind, what, rect: null, point: null, scrollY: 0, ago: 0 });
+  const steps = [step("open", "example.com"), step("type", "Rome"), step("read", ""), step("read", ""), step("scroll", "down"), step("click", "Search")];
+  assert.deepEqual(stepsText({ action: steps[5], steps }), { now: "Clicks “Search”", kind: "click", done: ["Types “Rome”", "Reads the page", "Scrolls down"] }, "the last three, a step said twice once");
+  assert.deepEqual(stepsText({ action: steps[0], steps: undefined }), { now: "Opens example.com", kind: "open", done: [] });
+  assert.deepEqual(stepsText({ action: null, steps: [] }), { now: "", kind: "", done: [] });
+  assert.equal(loadingText({ action: steps[0], host: "example.com", url: "" }), "Opens example.com…");
+  assert.equal(loadingText({ action: steps[5], host: "example.com", url: "" }), "Loading example.com…");
+  assert.equal(loadingText({ action: null, host: "", url: "https://example.org/x" }), "Loading example.org…");
+  // Under the picture: the line, its icon, the steps done; the tiles' without them.
+  const line = new StepsLine();
+  assert.equal(line.el.hidden, true, "nothing done yet: nothing said");
+  line.update({ action: steps[5], steps, loading: false });
+  assert.equal(line.el.hidden, false);
+  assert.equal(line.el.querySelector(".bw-now-text").textContent, "Clicks “Search”");
+  assert.equal(line.el.querySelector(".bw-now-ico").className, "bw-now-ico click");
+  assert.deepEqual(line.el.querySelector(".bw-done").find("SPAN").map((x) => x.textContent), ["Types “Rome”", "Reads the page", "Scrolls down"]);
+  line.update({ action: steps[0], steps: [steps[0]], loading: true });
+  assert.equal(line.el.querySelector(".bw-now-text").textContent, "Opens example.com…", "opening: with the dots");
+  assert.equal(line.el.querySelector(".bw-now-ico").className, "bw-now-ico busy");
+  const small = new StepsLine(false);
+  small.update({ action: steps[5], steps, loading: false });
+  assert.equal(small.el.querySelector(".bw-done").hidden, true);
 });
 
 test("the address bar: the site, then the rest", () => {
@@ -59,12 +97,14 @@ test("a picture is asked only while it is on screen in the open island, one afte
     if (cmd !== "chat_browser_frame") return plain(cmd, args);
     calls.push([cmd, args]);
     frames.push(args);
+    const click = { seq: 5, kind: "click", what: "Rome", rect: { x: 128, y: 200, w: 256, h: 80 }, point: { x: 256, y: 240 }, scrollY: 0, ago: 100 };
     return {
       tab: 1, image: "AAAA", width: 1280, height: 800, scrollY: 0, title: "Example", url: "https://example.com/rome", host: "example.com",
-      action: { kind: "click", what: "Rome", rect: { x: 128, y: 200, w: 256, h: 80 }, scrollY: 0, ago: 100 },
+      loading: false, action: click, steps: [{ seq: 4, kind: "open", what: "example.com", rect: null, point: null, scrollY: 0, ago: 900 }, click],
     };
   };
-  const live = new LivePicture("c", "a1");
+  const said = [];
+  const live = new LivePicture("c", "a1", { onFrame: (f) => said.push(stepsText(f).now) });
   live.ensure();
   assert.equal(calls.length, before, "not on screen: nothing asked");
   // On screen: in the page, in the view on screen, the island open.
@@ -81,9 +121,15 @@ test("a picture is asked only while it is on screen in the open island, one afte
   const img = live.el.find("IMG")[0];
   assert.equal(img.src, "data:image/jpeg;base64,AAAA");
   assert.equal(live.el.querySelector(".bw-url").textContent, "example.com/rome");
-  assert.equal(live.el.querySelector(".bw-ring").hidden, false);
+  assert.equal(live.el.querySelector(".bw-ring").hidden, false, "the box of what it clicked");
   assert.equal(live.el.querySelector(".bw-ring").style.left, "10%");
-  assert.ok(live.el.querySelector(".bw-tag").textContent.includes("Clicks “Rome”"));
+  const cursor = live.el.querySelector(".bw-cursor");
+  assert.equal(cursor.hidden, false, "its pointer");
+  assert.deepEqual([cursor.style.left, cursor.style.top, cursor.classList.contains("text")], ["20%", "30%", false]);
+  assert.equal(live.el.querySelector(".bw-ripple").classList.contains("on"), true, "the click's ripple");
+  assert.equal(live.el.querySelector(".bw-wait").hidden, true, "nothing over the picture");
+  assert.equal(live.el.classList.contains("loading"), false);
+  assert.deepEqual(said, ["Clicks “Rome”"], "what it does, for the line under it");
   // The island closes: the next one isn't asked.
   State.mode = "compact";
   await new Promise((r) => setTimeout(r, 500));
@@ -111,7 +157,7 @@ test("a picture is asked only while it is on screen in the open island, one afte
   busy.el.closest = onScreen;
   busy.ensure();
   await new Promise((r) => setTimeout(r, 0));
-  assert.notEqual(busy.el.querySelector(".bw-wait").textContent, "The tab has closed.");
+  assert.equal(busy.el.querySelector(".bw-wait").textContent, "Loading example.com…", "before the first picture: the site loading");
   fail = false;
   await new Promise((r) => setTimeout(r, 1600));
   assert.equal(busy.el.find("IMG")[0].src, "data:image/jpeg;base64,BBBB", "asked again after a while");
@@ -120,20 +166,28 @@ test("a picture is asked only while it is on screen in the open island, one afte
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(busy.el.find("IMG")[0].src, "data:image/jpeg;base64,BBBB");
   assert.equal(busy.el.find("IMG")[0].hidden, false, "the last picture stays");
-  assert.notEqual(busy.el.querySelector(".bw-wait").textContent, "The tab has closed.");
+  assert.equal(busy.el.querySelector(".bw-wait").hidden, true, "one failure says nothing");
+  // Failing again and again: it says why, over the last picture.
+  await new Promise((r) => setTimeout(r, 3200));
+  assert.equal(busy.el.querySelector(".bw-wait").hidden, false);
+  assert.equal(busy.el.querySelector(".bw-wait").textContent, "No picture: The page refused: Execution context was destroyed.");
+  assert.equal(busy.el.find("IMG")[0].hidden, false, "the last picture still under it");
   busy.drop();
-  // The agent opens another tab, still being built: its address, waiting
-  // for the page, and not the last tab's picture under it.
+  // The agent opens another tab, still being built: its address and what
+  // opens, over the last picture, dimmed; no pointer from the last page.
   internals.invoke = async (cmd, args) => {
     if (cmd !== "chat_browser_frame") return plain(cmd, args);
     frames.push(args);
-    return { tab: 2, opening: true, url: "https://example.com/new", host: "example.com", title: "" };
+    return { tab: 2, opening: true, url: "https://example.com/new", host: "example.com", title: "", steps: [{ seq: 9, kind: "open", what: "example.com", rect: null, point: null, scrollY: 0, ago: 10 }] };
   };
   busy.ensure();
   await new Promise((r) => setTimeout(r, 0));
-  assert.equal(busy.el.querySelector(".bw-wait").textContent, "Waiting for the page…");
+  assert.equal(busy.el.querySelector(".bw-wait").textContent, "Opens example.com…");
   assert.equal(busy.el.querySelector(".bw-url").textContent, "example.com/new");
-  assert.equal(busy.el.find("IMG")[0].hidden, true, "tab 1's picture isn't tab 2's");
+  assert.equal(busy.el.find("IMG")[0].hidden, false, "the last picture, dimmed, rather than a black box");
+  assert.equal(busy.el.classList.contains("loading"), true);
+  assert.equal(busy.el.querySelector(".bw-load").hidden, false, "the bar along its top");
+  assert.equal(busy.el.querySelector(".bw-cursor").hidden, true);
   busy.drop();
   // A tab that closed: said so, and nothing more asked.
   const askedBefore = frames.length;

@@ -901,9 +901,14 @@ export interface AgentWebTab {
  * `ago` how long ago, in ms.
  */
 export interface BrowserAct {
+  /** Its number: a new action has a higher one, even when it is the same as the last. */
+  seq?: number;
+  /** "open", "click", "type", "scroll" or "read". */
   kind: string;
   what: string;
   rect: { x: number; y: number; w: number; h: number } | null;
+  /** Where the mouse went, in the same CSS pixels. */
+  point?: { x: number; y: number } | null;
   scrollY: number;
   ago: number;
 }
@@ -921,7 +926,11 @@ export interface BrowserFrame {
   title: string;
   url: string;
   host: string;
+  /** A page is loading in the tab: the picture may still show the last one. */
+  loading?: boolean;
   action: BrowserAct | null;
+  /** What the agent did in its tab, oldest first: `action` is the last. */
+  steps?: BrowserAct[];
 }
 
 /** The `browser-tabs` event: every agent's tab, sent whole when one changes. */

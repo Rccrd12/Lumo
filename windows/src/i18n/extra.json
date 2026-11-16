@@ -22049,17 +22049,41 @@
    "id": "Menggulir ke atas",
    "it": "Scorre su"
   },
-  "Waiting for the page…": {
-   "zh-Hans": "正在等待页面…",
-   "hi": "पेज का इंतज़ार…",
-   "es": "Esperando la página…",
-   "ar": "في انتظار الصفحة…",
-   "fr": "En attente de la page…",
-   "bn": "পেজের অপেক্ষায়…",
-   "pt-BR": "Aguardando a página…",
-   "ru": "Ждём страницу…",
-   "id": "Menunggu halaman…",
-   "it": "In attesa della pagina…"
+  "Reads the page": {
+   "zh-Hans": "阅读页面",
+   "hi": "पेज पढ़ रहा है",
+   "es": "Lee la página",
+   "ar": "يقرأ الصفحة",
+   "fr": "Lit la page",
+   "bn": "পেজ পড়ছে",
+   "pt-BR": "Lê a página",
+   "ru": "Читает страницу",
+   "id": "Membaca halaman",
+   "it": "Legge la pagina"
+  },
+  "Loading {host}…": {
+   "zh-Hans": "正在加载 {host}…",
+   "hi": "{host} लोड हो रहा है…",
+   "es": "Cargando {host}…",
+   "ar": "جارٍ تحميل {host}…",
+   "fr": "Chargement de {host}…",
+   "bn": "{host} লোড হচ্ছে…",
+   "pt-BR": "Carregando {host}…",
+   "ru": "Загружается {host}…",
+   "id": "Memuat {host}…",
+   "it": "Caricamento di {host}…"
+  },
+  "No picture: {error}": {
+   "zh-Hans": "没有画面：{error}",
+   "hi": "तस्वीर नहीं: {error}",
+   "es": "Sin imagen: {error}",
+   "ar": "لا صورة: {error}",
+   "fr": "Pas d’image : {error}",
+   "bn": "ছবি নেই: {error}",
+   "pt-BR": "Sem imagem: {error}",
+   "ru": "Нет изображения: {error}",
+   "id": "Tidak ada gambar: {error}",
+   "it": "Nessuna immagine: {error}"
   },
   "The tab has closed.": {
    "zh-Hans": "标签页已关闭。",
