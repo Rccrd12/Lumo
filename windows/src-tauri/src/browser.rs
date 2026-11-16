@@ -29,9 +29,12 @@
 // * A tab belongs to the agent that opened it (the chat's PreToolUse hook
 //   says which: `claim`), and closes with it, or after IDLE unused.
 //
-// The island sees the tabs as `browser-tabs` (each tab's chat, agent, site
-// and whether the user is watching it), sent only when they change: one
-// timer runs while a tab is open, asleep until the next one is due to close.
+// The island sees the tabs as `browser-tabs` (each tab's chat, agent and
+// site), sent only when they change: one timer runs while a tab is open,
+// asleep until the next one is due to close. A tab is never on screen: Watch
+// shows it inside the island (views/browser-watch.ts), which asks for a
+// picture of it (`frame`) only while that picture is on screen, and draws
+// where the agent last clicked or typed (`Act`) over it.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -59,6 +62,9 @@ const STEP: Duration = Duration::from_secs(10);
 const LOAD_WAIT: Duration = Duration::from_secs(10);
 /// A screenshot, at most.
 const SHOT_LIMIT: Duration = Duration::from_secs(10);
+/// The JPEG quality of the island's pictures of a tab (`frame`): enough to
+/// read the page at the island's size, light enough for a few a second.
+const FRAME_QUALITY: u32 = 70;
 /// What browser_read gives when the agent says nothing, and at most.
 const READ_CHARS: usize = 12_000;
 const READ_CHARS_MAX: usize = 40_000;
@@ -89,10 +95,27 @@ struct Tab {
     title: String,
     used: Instant,
     opened: Instant,
-    /// The user is watching it (Watch on the Agents card).
-    visible: bool,
     /// Its agent was listed open on the Agents card once.
     seen: bool,
+    /// What its agent last did in it, for the island's picture.
+    act: Option<Act>,
+}
+
+/// What an agent last did in its tab: the island draws a ring where, and
+/// says what, over the tab's picture while the user watches it.
+#[derive(Debug, Clone, PartialEq)]
+struct Act {
+    /// "open", "click", "type" or "scroll".
+    kind: &'static str,
+    /// The site opened, the name of what was clicked, what was typed
+    /// ("•••" in a password field), or "down" or "up".
+    what: String,
+    /// Where on the page, in CSS pixels of the tab's viewport, when the
+    /// action has a place: x, y, width, height.
+    rect: Option<[f64; 4]>,
+    /// The page's scroll then: the ring moves with the page after.
+    scroll_y: f64,
+    at: Instant,
 }
 
 /// Which agent is about to open a tab, as the chat's PreToolUse hook said.
@@ -128,7 +151,6 @@ pub struct TabView {
     pub tab: u32,
     pub host: String,
     pub title: String,
-    pub visible: bool,
 }
 
 impl Tabs {
@@ -190,7 +212,6 @@ impl Tabs {
                     tab: t.n,
                     host: host_of(&t.url),
                     title: t.title.clone(),
-                    visible: t.visible,
                 })
                 .collect(),
         }
@@ -332,51 +353,65 @@ pub fn close_all(app: &AppHandle) {
     }
 }
 
-/// Watch on an agent's row: its tab, the newest, the one the row names
-/// (chat-agents.ts browserOf), comes on screen. Closing the window only
-/// hides it again.
-pub fn watch(app: &AppHandle, chat: &str, agent: &str) -> Result<(), String> {
-    let (label, title) = with_tabs(|t| {
-        let tab = t.open.iter_mut().filter(|tab| tab.chat == chat && tab.agent == agent).max_by_key(|tab| tab.n)?;
-        tab.visible = true;
-        Some((tab.label.clone(), window_title(&tab.url, &tab.title)))
-    })
-    .ok_or_else(|| "This agent has no browser tab open.".to_string())?;
+/// The newest tab of `agent` in `chat`, the one the Agents card names
+/// (chat-agents.ts browserOf): its window's label, number and last action.
+fn newest(t: &Tabs, chat: &str, agent: &str) -> Option<(String, u32, Option<Act>)> {
+    let tab = t.open.iter().filter(|tab| tab.chat == chat && tab.agent == agent).max_by_key(|tab| tab.n)?;
+    Some((tab.label.clone(), tab.n, tab.act.clone()))
+}
+
+/// Watch (views/browser-watch.ts): a picture of what `agent`'s tab shows
+/// now, its address, and what the agent last did there. Asked only while
+/// the picture is on screen in the island; it neither shows the tab's
+/// window nor keeps the tab from closing when unused.
+pub async fn frame(app: &AppHandle, chat: &str, agent: &str) -> Result<Value, String> {
+    let (label, n, act) = with_tabs(|t| newest(t, chat, agent)).ok_or_else(|| "This agent has no browser tab open.".to_string())?;
     let Some(win) = app.get_webview_window(&label) else {
         forget(&label);
         show(app);
         return Err("This agent's tab has closed.".into());
     };
-    let _ = win.set_title(&title);
-    let _ = win.set_skip_taskbar(false);
-    let _ = win.unminimize();
-    let _ = win.center();
-    let _ = win.show();
-    let _ = win.set_focus();
-    show(app);
-    Ok(())
+    let at = eval(&win, FRAME_JS).await?;
+    let shot = cdp(&win, "Page.captureScreenshot", json!({ "format": "jpeg", "quality": FRAME_QUALITY }), SHOT_LIMIT).await?;
+    let image = shot["data"].as_str().filter(|d| !d.is_empty()).ok_or("The tab gave no picture.")?;
+    Ok(frame_json(n, &at, image, act.as_ref(), Instant::now()))
 }
 
-/// A watched tab's window title: the site first, which the page can't
-/// choose (there is no address bar), then the page's own title.
-fn window_title(url: &str, title: &str) -> String {
-    let host = Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default();
-    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
-    let title: String = if title.chars().count() > 80 { title.chars().take(79).chain(['…']).collect() } else { title };
-    match (host.is_empty(), title.is_empty()) {
-        (true, true) => "Lumo · browser".into(),
-        (true, false) => format!("Lumo · browser · {title}"),
-        (false, true) => format!("Lumo · {host}"),
-        (false, false) => format!("Lumo · {host} · {title}"),
-    }
+/// What `frame` gives the island: the picture (a JPEG, base64), the
+/// viewport it shows in CSS pixels, where the page is scrolled, its address,
+/// and the last action with how long ago it was (ms).
+fn frame_json(n: u32, at: &Value, image: &str, act: Option<&Act>, now: Instant) -> Value {
+    let num = |i: usize| at[i].as_f64().filter(|v| v.is_finite()).unwrap_or(0.0);
+    let url = at[4].as_str().unwrap_or("");
+    let action = act.map(|a| {
+        json!({
+            "kind": a.kind,
+            "what": a.what,
+            "rect": a.rect.map(|[x, y, w, h]| json!({ "x": x, "y": y, "w": w, "h": h })),
+            "scrollY": a.scroll_y,
+            "ago": now.saturating_duration_since(a.at).as_millis() as u64,
+        })
+    });
+    json!({
+        "tab": n,
+        "image": image,
+        "width": num(0),
+        "height": num(1),
+        "scrollY": num(2),
+        "title": at[3].as_str().unwrap_or(""),
+        "url": url,
+        "host": host_of(url),
+        "action": action,
+    })
 }
 
-/// A watched tab's window says its site and title again (they changed).
-fn retitle(app: &AppHandle, label: &str) {
-    let shown = with_tabs(|t| t.open.iter().find(|tab| tab.label == label && tab.visible).map(|tab| window_title(&tab.url, &tab.title)));
-    if let (Some(title), Some(win)) = (shown, app.get_webview_window(label)) {
-        let _ = win.set_title(&title);
-    }
+/// Notes what the agent did in tab `label`.
+fn note_act(label: &str, act: Act) {
+    with_tabs(|t| {
+        if let Some(tab) = t.open.iter_mut().find(|tab| tab.label == label) {
+            tab.act = Some(act);
+        }
+    });
 }
 
 /// Takes a tab out of the list (its window is gone or going).
@@ -505,7 +540,6 @@ fn note_page(app: &AppHandle, label: &str, page: &Page) {
             tab.used = Instant::now();
         }
     });
-    retitle(app, label);
     show(app);
 }
 
@@ -557,6 +591,7 @@ async fn open(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, Strin
         // makes none now) is not left for another agent's new tab.
         with_tabs(|t| t.take_claim(chat, url.as_str(), Instant::now()));
         let (n, win) = tab_window(app, chat, input)?;
+        note_act(win.label(), Act { kind: "open", what: host_of(url.as_str()), rect: None, scroll_y: 0.0, at: Instant::now() });
         load(&win, &url).await?;
         let now = page(&win).await;
         note_page(app, win.label(), &now);
@@ -580,8 +615,8 @@ async fn open(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, Strin
             title: String::new(),
             used: now,
             opened: now,
-            visible: false,
             seen: false,
+            act: Some(Act { kind: "open", what: host_of(url.as_str()), rect: None, scroll_y: 0.0, at: now }),
         });
         Ok((n, label))
     })?;
@@ -655,11 +690,9 @@ fn create(app: &AppHandle, label: &str) -> Result<WebviewWindow, String> {
                     tab.title = title.clone();
                 }
             });
-            retitle(win.app_handle(), &label);
             show(win.app_handle());
         })
-        // A new page, the agent's or a click of the user watching: the
-        // window's title says its site at once.
+        // A new page: the island's Agents card says its site at once.
         .on_page_load(|win, payload| {
             let label = win.label().to_string();
             let url = payload.url().to_string();
@@ -673,32 +706,17 @@ fn create(app: &AppHandle, label: &str) -> Result<WebviewWindow, String> {
                     tab.url = url;
                 }
             });
-            retitle(win.app_handle(), &label);
             show(win.app_handle());
         })
         .build()
         .map_err(|e| format!("The browser tab could not open: {e}"))?;
-    let hidden = win.clone();
+    let gone = win.clone();
     let app = app.clone();
-    win.on_window_event(move |event| match event {
-        // The user closes a tab they watch: it only hides again, the agent's still.
-        tauri::WindowEvent::CloseRequested { api, .. } => {
-            api.prevent_close();
-            let _ = hidden.hide();
-            let _ = hidden.set_skip_taskbar(true);
-            let label = hidden.label().to_string();
-            with_tabs(|t| {
-                if let Some(tab) = t.open.iter_mut().find(|tab| tab.label == label) {
-                    tab.visible = false;
-                }
-            });
+    win.on_window_event(move |event| {
+        if let tauri::WindowEvent::Destroyed = event {
+            forget(gone.label());
             show(&app);
         }
-        tauri::WindowEvent::Destroyed => {
-            forget(hidden.label());
-            show(&app);
-        }
-        _ => {}
     });
     Ok(win)
 }
@@ -776,27 +794,55 @@ fn read_text(n: u32, found: &Value, max: usize) -> String {
     out
 }
 
-/// The centre of element [k] of the last read, in CSS pixels, scrolled
-/// into view first.
-async fn point_of(win: &WebviewWindow, k: u32) -> Result<(f64, f64), String> {
-    let found = eval(win, &REF_POINT_JS.replace("__REF__", &k.to_string())).await?;
-    match (found["x"].as_f64(), found["y"].as_f64()) {
-        (Some(x), Some(y)) => Ok((x, y)),
-        _ => Err(format!("No element [{k}]: read the page again.")),
-    }
+/// Element [k] of the last read, scrolled into view first: the centre of
+/// what shows of it and its box, in CSS pixels, its name and the scroll.
+#[derive(Debug, Clone, PartialEq)]
+struct Place {
+    point: (f64, f64),
+    rect: [f64; 4],
+    name: String,
+    secret: bool,
+    scroll_y: f64,
 }
 
-/// Where to click: ref, or x and y of the last screenshot.
-async fn target(win: &WebviewWindow, input: &Value) -> Result<((f64, f64), String), String> {
+fn place_of(found: &Value) -> Option<Place> {
+    let n = |v: &Value| v.as_f64().filter(|v| v.is_finite());
+    let r = &found["rect"];
+    Some(Place {
+        point: (n(&found["x"])?, n(&found["y"])?),
+        rect: [n(&r[0])?, n(&r[1])?, n(&r[2])?, n(&r[3])?],
+        name: found["name"].as_str().unwrap_or("").to_string(),
+        secret: found["secret"].as_bool().unwrap_or(false),
+        scroll_y: n(&found["scroll"]).unwrap_or(0.0),
+    })
+}
+
+async fn place(win: &WebviewWindow, k: u32) -> Result<Place, String> {
+    let found = eval(win, &REF_POINT_JS.replace("__REF__", &k.to_string())).await?;
+    place_of(&found).ok_or_else(|| format!("No element [{k}]: read the page again."))
+}
+
+/// Where to click: ref, or x and y of the last screenshot. The place, as
+/// the island draws it, and how the answer names it.
+async fn target(win: &WebviewWindow, input: &Value) -> Result<(Place, String), String> {
     let r = whole(input, "ref");
     let x = number(input, "x");
     let y = number(input, "y");
     match (r, x, y) {
-        (Some(k), None, None) => Ok((point_of(win, k).await?, format!("[{k}]"))),
+        (Some(k), None, None) => Ok((place(win, k).await?, format!("[{k}]"))),
         (None, Some(x), Some(y)) => {
             // The screenshot's pixels are the device's: CSS pixels times the scale.
-            let scale = eval(win, "devicePixelRatio").await.ok().and_then(|v| v.as_f64()).filter(|s| *s > 0.0).unwrap_or(1.0);
-            Ok(((x / scale, y / scale), format!("{}, {}", x.round(), y.round())))
+            let at = eval(win, "[devicePixelRatio, scrollY]").await.unwrap_or(Value::Null);
+            let scale = at[0].as_f64().filter(|s| *s > 0.0).unwrap_or(1.0);
+            let (cx, cy) = (x / scale, y / scale);
+            let spot = Place {
+                point: (cx, cy),
+                rect: [cx - 14.0, cy - 14.0, 28.0, 28.0],
+                name: String::new(),
+                secret: false,
+                scroll_y: at[1].as_f64().unwrap_or(0.0),
+            };
+            Ok((spot, format!("{}, {}", x.round(), y.round())))
         }
         (Some(_), _, _) => Err("Give either ref or x and y, not both.".into()),
         _ => Err("Give ref, from browser_read, or x and y, from browser_screenshot.".into()),
@@ -817,7 +863,8 @@ async fn click(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, Stri
     let (n, win) = tab_window(app, chat, input)?;
     let before = page(&win).await;
     let (at, what) = target(&win, input).await?;
-    mouse_click(&win, at).await?;
+    note_act(win.label(), Act { kind: "click", what: at.name.clone(), rect: Some(at.rect), scroll_y: at.scroll_y, at: Instant::now() });
+    mouse_click(&win, at.point).await?;
     settle(&win).await;
     let after = page(&win).await;
     note_page(app, win.label(), &after);
@@ -829,14 +876,27 @@ async fn type_text(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, 
     let (n, win) = tab_window(app, chat, input)?;
     let text = input.get("text").and_then(Value::as_str).ok_or("Give text: what to type.")?;
     let before = page(&win).await;
-    let field = match whole(input, "ref") {
+    let (field, spot) = match whole(input, "ref") {
         Some(k) => {
-            mouse_click(&win, point_of(&win, k).await?).await?;
+            let spot = place(&win, k).await?;
+            mouse_click(&win, spot.point).await?;
             tokio::time::sleep(Duration::from_millis(100)).await;
-            format!(" in [{k}]")
+            (format!(" in [{k}]"), Some(spot))
         }
-        None => String::new(),
+        None => (String::new(), None),
     };
+    // What the island says was typed: never a password field's text.
+    let secret = match &spot {
+        Some(spot) => spot.secret,
+        None => eval(&win, SECRET_JS).await.ok().and_then(|v| v.as_bool()).unwrap_or(false),
+    };
+    note_act(win.label(), Act {
+        kind: "type",
+        what: if secret { "•••".into() } else { text.chars().take(60).collect() },
+        rect: spot.as_ref().map(|s| s.rect),
+        scroll_y: spot.as_ref().map_or(0.0, |s| s.scroll_y),
+        at: Instant::now(),
+    });
     if flag(input, "clear", true) {
         let selected = eval(&win, CLEAR_JS).await?;
         if selected == "none" {
@@ -891,13 +951,15 @@ async fn scroll(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, Str
         tokio::time::sleep(Duration::from_millis(100)).await;
         now = eval(&win, SCROLL_JS).await?;
     }
+    let way = if down { "down" } else { "up" };
+    let y = now[0].as_f64().unwrap_or(0.0);
     with_tabs(|t| {
         if let Some(tab) = t.find(chat, n) {
             tab.used = Instant::now();
+            tab.act = Some(Act { kind: "scroll", what: way.into(), rect: None, scroll_y: y, at: Instant::now() });
         }
     });
     let int = |v: &Value| v.as_f64().unwrap_or(0.0).round() as i64;
-    let way = if down { "down" } else { "up" };
     Ok(json!({ "text": format!("Scrolled {way} on tab {n}. Scroll: {} of {} (viewport {}).", int(&now[0]), int(&now[1]), int(&now[2])) }))
 }
 
@@ -1081,7 +1143,9 @@ const READ_JS: &str = r#"(function () {
 })()"#;
 
 /// Element [__REF__] of the last read, scrolled into view: the centre of
-/// what shows of it, in CSS pixels, or null.
+/// what shows of it and its box, in CSS pixels, the name the island shows
+/// (its label or its first line, never what a field holds), whether it is a
+/// password field, and the scroll; or null.
 const REF_POINT_JS: &str = r#"(function () {
   var el = document.querySelector('[data-lumo-ref="__REF__"]');
   if (!el) return null;
@@ -1090,8 +1154,32 @@ const REF_POINT_JS: &str = r#"(function () {
   var left = Math.max(r.left, 0), right = Math.min(r.right, innerWidth);
   var top = Math.max(r.top, 0), bottom = Math.min(r.bottom, innerHeight);
   if (right <= left || bottom <= top) return null;
-  return { x: (left + right) / 2, y: (top + bottom) / 2 };
+  var field = /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+  var name = el.getAttribute('aria-label') || '';
+  if (!name && field && el.labels && el.labels.length) name = el.labels[0].innerText;
+  if (!name && field) name = el.getAttribute('placeholder') || '';
+  if (!name && !field) name = (el.innerText || '').split('\n').filter(function (l) { return l.trim(); })[0] || '';
+  if (!name) name = el.getAttribute('title') || el.getAttribute('alt') || '';
+  name = name.replace(/\s+/g, ' ').trim();
+  if (name.length > 60) name = name.slice(0, 59) + '…';
+  return {
+    x: (left + right) / 2, y: (top + bottom) / 2,
+    rect: [r.left, r.top, r.width, r.height],
+    name: name,
+    secret: el.tagName === 'INPUT' && String(el.type).toLowerCase() === 'password',
+    scroll: window.scrollY
+  };
 })()"#;
+
+/// The field that has the focus is a password field.
+const SECRET_JS: &str = r#"(function () {
+  var el = document.activeElement;
+  while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
+  return !!el && el.tagName === 'INPUT' && String(el.type).toLowerCase() === 'password';
+})()"#;
+
+/// What `frame` needs besides the picture: [innerWidth, innerHeight, scrollY, title, href].
+const FRAME_JS: &str = "[innerWidth, innerHeight, scrollY, document.title, location.href]";
 
 /// Selects all of the field that has the focus, so what is typed replaces
 /// it: "none" when nothing has the focus.
@@ -1255,8 +1343,8 @@ mod tests {
             title: format!("Site {n}"),
             used: at,
             opened: at,
-            visible: false,
             seen: false,
+            act: None,
         }
     }
 
@@ -1311,12 +1399,8 @@ mod tests {
         let t0 = Instant::now();
         let mut tabs = Tabs { next: 2, ..Tabs::default() };
         tabs.open = vec![tab(1, "c1", "a1", t0)];
-        tabs.open[0].visible = true;
         let view = serde_json::to_value(tabs.view()).unwrap();
-        assert_eq!(
-            view,
-            json!({ "tabs": [{ "chat": "c1", "agent": "a1", "tab": 1, "host": "site1.com", "title": "Site 1", "visible": true }] })
-        );
+        assert_eq!(view, json!({ "tabs": [{ "chat": "c1", "agent": "a1", "tab": 1, "host": "site1.com", "title": "Site 1" }] }));
         assert_eq!(host_of("http://localhost:3000/x"), "localhost");
         assert_eq!(host_of("about:blank"), "");
     }
@@ -1361,12 +1445,45 @@ mod tests {
     }
 
     #[test]
-    fn a_watched_tab_s_title_starts_with_its_site() {
-        assert_eq!(window_title("https://www.example.com/a", "Sign in"), "Lumo · www.example.com · Sign in");
-        assert_eq!(window_title("https://evil.example/", "Lumo:  enter\nyour key"), "Lumo · evil.example · Lumo: enter your key");
-        assert_eq!(window_title("about:blank", ""), "Lumo · browser");
-        assert_eq!(window_title("https://example.com/", " "), "Lumo · example.com");
-        assert!(window_title("https://example.com/", &"x".repeat(200)).ends_with("x…"));
+    fn watch_shows_the_newest_tab_of_the_agent_and_what_it_last_did() {
+        let t0 = Instant::now();
+        let mut tabs = Tabs { next: 4, ..Tabs::default() };
+        tabs.open = vec![tab(1, "c1", "a1", t0), tab(2, "c1", "a1", t0), tab(3, "c2", "a1", t0)];
+        let click = Act { kind: "click", what: "Trastevere · Casa".into(), rect: Some([10.0, 20.0, 300.0, 120.5]), scroll_y: 640.0, at: t0 };
+        tabs.open[1].act = Some(click.clone());
+        let (label, n, act) = newest(&tabs, "c1", "a1").unwrap();
+        assert_eq!((label.as_str(), n, act.as_ref()), ("agent-browser-2", 2, Some(&click)), "the newest of this chat's agent");
+        assert_eq!(newest(&tabs, "c1", "zz"), None);
+        assert_eq!(newest(&tabs, "c2", "a1").map(|(_, n, _)| n), Some(3), "another chat's agent of the same id is another");
+
+        let at = json!([1280, 800, 700.5, "Rome · stays", "https://www.example.com/s/Rome"]);
+        let frame = frame_json(2, &at, "AAAA", Some(&click), t0 + Duration::from_millis(1500));
+        assert_eq!(
+            frame,
+            json!({
+                "tab": 2, "image": "AAAA", "width": 1280.0, "height": 800.0, "scrollY": 700.5,
+                "title": "Rome · stays", "url": "https://www.example.com/s/Rome", "host": "example.com",
+                "action": { "kind": "click", "what": "Trastevere · Casa", "rect": { "x": 10.0, "y": 20.0, "w": 300.0, "h": 120.5 }, "scrollY": 640.0, "ago": 1500 },
+            })
+        );
+        let scrolled = Act { kind: "scroll", what: "down".into(), rect: None, scroll_y: 800.0, at: t0 };
+        let frame = frame_json(1, &json!([]), "B", Some(&scrolled), t0);
+        assert_eq!(frame["action"]["rect"], Value::Null);
+        assert_eq!((frame["width"].clone(), frame["host"].clone()), (json!(0.0), json!("")), "a page that couldn't say is drawn as nothing");
+        assert_eq!(frame_json(1, &at, "B", None, t0)["action"], Value::Null);
+    }
+
+    #[test]
+    fn a_place_is_read_whole_or_not_at_all() {
+        let found = json!({ "x": 50, "y": 60.5, "rect": [10, 20, 80, 81], "name": "Go", "secret": false, "scroll": 300 });
+        assert_eq!(
+            place_of(&found),
+            Some(Place { point: (50.0, 60.5), rect: [10.0, 20.0, 80.0, 81.0], name: "Go".into(), secret: false, scroll_y: 300.0 })
+        );
+        assert_eq!(place_of(&json!({ "x": 1, "y": 2, "rect": [1, 2, 3] })), None);
+        assert_eq!(place_of(&Value::Null), None);
+        assert!(place_of(&json!({ "x": 1, "y": 2, "rect": [1, 2, 3, 4], "secret": true })).unwrap().secret);
+        assert!(REF_POINT_JS.contains("password") && !REF_POINT_JS.contains("el.value"), "a field's text is never its name");
     }
 
     #[test]

@@ -403,9 +403,8 @@ export function computerBusy(): boolean {
 // ── The agents' browser tabs ──────────────────────────────────────────────────
 //
 // Rust keeps the hidden tabs the agents browse in (browser.rs) and sends them
-// all as `browser-tabs` when one opens, moves to another site, closes, or is
-// shown or hidden. A tab is the agent's in its chat: "main" in two chats are
-// two owners.
+// all as `browser-tabs` when one opens, moves to another site or closes. A
+// tab is the agent's in its chat: "main" in two chats are two owners.
 
 let browserTabs: AgentWebTab[] = [];
 
@@ -419,7 +418,6 @@ export function applyBrowserTabs(ev: AgentWebTabs | null | undefined): boolean {
       tab: x.tab,
       host: typeof x.host === "string" ? x.host : "",
       title: typeof x.title === "string" ? x.title : "",
-      visible: x.visible === true,
     }));
   if (JSON.stringify(next) === JSON.stringify(browserTabs)) return false;
   browserTabs = next;
@@ -441,6 +439,15 @@ export function browserOf(chatId: string, agentId: string): AgentWebTab | undefi
     if (x.chat === chatId && x.agent === agentId && (!found || x.tab > found.tab)) found = x;
   }
   return found;
+}
+
+/**
+ * The agents of `chatId` that have a tab, each with its newest, in the
+ * order their tabs opened: the tabs of the island's Browser view.
+ */
+export function browserAgentsOf(chatId: string): AgentWebTab[] {
+  const agents = new Set(browserTabs.filter((x) => x.chat === chatId).map((x) => x.agent));
+  return [...agents].map((a) => browserOf(chatId, a)!).sort((a, b) => a.tab - b.tab);
 }
 
 // ── Permission cards ──────────────────────────────────────────────────────────

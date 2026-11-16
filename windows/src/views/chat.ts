@@ -107,6 +107,7 @@ import {
   type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry,
 } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, talkBox, type AgentsCardHost } from "./agents-card";
+import { openBrowserView, setBrowserViewHost } from "./browser-watch";
 import { updateChatTurns, type AskQuote } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
 import {
@@ -4682,9 +4683,8 @@ export function buildPrompt(
     shown?.remove();
     if (!run || !tab) return;
     const chatId = run.chatId;
-    const next = mainBrowser(chatId, () => {
-      void invoke("chat_browser_watch", { chatId, agentId: "main" }).catch((err) => void Bridge.log(`[agents] watch main: ${String(err)}`));
-    });
+    // Watch: the agents' browser, on the conversation's own tab.
+    const next = mainBrowser(chatId, () => openBrowserView(chatId, "main"));
     if (!next) return;
     next.dataset.key = key;
     label.after(next);
@@ -4730,10 +4730,8 @@ export function buildPrompt(
         void invoke("chat_computer_first", { chatId, agentId }).catch((err) => void Bridge.log(`[agents] computer first ${agentId}: ${String(err)}`));
         Sound.play("blip");
       },
-      // Watch: the agent's hidden browser tab, shown in a window of its own.
-      watchBrowser: (agentId) => {
-        void invoke("chat_browser_watch", { chatId, agentId }).catch((err) => void Bridge.log(`[agents] watch ${agentId}: ${String(err)}`));
-      },
+      // Watch: a live picture of the agent's hidden browser tab under its row (views/browser-watch.ts).
+      watchBrowser: true,
       changed: () => onHeightChange(),
     };
   }
@@ -4840,6 +4838,19 @@ export function buildPrompt(
       peek: { looks: looksOf(entries, now, permission), done: counts.done, total: counts.total, stalled: line.stalled },
     };
   }
+
+  // The agents' browser view (views/browser-watch.ts): each agent's name, Ask and Stop, from here.
+  setBrowserViewHost({
+    title: (chatId, agentId) => agentStore.get(chatId)?.rows.get(agentId)?.row.title ?? "",
+    ask: (chatId, agentId) => {
+      const row = agentStore.get(chatId)?.rows.get(agentId)?.row;
+      if (!row || chatId !== State.chatId || editing != null) return;
+      State.view = "prompt";
+      State.notify();
+      askAgent(chatId, { agentId, title: row.title, line: row.now ? activityLabel(row.now) : "", look: "working" });
+    },
+    stop: (chatId, agentId) => agentsHost(chatId).stop(agentId),
+  });
 
   void onEvent<ChatAgentEvent>("chat-agent", (ev) => {
     if (!ev?.chat || !ev.agent) return;

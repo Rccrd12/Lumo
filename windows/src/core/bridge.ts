@@ -178,6 +178,9 @@ export const Bridge = {
   setIslandRect: (x: number, y: number, width: number, height: number) =>
     call<void>("set_island_rect", { x, y, width, height }),
 
+  /** A picture of an agent's browser tab, for Watch (browser.rs frame): throws why when there is none. */
+  browserFrame: (chatId: string, agentId: string) => callOrThrow<BrowserFrame>("chat_browser_frame", { chatId, agentId }),
+
   /** Give the window keyboard focus (chat field) and take it away again. */
   focusWindow: (focused: boolean) => {
     // Given the keyboard, the island's clicks are its own again (lib.rs).
@@ -888,7 +891,35 @@ export interface AgentWebTab {
   tab: number;
   host: string;
   title: string;
-  visible: boolean;
+}
+
+/**
+ * What an agent last did in its tab (browser.rs Act): "open", "click",
+ * "type" or "scroll"; `what` is the site, the name of what was clicked, what
+ * was typed ("•••" in a password field), or "down" / "up". `rect` is where on
+ * the page, in the tab's CSS pixels when the page was scrolled to `scrollY`;
+ * `ago` how long ago, in ms.
+ */
+export interface BrowserAct {
+  kind: string;
+  what: string;
+  rect: { x: number; y: number; w: number; h: number } | null;
+  scrollY: number;
+  ago: number;
+}
+
+/** A picture of an agent's tab for Watch (browser.rs frame): a JPEG, base64, of the tab's viewport. */
+export interface BrowserFrame {
+  tab: number;
+  image: string;
+  /** The viewport the picture shows, in CSS pixels. */
+  width: number;
+  height: number;
+  scrollY: number;
+  title: string;
+  url: string;
+  host: string;
+  action: BrowserAct | null;
 }
 
 /** The `browser-tabs` event: every agent's tab, sent whole when one changes. */

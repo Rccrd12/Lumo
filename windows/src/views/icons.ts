@@ -86,6 +86,10 @@ export const ICONS = {
   window: "M3.5 5h17v14h-17zM3.5 9h17",
   // globe (stroke) — a browser tab shared with the chat
   globe: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM3.5 12h17M12 3.5c-2.3 2.4-3.4 5.2-3.4 8.5s1.1 6.1 3.4 8.5M12 3.5c2.3 2.4 3.4 5.2 3.4 8.5s-1.1 6.1-3.4 8.5",
+  // lock (stroke) — the address of an agent's browser tab (views/browser-watch.ts)
+  lock: "M6.5 11h11v9h-11zM8.8 11V8a3.2 3.2 0 0 1 6.4 0v3",
+  // arrow.up.left.and.arrow.down.right (stroke) — a picture opened larger
+  expand: "M14.5 4.5h5v5M9.5 19.5h-5v-5M19.5 4.5l-6 6M4.5 19.5l6-6",
   // text.alignleft (stroke) — text selected in another app
   textLines: "M5 6.5h14M5 10.5h14M5 14.5h14M5 18.5h8",
   // Permissions: a shield, outlined like the display and the paperclip.
