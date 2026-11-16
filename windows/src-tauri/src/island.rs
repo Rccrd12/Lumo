@@ -165,7 +165,7 @@ impl Placement {
 /// dragged, as the launch greeting keeps its 640 × 150.
 const SIZE_SLOTS: &[&str] = &[
     "home", "chat", "tools", "settings", "overview", "approval", "question", "error", "finished", "note",
-    "recap", "wardrobe", "mail",
+    "recap", "wardrobe", "mail", "browser",
 ];
 
 /// The slot a view's size is kept under, or `None` for a name that is not one.

@@ -10,7 +10,7 @@ import { installFakeDom } from "./fakedom.mjs";
 
 installFakeDom();
 const { applyAgent, applyBrowserTabs, browserChats, browserOf, newAgentStore } = await import("../src/core/chat-agents.ts");
-const { agentsCard, mainBrowser } = await import("../src/views/agents-card.ts");
+const { agentsCard, fillAgentsCard, mainBrowser } = await import("../src/views/agents-card.ts");
 const { describeBrowserAction, isBrowserTool } = await import("../src/core/agent-browser.ts");
 const { isComputerTool } = await import("../src/core/computer.ts");
 
@@ -26,10 +26,10 @@ function agent(id, extra = {}) {
 
 const send = (store, chat, a) => applyAgent(store, { chat, agent: a }, 0);
 
-const tab = (chat, agent, n, host, extra = {}) => ({ chat, agent, tab: n, host, title: `${host} page`, visible: false, ...extra });
+const tab = (chat, agent, n, host, extra = {}) => ({ chat, agent, tab: n, host, title: `${host} page`, ...extra });
 
 function host(extra = {}) {
-  const log = { watch: [] };
+  const log = {};
   return {
     log,
     host: {
@@ -39,7 +39,7 @@ function host(extra = {}) {
       requestOnTop: null,
       seeRequest: () => {},
       changed: () => {},
-      watchBrowser: (id) => log.watch.push(id),
+      watchBrowser: true,
       ...extra,
     },
   };
@@ -52,9 +52,9 @@ test("the tabs as Rust sends them: a repeat changes nothing, nonsense is left ou
   assert.equal(browserOf("c", "a1").host, "example.com");
   assert.equal(browserOf("c", "zz"), undefined);
   assert.deepEqual([...browserChats()], ["c"]);
-  // Shown or hidden is a change too.
-  assert.equal(applyBrowserTabs({ tabs: [tab("c", "a1", 1, "example.com", { visible: true }), tab("c", "a2", 2, "wikipedia.org")] }), true);
-  assert.equal(browserOf("c", "a1").visible, true);
+  // Another site is a change too.
+  assert.equal(applyBrowserTabs({ tabs: [tab("c", "a1", 1, "example.org"), tab("c", "a2", 2, "wikipedia.org")] }), true);
+  assert.equal(browserOf("c", "a1").host, "example.org");
   assert.equal(applyBrowserTabs({ tabs: [null, { chat: "c" }, { agent: "x", tab: "1" }, tab("c", "a1", 1, "example.com")] }), true);
   assert.deepEqual(browserOf("c", "a1"), tab("c", "a1", 1, "example.com"));
   assert.equal(browserOf("c", "a2"), undefined);
@@ -85,14 +85,27 @@ test("the card: the site on the row, Watch next to its time and in the opened ro
   assert.equal(rows[1].querySelector(".agents-btn.watch"), null);
   const watch = rows[0].querySelector(".agents-btn.watch");
   assert.equal(watch.textContent, "Watch");
+  assert.equal(el.querySelector(".bw-inline"), null);
   watch.fire("click");
-  assert.deepEqual(log.watch, ["b1"]);
-  // The opened row has it too.
-  rows[0].querySelector(".agents-row-head").fire("click");
-  assert.deepEqual(el.querySelector(".agents-detail").find(".agents-btn").map((b) => b.textContent), ["Watch", "Stop this agent", "Close"]);
+  // The live picture under the row, with the row's Stop; Watch is Hide now.
+  const watched = el.find(".agents-row")[0];
+  assert.ok(watched.className.includes("watching"));
+  assert.equal(watched.querySelector(".agents-btn.watch.on").textContent, "Hide");
+  const inline = watched.querySelector(".bw-slot").querySelector(".bw-inline");
+  assert.ok(inline.querySelector(".bw-frame") && inline.querySelector(".bw-bar"));
+  assert.deepEqual(inline.querySelector(".bw-foot").find(".agents-btn").map((b) => b.textContent), ["Stop"]);
+  assert.equal(el.find(".agents-row")[1].querySelector(".bw-slot"), null, "only the row watched");
+  // Drawn again, the picture is the same one, still under its row.
+  fillAgentsCard(el, { chatId: "k", chat: c, batch: c.batches[0], now: T0 + 31 * S }, h);
+  assert.equal(el.find(".agents-row")[0].querySelector(".bw-inline"), inline);
+  // The opened row offers Hide too, and Hide closes it.
+  el.find(".agents-row")[0].querySelector(".agents-row-head").fire("click");
+  assert.deepEqual(el.querySelector(".agents-detail").find(".agents-btn").map((b) => b.textContent), ["Hide", "Stop this agent", "Close"]);
   el.querySelector(".agents-detail").querySelector(".agents-btn.watch").fire("click");
-  assert.deepEqual(log.watch, ["b1", "b1"]);
-  // Without the host's action (nowhere to send it): the site, no button.
+  assert.equal(el.querySelector(".bw-inline"), null);
+  assert.equal(el.querySelector(".agents-detail").querySelector(".agents-btn.watch").textContent, "Watch");
+  el.find(".agents-row")[0].querySelector(".agents-row-head").fire("click");
+  // Without the chat's leave (a card drawn elsewhere): the site, no button.
   const { host: none } = host({ watchBrowser: undefined });
   const bare = draw(none);
   assert.equal(bare.querySelector(".agents-btn.watch"), null);
@@ -176,10 +189,14 @@ test("in the chat: the tabs come as an event, and Watch asks Rust", async () => 
   view.sync();
   const $ = (cls) => view.el.querySelector(cls);
   assert.equal($(".agents-badge.browser"), null);
-  emit("browser-tabs", { tabs: [{ chat, agent: "w2", tab: 1, host: "example.com", title: "Example", visible: false }] });
+  emit("browser-tabs", { tabs: [{ chat, agent: "w2", tab: 1, host: "example.com", title: "Example" }] });
   assert.equal($(".agents-badge.browser").textContent, "on example.com");
   $(".agents-btn.watch").fire("click");
-  assert.deepEqual(sent("chat_browser_watch"), [{ chatId: chat, agentId: "w2" }]);
+  // The picture opens under the row; nothing is asked of Rust while it isn't on screen.
+  assert.ok($(".bw-inline"));
+  assert.deepEqual(sent("chat_browser_frame"), []);
+  $(".agents-btn.watch.on").fire("click");
+  assert.equal($(".bw-inline"), null);
   emit("browser-tabs", { tabs: [] });
   assert.equal($(".agents-badge.browser"), null);
   assert.equal($(".agents-btn.watch"), null);

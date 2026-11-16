@@ -926,12 +926,13 @@ fn chat_computer_first(app: AppHandle, chat_id: String, agent_id: String) {
     computer_turns::put_first(&app, &chat_id, &agent_id);
 }
 
-/// Watch on an agent's row (agents-card.ts): its browser tab on screen
-/// (browser.rs). Async: a window shown from a command that runs on the main
-/// thread (a synchronous one) would wait on that same thread.
+/// Watch on an agent's row (views/browser-watch.ts): a picture of its
+/// browser tab, asked again and again only while it is on screen in the
+/// island (browser.rs frame). Async: the DevTools calls are answered on the
+/// main thread, which a synchronous command would hold.
 #[tauri::command]
-async fn chat_browser_watch(app: AppHandle, chat_id: String, agent_id: String) -> Result<(), String> {
-    browser::watch(&app, &chat_id, &agent_id)
+async fn chat_browser_frame(app: AppHandle, chat_id: String, agent_id: String) -> Result<serde_json::Value, String> {
+    browser::frame(&app, &chat_id, &agent_id).await
 }
 
 /// Lumo's commands, for its own pages only: whatever page or frame of an
@@ -1538,7 +1539,7 @@ pub fn run() {
             chat_stop,
             chat_stop_agent,
             chat_computer_first,
-            chat_browser_watch,
+            chat_browser_frame,
             chat_allow_restart,
             chat_rewind,
             chat_forget_file,

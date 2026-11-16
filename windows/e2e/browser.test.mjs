@@ -4,16 +4,17 @@
 // (lib/mcp.mjs). Off at first: refused, naming the setting. On: a tab opens
 // with no window on screen, reads the page as text with [k] refs, types and
 // clicks by ref (the page's own script runs and calls home), scrolls, takes a
-// screenshot of the page as drawn, works beside a second tab of another chat
-// at the same time, and closes.
+// screenshot of the page as drawn, gives the island its live picture (Watch:
+// a JPEG, the address, the last action and its box, still no window on
+// screen), works beside a second tab of another chat at the same time, and
+// closes.
 // The pages come from a small server of the test's own on 127.0.0.1, never at
 // "/" (the driver names a webview showing "/" the island).
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before } from "node:test";
 
 import { HOOK, Lumo, OUT } from "./lib/app.mjs";
@@ -157,38 +158,6 @@ function scrollOf(read) {
 }
 
 /** Lumo's windows on screen, written down. */
-/** A window of this machine found by its exact title: a picture of it, as the user sees it. */
-function windowShot(title, file) {
-  const ps = `${WIN32}
-$h = [LumoE2eWin]::FindWindow([NullString]::Value, '${title.replace(/'/g, "''")}')
-$r = New-Object LumoE2eWin+R
-[void][LumoE2eWin]::GetWindowRect($h, [ref]$r)
-$w = $r.Ri - $r.L; $ht = $r.B - $r.T
-Add-Type -AssemblyName System.Drawing
-$bmp = New-Object System.Drawing.Bitmap $w, $ht
-[System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
-$bmp.Save('${file.replace(/'/g, "''")}')`;
-  spawnSync("powershell", ["-NoProfile", "-Command", ps], { stdio: "ignore", timeout: 15_000 });
-}
-
-/** The window's own X: WM_CLOSE, as a click on it sends. */
-function closeWindow(title) {
-  const ps = `${WIN32}
-$h = [LumoE2eWin]::FindWindow([NullString]::Value, '${title.replace(/'/g, "''")}')
-[void][LumoE2eWin]::PostMessage($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)`;
-  spawnSync("powershell", ["-NoProfile", "-Command", ps], { stdio: "ignore", timeout: 15_000 });
-}
-
-const WIN32 = `Add-Type -TypeDefinition @"
-using System; using System.Runtime.InteropServices;
-public static class LumoE2eWin {
-  public struct R { public int L, T, Ri, B; }
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out R r);
-  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
-}
-"@`;
-
 function shown() {
   const titles = windowsOnScreen(app.proc.pid);
   step(`Lumo's windows on screen: ${JSON.stringify(titles)}`);
@@ -300,31 +269,73 @@ flow(G, "Two tabs at once: another chat's tab works beside it, and each chat see
   await ok(b, "browser_close", { tab: m });
 });
 
-flow(G, "Watch: the tab comes on screen as a window of its own, and closing it only hides it", app, async () => {
+flow(G, "Watch: a live picture of the tab for the island, the last action ringed, and no window on screen", app, async () => {
   const n = await pageTab();
   await ok(a, "browser_scroll", { tab: n, direction: "up", pages: 10 });
-  // The Agents card's Watch, as the island calls it; the tab has no agent of its own, so "main".
-  await app.d.js("window.__TAURI_INTERNALS__.invoke('chat_browser_watch', { chatId: 'e2e-browser', agentId: 'main' }); return true");
-  let title = "";
-  for (let i = 0; i < 30 && !title; i++) {
-    if (i) await sleep(200);
-    title = windowsOnScreen(app.proc.pid).find((t) => /^Lumo · 127\.0\.0\.1 · /.test(t)) ?? "";
-  }
-  step(`the watched window: ${JSON.stringify(title)}`);
-  assert.equal(title, "Lumo · 127.0.0.1 · Lumo e2e page", "the window says its site, then the page's title");
-  await sleep(800);
-  const shot = join(OUT, "shots", "agent-browser-watch.png");
-  windowShot(title, shot);
-  if (existsSync(shot)) step(`the window's picture: ${shot}`);
+  const read = await ok(a, "browser_read", { tab: n });
+  const go = ref(read, /^button "Go"/);
+  await ok(a, "browser_click", { tab: n, ref: go });
+  const was = shown();
+  // What the island asks while the picture is on screen; the tab has no agent of its own, so "main".
+  const f = await app.d.js(
+    "return window.__TAURI_INTERNALS__.invoke('chat_browser_frame', { chatId: 'e2e-browser', agentId: 'main' }).then((f) => f, (e) => ({ error: String(e) }))",
+  );
+  assert.ok(f && !f.error, `chat_browser_frame failed: ${f?.error}`);
+  step(`the picture: tab ${f.tab}, ${f.width} × ${f.height} at ${f.scrollY}, ${f.url}, ${String(f.image).length} characters; ${JSON.stringify(f.action)}`);
+  assert.equal(f.tab, n, "the conversation's newest tab");
+  assert.match(f.image, /^\/9j\//, "a JPEG");
+  assert.ok(f.width > 100 && f.height > 100, "the page says its size in CSS px");
+  assert.equal(f.host, "127.0.0.1");
+  assert.match(f.url, /\/page\.html$/);
+  assert.equal(f.title, "Lumo e2e page");
+  assert.equal(f.action?.kind, "click", "the last thing the agent did");
+  assert.equal(f.action.what, "Go", "named as on the page");
+  assert.ok(f.action.rect && f.action.rect.w > 0 && f.action.rect.h > 0, "with the box it hit, for the ring");
+  const jpg = join(OUT, "shots", "agent-browser-watch.jpg");
+  mkdirSync(dirname(jpg), { recursive: true });
+  writeFileSync(jpg, Buffer.from(f.image, "base64"));
+  step(`the picture as the island shows it: ${jpg}`);
+  const now = shown();
+  assert.ok(!now.some((t) => /browser|e2e page/i.test(t)), "the tab still has no window on screen");
+  assert.ok(now.length <= was.length, "no new window came on screen");
 
-  closeWindow(title);
-  let gone = false;
-  for (let i = 0; i < 30 && !gone; i++) {
-    if (i) await sleep(200);
-    gone = !windowsOnScreen(app.proc.pid).includes(title);
+  const { error } = await app.d.js(
+    "return window.__TAURI_INTERNALS__.invoke('chat_browser_frame', { chatId: 'e2e-browser', agentId: 'nobody' }).then(() => ({}), (e) => ({ error: String(e) }))",
+  );
+  step(`an agent with no tab: ${error}`);
+  assert.ok(error, "an agent with no tab has no picture");
+});
+
+flow(G, "Watch on a real site: a picture of a page of the web (skipped offline)", app, async () => {
+  const n = await pageTab();
+  const { r, text } = await call(a, "browser_open", { url: "https://en.wikipedia.org/wiki/Rome" }, 55_000);
+  if (r.isError) return step(`no web from this machine: ${text}`);
+  const m = Number(/^Tab (\d+):/.exec(text)?.[1]);
+  try {
+    const read = await ok(a, "browser_read", { tab: m });
+    const search = (() => {
+      try {
+        return ref(read, /^(searchbox|textbox|combobox) "Search/);
+      } catch {
+        return 0;
+      }
+    })();
+    if (search) await ok(a, "browser_type", { tab: m, ref: search, text: "Colosseum" });
+    await sleep(800);
+    const f = await app.d.js(
+      "return window.__TAURI_INTERNALS__.invoke('chat_browser_frame', { chatId: 'e2e-browser', agentId: 'main' }).then((f) => f, (e) => ({ error: String(e) }))",
+    );
+    assert.ok(f && !f.error, `chat_browser_frame failed: ${f?.error}`);
+    step(`the picture: ${f.width} × ${f.height}, ${f.url}; ${JSON.stringify(f.action)}`);
+    assert.equal(f.tab, m, "the newest tab of the conversation");
+    assert.match(f.host, /wikipedia\.org$/);
+    const jpg = join(OUT, "shots", "agent-browser-watch-web.jpg");
+    writeFileSync(jpg, Buffer.from(f.image, "base64"));
+    step(`the picture as the island shows it: ${jpg}`);
+  } finally {
+    await call(a, "browser_close", { tab: m });
   }
-  assert.ok(gone, "its X hides the window");
-  assert.match(await ok(a, "browser_read", { tab: n }), /Hello from e2e/, "and the tab is still there, for the agent");
+  assert.ok(n > 0);
 });
 
 flow(G, "Close: the tab is gone, and its number with it", app, async () => {

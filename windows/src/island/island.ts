@@ -1468,6 +1468,8 @@ export class Island {
     if (State.mode === "expanded" && State.view === "approval" && State.pendingApproval?.email) {
       h = Math.max(h, EMAIL_CARD_H);
     }
+    // The agents' browser: as wide as it asks, within the island's window, as the home.
+    if (State.mode === "expanded" && State.view === "browser") w = Math.min(w, window.innerWidth - 40);
     // The home: wider than the other views by as much as it needs
     // to stay low, so its grips move it as theirs do (Rust grows the shared
     // width, islandWidth); as tall as what it lists, or as the height picked.

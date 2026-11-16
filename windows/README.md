@@ -1256,11 +1256,19 @@ fetches a page's text.
   permission mode like any other tool, and the card says what they do:
   "Open in a new browser tab · https://…", "Click in browser tab 2 · [12]".
 - Every agent opens its own tab and works in it: the agent's row in the
-  Agents card says which site it is on, and **Watch** shows its tab in a
-  window. The conversation's own tab, when Claude Code browses without an
-  agent, is shown the same way next to the dots while it answers. The
-  window's title starts with the site's address (it has no address bar), and
-  closing the window only hides the tab again.
+  Agents card says which site it is on, and **Watch** opens a live picture of
+  its tab right under the row, inside the island: the address, what the agent
+  just did in words ("Clicks “Search”") and a ring on the spot it clicked or
+  typed in, which follows the page as it scrolls. **Ask** and **Stop** sit
+  under it, and ⤢ opens the **Agents' browser**: one tab per agent (named by
+  its site) and **All**, which shows them side by side; a click on one makes
+  it large. The conversation's own tab, when Claude Code browses without an
+  agent, opens there from **Watch** next to the dots while it answers. It is
+  only to watch: the tab stays the agent's, with none of your accounts, and no
+  window comes on screen. The picture is asked for only while it is on screen
+  in the open island (about twice a second, once a second side by side), so a
+  hidden island costs nothing; what an agent types in a password field is
+  shown as dots.
 - A tab closes when its agent ends, after 10 minutes unused, or when the
   setting is turned off; eight tabs at most are open at once.
 - For now only Claude Code browses: Antigravity CLI, Codex, Copilot CLI,
