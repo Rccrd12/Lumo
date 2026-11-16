@@ -615,7 +615,7 @@ pub struct AskTurn {
 impl AskTurn {
     pub fn begin(provider: &'static str, chat: &str, agent: &'static str, mode: &str) -> AskTurn {
         let id = ASKER_IDS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        askers().push(Asker { id, chat: chat.to_string(), provider, agent, started: Asks::of(mode) });
+        askers().push(Asker { id, chat: chat.to_string(), provider, agent, started: asks_for(provider, mode) });
         AskTurn { id }
     }
 }
@@ -626,11 +626,25 @@ impl Drop for AskTurn {
     }
 }
 
-/// The chat a call that named none is for: the only one a CLI is asking for
-/// (agy doesn't always pass LUMO_CHAT_ID on to lumo-hook). None with none or several.
+/// How a CLI's turn asks in permission `mode`, read as the chat shows it for
+/// that provider: Antigravity CLI has modes of its own ("turbo"), the others
+/// read theirs as Claude Code's (an old "turbo" is Ask for them, as the chat says).
+fn asks_for(provider: &str, mode: &str) -> Asks {
+    if provider == crate::antigravity_cli::PROVIDER {
+        Asks::of(mode)
+    } else {
+        Asks::of(crate::claude_code::permission_mode(mode))
+    }
+}
+
+/// The chat a call that named none is for: the only one Antigravity CLI is
+/// asking for (agy doesn't always pass LUMO_CHAT_ID on to lumo-hook). None
+/// with none or several, or with another CLI's turn running too: a call
+/// can't be told apart from that CLI's.
 fn only_asking_chat(list: &[Asker]) -> Option<String> {
     let first = &list.first()?.chat;
-    (!first.is_empty() && list.iter().all(|a| &a.chat == first)).then(|| first.clone())
+    let agy = |a: &Asker| a.provider == crate::antigravity_cli::PROVIDER;
+    (!first.is_empty() && list.iter().all(|a| &a.chat == first && agy(a))).then(|| first.clone())
 }
 
 /// lumo-hook's `--tools=` for the `lumo` server of a CLI that lets Lumo's
@@ -707,8 +721,12 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     }
     if let Some((_, a)) = &asker {
         let mode = app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).permission_mode_for(a.provider);
-        if let Err(why) = ask(app, a.started.stricter(Asks::of(&mode)), Some(a.agent), &tool, &input).await {
+        if let Err(why) = ask(app, a.started.stricter(asks_for(a.provider, &mode)), Some(a.agent), &tool, &input).await {
             return refuse(why);
+        }
+        // Stop while the card waited: the turn is over, nothing is done.
+        if changes(&tool) && !askers().iter().any(|x| x.id == a.id) {
+            return refuse(TURN_OVER);
         }
     }
     call(app, &chat, None, &tool, &input).await
@@ -1879,12 +1897,22 @@ mod tests {
 
     #[test]
     fn a_call_naming_no_chat_is_for_the_only_one_asking() {
-        let asker = |id, chat: &str| Asker { id, chat: chat.into(), provider: "codex", agent: "codex", started: Asks::Card };
+        let asker = |id, chat: &str| Asker { id, chat: chat.into(), provider: crate::antigravity_cli::PROVIDER, agent: "antigravity", started: Asks::Card };
         assert_eq!(only_asking_chat(&[]), None);
         assert_eq!(only_asking_chat(&[asker(1, "a")]).as_deref(), Some("a"));
         assert_eq!(only_asking_chat(&[asker(1, "a"), asker(2, "a")]).as_deref(), Some("a"));
         assert_eq!(only_asking_chat(&[asker(1, "a"), asker(2, "b")]), None, "two chats: neither");
         assert_eq!(only_asking_chat(&[asker(1, "")]), None);
+        // Another CLI's turn: its calls name their chat, and one that doesn't is nobody's.
+        let codex = Asker { id: 3, chat: "a".into(), provider: "codex", agent: "codex", started: Asks::Card };
+        assert_eq!(only_asking_chat(std::slice::from_ref(&codex)), None);
+        assert_eq!(only_asking_chat(&[asker(1, "a"), codex]), None);
+        // The mode as the chat shows it: an old "turbo" is Ask, but Antigravity's own.
+        assert_eq!(asks_for("codex", "turbo"), Asks::Card);
+        assert_eq!(asks_for("copilot", "bypassPermissions"), Asks::Card);
+        assert_eq!(asks_for("codex", "auto"), Asks::Free);
+        assert_eq!(asks_for("cursor", "plan"), Asks::LookOnly);
+        assert_eq!(asks_for(crate::antigravity_cli::PROVIDER, "turbo"), Asks::Free);
         // A turn asks from its start until it ends.
         let turn = AskTurn::begin("codex", "chat-turn-test", "codex", "default");
         assert!(askers().iter().any(|a| a.chat == "chat-turn-test" && a.started == Asks::Card));

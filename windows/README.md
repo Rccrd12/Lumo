@@ -1254,8 +1254,9 @@ fetches a page's text.
   Codex, Copilot CLI, Cursor CLI and Antigravity CLI get them from Lumo's MCP
   server (`lumo-hook --mcp`); the API providers (Anthropic, OpenAI, Google,
   OpenRouter…) and the local models get them as Lumo's own tools, and a local
-  model loads them when the question speaks of a site, a page or a link (or
-  asks for them). Reading and looking need no click; opening a site,
+  model loads them when the question speaks of using a website (a website or
+  web page, browsing, clicking, filling in a form, booking…) or when it asks
+  for them; a bare link is read with web_fetch. Reading and looking need no click; opening a site,
   clicking, typing, scrolling and closing go through the chat's permission
   mode like any other tool, and the card says what they do: "Open in a new
   browser tab · https://…", "Click in browser tab 2 · [12]". Claude Code asks
@@ -1267,7 +1268,8 @@ fetches a page's text.
   don't browse.
 - A screenshot goes back to the model as a picture: to Claude Code and the
   CLIs through MCP, to the API providers and local models with the tool's
-  answer. A model that can't see is told to use `browser_read` instead.
+  answer (only the newest three stay in a long answer's requests). A model
+  that can't see is told to use `browser_read` instead.
 - Every agent opens its own tab and works in it: the agent's row in the
   Agents card says which site it is on, and **Watch** opens a live picture of
   its tab right under the row, inside the island: the address, and the page

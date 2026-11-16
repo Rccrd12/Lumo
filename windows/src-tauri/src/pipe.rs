@@ -234,8 +234,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         .await
         .into())
     } else if let Some(request) = payload.get("lumo_browser") {
-        // A tab of Lumo's browser for agents (browser.rs), as the chat's own.
-        Some(in_chat(&app, request, Box::pin(crate::browser::serve(&app, request))).await)
+        // A tab of Lumo's browser for agents (browser.rs), as the chat's own;
+        // the card Lumo may ask for leaves the island with the relay.
+        Some(while_relay_waits(&mut pipe, in_chat(&app, request, Box::pin(crate::browser::serve(&app, request)))).await)
     } else if let Some(request) = payload.get("lumo_browser_claim") {
         // The agent about to open a tab (lumo-hook --browser-claim): noted,
         // and answered at once so the relay lets Claude Code go on.

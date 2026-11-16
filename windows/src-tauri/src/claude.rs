@@ -185,7 +185,34 @@ fn tool_result(id: &str, text: String, failed: bool, image: Option<String>) -> V
             ],
             "is_error": failed,
         }),
-        _ => json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }),
+        Some(_) => json!({ "type": "tool_result", "tool_use_id": id, "content": format!("{text}\n\n{TOO_LARGE}"), "is_error": failed }),
+        None => json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }),
+    }
+}
+
+/// What a screenshot too large for the API leaves in its place.
+const TOO_LARGE: &str = "(The screenshot is too large to send: use browser_read to see the page as text.)";
+/// What an earlier screenshot, left out of the request, leaves in its place.
+const EARLIER: &str = "(Its screenshot was left out to keep the request small: take another to see the page now.)";
+
+/// Only the newest `keep` screenshots of the tools' answers stay in the
+/// request, so a long turn stays under the API's limits (its size, and the
+/// size each picture may have past 20); the older ones are said in words.
+fn keep_last_screenshots(body: &mut Value, keep: usize) {
+    let mut kept = 0;
+    for message in body["messages"].as_array_mut().into_iter().flatten().rev().filter(|m| m["role"] == "user") {
+        for block in message["content"].as_array_mut().into_iter().flatten().rev().filter(|b| b["type"] == "tool_result") {
+            let Some(parts) = block["content"].as_array_mut() else { continue };
+            if !parts.iter().any(|p| p["type"] == "image") {
+                continue;
+            }
+            if kept < keep {
+                kept += 1;
+                continue;
+            }
+            parts.retain(|p| p["type"] != "image");
+            parts.push(json!({ "type": "text", "text": EARLIER }));
+        }
     }
 }
 
@@ -320,6 +347,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
                 messages.push(json!({ "role": "user", "content": results }));
             }
         }
+        keep_last_screenshots(&mut body, lumo_local::guard::KEEP_PICTURES);
     }
 }
 
@@ -527,6 +555,7 @@ pub async fn send(
                     messages.push(json!({ "role": "user", "content": results }));
                 }
             }
+            keep_last_screenshots(&mut body, lumo_local::guard::KEEP_PICTURES);
         }
     };
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
@@ -1425,6 +1454,17 @@ mod tests {
         assert_eq!(shot["content"][1], json!({ "type": "text", "text": "Tab 1" }));
         // Too large for the API: the words alone.
         let huge = "A".repeat((MAX_IMAGE_BYTES * 4 / 3) as usize + 4);
-        assert_eq!(tool_result("t3", "Tab 1".into(), false, Some(huge))["content"], "Tab 1");
+        assert_eq!(tool_result("t3", "Tab 1".into(), false, Some(huge))["content"], format!("Tab 1\n\n{TOO_LARGE}"));
+        // A long turn keeps only the newest.
+        let round = |n: u32| json!({ "role": "user", "content": [tool_result(&format!("t{n}"), format!("Tab {n}"), false, Some(format!("P{n}")))] });
+        let mut body = json!({ "messages": [{ "role": "user", "content": "Hi" }, round(1), round(2), round(3)] });
+        keep_last_screenshots(&mut body, 2);
+        let first = &body["messages"][1]["content"][0]["content"];
+        assert_eq!(first.as_array().unwrap().len(), 2);
+        assert_eq!(first[1]["text"], EARLIER);
+        assert_eq!(body["messages"][2]["content"][0]["content"][0]["source"]["data"], "P2");
+        assert_eq!(body["messages"][3]["content"][0]["content"][0]["source"]["data"], "P3");
+        keep_last_screenshots(&mut body, 2);
+        assert_eq!(body["messages"][1]["content"][0]["content"].as_array().unwrap().len(), 2, "said once");
     }
 }

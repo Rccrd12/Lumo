@@ -103,6 +103,10 @@ pub fn append_text(message: &mut Value, text: &str) {
 /// for a server that refused them. Whether there were any.
 pub fn without_images(body: &mut Value) -> bool {
     let Some(last) = body["messages"].as_array_mut().and_then(|m| m.last_mut()) else { return false };
+    // The browser's screenshots aren't the user's (`without_pictures`).
+    if is_pictures(last) {
+        return false;
+    }
     let Some(parts) = last["content"].as_array() else { return false };
     if !parts.iter().any(|p| p["type"] == "image_url") {
         return false;
@@ -124,17 +128,89 @@ pub fn pictures_message(pictures: &[String]) -> Value {
     json!({ "role": "user", "content": parts })
 }
 
-/// The screenshots of the request, said in words instead (a model that sees
-/// no pictures refused them): whether there were any.
+/// How many of the browser's screenshots a request carries at most: the
+/// newest, so a long turn doesn't grow past what a server takes.
+pub const KEEP_PICTURES: usize = 3;
+/// What stands in the place of screenshots left out for that.
+const EARLIER_PICTURES: &str = "(Its screenshot was left out to keep the request small: take another to see the page now.)";
+
+fn is_pictures(m: &Value) -> bool {
+    m["role"] == "user" && m.pointer("/content/0/text").and_then(Value::as_str) == Some(PICTURES)
+}
+
+/// Whether the request carries screenshots of the browser.
+pub fn has_pictures(body: &Value) -> bool {
+    body["messages"].as_array().is_some_and(|m| m.iter().any(is_pictures))
+}
+
+/// Says `note` at the end of the tool's answer before message `i` (where the
+/// pictures were), so no user message is left between tool answers and the next call.
+fn note_before(messages: &mut [Value], i: usize, note: &str) {
+    if let Some(tool) = i.checked_sub(1).and_then(|j| messages.get_mut(j)).filter(|m| m["role"] == "tool") {
+        let text = tool["content"].as_str().unwrap_or_default();
+        if !text.ends_with(note) {
+            tool["content"] = json!(format!("{text}\n\n{note}"));
+        }
+    }
+}
+
+/// The screenshots of the request taken out, a model that sees no pictures
+/// (or a server that takes no message of the user's after tool answers)
+/// having refused them, and said in words in the tools' answers: whether there were any.
 pub fn without_pictures(body: &mut Value) -> bool {
+    let Some(messages) = body["messages"].as_array_mut() else { return false };
     let mut changed = false;
-    for m in body["messages"].as_array_mut().into_iter().flatten() {
-        if m["role"] == "user" && m.pointer("/content/0/text").and_then(Value::as_str) == Some(PICTURES) {
-            m["content"] = json!(NO_PICTURES);
+    let mut i = 0;
+    while i < messages.len() {
+        if is_pictures(&messages[i]) {
+            note_before(messages, i, NO_PICTURES);
+            messages.remove(i);
             changed = true;
+        } else {
+            i += 1;
         }
     }
     changed
+}
+
+/// Only the newest `keep` screenshots stay in the request; the older ones
+/// are taken out, said in words in the tools' answers.
+pub fn keep_last_pictures(body: &mut Value, keep: usize) {
+    let Some(messages) = body["messages"].as_array_mut() else { return };
+    let mut kept = 0;
+    let mut i = messages.len();
+    while i > 0 {
+        i -= 1;
+        if !is_pictures(&messages[i]) {
+            continue;
+        }
+        let parts = messages[i]["content"].as_array().cloned().unwrap_or_default();
+        let room = keep.saturating_sub(kept);
+        let images = parts.iter().filter(|p| p["type"] == "image_url").count();
+        if images <= room {
+            kept += images;
+            continue;
+        }
+        // The newest of the message are its last ones.
+        let mut drop = images - room;
+        let left: Vec<Value> = parts
+            .into_iter()
+            .filter(|p| {
+                let out = p["type"] == "image_url" && drop > 0;
+                if out {
+                    drop -= 1;
+                }
+                !out
+            })
+            .collect();
+        kept = keep;
+        if left.iter().any(|p| p["type"] == "image_url") {
+            messages[i]["content"] = json!(left);
+        } else {
+            note_before(messages, i, EARLIER_PICTURES);
+            messages.remove(i);
+        }
+    }
 }
 
 /// The input of a call from its arguments (a JSON text): `{}` when there are

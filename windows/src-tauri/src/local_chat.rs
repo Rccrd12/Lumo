@@ -507,6 +507,8 @@ struct Launch<'a> {
     tools: Vec<(String, String, Value)>,
     asking: crate::tools::Asking,
     sandbox_high: bool,
+    /// The model sees pictures, as far as its server says.
+    sees: bool,
 }
 
 /// One agent's whole turn: its task alone, the chat's tools (no more
@@ -540,7 +542,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate:
         plan: None,
     };
     let names: Vec<String> = l.tools.iter().map(|(id, _, _)| id.clone()).collect();
-    let mut hooks = AgentHooks { app, chat_id, server: l.server.id, names, asking: l.asking, sandbox_high: l.sandbox_high, sink, pictures: Pictures::default() };
+    let mut hooks = AgentHooks { app, chat_id, server: l.server.id, names, asking: l.asking, sandbox_high: l.sandbox_high, sink, pictures: Pictures::default(), sees: l.sees };
     let outcome = lumo_local::run(l.to, &mut body, &rules, &mut hooks).await.map_err(|f| failure(l.server, l.model, l.base, f))?;
     let answer = without_note(&outcome.answer());
     if answer.trim().is_empty() {
@@ -560,6 +562,8 @@ struct AgentHooks<'a> {
     sink: crate::api_agents::Sink,
     /// The screenshots the browser took in this round, for the model to see.
     pictures: Pictures,
+    /// The model sees pictures, as far as its server says.
+    sees: bool,
 }
 
 /// The screenshots a round's browser calls took (PNG, base64), kept for
@@ -567,12 +571,15 @@ struct AgentHooks<'a> {
 type Pictures = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
 
 /// Runs one of the chat's tools for a turn of a local model, keeping the
-/// screenshot it may take in `pictures`: what it answered, and whether it failed.
+/// screenshot it may take in `pictures` (`None`: a model that sees none,
+/// told so): what it answered, and whether it failed.
 #[allow(clippy::too_many_arguments)]
-async fn run_tool(app: &AppHandle, chat: &str, server: &'static str, agent: Option<&str>, name: &str, input: Value, asking: crate::tools::Asking, high: bool, pictures: &Pictures) -> (String, bool) {
+async fn run_tool(app: &AppHandle, chat: &str, server: &'static str, agent: Option<&str>, name: &str, input: Value, asking: crate::tools::Asking, high: bool, pictures: Option<&Pictures>) -> (String, bool) {
     let (text, failed, image) = crate::tools::call_for_chat(app, chat, server, agent, name, input, asking, high).await;
-    if let Some(png) = image {
-        pictures.lock().unwrap_or_else(|e| e.into_inner()).push(png);
+    match (image, pictures) {
+        (Some(png), Some(pictures)) => pictures.lock().unwrap_or_else(|e| e.into_inner()).push(png),
+        (Some(_), None) => return (format!("{text}\n\n{}", lumo_local::guard::NO_PICTURES), failed),
+        (None, _) => {}
     }
     (text, failed)
 }
@@ -623,10 +630,10 @@ impl lumo_local::Hooks for AgentHooks<'_> {
 
     fn call(&mut self, name: &str, input: Value) -> impl std::future::Future<Output = (String, bool)> + Send {
         self.sink.step(tool_activity(name, &input));
-        let (app, chat, server, asking, high, name, sink, pictures) = (self.app, self.chat_id.to_string(), self.server, self.asking, self.sandbox_high, name.to_string(), self.sink.clone(), self.pictures.clone());
+        let (app, chat, server, asking, high, name, sink, pictures) = (self.app, self.chat_id.to_string(), self.server, self.asking, self.sandbox_high, name.to_string(), self.sink.clone(), self.sees.then(|| self.pictures.clone()));
         async move {
             let agent = sink.id().to_string();
-            sink.alive_while(Box::pin(run_tool(app, &chat, server, Some(&agent), &name, input, asking, high, &pictures))).await
+            sink.alive_while(Box::pin(run_tool(app, &chat, server, Some(&agent), &name, input, asking, high, pictures.as_ref()))).await
         }
     }
 
@@ -720,7 +727,7 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         } else {
             name.to_string()
         });
-        let (app, chat, server, asking, high, name, pictures) = (self.app, self.chat.id().to_string(), self.server, self.asking, self.sandbox_high, name.to_string(), self.pictures.clone());
+        let (app, chat, server, asking, high, name, pictures) = (self.app, self.chat.id().to_string(), self.server, self.asking, self.sandbox_high, name.to_string(), self.launch.sees.then(|| self.pictures.clone()));
         let launch = self.launch;
         async move {
             // Agents of its own (api_agents.rs), one at a time: their reports are the result.
@@ -733,7 +740,7 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
                 let run = Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, 1, turn));
                 return crate::chat_agents::alive_while(app, &chat, run).await;
             }
-            run_tool(app, &chat, server, None, &name, input, asking, high, &pictures).await
+            run_tool(app, &chat, server, None, &name, input, asking, high, pictures.as_ref()).await
         }
     }
 
@@ -988,6 +995,7 @@ pub async fn send(
             tools: crate::api_agents::sub_tools(&tools).into_iter().filter(|(id, _, _)| id != profile::MORE).collect(),
             asking,
             sandbox_high,
+            sees: caps.vision != Some(false),
         };
         let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, asking, sandbox_high, server: server.id, context: context_size, hushed: false, launch: &launch, pictures: Pictures::default() };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;

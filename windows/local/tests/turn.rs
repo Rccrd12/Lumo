@@ -343,9 +343,48 @@ fn the_browsers_screenshots_follow_the_rounds_answers_and_go_as_words_once_refus
     let replies = vec![shot(), refused, calls("c2", "browser_screenshot", "{\"tab\":1}"), answer("Non vedo.")];
     let (outcome, requests) = turn(replies, &mut body, &rules("shots-refused", ""), &mut island);
     assert!(outcome.unwrap().fixes.contains(&"without pictures"));
-    assert_eq!(requests[2]["messages"][4]["content"], NO_PICTURES);
-    assert_eq!(requests[3]["messages"].as_array().unwrap().last().unwrap()["role"], "tool", "none after the refusal");
+    // Said in the tool's answer: no message of the user's after it.
+    let retried = requests[2]["messages"].as_array().unwrap();
+    assert_eq!(retried.len(), 4);
+    assert!(retried[3]["content"].as_str().unwrap().ends_with(NO_PICTURES));
+    let last = requests[3]["messages"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["role"], "tool", "none after the refusal");
+    assert!(last["content"].as_str().unwrap().ends_with(NO_PICTURES));
     assert_eq!(requests[3]["messages"][1]["content"], "Guarda la pagina", "the question as it was");
+    // Once a request with them was answered, a refusal is about something else: asked again as it was.
+    let mut island = Island::default();
+    let mut body = question("Guarda la pagina", &["browser_screenshot"]);
+    let replies = vec![shot(), calls("c2", "browser_screenshot", "{\"tab\":2}"), refused_again(), answer("Fatto.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("shots-seen", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["asked again"]);
+    assert_eq!(requests[3]["messages"][4]["content"][0]["text"], PICTURES, "the pictures still go");
+}
+
+fn refused_again() -> Reply {
+    Reply::Json(400, json!({ "error": "Failed to parse tool call" }).to_string())
+}
+
+#[test]
+fn a_long_turn_keeps_only_the_newest_screenshots() {
+    use lumo_local::guard::{keep_last_pictures, pictures_message, PICTURES};
+    let tool = |n: u32| json!({ "role": "tool", "tool_call_id": format!("c{n}"), "content": format!("shot {n}") });
+    let mut body = json!({ "messages": [
+        { "role": "system", "content": "s" }, { "role": "user", "content": "q" },
+        tool(1), pictures_message(&["A".into(), "B".into()]),
+        tool(2), pictures_message(&["C".into()]),
+        tool(3), pictures_message(&["D".into()]),
+    ] });
+    keep_last_pictures(&mut body, 3);
+    let m = body["messages"].as_array().unwrap();
+    let urls: Vec<&str> = m.iter().filter_map(|m| m["content"].as_array()).flatten().filter_map(|p| p.pointer("/image_url/url").and_then(Value::as_str)).collect();
+    assert_eq!(urls, ["data:image/png;base64,B", "data:image/png;base64,C", "data:image/png;base64,D"]);
+    assert_eq!(m.len(), 8);
+    keep_last_pictures(&mut body, 1);
+    let m = body["messages"].as_array().unwrap();
+    assert_eq!(m.len(), 6, "the emptied ones are taken out");
+    assert!(m[2]["content"].as_str().unwrap().starts_with("shot 1\n\n(Its screenshot was left out"));
+    assert!(m[3]["content"].as_str().unwrap().starts_with("shot 2\n\n(Its screenshot"));
+    assert_eq!(m[5]["content"][0]["text"], PICTURES);
 }
 
 #[test]

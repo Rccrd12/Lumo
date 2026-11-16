@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::guard::{announces, asks_change, call_input, claims_change, claims_done, pictures_message, without_images, without_pictures, written_call};
+use crate::guard::{
+    announces, asks_change, call_input, claims_change, claims_done, has_pictures, keep_last_pictures, pictures_message, without_images, without_pictures, written_call, KEEP_PICTURES, NO_PICTURES,
+};
 use crate::native::calls_in_text;
 use crate::plan::{self, Plan};
 use crate::sse::progressive_filter;
@@ -217,6 +219,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let mut plan = PlanState { shown: rules.plan.clone(), ..PlanState::default() };
     // The model refused the browser's screenshots once: it gets none again.
     let mut blind = false;
+    // A request with screenshots was answered: the model takes them.
+    let mut seen = false;
     loop {
         // The plan's check after the answer is unseen: the answer stays on
         // the island as it was, with nothing said about it.
@@ -273,8 +277,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         }
         let answer = match answer {
             // A model that doesn't see refuses the browser's screenshots: once
-            // more with words in their place, and none sent from now on.
-            Err(Failure::Status(400 | 422, _)) if without_pictures(body) => {
+            // more with words in their place, and none sent from now on. Not
+            // once it took them: a refusal then is about something else.
+            Err(Failure::Status(400 | 422, _)) if !seen && without_pictures(body) => {
                 blind = true;
                 fixes.push("without pictures");
                 continue;
@@ -542,9 +547,15 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         }
         let pictures = hooks.pictures();
         if !pictures.is_empty() && !blind {
+            seen = seen || has_pictures(body);
             replies.push(pictures_message(&pictures));
+        } else if !pictures.is_empty() {
+            if let Some(content) = replies.last_mut().filter(|r| r["role"] == "tool").and_then(|r| r.get_mut("content")) {
+                *content = json!(format!("{}\n\n{NO_PICTURES}", content.as_str().unwrap_or_default()));
+            }
         }
         push(body, replies);
+        keep_last_pictures(body, KEEP_PICTURES);
     }
 }
 
