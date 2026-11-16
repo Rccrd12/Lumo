@@ -269,7 +269,7 @@ export class LivePicture {
       const f = await Bridge.browserFrame(this.chatId, this.agentId);
       this.fails = 0;
       if (f?.opening) this.opening(f);
-      else if (f) this.draw(f);
+      else if (f) await this.draw(f);
     } catch (err) {
       // Only a tab that is gone stops the pictures: a page changing, or one
       // too busy to answer, keeps the last picture and is asked again; after
@@ -338,11 +338,27 @@ export class LivePicture {
     this.url.title = url;
   }
 
-  private draw(f: BrowserFrame) {
+  private async draw(f: BrowserFrame) {
+    // A page not drawn yet (browser.rs not_drawn): the last picture stays, dimmed.
+    if (!f.image) {
+      if (f.url) this.drawAddress(f.url);
+      this.loading(true, loadingText(f));
+      this.liveMark.hidden = !this.last;
+      this.opts.onFrame?.(f);
+      return;
+    }
+    // The new picture decoded before it takes the old one's place: never a blank in between.
+    const src = `data:image/jpeg;base64,${f.image}`;
+    if (typeof Image === "function") {
+      const next = new Image();
+      next.src = src;
+      await next.decode().catch(() => {});
+    }
+    if (!lives.has(this)) return;
     this.last = f;
     this.drawAddress(f.url);
     if (f.width > 0 && f.height > 0) this.shot.style.aspectRatio = `${f.width} / ${f.height}`;
-    this.img.src = `data:image/jpeg;base64,${f.image}`;
+    this.img.src = src;
     this.img.hidden = false;
     this.liveMark.hidden = false;
     this.loading(!!f.loading, f.loading ? loadingText(f) : "");

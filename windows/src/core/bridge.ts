@@ -899,6 +899,8 @@ export interface AgentWebTab {
   tab: number;
   host: string;
   title: string;
+  /** The number of what its agent last did in it: the tab it uses now is the one with the highest. */
+  seq?: number;
 }
 
 /**

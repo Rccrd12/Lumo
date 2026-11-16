@@ -418,6 +418,7 @@ export function applyBrowserTabs(ev: AgentWebTabs | null | undefined): boolean {
       tab: x.tab,
       host: typeof x.host === "string" ? x.host : "",
       title: typeof x.title === "string" ? x.title : "",
+      seq: typeof x.seq === "number" ? x.seq : 0,
     }));
   if (JSON.stringify(next) === JSON.stringify(browserTabs)) return false;
   browserTabs = next;
@@ -430,13 +431,16 @@ export function browserChats(): Set<string> {
 }
 
 /**
- * The tab agent `agentId` of chat `chatId` browses in: its newest, since tabs
- * are numbered as they open. Undefined when it has none.
+ * The tab agent `agentId` of chat `chatId` browses in: the one it used last
+ * (an agent may have several open at once), else its newest, since tabs are
+ * numbered as they open. The one Watch shows (browser.rs newest). Undefined
+ * when it has none.
  */
 export function browserOf(chatId: string, agentId: string): AgentWebTab | undefined {
   let found: AgentWebTab | undefined;
+  const later = (a: AgentWebTab, b: AgentWebTab) => (a.seq ?? 0) > (b.seq ?? 0) || ((a.seq ?? 0) === (b.seq ?? 0) && a.tab > b.tab);
   for (const x of browserTabs) {
-    if (x.chat === chatId && x.agent === agentId && (!found || x.tab > found.tab)) found = x;
+    if (x.chat === chatId && x.agent === agentId && (!found || later(x, found))) found = x;
   }
   return found;
 }

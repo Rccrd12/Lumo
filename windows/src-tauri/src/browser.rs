@@ -129,6 +129,13 @@ struct Tab {
     loading: bool,
 }
 
+impl Tab {
+    /// The number of what its agent last did in it: 0 before anything.
+    fn last_seq(&self) -> u64 {
+        self.acts.last().map_or(0, |a| a.seq)
+    }
+}
+
 /// The steps each tab keeps for the island's picture.
 const STEPS_KEPT: usize = 6;
 /// Numbers each action, so the island sees a new one even when it is the same as the last.
@@ -210,6 +217,9 @@ pub struct TabView {
     pub tab: u32,
     pub host: String,
     pub title: String,
+    /// The number of what its agent last did in it (`Act::seq`): Watch shows
+    /// the tab its agent used last, which isn't always its newest.
+    pub seq: u64,
 }
 
 impl Tabs {
@@ -313,6 +323,7 @@ impl Tabs {
                     tab: t.n,
                     host: host_of(&t.url),
                     title: t.title.clone(),
+                    seq: t.last_seq(),
                 })
                 .collect(),
         }
@@ -481,11 +492,12 @@ pub fn close_all(app: &AppHandle) {
     }
 }
 
-/// The newest tab of `agent` in `chat`, the one the Agents card names
-/// (chat-agents.ts browserOf): its window's label, number, last action, and
-/// the address and title Lumo last saw there.
+/// The tab of `agent` in `chat` it used last (else its newest), the one the
+/// Agents card names (chat-agents.ts browserOf): an agent with several tabs
+/// open at once is watched where it works now. Its window's label, number,
+/// last action, and the address and title Lumo last saw there.
 fn newest(t: &Tabs, chat: &str, agent: &str) -> Option<Newest> {
-    let tab = t.open.iter().filter(|tab| tab.chat == chat && tab.agent == agent).max_by_key(|tab| tab.n)?;
+    let tab = t.open.iter().filter(|tab| tab.chat == chat && tab.agent == agent).max_by_key(|tab| (tab.last_seq(), tab.n))?;
     Some(Newest {
         label: tab.label.clone(),
         n: tab.n,
@@ -523,6 +535,12 @@ pub async fn frame(app: &AppHandle, chat: &str, agent: &str) -> Result<Value, St
             "steps": steps_json(&acts, Instant::now()),
         }));
     };
+    // A page that has only begun to load has nothing drawn yet: its picture
+    // would be blank (black, in a hidden tab). The island keeps the last one,
+    // dimmed, until there is something to see.
+    if loading && eval(&win, "document.readyState").await.map_or(true, |s| s == "loading") {
+        return Ok(not_drawn(n, &known, &acts));
+    }
     let shot = match cdp(&win, "Page.captureScreenshot", json!({ "format": "jpeg", "quality": FRAME_QUALITY }), SHOT_LIMIT).await {
         Ok(shot) => shot,
         Err(err) => {
@@ -531,6 +549,10 @@ pub async fn frame(app: &AppHandle, chat: &str, agent: &str) -> Result<Value, St
         }
     };
     let image = shot["data"].as_str().filter(|d| !d.is_empty()).ok_or("The tab gave no picture.")?;
+    // Still loading and next to nothing in the picture: not drawn yet either.
+    if loading && image.len() < BLANK_SHOT {
+        return Ok(not_drawn(n, &known, &acts));
+    }
     // The page answers where it is scrolled; one changing, or one that
     // breaks the script, still has its picture, with the last address seen
     // and the viewport DevTools reports.
@@ -579,6 +601,22 @@ fn act_json(a: &Act, now: Instant) -> Value {
 /// viewport it shows in CSS pixels, where the page is scrolled, its address,
 /// whether a page is loading, the last action with how long ago it was (ms)
 /// and the steps before it.
+/// Under this many base64 characters, a picture of a loading page is one
+/// colour: the page isn't drawn yet. A drawn page's is many times more.
+const BLANK_SHOT: usize = 12_000;
+
+/// `frame`'s answer for a page not drawn yet: no picture (the island keeps
+/// the last one), the address it loads, and what the agent did.
+fn not_drawn(n: u32, known: &Page, acts: &[Act]) -> Value {
+    json!({
+        "tab": n, "image": "", "width": 0, "height": 0, "scrollY": 0,
+        "title": known.title, "url": known.url, "host": host_of(&known.url),
+        "loading": true,
+        "action": acts.last().map(|a| act_json(a, Instant::now())),
+        "steps": steps_json(acts, Instant::now()),
+    })
+}
+
 fn frame_json(n: u32, at: &Value, image: &str, acts: &[Act], loading: bool, now: Instant) -> Value {
     let num = |i: usize| at[i].as_f64().filter(|v| v.is_finite()).unwrap_or(0.0);
     let url = at[4].as_str().unwrap_or("");
@@ -1905,7 +1943,7 @@ mod tests {
         let mut tabs = Tabs { next: 2, ..Tabs::default() };
         tabs.open = vec![tab(1, "c1", "a1", t0)];
         let view = serde_json::to_value(tabs.view()).unwrap();
-        assert_eq!(view, json!({ "tabs": [{ "chat": "c1", "agent": "a1", "tab": 1, "host": "site1.com", "title": "Site 1" }] }));
+        assert_eq!(view, json!({ "tabs": [{ "chat": "c1", "agent": "a1", "tab": 1, "host": "site1.com", "title": "Site 1", "seq": 0 }] }));
         assert_eq!(host_of("http://localhost:3000/x"), "localhost");
         assert_eq!(host_of("about:blank"), "");
     }
@@ -1974,6 +2012,20 @@ mod tests {
         assert!(got.loading);
         assert_eq!(newest(&tabs, "c1", "zz"), None);
         assert_eq!(newest(&tabs, "c2", "a1").map(|x| x.n), Some(3), "another chat's agent of the same id is another");
+        // Several tabs open at once: the one it used last, not the newest.
+        let mut both = Tabs { next: 4, ..Tabs::default() };
+        both.open = vec![tab(1, "c1", "a1", t0), tab(2, "c1", "a1", t0), tab(3, "c1", "a1", t0)];
+        both.open[0].acts = vec![Act { seq: 20, ..click.clone() }];
+        both.open[2].acts = vec![Act { seq: 12, ..opened.clone() }];
+        assert_eq!(newest(&both, "c1", "a1").map(|x| x.n), Some(1), "it clicks in tab 1 after opening tab 3");
+        assert_eq!(both.view().tabs.iter().map(|t| t.seq).collect::<Vec<_>>(), [20, 0, 12]);
+        both.open[0].acts.clear();
+        assert_eq!(newest(&both, "c1", "a1").map(|x| x.n), Some(3));
+
+        // A page not drawn yet: no picture, the island keeps the last one.
+        let blank = not_drawn(2, &got.page, &got.acts);
+        assert_eq!((blank["image"].as_str(), blank["loading"].as_bool(), blank["host"].as_str()), (Some(""), Some(true), Some("example.com")));
+        assert_eq!(blank["action"]["kind"], "click");
 
         let at = json!([1280, 800, 700.5, "Rome · stays", "https://www.example.com/s/Rome"]);
         let frame = frame_json(2, &at, "AAAA", &got.acts, true, t0 + Duration::from_millis(1500));

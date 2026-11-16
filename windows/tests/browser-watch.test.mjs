@@ -189,6 +189,20 @@ test("a picture is asked only while it is on screen in the open island, one afte
   assert.equal(busy.el.querySelector(".bw-load").hidden, false, "the bar along its top");
   assert.equal(busy.el.querySelector(".bw-cursor").hidden, true);
   busy.drop();
+  // A page still loading, not drawn yet: no black picture, the last one
+  // stays, dimmed, and the address of the page coming.
+  internals.invoke = async (cmd, args) => {
+    if (cmd !== "chat_browser_frame") return plain(cmd, args);
+    frames.push(args);
+    return { tab: 1, image: "", width: 0, height: 0, scrollY: 0, title: "", url: "https://example.com/later", host: "example.com", loading: true, action: null, steps: [] };
+  };
+  busy.ensure();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(busy.el.find("IMG")[0].src, "data:image/jpeg;base64,BBBB", "the last picture, not a blank one");
+  assert.equal(busy.el.find("IMG")[0].hidden, false);
+  assert.equal(busy.el.classList.contains("loading"), true);
+  assert.equal(busy.el.querySelector(".bw-url").textContent, "example.com/later");
+  busy.drop();
   // A tab that closed: said so, and nothing more asked.
   const askedBefore = frames.length;
   internals.invoke = async (cmd, args) => {
