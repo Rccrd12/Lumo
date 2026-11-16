@@ -12,6 +12,8 @@ export interface MailViewAccount {
   unread: number;
   /** Where its inbox opens: a webmail Lumo knows (https), Outlook ("lumo-outlook:inbox"), or nowhere. */
   inbox?: string;
+  /** The page of Settings its error's button opens (Outlook closed: "security"); none, Pills. */
+  settings?: string;
 }
 
 /** An email in the view, with the account it is of. */
@@ -127,6 +129,7 @@ export function readMailView(raw: unknown): MailViewData {
       error: str(a?.error) || undefined,
       unread: Math.max(0, Number(a?.unread) || 0),
       inbox: str(a?.inbox) || undefined,
+      settings: str(a?.settings) || undefined,
     }))
     .filter((a) => a.key);
   const keys = new Set(accounts.map((a) => a.key));

@@ -31,6 +31,9 @@ test("what Rust sent is read safely: strings, known accounts, emails with an id"
   assert.equal(data.accounts[1].state, "error");
   assert.equal(data.accounts[1].error, "The server refused the app password.");
   assert.equal(data.accounts[0].inbox, "https://mail.google.com/mail/u/0/#inbox");
+  // The page of Settings an error's button opens: none said, Pills (mail-view.ts).
+  assert.equal(data.accounts[1].settings, undefined);
+  assert.equal(readMailView({ accounts: [{ key: "outlook", state: "error", error: "x", settings: "security" }] }).accounts[0].settings, "security");
   assert.deepEqual(data.messages.map((m) => m.id), ["imap:1/inbox:9", "outlook/outlook-1", "imap:1/inbox:8"]);
   assert.equal(data.messages[2].unread, false);
   // Outside Lumo there is no answer: an empty view.

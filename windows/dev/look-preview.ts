@@ -274,8 +274,9 @@ async function pictureFor(url: string): Promise<ArrayBuffer> {
 }
 
 // The Email view's answer (mail.rs mail_view): three addresses, one of them
-// failing with ?mailerror, five with ?mailmany (the row then scrolls); only
-// the unread ones, or the recent ones too.
+// failing with ?mailerror, five with ?mailmany (the row then scrolls), Outlook
+// closed with ?outlookclosed (its Settings button opens Security); only the
+// unread ones, or the recent ones too.
 function sampleMail() {
   const it = lang === "it";
   const at = (daysAgo: number, h: number, m: number) => {
@@ -289,6 +290,7 @@ function sampleMail() {
     link: account === "imap:1" ? "https://mail.google.com/mail/u/0/#inbox" : account === "outlook" ? "lumo-outlook:inbox" : undefined,
   });
   const failing = params.has("mailerror");
+  const outlookClosed = params.has("outlookclosed");
   const all = [
     mail("9", "imap:1", "Ada Lovelace", "ada@example.com", it ? "Pranzo domani?" : "Lunch tomorrow?", it ? "C'è un posto nuovo vicino all'ufficio, proviamo all'una?" : "There's a new place near the office, want to try it at 1?", at(0, 10, 42)),
     mail("4", "imap:2", "Marco Bianchi", "marco@example.com", it ? "Preventivo sito web" : "Website quote", it ? "Ti allego il preventivo aggiornato con le modifiche." : "Here is the updated quote with the changes.", at(0, 10, 15)),
@@ -299,7 +301,7 @@ function sampleMail() {
     mail("3", "imap:2", "Sara Neri", "sara@example.com", it ? "Re: Bozza contratto" : "Re: Draft contract", it ? "Ho aggiunto i commenti nel documento." : "I added my comments in the document.", at(1, 9, 12), false),
     mail("6", "imap:1", "Spotify", "no-reply@example.com", it ? "La tua playlist della settimana" : "Your weekly playlist", it ? "Nuovi brani scelti per te." : "New songs picked for you.", at(3, 8, 0), false),
     mail("10", "imap:1", "Libreria Aurora", "news@libreria-aurora.example", it ? "Novità di novembre" : "New in November", it ? "Dieci libri scelti dai nostri librai." : "Ten books our booksellers picked.", at(2, 8, 0), false),
-  ].filter((m) => !(failing && m.account === "imap:2"));
+  ].filter((m) => !(failing && m.account === "imap:2") && !(outlookClosed && m.account === "outlook"));
   (window as unknown as { __lumoMock: Record<string, (args: { unreadOnly: boolean }) => unknown> }).__lumoMock = {
     ...(window as unknown as { __lumoMock?: Record<string, unknown> }).__lumoMock,
     mail_view: ({ unreadOnly }) => ({
@@ -308,7 +310,12 @@ function sampleMail() {
         failing
           ? { key: "imap:2", label: "lavoro@studio.it", state: "error", error: it ? "Il server ha rifiutato la password per le app." : "The server refused the app password.", unread: 0 }
           : { key: "imap:2", label: "lavoro@studio.it", state: "ok", unread: 1 },
-        { key: "outlook", label: "Outlook", state: "ok", unread: 2, inbox: "lumo-outlook:inbox" },
+        outlookClosed
+          ? {
+            key: "outlook", label: "Outlook", state: "error", unread: 0, inbox: "lumo-outlook:inbox", settings: "security",
+            error: it ? "Outlook è chiuso. Aprilo, oppure attiva «Apri Outlook se è chiuso» in Impostazioni → Sicurezza." : "Outlook is closed. Open it, or turn on “Open Outlook if it's closed” in Settings → Security.",
+          }
+          : { key: "outlook", label: "Outlook", state: "ok", unread: 2, inbox: "lumo-outlook:inbox" },
         ...(params.has("mailmany") ? [
           { key: "imap:3", label: "universita@studenti.it", state: "ok", unread: 0 },
           { key: "imap:4", label: "negozio@esempio.it", state: "ok", unread: 0 },

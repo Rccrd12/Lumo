@@ -685,6 +685,9 @@ pub struct ViewAccount {
     /// Where its inbox opens: a webmail Lumo knows, Outlook, or nowhere.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inbox: Option<String>,
+    /// The page of Settings its error's button opens, when not Pills.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<&'static str>,
 }
 
 /// An email in the view, with the account it is of.
@@ -755,6 +758,7 @@ pub async fn mail_view(app: AppHandle, unread_only: bool) -> MailView {
             error: None,
             unread,
             inbox: inbox_link(&host).map(|l| account_link(l, &acct)),
+            settings: None,
         };
         let task = tauri::async_runtime::spawn(async move {
             newest_in(&acct, VIEW_COUNT, unread_only, None, true).await.map(|found| {
@@ -778,6 +782,7 @@ pub async fn mail_view(app: AppHandle, unread_only: bool) -> MailView {
             error: None,
             unread,
             inbox: Some(format!("{}inbox", crate::outlook::LINK_PREFIX)),
+            settings: None,
         };
         account
     });
@@ -785,9 +790,15 @@ pub async fn mail_view(app: AppHandle, unread_only: bool) -> MailView {
     for (account, task) in started {
         results.push((account, task.await.unwrap_or_else(|e| Err(e.to_string()))));
     }
-    // Outlook answers on its own thread (outlook.rs), while the servers above do.
-    if let Some(account) = outlook {
-        results.push((account, crate::outlook::newest(VIEW_COUNT, unread_only, None).await));
+    // Outlook answers on its own thread (outlook.rs), while the servers above
+    // do; closed, it is started first when the user allowed it, and what went
+    // wrong is said for the user, not for the agents.
+    if let Some(mut account) = outlook {
+        let read = crate::outlook::for_view(&app, VIEW_COUNT, unread_only).await.map_err(|(why, page)| {
+            account.settings = Some(page);
+            why
+        });
+        results.push((account, read));
     }
     view_of(results)
 }
@@ -4882,7 +4893,7 @@ mod tests {
     #[test]
     fn the_email_view_lists_every_account_newest_first_and_says_which_failed() {
         let button = |key: &str, unread: usize| ViewAccount {
-            key: key.into(), label: key.into(), state: "ok", error: None, unread, inbox: None,
+            key: key.into(), label: key.into(), state: "ok", error: None, unread, inbox: None, settings: None,
         };
         let mail = |id: &str, date: &str, unread: bool| Found {
             id: id.into(),
