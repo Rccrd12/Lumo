@@ -1355,9 +1355,9 @@ pub const PLAN_ONLY_NOTE: &str = " The user picked Plan only: read and plan, and
 /// openai_compat.rs, local_chat.rs): the island's own (island_tools.rs: the
 /// timer and listening), Lumo's email tools as Security lets the AI have
 /// them (`mail`, mail.rs ai_tools), Lumo's web search when `web`
-/// (web_search.rs), then the user's that are on: id, the words the model
-/// reads, and the JSON schema of the input.
-pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String, Value)> {
+/// (web_search.rs), the agents' browser when `browser` (browser.rs), then the
+/// user's that are on: id, the words the model reads, and the JSON schema of the input.
+pub fn chat_tools(mail: &str, web: bool, workspace: bool, browser: bool) -> Vec<(String, String, Value)> {
     let mut all = crate::island_tools::api_tools(true);
     all.push(crate::island_tools::plan_tool());
     all.extend(mail_api_tools(mail));
@@ -1369,6 +1369,13 @@ pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String
     }
     if workspace {
         all.extend(crate::workspace::api_tools());
+    }
+    if browser {
+        all.extend(
+            crate::browser_tool_defs::browser_tools()
+                .into_iter()
+                .map(|v| (v["name"].as_str().unwrap_or("").to_string(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())),
+        );
     }
     // Never one of the user's with the name of Lumo's built-in tools.
     all.extend(
@@ -1382,6 +1389,7 @@ pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String
                     && !crate::github_tools::NAMES.contains(&id)
                     && !crate::web_search::NAMES.contains(&id)
                     && !crate::workspace::NAMES.contains(&id)
+                    && !crate::browser::NAMES.contains(&id)
             })
             .map(|t| {
                 let v = mcp_tool(&t.manifest);
@@ -1446,18 +1454,68 @@ pub fn not_offered(name: &str) -> String {
 /// The call starting and ending are the chat's sign of life, and so is a
 /// heartbeat while it runs (a script, the Windows sandbox starting: a minute
 /// or more, working all along); a card it raises puts the chat in "waiting
-/// for your permission" (pipe.rs `CHAT`, chat_agents.rs).
-pub async fn call_for_chat(app: &AppHandle, chat_id: &str, provider: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
+/// for your permission" (pipe.rs `CHAT`, chat_agents.rs). `agent`: the
+/// chat's agent calling (api_agents.rs), none for the chat itself: a browser
+/// tab it opens is that agent's. The answer: its text, whether it failed, and
+/// a picture (a PNG, base64) for the model to see, from browser_screenshot.
+#[allow(clippy::too_many_arguments)]
+pub async fn call_for_chat(
+    app: &AppHandle,
+    chat_id: &str,
+    provider: &str,
+    agent: Option<&str>,
+    id: &str,
+    input: Value,
+    asking: Asking,
+    sandbox_high: bool,
+) -> (String, bool, Option<String>) {
     crate::chat_agents::signal(app, chat_id);
     // Boxed: the call is a large future, and the chat's answer holds this one.
-    let call = Box::pin(crate::pipe::CHAT.scope(chat_id.to_string(), call_in_chat(app, chat_id, provider, id, input, asking, sandbox_high)));
+    let call = Box::pin(crate::pipe::CHAT.scope(chat_id.to_string(), call_in_chat(app, chat_id, provider, agent, id, input, asking, sandbox_high)));
     let answer = crate::chat_agents::alive_while(app, chat_id, call).await;
     crate::chat_agents::signal(app, chat_id);
     answer
 }
 
-/// `call_for_chat`'s call itself.
-async fn call_in_chat(app: &AppHandle, chat_id: &str, provider: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
+/// `call_for_chat`'s call itself: Lumo's browser here, the rest in `call_plain`.
+#[allow(clippy::too_many_arguments)]
+async fn call_in_chat(
+    app: &AppHandle,
+    chat_id: &str,
+    provider: &str,
+    agent: Option<&str>,
+    id: &str,
+    input: Value,
+    asking: Asking,
+    sandbox_high: bool,
+) -> (String, bool, Option<String>) {
+    // Lumo's browser: what changes a page waits for the user's click with
+    // Ask for approval; Approve for me and Run automatically go on, as for
+    // the CLIs on Auto (browser.rs). Off in Settings since the turn began: nothing opens.
+    if crate::browser::NAMES.contains(&id) {
+        if !tauri::async_runtime::spawn_blocking(crate::browser::enabled).await.unwrap_or(false) {
+            return (not_offered(id), true, None);
+        }
+        let asks = if asking == Asking::Always { crate::computer::Asks::Card } else { crate::computer::Asks::Free };
+        if let Err(e) = crate::browser::ask(app, asks, None, id, &input).await {
+            return (e, true, None);
+        }
+        let answer = crate::browser::call(app, chat_id, agent, id, &input).await;
+        return match answer.get("error").and_then(Value::as_str) {
+            Some(e) => (e.to_string(), true, None),
+            None => (
+                answer.get("text").and_then(Value::as_str).unwrap_or("Done.").to_string(),
+                false,
+                answer.get("image").and_then(Value::as_str).map(str::to_string),
+            ),
+        };
+    }
+    let (text, failed) = call_plain(app, chat_id, provider, id, input, asking, sandbox_high).await;
+    (text, failed, None)
+}
+
+/// Every other tool of the chat's.
+async fn call_plain(app: &AppHandle, chat_id: &str, provider: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
     }
@@ -1877,10 +1935,18 @@ mod tests {
         }
         assert!(!is_mail_tool("set_timer"));
         // The island's listening is offered too, with the timer.
-        let all: Vec<String> = chat_tools("mail", false, false).into_iter().map(|t| t.0).collect();
+        let all: Vec<String> = chat_tools("mail", false, false, false).into_iter().map(|t| t.0).collect();
         for name in [crate::island_tools::SET_TIMER, crate::island_tools::LISTEN, "mail_read"] {
             assert!(all.iter().any(|n| n == name), "{name}");
         }
+        // The agents' browser only when the user let them browse, plan only excluded.
+        assert!(!all.iter().any(|n| crate::browser::NAMES.contains(&n.as_str())));
+        let browsing = chat_tools("", false, false, true);
+        for name in crate::browser::NAMES {
+            let tool = browsing.iter().find(|t| t.0 == name).unwrap_or_else(|| panic!("{name}"));
+            assert!(!tool.1.is_empty() && tool.2["type"] == "object", "{name}");
+        }
+        assert!(tools_for_mode(browsing, "plan").iter().all(|t| !crate::browser::NAMES.contains(&t.0.as_str())));
     }
 
     #[test]

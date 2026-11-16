@@ -1,9 +1,10 @@
 // A browser for the island chat's agents (Settings → Security → "Let agents
 // browse the web", off by default, Windows only).
 //
-// Claude Code and the agents it starts open web pages in hidden tabs inside
-// Lumo, so several of them browse at once and none of them touches the
-// user's mouse. A tab is a hidden WebView2 window of its own
+// The chat's agents (Claude Code and the agents it starts, Codex, Copilot
+// CLI, Cursor CLI, Antigravity CLI, the API providers and the local models,
+// and their agents) open web pages in hidden tabs inside Lumo, so several of
+// them browse at once and none of them touches the user's mouse. A tab is a hidden WebView2 window of its own
 // (`agent-browser-<n>`), in a profile apart from the user's browser and
 // from Lumo's own pages: an InPrivate one under `AgentBrowser`, with none of
 // the user's cookies or accounts. Pages are real: their JavaScript runs, as
@@ -11,9 +12,10 @@
 //
 // Each call of lumo-hook --mcp's browser tools (`browser_open`,
 // `browser_read`…) comes here over the relay pipe as
-// `{"lumo_browser": {"tool": …, "input": …, "chat": …}}` (pipe.rs) and is
-// answered with one line: the page as text, a screenshot, what was done, or
-// why not. Lumo drives each tab through the DevTools protocol WebView2 lets
+// `{"lumo_browser": {"tool": …, "input": …, "chat": …}}` (pipe.rs, `serve`);
+// the API providers' and the local models' come straight from their chat's
+// tool loop (tools.rs `call_for_chat`, `call`). Each is answered with the
+// page as text, a screenshot, what was done, or why not. Lumo drives each tab through the DevTools protocol WebView2 lets
 // the app itself speak (`CallDevToolsProtocolMethod`): never a debugging
 // port another program could reach.
 //
@@ -24,10 +26,15 @@
 //   a page loads (Network.setBlockedURLs), since Tauri's pages can call Lumo.
 //   Whatever gets past that, a frame included, still can't: lib.rs refuses
 //   every command that comes from a tab (`from_tab`).
-// * What changes a page (open, click, type, scroll) goes through Claude
-//   Code's own permission, the island's card; reading and screenshots only look.
-// * A tab belongs to the agent that opened it (the chat's PreToolUse hook
-//   says which: `claim`), and closes with it, or after IDLE unused.
+// * What changes a page (open, click, type, scroll, close) waits for the
+//   user's click on the island's card, as the chat's permission mode says:
+//   Claude Code's own permission for Claude Code; Lumo's card for the other
+//   CLIs (`AskTurn`, their own prompts let Lumo's tools through) and for the
+//   API and local models (tools.rs). Reading and screenshots only look.
+// * A tab belongs to the agent that opened it, and closes with it, or after
+//   IDLE unused: Claude Code's PreToolUse hook says which agent (`claim`);
+//   an API or local model's agent is known to the call itself; the other
+//   CLIs' tabs are the conversation's.
 //
 // The island sees the tabs as `browser-tabs` (each tab's chat, agent and
 // site), sent only when they change: one timer runs while a tab is open,
@@ -83,6 +90,16 @@ const AGENT_BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmart
 --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling";
 
 const OFF: &str = "Browsing is off in Lumo. Turn it on in Lumo's Settings, under Security.";
+/// The user said no on the island's card.
+const DENIED: &str = "The user said no to this on Lumo's card. Don't do it another way: ask them what to do.";
+/// A call that needs Lumo's card, with no turn of its CLI running to ask for.
+const TURN_OVER: &str = "This chat's turn is over: nothing was done. Answer the user, or wait for their next message.";
+/// The chat is in Plan only.
+const PLAN_ONLY: &str = "The chat is in Plan only: you may read pages already open and take screenshots, but not open, click, type or scroll. Say what you would do instead.";
+/// The browser tools that only look: never a card.
+pub const LOOKING: [&str; 2] = ["browser_read", "browser_screenshot"];
+/// Every browser tool (hook/src/browser_tools.rs BROWSER_NAMES has the same).
+pub const NAMES: [&str; 7] = ["browser_open", "browser_read", "browser_click", "browser_type", "browser_scroll", "browser_screenshot", "browser_close"];
 
 #[derive(Debug, Clone)]
 struct Tab {
@@ -559,26 +576,234 @@ fn start_timer(app: &AppHandle) {
     });
 }
 
+// ── Who asks the user ───────────────────────────────────────────────────────
+//
+// Claude Code asks for its own browser calls (its PermissionRequest hook, the
+// island's card). The other CLIs let Lumo's MCP tools through without asking
+// (Codex's "approve", Copilot's --allow-tool lumo, Cursor's Mcp(lumo:*), agy's
+// card skipped for them in hook/src/reply.rs), so for the turns they run
+// Lumo asks itself: each turn is listed here while it lasts (`AskTurn`).
+
+use crate::computer::Asks;
+
+#[derive(Debug, Clone)]
+struct Asker {
+    id: u64,
+    chat: String,
+    /// The provider, for the chat's permission mode now (settings.rs permission_mode_for).
+    provider: &'static str,
+    /// The card's `lumo_agent`: the pill of the CLI asking (src/core/pills.ts).
+    agent: &'static str,
+    /// How the turn started.
+    started: Asks,
+    /// When it began (ms since 1970): a call the CLI sent before is an earlier turn's.
+    begun_ms: u64,
+}
+
+static ASKERS: Mutex<Vec<Asker>> = Mutex::new(Vec::new());
+static ASKER_IDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn askers() -> std::sync::MutexGuard<'static, Vec<Asker>> {
+    ASKERS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A turn of a CLI that doesn't ask for Lumo's tools itself, in chat `chat`:
+/// from `begin` until it is dropped, its browser calls that change a page
+/// wait for Lumo's card (as `mode` asks: none on Auto, refused on Plan only).
+pub struct AskTurn {
+    id: u64,
+}
+
+impl AskTurn {
+    pub fn begin(provider: &'static str, chat: &str, agent: &'static str, mode: &str) -> AskTurn {
+        let id = ASKER_IDS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let begun_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+        askers().push(Asker { id, chat: chat.to_string(), provider, agent, started: asks_for(provider, mode), begun_ms });
+        AskTurn { id }
+    }
+}
+
+impl Drop for AskTurn {
+    fn drop(&mut self) {
+        askers().retain(|a| a.id != self.id);
+        TURN_ENDED.notify_waiters();
+    }
+}
+
+/// Rings each time a turn ends: its cards leave the island.
+static TURN_ENDED: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+/// Resolves once the turn `id` has ended (Stop, or its answer done).
+async fn turn_over(id: u64) {
+    loop {
+        let woken = TURN_ENDED.notified();
+        if !askers().iter().any(|a| a.id == id) {
+            return;
+        }
+        woken.await;
+    }
+}
+
+/// How a CLI's turn asks in permission `mode`, read as the chat shows it for
+/// that provider: Antigravity CLI has modes of its own ("turbo"), the others
+/// read theirs as Claude Code's (an old "turbo" is Ask for them, as the chat says).
+fn asks_for(provider: &str, mode: &str) -> Asks {
+    if provider == crate::antigravity_cli::PROVIDER {
+        Asks::of(mode)
+    } else {
+        Asks::of(crate::claude_code::permission_mode(mode))
+    }
+}
+
+/// The chat a call that named none is for: the only one Antigravity CLI is
+/// asking for (agy doesn't always pass LUMO_CHAT_ID on to lumo-hook). None
+/// with none or several, or with another CLI's turn running too: a call
+/// can't be told apart from that CLI's.
+fn only_asking_chat(list: &[Asker]) -> Option<String> {
+    let first = &list.first()?.chat;
+    let agy = |a: &Asker| a.provider == crate::antigravity_cli::PROVIDER;
+    (!first.is_empty() && list.iter().all(|a| &a.chat == first && agy(a))).then(|| first.clone())
+}
+
+/// lumo-hook's `--tools=` for the `lumo` server of a CLI that lets Lumo's
+/// tools run unasked: the email's kits as Security lets the AI have them
+/// (`mail`, mail.rs ai_tools), the browser while agents may browse (its calls
+/// marked as Lumo's to ask for, `browsercard`), and the island's tools.
+pub fn kit(mail: &str, browser: bool) -> String {
+    let mut kits: Vec<&str> = mail.split(',').map(str::trim).filter(|k| !k.is_empty()).collect();
+    if browser {
+        kits.push("browsercard");
+    }
+    kits.push("island");
+    format!("--tools={}", kits.join(","))
+}
+
+/// Whether `tool` changes a page: the user is asked first.
+pub fn changes(tool: &str) -> bool {
+    NAMES.contains(&tool) && !LOOKING.contains(&tool)
+}
+
+/// Asks the user on the island's card for `tool` with `input`, as `asks`
+/// says; `agent` is the card's `lumo_agent` (none: the chat's own provider).
+/// Ok to go on, or why not.
+pub async fn ask(app: &AppHandle, asks: Asks, agent: Option<&str>, tool: &str, input: &Value) -> Result<(), String> {
+    if !changes(tool) {
+        return Ok(());
+    }
+    match asks {
+        Asks::Free => Ok(()),
+        Asks::LookOnly => Err(PLAN_ONLY.into()),
+        Asks::Card => {
+            let mut card = json!({
+                "hook_event_name": "PermissionRequest",
+                "lumo_island": true,
+                "tool_name": format!("mcp__lumo__{tool}"),
+                "tool_input": input,
+            });
+            if let Some(agent) = agent {
+                card["lumo_agent"] = json!(agent);
+            }
+            match crate::pipe::ask(app, card).await.as_deref() {
+                Some("allow") => Ok(()),
+                Some(_) => Err(DENIED.into()),
+                None => Err("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment.".into()),
+            }
+        }
+    }
+}
+
 // ── The calls ───────────────────────────────────────────────────────────────
 
 /// One call of lumo-hook's browser tools: `{"tool", "input", "chat"}` in,
-/// `{"text"}`, `{"text", "image"}` (a PNG) or `{"error"}` out.
+/// `{"text"}`, `{"text", "image"}` (a PNG) or `{"error"}` out. The tab it
+/// opens is the agent's Claude Code's hook claimed it for, else the
+/// conversation's; a CLI turn that doesn't ask itself is asked for here.
 pub async fn serve(app: &AppHandle, request: &Value) -> Value {
-    let on = app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).chat_browser;
-    if !on {
+    let tool = request.get("tool").and_then(Value::as_str).unwrap_or("").to_string();
+    let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
+    let named = request.get("chat").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let asker = {
+        let list = askers();
+        let chat = if named.is_empty() { only_asking_chat(&list).unwrap_or_default() } else { named.clone() };
+        list.iter().find(|a| a.chat == chat).cloned().map(|a| (chat, a))
+    };
+    let chat = asker.as_ref().map_or(named, |(chat, _)| chat.clone());
+    if !is_on(app) {
         return refuse(OFF);
     }
-    let tool = request.get("tool").and_then(Value::as_str).unwrap_or("");
-    let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
-    let chat = request.get("chat").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    // A call Lumo has to ask for, from a CLI whose turn is over (stopped, or
+    // a server kept between messages): nobody to ask, so nothing done.
+    let card = request.get("card").and_then(Value::as_bool) == Some(true);
+    if card && asker.is_none() && changes(&tool) {
+        return refuse(TURN_OVER);
+    }
+    if let Some((_, a)) = &asker {
+        // Sent before this turn began: an earlier turn's, which was stopped.
+        let sent = request.get("sent_ms").and_then(Value::as_u64);
+        if changes(&tool) && sent.is_some_and(|s| s < a.begun_ms) {
+            return refuse(TURN_OVER);
+        }
+        let mode = app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).permission_mode_for(a.provider);
+        let asked = async { Some(ask(app, a.started.stricter(asks_for(a.provider, &mode)), Some(a.agent), &tool, &input).await) };
+        // The turn ending takes its card off the island (dropped, it settles).
+        let ended = async {
+            turn_over(a.id).await;
+            None
+        };
+        match crate::pipe::first_of(asked, ended).await {
+            None => return refuse(TURN_OVER),
+            Some(Err(why)) => return refuse(why),
+            Some(Ok(())) => {}
+        }
+        // Stop while the card waited: the turn is over, nothing is done.
+        if changes(&tool) && !askers().iter().any(|x| x.id == a.id) {
+            return refuse(TURN_OVER);
+        }
+    }
+    call(app, &chat, None, &tool, &input).await
+}
+
+/// What the island's typing line says of a browser call: the site it opens, else "web".
+pub fn activity(input: &Value) -> crate::claude_code::Activity {
+    match input.get("url").and_then(Value::as_str).map(host_of).filter(|h| !h.is_empty()) {
+        Some(h) => crate::claude_code::Activity::new("read", h),
+        None => crate::claude_code::Activity::new("web", ""),
+    }
+}
+
+/// The system prompt's note for a model the chat calls itself, with the browser on.
+pub fn note() -> String {
+    format!(" {}", crate::browser_tool_defs::BROWSER_INSTRUCTIONS)
+}
+
+/// Agents may browse (Settings → Security), read from the settings file: for
+/// the API providers' and local models' tool lists (tools.rs chat_tools).
+pub fn enabled() -> bool {
+    crate::settings::load().chat_browser
+}
+
+fn is_on(app: &AppHandle) -> bool {
+    app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).chat_browser
+}
+
+/// Runs browser tool `tool` for chat `chat`, once the user was asked: the
+/// tab it opens is `agent`'s (an API or local model's agent, api_agents.rs),
+/// else the agent a claim names, else the conversation's.
+pub async fn call(app: &AppHandle, chat: &str, agent: Option<&str>, tool: &str, input: &Value) -> Value {
+    if !is_on(app) {
+        return refuse(OFF);
+    }
+    if chat.is_empty() {
+        return refuse("Lumo couldn't tell which chat this call is for.");
+    }
     let done = match tool {
-        "browser_open" => open(app, &chat, &input).await,
-        "browser_read" => read(app, &chat, &input).await,
-        "browser_click" => click(app, &chat, &input).await,
-        "browser_type" => type_text(app, &chat, &input).await,
-        "browser_scroll" => scroll(app, &chat, &input).await,
-        "browser_screenshot" => screenshot(app, &chat, &input).await,
-        "browser_close" => close(app, &chat, &input),
+        "browser_open" => open(app, chat, agent, input).await,
+        "browser_read" => read(app, chat, input).await,
+        "browser_click" => click(app, chat, input).await,
+        "browser_type" => type_text(app, chat, input).await,
+        "browser_scroll" => scroll(app, chat, input).await,
+        "browser_screenshot" => screenshot(app, chat, input).await,
+        "browser_close" => close(app, chat, input),
         _ => Err(format!("Lumo's browser has no tool called {tool}.")),
     };
     match done {
@@ -683,7 +908,7 @@ fn changed(before: &Page, after: &Page) -> String {
     if before == after { String::new() } else { format!("\nNow: {}", after.heading()) }
 }
 
-async fn open(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, String> {
+async fn open(app: &AppHandle, chat: &str, agent: Option<&str>, input: &Value) -> Result<Value, String> {
     let url = normalize(input.get("url").and_then(Value::as_str).unwrap_or(""))?;
     if input.get("tab").is_some_and(|t| !t.is_null()) {
         // A tab that has its agent: a claim made for this call (lumo-hook
@@ -701,7 +926,9 @@ async fn open(app: &AppHandle, chat: &str, input: &Value) -> Result<Value, Strin
         if t.open.len() >= MAX_TABS {
             return Err(format!("{MAX_TABS} tabs are open, the most Lumo keeps: close one first with browser_close."));
         }
-        let agent = t.take_claim(chat, url.as_str(), now).unwrap_or_else(|| MAIN.to_string());
+        // The caller's own agent (in Lumo, it can't be faked), else a claim.
+        let claimed = t.take_claim(chat, url.as_str(), now);
+        let agent = agent.filter(|a| !a.trim().is_empty()).map(str::to_string).or(claimed).unwrap_or_else(|| MAIN.to_string());
         // The agent's steps go on in its new tab: what it did before stays told.
         let mut acts = t
             .open
@@ -1678,5 +1905,53 @@ mod tests {
         assert!(READ_JS.contains("data-lumo-ref") && REF_POINT_JS.contains("__REF__"));
     // The page's script: a regex's \n stays the two characters JavaScript reads.
     assert!(READ_JS.contains(r"/\n/.test"));
+    }
+
+    #[test]
+    fn the_other_clis_have_their_page_changes_asked_for_by_lumo() {
+        assert_eq!(kit("", false), "--tools=island");
+        assert_eq!(kit("mail, mailsend", true), "--tools=mail,mailsend,browsercard,island");
+        // Looking at a page never asks; changing it does.
+        for tool in LOOKING {
+            assert!(!changes(tool), "{tool}");
+        }
+        for tool in ["browser_open", "browser_click", "browser_type", "browser_scroll", "browser_close"] {
+            assert!(changes(tool), "{tool}");
+        }
+        assert!(!changes("mail_send"), "only the browser's");
+        // The hook's list and the app's are the same.
+        assert_eq!(crate::browser_tool_defs::BROWSER_NAMES, NAMES);
+        assert_eq!(Asks::of("auto"), Asks::Free);
+        assert_eq!(Asks::of("plan"), Asks::LookOnly);
+        assert_eq!(Asks::of("default"), Asks::Card);
+    }
+
+    #[test]
+    fn a_call_naming_no_chat_is_for_the_only_one_asking() {
+        let asker = |id, chat: &str| Asker { id, chat: chat.into(), provider: crate::antigravity_cli::PROVIDER, agent: "antigravity", started: Asks::Card, begun_ms: 0 };
+        assert_eq!(only_asking_chat(&[]), None);
+        assert_eq!(only_asking_chat(&[asker(1, "a")]).as_deref(), Some("a"));
+        assert_eq!(only_asking_chat(&[asker(1, "a"), asker(2, "a")]).as_deref(), Some("a"));
+        assert_eq!(only_asking_chat(&[asker(1, "a"), asker(2, "b")]), None, "two chats: neither");
+        assert_eq!(only_asking_chat(&[asker(1, "")]), None);
+        // Another CLI's turn: its calls name their chat, and one that doesn't is nobody's.
+        let codex = Asker { id: 3, chat: "a".into(), provider: "codex", agent: "codex", started: Asks::Card, begun_ms: 0 };
+        assert_eq!(only_asking_chat(std::slice::from_ref(&codex)), None);
+        assert_eq!(only_asking_chat(&[asker(1, "a"), codex]), None);
+        // The mode as the chat shows it: an old "turbo" is Ask, but Antigravity's own.
+        assert_eq!(asks_for("codex", "turbo"), Asks::Card);
+        assert_eq!(asks_for("copilot", "bypassPermissions"), Asks::Card);
+        assert_eq!(asks_for("codex", "auto"), Asks::Free);
+        assert_eq!(asks_for("cursor", "plan"), Asks::LookOnly);
+        assert_eq!(asks_for(crate::antigravity_cli::PROVIDER, "turbo"), Asks::Free);
+        // A turn asks from its start until it ends.
+        let turn = AskTurn::begin("codex", "chat-turn-test", "codex", "default");
+        assert!(askers().iter().any(|a| a.chat == "chat-turn-test" && a.started == Asks::Card));
+        let id = askers().iter().find(|a| a.chat == "chat-turn-test").map(|a| a.id).unwrap();
+        let ended = std::thread::spawn(move || tauri::async_runtime::block_on(turn_over(id)));
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        drop(turn);
+        ended.join().unwrap();
+        assert!(!askers().iter().any(|a| a.chat == "chat-turn-test"));
     }
 }

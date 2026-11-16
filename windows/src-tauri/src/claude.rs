@@ -172,6 +172,61 @@ fn with_user_tools(mut body: Value, tools: &[(String, String, Value)]) -> Value 
     body
 }
 
+/// A tool_result block: the text, with a picture before it when the tool
+/// gave one (browser_screenshot).
+fn tool_result(id: &str, text: String, failed: bool, image: Option<String>) -> Value {
+    match image {
+        Some(png) if png.len() as u64 <= MAX_IMAGE_BYTES * 4 / 3 => json!({
+            "type": "tool_result",
+            "tool_use_id": id,
+            "content": [
+                { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": png } },
+                { "type": "text", "text": text },
+            ],
+            "is_error": failed,
+        }),
+        Some(_) => json!({ "type": "tool_result", "tool_use_id": id, "content": format!("{text}\n\n{TOO_LARGE}"), "is_error": failed }),
+        None => json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }),
+    }
+}
+
+/// What a screenshot too large for the API leaves in its place.
+const TOO_LARGE: &str = "(The screenshot is too large to send: use browser_read to see the page as text.)";
+/// What an earlier screenshot, left out of the request, leaves in its place.
+const EARLIER: &str = "(Its screenshot was left out to keep the request small: take another to see the page now.)";
+
+/// Only the newest `keep` screenshots of the tools' answers stay in the
+/// request, so a long turn stays under the API's limits (its size, and the
+/// size each picture may have past 20); the older ones are said in words.
+fn keep_last_screenshots(body: &mut Value, keep: usize) {
+    let mut kept = 0;
+    for message in body["messages"].as_array_mut().into_iter().flatten().rev().filter(|m| m["role"] == "user") {
+        for block in message["content"].as_array_mut().into_iter().flatten().rev().filter(|b| b["type"] == "tool_result") {
+            let Some(parts) = block["content"].as_array_mut() else { continue };
+            if !parts.iter().any(|p| p["type"] == "image") {
+                continue;
+            }
+            if kept < keep {
+                kept += 1;
+                continue;
+            }
+            parts.retain(|p| p["type"] != "image");
+            parts.push(json!({ "type": "text", "text": EARLIER }));
+        }
+    }
+}
+
+/// The island says which tool runs, in place of Thinking….
+fn tool_activity(name: &str, input: &Value) -> crate::claude_code::Activity {
+    if crate::github_tools::NAMES.contains(&name) {
+        crate::github_tools::activity(name, input)
+    } else if crate::browser::NAMES.contains(&name) {
+        crate::browser::activity(input)
+    } else {
+        crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
+    }
+}
+
 /// The tool calls of an answer that stopped for them, as the next user turn's
 /// tool_result blocks: each call of the user's tools asks on the island (tools.rs).
 async fn run_user_tools(
@@ -201,15 +256,9 @@ async fn run_user_tools(
             results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
             continue;
         }
-        // The island says which tool runs, in place of Thinking….
-        let act = if crate::github_tools::NAMES.contains(&name) {
-            crate::github_tools::activity(name, &b["input"])
-        } else {
-            crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
-        };
-        chat.events().activity(app, act);
-        let (text, failed) = crate::tools::call_for_chat(app, chat.id(), crate::chat::ANTHROPIC, name, b["input"].clone(), asking, sandbox_high).await;
-        results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
+        chat.events().activity(app, tool_activity(name, &b["input"]));
+        let (text, failed, image) = crate::tools::call_for_chat(app, chat.id(), crate::chat::ANTHROPIC, None, name, b["input"].clone(), asking, sandbox_high).await;
+        results.push(tool_result(id, text, failed, image));
     }
     results
 }
@@ -287,9 +336,10 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
                 results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": crate::tools::not_offered(name), "is_error": true }));
                 continue;
             }
-            sink.step(crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)));
-            let (text, failed) = sink.alive_while(Box::pin(crate::tools::call_for_chat(app, chat_id, crate::chat::ANTHROPIC, name, b["input"].clone(), l.asking, l.sandbox_high))).await;
-            results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
+            sink.step(tool_activity(name, &b["input"]));
+            let call = crate::tools::call_for_chat(app, chat_id, crate::chat::ANTHROPIC, Some(sink.id()), name, b["input"].clone(), l.asking, l.sandbox_high);
+            let (text, failed, image) = sink.alive_while(Box::pin(call)).await;
+            results.push(tool_result(id, text, failed, image));
         }
         if let Some(messages) = body["messages"].as_array_mut() {
             messages.push(json!({ "role": "assistant", "content": blocks }));
@@ -297,6 +347,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
                 messages.push(json!({ "role": "user", "content": results }));
             }
         }
+        keep_last_screenshots(&mut body, lumo_local::guard::KEEP_PICTURES);
     }
 }
 
@@ -399,7 +450,8 @@ pub async fn send(
     let mode = crate::tools::chat_mode(mode);
     let asking = crate::tools::Asking::for_local(mode);
     let sandbox_high = sandbox != "low";
-    let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, false, false)).await.unwrap_or_default();
+    let browser = tauri::async_runtime::spawn_blocking(crate::browser::enabled).await.unwrap_or(false);
+    let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, false, false, browser)).await.unwrap_or_default();
     let mut tools = crate::tools::tools_for_mode(all, mode);
     let plan = if mode == "plan" { crate::tools::PLAN_ONLY_NOTE } else { "" };
     let known = model_facts(&endpoint, &key, model).await;
@@ -415,7 +467,8 @@ pub async fn send(
         sandbox_high,
     };
     tools.push(crate::api_agents::tool());
-    let system = format!("{}{}{plan}{}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail), crate::api_agents::NOTE);
+    let browsing = if browser && mode != "plan" { crate::browser::note() } else { String::new() };
+    let system = format!("{}{}{browsing}{plan}{}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail), crate::api_agents::NOTE);
     let mut body = with_user_tools(request_body(model, &system, &turn.history, &user, known.max_tokens), &tools);
     if NO_CACHE.load(Ordering::Relaxed) {
         without_cache(&mut body);
@@ -502,6 +555,7 @@ pub async fn send(
                     messages.push(json!({ "role": "user", "content": results }));
                 }
             }
+            keep_last_screenshots(&mut body, lumo_local::guard::KEEP_PICTURES);
         }
     };
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
@@ -1389,5 +1443,28 @@ mod tests {
         assert_eq!(models[1].reasoning, ["low", "medium", "high", "max"], "only the levels it takes");
         assert!(models[2].reasoning.is_empty(), "no effort: no slider");
         assert_eq!(models[2].context, 200_000);
+    }
+
+    #[test]
+    fn a_screenshot_goes_back_as_a_picture_in_the_tools_answer() {
+        let plain = tool_result("t1", "done".into(), false, None);
+        assert_eq!(plain, json!({ "type": "tool_result", "tool_use_id": "t1", "content": "done", "is_error": false }));
+        let shot = tool_result("t2", "Tab 1".into(), false, Some("iVBOR".into()));
+        assert_eq!(shot["content"][0]["source"], json!({ "type": "base64", "media_type": "image/png", "data": "iVBOR" }));
+        assert_eq!(shot["content"][1], json!({ "type": "text", "text": "Tab 1" }));
+        // Too large for the API: the words alone.
+        let huge = "A".repeat((MAX_IMAGE_BYTES * 4 / 3) as usize + 4);
+        assert_eq!(tool_result("t3", "Tab 1".into(), false, Some(huge))["content"], format!("Tab 1\n\n{TOO_LARGE}"));
+        // A long turn keeps only the newest.
+        let round = |n: u32| json!({ "role": "user", "content": [tool_result(&format!("t{n}"), format!("Tab {n}"), false, Some(format!("P{n}")))] });
+        let mut body = json!({ "messages": [{ "role": "user", "content": "Hi" }, round(1), round(2), round(3)] });
+        keep_last_screenshots(&mut body, 2);
+        let first = &body["messages"][1]["content"][0]["content"];
+        assert_eq!(first.as_array().unwrap().len(), 2);
+        assert_eq!(first[1]["text"], EARLIER);
+        assert_eq!(body["messages"][2]["content"][0]["content"][0]["source"]["data"], "P2");
+        assert_eq!(body["messages"][3]["content"][0]["content"][0]["source"]["data"], "P3");
+        keep_last_screenshots(&mut body, 2);
+        assert_eq!(body["messages"][1]["content"][0]["content"].as_array().unwrap().len(), 2, "said once");
     }
 }

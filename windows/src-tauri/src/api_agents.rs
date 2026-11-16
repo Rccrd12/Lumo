@@ -121,6 +121,11 @@ pub struct Sink {
 }
 
 impl Sink {
+    /// The agent's row id: a browser tab it opens is its own (browser.rs).
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
     fn with(&self, alive: bool, f: impl FnOnce(&mut AgentRow)) {
         let mut agents = self.agents.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(row) = agents.touch(&self.id) {

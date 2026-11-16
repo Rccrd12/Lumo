@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::guard::{announces, asks_change, call_input, claims_change, claims_done, written_call, without_images};
+use crate::guard::{
+    announces, asks_change, call_input, claims_change, claims_done, has_pictures, keep_last_pictures, pictures_message, without_images, without_pictures, written_call, KEEP_PICTURES, NO_PICTURES,
+};
 use crate::native::calls_in_text;
 use crate::plan::{self, Plan};
 use crate::sse::progressive_filter;
@@ -76,6 +78,11 @@ pub trait Hooks {
     fn known(&self) -> Vec<String>;
     /// Runs a tool: what it answered, and whether it failed.
     fn call(&mut self, name: &str, input: Value) -> impl Future<Output = (String, bool)> + Send;
+    /// The screenshots the tools of the round just took (PNG, base64), in
+    /// order, taken from the app: they go to the model after the round's answers.
+    fn pictures(&mut self) -> Vec<String> {
+        Vec::new()
+    }
     /// Shows a plan Lumo made of a list in the answer (`update_plan`'s input),
     /// as if the model had called the tool with it.
     fn show_plan(&mut self, _input: &Value) {}
@@ -225,6 +232,10 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let mut next: Option<Doing> = None;
     // The plan as the island shows it, and how up to date it is.
     let mut plan = PlanState { shown: rules.plan.clone(), ..PlanState::default() };
+    // The model refused the browser's screenshots once: it gets none again.
+    let mut blind = false;
+    // A request with screenshots was answered: the model takes them.
+    let mut seen = false;
     loop {
         // The plan's check after the answer is unseen: the answer stays on
         // the island as it was, with nothing said about it.
@@ -297,6 +308,14 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             }
         }
         let answer = match answer {
+            // A model that doesn't see refuses the browser's screenshots: once
+            // more with words in their place, and none sent from now on. Not
+            // once it took them: a refusal then is about something else.
+            Err(Failure::Status(400 | 422, _)) if !seen && without_pictures(body) => {
+                blind = true;
+                fixes.push("without pictures");
+                continue;
+            }
             // A model that doesn't see refuses the pictures: once more with the text alone.
             Err(Failure::Status(400 | 422, _)) if without_images(body) => {
                 if let (Some(text), Some(last)) = (&rules.text_only, body["messages"].as_array_mut().and_then(|m| m.last_mut())) {
@@ -349,6 +368,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         };
         // The next request has its own retries.
         engine_retries = 0;
+        // A request with screenshots was answered: the model takes them.
+        seen = seen || has_pictures(body);
         let mut answer = answer;
         // Calls the model wrote in its own format, that the server left in
         // the text (Gemma's `<|tool_call>…`): made into calls.
@@ -567,7 +588,16 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 *content = json!(format!("{}\n\n{note}", content.as_str().unwrap_or_default()));
             }
         }
+        let pictures = hooks.pictures();
+        if !pictures.is_empty() && !blind {
+            replies.push(pictures_message(&pictures));
+        } else if !pictures.is_empty() {
+            if let Some(content) = replies.last_mut().filter(|r| r["role"] == "tool").and_then(|r| r.get_mut("content")) {
+                *content = json!(format!("{}\n\n{NO_PICTURES}", content.as_str().unwrap_or_default()));
+            }
+        }
         push(body, replies);
+        keep_last_pictures(body, KEEP_PICTURES);
     }
 }
 

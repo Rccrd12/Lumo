@@ -780,7 +780,7 @@ downloaded the same way (an http one on https) only after a click on **Load imag
 always**), and the sender's site then learns that you opened it; the tracking
 pixels Lumo recognises are never downloaded. **Settings → Security → Images from the web** turns both off.
 With **Settings → Security → Let agents browse the web** (off by default), the
-island chat's Claude Code and its agents open the sites they choose in hidden
+island chat's AI (whichever provider) and its agents open the sites they choose in hidden
 tabs inside Lumo, in a separate InPrivate profile: those sites, and everything
 their pages load, see your IP address (see [Agents browse the web](#agents-browse-the-web)).
 
@@ -1234,8 +1234,8 @@ plan, with no API key.
 ### Agents browse the web
 
 **Settings… → Security → Let agents browse the web** (off by default,
-Windows only, a prototype) lets the island chat's Claude Code and its agents
-open websites in hidden browser tabs of their own, so several agents browse
+Windows only, a prototype) lets the island chat's AI and its agents, with
+every provider, open websites in hidden browser tabs of their own, so several agents browse
 at the same time without touching your mouse. The pages are real ones,
 JavaScript and all, as in Edge, unlike Claude Code's WebFetch, which only
 fetches a page's text.
@@ -1248,13 +1248,28 @@ fetches a page's text.
   are refused, a pop-up opens in the same tab instead of a new window, and
   Lumo's own pages (`*.localhost`) can't be opened, not even from inside a
   page; nothing in a tab can call Lumo's commands.
-- Claude Code gets the tools from Lumo's MCP server (`lumo-hook --mcp`):
-  `browser_open`, `browser_read` (the page as text, each link, button and
-  field numbered), `browser_click`, `browser_type`, `browser_scroll`,
-  `browser_screenshot` and `browser_close`. Reading and looking need no
-  click; opening a site, clicking, typing and closing go through the chat's
-  permission mode like any other tool, and the card says what they do:
-  "Open in a new browser tab · https://…", "Click in browser tab 2 · [12]".
+- The tools are `browser_open`, `browser_read` (the page as text, each link,
+  button and field numbered), `browser_click`, `browser_type`,
+  `browser_scroll`, `browser_screenshot` and `browser_close`. Claude Code,
+  Codex, Copilot CLI, Cursor CLI and Antigravity CLI get them from Lumo's MCP
+  server (`lumo-hook --mcp`); the API providers (Anthropic, OpenAI, Google,
+  OpenRouter…) and the local models get them as Lumo's own tools, and a local
+  model loads them when the question speaks of using a website (a website or
+  web page, browsing, clicking, filling in a form, booking…) or when it asks
+  for them; a bare link is read with web_fetch. Reading and looking need no click; opening a site,
+  clicking, typing, scrolling and closing go through the chat's permission
+  mode like any other tool, and the card says what they do: "Open in a new
+  browser tab · https://…", "Click in browser tab 2 · [12]". Claude Code asks
+  on its own card; for the other CLIs, which let Lumo's tools run unasked,
+  Lumo shows the card itself while their turn runs: on Ask every action asks,
+  on Auto none does, and on Plan only they may only read and look at the
+  pages already open. The API providers and local models ask on Ask for
+  every action and nowhere else, as for their other tools; on Plan only they
+  don't browse.
+- A screenshot goes back to the model as a picture: to Claude Code and the
+  CLIs through MCP, to the API providers and local models with the tool's
+  answer (only the newest three stay in a long answer's requests). A model
+  that can't see is told to use `browser_read` instead.
 - Every agent opens its own tab and works in it: the agent's row in the
   Agents card says which site it is on, and **Watch** opens a live picture of
   its tab right under the row, inside the island: the address, and the page
@@ -1266,7 +1281,7 @@ fetches a page's text.
   is opening; a picture that keeps failing says why. **Ask** and **Stop** sit
   under it, and ⤢ opens the **Agents' browser**: one tab per agent (named by
   its site) and **All**, which shows them side by side; a click on one makes
-  it large. The conversation's own tab, when Claude Code browses without an
+  it large. The conversation's own tab, when the chat browses without an
   agent, opens there from **Watch** next to the dots while it answers. It is
   only to watch: the tab stays the agent's, with none of your accounts, and no
   window comes on screen. The picture is asked for only while it is on screen
@@ -1275,8 +1290,6 @@ fetches a page's text.
   shown as dots.
 - A tab closes when its agent ends, after 10 minutes unused, or when the
   setting is turned off; eight tabs at most are open at once.
-- For now only Claude Code browses: Antigravity CLI, Codex, Copilot CLI,
-  Cursor CLI, the API providers and local models don't get these tools.
 
 ### Talk with Gemini (Gemini Live)
 

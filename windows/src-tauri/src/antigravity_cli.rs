@@ -1512,6 +1512,7 @@ pub async fn send(
     model: &str,
     mode: &str,
     computer: bool,
+    browser: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -1553,10 +1554,12 @@ pub async fn send(
     // Lumo's plan tool, its email tools while the Email pill is on and Security
     // lets the AI read it (only during this turn), and the user's tools that are on (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
-    crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer);
+    crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer, browser);
     let _mail = crate::mail::agent_turn();
     // The computer usable while this turn runs, each action asked for by Lumo.
     let computer_turn = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
+    // Lumo's browser: what changes a page asks on Lumo's card while this turn runs.
+    let _browser = browser.then(|| crate::browser::AskTurn::begin(PROVIDER, chat.id(), "antigravity", mode));
 
     let app2 = app.clone();
     let events = chat.events();
@@ -1874,7 +1877,7 @@ pub(crate) fn help(
     // No chat's: the inbox only with "Other chats' files" on.
     let inbox = if crate::settings::load().chat_other_files { crate::files::inbox_dir().to_string_lossy().to_string() } else { String::new() };
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
-    crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled(), false);
+    crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled(), false, false);
     let _mail = crate::mail::agent_turn();
     let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {}, &chat_agents::silent())?;
     if state.stopped {
