@@ -74,6 +74,8 @@
 // writing beside the conversation.
 
 import { h, svg, clear, gentleWheel } from "./dom";
+import { readPlace, putPlace, type ReadPlace } from "./read-place";
+import { SETTLE_MS as CARD_SETTLE_MS } from "./rich/resize";
 import { ICONS } from "./icons";
 import { checklistsIn, copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
@@ -2063,6 +2065,10 @@ function usageRingSvg(): { el: SVGSVGElement; set(pct: number | null, color: str
 const STUCK_PX = 1;
 /** Further up from the end than this share of the log's height, the arrow down shows. */
 const TO_END_ARROW_SCREENS = 1;
+/** The island opening: the place read is put back until the log has held its size this long, past the cards fitting themselves to it. */
+const PLACE_SETTLE_MS = CARD_SETTLE_MS + 260;
+/** And for no longer than this, however long the island takes to open. */
+const PLACE_MAX_MS = 2000;
 
 // ── View ──────────────────────────────────────────────────────────────────────
 
@@ -2131,6 +2137,9 @@ export function buildPrompt(
   }
   log.addEventListener("scroll", () => {
     if (log.clientHeight === 0) return; // hidden behind a panel
+    // The island closing or opening moves the log, not the user: where it is
+    // read and whether it follows its end stay as they were.
+    if (readAt) return;
     stuck = fromEnd() <= STUCK_PX;
     drawToEnd();
   }, { passive: true });
@@ -2167,7 +2176,88 @@ export function buildPrompt(
       });
     });
   }
+  // The island closing narrows the chat to its small size, where every line
+  // wraps again, and opening widens it back: the browser's scroll anchoring
+  // alone could lose the place on the way (a card fitting itself, the island's
+  // spring going past its size near the end, which then held the log to its
+  // end). Where the chat is read is kept as it leaves the screen, and put back
+  // at each frame as it comes back, until the log has held its size a moment
+  // or the user scrolls it.
+  let readAt: { chatId: string; slot: typeof State.chatSlot; stuck: boolean; place: ReadPlace | null } | null = null;
+  let placeFrame = 0;
+  const chatOnScreen = () => State.mode === "expanded" && State.view === "prompt";
+  let wasOnScreen = chatOnScreen();
+  function stopPlacing() {
+    if (placeFrame) cancelAnimationFrame(placeFrame);
+    placeFrame = 0;
+    if (!readAt) return;
+    readAt = null;
+    log.style.overflowAnchor = "";
+    drawToEnd();
+  }
+  function keepPlace() {
+    // Closed again while it was still opening: the place kept stands.
+    if (placeFrame) cancelAnimationFrame(placeFrame);
+    placeFrame = 0;
+    if (readAt) return;
+    readAt = { chatId: State.chatId, slot: State.chatSlot, stuck, place: stuck ? null : readPlace(log) };
+  }
+  function putBackPlace() {
+    const at = readAt;
+    if (!at) return;
+    // Another chat came on screen meanwhile: it opens at its end (openedChat).
+    if (at.chatId !== State.chatId || at.slot !== State.chatSlot) {
+      stopPlacing();
+      return;
+    }
+    stuck = at.stuck;
+    if (stuck || !at.place || typeof requestAnimationFrame === "undefined") {
+      stopPlacing();
+      follow();
+      return;
+    }
+    const place = at.place;
+    // The place is put back by hand: the browser's own correction would only
+    // pull against it.
+    log.style.overflowAnchor = "none";
+    const started = performance.now();
+    let since = started;
+    let size = "";
+    const step = () => {
+      placeFrame = 0;
+      if (readAt !== at || !putPlace(log, place)) {
+        stopPlacing();
+        return;
+      }
+      const now = performance.now();
+      // To the fraction of a pixel: the island's spring ends in steps that
+      // small, and each puts off the cards fitting themselves.
+      const box = log.getBoundingClientRect();
+      const seen = `${box.width}x${box.height}x${log.scrollHeight}`;
+      if (seen !== size) {
+        size = seen;
+        since = now;
+      }
+      if (now - since >= PLACE_SETTLE_MS || now - started >= PLACE_MAX_MS) stopPlacing();
+      else placeFrame = requestAnimationFrame(step);
+    };
+    step();
+  }
+  State.subscribe(() => {
+    const onScreen = chatOnScreen();
+    if (onScreen === wasOnScreen) return;
+    wasOnScreen = onScreen;
+    if (onScreen) putBackPlace();
+    else keepPlace();
+  });
+  // The user scrolling, or about to, takes over from it.
+  for (const type of ["wheel", "pointerdown", "keydown", "touchstart"]) {
+    log.addEventListener(type, () => {
+      if (readAt && wasOnScreen) stopPlacing();
+    }, { passive: true, capture: true });
+  }
   toEnd.addEventListener("click", () => {
+    stopPlacing();
     stuck = true;
     follow();
   });
@@ -6515,9 +6605,14 @@ export function buildPrompt(
         drawStall();
         // The chat stays where it was read, or at its end when it is stuck
         // there; one just opened shows its end.
-        if (openedChat) stuck = true;
-        if (!stuck) holdPlace();
+        if (openedChat) {
+          stopPlacing();
+          stuck = true;
+        }
+        if (!stuck && !readAt) holdPlace();
         log.scrollTop = stuck ? log.scrollHeight : kept;
+        // Drawn again while the island is closed or opening: the place kept, found in the new log.
+        if (readAt?.place && !stuck) putPlace(log, readAt.place);
         openedChat = false;
         drawToEnd();
       } else refreshTimes();
