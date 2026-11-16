@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CHAT_LISTENING, CHAT_PANEL_OPEN, DEFAULT_SHAPE, chatHeight, gripFactors, islandSize, parseDock } from "../src/core/layout.ts";
+import { CHAT_LISTENING, CHAT_PANEL_OPEN, CORNER_OFFSET, DEFAULT_SHAPE, chatHeight, cornerOf, gripFactors, islandSize, parseDock } from "../src/core/layout.ts";
 
 test("the default shape gives the island its usual sizes", () => {
   assert.deepEqual(islandSize("expanded", "overview", 0, DEFAULT_SHAPE), { w: 640, h: 160 });
@@ -65,6 +65,26 @@ test("each edge offers the grips away from it", () => {
   assert.deepEqual(gripFactors("top", "left"), { fx: 0, fy: -2 });
   assert.equal(gripFactors("bottom-left", "left"), null);
   assert.deepEqual(gripFactors("bottom-left", "right"), { fx: -1, fy: 2 });
+});
+
+test("in a corner the island grows away from it", () => {
+  // island.rs CORNER: the same number either way along the edge.
+  const rs = readFileSync(new URL("../src-tauri/src/island.rs", import.meta.url), "utf8");
+  assert.match(rs, new RegExp(`pub const CORNER: f64 = ${CORNER_OFFSET.toLocaleString("en").replaceAll(",", "_")}\\.0;`));
+  assert.equal(cornerOf(CORNER_OFFSET), "end");
+  assert.equal(cornerOf(-CORNER_OFFSET), "start");
+  assert.equal(cornerOf(900), null);
+  assert.equal(cornerOf(Number.NaN), null);
+  // Top right: the right side stays against the edge, the left one moves alone.
+  assert.equal(gripFactors("right", "top", "end"), null);
+  assert.equal(gripFactors("bottom-right", "top", "end"), null);
+  assert.deepEqual(gripFactors("left", "top", "end"), { fx: -1, fy: 0 });
+  assert.deepEqual(gripFactors("bottom-left", "top", "end"), { fx: -1, fy: 1 });
+  // Bottom left: the right side and the top.
+  assert.equal(gripFactors("left", "bottom", "start"), null);
+  assert.deepEqual(gripFactors("top-right", "bottom", "start"), { fx: 1, fy: -1 });
+  // Not in a corner: as before.
+  assert.deepEqual(gripFactors("right", "top", null), { fx: 2, fy: 0 });
 });
 
 test("nonsense falls back to the usual", () => {

@@ -330,6 +330,35 @@ pub fn shift(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> (f64, f64)
 /// further away it floats where it was left.
 const SNAP_EDGE: f64 = 48.0;
 
+/// An offset this far along its edge (logical pixels, either way) puts the
+/// island in that end's corner: further than any display, so the window stops
+/// against the end of the edge (`frame`) and the page draws the island against
+/// it, its own gap away (src/island/island.ts anchoredRect). Whatever its
+/// width, closed or open, it keeps to the corner: it grows away from it.
+pub const CORNER: f64 = 100_000.0;
+
+/// Let go close to a corner (near the top or the bottom and near a side, as
+/// close as `landing` counts), the island docks to the top or bottom edge, in
+/// that corner: the dock and the offset it keeps (±`CORNER`).
+fn corner(area: (i32, i32, u32, u32), scale: f64, zoom: f64, island: (f64, f64, f64, f64)) -> Option<(Dock, f64)> {
+    let (ax, ay, aw, ah) = (area.0 as f64, area.1 as f64, area.2 as f64, area.3 as f64);
+    let (l, t, r, b) = island;
+    let near = |gap: f64| gap / scale < SNAP_EDGE + edge_gap() * zoom;
+    let (top, bottom, left, right) = (t - ay, ay + ah - b, l - ax, ax + aw - r);
+    let dock = match (near(top), near(bottom)) {
+        (true, true) => if top <= bottom { Dock::Top } else { Dock::Bottom },
+        (true, false) => Dock::Top,
+        (false, true) => Dock::Bottom,
+        (false, false) => return None,
+    };
+    match (near(left), near(right)) {
+        (true, true) => None,
+        (true, false) => Some((dock, -CORNER)),
+        (false, true) => Some((dock, CORNER)),
+        (false, false) => None,
+    }
+}
+
 /// Where a let-go island goes, given as a physical rectangle (left, top,
 /// right, bottom): against an edge it is close to, or floating where it is,
 /// growing down in the upper half of the display and up in the lower half.
@@ -391,16 +420,15 @@ fn offset_along(area: (i32, i32, u32, u32), scale: f64, dock: Dock, centre: (f64
 const SNAP_FRACTION: f64 = 0.1;
 const SNAP_MIN: f64 = 80.0;
 
-/// The offset `frame` really used, once it kept the panel whole: what to
-/// remember, so the island never sits further out than it is drawn.
-fn effective_offset(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> f64 {
-    let (x, y, w, h) = frame(area, scale, p, false);
-    let off = if p.dock.upright() {
-        (y as f64 + h as f64 / 2.0) - (area.1 as f64 + area.3 as f64 / 2.0)
-    } else {
-        (x as f64 + w as f64 / 2.0) - (area.0 as f64 + area.2 as f64 / 2.0)
-    };
-    (off / scale).round()
+/// A docked island's offset, kept on the display: its centre no further than
+/// the end of its edge. The window stays whole on the display (`frame`), and
+/// the island is drawn off its middle to be where it was let go (`shift`):
+/// once the window was kept whole, the island stopped hundreds of pixels
+/// short of the corner, the window being far wider than the island.
+fn docked_offset(area: (i32, i32, u32, u32), scale: f64, dock: Dock, offset: f64) -> f64 {
+    let len = if dock.upright() { area.3 } else { area.2 } as f64;
+    let half = (len / scale / 2.0).floor();
+    finite(offset).clamp(-half, half)
 }
 
 /// Margin around the island that still counts as "on the island", in logical px.
@@ -933,16 +961,24 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
     // there.
     let (rw, rh) = if rect.w > 0.0 { (rect.w, rect.h) } else { (NOTCH_PILL.0, NOTCH_PILL.1) };
     let (left, top) = (ox + cx - sx + rect.x * k, oy + cy - sy + rect.y * k);
-    let (dock, float) = landing(area, scale, clamp_zoom(start.zoom), (left, top, left + rw * k, top + rh * k));
+    let island = (left, top, left + rw * k, top + rh * k);
     let centre = (left + rw * k / 2.0, top + rh * k / 2.0);
-    let mut p = Placement { dock, float, offset: offset_along(area, scale, dock, centre), ..start };
-    if float > 0.0 {
-        // Floating, it stays exactly where it was let go, even near a corner.
-        let mid = area.0 as f64 + area.2 as f64 / 2.0;
-        p.offset = ((centre.0 - mid) / scale).round();
-    } else {
-        p.offset = effective_offset(area, scale, p);
-    }
+    let p = match corner(area, scale, clamp_zoom(start.zoom), island) {
+        // Close to a corner: docked in it.
+        Some((dock, offset)) => Placement { dock, float: 0.0, offset, ..start },
+        None => {
+            let (dock, float) = landing(area, scale, clamp_zoom(start.zoom), island);
+            let offset = if float > 0.0 {
+                // Floating, it stays exactly where it was let go, even near a corner.
+                let mid = area.0 as f64 + area.2 as f64 / 2.0;
+                ((centre.0 - mid) / scale).round()
+            } else {
+                // Docked, it goes as far along its edge as it was let go.
+                docked_offset(area, scale, dock, offset_along(area, scale, dock, centre))
+            };
+            Placement { dock, float, offset, ..start }
+        }
+    };
     let moved = shift(area, scale, p);
     let begin = std::time::Instant::now() + DOCK_LEAD;
     let start_at = std::time::SystemTime::now()
@@ -952,7 +988,7 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
     let _ = app.emit_to(
         WINDOW_LABEL,
         "island-dock",
-        DockPayload { dock, offset: p.offset, float: p.float, shift_x: moved.0, shift_y: moved.1, start_at },
+        DockPayload { dock: p.dock, offset: p.offset, float: p.float, shift_x: moved.0, shift_y: moved.1, start_at },
     );
 
     // The window springs from where it is to its place, never jumping: the
@@ -1240,10 +1276,65 @@ mod placement_tests {
         // Along a side it is the height that counts, in logical pixels.
         assert_eq!(offset_along(FHD, 2.0, Dock::Left, (5.0, 540.0 + 90.0)), 0.0);
         assert_eq!(offset_along(FHD, 2.0, Dock::Left, (5.0, 540.0 + 400.0)), 200.0);
-        // What is remembered is where the panel really is, kept whole.
-        let far = Placement { offset: 5000.0, ..HOME };
-        assert_eq!(effective_offset(FHD, 1.0, far), 600.0);
-        assert_eq!(frame(FHD, 1.0, Placement { offset: 600.0, ..HOME }, false), frame(FHD, 1.0, far, false));
+        // Docked, it is remembered where it was let go, kept on the display.
+        assert_eq!(docked_offset(FHD, 1.0, Dock::Top, 820.0), 820.0);
+        assert_eq!(docked_offset(FHD, 1.0, Dock::Top, 5000.0), 960.0);
+        assert_eq!(docked_offset(FHD, 2.0, Dock::Left, -5000.0), -270.0);
+    }
+
+    #[test]
+    fn docked_it_goes_all_the_way_along_its_edge() {
+        // The window stops against the end of the edge (it used to stop the
+        // island there too, 340 px short of the corner at 640 wide)…
+        let far = Placement { offset: 820.0, ..HOME };
+        assert_eq!(frame(FHD, 1.0, far, false), (1200, 0, 720, 480));
+        // …and the island is drawn off the window's middle, where it was let go.
+        assert_eq!(shift(FHD, 1.0, far), (220.0, 0.0));
+        // On a side too, along the height.
+        let low = Placement { offset: 400.0, dock: Dock::Left, ..HOME };
+        assert_eq!(frame(FHD, 1.0, low, false), (0, 600, 720, 480));
+        assert_eq!(shift(FHD, 1.0, low), (0.0, 100.0));
+    }
+
+    #[test]
+    fn let_go_near_a_corner_it_docks_in_it() {
+        let pill = |x: f64, y: f64| (x, y, x + 288.0, y + 32.0);
+        // Near the top and near a side: in that corner of the top edge.
+        assert_eq!(corner(FHD, 1.0, 1.0, pill(1920.0 - 288.0 - 30.0, 20.0)), Some((Dock::Top, CORNER)));
+        assert_eq!(corner(FHD, 1.0, 1.0, pill(5.0, 5.0)), Some((Dock::Top, -CORNER)));
+        // Dragged past the side, it still counts.
+        assert_eq!(corner(FHD, 1.0, 1.0, pill(1800.0, -10.0)), Some((Dock::Top, CORNER)));
+        // At the bottom, it docks to the bottom edge.
+        assert_eq!(corner(FHD, 1.0, 1.0, pill(10.0, 1080.0 - 32.0 - 20.0)), Some((Dock::Bottom, -CORNER)));
+        // An open island grabbed at the corner, as wide as it is.
+        assert_eq!(corner(FHD, 1.0, 1.0, (1920.0 - 640.0 - 12.0, 8.0, 1908.0, 308.0)), Some((Dock::Top, CORNER)));
+        // Near one edge only, or neither: not a corner.
+        assert_eq!(corner(FHD, 1.0, 1.0, pill(800.0, 10.0)), None);
+        assert_eq!(corner(FHD, 1.0, 1.0, pill(1920.0 - 290.0, 500.0)), None);
+        assert_eq!(corner(FHD, 1.0, 1.0, pill(800.0, 500.0)), None);
+        assert_eq!(corner(FHD, 1.0, 1.0, pill(1920.0 - 288.0 - 100.0, 20.0)), None);
+        // At 150 % the distances are logical pixels: 60 px is 40.
+        assert_eq!(corner(FHD, 1.5, 1.0, pill(1920.0 - 288.0 - 60.0, 60.0)), Some((Dock::Top, CORNER)));
+    }
+
+    #[test]
+    fn in_a_corner_the_window_and_the_strip_stand_at_the_end_of_the_edge() {
+        let right = Placement { offset: CORNER, ..HOME };
+        let left = Placement { offset: -CORNER, ..HOME };
+        assert_eq!(frame(FHD, 1.0, right, false), (1200, 0, 720, 480));
+        assert_eq!(frame(FHD, 1.0, left, false), (0, 0, 720, 480));
+        // The island is drawn further than the window goes: the page keeps it
+        // against the window's end, closed or open (island.ts anchoredRect).
+        assert!(shift(FHD, 1.0, right).0 > 1920.0);
+        assert!(shift(FHD, 1.0, left).0 < -1920.0);
+        // Hidden, the wake strip is the piece of edge in that corner.
+        assert_eq!(frame(FHD, 1.0, right, true), (1920 - 288, 0, 288, 6));
+        assert_eq!(frame(FHD, 1.0, left, true), (0, 0, 288, 6));
+        let bottom = Placement { dock: Dock::Bottom, ..right };
+        assert_eq!(frame(FHD, 1.0, bottom, false), (1200, 600, 720, 480));
+        assert_eq!(frame(FHD, 1.0, bottom, true), (1920 - 288, 1074, 288, 6));
+        // With no gap from the edge it is the same corner.
+        assert_eq!(frame(FHD, 1.0, Placement { gap: 0.0, ..right }, true), (1920 - 288, 0, 288, 6));
     }
 
     #[test]

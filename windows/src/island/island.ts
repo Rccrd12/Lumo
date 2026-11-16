@@ -5,7 +5,7 @@ import { Bridge, IS_TAURI, isDialogOpen, onDialogsChanged, onDragDrop } from "..
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, questionsHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra, errorCardHeight, finishedCardHeight, chatAutoHeight, toolsViewHeight,
-  GRIPS, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, sizeSlot, viewShape, type Dock, type Grip, type IslandShape,
+  GRIPS, cornerOf, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, sizeSlot, viewShape, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
   APPROVAL_MAX_H,
@@ -1611,8 +1611,11 @@ export class Island {
 
   /**
    * Island rect in window coordinates: a gap off its edge of the window,
-   * centred along it, moved by the shift of a floating island — and kept
-   * inside the window, so an island floating low still opens whole.
+   * centred along it, moved by the shift of a floating island (or one moved
+   * far along its edge) — and kept inside the window, so an island floating
+   * low still opens whole. Along its edge it keeps the same gap from the end
+   * of the window, which is then the end of the display: pushed into a corner
+   * (or toward one), it stops that gap from the side, as from its own edge.
    */
   private anchoredRect(vw = window.innerWidth, vh = window.innerHeight): { x: number; y: number; w: number; h: number } {
     const w = this.width.value;
@@ -1627,8 +1630,11 @@ export class Island {
       case "right": x = vw - gap - w; y = (vh - hh) / 2 + sy; break;
       default: x = (vw - w) / 2 + sx; y = gap + sy;
     }
-    x = Math.min(Math.max(x, 0), Math.max(vw - w, 0));
-    y = Math.min(Math.max(y, 0), Math.max(vh - hh, 0));
+    const upright = this.dock === "left" || this.dock === "right";
+    const gx = upright ? 0 : Math.min(gap, Math.max((vw - w) / 2, 0));
+    const gy = upright ? Math.min(gap, Math.max((vh - hh) / 2, 0)) : 0;
+    x = Math.min(Math.max(x, gx), Math.max(vw - w - gx, 0));
+    y = Math.min(Math.max(y, gy), Math.max(vh - hh - gy, 0));
     return { x, y, w, h: hh };
   }
 
@@ -1636,6 +1642,11 @@ export class Island {
   private overIsland(x: number, y: number, margin = 0): boolean {
     const r = this.islandRect();
     return x >= r.x - margin && x <= r.x + r.w + margin && y >= r.y - margin && y <= r.y + r.h + margin;
+  }
+
+  /** The corner of its edge the island was put in, if any (layout.ts cornerOf). */
+  private get corner() {
+    return this.canResize ? cornerOf(State.settings.islandOffset) : null;
   }
 
   /** The edge the island hangs from: always the top where it cannot be moved. */
@@ -1698,7 +1709,7 @@ export class Island {
     for (const { el, grip } of this.grips) {
       el.addEventListener("mousedown", (e) => {
         e.stopPropagation();
-        const f = gripFactors(grip, this.dock);
+        const f = gripFactors(grip, this.dock, this.corner);
         if (e.button !== 0 || e.altKey || !f) return;
         e.preventDefault();
         this.resizing = true;
@@ -1710,7 +1721,7 @@ export class Island {
       });
       el.addEventListener("dblclick", (e) => {
         e.stopPropagation();
-        const f = gripFactors(grip, this.dock);
+        const f = gripFactors(grip, this.dock, this.corner);
         if (f) void Bridge.islandResetSize(f.fx !== 0, f.fy !== 0, sizeSlot(State.view));
       });
     }
@@ -2038,7 +2049,7 @@ export class Island {
     this.viewsEl.classList.toggle("hidden-by-upload", uploadActive);
     const resizable = this.canResize && State.mode === "expanded" && !uploadActive && State.view !== "greeting";
     for (const { el, grip } of this.grips) {
-      el.classList.toggle("on", resizable && gripFactors(grip, this.dock) != null);
+      el.classList.toggle("on", resizable && gripFactors(grip, this.dock, this.corner) != null);
     }
 
     // The pills' little bots are only on the open overview.
