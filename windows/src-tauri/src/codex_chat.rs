@@ -147,9 +147,10 @@ const TOOL_TIMEOUT_SECS: u64 = 750;
 /// island's timer and GitHub tools (`lumo`, island_tools.rs), and the user's
 /// tools while one of them is on (`lumo_tools`, which ask on the island
 /// themselves, tools.rs), with the email's tools as Security lets the AI have
-/// them (`mail`, mail.rs ai_tools; sending and changing an email ask on Lumo's own card). Codex
-/// calls Lumo's own tools without asking.
-fn mcp_config(chat_id: &str, tools: bool, mail: &str) -> Value {
+/// them (`mail`, mail.rs ai_tools; sending and changing an email ask on Lumo's own card), and
+/// the agents' browser while Security lets agents browse (`browser`; what changes a page asks on
+/// Lumo's own card, browser.rs `AskTurn`). Codex calls Lumo's own tools without asking.
+fn mcp_config(chat_id: &str, tools: bool, mail: &str, browser: bool) -> Value {
     let server = |args: &[&str]| {
         let mut entry = crate::computer::server_entry();
         entry["args"] = json!(args);
@@ -162,7 +163,7 @@ fn mcp_config(chat_id: &str, tools: bool, mail: &str) -> Value {
         entry
     };
     let mut servers = serde_json::Map::new();
-    let kit = if mail.is_empty() { "--tools=island".to_string() } else { format!("--tools={mail},island") };
+    let kit = crate::browser::kit(mail, browser);
     servers.insert("lumo".into(), server(&["--mcp", &kit]));
     if tools {
         servers.insert(crate::tools::SERVER.into(), server(&["--mcp", "--tools=user"]));
@@ -188,9 +189,27 @@ fn command_activity(actions: &Value) -> Activity {
     }
 }
 
+/// An item that calls Lumo's browser (an `mcpToolCall` of server `lumo`):
+/// the tool and its input.
+fn browser_call(item: &Value) -> Option<(&'static str, Value)> {
+    if item["type"] != "mcpToolCall" {
+        return None;
+    }
+    let tool = crate::browser::tool_of(item["server"].as_str().unwrap_or(""), item["tool"].as_str().unwrap_or(""))?;
+    let input = match &item["arguments"] {
+        Value::String(text) => serde_json::from_str::<Value>(text).unwrap_or(Value::Null),
+        other => other.clone(),
+    };
+    Some((tool, if input.is_object() { input } else { json!({}) }))
+}
+
 /// What an item Codex started is doing, for the island; None for the items
 /// that are text (its answer) or nothing to show.
 fn activity_for(item: &Value) -> Option<Activity> {
+    // Lumo's browser (browser.rs): the site it opens, as for Claude Code.
+    if let Some((_, input)) = browser_call(item) {
+        return Some(crate::browser::activity(&input));
+    }
     Some(match item["type"].as_str()? {
         "reasoning" | "contextCompaction" | "sleep" => Activity::thinking(),
         "commandExecution" => command_activity(&item["commandActions"]),
@@ -653,6 +672,10 @@ impl Subagents {
         let item = &params["item"];
         match method {
             "item/started" => {
+                // Its call of Lumo's browser: the tab it opens or uses is its own.
+                if let Some((tool, input)) = browser_call(item) {
+                    self.agents.browsed(thread, tool, input);
+                }
                 let row = self.agents.upsert(thread, || AgentRow::new(thread, PROVIDER, &t("Agent")));
                 if let Some(now) = activity_for(item) {
                     if now.kind != "thinking" {
@@ -1278,6 +1301,7 @@ pub async fn send(
     model: &str,
     effort: &str,
     mode: &str,
+    browser: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -1298,12 +1322,14 @@ pub async fn send(
     // Lumo's email tools, usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
+    // Lumo's browser: what changes a page asks on Lumo's card while this turn runs.
+    let _browser = browser.then(|| crate::browser::AskTurn::begin(PROVIDER, chat.id(), "codex", mode));
     let spec = TurnSpec {
         exe,
         dir: claude_code::work_dir(),
         chat_id: chat.id().to_string(),
         thread,
-        config: mcp_config(chat.id(), tools, mail),
+        config: mcp_config(chat.id(), tools, mail, browser),
         model: model.to_string(),
         effort: effort.to_string(),
         mode: mode.to_string(),
@@ -1511,6 +1537,13 @@ mod tests {
         assert_eq!(activity_for(&json!({ "type": "webSearch", "query": "x" })), Some(Activity::new("web", "")));
         assert_eq!(activity_for(&json!({ "type": "reasoning" })), Some(Activity::thinking()));
         assert_eq!(activity_for(&json!({ "type": "agentMessage", "text": "x" })), None);
+        // Lumo's browser: the site it opens; another server's tool, its name.
+        let open = json!({ "type": "mcpToolCall", "server": "lumo", "tool": "browser_open", "arguments": { "url": "https://www.ft.com/markets" } });
+        assert_eq!(activity_for(&open), Some(Activity::new("read", "ft.com")));
+        let read = json!({ "type": "mcpToolCall", "server": "lumo", "tool": "browser_read", "arguments": "{\"tab\":3}" });
+        assert_eq!(browser_call(&read), Some(("browser_read", json!({ "tab": 3 }))), "arguments as JSON text");
+        let other = json!({ "type": "mcpToolCall", "server": "github", "tool": "browser_open", "arguments": {} });
+        assert_eq!((browser_call(&other), activity_for(&other)), (None, Some(Activity::new("tool", "browser open"))));
     }
 
     #[test]
@@ -1590,7 +1623,7 @@ mod tests {
 
     #[test]
     fn lumos_tools_go_to_codex_as_its_mcp_servers() {
-        let config = mcp_config("chat-1", false, "");
+        let config = mcp_config("chat-1", false, "", false);
         let lumo = &config["mcp_servers"]["lumo"];
         assert_eq!(lumo["args"], json!(["--mcp", "--tools=island"]));
         assert_eq!(lumo["env"]["LUMO_ISLAND_RUN"], "1");
@@ -1599,10 +1632,13 @@ mod tests {
         // An email's card and its send, a user's tool and its run: lumo-hook answers before Codex gives up.
         assert_eq!(lumo["tool_timeout_sec"], json!(TOOL_TIMEOUT_SECS));
         assert!(config["mcp_servers"].get(crate::tools::SERVER).is_none());
-        let both = mcp_config("chat-1", true, "");
+        let both = mcp_config("chat-1", true, "", false);
         assert_eq!(both["mcp_servers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));
-        let mail = mcp_config("chat-1", false, "mail,mailsend");
+        let mail = mcp_config("chat-1", false, "mail,mailsend", false);
         assert_eq!(mail["mcp_servers"]["lumo"]["args"], json!(["--mcp", "--tools=mail,mailsend,island"]));
+        // Agents may browse: the browser's tools too, Lumo's card asking for what changes a page.
+        let browser = mcp_config("chat-1", false, "mail", true);
+        assert_eq!(browser["mcp_servers"]["lumo"]["args"], json!(["--mcp", "--tools=mail,browsercard,island"]));
     }
 
     #[test]
@@ -1648,6 +1684,10 @@ mod tests {
 
         // Its own thread: what it does, how many steps, its last message.
         let on_sub = |method: &str, params: &str| format!(r#"{{"method":"{method}","params":{{"threadId":"{SUB}",{params}}}}}"#);
+        // Its calls of Lumo's browser: the tabs they open or use are its own.
+        feed_agents(&mut sub, &[&on_sub("item/started", r#""item":{"type":"mcpToolCall","id":"m1","server":"lumo","tool":"browser_open","arguments":{"url":"example.com"},"status":"inProgress"}"#)]);
+        assert_eq!(sub.agents.take_browsed(), [(SUB.to_string(), "browser_open", json!({ "url": "example.com" }))]);
+        assert_eq!(sub.agents.get(SUB).unwrap().now, Some(Activity::new("read", "example.com")));
         feed_agents(
             &mut sub,
             &[
@@ -1659,13 +1699,13 @@ mod tests {
         );
         let a = sub.agents.get(SUB).unwrap();
         assert_eq!(a.now, Some(Activity::new("edit", "parser.rs")));
-        assert_eq!(a.steps, 2, "thinking is no step");
+        assert_eq!(a.steps, 3, "thinking is no step");
         assert_eq!(a.summary.as_deref(), Some("The parser fails on empty input."));
         feed_agents(&mut sub, &[&on_sub("turn/completed", r#""turn":{"id":"t9","status":"completed","items":[]}"#)]);
         assert_eq!(sub.agents.get(SUB).unwrap().state, AgentState::Done);
         // Ended: what comes after changes nothing.
         feed_agents(&mut sub, &[&on_sub("item/started", r#""item":{"type":"webSearch","id":"w1"}"#)]);
-        assert_eq!(sub.agents.get(SUB).unwrap().steps, 2);
+        assert_eq!(sub.agents.get(SUB).unwrap().steps, 3);
         // The chat's own thread is no agent.
         sub.agents.changed();
         feed_agents(&mut sub, &[&format!(r#"{{"method":"item/started","params":{{"threadId":"{THREAD}","item":{{"type":"webSearch","id":"w2"}}}}}}"#)]);

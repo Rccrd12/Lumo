@@ -233,6 +233,16 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         })
         .await
         .into())
+    } else if let Some(request) = payload.get("lumo_browser") {
+        // A tab of Lumo's browser for agents (browser.rs), as the chat's own;
+        // the card Lumo may ask for leaves the island with the relay.
+        Some(while_relay_waits(&mut pipe, in_chat(&app, request, Box::pin(crate::browser::serve(&app, request)))).await)
+    } else if let Some(request) = payload.get("lumo_browser_claim") {
+        // The agent about to open a tab (lumo-hook --browser-claim): noted,
+        // and answered at once so the relay lets Claude Code go on.
+        let text = |key: &str| request.get(key).and_then(Value::as_str).unwrap_or("");
+        crate::browser::claim(text("chat"), text("agent"), text("url"));
+        Some(Value::from("ok"))
     } else if let Some(request) = payload.get("lumo_mail") {
         Some(while_relay_waits(&mut pipe, in_chat(&app, request, Box::pin(crate::mail::serve(&app, request)))).await)
     } else if let Some(request) = payload.get("lumo_tool") {
@@ -486,7 +496,7 @@ async fn relay_gone() {
 }
 
 /// Whichever of two futures finishes first; `a` when both are ready.
-async fn first_of<T>(a: impl std::future::Future<Output = T>, b: impl std::future::Future<Output = T>) -> T {
+pub(crate) async fn first_of<T>(a: impl std::future::Future<Output = T>, b: impl std::future::Future<Output = T>) -> T {
     use std::task::Poll;
     let mut a = std::pin::pin!(a);
     let mut b = std::pin::pin!(b);

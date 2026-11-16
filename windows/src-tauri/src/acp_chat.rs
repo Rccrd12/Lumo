@@ -265,9 +265,11 @@ fn server(args: &[&str]) -> Value {
 /// Lumo's MCP servers for the chat: the island's timer and GitHub tools
 /// (`lumo`, island_tools.rs) with the email's as Security lets the AI have
 /// them (mail.rs ai_tools), and the user's tools while one of them is on
-/// (`lumo_tools`, tools.rs). By name.
-fn servers(tools: bool, mail: &str) -> Vec<(String, Value)> {
-    let kit = if mail.is_empty() { "--tools=island".to_string() } else { format!("--tools={mail},island") };
+/// (`lumo_tools`, tools.rs), and the agents' browser while Security lets
+/// agents browse (what changes a page asks on Lumo's card, browser.rs
+/// `AskTurn`). By name.
+fn servers(tools: bool, mail: &str, browser: bool) -> Vec<(String, Value)> {
+    let kit = crate::browser::kit(mail, browser);
     let mut out = vec![(LUMO_SERVER.to_string(), server(&["--mcp", &kit]))];
     if tools {
         out.push((crate::tools::SERVER.to_string(), server(&["--mcp", "--tools=user"])));
@@ -277,9 +279,9 @@ fn servers(tools: bool, mail: &str) -> Vec<(String, Value)> {
 
 /// The servers as ACP's `session/new` takes them (Copilot): command, args,
 /// and the environment as a list, with the chat they serve.
-fn acp_servers(chat_id: &str, tools: bool, mail: &str) -> Value {
+fn acp_servers(chat_id: &str, tools: bool, mail: &str, browser: bool) -> Value {
     Value::Array(
-        servers(tools, mail)
+        servers(tools, mail, browser)
             .into_iter()
             .map(|(name, entry)| {
                 let mut env: Vec<Value> = entry["env"]
@@ -304,10 +306,10 @@ fn acp_servers(chat_id: &str, tools: bool, mail: &str) -> Value {
 /// themselves). Whatever else either file holds is kept; one Lumo can't read
 /// is the user's and left alone. Returns the servers written, for the key
 /// that tells when Cursor must start again to read them.
-fn cursor_workspace(work: &Path, tools: bool, mail: &str) -> Value {
+fn cursor_workspace(work: &Path, tools: bool, mail: &str, browser: bool) -> Value {
     let dir = work.join(".cursor");
     let mut wanted = serde_json::Map::new();
-    for (name, mut entry) in servers(tools, mail) {
+    for (name, mut entry) in servers(tools, mail, browser) {
         entry["env"]["LUMO_CHAT_ID"] = json!("${env:LUMO_CHAT_ID}");
         wanted.insert(name, entry);
     }
@@ -1603,6 +1605,7 @@ pub async fn send(
     model: &str,
     effort: &str,
     mode: &str,
+    browser: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -1624,12 +1627,14 @@ pub async fn send(
     // Lumo's email tools, usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
+    // Lumo's browser: what changes a page asks on Lumo's card while this turn runs.
+    let _browser = browser.then(|| crate::browser::AskTurn::begin(agent.provider(), chat.id(), agent.tag(), mode));
     let dir = claude_code::work_dir();
     let (mcp, extra_key) = match agent {
-        Agent::Copilot => (acp_servers(chat.id(), tools, mail), String::new()),
+        Agent::Copilot => (acp_servers(chat.id(), tools, mail, browser), String::new()),
         Agent::Cursor => {
             let work = dir.clone();
-            let written = tauri::async_runtime::spawn_blocking(move || cursor_workspace(&work, tools, mail)).await.map_err(|e| e.to_string())?;
+            let written = tauri::async_runtime::spawn_blocking(move || cursor_workspace(&work, tools, mail, browser)).await.map_err(|e| e.to_string())?;
             (json!([]), written.to_string())
         }
     };
@@ -1987,32 +1992,34 @@ mod tests {
 
     #[test]
     fn lumos_tools_go_to_copilot_in_the_session_and_to_cursor_in_its_folder() {
-        let servers = acp_servers("chat-1", true, "mail");
+        let servers = acp_servers("chat-1", true, "mail", false);
         assert_eq!(servers[0]["name"], LUMO_SERVER);
         assert_eq!(servers[0]["args"], json!(["--mcp", "--tools=mail,island"]));
         let env = servers[0]["env"].as_array().unwrap();
         assert!(env.contains(&json!({ "name": "LUMO_ISLAND_RUN", "value": "1" })));
         assert!(env.contains(&json!({ "name": "LUMO_CHAT_ID", "value": "chat-1" })));
         assert_eq!(servers[1]["name"], crate::tools::SERVER);
-        assert_eq!(acp_servers("", false, "").as_array().unwrap().len(), 1);
+        assert_eq!(acp_servers("", false, "", false).as_array().unwrap().len(), 1);
+        // Agents may browse: the browser's tools too.
+        assert_eq!(acp_servers("chat-1", false, "", true)[0]["args"], json!(["--mcp", "--tools=browsercard,island"]));
 
         let dir = std::env::temp_dir().join(format!("lumo-acp-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join(".cursor")).unwrap();
         std::fs::write(dir.join(".cursor").join("mcp.json"), r#"{"mcpServers":{"mine":{"command":"x"}}}"#).unwrap();
-        cursor_workspace(&dir, true, "");
+        cursor_workspace(&dir, true, "", false);
         let mcp: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".cursor").join("mcp.json")).unwrap()).unwrap();
         assert_eq!(mcp["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(mcp["mcpServers"]["lumo"]["env"]["LUMO_CHAT_ID"], "${env:LUMO_CHAT_ID}");
         assert!(mcp["mcpServers"][crate::tools::SERVER].is_object());
-        cursor_workspace(&dir, false, "");
+        cursor_workspace(&dir, false, "", false);
         let mcp: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".cursor").join("mcp.json")).unwrap()).unwrap();
         assert!(mcp["mcpServers"].get(crate::tools::SERVER).is_none(), "the user's tools go when off");
         let cli: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".cursor").join("cli.json")).unwrap()).unwrap();
         assert_eq!(cli["permissions"]["allow"], json!(["Mcp(lumo:*)", "Mcp(lumo_tools:*)"]));
         // A file Lumo can't read is left alone.
         std::fs::write(dir.join(".cursor").join("mcp.json"), "{ not json").unwrap();
-        cursor_workspace(&dir, true, "");
+        cursor_workspace(&dir, true, "", false);
         assert_eq!(std::fs::read_to_string(dir.join(".cursor").join("mcp.json")).unwrap(), "{ not json");
         let _ = std::fs::remove_dir_all(&dir);
     }

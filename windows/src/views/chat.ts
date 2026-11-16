@@ -86,7 +86,7 @@ import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  Bridge, isDialogOpen, onEvent, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
+  Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
@@ -103,11 +103,12 @@ import {
 // The chat's CLI sessions, kept with it: apart, so the list above stays as other changes edit it.
 import { cliOf, setChatCli } from "../core/chats";
 import {
-  agentAsk, applyAgent, applyComputerTurns, applySignal, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
+  agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore,
   noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns,
   type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry,
 } from "../core/chat-agents";
-import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, talkBox, type AgentsCardHost } from "./agents-card";
+import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
+import { browserTabsChanged, openBrowserView, setBrowserViewHost } from "./browser-watch";
 import { updateChatTurns, type AskQuote } from "../core/chats";
 import type { AgentsPeek } from "../core/compact";
 import {
@@ -4860,6 +4861,7 @@ export function buildPrompt(
    * stay as they are.
    */
   function drawStall() {
+    drawMainBrowser();
     const label = log.querySelector(".typing-label");
     const row = label?.parentElement;
     if (!row) return;
@@ -4888,6 +4890,31 @@ export function buildPrompt(
     }
     span.className = `typing-stall ${tone}`;
     if (span.textContent !== text) span.textContent = text;
+  }
+
+  /**
+   * The conversation's own browser tab (browser.rs, agent "main") next to the
+   * dots of the answer on screen: its site and Watch. An agent's tab is on its
+   * row of the Agents card; the conversation has no row. Drawn again only
+   * when the tab changes.
+   */
+  function drawMainBrowser() {
+    const label = log.querySelector(".typing-label");
+    const row = label?.parentElement;
+    if (!label || !row) return;
+    const run = answering();
+    const tab = run ? browserOf(run.chatId, "main") : undefined;
+    const key = run && tab ? `${run.chatId}|${tab.tab}|${tab.host}|${tab.title}` : "";
+    const shown = row.querySelector<HTMLElement>(".typing-browser");
+    if ((shown?.dataset.key ?? "") === key) return;
+    shown?.remove();
+    if (!run || !tab) return;
+    const chatId = run.chatId;
+    // Watch: the agents' browser, on the conversation's own tab.
+    const next = mainBrowser(chatId, () => openBrowserView(chatId, "main"));
+    if (!next) return;
+    next.dataset.key = key;
+    label.after(next);
   }
 
   /** Who the agents of `c` belong to ("Claude Code"), in its colour. */
@@ -4930,6 +4957,8 @@ export function buildPrompt(
         void invoke("chat_computer_first", { chatId, agentId }).catch((err) => void Bridge.log(`[agents] computer first ${agentId}: ${String(err)}`));
         Sound.play("blip");
       },
+      // Watch: a live picture of the agent's hidden browser tab under its row (views/browser-watch.ts).
+      watchBrowser: true,
       changed: () => onHeightChange(),
     };
   }
@@ -5037,6 +5066,29 @@ export function buildPrompt(
     };
   }
 
+  // The agents' browser view (views/browser-watch.ts): each agent's name, Ask and Stop, from here.
+  setBrowserViewHost({
+    title: (chatId, agentId) => agentStore.get(chatId)?.rows.get(agentId)?.row.title ?? "",
+    ask: (chatId, agentId) => {
+      const row = agentStore.get(chatId)?.rows.get(agentId)?.row;
+      if (!row || chatId !== State.chatId || editing != null) return;
+      State.view = "prompt";
+      State.notify();
+      askAgent(chatId, { agentId, title: row.title, line: row.now ? activityLabel(row.now) : "", look: "working" });
+    },
+    // As Stop on its row: back to the chat, where the row says it stops and
+    // offers Undo. Another chat's agent (not on screen to undo) stops at once.
+    stop: (chatId, agentId) => {
+      if (chatId !== State.chatId) {
+        agentsHost(chatId).stop(agentId);
+        return;
+      }
+      State.view = "prompt";
+      State.notify();
+      stopLater(chatId, agentId, agentsHost(chatId), () => drawAgents(chatId));
+    },
+  });
+
   void onEvent<ChatAgentEvent>("chat-agent", (ev) => {
     if (!ev?.chat || !ev.agent) return;
     const before = agentStore.get(ev.chat)?.rows.get(ev.agent.id)?.row.state;
@@ -5065,6 +5117,17 @@ export function buildPrompt(
     computerChats = chats;
     drawIslandActivity();
     tickAgents();
+  });
+
+  // The agents' browser tabs changed (browser.rs): the rows of the chats that had or have one say so.
+  let tabChats = new Set<string>();
+  void onEvent<AgentWebTabs>("browser-tabs", (ev) => {
+    if (!applyBrowserTabs(ev)) return;
+    const chats = browserChats();
+    for (const chat of new Set([...chats, ...tabChats])) drawAgents(chat);
+    tabChats = chats;
+    drawMainBrowser();
+    browserTabsChanged();
   });
 
   void onEvent<ChatSignalEvent>("chat-signal", (ev) => {

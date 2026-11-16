@@ -42,6 +42,13 @@
 //! answered as done even when Lumo can't be reached: a plan not shown never
 //! stops the agent's work. With the computer it does, as Lumo lends the
 //! computer only once it has the plan: then Lumo's refusal is the answer.
+//!
+//! `--tools=browser` offers Lumo's browser for agents (`browser_open`,
+//! `browser_read`, `browser_click`…): hidden tabs inside Lumo, apart from the
+//! user's own browser, each call handed to Lumo
+//! (`{"lumo_browser": {"tool": …, "input": …, "chat": …}}`, browser.rs), with
+//! the chat it came from. Lumo says whether browsing is on (Settings →
+//! Security → Let agents browse the web).
 
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc;
@@ -63,6 +70,11 @@ const TOOL_CALL_BUDGET: Duration = Duration::from_secs(108 + 600 + 12);
 /// before Send), then for the mail server (a forward first fetches the
 /// email's files).
 const MAIL_SEND_BUDGET: Duration = Duration::from_secs(300 + 130 + 12);
+/// A browser call of a CLI that doesn't ask for Lumo's tools itself waits
+/// for Lumo's card first (108 s at most, pipe.rs DECISION_TIMEOUT); then its
+/// page takes at most 10 s, and a screenshot 10 s more (browser.rs): a minute
+/// leaves room for a slow first tab.
+const BROWSER_CALL_BUDGET: Duration = Duration::from_secs(108 + 60 + 12);
 /// What Lumo may answer with, at most: a screenshot is well under this.
 const MAX_ANSWER: usize = 24 * 1024 * 1024;
 /// The protocol version answered when the client names none we know.
@@ -111,6 +123,7 @@ exiting, a web page changing), and tell the user (and you, \
 with something to do then) once it happens, instead of you waiting for it; stop_listening ends that and \
 list_listening says what Lumo listens to.";
 
+
 const PLAN_INSTRUCTIONS: &str = "Lumo's update_plan tool shows the user your plan on Lumo's Plan island: \
 call it with every step of a job before starting it, then again each time a step starts or is done.";
 
@@ -129,11 +142,18 @@ pub struct Kit {
     pub mail_send: bool,
     /// With `mail`: changing the mailbox too (`mailmanage`), each change on a card.
     pub mail_manage: bool,
+    /// Lumo's browser for agents: hidden tabs of their own (browser.rs in the app).
+    pub browser: bool,
+    /// With `browser`: a CLI that lets Lumo's tools run unasked
+    /// (`--tools=browsercard`): Lumo asks on its card for each call that
+    /// changes a page, and refuses those that come outside the CLI's turn.
+    pub browser_card: bool,
 }
 
 impl Kit {
     /// The computer only, as `lumo-hook --mcp` always gave.
-    pub const COMPUTER: Kit = Kit { computer: true, mail: false, plan: false, user: false, island: false, mail_send: false, mail_manage: false };
+    pub const COMPUTER: Kit =
+        Kit { computer: true, mail: false, plan: false, user: false, island: false, mail_send: false, mail_manage: false, browser: false, browser_card: false };
 
     /// From the command line: `--tools=computer,mail`; the computer without it.
     pub fn from_args(args: impl Iterator<Item = String>) -> Kit {
@@ -148,6 +168,8 @@ impl Kit {
                     island: has("island"),
                     mail_send: has("mailsend"),
                     mail_manage: has("mailmanage"),
+                    browser: has("browser") || has("browsercard"),
+                    browser_card: has("browsercard"),
                 }
             }
             None => Kit::COMPUTER,
@@ -178,6 +200,9 @@ impl Kit {
         if self.plans() {
             all.push(plan_tool());
         }
+        if self.browser {
+            all.extend(browser_tools());
+        }
         if self.island {
             all.extend(island_tools());
         }
@@ -186,7 +211,7 @@ impl Kit {
 
     fn instructions(self) -> String {
         let mut parts = Vec::new();
-        if self.computer || !(self.mail || self.plan || self.user || self.island) {
+        if self.computer || !(self.mail || self.plan || self.user || self.island || self.browser) {
             parts.push(INSTRUCTIONS);
         }
         if self.mail {
@@ -200,6 +225,9 @@ impl Kit {
         }
         if self.plans() {
             parts.push(PLAN_INSTRUCTIONS);
+        }
+        if self.browser {
+            parts.push(BROWSER_INSTRUCTIONS);
         }
         if self.user {
             parts.push(USER_INSTRUCTIONS);
@@ -326,6 +354,7 @@ Coordinates for every other tool are in this screenshot's pixels.",
 
 // Lumo's email tools (mail_tools.rs, which the app reads too for the chat's
 // API providers).
+pub use crate::browser_tools::{browser_tools, BROWSER_INSTRUCTIONS, BROWSER_NAMES};
 pub use crate::mail_tools::{mail_manage_tools, mail_send_tools, mail_tool, mail_tools, MAIL_MANAGE_NAMES, MAIL_NAMES, MAIL_SEND_NAMES};
 #[cfg(test)]
 use crate::mail_tools::MAIL_SEND;
@@ -374,6 +403,7 @@ pub const ISLAND_NAMES: &[&str] = &["set_timer", "listen", "stop_listening", "li
 /// set by the app on the agent it starts).
 pub use crate::island_tools::island_tools;
 
+
 /// The name the server has in the island's `--mcp-config`: its tools are `mcp__lumo__<tool>`.
 pub const SERVER: &str = "lumo";
 
@@ -400,7 +430,16 @@ pub fn lumo_tool(name: &str) -> Option<&'static str> {
         }
         let rest = lower[from..].trim_start_matches(sep);
         if rest.len() < lower.len() - from {
-            if let Some(n) = NAMES.iter().chain(MAIL_NAMES).chain(MAIL_SEND_NAMES).chain(MAIL_MANAGE_NAMES).chain(PLAN_NAMES).chain(ISLAND_NAMES).find(|n| **n == rest) {
+            if let Some(n) = NAMES
+                .iter()
+                .chain(MAIL_NAMES)
+                .chain(MAIL_SEND_NAMES)
+                .chain(MAIL_MANAGE_NAMES)
+                .chain(PLAN_NAMES)
+                .chain(ISLAND_NAMES)
+                .chain(BROWSER_NAMES)
+                .find(|n| **n == rest)
+            {
                 return Some(n);
             }
         }
@@ -451,7 +490,16 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
     let tools: Vec<&str> =
         fields.iter().filter(|(k, _)| !key_is(k, &["server"]) && key_is(k, &["tool", "name"])).map(|(_, v)| v.trim()).collect();
     let ours = |name: &str| {
-        NAMES.iter().chain(MAIL_NAMES).chain(MAIL_SEND_NAMES).chain(MAIL_MANAGE_NAMES).chain(PLAN_NAMES).chain(ISLAND_NAMES).find(|n| name.eq_ignore_ascii_case(n)).copied()
+        NAMES
+            .iter()
+            .chain(MAIL_NAMES)
+            .chain(MAIL_SEND_NAMES)
+            .chain(MAIL_MANAGE_NAMES)
+            .chain(PLAN_NAMES)
+            .chain(ISLAND_NAMES)
+            .chain(BROWSER_NAMES)
+            .find(|n| name.eq_ignore_ascii_case(n))
+            .copied()
     };
     match servers.as_slice() {
         // No server named: only the tool's full name says it is Lumo's.
@@ -546,19 +594,36 @@ fn user_tool_call_with(tool: &str, input: Option<&Value>, exists: &dyn Fn(&str) 
 /// Runs the server until the agent closes stdin.
 pub fn run() -> ! {
     let kit = Kit::from_args(std::env::args().skip(1));
-    let stdin = std::io::stdin();
     let mut out = std::io::stdout();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
+    // Each line read as soon as the CLI writes it, with when (`SENT_MS`): a
+    // call that waited behind a card may belong to a turn that has ended.
+    let (tx, rx) = std::sync::mpsc::channel::<(String, u64)>();
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            if tx.send((line, now_ms())).is_err() {
+                break;
+            }
+        }
+    });
+    for (line, sent) in rx {
         if line.trim().is_empty() {
             continue;
         }
+        SENT_MS.store(sent, std::sync::atomic::Ordering::Relaxed);
         if let Some(answer) = handle_with(&line, kit, &call_lumo) {
             let _ = writeln!(out, "{answer}");
             let _ = out.flush();
         }
     }
     std::process::exit(0);
+}
+
+/// When the CLI wrote the message being handled (ms since 1970), 0 if not known.
+static SENT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 /// The answer to one message, or nothing for a notification. `lumo` hands a
@@ -654,6 +719,18 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
     if ISLAND_NAMES.contains(&name) {
         return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat_id() } })));
     }
+    if BROWSER_NAMES.contains(&name) {
+        // With the chat it came from: each chat's tabs are its own.
+        let mut call = json!({ "tool": name, "input": input, "chat": chat_id() });
+        if kit.browser_card {
+            call["card"] = json!(true);
+            match SENT_MS.load(std::sync::atomic::Ordering::Relaxed) {
+                0 => {}
+                sent => call["sent_ms"] = json!(sent),
+            }
+        }
+        return answer(lumo(&json!({ "lumo_browser": call })));
+    }
     if mail_tool(name) {
         // With the chat it came from (`LUMO_CHAT_ID`): an email's file is
         // saved in that chat's folder of the inbox, the one its CLI reads, and
@@ -717,6 +794,8 @@ fn call_lumo(request: &Value) -> Result<Value, String> {
         "Lumo isn't running. Ask the user to open Lumo: the tools they made live there."
     } else if request.get("lumo_island").is_some() {
         "Lumo isn't running: write the line for Lumo in your answer instead."
+    } else if request.get("lumo_browser").is_some() {
+        "Lumo isn't running, so its browser isn't there. Ask the user to open Lumo and turn on Let agents browse the web in Settings, under Security."
     } else {
         "Lumo isn't running, or its computer use is off. Ask the user to open Lumo and turn on Let Claude use the computer in Settings, under Security."
     };
@@ -732,6 +811,8 @@ fn call_lumo(request: &Value) -> Result<Value, String> {
         MAIL_SEND_BUDGET
     } else if request.get("lumo_computer").is_some() {
         COMPUTER_CALL_BUDGET
+    } else if request.get("lumo_browser").is_some() {
+        BROWSER_CALL_BUDGET
     } else {
         CALL_BUDGET
     };
@@ -838,10 +919,10 @@ mod tests {
     fn the_email_tools_come_with_tools_mail_and_go_to_lumo_as_mail() {
         let args = |a: &[&str]| Kit::from_args(a.iter().map(|s| s.to_string()));
         assert_eq!(args(&["--mcp"]), Kit::COMPUTER, "as before");
-        assert_eq!(args(&["--mcp", "--tools=mail"]), Kit { computer: false, mail: true, plan: false, user: false, island: false, mail_send: false, mail_manage: false });
-        assert_eq!(args(&["--mcp", "--tools=computer,mail"]), Kit { computer: true, mail: true, plan: false, user: false, island: false, mail_send: false, mail_manage: false });
+        assert_eq!(args(&["--mcp", "--tools=mail"]), Kit { computer: false, mail: true, plan: false, user: false, island: false, mail_send: false, mail_manage: false, browser: false, browser_card: false });
+        assert_eq!(args(&["--mcp", "--tools=computer,mail"]), Kit { computer: true, mail: true, plan: false, user: false, island: false, mail_send: false, mail_manage: false, browser: false, browser_card: false });
 
-        let mail = Kit { computer: false, mail: true, plan: false, user: false, island: false, mail_send: false, mail_manage: false };
+        let mail = Kit { computer: false, mail: true, plan: false, user: false, island: false, mail_send: false, mail_manage: false, browser: false, browser_card: false };
         let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, mail, &never).unwrap()).unwrap();
         let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert_eq!(names, MAIL_NAMES, "the email only");
@@ -870,7 +951,7 @@ mod tests {
     #[test]
     fn mail_send_comes_only_with_mailsend_and_goes_to_lumo_as_mail() {
         let kit = Kit::from_args(["--mcp", "--tools=plan,mail,mailsend,island"].iter().map(|s| s.to_string()));
-        assert_eq!(kit, Kit { computer: false, mail: true, plan: true, user: false, island: true, mail_send: true, mail_manage: false });
+        assert_eq!(kit, Kit { computer: false, mail: true, plan: true, user: false, island: true, mail_send: true, mail_manage: false, browser: false, browser_card: false });
         let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, kit, &never).unwrap()).unwrap();
         let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert!(names.contains(&MAIL_SEND));
@@ -935,7 +1016,7 @@ mod tests {
     #[test]
     fn the_plan_tool_answers_on_its_own() {
         let kit = Kit::from_args(["--mcp", "--tools=plan,mail"].iter().map(|s| s.to_string()));
-        assert_eq!(kit, Kit { computer: false, mail: true, plan: true, user: false, island: false, mail_send: false, mail_manage: false });
+        assert_eq!(kit, Kit { computer: false, mail: true, plan: true, user: false, island: false, mail_send: false, mail_manage: false, browser: false, browser_card: false });
         let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, kit, &never).unwrap()).unwrap();
         let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert_eq!(names, ["mail_recent", "mail_search", "mail_read", "mail_attachment", "mail_folders", "update_plan"]);
@@ -1058,7 +1139,7 @@ mod tests {
     #[test]
     fn the_island_tools_go_to_lumo_with_their_chat_and_need_no_card() {
         let kit = Kit::from_args(["--mcp", "--tools=plan,island"].iter().map(|s| s.to_string()));
-        assert_eq!(kit, Kit { computer: false, mail: false, plan: true, user: false, island: true, mail_send: false, mail_manage: false });
+        assert_eq!(kit, Kit { computer: false, mail: false, plan: true, user: false, island: true, mail_send: false, mail_manage: false, browser: false, browser_card: false });
         let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, kit, &never).unwrap()).unwrap();
         let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert_eq!(names, ["update_plan", "set_timer", "listen", "stop_listening", "list_listening"]);
@@ -1085,6 +1166,85 @@ mod tests {
         assert_eq!(lumo_tool("mcp__lumo__listen_pull_request"), Some("listen_pull_request"));
         assert!(!crate::reply::island_card("mcp_lumo_set_timer", None) && !crate::reply::island_card("mcp_lumo_stop_listening", None));
         let call = json!({ "ServerName": "lumo", "ToolName": "listen_pull_request" });
+        assert!(!crate::reply::island_card("call_mcp_tool", Some(&call)));
+    }
+
+    #[test]
+    fn a_cli_that_asks_nothing_has_its_browser_calls_asked_for_by_lumo() {
+        let kit = Kit::from_args(["--mcp", "--tools=browsercard,island"].iter().map(|s| s.to_string()));
+        assert!(kit.browser && kit.browser_card);
+        // With when the CLI sent it: one sent before the turn began is an earlier turn's.
+        SENT_MS.store(1_700_000_000_000, std::sync::atomic::Ordering::Relaxed);
+        let lumo = |req: &Value| -> Result<Value, String> {
+            assert_eq!(req["lumo_browser"]["card"], true);
+            assert_eq!(req["lumo_browser"]["sent_ms"], 1_700_000_000_000u64);
+            Ok(json!({ "text": "ok" }))
+        };
+        let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"browser_click","arguments":{"tab":1,"element":3}}}"#;
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &lumo).unwrap()).unwrap();
+        assert_eq!(v["result"]["content"][0]["text"], "ok");
+        // Claude Code's (`browser`) asks on its own card: none asked for.
+        let claude = Kit::from_args(["--mcp", "--tools=browser"].iter().map(|s| s.to_string()));
+        assert!(claude.browser && !claude.browser_card);
+        let lumo = |req: &Value| -> Result<Value, String> {
+            assert!(req["lumo_browser"].get("card").is_none());
+            Ok(json!({ "text": "ok" }))
+        };
+        handle_with(line, claude, &lumo).unwrap();
+    }
+
+    #[test]
+    fn the_browser_tools_go_to_lumo_with_their_chat_and_need_no_card_of_the_hooks() {
+        let kit = Kit::from_args(["--mcp", "--tools=browser,island"].iter().map(|s| s.to_string()));
+        assert_eq!(kit, Kit { computer: false, mail: false, plan: false, user: false, island: true, mail_send: false, mail_manage: false, browser: true, browser_card: false });
+        let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, kit, &never).unwrap()).unwrap();
+        let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+        assert_eq!(names[..BROWSER_NAMES.len()], *BROWSER_NAMES, "one list of names");
+        assert_eq!(names[BROWSER_NAMES.len()..], ["set_timer", "listen", "stop_listening", "list_listening"]);
+        for t in &v["result"]["tools"].as_array().unwrap()[..BROWSER_NAMES.len()] {
+            assert_eq!(t["inputSchema"]["additionalProperties"], false, "{}", t["name"]);
+        }
+        let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#, kit, &never).unwrap()).unwrap();
+        let said = v["result"]["instructions"].as_str().unwrap();
+        assert!(said.contains("hidden tabs") && said.contains("browser_open") && !said.contains("update_plan"), "{said}");
+        // Without the flag, no browser.
+        let island = Kit { browser: false, ..kit };
+        let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, island, &never).unwrap()).unwrap();
+        assert!(!v["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"].as_str().unwrap().starts_with("browser_")));
+
+        let lumo = |req: &Value| -> Result<Value, String> {
+            assert_eq!(req["lumo_browser"]["tool"], "browser_open");
+            assert_eq!(req["lumo_browser"]["input"]["url"], "https://example.com");
+            // With the chat it came from (`LUMO_CHAT_ID`): each chat's tabs are its own.
+            assert_eq!(req["lumo_browser"]["chat"], json!(chat_id()));
+            Ok(json!({ "text": "Tab 1: Example Domain" }))
+        };
+        let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"browser_open","arguments":{"url":"https://example.com"}}}"#;
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &lumo).unwrap()).unwrap();
+        assert_eq!(v["result"]["content"], json!([{ "type": "text", "text": "Tab 1: Example Domain" }]));
+        // A screenshot comes back as an image, then its words.
+        let shot = |req: &Value| -> Result<Value, String> {
+            assert_eq!(req["lumo_browser"]["tool"], "browser_screenshot");
+            assert_eq!(req["lumo_browser"]["input"]["tab"], 2);
+            Ok(json!({ "image": "iVBOR", "text": "Tab 2, 1280×800 pixels." }))
+        };
+        let line = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"browser_screenshot","arguments":{"tab":2}}}"#;
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &shot).unwrap()).unwrap();
+        assert_eq!(v["result"]["content"][0], json!({ "type": "image", "data": "iVBOR", "mimeType": "image/png" }));
+        assert_eq!(v["result"]["content"][1]["text"], "Tab 2, 1280×800 pixels.");
+        // Lumo's refusal (browsing off) is what the agent reads.
+        let off = |_: &Value| -> Result<Value, String> { Ok(json!({ "error": "Browsing is off in Lumo." })) };
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &off).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true);
+        // Only with the flag.
+        let v: Value = serde_json::from_str(&handle_with(line, island, &never).unwrap()).unwrap();
+        assert_eq!(v["result"]["isError"], true);
+
+        assert_eq!(lumo_tool("mcp__lumo__browser_click"), Some("browser_click"));
+        assert_eq!(lumo_tool("mcp__other__browser_click"), None);
+        // Claude Code's own card asks for them in the island's chat: the hook raises none of its own.
+        assert!(!crate::reply::island_card("mcp__lumo__browser_open", None));
+        let call = json!({ "ServerName": "lumo", "ToolName": "browser_type" });
         assert!(!crate::reply::island_card("call_mcp_tool", Some(&call)));
     }
 
@@ -1125,7 +1285,7 @@ mod tests {
     #[test]
     fn the_users_tools_are_asked_of_lumo_and_their_calls_go_to_it() {
         let kit = Kit::from_args(["--mcp".to_string(), "--tools=user".to_string()].into_iter());
-        assert_eq!(kit, Kit { computer: false, mail: false, plan: false, user: true, island: false, mail_send: false, mail_manage: false });
+        assert_eq!(kit, Kit { computer: false, mail: false, plan: false, user: true, island: false, mail_send: false, mail_manage: false, browser: false, browser_card: false });
         let lumo = |req: &Value| -> Result<Value, String> {
             if req.get("lumo_tools").is_some() {
                 return Ok(json!({ "tools": [

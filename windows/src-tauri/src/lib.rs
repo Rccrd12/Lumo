@@ -1,5 +1,9 @@
 // Lumo for Windows — app wiring and the commands the island calls.
 
+/// Lumo's browser tools as lumo-hook lists them: the same file, for the chat's API providers and local models (tools.rs).
+#[path = "../../hook/src/browser_tools.rs"]
+#[allow(dead_code)]
+mod browser_tool_defs;
 /// Lumo's email tools as lumo-hook lists them: the same file, for the chat's API providers (tools.rs).
 #[path = "../../hook/src/mail_tools.rs"]
 #[allow(dead_code)]
@@ -13,6 +17,7 @@ mod agents;
 mod antigravity_cli;
 mod antigravity_plan;
 mod autostart;
+mod browser;
 mod calendar;
 mod chat;
 mod chat_agents;
@@ -146,15 +151,19 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
 
 #[tauri::command]
 fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
-    let (settings, screen_changed, autostart_changed, shortcuts_changed, mail_changed) = {
+    let (settings, screen_changed, autostart_changed, shortcuts_changed, mail_changed, browser_off) = {
         let mut current = shared.settings.lock().unwrap();
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
             || current.island_edge_gap != settings.island_edge_gap
-            || current.island_compact_width != settings.island_compact_width;
+            || current.island_compact_width != settings.island_compact_width
+            // The window keeps room for the agents' browser view while browsing is on (island.rs BROWSER_H).
+            || current.chat_browser != settings.chat_browser;
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
         let mail_changed = mail::concerned(&current, &settings);
+        // Browsing turned off: every agent's tab closes (browser.rs).
+        let browser_off = current.chat_browser && !settings.chat_browser;
         // Where the island was dragged is island.rs's to say, not a webview's.
         let mut settings = settings;
         settings.island_dock = current.island_dock.clone();
@@ -169,8 +178,11 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         if let Err(err) = settings::save(&current) {
             log::line(format!("could not save settings: {err}"));
         }
-        (current.clone(), screen_changed, autostart_changed, shortcuts_changed, mail_changed)
+        (current.clone(), screen_changed, autostart_changed, shortcuts_changed, mail_changed, browser_off)
     };
+    if browser_off {
+        browser::close_all(&app);
+    }
     if autostart_changed && autostart::writable() {
         let manager = app.autolaunch();
         let result = if settings.autostart { manager.enable() } else { manager.disable() };
@@ -944,6 +956,33 @@ fn chat_computer_first(app: AppHandle, chat_id: String, agent_id: String) {
     computer_turns::put_first(&app, &chat_id, &agent_id);
 }
 
+/// Watch on an agent's row (views/browser-watch.ts): a picture of its
+/// browser tab, asked again and again only while it is on screen in the
+/// island (browser.rs frame). Async: the DevTools calls are answered on the
+/// main thread, which a synchronous command would hold.
+#[tauri::command]
+async fn chat_browser_frame(app: AppHandle, chat_id: String, agent_id: String) -> Result<serde_json::Value, String> {
+    browser::frame(&app, &chat_id, &agent_id).await
+}
+
+/// Lumo's commands, for its own pages only: whatever page or frame of an
+/// agent's browser tab (browser.rs) calls one is refused. Lumo has no app ACL
+/// manifest, so Tauri lets any page served from a local address (Lumo's own,
+/// even framed in a web page) call the app's commands, whatever its window;
+/// the tabs' blocked addresses are the first wall, this the second.
+fn own_pages_only<R: tauri::Runtime>(
+    handler: impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    move |invoke| {
+        let webview = invoke.message.webview_ref();
+        if browser::from_tab(webview.label()) || browser::from_tab(webview.window_ref().label()) {
+            invoke.resolver.reject("Lumo's commands can't be called from a browser tab.");
+            return true;
+        }
+        handler(invoke)
+    }
+}
+
 /// "Send now and stop them": the chat's next message may start its CLI again
 /// with other settings, ending the agents still at work (chat_agents.rs WOULD_STOP).
 #[tauri::command]
@@ -1463,7 +1502,7 @@ pub fn run() {
         .manage(Chats::default())
         .manage(shortcuts::Registry::default())
         .manage(recap::load())
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(own_pages_only(tauri::generate_handler![
             boot,
             save_settings,
             set_system_languages,
@@ -1531,6 +1570,7 @@ pub fn run() {
             chat_stop,
             chat_stop_agent,
             chat_computer_first,
+            chat_browser_frame,
             chat_allow_restart,
             chat_rewind,
             chat_forget_file,
@@ -1649,7 +1689,7 @@ pub fn run() {
             tools::tools_terminal_set,
             tool_review::tools_review,
             tool_review::tools_reviewing,
-        ])
+        ]))
         .setup(move |app| {
             let handle = app.handle().clone();
             tray::build(&handle)?;
@@ -1673,7 +1713,7 @@ pub fn run() {
             computer::recover();
             // Antigravity CLI's plan tool, its email tools following the Email pill
             // and the user's tools while any is on (set again before each run).
-            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled(), false);
+            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled(), false, false);
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             energy::start(handle.clone());
