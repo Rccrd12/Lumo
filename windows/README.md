@@ -102,6 +102,26 @@ points them at the new folder, and once none uses the old one it goes. With
 **Open at login** on, Lumo writes its autostart entry again at every launch for
 the exe it runs from.
 
+### Setup
+
+Click the Lumo icon in the system tray → **Settings…**
+
+| What | Why | Where the key goes |
+|---|---|---|
+| **Claude Code hooks** | live sessions and approvals | Settings → Agents → Claude Code → **Install hooks** — Lumo backs up `~/.claude/settings.json`, merges its hooks and shows you the diff before writing anything |
+| **Other agents** | their sessions in the island | Settings → Agents, same backup, diff and confirmation |
+| **Plan usage** | Claude, Codex and Antigravity CLI limits in the island's header | Settings → Agents → Plan usage |
+| **Anthropic API key** | chat and questions about files | Settings → Chat → Claude · Windows Credential Manager |
+| **Google AI, OpenAI, OpenRouter keys** | chat with other providers | Settings → Chat → Chat providers · Windows Credential Manager |
+| **Local models** | chat with Ollama, LM Studio or an OpenAI-compatible server | Settings → Chat → Local models |
+| **Email** | new emails on the island, the newest in the live activities | Settings → Pills & integrations → Email: **Outlook on this PC** (the classic Outlook, nothing to type) and/or **IMAP**, one or more accounts, each with address, IMAP server and an app password · Windows Credential Manager |
+| **Calendar** | the next events in the live activities and on the closed island | Settings → Island → Calendar: your calendar's secret iCal address · Windows Credential Manager |
+| Stripe, n8n, GitHub, Vercel, Resend, Notion, Cal.com | the service pills | Settings → Pills & integrations · Windows Credential Manager, all optional |
+
+If Lumo isn't running, the hook exits immediately: **Claude Code is never blocked.**
+
+The full list of supported agents, what each one installs and how it answers is in [Supported agents](#supported-agents).
+
 ## Using it
 
 <img src="screenshots/closed.png" width="326" alt="The closed island: Lumo's eyes, Codex writing main.py and a timer">
@@ -318,6 +338,23 @@ since 0.21.0: if you had moved it out of the island, that window no longer
 opens, and the plan is in the chat and on the home like everyone's.
 
 ### Keyboard shortcuts
+
+| Do this | Lumo does that |
+|---|---|
+| Move the mouse to the very top-centre of the screen | peeks out and says hi 👋 |
+| Click the small island | opens |
+| Click Lumo | annoyed for a moment |
+| Right-click Lumo | the wardrobe |
+| Drag files onto the island | it opens, takes them and sends them up to Lumo, into the chat |
+| `Ctrl+Alt+Space` | opens the chat, from any app |
+| `Ctrl+Alt+P` / `Ctrl+Alt+X` | asks about your screen / the selected text |
+| `Ctrl+Alt+L` | talks with Gemini Live |
+| `Ctrl+Alt+A` | jumps to the waiting permission or question |
+| `Ctrl+Alt+T` | brings the session's window forward |
+| `Ctrl+Alt+→` / `Ctrl+Alt+←` | next / previous pill |
+| `Ctrl+Alt+S` | mutes or unmutes Lumo |
+| `Ctrl+Alt+G` | opens the wardrobe |
+| `Esc` | closes the island |
 
 Every global shortcut can be changed or turned off in **Settings… → Shortcuts**:
 click it and press the new keys. A combination another app already holds is
@@ -810,7 +847,15 @@ last one in the chat, is saved with it, and the closed island says so; a
 message sent meanwhile goes once it is written. A message
 sent while Claude is still answering waits in the field and goes as soon as the
 answer ends. Install Claude Code and run `claude` once in a terminal to
-sign in before using it. Its **Effort** is a slider under the models, from
+sign in before using it. Its models are those Claude Code itself lists for
+your plan, asked when the picker opens (the `initialize` request of its
+stream-json input, as the Agent SDK sends it: no message goes to Claude and
+nothing of your plan is used), so a model Anthropic releases shows without
+updating Lumo. The current ones come first, **Default** saying which model it
+is; the older versions wait under **More models**, which opens on a click, and
+by itself when the chat is on one of them. A chat keeps the version it was on.
+When Claude Code doesn't answer (not installed, an older version), the picker
+offers Fable 5.2, Opus 5.5, Sonnet 5.5 and Haiku 5.5. Its **Effort** is a slider under the models, from
 Faster to Smarter (low, medium, high, extra high, max), with **Auto** beside it
 for the level its model is made for; it goes to Claude Code as `--effort`.
 Claude Code's own run never shows up as a session in the island: only its
@@ -939,8 +984,14 @@ tools (none that start more agents, make the chat's plan or set timers),
 seeing only its task. They show on the chat's Agents card as Claude Code's
 do — what each does now, its steps and tokens, **Stop this agent** — and are
 said to give no signal past 45 s for an API model, 90 s for a local one.
-An API model's agents all run at once (six at most); a local model's run one
-at a time, the others "Waiting its turn · 2 in line". Their calls ask for
+An API model's agents all run at once (six at most); a local model's run as
+many at once as its server writes answers at once, the others "Waiting its
+turn · 2 in line". Lumo asks the server when the agents start: llama.cpp's
+llama-server and Unsloth Studio say their slots (`--parallel`) and which are
+busy with another chat, LM Studio its Max Concurrent Predictions (in the
+model loader's advanced settings), Ollama nothing, so its
+`OLLAMA_NUM_PARALLEL` is read when Ollama runs on this computer. A server
+that says nothing gets one agent at a time. Their calls ask for
 your click as the chat's own do. The model that started them waits for all
 of them and answers from their reports: nothing runs after the answer, and
 the chat's Stop stops them all.
@@ -1626,6 +1677,12 @@ windows/
 problems. It stays on your machine. The weekly recap's history sits beside it in
 `recap.json`.
 
+### How it works
+
+- A [Tauri 2](https://tauri.app) app (Rust + TypeScript): the island is a transparent, always-on-top window that never steals focus; Lumo is drawn in Canvas 2D, with no images.
+- Claude Code and the other agents' hooks go through a tiny `lumo-hook` relay over a named pipe. For approvals it waits for your click, and gives up within moments if the app doesn't answer.
+- Integrations are lightweight pollers, paused when nothing is watching.
+
 ## Supported agents
 
 Every agent below is installed from **Settings → Agents** with the same steps as
@@ -1676,6 +1733,15 @@ Lumo only reads these files, each time the island opens. Permission requests
 get the island's card for Claude Code (in any terminal, and in Cursor's),
 Codex, Copilot CLI and Muse Code; other agents and Claude Desktop ask in their
 own window.
+
+## Privacy
+
+- No telemetry, no account. The only update check is one request to GitHub when Lumo opens (off in Settings → Updates), and nothing is downloaded without your click.
+- Keys live in Windows Credential Manager, never on disk and never in the interface.
+- The only network requests Lumo makes are to the services you configure yourself, and to the sites of the images in chat answers: such an image is downloaded by Lumo at once (https and public addresses only, image files only, 8 MB at most), and the site sees your IP address and the image's full address, which the AI writes and could fill with words from your chat. The pictures an email links to (and its backgrounds), in the island's Email view, are downloaded the same way (an http one on https) only after a click on Load images (or at once, if you turn on Settings → Security → Email images always), and the sender's site then learns that you opened the email; the tracking pixels Lumo recognises are never downloaded. Settings → Security → Images from the web turns both off.
+- Screenshots are taken only when you ask, and shown to you before anything is sent. The names of the windows and documents you have open go with a chat question unless you turn it off in Settings → Security, where you also choose whether the AI may read your email and calendar.
+- Email and the calendar are only read unless you allow more in Settings → Security; then every email sent, moved or deleted waits for your click on its card. GitHub reaches the chat only once you turn it on there.
+- The log and the weekly recap history stay on your machine.
 
 ## Limits and notes
 

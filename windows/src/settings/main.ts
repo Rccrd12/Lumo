@@ -386,7 +386,7 @@ const MODELS: [string, string][] = [
   ["claude-haiku-5-5", "Claude Haiku 5.5"],
 ];
 
-/** What Claude Code runs: its own default, or one of the current models. */
+/** What Claude Code runs: its own default, or one of the current models, until Claude Code lists its own. */
 const CLAUDE_CODE_MODELS: [string, string][] = [
   ["default", N_("Default")],
   ["claude-fable-5-2", "Fable 5.2"],
@@ -394,6 +394,9 @@ const CLAUDE_CODE_MODELS: [string, string][] = [
   ["claude-sonnet-5-5", "Sonnet 5.5"],
   ["claude-haiku-5-5", "Haiku 5.5"],
 ];
+
+/** The older versions Claude Code lists, apart in the field (the chat's "More models"). */
+const MORE_MODELS = N_("More models ({count})");
 
 const NO_KEY = N_("No key yet. Only the Anthropic API needs one: Claude Code uses your Claude plan.");
 
@@ -462,13 +465,31 @@ function apiSection(hasKey: boolean): HTMLElement {
   clearBtn.style.display = hasKey ? "" : "none";
 
   // Claude Code needs no key: it runs with the plan the user signed in with.
+  // Its models are those Claude Code lists once the field is opened (the
+  // older versions apart, as in the chat's "More models"); these until then.
   const ccModel = h("select", {}) as HTMLSelectElement;
-  for (const [id, label] of CLAUDE_CODE_MODELS) ccModel.append(h("option", { value: id, text: t(label) }));
-  const ccSaved = settings.chatModels["claude-code"] || "default";
-  if (!CLAUDE_CODE_MODELS.some(([id]) => id === ccSaved)) {
-    ccModel.append(h("option", { value: ccSaved, text: ccSaved }));
-  }
-  ccModel.value = ccSaved;
+  const ccFill = (offered: ModelInfo[]) => {
+    const ccSaved = settings.chatModels["claude-code"] || "default";
+    clear(ccModel);
+    for (const m of offered.filter((m) => !m.older)) ccModel.append(h("option", { value: m.id, text: m.label }));
+    const older = offered.filter((m) => m.older);
+    if (older.length) {
+      const group = h("optgroup", { label: t(MORE_MODELS, { count: older.length }) });
+      for (const m of older) group.append(h("option", { value: m.id, text: m.label }));
+      ccModel.append(group);
+    }
+    if (!offered.some((m) => m.id === ccSaved)) ccModel.append(h("option", { value: ccSaved, text: ccSaved }));
+    ccModel.value = ccSaved;
+  };
+  ccFill(CLAUDE_CODE_MODELS.map(([id, label]) => ({ id, label: t(label) })));
+  let ccAsked = false;
+  const ccAsk = () => {
+    if (ccAsked) return;
+    ccAsked = true;
+    Bridge.chatModels("claude-code").then((listed) => { if (listed.length) ccFill(listed); }, () => {});
+  };
+  ccModel.addEventListener("focus", ccAsk);
+  ccModel.addEventListener("pointerdown", ccAsk);
   ccModel.addEventListener("change", () => {
     settings.chatModels = { ...settings.chatModels, "claude-code": ccModel.value };
     void save();
@@ -1098,7 +1119,14 @@ function helperChoices(): { modelRow: HTMLElement; problem: HTMLElement; effortR
     clear(models);
     const saved = settings.liveHelperModel || "default";
     const all = list.some((m) => m.id === saved) ? list : [...list, { id: saved, label: saved }];
-    for (const m of all) models.append(h("option", { value: m.id, text: m.id === "default" ? t("Default") : m.label }));
+    for (const m of all.filter((m) => !m.older)) models.append(h("option", { value: m.id, text: m.id === "default" ? t("Default") : m.label }));
+    // Claude Code's older versions apart, as in the chat's "More models".
+    const older = all.filter((m) => m.older);
+    if (older.length) {
+      const group = h("optgroup", { label: t(MORE_MODELS, { count: older.length }) });
+      for (const m of older) group.append(h("option", { value: m.id, text: m.label }));
+      models.append(group);
+    }
     models.value = saved;
   };
 

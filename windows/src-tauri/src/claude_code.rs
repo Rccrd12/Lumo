@@ -256,6 +256,8 @@ fn write_config(path: &std::path::Path, text: &str) -> bool {
 /// The models offered for Claude Code: the current ones by id, so the picker
 /// says which version runs. "default": whatever the user set in Claude Code.
 /// Older chats saved an alias ("opus"…), which still goes on the command line.
+/// Claude Code itself says which models the user's plan has (`listed`):
+/// these are only what the picker shows when it doesn't answer.
 const DEFAULT_MODEL: &str = "default";
 const MODELS: &[(&str, &str)] = &[
     (DEFAULT_MODEL, "Default"),
@@ -277,11 +279,106 @@ pub fn work_dir() -> PathBuf {
     platform::home_dir().join("Lumo")
 }
 
-pub fn models() -> Vec<ModelInfo> {
+/// The models for the picker: those Claude Code lists for the user's plan
+/// (`listed`), else the ones Lumo knows (`MODELS`). Asked only when a list is
+/// opened on Claude Code, and kept a while.
+pub async fn models() -> Vec<ModelInfo> {
+    if let Some(kept) = LISTED.lock().unwrap_or_else(|p| p.into_inner()).as_ref().filter(|(at, _)| at.elapsed() < LISTED_FOR) {
+        return kept.1.clone();
+    }
+    let listed = match platform::claude_candidates().into_iter().next() {
+        Some(exe) => tauri::async_runtime::spawn_blocking(move || listed(exe)).await.unwrap_or_default(),
+        None => Vec::new(),
+    };
+    if listed.is_empty() {
+        return known_models();
+    }
+    *LISTED.lock().unwrap_or_else(|p| p.into_inner()) = Some((Instant::now(), listed.clone()));
+    listed
+}
+
+/// The models Lumo knows, for when Claude Code doesn't say (not installed,
+/// signed out, a version without the list): all current.
+fn known_models() -> Vec<ModelInfo> {
     MODELS
         .iter()
         .map(|(id, label)| ModelInfo { id: id.to_string(), label: t(label), ..Default::default() })
         .collect()
+}
+
+/// What Claude Code listed last, and when: asked again after `LISTED_FOR`, so
+/// a model that comes out shows without restarting Lumo.
+static LISTED: Mutex<Option<(Instant, Vec<ModelInfo>)>> = Mutex::new(None);
+const LISTED_FOR: Duration = Duration::from_secs(10 * 60);
+/// How long Claude Code has to list its models before the known ones show.
+const LIST_TIMEOUT: Duration = Duration::from_secs(8);
+/// At most this many models in the list.
+const MAX_MODELS: usize = 60;
+
+/// Asks Claude Code which models the user's plan has, as the Agent SDK does:
+/// the `initialize` request of its stream-json input, answered before any
+/// message, so nothing is sent to Claude and nothing of the plan is used.
+/// Claude Code ends as soon as it answered. Nothing on any failure.
+fn listed(exe: PathBuf) -> Vec<ModelInfo> {
+    let args: Vec<String> = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"].iter().map(|s| s.to_string()).collect();
+    let Ok(mut child) = spawn(&exe, &args, &work_dir(), "") else { return Vec::new() };
+    let _ = read_stderr(&mut child);
+    let request = json!({ "type": "control_request", "request_id": "lumo-models", "request": { "subtype": "initialize" } });
+    let wrote = child.stdin.as_mut().is_some_and(|stdin| writeln!(stdin, "{request}").and_then(|()| stdin.flush()).is_ok());
+    let (tx, rx) = mpsc::channel();
+    if let (true, Some(out)) = (wrote, child.stdout.take()) {
+        std::thread::spawn(move || {
+            for line in BufReader::new(out).lines().map_while(Result::ok).take(500) {
+                let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+                if v["type"] == "control_response" && v["response"]["request_id"] == "lumo-models" {
+                    let _ = tx.send(v["response"]["response"].clone());
+                    return;
+                }
+            }
+        });
+    }
+    let answer = rx.recv_timeout(LIST_TIMEOUT).ok();
+    kill_tree(&mut child);
+    answer.map(|a| parse_listed(&a)).unwrap_or_default()
+}
+
+/// The models of Claude Code's `initialize` answer, as the picker shows them:
+/// "Default" first, saying which model it is; then each model once, by its
+/// id (`resolvedModel`, so a chat keeps the version it picked), the current
+/// ones (those Claude Code names by an alias, "opus"…) before the older
+/// ones it lists by id (`older`, under "More models" in the picker).
+fn parse_listed(answer: &Value) -> Vec<ModelInfo> {
+    let entries: Vec<&Value> = answer["models"].as_array().into_iter().flatten().collect();
+    let resolved = |m: &Value| m["resolvedModel"].as_str().or_else(|| m["value"].as_str()).map(str::trim).unwrap_or("").to_string();
+    let name = |m: &Value| m["displayName"].as_str().map(str::trim).filter(|n| !n.is_empty()).map(str::to_string);
+    let mut current = Vec::new();
+    let mut older = Vec::new();
+    let mut default = None;
+    for m in &entries {
+        let value = m["value"].as_str().map(str::trim).unwrap_or("");
+        let id = resolved(m);
+        if value == DEFAULT_MODEL {
+            // Which model Default is, by the name the same model has in the list.
+            let same = entries.iter().find(|o| o["value"].as_str() != Some(DEFAULT_MODEL) && resolved(o) == id).and_then(|o| name(o));
+            let label = match same {
+                Some(model) => format!("{} ({model})", t("Default")),
+                None => t("Default"),
+            };
+            default = Some(ModelInfo { id: DEFAULT_MODEL.into(), label, ..Default::default() });
+            continue;
+        }
+        if safe_model(&id).is_none() || current.iter().chain(older.iter()).any(|o: &ModelInfo| o.id == id) {
+            continue;
+        }
+        let is_older = value == id;
+        let info = ModelInfo { label: name(m).unwrap_or_else(|| id.clone()), id, older: is_older, ..Default::default() };
+        if is_older { older.push(info) } else { current.push(info) }
+    }
+    if current.is_empty() && older.is_empty() {
+        return Vec::new();
+    }
+    let default = default.unwrap_or_else(|| ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default"), ..Default::default() });
+    std::iter::once(default).chain(current).chain(older).take(MAX_MODELS).collect()
 }
 
 /// The effort levels `claude --effort` takes; anything else leaves Claude Code's default.
@@ -2779,9 +2876,93 @@ mod tests {
         assert!(!a.iter().any(|s| s == "--add-dir" || s.is_empty()), "{a:?}");
     }
 
+    /// Claude Code's `initialize` answer, as 2.1 gives it (its other fields left out).
+    fn initialize_answer() -> Value {
+        json!({ "models": [
+            { "value": "default", "resolvedModel": "claude-fable-5-2", "displayName": "Default (recommended)", "description": "Fable 5.2" },
+            { "value": "opus", "resolvedModel": "claude-opus-5-5", "displayName": "Opus 5.5" },
+            { "value": "fable", "resolvedModel": "claude-fable-5-2", "displayName": "Fable 5.2" },
+            { "value": "sonnet", "resolvedModel": "claude-sonnet-5-5", "displayName": "Sonnet 5.5" },
+            { "value": "haiku", "resolvedModel": "claude-haiku-5-5", "displayName": "Haiku 5.5" },
+            { "value": "claude-fable-5-1", "resolvedModel": "claude-fable-5-1", "displayName": "Fable 5.1" },
+            { "value": "claude-haiku-4-5-20251001", "resolvedModel": "claude-haiku-4-5-20251001", "displayName": "Haiku 4.5" },
+            { "value": "claude-opus-5-5", "resolvedModel": "claude-opus-5-5", "displayName": "Opus 5.5" },
+            { "value": "--model", "displayName": "Not a model" },
+            { "value": "claude-sonnet-4-6" }
+        ] })
+    }
+
+    #[test]
+    fn the_picker_lists_what_claude_code_has_current_models_first_each_once() {
+        let listed = parse_listed(&initialize_answer());
+        let rows: Vec<(&str, &str, bool)> = listed.iter().map(|m| (m.id.as_str(), m.label.as_str(), m.older)).collect();
+        assert_eq!(
+            rows,
+            [
+                ("default", "Default (Fable 5.2)", false),
+                ("claude-opus-5-5", "Opus 5.5", false),
+                ("claude-fable-5-2", "Fable 5.2", false),
+                ("claude-sonnet-5-5", "Sonnet 5.5", false),
+                ("claude-haiku-5-5", "Haiku 5.5", false),
+                ("claude-fable-5-1", "Fable 5.1", true),
+                ("claude-haiku-4-5-20251001", "Haiku 4.5", true),
+                ("claude-sonnet-4-6", "claude-sonnet-4-6", true),
+            ]
+        );
+        // Every one can go on the command line as it is.
+        for m in &listed[1..] {
+            assert_eq!(safe_model(&m.id), Some(m.id.as_str()));
+        }
+    }
+
+    #[test]
+    fn a_new_model_shows_by_itself_and_the_one_it_follows_stays_pickable() {
+        let answer = json!({ "models": [
+            { "value": "default", "resolvedModel": "claude-opus-6", "displayName": "Default (recommended)" },
+            { "value": "opus", "resolvedModel": "claude-opus-6", "displayName": "Opus 6" },
+            { "value": "claude-opus-5-5", "resolvedModel": "claude-opus-5-5", "displayName": "Opus 5.5" }
+        ] });
+        let listed = parse_listed(&answer);
+        assert_eq!(listed[0].label, "Default (Opus 6)");
+        assert_eq!((listed[1].id.as_str(), listed[1].older), ("claude-opus-6", false));
+        assert_eq!((listed[2].id.as_str(), listed[2].older), ("claude-opus-5-5", true));
+    }
+
+    /// A stand-in for `claude.cmd` that says `lines` and ends.
+    #[cfg(windows)]
+    fn fake_claude(name: &str, lines: &[&str]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("lumo-fake-claude-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("claude.cmd");
+        let body: String = lines.iter().map(|l| format!("@echo {l}\r\n")).collect();
+        std::fs::write(&exe, body).unwrap();
+        exe
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn claude_code_is_asked_for_its_models_and_its_answer_is_read() {
+        let answer = r#"{"type":"control_response","response":{"subtype":"success","request_id":"lumo-models","response":{"models":[{"value":"default","resolvedModel":"claude-opus-5-5"},{"value":"opus","resolvedModel":"claude-opus-5-5","displayName":"Opus 5.5"},{"value":"claude-opus-5","resolvedModel":"claude-opus-5","displayName":"Opus 5"}]}}}"#;
+        let exe = fake_claude("answers", &[r#"{"type":"active_goal","value":null}"#, answer]);
+        let rows: Vec<(String, bool)> = listed(exe).into_iter().map(|m| (m.label, m.older)).collect();
+        assert_eq!(rows, [("Default (Opus 5.5)".to_string(), false), ("Opus 5.5".to_string(), false), ("Opus 5".to_string(), true)]);
+        // One that says nothing of models (an older Claude Code): nothing, and the known ones show.
+        let exe = fake_claude("silent", &[r#"{"type":"system","subtype":"init"}"#]);
+        assert!(listed(exe).is_empty());
+    }
+
+    #[test]
+    fn no_list_from_claude_code_leaves_the_known_models() {
+        assert!(parse_listed(&json!({ "commands": [] })).is_empty());
+        assert!(parse_listed(&json!({ "models": [{ "value": "default", "resolvedModel": "claude-fable-5-2" }] })).is_empty());
+        // Without a Default of its own: Lumo's.
+        let listed = parse_listed(&json!({ "models": [{ "value": "opus", "resolvedModel": "claude-opus-5-5", "displayName": "Opus 5.5" }] }));
+        assert_eq!(listed.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["default", "claude-opus-5-5"]);
+    }
+
     #[test]
     fn every_model_in_the_picker_reaches_the_command_line() {
-        let ids: Vec<String> = models().into_iter().map(|m| m.id).collect();
+        let ids: Vec<String> = known_models().into_iter().map(|m| m.id).collect();
         assert_eq!(ids, ["default", "claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
         for id in &ids[1..] {
             assert_eq!(safe_model(id), Some(id.as_str()));

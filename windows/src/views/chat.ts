@@ -74,6 +74,7 @@
 // writing beside the conversation.
 
 import { h, svg, clear, gentleWheel } from "./dom";
+import { readPlace, putPlace, type ReadPlace } from "./read-place";
 import { ICONS } from "./icons";
 import { checklistsIn, copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
@@ -183,6 +184,8 @@ const STRINGS = {
   toEnd: N_("Go to the bottom"),
   showMore: N_("Show more"),
   showLess: N_("Show less"),
+  /** The picker's last current row: Claude Code's older versions, as many as {count}, open under it. */
+  moreModels: N_("More models ({count})"),
   switchModel: N_("Switch provider or model"),
   noModel: N_("Choose a model"),
   loading: N_("Loading models…"),
@@ -1693,6 +1696,11 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
   const cache = new Map<string, ModelInfo[]>();
   let isOpen = false;
   let request = 0;
+  /**
+   * "More models" (Claude Code's older versions) opened or shut by a click;
+   * null until then, each time the picker opens: open when the chat is on one.
+   */
+  let olderOpen: boolean | null = null;
 
   function drawChips() {
     clear(chips);
@@ -1802,7 +1810,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
       const now = activeModel(State.settings);
       return [...g.ids.values()].includes(now) ? now : variantFor(g, levelOf(groups, now));
     };
-    for (const m of models) {
+    const rowFor = (m: ModelInfo): HTMLElement => {
       const on = m.id === current;
       const row = h(
         "button",
@@ -1820,7 +1828,29 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
         close();
         refreshCaps();
       });
-      list.append(row);
+      return row;
+    };
+    // Claude Code's older versions wait under "More models", after the current
+    // ones; open by themselves when the chat uses one, so its tick shows.
+    const older = models.filter((m) => m.older);
+    for (const m of older.length ? models.filter((m) => !m.older) : models) list.append(rowFor(m));
+    if (older.length) {
+      const opened = olderOpen ?? older.some((m) => m.id === current);
+      const more = h(
+        "button",
+        { class: opened ? "picker-model picker-more open" : "picker-model picker-more", "aria-expanded": String(opened) },
+        h("span", { class: "picker-model-name", text: t(STRINGS.moreModels, { count: older.length }) }),
+        svg(ICONS.chevronDown, 11, { stroke: 2.2 }),
+      );
+      more.addEventListener("click", () => {
+        olderOpen = !opened;
+        drawModels(p, listed);
+        // Opened: the list moves to the versions it shows, "More models" on top.
+        const now = list.querySelector<HTMLElement>(".picker-more");
+        if (olderOpen && now) list.scrollTop += now.getBoundingClientRect().top - list.getBoundingClientRect().top;
+      });
+      list.append(more);
+      if (opened) for (const m of older) list.append(rowFor(m));
     }
     drawCaps();
     list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
@@ -1954,6 +1984,7 @@ function buildPicker(onChange: () => void, openSettings: () => void, onPicked: (
 
   function open() {
     isOpen = true;
+    olderOpen = null;
     el.classList.add("on");
     drawChips();
     drawEfforts();
@@ -2064,6 +2095,10 @@ function usageRingSvg(): { el: SVGSVGElement; set(pct: number | null, color: str
 const STUCK_PX = 1;
 /** Further up from the end than this share of the log's height, the arrow down shows. */
 const TO_END_ARROW_SCREENS = 1;
+/** The island opening: the chat gets its width back once the island has held its size this long. */
+const PLACE_SETTLE_MS = 160;
+/** And no later than this, however long the island takes to open. */
+const PLACE_MAX_MS = 2000;
 
 // ── View ──────────────────────────────────────────────────────────────────────
 
@@ -2132,6 +2167,9 @@ export function buildPrompt(
   }
   log.addEventListener("scroll", () => {
     if (log.clientHeight === 0) return; // hidden behind a panel
+    // The island closing or opening moves the log, not the user: where it is
+    // read and whether it follows its end stay as they were.
+    if (readAt) return;
     stuck = fromEnd() <= STUCK_PX;
     drawToEnd();
   }, { passive: true });
@@ -2168,7 +2206,101 @@ export function buildPrompt(
       });
     });
   }
+  // The island closing narrows the chat to its small size and opening widens
+  // it back. Followed frame by frame, every line of the chat wrapped again at
+  // each step of the island's spring: the text shook, the whole log was laid
+  // out again at every frame (the opening stuttered), and the browser's scroll
+  // anchoring could lose the place read. So as the chat leaves the screen its
+  // log keeps the width it had (the island clips it while it is smaller), and
+  // gets it back only once the island has held its size, open again. The
+  // place read is kept too, and put back after each step of the opening, in
+  // the same frame, before it is painted (its height still changes: the
+  // spring going past its size near the end clamped the log, which then held
+  // to its end), and once more when the width is let go, in case the island
+  // came back at another width.
+  let readAt: { chatId: string; slot: typeof State.chatSlot; stuck: boolean; place: ReadPlace | null } | null = null;
+  /** The width the log keeps while the island closes, is closed and opens; 0 when it follows the island. */
+  let heldWidth = 0;
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  let openedAt = 0;
+  const chatOnScreen = () => State.mode === "expanded" && State.view === "prompt";
+  let wasOnScreen = chatOnScreen();
+  /** Stops putting the place back (the user scrolled, another chat came): the width is still let go once the island holds its size. */
+  function stopPlacing() {
+    if (!readAt) return;
+    readAt = null;
+    drawToEnd();
+  }
+  function holdWidth() {
+    if (heldWidth || log.clientWidth <= 0) return;
+    heldWidth = log.getBoundingClientRect().width;
+    log.style.width = `${heldWidth}px`;
+  }
+  function releaseWidth() {
+    if (!heldWidth) return;
+    heldWidth = 0;
+    log.style.width = "";
+  }
+  /** After each step of the island opening: the place, then the width once it holds. */
+  const settleWatch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+    if (!wasOnScreen) return;
+    if (readAt?.place && !readAt.stuck) putPlace(log, readAt.place);
+    else if (stuck) follow();
+    settleLater();
+  });
+  function settleLater() {
+    if (settleTimer !== undefined) clearTimeout(settleTimer);
+    settleTimer = performance.now() - openedAt >= PLACE_MAX_MS ? undefined : setTimeout(settled, PLACE_SETTLE_MS);
+    if (settleTimer === undefined) settled();
+  }
+  function settled() {
+    if (settleTimer !== undefined) clearTimeout(settleTimer);
+    settleTimer = undefined;
+    settleWatch?.disconnect();
+    if (!wasOnScreen) return;
+    releaseWidth();
+    const at = readAt;
+    if (at?.place && !at.stuck) putPlace(log, at.place);
+    stopPlacing();
+    if (stuck) follow();
+  }
+  function keepPlace() {
+    if (settleTimer !== undefined) clearTimeout(settleTimer);
+    settleTimer = undefined;
+    settleWatch?.disconnect();
+    // Closed again while it was still opening: the place kept, and the width, stand.
+    if (!readAt) readAt = { chatId: State.chatId, slot: State.chatSlot, stuck, place: stuck ? null : readPlace(log) };
+    holdWidth();
+  }
+  function putBackPlace() {
+    const at = readAt;
+    // Another chat came on screen meanwhile: it opens at its end (openedChat).
+    if (at && (at.chatId !== State.chatId || at.slot !== State.chatSlot)) stopPlacing();
+    else if (at) stuck = at.stuck;
+    openedAt = performance.now();
+    if (!settleWatch || !log.parentElement) {
+      settled();
+      return;
+    }
+    settleWatch.observe(log);
+    settleWatch.observe(log.parentElement);
+    settleLater();
+  }
+  State.subscribe(() => {
+    const onScreen = chatOnScreen();
+    if (onScreen === wasOnScreen) return;
+    wasOnScreen = onScreen;
+    if (onScreen) putBackPlace();
+    else keepPlace();
+  });
+  // The user scrolling, or about to, takes over from it.
+  for (const type of ["wheel", "pointerdown", "keydown", "touchstart"]) {
+    log.addEventListener(type, () => {
+      if (readAt && wasOnScreen) stopPlacing();
+    }, { passive: true, capture: true });
+  }
   toEnd.addEventListener("click", () => {
+    stopPlacing();
     stuck = true;
     follow();
   });
@@ -6578,9 +6710,14 @@ export function buildPrompt(
         drawStall();
         // The chat stays where it was read, or at its end when it is stuck
         // there; one just opened shows its end.
-        if (openedChat) stuck = true;
-        if (!stuck) holdPlace();
+        if (openedChat) {
+          stopPlacing();
+          stuck = true;
+        }
+        if (!stuck && !readAt) holdPlace();
         log.scrollTop = stuck ? log.scrollHeight : kept;
+        // Drawn again while the island is closed or opening: the place kept, found in the new log.
+        if (readAt?.place && !stuck) putPlace(log, readAt.place);
         openedChat = false;
         drawToEnd();
       } else refreshTimes();

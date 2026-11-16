@@ -25,6 +25,18 @@
    "id": "Teks saja",
    "it": "Solo testo"
   },
+  "More models ({count})": {
+   "zh-Hans": "更多模型（{count}）",
+   "hi": "और मॉडल ({count})",
+   "es": "Más modelos ({count})",
+   "ar": "نماذج أخرى ({count})",
+   "fr": "Autres modèles ({count})",
+   "bn": "আরও মডেল ({count})",
+   "pt-BR": "Mais modelos ({count})",
+   "ru": "Другие модели ({count})",
+   "id": "Model lainnya ({count})",
+   "it": "Altri modelli ({count})"
+  },
   "Images hidden: the sender can't tell you opened it": {
    "zh-Hans": "图片已隐藏：发件人无法得知你已打开邮件",
    "hi": "इमेज छिपी हैं: भेजने वाले को पता नहीं चलता कि आपने इसे खोला",

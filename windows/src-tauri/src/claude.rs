@@ -1013,7 +1013,7 @@ fn parse_models(json: &Value) -> Vec<ModelInfo> {
         .filter_map(|m| {
             let id = m.get("id")?.as_str()?.to_string();
             let label = m.get("display_name").and_then(Value::as_str).unwrap_or(&id).to_string();
-            Some(ModelInfo { id, label, reasoning: efforts(m), context: m["max_input_tokens"].as_u64().unwrap_or(0) })
+            Some(ModelInfo { id, label, reasoning: efforts(m), context: m["max_input_tokens"].as_u64().unwrap_or(0), older: false })
         })
         .collect()
 }

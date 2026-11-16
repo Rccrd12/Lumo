@@ -115,7 +115,7 @@ pub struct AgentRow {
     /// The last message its CLI sent it, and its answer once it came.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub talk: Option<AgentTalk>,
-    /// With `Waiting` for "queue": its place in line (a local model's agents run one at a time).
+    /// With `Waiting` for "queue": its place in line (a local model's agents run as many at once as its server's slots).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub queue: Option<u32>,
     /// What ended it under its work: "cli" when its CLI ended while it was
