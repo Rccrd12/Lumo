@@ -145,17 +145,17 @@
    "id": "Gambar email selalu",
    "it": "Immagini delle email sempre"
   },
-  "An email in the island's Email view shows its images at once, with no click on Load images: its sender's site then learns it was opened. The tracking pixels Lumo recognises are never loaded.": {
-   "zh-Hans": "岛上“邮件”视图中的邮件会立即显示图片，无需点击“加载图片”：发件人的网站因此会知道邮件已被打开。Lumo 识别出的跟踪像素永远不会加载。",
-   "hi": "आइलैंड के ईमेल व्यू में ईमेल अपनी छवियाँ तुरंत दिखाता है, छवियाँ लोड करें पर क्लिक किए बिना: तब भेजने वाले की साइट जान जाती है कि उसे खोला गया। Lumo जिन ट्रैकिंग पिक्सेल को पहचानता है, वे कभी लोड नहीं होते।",
-   "es": "Un correo en la vista Correo de la isla muestra sus imágenes enseguida, sin hacer clic en Cargar imágenes: el sitio del remitente sabrá entonces que se abrió. Los píxeles de seguimiento que Lumo reconoce nunca se cargan.",
-   "ar": "تعرض الرسالة في عرض البريد على الجزيرة صورها فورًا، دون النقر على تحميل الصور: فيعرف موقع المرسل حينها أنها فُتحت. لا تُحمَّل أبدًا بكسلات التتبع التي يتعرّف عليها Lumo.",
-   "fr": "Un e-mail de la vue E-mail de l'îlot affiche ses images tout de suite, sans clic sur Charger les images : le site de l'expéditeur apprend alors qu'il a été ouvert. Les pixels de suivi que Lumo reconnaît ne sont jamais chargés.",
-   "bn": "আইল্যান্ডের ইমেইল ভিউতে একটি ইমেইল সঙ্গে সঙ্গে তার ছবি দেখায়, ছবি লোড করুন-এ ক্লিক ছাড়াই: তখন প্রেরকের সাইট জেনে যায় যে এটি খোলা হয়েছে। Lumo যেসব ট্র্যাকিং পিক্সেল চেনে, সেগুলো কখনো লোড হয় না।",
-   "pt-BR": "Um e-mail na visualização E-mail da ilha mostra as imagens na hora, sem clicar em Carregar imagens: o site do remetente fica sabendo que ele foi aberto. Os pixels de rastreamento que o Lumo reconhece nunca são carregados.",
-   "ru": "Письмо в разделе «Почта» на острове сразу показывает свои изображения, без нажатия «Загрузить изображения»: сайт отправителя тогда узнаёт, что письмо открыто. Пиксели отслеживания, которые Lumo распознаёт, никогда не загружаются.",
-   "id": "Email di tampilan Email pada pulau langsung menampilkan gambarnya, tanpa klik Muat gambar: situs pengirim jadi tahu email itu dibuka. Piksel pelacak yang dikenali Lumo tidak pernah dimuat.",
-   "it": "Un'email nella vista Email dell'isola mostra subito le sue immagini, senza clic su Carica immagini: il sito di chi l'ha mandata saprà che l'hai aperta. I pixel di tracciamento che Lumo riconosce non vengono mai caricati."
+  "Loads every email's images at once.": {
+   "zh-Hans": "立即加载每封邮件的图片。",
+   "hi": "हर ईमेल के चित्र तुरंत लोड करता है।",
+   "es": "Carga al instante las imágenes de cada correo.",
+   "ar": "يحمّل صور كل رسالة فورًا.",
+   "fr": "Charge tout de suite les images de chaque e-mail.",
+   "bn": "প্রতিটি ইমেইলের ছবি সঙ্গে সঙ্গে লোড করে।",
+   "pt-BR": "Carrega na hora as imagens de cada e-mail.",
+   "ru": "Сразу загружает изображения каждого письма.",
+   "id": "Langsung memuat gambar setiap email.",
+   "it": "Carica subito le immagini di ogni email."
   },
   "{n} unread": {
    "zh-Hans": "{n} 封未读",
@@ -4433,17 +4433,17 @@
    "id": "Keamanan",
    "it": "Sicurezza"
   },
-  "What the AI may see and do on its own. Lumo never approves a permission or sends anything for you without your click.": {
-   "zh-Hans": "AI 可以自行查看和执行的内容。没有你的点击，Lumo 绝不会批准任何权限，也不会替你发送任何东西。",
-   "hi": "AI अपने आप क्या देख और कर सकता है। आपके क्लिक के बिना Lumo कभी कोई अनुमति स्वीकार नहीं करता और आपकी ओर से कुछ नहीं भेजता।",
-   "es": "Lo que la IA puede ver y hacer por su cuenta. Lumo nunca aprueba un permiso ni envía nada por ti sin tu clic.",
-   "ar": "ما يمكن للذكاء الاصطناعي أن يراه ويفعله بنفسه. لا يوافق Lumo أبدًا على إذن ولا يرسل أي شيء نيابةً عنك دون نقرتك.",
-   "fr": "Ce que l'IA peut voir et faire d'elle-même. Lumo n'approuve jamais une autorisation et n'envoie rien pour vous sans votre clic.",
-   "bn": "AI নিজে থেকে কী দেখতে ও করতে পারে। আপনার ক্লিক ছাড়া Lumo কখনো কোনো অনুমতি দেয় না এবং আপনার হয়ে কিছু পাঠায় না।",
-   "pt-BR": "O que a IA pode ver e fazer sozinha. O Lumo nunca aprova uma permissão nem envia nada por você sem o seu clique.",
-   "ru": "Что ИИ может видеть и делать сам. Lumo никогда не одобряет разрешения и ничего не отправляет за вас без вашего щелчка.",
-   "id": "Apa yang boleh dilihat dan dilakukan AI sendiri. Lumo tidak pernah menyetujui izin atau mengirim apa pun untuk Anda tanpa klik Anda.",
-   "it": "Cosa l'IA può vedere e fare da sola. Lumo non approva mai un permesso né invia nulla al posto tuo senza un tuo clic."
+  "What the AI may see and do on its own.": {
+   "zh-Hans": "AI 可以自行查看和执行的内容。",
+   "hi": "AI अपने आप क्या देख और कर सकता है।",
+   "es": "Lo que la IA puede ver y hacer por su cuenta.",
+   "ar": "ما يمكن للذكاء الاصطناعي أن يراه ويفعله بمفرده.",
+   "fr": "Ce que l'IA peut voir et faire d'elle-même.",
+   "bn": "AI নিজে থেকে কী দেখতে ও করতে পারে।",
+   "pt-BR": "O que a IA pode ver e fazer sozinha.",
+   "ru": "Что ИИ может видеть и делать сам.",
+   "id": "Apa yang boleh dilihat dan dilakukan AI sendiri.",
+   "it": "Cosa l'IA può vedere e fare da sola."
   },
   "Default permissions": {
    "zh-Hans": "默认权限",
@@ -15801,29 +15801,29 @@
    "id": "Yang boleh dilakukannya sendiri",
    "it": "Cosa può fare da sola"
   },
-  "How free Claude Code, Codex and Antigravity CLI are in a new chat. The shield in a chat changes it for that chat only.": {
-   "zh-Hans": "新聊天中 Claude Code、Codex 和 Antigravity CLI 有多大自由。聊天中的盾牌图标只更改该聊天的设置。",
-   "hi": "नई चैट में Claude Code, Codex और Antigravity CLI कितने स्वतंत्र हैं। किसी चैट की ढाल इसे केवल उसी चैट के लिए बदलती है।",
-   "es": "Cuánta libertad tienen Claude Code, Codex y Antigravity CLI en un chat nuevo. El escudo de un chat la cambia solo para ese chat.",
-   "ar": "مدى حرية Claude Code وCodex وAntigravity CLI في دردشة جديدة. يغيّره الدرع في دردشة لتلك الدردشة فقط.",
-   "fr": "La liberté de Claude Code, Codex et Antigravity CLI dans un nouveau chat. Le bouclier d'un chat la change pour ce chat seulement.",
-   "bn": "নতুন চ্যাটে Claude Code, Codex ও Antigravity CLI কতটা স্বাধীন। কোনো চ্যাটের ঢাল শুধু সেই চ্যাটের জন্য এটি বদলায়।",
-   "pt-BR": "Quanta liberdade Claude Code, Codex e Antigravity CLI têm em um chat novo. O escudo de um chat muda isso só para aquele chat.",
-   "ru": "Насколько свободны Claude Code, Codex и Antigravity CLI в новом чате. Щит в чате меняет это только для этого чата.",
-   "id": "Seberapa bebas Claude Code, Codex, dan Antigravity CLI di obrolan baru. Perisai di sebuah obrolan mengubahnya hanya untuk obrolan itu.",
-   "it": "Quanta libertà hanno Claude Code, Codex e Antigravity CLI in una chat nuova. Lo scudo in una chat la cambia solo per quella chat."
+  "How free the agents are in a new chat.": {
+   "zh-Hans": "新聊天中代理的自由程度。",
+   "hi": "नई चैट में एजेंट कितने स्वतंत्र हैं।",
+   "es": "Cuánta libertad tienen los agentes en un chat nuevo.",
+   "ar": "مدى حرية الوكلاء في دردشة جديدة.",
+   "fr": "La liberté des agents dans un nouveau chat.",
+   "bn": "নতুন চ্যাটে এজেন্টরা কতটা স্বাধীন।",
+   "pt-BR": "Quanta liberdade os agentes têm em um chat novo.",
+   "ru": "Насколько свободны агенты в новом чате.",
+   "id": "Seberapa bebas agen dalam chat baru.",
+   "it": "Quanta libertà hanno gli agenti in una chat nuova."
   },
-  "For the models that can't search on their own. Free, no account: only the useful passages reach the model.": {
-   "zh-Hans": "适用于无法自行搜索的模型。免费，无需帐户：只有有用的段落会发送给模型。",
-   "hi": "उन मॉडलों के लिए जो खुद खोज नहीं सकते। मुफ़्त, बिना खाते के: मॉडल तक केवल उपयोगी अंश पहुँचते हैं।",
-   "es": "Para los modelos que no pueden buscar por sí solos. Gratis y sin cuenta: al modelo solo llegan los pasajes útiles.",
-   "ar": "للنماذج التي لا تستطيع البحث بنفسها. مجاني وبلا حساب: لا تصل إلى النموذج إلا المقاطع المفيدة.",
-   "fr": "Pour les modèles qui ne savent pas chercher seuls. Gratuit, sans compte : seuls les passages utiles parviennent au modèle.",
-   "bn": "যে মডেলগুলো নিজে খুঁজতে পারে না তাদের জন্য। বিনামূল্যে, অ্যাকাউন্ট ছাড়া: মডেলের কাছে শুধু কাজের অংশগুলো পৌঁছায়।",
-   "pt-BR": "Para os modelos que não sabem pesquisar sozinhos. Grátis e sem conta: só os trechos úteis chegam ao modelo.",
-   "ru": "Для моделей, которые не умеют искать сами. Бесплатно, без учётной записи: модели достаются только полезные отрывки.",
-   "id": "Untuk model yang tidak bisa mencari sendiri. Gratis, tanpa akun: hanya bagian yang berguna yang sampai ke model.",
-   "it": "Per i modelli che non sanno cercare da soli. Gratis e senza account: al modello arrivano solo i passaggi utili."
+  "Lumo searches the web for the models that can't.": {
+   "zh-Hans": "Lumo 为无法自行搜索的模型搜索网络。",
+   "hi": "Lumo उन मॉडलों के लिए वेब खोजता है जो खुद नहीं खोज सकते।",
+   "es": "Lumo busca en la web para los modelos que no saben hacerlo.",
+   "ar": "يبحث Lumo في الويب للنماذج التي لا تستطيع ذلك.",
+   "fr": "Lumo cherche sur le web pour les modèles qui ne savent pas le faire.",
+   "bn": "যে মডেলগুলো নিজে খুঁজতে পারে না, তাদের জন্য Lumo ওয়েবে খোঁজে।",
+   "pt-BR": "O Lumo pesquisa na web para os modelos que não sabem fazer isso.",
+   "ru": "Lumo ищет в интернете для моделей, которые не умеют это сами.",
+   "id": "Lumo mencari di web untuk model yang tidak bisa melakukannya.",
+   "it": "Lumo cerca sul web per i modelli che non sanno farlo."
   },
   "What it sees with every message": {
    "zh-Hans": "每条消息附带的内容",
@@ -15837,17 +15837,17 @@
    "id": "Yang dilihatnya di setiap pesan",
    "it": "Cosa vede a ogni messaggio"
   },
-  "Only the chat's AI gets them. The × on a chip leaves one out of a single message.": {
-   "zh-Hans": "只有聊天所用的 AI 会收到。点击标签上的 × 可在某条消息中省略它。",
-   "hi": "इन्हें केवल चैट का AI पाता है। चिप पर × उसे एक संदेश से बाहर रखता है।",
-   "es": "Solo los recibe la IA del chat. La × de una etiqueta la deja fuera de un solo mensaje.",
-   "ar": "لا يتلقاها إلا ذكاء الدردشة الاصطناعي. علامة × على الشريحة تستبعدها من رسالة واحدة.",
-   "fr": "Seule l'IA du chat les reçoit. Le × d'une puce l'exclut d'un seul message.",
-   "bn": "শুধু চ্যাটের AI এগুলো পায়। চিপের × সেটিকে একটি বার্তা থেকে বাদ দেয়।",
-   "pt-BR": "Só a IA do chat os recebe. O × de um chip o deixa de fora de uma única mensagem.",
-   "ru": "Их получает только ИИ чата. × на метке убирает её из одного сообщения.",
-   "id": "Hanya AI obrolan yang menerimanya. Tanda × pada chip mengecualikannya dari satu pesan.",
-   "it": "Le riceve solo l'IA della chat. La × su un'etichetta la toglie da un solo messaggio."
+  "Lumo adds them to every message in the chat.": {
+   "zh-Hans": "Lumo 会将它们添加到聊天的每条消息中。",
+   "hi": "Lumo इन्हें चैट के हर संदेश में जोड़ता है।",
+   "es": "Lumo los añade a cada mensaje del chat.",
+   "ar": "يضيفها Lumo إلى كل رسالة في الدردشة.",
+   "fr": "Lumo les ajoute à chaque message du chat.",
+   "bn": "Lumo এগুলো চ্যাটের প্রতিটি বার্তায় যোগ করে।",
+   "pt-BR": "O Lumo os adiciona a cada mensagem do chat.",
+   "ru": "Lumo добавляет их к каждому сообщению в чате.",
+   "id": "Lumo menambahkannya ke setiap pesan di chat.",
+   "it": "Lumo lo aggiunge a ogni messaggio della chat."
   },
   "Their titles and the documents they show.": {
    "zh-Hans": "它们的标题以及显示的文档。",
@@ -15909,17 +15909,17 @@
    "id": "Akun Anda",
    "it": "I tuoi account"
   },
-  "Each email sent, moved or trashed waits for your click on its card. Nothing is ever deleted for good.": {
-   "zh-Hans": "每封要发送、移动或移到废纸篓的邮件都会等你在其卡片上点击。任何内容都不会被永久删除。",
-   "hi": "भेजा, ले जाया या ट्रैश में डाला जाने वाला हर ईमेल उसके कार्ड पर आपके क्लिक का इंतज़ार करता है। कुछ भी हमेशा के लिए नहीं मिटाया जाता।",
-   "es": "Cada correo que se envía, se mueve o va a la papelera espera tu clic en su tarjeta. Nada se borra nunca para siempre.",
-   "ar": "كل رسالة تُرسل أو تُنقل أو توضع في المهملات تنتظر نقرتك على بطاقتها. لا يُحذف أي شيء نهائيًا أبدًا.",
-   "fr": "Chaque e-mail envoyé, déplacé ou mis à la corbeille attend votre clic sur sa carte. Rien n'est jamais supprimé définitivement.",
-   "bn": "পাঠানো, সরানো বা ট্র্যাশে ফেলা প্রতিটি ইমেল তার কার্ডে আপনার ক্লিকের অপেক্ষা করে। কিছুই কখনো চিরতরে মোছা হয় না।",
-   "pt-BR": "Cada e-mail enviado, movido ou levado à lixeira espera o seu clique no cartão dele. Nada é apagado para sempre.",
-   "ru": "Каждое письмо, которое отправляется, перемещается или удаляется в корзину, ждёт вашего щелчка на его карточке. Ничто никогда не удаляется навсегда.",
-   "id": "Setiap email yang dikirim, dipindahkan, atau dibuang ke sampah menunggu klik Anda di kartunya. Tidak ada yang dihapus permanen.",
-   "it": "Ogni email da inviare, spostare o cestinare aspetta il tuo clic sulla sua scheda. Niente viene mai cancellato per sempre."
+  "What the AI may do with your email.": {
+   "zh-Hans": "AI 可以对你的邮件做什么。",
+   "hi": "AI आपके ईमेल के साथ क्या कर सकता है।",
+   "es": "Lo que la IA puede hacer con tu correo.",
+   "ar": "ما يمكن للذكاء الاصطناعي فعله ببريدك.",
+   "fr": "Ce que l'IA peut faire avec vos e-mails.",
+   "bn": "AI আপনার ইমেইল দিয়ে কী করতে পারে।",
+   "pt-BR": "O que a IA pode fazer com seus e-mails.",
+   "ru": "Что ИИ может делать с вашей почтой.",
+   "id": "Apa yang boleh dilakukan AI dengan email Anda.",
+   "it": "Cosa l'IA può fare con la tua posta."
   },
   "Read your coming events, or nothing.": {
    "zh-Hans": "读取你即将到来的日程，或什么都不做。",
@@ -15933,17 +15933,17 @@
    "id": "Membaca acara Anda berikutnya, atau tidak sama sekali.",
    "it": "Leggere i prossimi eventi, oppure niente."
   },
-  "Read your pull requests, issues and checks when you ask.": {
-   "zh-Hans": "在你询问时读取你的拉取请求、议题和检查。",
-   "hi": "आपके पूछने पर आपके pull request, issue और check पढ़ना।",
-   "es": "Leer tus pull requests, issues y comprobaciones cuando lo pidas.",
-   "ar": "قراءة طلبات السحب والمشكلات والفحوصات عندما تطلب.",
-   "fr": "Lire vos pull requests, issues et vérifications quand vous le demandez.",
-   "bn": "আপনি চাইলে আপনার pull request, issue ও check পড়া।",
-   "pt-BR": "Ler seus pull requests, issues e verificações quando você pede.",
-   "ru": "Читать ваши pull request, issue и проверки, когда вы просите.",
-   "id": "Membaca pull request, issue, dan pemeriksaan Anda saat Anda minta.",
-   "it": "Leggere pull request, issue e controlli quando lo chiedi."
+  "Read your pull requests, issues and checks.": {
+   "zh-Hans": "读取你的拉取请求、议题和检查。",
+   "hi": "आपके पुल रिक्वेस्ट, इश्यू और चेक पढ़ना।",
+   "es": "Leer tus pull requests, issues y comprobaciones.",
+   "ar": "قراءة طلبات السحب والمشكلات والفحوصات.",
+   "fr": "Lire vos pull requests, issues et vérifications.",
+   "bn": "আপনার পুল রিকোয়েস্ট, ইস্যু ও চেক পড়া।",
+   "pt-BR": "Ler seus pull requests, issues e verificações.",
+   "ru": "Читать ваши пул-реквесты, задачи и проверки.",
+   "id": "Membaca pull request, issue, dan pemeriksaan Anda.",
+   "it": "Leggere pull request, issue e controlli."
   },
   "Other chats' files": {
    "zh-Hans": "其他聊天的文件",
@@ -15957,17 +15957,17 @@
    "id": "File chat lain",
    "it": "File delle altre chat"
   },
-  "Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: every file Lumo received in the last 7 days. Gemini Live can read them either way.": {
-   "zh-Hans": "关闭：Claude Code 和 Antigravity CLI 只读取交给其所在聊天的文件和截图。开启：读取 Lumo 最近 7 天收到的所有文件。无论开关如何，Gemini Live 都能读取它们。",
-   "hi": "बंद: Claude Code और Antigravity CLI केवल अपनी चैट को दी गई फ़ाइलें और स्क्रीनशॉट पढ़ते हैं। चालू: पिछले 7 दिनों में Lumo को मिली हर फ़ाइल। Gemini Live दोनों ही स्थितियों में उन्हें पढ़ सकता है।",
-   "es": "Apagado: Claude Code y Antigravity CLI leen solo los archivos y capturas que se dieron a su propio chat. Encendido: todos los archivos que Lumo recibió en los últimos 7 días. Gemini Live puede leerlos en ambos casos.",
-   "ar": "متوقف: لا يقرأ Claude Code وAntigravity CLI إلا الملفات ولقطات الشاشة المعطاة لدردشتهما. مشغّل: كل ملف تلقّاه Lumo في آخر 7 أيام. يمكن لـ Gemini Live قراءتها في الحالتين.",
-   "fr": "Désactivé : Claude Code et Antigravity CLI ne lisent que les fichiers et captures donnés à leur propre chat. Activé : tous les fichiers reçus par Lumo ces 7 derniers jours. Gemini Live peut les lire dans les deux cas.",
-   "bn": "বন্ধ: Claude Code ও Antigravity CLI শুধু নিজের চ্যাটকে দেওয়া ফাইল ও স্ক্রিনশট পড়ে। চালু: গত ৭ দিনে Lumo যত ফাইল পেয়েছে সবই। Gemini Live দুই ক্ষেত্রেই সেগুলো পড়তে পারে।",
-   "pt-BR": "Desligado: Claude Code e Antigravity CLI leem só os arquivos e capturas dados ao próprio chat. Ligado: todos os arquivos que o Lumo recebeu nos últimos 7 dias. O Gemini Live pode lê-los em qualquer caso.",
-   "ru": "Выключено: Claude Code и Antigravity CLI читают только файлы и снимки экрана, отданные их собственному чату. Включено: все файлы, которые Lumo получил за последние 7 дней. Gemini Live может читать их в любом случае.",
-   "id": "Mati: Claude Code dan Antigravity CLI hanya membaca file dan tangkapan layar yang diberikan ke chat-nya sendiri. Nyala: setiap file yang diterima Lumo dalam 7 hari terakhir. Gemini Live bisa membacanya dalam kedua kasus.",
-   "it": "Spento: Claude Code e Antigravity CLI leggono solo i file e le schermate dati alla loro chat. Acceso: tutti i file ricevuti da Lumo negli ultimi 7 giorni. Gemini Live può leggerli in entrambi i casi."
+  "Agents also read the files given to other chats.": {
+   "zh-Hans": "代理也会读取提供给其他聊天的文件。",
+   "hi": "एजेंट दूसरी चैट को दी गई फ़ाइलें भी पढ़ते हैं।",
+   "es": "Los agentes también leen los archivos dados a otros chats.",
+   "ar": "يقرأ الوكلاء أيضًا الملفات المقدَّمة إلى الدردشات الأخرى.",
+   "fr": "Les agents lisent aussi les fichiers donnés aux autres chats.",
+   "bn": "এজেন্টরা অন্য চ্যাটে দেওয়া ফাইলও পড়ে।",
+   "pt-BR": "Os agentes também leem os arquivos dados a outros chats.",
+   "ru": "Агенты читают и файлы, переданные в другие чаты.",
+   "id": "Agen juga membaca file yang diberikan ke chat lain.",
+   "it": "Gli agenti leggono anche i file dati alle altre chat."
   },
   "Always on": {
    "zh-Hans": "始终开启",
@@ -15981,29 +15981,41 @@
    "id": "Selalu aktif",
    "it": "Sempre attivo"
   },
-  "Keys and passwords stay in Windows Credential Manager, never in a file.": {
-   "zh-Hans": "密钥和密码保存在 Windows 凭据管理器中，绝不写入文件。",
-   "hi": "कुंजियाँ और पासवर्ड Windows Credential Manager में रहते हैं, कभी किसी फ़ाइल में नहीं।",
-   "es": "Las claves y las contraseñas quedan en el Administrador de credenciales de Windows, nunca en un archivo.",
-   "ar": "تبقى المفاتيح وكلمات المرور في مدير بيانات الاعتماد في Windows، ولا تُكتب في ملف أبدًا.",
-   "fr": "Les clés et les mots de passe restent dans le Gestionnaire d'identification de Windows, jamais dans un fichier.",
-   "bn": "কী ও পাসওয়ার্ড Windows Credential Manager-এ থাকে, কখনো কোনো ফাইলে নয়।",
-   "pt-BR": "Chaves e senhas ficam no Gerenciador de Credenciais do Windows, nunca em um arquivo.",
-   "ru": "Ключи и пароли хранятся в диспетчере учётных данных Windows, никогда в файле.",
-   "id": "Kunci dan kata sandi disimpan di Windows Credential Manager, tidak pernah di file.",
-   "it": "Chiavi e password restano in Gestione credenziali di Windows, mai in un file."
+  "Every permission and every send waits for your click.": {
+   "zh-Hans": "每项权限和每次发送都等待你的点击。",
+   "hi": "हर अनुमति और हर भेजना आपके क्लिक का इंतज़ार करता है।",
+   "es": "Cada permiso y cada envío esperan tu clic.",
+   "ar": "كل إذن وكل إرسال ينتظر نقرتك.",
+   "fr": "Chaque permission et chaque envoi attendent votre clic.",
+   "bn": "প্রতিটি অনুমতি ও প্রতিটি পাঠানো আপনার ক্লিকের অপেক্ষায় থাকে।",
+   "pt-BR": "Cada permissão e cada envio esperam o seu clique.",
+   "ru": "Каждое разрешение и каждая отправка ждут вашего клика.",
+   "id": "Setiap izin dan setiap pengiriman menunggu klik Anda.",
+   "it": "Ogni permesso e ogni invio aspettano il tuo clic."
   },
-  "No usage data: Lumo talks only to the services you set up.": {
-   "zh-Hans": "不发送使用数据：Lumo 只与你设置的服务通信。",
-   "hi": "कोई उपयोग डेटा नहीं: Lumo केवल आपकी सेट की गई सेवाओं से बात करता है।",
-   "es": "Sin datos de uso: Lumo solo habla con los servicios que configuras.",
-   "ar": "لا بيانات استخدام: لا يتواصل Lumo إلا مع الخدمات التي تضبطها.",
-   "fr": "Aucune donnée d'utilisation : Lumo ne parle qu'aux services que vous configurez.",
-   "bn": "কোনো ব্যবহারের তথ্য নয়: Lumo শুধু আপনার সেট করা সেবাগুলোর সাথে যোগাযোগ করে।",
-   "pt-BR": "Nenhum dado de uso: o Lumo só fala com os serviços que você configura.",
-   "ru": "Никаких данных об использовании: Lumo обращается только к настроенным вами службам.",
-   "id": "Tanpa data penggunaan: Lumo hanya berbicara dengan layanan yang Anda atur.",
-   "it": "Nessun dato d'uso: Lumo parla solo con i servizi che hai impostato."
+  "Keys and passwords stay in Windows Credential Manager.": {
+   "zh-Hans": "密钥和密码保存在 Windows 凭据管理器中。",
+   "hi": "कुंजियाँ और पासवर्ड Windows क्रेडेंशियल मैनेजर में रहते हैं।",
+   "es": "Las claves y contraseñas se guardan en el Administrador de credenciales de Windows.",
+   "ar": "تبقى المفاتيح وكلمات المرور في مدير بيانات اعتماد Windows.",
+   "fr": "Les clés et mots de passe restent dans le Gestionnaire d'identification Windows.",
+   "bn": "কী ও পাসওয়ার্ড Windows ক্রেডেনশিয়াল ম্যানেজারে থাকে।",
+   "pt-BR": "Chaves e senhas ficam no Gerenciador de Credenciais do Windows.",
+   "ru": "Ключи и пароли хранятся в диспетчере учётных данных Windows.",
+   "id": "Kunci dan kata sandi disimpan di Pengelola Kredensial Windows.",
+   "it": "Chiavi e password restano in Gestione credenziali di Windows."
+  },
+  "Lumo talks only to the services you set up.": {
+   "zh-Hans": "Lumo 只与你设置的服务通信。",
+   "hi": "Lumo केवल आपके सेट किए गए सेवाओं से बात करता है।",
+   "es": "Lumo solo habla con los servicios que configuraste.",
+   "ar": "يتواصل Lumo فقط مع الخدمات التي أعددتها.",
+   "fr": "Lumo ne parle qu'aux services que vous avez configurés.",
+   "bn": "Lumo শুধু আপনার সেট করা পরিষেবাগুলোর সাথে কথা বলে।",
+   "pt-BR": "O Lumo só fala com os serviços que você configurou.",
+   "ru": "Lumo общается только с настроенными вами сервисами.",
+   "id": "Lumo hanya berbicara dengan layanan yang Anda atur.",
+   "it": "Lumo parla solo con i servizi che hai impostato."
   },
   "New emails show on the closed island. You can use Outlook, IMAP or both together.": {
    "zh-Hans": "新邮件会显示在收起的岛上。你可以使用 Outlook、IMAP，或两者同时使用。",
@@ -16113,29 +16125,29 @@
    "id": "Buka Outlook jika tertutup",
    "it": "Apri Outlook se è chiuso"
   },
-  "When Lumo starts, it opens classic Outlook in the background, with no window. If you close it yourself, Lumo doesn't open it again until it next starts.": {
-   "zh-Hans": "Lumo 启动时会在后台打开经典版 Outlook，不显示窗口。如果你自己关掉了它，Lumo 在下次启动前不会再打开它。",
-   "hi": "Lumo शुरू होते ही क्लासिक Outlook को बैकग्राउंड में, बिना विंडो के खोलता है। अगर आप उसे ख़ुद बंद कर दें, तो Lumo अगली बार शुरू होने तक उसे फिर नहीं खोलता।",
-   "es": "Cuando Lumo se inicia, abre Outlook clásico en segundo plano, sin ventana. Si lo cierras tú, Lumo no lo vuelve a abrir hasta su próximo inicio.",
-   "ar": "عند بدء Lumo، يفتح Outlook الكلاسيكي في الخلفية بلا نافذة. إذا أغلقته بنفسك، فلن يفتحه Lumo مجددًا حتى بدء تشغيله التالي.",
-   "fr": "Au démarrage de Lumo, Outlook classique s'ouvre en arrière-plan, sans fenêtre. Si vous le fermez vous-même, Lumo ne le rouvre pas avant son prochain démarrage.",
-   "bn": "Lumo চালু হলে ক্লাসিক Outlook ব্যাকগ্রাউন্ডে, কোনো উইন্ডো ছাড়া খোলে। আপনি নিজে বন্ধ করলে Lumo পরের বার চালু হওয়া পর্যন্ত আর খোলে না।",
-   "pt-BR": "Quando o Lumo inicia, ele abre o Outlook clássico em segundo plano, sem janela. Se você o fechar, o Lumo não o abre de novo até a próxima vez que iniciar.",
-   "ru": "При запуске Lumo открывает классический Outlook в фоне, без окна. Если вы закроете его сами, Lumo не откроет его снова до следующего запуска.",
-   "id": "Saat Lumo mulai, ia membuka Outlook klasik di latar belakang, tanpa jendela. Jika Anda menutupnya sendiri, Lumo tidak membukanya lagi sampai Lumo dimulai berikutnya.",
-   "it": "Quando Lumo parte, avvia l'Outlook classico in background, senza finestra. Se poi lo chiudi tu, Lumo non lo riapre fino al prossimo avvio."
+  "Starts Outlook in the background when Lumo starts.": {
+   "zh-Hans": "Lumo 启动时在后台打开 Outlook。",
+   "hi": "Lumo शुरू होने पर Outlook को बैकग्राउंड में खोलता है।",
+   "es": "Abre Outlook en segundo plano cuando se inicia Lumo.",
+   "ar": "يفتح Outlook في الخلفية عند بدء تشغيل Lumo.",
+   "fr": "Ouvre Outlook en arrière-plan au démarrage de Lumo.",
+   "bn": "Lumo চালু হলে পটভূমিতে Outlook চালু করে।",
+   "pt-BR": "Abre o Outlook em segundo plano quando o Lumo inicia.",
+   "ru": "Запускает Outlook в фоне при запуске Lumo.",
+   "id": "Membuka Outlook di latar belakang saat Lumo dimulai.",
+   "it": "Avvia Outlook in background quando parte Lumo."
   },
-  "Only your Windows account can talk to Lumo through the pipe the agents' hooks use.": {
-   "zh-Hans": "只有你的 Windows 帐户可以通过代理钩子使用的管道与 Lumo 通信。",
-   "hi": "एजेंटों के हुक जिस पाइप का उपयोग करते हैं, उससे केवल आपका Windows खाता Lumo से बात कर सकता है।",
-   "es": "Solo tu cuenta de Windows puede hablar con Lumo por la tubería que usan los hooks de los agentes.",
-   "ar": "حساب Windows الخاص بك وحده يمكنه التحدث مع Lumo عبر القناة التي تستخدمها خطافات الوكلاء.",
-   "fr": "Seul votre compte Windows peut parler à Lumo par le canal qu'utilisent les hooks des agents.",
-   "bn": "এজেন্টদের হুক যে পাইপ ব্যবহার করে, তা দিয়ে শুধু আপনার Windows অ্যাকাউন্টই Lumo-র সাথে কথা বলতে পারে।",
-   "pt-BR": "Só a sua conta do Windows pode falar com o Lumo pelo canal que os hooks dos agentes usam.",
-   "ru": "Только ваша учётная запись Windows может обращаться к Lumo через канал, которым пользуются хуки агентов.",
-   "id": "Hanya akun Windows Anda yang bisa berbicara dengan Lumo melalui pipe yang dipakai hook para agen.",
-   "it": "Solo il tuo account Windows può parlare con Lumo attraverso il canale usato dagli hook degli agenti."
+  "Only your Windows account can talk to Lumo.": {
+   "zh-Hans": "只有你的 Windows 账户可以与 Lumo 通信。",
+   "hi": "केवल आपका Windows खाता Lumo से बात कर सकता है।",
+   "es": "Solo tu cuenta de Windows puede hablar con Lumo.",
+   "ar": "حساب Windows الخاص بك فقط يمكنه التواصل مع Lumo.",
+   "fr": "Seul votre compte Windows peut parler à Lumo.",
+   "bn": "শুধু আপনার Windows অ্যাকাউন্ট Lumo-র সাথে কথা বলতে পারে।",
+   "pt-BR": "Só a sua conta do Windows pode falar com o Lumo.",
+   "ru": "Только ваша учётная запись Windows может общаться с Lumo.",
+   "id": "Hanya akun Windows Anda yang dapat berbicara dengan Lumo.",
+   "it": "Solo il tuo account Windows può parlare con Lumo."
   },
   "An update is installed only if it matches the one GitHub published.": {
    "zh-Hans": "只有与 GitHub 发布的版本一致的更新才会被安装。",
@@ -18467,17 +18479,17 @@
    "id": "Buka halaman ini di browser",
    "it": "Aprire questa pagina nel browser"
   },
-  "An image in an answer from Wikimedia is shown at once; from any other public https site, after a click on Load image, since the AI writes the address and it could carry what the AI read. An email's images, after a click on Load images: its sender's site then learns it was opened. Off: just its site and a button to open it in the browser.": {
-   "zh-Hans": "回答中来自 Wikimedia 的图片会立即显示；来自其他公共 https 网站的图片需点击“加载图片”后才显示，因为地址由 AI 写出，可能夹带 AI 读到的内容。邮件中的图片需点击“加载图片”后才显示：此时发件人的网站会得知邮件已被打开。关闭时：只显示其网站和在浏览器中打开的按钮。",
-   "hi": "उत्तर में Wikimedia की इमेज तुरंत दिखती है; किसी अन्य सार्वजनिक https साइट की इमेज “इमेज लोड करें” पर क्लिक के बाद, क्योंकि पता AI लिखता है और उसमें AI का पढ़ा हुआ हो सकता है। ईमेल की इमेज “इमेज लोड करें” पर क्लिक के बाद: तब भेजने वाले की साइट जान लेती है कि ईमेल खोला गया। बंद: केवल उसकी साइट और ब्राउज़र में खोलने का बटन।",
-   "es": "Una imagen de Wikimedia en una respuesta se muestra al instante; de cualquier otro sitio https público, tras hacer clic en Cargar imagen, porque la dirección la escribe la IA y podría llevar lo que la IA ha leído. Las imágenes de un correo, tras hacer clic en Cargar imágenes: el sitio de quien lo envió sabrá entonces que lo abriste. Desactivado: solo su sitio y un botón para abrirla en el navegador.",
-   "ar": "تظهر صورة من Wikimedia في الإجابة فورًا؛ ومن أي موقع https عام آخر بعد النقر على «تحميل الصورة»، لأن الذكاء الاصطناعي يكتب العنوان وقد يحمل ما قرأه. صور البريد بعد النقر على «تحميل الصور»: حينها يعرف موقع المرسل أنك فتحت الرسالة. عند الإيقاف: موقعها فقط وزر لفتحها في المتصفح.",
-   "fr": "Une image de Wikimedia dans une réponse s'affiche tout de suite ; d'un autre site https public, après un clic sur Charger l'image, car l'IA écrit l'adresse et elle pourrait contenir ce que l'IA a lu. Les images d'un e-mail, après un clic sur Charger les images : le site de l'expéditeur sait alors qu'il a été ouvert. Désactivé : seulement son site et un bouton pour l'ouvrir dans le navigateur.",
-   "bn": "উত্তরে Wikimedia-র ছবি সঙ্গে সঙ্গে দেখানো হয়; অন্য যেকোনো সর্বজনীন https সাইটের ছবি “ছবি লোড করুন”-এ ক্লিক করার পরে, কারণ ঠিকানাটি AI লেখে এবং তাতে AI যা পড়েছে তা থাকতে পারে। ইমেলের ছবি “ছবি লোড করুন”-এ ক্লিক করার পরে: তখন প্রেরকের সাইট জেনে যায় যে ইমেলটি খোলা হয়েছে। বন্ধ: শুধু সাইটটি আর ব্রাউজারে খোলার একটি বোতাম।",
-   "pt-BR": "Uma imagem da Wikimedia numa resposta aparece na hora; de qualquer outro site https público, depois de clicar em Carregar imagem, porque o endereço é escrito pela IA e pode levar o que a IA leu. As imagens de um e-mail, depois de clicar em Carregar imagens: o site de quem enviou fica sabendo que ele foi aberto. Desligado: só o site e um botão para abrir no navegador.",
-   "ru": "Изображение из Wikimedia в ответе показывается сразу; с любого другого публичного https-сайта — после нажатия «Загрузить изображение», ведь адрес пишет ИИ и в нём может оказаться то, что ИИ прочитал. Изображения письма — после нажатия «Загрузить изображения»: тогда сайт отправителя узнает, что письмо открыто. Выключено: только сайт и кнопка, чтобы открыть его в браузере.",
-   "id": "Gambar dari Wikimedia dalam jawaban langsung ditampilkan; dari situs https publik lainnya, setelah klik Muat gambar, karena alamatnya ditulis AI dan bisa membawa apa yang dibaca AI. Gambar email, setelah klik Muat gambar: situs pengirim lalu tahu email itu dibuka. Mati: hanya situsnya dan tombol untuk membukanya di browser.",
-   "it": "Un'immagine di Wikimedia in una risposta si vede subito; da qualsiasi altro sito https pubblico, dopo un clic su Carica immagine, perché l'indirizzo lo scrive l'AI e potrebbe contenere ciò che l'AI ha letto. Le immagini di un'email, dopo un clic su Carica immagini: il sito di chi l'ha mandata sa allora che l'hai aperta. Disattivato: solo il sito e un pulsante per aprirla nel browser."
+  "Shows the images in answers and emails.": {
+   "zh-Hans": "显示回答和邮件中的图片。",
+   "hi": "उत्तरों और ईमेल में चित्र दिखाता है।",
+   "es": "Muestra las imágenes de las respuestas y los correos.",
+   "ar": "يعرض الصور في الإجابات والرسائل.",
+   "fr": "Affiche les images des réponses et des e-mails.",
+   "bn": "উত্তর ও ইমেইলের ছবি দেখায়।",
+   "pt-BR": "Mostra as imagens nas respostas e nos e-mails.",
+   "ru": "Показывает изображения в ответах и письмах.",
+   "id": "Menampilkan gambar di jawaban dan email.",
+   "it": "Mostra le immagini nelle risposte e nelle email."
   },
   "Load image": {
    "zh-Hans": "加载图片",
@@ -20441,17 +20453,17 @@
    "id": "Dihentikan di langkah {step} dari {total} · terakhir selesai: {text}",
    "it": "Fermato al passo {step} di {total} · ultimo completato: {text}"
   },
-  "Only while it answers, and only once it has shown you its plan: the screen it uses glows, and Esc pauses it. With Ask every time, each click waits for yours.": {
-   "zh-Hans": "仅在它回答时，且要先向你展示计划：它使用的屏幕会发光，按 Esc 即可暂停。选择“每次都询问”时，它的每次点击都会先等你确认。",
-   "hi": "केवल जवाब देते समय, और पहले आपको अपनी योजना दिखाने के बाद: जिस स्क्रीन का यह उपयोग करता है वह चमकती है, और Esc इसे रोक (पॉज़) देता है। “हर बार पूछें” के साथ, इसका हर क्लिक आपके क्लिक का इंतज़ार करता है।",
-   "es": "Solo mientras responde, y solo después de mostrarte su plan: la pantalla que usa se ilumina y Esc lo pausa. Con Preguntar siempre, cada clic suyo espera el tuyo.",
-   "ar": "فقط أثناء الإجابة، وبعد أن يعرض عليك خطته: تتوهج الشاشة التي يستخدمها، ويوقفه Esc مؤقتاً. مع «السؤال في كل مرة»، تنتظر كل نقرة منه نقرتك.",
-   "fr": "Seulement pendant qu'il répond, et seulement après vous avoir montré son plan : l'écran qu'il utilise s'illumine, et Échap le met en pause. Avec Demander à chaque fois, chacun de ses clics attend le vôtre.",
-   "bn": "শুধু উত্তর দেওয়ার সময়, আর আগে আপনাকে তার পরিকল্পনা দেখানোর পরেই: এটি যে স্ক্রিন ব্যবহার করে তা জ্বলে ওঠে, আর Esc এটি বিরতিতে রাখে। “প্রতিবার জিজ্ঞাসা করুন” থাকলে এর প্রতিটি ক্লিক আপনার ক্লিকের অপেক্ষা করে।",
-   "pt-BR": "Só enquanto responde, e só depois de mostrar o plano dele: a tela que ele usa brilha, e Esc o pausa. Com Perguntar sempre, cada clique dele espera o seu.",
-   "ru": "Только пока он отвечает и только после того, как он покажет вам свой план: экран, которым он пользуется, светится, а Esc ставит его на паузу. С «Спрашивать каждый раз» каждый его щелчок ждёт вашего.",
-   "id": "Hanya saat menjawab, dan hanya setelah ia menunjukkan rencananya: layar yang dipakainya menyala, dan Esc menjedanya. Dengan Selalu tanya, setiap kliknya menunggu klik Anda.",
-   "it": "Solo mentre risponde, e solo dopo averti mostrato il suo piano: lo schermo che usa si illumina ed Esc lo mette in pausa. Con Chiedi ogni volta, ogni suo clic aspetta il tuo."
+  "Claude uses the mouse and keyboard once it has shown you its plan.": {
+   "zh-Hans": "Claude 向你展示计划后使用鼠标和键盘。",
+   "hi": "Claude आपको अपनी योजना दिखाने के बाद माउस और कीबोर्ड का उपयोग करता है।",
+   "es": "Claude usa el ratón y el teclado después de mostrarte su plan.",
+   "ar": "يستخدم Claude الفأرة ولوحة المفاتيح بعد أن يعرض عليك خطته.",
+   "fr": "Claude utilise la souris et le clavier une fois son plan montré.",
+   "bn": "Claude আপনাকে তার পরিকল্পনা দেখানোর পর মাউস ও কীবোর্ড ব্যবহার করে।",
+   "pt-BR": "O Claude usa o mouse e o teclado depois de mostrar o plano.",
+   "ru": "Claude управляет мышью и клавиатурой, показав вам свой план.",
+   "id": "Claude memakai mouse dan keyboard setelah menunjukkan rencananya.",
+   "it": "Claude usa mouse e tastiera dopo averti mostrato il piano."
   },
   "Waiting its turn · {place} in line": {
    "zh-Hans": "等待轮到它 · 第 {place} 位",
