@@ -1257,9 +1257,13 @@ fetches a page's text.
   "Open in a new browser tab · https://…", "Click in browser tab 2 · [12]".
 - Every agent opens its own tab and works in it: the agent's row in the
   Agents card says which site it is on, and **Watch** opens a live picture of
-  its tab right under the row, inside the island: the address, what the agent
-  just did in words ("Clicks “Search”") and a ring on the spot it clicked or
-  typed in, which follows the page as it scrolls. **Ask** and **Stop** sit
+  its tab right under the row, inside the island: the address, and the page
+  with the agent's own pointer, which glides to where it clicks (a ripple
+  where it lands) or becomes a text cursor where it types, the box of what it
+  hit, and the page moving under it as it scrolls. Under the picture, what the
+  agent does now ("Clicks “Search”", "Reads the page") and in small its last
+  steps. A page loading keeps the last picture, dimmed, with a bar and what
+  is opening; a picture that keeps failing says why. **Ask** and **Stop** sit
   under it, and ⤢ opens the **Agents' browser**: one tab per agent (named by
   its site) and **All**, which shows them side by side; a click on one makes
   it large. The conversation's own tab, when Claude Code browses without an

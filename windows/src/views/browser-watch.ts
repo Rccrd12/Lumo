@@ -2,8 +2,10 @@
 // shown inside the island. Concept: concepts/browser-agenti-guarda.
 //
 // On the Agents card, Watch opens a live picture of the agent's tab under its
-// row (Hide closes it): the tab's address, the page, a ring where the agent
-// last clicked or typed and what it did. Its ⤢ opens the agents' browser, the
+// row (Hide closes it): the tab's address, the page with the agent's pointer
+// gliding to where it clicks or types and the box of what it hit, and under
+// it what the agent does now and the steps before (concepts/guarda-piu-chiaro).
+// A page loading keeps the last picture, dimmed, with what is opening. Its ⤢ opens the agents' browser, the
 // island's "browser" view: one tab large, or all of the chat's side by side.
 // The tab is never a window on screen, and the page can only be watched.
 //
@@ -38,7 +40,11 @@ export const WATCH_TEXT = {
   types: N_("Types “{what}”"),
   scrollsDown: N_("Scrolls down"),
   scrollsUp: N_("Scrolls up"),
-  waiting: N_("Waiting for the page…"),
+  reads: N_("Reads the page"),
+  /** Over the last picture while a new page of the site loads. */
+  loading: N_("Loading {host}…"),
+  /** The picture failed several times in a row: why, as Rust said it. */
+  noPicture: N_("No picture: {error}"),
   closed: N_("The tab has closed."),
   none: N_("No agent of this chat is browsing now."),
   conversation: N_("The conversation"),
@@ -59,8 +65,12 @@ const SMALL_FRAME_MS = 1000;
 const RETRY_MS = 1500;
 /** Rust's answer for an agent with no tab (browser.rs NO_TAB): the picture stops asking. */
 const NO_TAB = "This agent has no browser tab open.";
-/** The ring stays on what the agent did this long after it did it. */
+/** The box stays on what the agent clicked or typed in this long after. */
 export const RING_MS = 8000;
+/** Failed pictures in a row before the picture says why. */
+const FAILS_SHOWN = 3;
+/** The steps done, under what the agent does now. */
+const TRAIL_STEPS = 3;
 
 /** What the agent did, in words: "Clicks “Search”". */
 export function actText(act: BrowserAct | null | undefined): string {
@@ -75,6 +85,8 @@ export function actText(act: BrowserAct | null | undefined): string {
       return what ? t(WATCH_TEXT.types, { what }) : "";
     case "scroll":
       return t(what === "up" ? WATCH_TEXT.scrollsUp : WATCH_TEXT.scrollsDown);
+    case "read":
+      return t(WATCH_TEXT.reads);
     default:
       return "";
   }
@@ -92,6 +104,45 @@ export function ringBox(f: Pick<BrowserFrame, "width" | "height" | "scrollY" | "
   if (y + a.rect.h <= 0 || y >= f.height || a.rect.x + a.rect.w <= 0 || a.rect.x >= f.width) return null;
   const pct = (v: number, of: number) => Math.round((v / of) * 10000) / 100;
   return { left: pct(a.rect.x, f.width), top: pct(y, f.height), width: pct(a.rect.w, f.width), height: pct(a.rect.h, f.height) };
+}
+
+/**
+ * Where the agent's pointer is on the picture, in % of it, and its shape:
+ * the point of its last click or typing since it last opened a page, moved
+ * by the scroll since. Null without one, or out of the picture now.
+ */
+export function pointerAt(f: Pick<BrowserFrame, "width" | "height" | "scrollY" | "steps">): { left: number; top: number; text: boolean } | null {
+  if (!(f.width > 0) || !(f.height > 0)) return null;
+  const steps = f.steps ?? [];
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const a = steps[i];
+    if (a.kind === "open") return null;
+    if (!a.point) continue;
+    const y = a.point.y + (a.scrollY - f.scrollY);
+    if (y < 0 || y > f.height || a.point.x < 0 || a.point.x > f.width) return null;
+    const pct = (v: number, of: number) => Math.round((v / of) * 10000) / 100;
+    return { left: pct(a.point.x, f.width), top: pct(y, f.height), text: a.kind === "type" };
+  }
+  return null;
+}
+
+/** What the agent does now, and the steps it did before (newest last, at most TRAIL_STEPS), in words. */
+export function stepsText(f: Pick<BrowserFrame, "action" | "steps">): { now: string; kind: string; done: string[] } {
+  const steps = f.steps?.length ? f.steps : f.action ? [f.action] : [];
+  const last = steps[steps.length - 1];
+  const done: string[] = [];
+  for (const a of steps.slice(0, -1)) {
+    const words = actText(a);
+    if (words && done[done.length - 1] !== words) done.push(words);
+  }
+  return { now: actText(last), kind: last?.kind ?? "", done: done.slice(-TRAIL_STEPS) };
+}
+
+/** What shows over the last picture while a page loads: what opens, or the site loading. */
+export function loadingText(f: Pick<BrowserFrame, "action" | "host" | "url">): string {
+  if (f.action?.kind === "open" && f.action.what.trim()) return `${actText(f.action)}…`;
+  const host = f.host || addressParts(f.url).host;
+  return host ? t(WATCH_TEXT.loading, { host }) : "";
 }
 
 /** The address as the bar shows it: the site in full, then the rest dimmed. */
@@ -120,7 +171,7 @@ interface LiveOptions {
 
 const lives = new Set<LivePicture>();
 
-/** The picture of one agent's tab: its bar, the page, the ring. */
+/** The picture of one agent's tab: its bar, the page, the agent's pointer. */
 export class LivePicture {
   readonly el: HTMLElement;
   private readonly url = h("span", { class: "bw-url" });
@@ -128,12 +179,22 @@ export class LivePicture {
   private readonly page = h("div", { class: "bw-page" });
   private readonly shot = h("div", { class: "bw-shot" });
   private readonly img = h("img", { alt: "" }) as HTMLImageElement;
+  /** The box of what the agent clicked or typed in. */
   private readonly ring = h("div", { class: "bw-ring" });
-  private readonly tag = h("span", { class: "bw-tag" });
-  private readonly note = h("div", { class: "bw-wait", text: t(WATCH_TEXT.waiting) });
+  /** The agent's pointer, and the ripple of its click. */
+  private readonly cursor = h("div", { class: "bw-cursor" }, pointerArt(false), pointerArt(true));
+  private readonly ripple = h("div", { class: "bw-ripple" });
+  /** A page loading: the bar along the top of the picture. */
+  private readonly bar = h("div", { class: "bw-load" }, h("i"));
+  /** Over the picture: what is opening, the tab gone, or why there is no picture. */
+  private readonly note = h("div", { class: "bw-wait" });
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
   private gone = false;
+  /** Pictures that failed in a row. */
+  private fails = 0;
+  /** The click whose ripple was drawn. */
+  private rippled = 0;
   /** In sight on the screen (an IntersectionObserver says): not scrolled away in the chat, nor faded out. */
   private inSight = true;
   private readonly sight: IntersectionObserver | null = null;
@@ -152,15 +213,18 @@ export class LivePicture {
     if (opts.close) buttons.push(iconButton(ICONS.xmark, t(WATCH_TEXT.close), opts.close, true));
     this.liveMark.hidden = true;
     this.ring.hidden = true;
-    this.tag.hidden = true;
+    this.cursor.hidden = true;
+    this.ripple.hidden = true;
+    this.bar.hidden = true;
     this.img.hidden = true;
-    this.shot.append(this.img, this.ring, this.tag);
-    this.page.append(this.shot, this.note);
+    this.shot.append(this.img, this.ring, this.ripple, this.cursor);
+    this.page.append(this.shot, this.bar, this.note);
     this.el = h("div", { class: opts.small ? "bw-frame small" : "bw-frame" },
       h("div", { class: "bw-bar" }, svg(ICONS.lock, 11, { stroke: 1.8 }), this.url, this.liveMark, ...buttons),
       this.page);
     const tab = browserOf(chatId, agentId);
     if (tab) this.drawAddress(tab.host ? `https://${tab.host}/` : "");
+    this.say(tab?.host ? t(WATCH_TEXT.loading, { host: tab.host }) : "", true);
     if (typeof IntersectionObserver !== "undefined") {
       this.inSight = false;
       this.sight = new IntersectionObserver((seen) => {
@@ -203,20 +267,26 @@ export class LivePicture {
     let wait = this.opts.small ? SMALL_FRAME_MS : FRAME_MS;
     try {
       const f = await Bridge.browserFrame(this.chatId, this.agentId);
-      if (f?.opening) this.waiting(f);
+      this.fails = 0;
+      if (f?.opening) this.opening(f);
       else if (f) this.draw(f);
     } catch (err) {
       // Only a tab that is gone stops the pictures: a page changing, or one
-      // too busy to answer, keeps the last picture and is asked again.
+      // too busy to answer, keeps the last picture and is asked again; after
+      // a few in a row the picture says why.
       if (String(err).includes(NO_TAB) || !browserOf(this.chatId, this.agentId)) {
         this.gone = true;
         this.liveMark.hidden = true;
         this.ring.hidden = true;
-        this.tag.hidden = true;
-        this.note.textContent = t(WATCH_TEXT.closed);
-        this.note.hidden = false;
+        this.cursor.hidden = true;
+        this.bar.hidden = true;
+        this.say(t(WATCH_TEXT.closed), !this.last);
       } else {
         wait = RETRY_MS;
+        if (++this.fails >= FAILS_SHOWN) {
+          const error = String(err).replace(/^Error:\s*/, "").trim();
+          this.say(t(WATCH_TEXT.noPicture, { error }), !this.last);
+        }
       }
     } finally {
       this.busy = false;
@@ -229,18 +299,36 @@ export class LivePicture {
     }
   }
 
-  /** A tab still opening: its address, no picture yet. */
-  private waiting(f: BrowserFrame) {
+  /**
+   * A note over the picture (`plain`: on the dark page, no picture under
+   * it), or none.
+   */
+  private say(text: string, plain = false) {
+    this.note.textContent = text;
+    this.note.hidden = !text;
+    this.note.classList.toggle("plain", plain);
+  }
+
+  /** A tab still opening: its address and what opens, over the last picture, dimmed, if there is one. */
+  private opening(f: BrowserFrame) {
     if (f.url) this.drawAddress(f.url);
-    // The tab already pictured stays; another one's picture isn't this tab's.
-    if (this.last?.tab === f.tab) return;
-    this.last = null;
-    this.img.hidden = true;
-    this.ring.hidden = true;
-    this.tag.hidden = true;
+    const steps = f.steps ?? [];
+    const action = steps[steps.length - 1] ?? null;
+    const shown: BrowserFrame = { ...f, image: "", width: 0, height: 0, scrollY: 0, action, steps };
+    this.loading(true, loadingText(shown));
     this.liveMark.hidden = true;
-    this.note.textContent = t(WATCH_TEXT.waiting);
-    this.note.hidden = false;
+    this.ring.hidden = true;
+    this.cursor.hidden = true;
+    if (!this.last) this.say(loadingText(shown), true);
+    this.opts.onFrame?.(shown);
+  }
+
+  /** The page loading, or not: the last picture dimmed, the bar along its top, and what opens. */
+  private loading(on: boolean, text: string) {
+    this.el.classList.toggle("loading", on);
+    this.bar.hidden = !on;
+    if (on) this.say(text, !this.last);
+    else this.say("");
   }
 
   private drawAddress(url: string) {
@@ -256,27 +344,38 @@ export class LivePicture {
     if (f.width > 0 && f.height > 0) this.shot.style.aspectRatio = `${f.width} / ${f.height}`;
     this.img.src = `data:image/jpeg;base64,${f.image}`;
     this.img.hidden = false;
-    this.note.hidden = true;
     this.liveMark.hidden = false;
-    const box = ringBox(f);
-    this.ring.hidden = !box;
-    if (box) Object.assign(this.ring.style, { left: `${box.left}%`, top: `${box.top}%`, width: `${box.width}%`, height: `${box.height}%` });
-    const said = f.action && f.action.ago <= RING_MS ? actText(f.action) : "";
-    this.tag.hidden = !said || this.opts.small === true;
-    if (said) {
-      this.tag.lastChild?.remove();
-      if (!this.tag.firstChild) this.tag.append(h("i"));
-      this.tag.append(said);
-      // Over the ring, or under it when it is at the top; at the top left without one.
-      const top = box ? (box.top > 8 ? box.top : Math.min(box.top + box.height, 92)) : 2;
-      Object.assign(this.tag.style, { left: `${box ? Math.max(box.left, 1) : 1.5}%`, top: `${top}%` });
-      this.tag.classList.toggle("over", !!box && box.top > 8);
+    this.loading(!!f.loading, f.loading ? loadingText(f) : "");
+    // The box of what it clicked or typed in, while it is recent.
+    const hit = f.action && (f.action.kind === "click" || f.action.kind === "type") ? ringBox(f) : null;
+    this.ring.hidden = !hit;
+    this.ring.classList.toggle("typing", f.action?.kind === "type");
+    if (hit) Object.assign(this.ring.style, { left: `${hit.left}%`, top: `${hit.top}%`, width: `${hit.width}%`, height: `${hit.height}%` });
+    // Its pointer, gliding there (style.css), an I-beam while it types.
+    const at = pointerAt(f);
+    this.cursor.hidden = !at;
+    if (at) {
+      this.cursor.classList.toggle("text", at.text);
+      Object.assign(this.cursor.style, { left: `${at.left}%`, top: `${at.top}%` });
     }
-    this.follow(box);
+    // A new click: its ripple, once.
+    const click = f.action?.kind === "click" && f.action.ago < 2000 ? f.action.seq ?? 0 : 0;
+    if (click && click !== this.rippled && at) {
+      this.rippled = click;
+      Object.assign(this.ripple.style, { left: `${at.left}%`, top: `${at.top}%` });
+      this.ripple.hidden = false;
+      // Again from the start: the animation runs when the class comes back.
+      this.ripple.classList.remove("on");
+      void this.ripple.offsetWidth;
+      this.ripple.classList.add("on");
+    } else if (!at) {
+      this.ripple.hidden = true;
+    }
+    this.follow(hit ?? (at ? { top: at.top, height: 0 } : null));
     this.opts.onFrame?.(f);
   }
 
-  /** A picture cut by its frame (the one under a row) moves so the ring shows. */
+  /** A picture cut by its frame (the one under a row) moves so the pointer shows. */
   private follow(box: { top: number; height: number } | null) {
     const shotH = this.shot.offsetHeight;
     const pageH = this.page.offsetHeight;
@@ -289,6 +388,76 @@ export class LivePicture {
     this.shot.style.transform = offset ? `translateY(${-Math.round(offset)}px)` : "";
   }
 }
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** The agent's pointer: an arrow, or the I-beam of typing, white edged in black as on any screen. */
+function pointerArt(text: boolean): SVGSVGElement {
+  const el = document.createElementNS(SVG_NS, "svg") as SVGSVGElement;
+  el.setAttribute("viewBox", "0 0 24 24");
+  el.setAttribute("class", text ? "bw-ibeam" : "bw-arrow");
+  const shape = (d: string, attrs: Record<string, string>) => {
+    const p = document.createElementNS(SVG_NS, "path");
+    p.setAttribute("d", d);
+    for (const [k, v] of Object.entries(attrs)) p.setAttribute(k, v);
+    el.append(p);
+  };
+  if (text) {
+    const d = "M8 3h3l1 1 1-1h3M8 21h3l1-1 1 1h3M12 4v16";
+    shape(d, { fill: "none", stroke: "#111", "stroke-width": "3.2", "stroke-linecap": "round" });
+    shape(d, { fill: "none", stroke: "#fff", "stroke-width": "1.5", "stroke-linecap": "round" });
+  } else {
+    shape("M4 2.5v17.2l4.6-4.3 2.9 6.6 3.1-1.4-2.9-6.5H18z", { fill: "#fff", stroke: "#111", "stroke-width": "1.4", "stroke-linejoin": "round" });
+  }
+  return el;
+}
+
+/** What the agent does now, with its icon, and in small the steps before: under a picture. */
+export class StepsLine {
+  readonly el: HTMLElement;
+  private readonly icon = h("span", { class: "bw-now-ico" });
+  private readonly now = h("span", { class: "bw-now-text" });
+  private readonly done = h("span", { class: "bw-done" });
+  private drawn = "";
+  private readonly withDone: boolean;
+
+  constructor(withDone = true) {
+    this.withDone = withDone;
+    this.el = h("span", { class: "bw-steps" }, h("span", { class: "bw-now" }, this.icon, this.now), this.done);
+    this.el.hidden = true;
+  }
+
+  update(f: BrowserFrame) {
+    const words = stepsText(f);
+    const busy = !!f.opening || !!f.loading;
+    const key = `${words.kind}|${words.now}|${busy}|${f.action?.what ?? ""}|${this.withDone ? words.done.join("|") : ""}`;
+    if (key === this.drawn) return;
+    this.drawn = key;
+    this.el.hidden = !words.now;
+    this.now.textContent = busy && words.kind === "open" ? `${words.now}…` : words.now;
+    clear(this.icon);
+    const up = words.kind === "scroll" && (f.steps?.[f.steps.length - 1] ?? f.action)?.what === "up";
+    this.icon.className = `bw-now-ico ${busy ? "busy" : words.kind}${up ? " up" : ""}`;
+    const path = STEP_ICONS[words.kind];
+    if (!busy && path) this.icon.append(svg(path, 12, { stroke: 1.8 }));
+    clear(this.done);
+    this.done.hidden = !this.withDone || !words.done.length;
+    if (!this.withDone) return;
+    words.done.forEach((w, i) => {
+      if (i) this.done.append(h("em", { text: "›" }));
+      this.done.append(h("span", {}, svg(ICONS.check, 9, { stroke: 2 }), w));
+    });
+  }
+}
+
+/** Each kind of step's icon (stroked); "open" turns while the page loads. */
+const STEP_ICONS: Record<string, string> = {
+  click: ICONS.pointer,
+  type: ICONS.keyboard,
+  read: ICONS.eye,
+  scroll: ICONS.scrollDown,
+  open: ICONS.globe,
+};
 
 function iconButton(path: string, title: string, run: () => void, filled = false): HTMLElement {
   return h("button", {
@@ -329,7 +498,7 @@ export interface InlineActions {
 
 /** The agent whose picture is open under its row: one at a time. */
 let watching: { chatId: string; agentId: string } | null = null;
-let inline: { chatId: string; agentId: string; el: HTMLElement; live: LivePicture; acts: InlineActions; foot: HTMLElement } | null = null;
+let inline: { chatId: string; agentId: string; el: HTMLElement; live: LivePicture; acts: InlineActions; foot: HTMLElement; steps: StepsLine } | null = null;
 
 export function isWatching(chatId: string, agentId: string): boolean {
   return watching?.chatId === chatId && watching.agentId === agentId;
@@ -349,22 +518,24 @@ export function mountInline(slot: HTMLElement, chatId: string, agentId: string, 
   if (!isWatching(chatId, agentId)) return;
   if (!inline || inline.chatId !== chatId || inline.agentId !== agentId) {
     inline?.live.drop();
-    const live = new LivePicture(chatId, agentId, { enlarge: () => openBrowserView(chatId, agentId) });
+    const steps = new StepsLine();
+    const live = new LivePicture(chatId, agentId, { enlarge: () => openBrowserView(chatId, agentId), onFrame: (f) => steps.update(f) });
     const foot = h("div", { class: "bw-foot" });
-    inline = { chatId, agentId, live, acts, foot, el: h("div", { class: "bw-inline" }, live.el, foot) };
+    inline = { chatId, agentId, live, acts, foot, steps, el: h("div", { class: "bw-inline" }, live.el, foot) };
   }
   inline.acts = acts;
-  drawFoot(inline.foot, acts);
+  drawFoot(inline.foot, acts, inline.steps);
   if (inline.el.parentElement !== slot) slot.append(inline.el);
   inline.live.ensure();
 }
 
-function drawFoot(foot: HTMLElement, acts: InlineActions) {
+function drawFoot(foot: HTMLElement, acts: InlineActions, steps: StepsLine) {
   const key = `${!!acts.ask}|${!!acts.stop}`;
   if (foot.dataset.key === key) return;
   foot.dataset.key = key;
   clear(foot);
-  foot.append(h("span", { class: "bw-note", text: t(WATCH_TEXT.onlyWatch) }));
+  // What the agent does; before the first picture, what the picture is.
+  foot.append(steps.el, h("span", { class: "bw-note", text: t(WATCH_TEXT.onlyWatch) }));
   if (acts.ask) foot.append(smallButton("ask", tc(WATCH_TEXT.ask), () => inline?.acts.ask?.()));
   if (acts.stop) foot.append(smallButton("stop", tc(WATCH_TEXT.stop), () => inline?.acts.stop?.()));
 }
@@ -474,12 +645,11 @@ export function buildBrowserView(actions: ViewActions): ViewHost {
       return;
     }
     if (one) {
-      const words = h("span", { class: "bw-note now" });
+      const steps = new StepsLine();
+      const words = h("span", { class: "bw-note now" }, steps.el);
       const live = new LivePicture(chatId, one.agent, {
         close: () => actions.setView("prompt"),
-        onFrame: (f) => {
-          words.textContent = actText(f.action);
-        },
+        onFrame: (f) => steps.update(f),
       });
       shown.set(one.agent, live);
       body.className = "bw-body one";
@@ -493,12 +663,11 @@ export function buildBrowserView(actions: ViewActions): ViewHost {
     body.className = "bw-body all";
     body.style.setProperty("--bw-cols", String(Math.min(list.length, 3)));
     for (const x of list) {
-      const words = h("span", { class: "bw-cap-now" });
+      const steps = new StepsLine(false);
+      const words = h("span", { class: "bw-cap-now" }, steps.el);
       const live = new LivePicture(chatId, x.agent, {
         small: true,
-        onFrame: (f) => {
-          words.textContent = actText(f.action);
-        },
+        onFrame: (f) => steps.update(f),
       });
       shown.set(x.agent, live);
       const tile = h("div", { class: "bw-tile", onclick: () => {

@@ -291,6 +291,12 @@ flow(G, "Watch: a live picture of the tab for the island, the last action ringed
   assert.equal(f.action?.kind, "click", "the last thing the agent did");
   assert.equal(f.action.what, "Go", "named as on the page");
   assert.ok(f.action.rect && f.action.rect.w > 0 && f.action.rect.h > 0, "with the box it hit, for the ring");
+  assert.ok(f.action.point && f.action.point.x > 0 && f.action.point.y > 0, "and the point the pointer went to");
+  const kinds = (f.steps ?? []).map((x) => x.kind);
+  step(`the steps told: ${kinds.join(", ")}`);
+  assert.equal(kinds.at(-1), "click", "the steps end with it");
+  assert.ok(kinds.includes("read"), "a read is a step the island tells (Reads the page)");
+  assert.equal(typeof f.loading, "boolean", "whether a page is loading");
   const jpg = join(OUT, "shots", "agent-browser-watch.jpg");
   mkdirSync(dirname(jpg), { recursive: true });
   writeFileSync(jpg, Buffer.from(f.image, "base64"));
