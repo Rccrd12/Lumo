@@ -1425,7 +1425,7 @@ test("Gemini Live's card to open a web page shows its whole address", () => {
   assert.equal(State.pendingApproval?.reason, "Open this page in the browser");
 });
 
-// ── An email the AI wants to send (mail.rs send) ─────────────────────────────
+// ── An email the AI wants to send (mail_send.rs send) ────────────────────────
 
 test("an email to send is its own card, whole, and never answered by itself", () => {
   const email = {
@@ -1459,7 +1459,7 @@ test("an email's files come with it, and anything that is not one is left out", 
   assert.deepEqual(State.pendingApproval.email.attachments, [], "none");
 });
 
-// ── A change the AI wants to make to an email (mail.rs manage) ───────────────
+// ── A change the AI wants to make to an email (mail_agents.rs manage) ────────
 
 test("a change to an email is a card of its own, saying what and to which email, never answered by itself", () => {
   State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto", quickApprovals: true };

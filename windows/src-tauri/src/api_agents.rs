@@ -212,8 +212,9 @@ impl Drop for Rows {
 /// The run of one call of run_agents for the chat `chat` (`source`: the
 /// provider, for the island's thresholds), each task by `turn`, all at once.
 /// What goes back to the model: each agent's report, under its title.
-/// `limit`: how many run at once (a local model's server answers one at a
-/// time); the others wait in line, and say so.
+/// `limit`: how many run at once (a local model's server writes only so many
+/// answers at once: its free slots, local_models.rs `slots`); the others
+/// wait in line, and say so.
 pub async fn run(app: &AppHandle, chat: &str, source: &str, input: &Value, limit: usize, turn: Turn<'_>) -> (String, bool) {
     let tasks = match parse(input) {
         Ok(tasks) => tasks,

@@ -514,7 +514,7 @@ pub async fn save_attachment(id: String, which: Option<serde_json::Value>) -> Re
     .await?;
     let saved = crate::files::write_in(&name, &bytes)?;
     log::line(format!("[outlook] a file of an email saved for the chat ({} bytes)", saved.size));
-    // What the agent is told: mail.rs saved_text, in its chat's folder.
+    // What the agent is told: mail_agents.rs saved_text, in its chat's folder.
     Ok(saved)
 }
 
@@ -656,7 +656,7 @@ fn fill(item: &Disp, account: Option<Account>, draft: &Draft, subject: &str, tex
     Ok(Made { token: 0, from, to, cc, subject, body, files })
 }
 
-/// The email as the user left it on its card (mail.rs outlook_revision),
+/// The email as the user left it on its card (mail_send.rs outlook_revision),
 /// checked: who it goes to, the subject, the text when it changed, the files
 /// left out and the paths added with Attach.
 pub struct Revision {
