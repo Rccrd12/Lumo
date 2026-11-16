@@ -12,6 +12,8 @@
 // again a few minutes later, and so is an Outlook started with no window that
 // went away (an Office update, a crash): the user didn't close it. An Outlook
 // whose window the user closed stays closed until the Email view asks for it.
+// A click on Open Outlook, or on an Outlook email's Open, starts it too, with
+// its window, switch or not.
 //
 // It reads as the IMAP side does (mail.rs): the newest unread emails of each
 // account's inbox for the island, and for the agents the newest emails of a
@@ -49,6 +51,7 @@ use ::windows::Win32::System::Com::{
 use ::windows::Win32::System::Ole::{GetActiveObject, DISPID_PROPERTYPUT};
 use ::windows::Win32::System::Time::TzSpecificLocalTimeToSystemTime;
 use ::windows::Win32::System::Variant::{VARIANT, VT_DATE, VT_DISPATCH};
+use ::windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY};
 
 use crate::log;
 use crate::mail::{Found, Message};
@@ -913,25 +916,54 @@ fn target(app: &Disp, item: &Disp, change: &Change) -> Result<Place, String> {
 // ── Opening in Outlook ────────────────────────────────────────────────────────
 
 /// The island's "Open" on an Outlook email (`lumo-outlook:12`), or on the
-/// pill (`lumo-outlook:inbox`): shown in Outlook, if it is running.
+/// pill and the Email view (`lumo-outlook:inbox`): shown in Outlook, which is
+/// started first when it is closed.
 pub fn open(link: &str) {
     let what = link.trim_start_matches(LINK_PREFIX).to_string();
+    // The click gave Lumo the foreground: Outlook may take it for its window,
+    // rather than only blink in the taskbar.
+    let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
     tauri::async_runtime::spawn(async move {
-        let shown = with_outlook(STEP, move |s| {
+        let shown = with_outlook(SLOW_STEP, move |s| {
+            // Closed, it is started for the click (with a window, below),
+            // whatever "Open Outlook if it's closed" says: the user asked for it.
+            if s.app()?.is_none() {
+                s.start()?;
+                log::line("[outlook] started to show the inbox or an email");
+            }
             let app = s.running()?;
             if what == "inbox" {
                 let inbox = app.obj("Session")?.call("GetDefaultFolder", vec![FOLDER_INBOX.into()])?.dispatch()?;
-                inbox.call("Display", vec![])?;
+                show_inbox(&app, &inbox)?;
             } else {
                 item_of(&app, &format!("{ID_PREFIX}{what}"))?.call("Display", vec![])?;
             }
             Ok(())
         })
         .await;
-        if let Err(e) = shown {
-            log::line(format!("[outlook] open: {e}"));
+        match shown {
+            // The island and the Email view read it at once.
+            Ok(()) => wake(),
+            Err(e) => log::line(format!("[outlook] open: {e}")),
         }
     });
+}
+
+/// The inbox in Outlook's window: the one open, brought back and to the
+/// front, else a new one (an Outlook started in the background has none).
+fn show_inbox(app: &Disp, inbox: &Disp) -> Result<(), String> {
+    const MINIMIZED: i32 = 1;
+    const NORMAL: i32 = 2;
+    let Ok(explorer) = app.call("ActiveExplorer", vec![]).and_then(|v| v.dispatch()) else {
+        inbox.call("Display", vec![])?;
+        return Ok(());
+    };
+    explorer.put_ref("CurrentFolder", inbox.clone_variant())?;
+    if explorer.int("WindowState") == Ok(MINIMIZED) {
+        let _ = explorer.put("WindowState", NORMAL.into());
+    }
+    explorer.call("Activate", vec![])?;
+    Ok(())
 }
 
 // ── The thread that talks to Outlook ──────────────────────────────────────────
