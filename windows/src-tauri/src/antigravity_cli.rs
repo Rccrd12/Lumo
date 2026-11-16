@@ -295,6 +295,11 @@ fn activity_for(name: &str, params: &Value) -> Activity {
         return Activity::new("edit", path());
     }
     if has(&["view", "read", "open"]) {
+        // How an MCP tool is called (agy's mcp\<server>\<tool>.json), read
+        // before calling it: getting ready, not a file of the chat's.
+        if mcp_schema(&field(&["AbsolutePath", "FilePath", "TargetFile", "File", "Path", "file_path", "path"])) {
+            return Activity::thinking();
+        }
         let file = path();
         return if is_screenshot(&file) { Activity::new("screen", "") } else { Activity::new("read", file) };
     }
@@ -365,6 +370,13 @@ fn touch_for(name: &str, params: &Value) -> Option<FileTouch> {
         return FileTouch::new("read", path);
     }
     None
+}
+
+/// The description agy keeps of an MCP server's tool, which a model reads
+/// before calling it (`.gemini\antigravity-cli\mcp\lumo\browser_open.json`).
+fn mcp_schema(path: &str) -> bool {
+    let p = path.replace('\\', "/").to_ascii_lowercase();
+    agy_own(path) && p.contains("/mcp/") && p.ends_with(".json")
 }
 
 /// A file of agy's own (its `.gemini` folder: settings, logs, what Lumo's
@@ -2411,6 +2423,10 @@ mod tests {
         assert_eq!(a("mcp_lumo_browser_open", json!({ "url": "example.com" })), Activity::new("read", "example.com"));
         assert_eq!(a("call_mcp_tool", json!({ "ServerName": "github", "ToolName": "create_issue" })), Activity::new("tool", "create issue"));
         assert_eq!(a("call_mcp_tool", json!({})), Activity::new("tool", "call mcp tool"), "before the parameters are known");
+        // Reading how to call a tool, before calling it: getting ready, not a file.
+        let schema = json!({ "Path": "C:\\Users\\me\\.gemini\\antigravity-cli\\mcp\\lumo\\browser_close.json" });
+        assert_eq!(a("read_file", schema), Activity::thinking());
+        assert_eq!(a("read_file", json!({ "Path": "C:\\work\\mcp\\lumo\\browser_close.json" })), Activity::new("read", "browser_close.json"), "the chat's own file");
         // Another server's tool named like Lumo's is not Lumo's browser.
         assert_eq!(browser_call("call_mcp_tool", &json!({ "ServerName": "github", "ToolName": "browser_open", "Arguments": { "url": "x.com" } })), None);
         assert_eq!(browser_call("call_mcp_tool", &open), Some(("browser_open", json!({ "url": "https://www.borsaitaliana.it/indici" }))));
