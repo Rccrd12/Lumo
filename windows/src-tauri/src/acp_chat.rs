@@ -755,7 +755,7 @@ struct Run {
 }
 
 impl Run {
-    /// The text of the message being written: what the island shows.
+    /// The text of the message being written.
     fn visible(&self) -> &str {
         self.messages.last().map(String::as_str).unwrap_or("")
     }
@@ -765,9 +765,15 @@ impl Run {
         self.messages.join("\n")
     }
 
-    /// The answer: the CLI's last message.
+    /// The CLI's last message: the supervisor's answer (tool_review.rs).
     fn answer(&self) -> String {
         self.visible().trim().to_string()
+    }
+
+    /// Every message of the turn, one paragraph each: what the island shows,
+    /// and the chat's answer. The sentences written before the tools stay.
+    fn shown(&self) -> String {
+        chat::join_shown(self.messages.iter().map(String::as_str))
     }
 
     /// More of the answer's text; true when the visible text changed.
@@ -1509,7 +1515,7 @@ fn live_turn(
         if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) {
             unsent = false;
             last_emit = Instant::now();
-            on_text(state.visible());
+            on_text(&state.shown());
         }
         if let Some(activity) = activity {
             on_activity(&activity);
@@ -1522,7 +1528,7 @@ fn live_turn(
         }
     };
     if unsent && !state.stopped {
-        on_text(state.visible());
+        on_text(&state.shown());
     }
     for touch in noted.into_iter().chain(state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir))) {
         on_file(&touch);
@@ -1703,7 +1709,7 @@ pub async fn send(
     }
     let plain = chat::plain_question(true, context.as_ref(), &query);
     if state.stopped {
-        let shown = state.answer();
+        let shown = state.shown();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
         }
@@ -1712,7 +1718,8 @@ pub async fn send(
     if let Some(Err(e)) = &state.done {
         return Err(e.clone());
     }
-    let answer = chat::keep_lumo_lines(state.answer(), &state.said());
+    // Every message it wrote, not only the last: none disappears once the answer is saved.
+    let answer = chat::keep_lumo_lines(state.shown(), &state.said());
     if answer.trim().is_empty() {
         crate::log::line(format!("{}: empty answer ({}); {} declined", agent.tag(), state.stop_reason, state.denied));
         let why = match state.stop_reason.as_str() {
@@ -1804,6 +1811,8 @@ mod tests {
         assert!(feed(&mut run, json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": "Done." } })));
         assert_eq!(run.answer(), "Done.");
         assert_eq!(chat::keep_lumo_lines(run.answer(), &run.said()).trim_end(), "Done.\n[[timer 60s: tea]]");
+        // The chat shows and keeps every message: the one before the tools too.
+        assert_eq!(run.shown(), "Let me check. [[timer 60s: tea]]\n\nDone.");
         // A picture or anything but text is not the answer.
         assert!(!feed(&mut run, json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "image", "data": "x" } })));
         assert!(!feed(&mut run, json!({ "sessionUpdate": "available_commands_update", "availableCommands": [] })));

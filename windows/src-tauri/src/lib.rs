@@ -764,6 +764,8 @@ async fn chat_send(
     screen: Option<screen::ScreenContext>,
     provider: Option<String>,
     model: Option<String>,
+    permission_mode: Option<String>,
+    permission_mode_agy: Option<String>,
 ) -> Result<ChatReply, String> {
     // Held until the answer is done: the user can move to another chat, and
     // this one keeps being answered in the background.
@@ -772,8 +774,14 @@ async fn chat_send(
     chats.unpin(&chat_id);
     // The settings as they are now: a model, effort or permission picked
     // while this answer is written goes with the next message. The chat's own
-    // provider and model, when the page names them, answer it.
+    // provider and model, when the page names them, answer it; so do its own
+    // permissions, kept for its computer use turns too (computer.rs).
+    let permissions = chat::permissions_of(permission_mode.as_deref(), permission_mode_agy.as_deref());
+    if permissions.is_some() {
+        chat::set_chat_permissions(&chat_id, permissions.clone());
+    }
     let settings = chat::with_pick(shared.settings.lock().unwrap().clone(), provider.as_deref(), model.as_deref());
+    let settings = chat::with_permissions(settings, permissions.as_ref());
     // The screenshots stay in the inbox with the chat that sent them, like its
     // dropped files: its question shows them, and editing it sends them again.
     // They go when the chat is deleted (files.rs release), or with the inbox's
@@ -904,9 +912,17 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
 /// agents it started with it (each provider tells the island they ended).
 #[tauri::command]
 fn chat_close(chat_id: String) {
+    chat::set_chat_permissions(&chat_id, None);
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
     acp_chat::close(&chat_id);
+}
+
+/// The shield picked another mode in chat `chat_id`: from now on its turns,
+/// and a computer use turn of it still at work, go by it (computer.rs).
+#[tauri::command]
+fn chat_permissions(chat_id: String, permission_mode: Option<String>, permission_mode_agy: Option<String>) {
+    chat::set_chat_permissions(&chat_id, chat::permissions_of(permission_mode.as_deref(), permission_mode_agy.as_deref()));
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then
@@ -1536,6 +1552,7 @@ pub fn run() {
             unsloth_studio_stop,
             chat_reset,
             chat_close,
+            chat_permissions,
             chat_restore,
             chat_load,
             chat_compact,

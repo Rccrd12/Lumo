@@ -4,44 +4,64 @@
 use serde_json::{json, Value};
 
 /// Whether the user asks for a change to a file (or for something written).
+/// A word said not to be done ("Non modificare niente") asks for nothing.
 pub fn asks_change(query: &str) -> bool {
-    let q = query.to_lowercase();
-    [
+    said(query, &[
         "modific", "scriv", "aggiung", "cambi", "cancell", "rimuov", "togli", "salva", "corregg", "sistem", "aggiorn", "riscriv", "allung", "accorc",
         "edit", "write", "add ", "change", "delete", "remove", "save", "fix", "update", "rewrite", "modif", "écri", "ajout", "escrib", "añad", "cambia",
-    ]
-    .iter()
-    .any(|w| q.contains(w))
+    ])
 }
 
-/// Whether an answer says, in the first person, that a file was changed.
+/// Whether an answer says, in the first person, that a file was changed
+/// ("non ho modificato nulla" says it wasn't).
 pub fn claims_change(text: &str) -> bool {
-    let t = text.to_lowercase();
-    [
+    said(text, &[
         "ho modificato", "ho scritto", "ho salvato", "ho aggiornato", "ho aggiunto", "ho sovrascritto", "ho cancellato", "ho riscritto", "ho corretto",
         "è stato modificato", "è stata modificata", "è stato aggiornato", "è stata aggiornata",
         "i modified", "i've modified", "i have modified", "i updated", "i've updated", "i have updated", "i wrote", "i've written", "i saved",
         "i've saved", "i added", "i've added", "i changed", "i've changed", "has been updated", "has been modified", "j'ai modifié", "he modificado",
-    ]
-    .iter()
-    .any(|w| t.contains(w))
+    ])
 }
 
 /// Whether an answer says, in the first person, that something was done:
 /// a file changed, a timer set, a folder listened to, a mail written.
 pub fn claims_done(text: &str) -> bool {
-    let t = text.to_lowercase();
     claims_change(text)
-        || [
+        || said(text, &[
             "ho impostato", "ho attivato", "ho messo", "ho creato", "ho programmato", "ho iniziato", "ho avviato", "ho preparato", "ho inviato", "ho mandato",
             "ti avviserò", "ti avviso io", "i've set", "i have set", "i set up", "i've created", "i created", "i've started", "i started", "i'll let you know",
             "i will let you know", "i'll notify", "i've sent", "i sent",
             // A search said made with no call ("I searched in three languages, nothing").
             "ho cercato", "ho fatto una ricerca", "ho fatto diverse ricerche", "ho fatto delle ricerche", "ho riprovato a cercare", "i searched",
             "i've searched", "i have searched", "i looked it up",
-        ]
-        .iter()
-        .any(|w| t.contains(w))
+        ])
+}
+
+/// The words that say a thing is not so, or not to be done.
+const NEGATIONS: &[&str] = &[
+    "non", "nessun", "nessuno", "nessuna", "niente", "nulla", "senza", "né", "mai", "nemmeno", "neanche", "neppure", "not", "no", "never", "nothing",
+    "none", "nor", "neither", "without", "pas", "rien", "jamais", "sans", "ni", "sin", "nunca", "nada", "ningún", "ninguno", "ninguna",
+];
+
+/// The words that open a clause of their own, as a comma does ("Non ho
+/// toccato i test ma ho corretto il bug").
+const BUT: &[&str] = &["ma", "però", "but", "however", "mais", "pero"];
+
+/// Whether `text` says one of `words` (lowercase; parts of words too), and
+/// not after a negation of its own clause: "Non modificare niente" doesn't
+/// ask for a change, "Ho corretto i bug, non ho modificato i test" says one.
+fn said(text: &str, words: &[&str]) -> bool {
+    let t = text.to_lowercase();
+    words.iter().any(|w| t.match_indices(w).any(|(at, _)| !negated(&t[..at])))
+}
+
+/// Whether the clause that `before` ends with (from the last , . ; : ! ? or
+/// line break, or the last "but") has a negation in it.
+fn negated(before: &str) -> bool {
+    let clause = before.rsplit([',', '.', ';', ':', '!', '?', '\n']).next().unwrap_or_default();
+    let words: Vec<&str> = clause.split(|c: char| !(c.is_alphanumeric() || c == '\'' || c == '’')).filter(|w| !w.is_empty()).collect();
+    let clause = words.rsplit(|w| BUT.contains(w)).next().unwrap_or_default();
+    clause.iter().any(|w| NEGATIONS.contains(w) || w.ends_with("n't") || w.ends_with("n’t"))
 }
 
 /// Whether a short answer only says what the model is about to do ("Let me
@@ -249,6 +269,29 @@ mod tests {
         assert_eq!(answer_room(0, 100), 8_192);
         assert_eq!(answer_room(32_768, 2_768), 24_000);
         assert_eq!(answer_room(8_192, 7_000), 2_048);
+    }
+
+    #[test]
+    fn a_change_said_not_to_be_made_or_not_made_is_no_change() {
+        // A change the user says not to make, and an answer that says none was made.
+        assert!(!asks_change("Leggi il progetto in C:\\Users\\r\\lumo-bench e spiegami cosa fa, file per file. Non modificare niente."));
+        assert!(!asks_change("Don't change anything, just tell me what it does."));
+        assert!(!asks_change("Riassumi il file senza cambiare il resto"));
+        assert!(!asks_change("Do not edit it: read it"));
+        assert!(!claims_change("Ecco cosa fa ogni file. Come richiesto non ho modificato nulla. Se vuoi che sistemi questi bug, dimmelo."));
+        assert!(!claims_change("Nessun file è stato modificato."));
+        assert!(!claims_change("I haven't changed anything, and I didn't save it either."));
+        assert!(!claims_done("Non ho impostato nessun timer."));
+        assert!(!claims_done("No, I've never set one up."));
+        // What is so still counts, next to what isn't.
+        assert!(claims_change("Ho corretto i bug, non ho modificato i test."));
+        assert!(claims_change("Non ho toccato i test ma ho corretto il bug."));
+        assert!(claims_change("I didn't touch the tests. I changed main.rs."));
+        assert!(asks_change("Correggi i bug. Non modificare i file in tests"));
+        assert!(asks_change("Non leggerlo: modificalo"));
+        assert!(claims_done("Non serviva altro; ho impostato il timer."));
+        // A word with a negation inside it is no negation.
+        assert!(claims_change("Nonostante tutto ho modificato il file."));
     }
 
     #[test]

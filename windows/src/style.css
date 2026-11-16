@@ -4975,6 +4975,14 @@ html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
 }
 
+/* Folded, its blocks keep their height and are cut by the fade. A block that
+   scrolls (a table, a formula) would otherwise shrink to fit the 160 px, the
+   question then measure short, open, measure long, fold again, at every
+   frame: two pictures of the log drawn over each other. */
+.bubble-body > * {
+  flex-shrink: 0;
+}
+
 .msg-fold {
   align-self: flex-start;
   margin: 2px 0 1px;

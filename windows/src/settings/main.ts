@@ -754,14 +754,14 @@ function chatUsageSection(): HTMLElement {
 
 const SECURITY = {
   get title() { return t("Security"); },
-  get intro() { return t("What the AI may see and do on its own. Lumo never approves a permission or sends anything for you without your click."); },
+  get intro() { return t("What the AI may see and do on its own."); },
   get onItsOwn() { return t("What it may do on its own"); },
   get permissions() { return t("Default permissions"); },
-  get permissionsHint() { return t("How free Claude Code, Codex and Antigravity CLI are in the chat. The shield in the chat changes it too."); },
-  get computerHint() { return t("Only while it answers, and only once it has shown you its plan: the screen it uses glows, and Esc pauses it. With Ask every time, each click waits for yours."); },
-  get webHint() { return t("For the models that can't search on their own. Free, no account: only the useful passages reach the model."); },
+  get permissionsHint() { return t("How free the agents are in a new chat."); },
+  get computerHint() { return t("Claude uses the mouse and keyboard once it has shown you its plan."); },
+  get webHint() { return t("Lumo searches the web for the models that can't."); },
   get sees() { return t("What it sees with every message"); },
-  get seesHint() { return t("Only the chat's AI gets them. The × on a chip leaves one out of a single message."); },
+  get seesHint() { return t("Lumo adds them to every message in the chat."); },
   get windows() { return t("Open windows"); },
   get windowsHint() { return t("Their titles and the documents they show."); },
   get folders() { return t("File Explorer folders"); },
@@ -769,21 +769,22 @@ const SECURITY = {
   get tabs() { return t("Browser tabs"); },
   get tabsHint() { return t("The tabs open in your browsers."); },
   get accounts() { return t("Your accounts"); },
-  get mailHint() { return t("Each email sent, moved or trashed waits for your click on its card. Nothing is ever deleted for good."); },
+  get mailHint() { return t("What the AI may do with your email."); },
   get calendarHint() { return t("Read your coming events, or nothing."); },
   get outlookStart() { return t("Open Outlook if it's closed"); },
-  get outlookStartHint() { return t("When Lumo starts, it opens classic Outlook in the background, with no window. If you close it yourself, Lumo doesn't open it again until it next starts."); },
-  get githubHint() { return t("Read your pull requests, issues and checks when you ask."); },
+  get outlookStartHint() { return t("Starts Outlook in the background when Lumo starts."); },
+  get githubHint() { return t("Read your pull requests, issues and checks."); },
   get otherFiles() { return t("Other chats' files"); },
-  get otherFilesHint() { return t("Off: Claude Code and Antigravity CLI read only the files and screenshots given to their own chat. On: every file Lumo received in the last 7 days. Gemini Live can read them either way."); },
+  get otherFilesHint() { return t("Agents also read the files given to other chats."); },
   get readAndSend() { return t("Read and send"); },
   get readSendManage() { return t("Read, send and manage"); },
   get readOnly() { return t("Read only"); },
   get noAccess() { return t("No access"); },
   get alwaysOn() { return t("Always on"); },
-  get keys() { return t("Keys and passwords stay in Windows Credential Manager, never in a file."); },
-  get noData() { return t("No usage data: Lumo talks only to the services you set up."); },
-  get pipe() { return t("Only your Windows account can talk to Lumo through the pipe the agents' hooks use."); },
+  get clicks() { return t("Every permission and every send waits for your click."); },
+  get keys() { return t("Keys and passwords stay in Windows Credential Manager."); },
+  get noData() { return t("Lumo talks only to the services you set up."); },
+  get pipe() { return t("Only your Windows account can talk to Lumo."); },
   get updates() { return t("An update is installed only if it matches the one GitHub published."); },
 };
 
@@ -800,12 +801,12 @@ const WEB_SETTINGS = {
 /** The images in the chat's answers (views/rich/image.ts, web_image.rs). */
 const WEB_IMAGES = {
   get label() { return t("Images from the web"); },
-  get hint() { return t("An image in an answer from Wikimedia is shown at once; from any other public https site, after a click on Load image, since the AI writes the address and it could carry what the AI read. An email's images, after a click on Load images: its sender's site then learns it was opened. Off: just its site and a button to open it in the browser."); },
+  get hint() { return t("Shows the images in answers and emails."); },
 };
 
 const MAIL_IMAGES = {
   get label() { return t("Email images always"); },
-  get hint() { return t("An email in the island's Email view shows its images at once, with no click on Load images: its sender's site then learns it was opened. The tracking pixels Lumo recognises are never loaded."); },
+  get hint() { return t("Loads every email's images at once."); },
 };
 
 const COMPUTER_SETTINGS = {
@@ -829,7 +830,7 @@ const BROWSER_SETTINGS = {
  * Island), GitHub's only with its token saved.
  */
 function securitySection(): HTMLElement {
-  // The one mode every CLI starts from (Antigravity CLI keeps its own, picked in the chat).
+  // The mode every new chat starts from (Antigravity CLI keeps its own; the shield in a chat changes that chat's).
   const mode = parsePermissionMode(settings.chatPermissionMode, "claude-code");
   const permissions = select(
     permissionModesFor("claude-code").map((m): [string, string] => [m, t(PERMISSION_NAMES[m])]),
@@ -934,6 +935,7 @@ function securitySection(): HTMLElement {
     githubRow,
     group(SECURITY.alwaysOn),
     h("ul", { class: "always-on" },
+      h("li", { text: SECURITY.clicks }),
       h("li", { text: SECURITY.keys }),
       h("li", { text: SECURITY.noData }),
       h("li", { text: SECURITY.pipe }),

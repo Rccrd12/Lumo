@@ -165,6 +165,12 @@ export interface SavedChat {
   turns: SavedTurn[];
   /** What the user ticked in the chat's checklists (core/checklists.ts), by list. */
   checklists?: ChatChecklists;
+  /**
+   * What the chat's AI may do without asking, picked with the shield in this
+   * chat (chatPermissionsOf); none in a chat where it never was: it goes by
+   * Settings → Security → Default permissions.
+   */
+  permissions?: ChatPermissions;
 }
 
 const KEY = "lumo.chats.v1";
@@ -396,14 +402,68 @@ export function chatModelOf(id: string): ChatModel | null {
 }
 
 /**
+ * A chat's own permissions (the shield, views/chat.ts): the mode every
+ * provider runs with but Antigravity CLI, and Antigravity CLI's own, as the
+ * settings keep them (providers.ts storedPermissionMode, withPermissionMode).
+ */
+export interface ChatPermissions {
+  chatPermissionMode: string;
+  chatPermissionModeAgy: string;
+}
+
+/** Permissions picked in a chat not saved yet (its first answer still being written), until it is. */
+const ownModes = new Map<string, ChatPermissions>();
+
+function permissionsFrom(v: unknown): ChatPermissions | null {
+  if (!v || typeof v !== "object") return null;
+  const p = v as Record<string, unknown>;
+  if (typeof p.chatPermissionMode !== "string") return null;
+  return { chatPermissionMode: p.chatPermissionMode, chatPermissionModeAgy: typeof p.chatPermissionModeAgy === "string" ? p.chatPermissionModeAgy : "" };
+}
+
+/**
+ * The permissions picked with the shield in chat `id`; a saved chat keeps
+ * them where it is, its place in the history does not change.
+ */
+export function setChatPermissions(id: string, permissions: ChatPermissions) {
+  const own = { chatPermissionMode: permissions.chatPermissionMode, chatPermissionModeAgy: permissions.chatPermissionModeAgy ?? "" };
+  ownModes.set(id, own);
+  const list = loadChats();
+  const chat = list.find((c) => c.id === id);
+  if (!chat) return;
+  chat.permissions = own;
+  store(list);
+}
+
+/** The permissions picked in chat `id`, null where none were (it goes by the default). */
+export function chatPermissionsOf(id: string): ChatPermissions | null {
+  const own = ownModes.get(id);
+  if (own) return own;
+  return permissionsFrom(loadChats().find((c) => c.id === id)?.permissions);
+}
+
+/**
+ * What chat `id` may do without asking: its own permissions, else the
+ * default ones of `settings` (Settings → Security → Default permissions),
+ * which a new chat starts with.
+ */
+export function permissionsFor(id: string, settings: ChatPermissions): ChatPermissions {
+  return chatPermissionsOf(id) ?? { chatPermissionMode: settings.chatPermissionMode, chatPermissionModeAgy: settings.chatPermissionModeAgy ?? "" };
+}
+
+/**
  * Saves `chat` (new, or replacing the one with its id) at the top of the
  * list. Its checklists' ticks stay as they were when `chat` brings none, and
- * a provider and model picked in it since win over the ones it brings.
+ * a provider and model picked in it since win over the ones it brings; so do
+ * its own permissions.
  */
 export function saveChat(chat: SavedChat): SavedChat[] {
   const picked = picks.get(chat.id);
   if (picked) chat = { ...chat, provider: picked.provider, model: picked.model };
   const chats = loadChats();
+  const permissions = ownModes.get(chat.id) ?? permissionsFrom(chat.permissions) ?? permissionsFrom(chats.find((c) => c.id === chat.id)?.permissions);
+  ownModes.delete(chat.id);
+  if (permissions) chat = { ...chat, permissions };
   const ticks = chat.checklists ?? chats.find((c) => c.id === chat.id)?.checklists ?? unsaved.get(chat.id);
   unsaved.delete(chat.id);
   const saved = ticks && Object.keys(ticks).length ? { ...chat, checklists: ticks } : chat;
@@ -445,6 +505,7 @@ export function updateChatTurns(id: string, change: (turns: SavedTurn[]) => Save
 export function deleteChat(id: string): SavedChat[] {
   unsaved.delete(id);
   picks.delete(id);
+  ownModes.delete(id);
   const list = loadChats().filter((c) => c.id !== id);
   store(list);
   setCompact(id, null);

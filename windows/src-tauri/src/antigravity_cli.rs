@@ -852,8 +852,13 @@ impl Subagents {
 struct Run {
     /// The conversation to resume next turn.
     conversation: Option<String>,
-    /// The text of the response step being written, for the island.
+    /// The text of the response step being written.
     visible: String,
+    /// Every response step of the turn so far, one paragraph each: what the
+    /// island shows (chat::add_shown), the sentences before the tools too.
+    shown: String,
+    /// The next text starts a step of its own in `shown`.
+    new_step: bool,
     /// Every text of the turn, each step on its own lines (chat::keep_lumo_lines).
     said: String,
     /// The `step_index` `visible` belongs to.
@@ -993,14 +998,16 @@ impl Run {
                     }
                     return false;
                 }
-                // A new response step: the island shows it, not the one before.
+                // A new response step: shown after the ones before, which stay.
                 if self.text_step != Some(index) {
                     self.text_step = Some(index);
                     self.visible.clear();
                     self.said.push('\n');
+                    self.new_step = true;
                 }
                 self.visible.push_str(text);
                 self.said.push_str(text);
+                chat::add_shown(&mut self.shown, text, &mut self.new_step);
                 // The text shows instead: a later tool step is news again.
                 self.activity = None;
                 self.activity_changed = false;
@@ -1368,7 +1375,7 @@ fn run(
                 if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) {
                     unsent = false;
                     last_emit = Instant::now();
-                    on_text(&state.visible);
+                    on_text(&state.shown);
                 }
                 if let Some(activity) = activity {
                     on_activity(&activity);
@@ -1633,7 +1640,7 @@ pub async fn send(
         }
     }
     if state.stopped {
-        let shown = state.visible.trim().to_string();
+        let shown = state.shown.trim().to_string();
         if !shown.is_empty() {
             chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
         } else if recap.is_some() {
@@ -1647,14 +1654,13 @@ pub async fn send(
     }
     let mut warning = None;
     let answer = match state.result {
-        // The result repeats the answer; should it come back empty, what was
-        // streamed is the answer.
-        Some(Ok(text)) if text.trim().is_empty() => state.visible.trim().to_string(),
-        Some(Ok(text)) => text,
+        // The result repeats the last step; every step it wrote goes before
+        // it, so none disappears once the answer is saved (empty: what was streamed).
+        Some(Ok(text)) => chat::turn_answer(&state.shown, &state.visible, &text),
         // An error with an answer written: the answer stays, the error is
         // said under it (kept_answer). Without one, or signed out, the error alone.
         Some(Err(e)) => {
-            let Some(written) = kept_answer(&e, &state.failed_response, &state.visible) else {
+            let Some(written) = kept_answer(&e, &state.failed_response, &state.visible).map(|w| chat::turn_answer(&state.shown, &state.visible, &w)) else {
                 return failed(result_error(&e), recap);
             };
             warning = Some(answer_warning(&e));
@@ -2186,7 +2192,10 @@ mod tests {
         }
         assert_eq!(changed, [false, false, true, true, false, true, false, false]);
         assert_eq!(run.conversation.as_deref(), Some(CID));
-        assert_eq!(run.visible, "The PDF says hi.", "a new response step replaces the one before");
+        assert_eq!(run.visible, "The PDF says hi.");
+        // The step before the tools stays shown, and in the answer.
+        assert_eq!(run.shown, "Let me read it.\n\nThe PDF says hi.", "a new response step goes after the one before");
+        assert_eq!(chat::turn_answer(&run.shown, &run.visible, "The PDF says hi."), "Let me read it.\n\nThe PDF says hi.");
         assert_eq!(run.result, Some(Ok("The PDF says hi.".into())));
         assert_eq!(run.denied, 0);
     }
