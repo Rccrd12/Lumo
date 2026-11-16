@@ -384,9 +384,12 @@ pub async fn frame(app: &AppHandle, chat: &str, agent: &str) -> Result<Value, St
     let at = match eval(&win, FRAME_JS).await {
         Ok(at) if at.is_array() => at,
         _ => {
+            // The window's own size, scrollbar included as in the picture
+            // (DevTools' viewport leaves it out).
             let m = cdp(&win, "Page.getLayoutMetrics", json!({}), STEP).await.unwrap_or(Value::Null);
-            let v = &m["cssVisualViewport"];
-            json!([v["clientWidth"], v["clientHeight"], v["pageY"], known.title, known.url])
+            let scale = win.scale_factor().unwrap_or(1.0);
+            let (w, h) = win.inner_size().map(|s| (f64::from(s.width) / scale, f64::from(s.height) / scale)).unwrap_or((0.0, 0.0));
+            json!([w, h, m["cssVisualViewport"]["pageY"], known.title, known.url])
         }
     };
     Ok(frame_json(n, &at, image, act.as_ref(), Instant::now()))

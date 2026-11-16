@@ -115,22 +115,26 @@ test("a picture is asked only while it is on screen in the open island, one afte
   fail = false;
   await new Promise((r) => setTimeout(r, 1600));
   assert.equal(busy.el.find("IMG")[0].src, "data:image/jpeg;base64,BBBB", "asked again after a while");
+  // It fails again with a picture shown: that picture stays.
+  fail = true;
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(busy.el.find("IMG")[0].src, "data:image/jpeg;base64,BBBB");
+  assert.equal(busy.el.find("IMG")[0].hidden, false, "the last picture stays");
+  assert.notEqual(busy.el.querySelector(".bw-wait").textContent, "The tab has closed.");
   busy.drop();
-  // A tab still opening: its address, and waiting for the page.
+  // The agent opens another tab, still being built: its address, waiting
+  // for the page, and not the last tab's picture under it.
   internals.invoke = async (cmd, args) => {
     if (cmd !== "chat_browser_frame") return plain(cmd, args);
     frames.push(args);
     return { tab: 2, opening: true, url: "https://example.com/new", host: "example.com", title: "" };
   };
-  const opening = new LivePicture("c", "a1");
-  opening.el.isConnected = true;
-  opening.el.closest = onScreen;
-  opening.ensure();
+  busy.ensure();
   await new Promise((r) => setTimeout(r, 0));
-  assert.equal(opening.el.querySelector(".bw-wait").textContent, "Waiting for the page…");
-  assert.equal(opening.el.querySelector(".bw-url").textContent, "example.com/new");
-  assert.equal(opening.el.find("IMG")[0].hidden, true);
-  opening.drop();
+  assert.equal(busy.el.querySelector(".bw-wait").textContent, "Waiting for the page…");
+  assert.equal(busy.el.querySelector(".bw-url").textContent, "example.com/new");
+  assert.equal(busy.el.find("IMG")[0].hidden, true, "tab 1's picture isn't tab 2's");
+  busy.drop();
   // A tab that closed: said so, and nothing more asked.
   const askedBefore = frames.length;
   internals.invoke = async (cmd, args) => {
@@ -178,6 +182,11 @@ test("the agents' browser: a tab per agent and All; one large with its name, or 
   applyBrowserTabs({ tabs: [tab("c", "a2", 3, "booking.example"), tab("c", "a1", 4, "rooms.example"), tab("c", "a3", 6, "trips.example")] });
   browserTabsChanged();
   assert.deepEqual(view.el.querySelector(".bw-seg").find(".mv-seg-btn").map((b) => b.textContent), ["booking.example", "rooms.example", "trips.example", "All"]);
+  applyBrowserTabs({ tabs: [tab("c", "a2", 3, "booking.example"), tab("c", "a1", 4, "rooms.example")] });
+  browserTabsChanged();
+  applyBrowserTabs({ tabs: [tab("c", "a2", 3, "booking.example"), tab("c", "a1", 4, "flats.example")] });
+  browserTabsChanged();
+  assert.deepEqual(view.el.querySelector(".bw-seg").find(".mv-seg-btn").map((b) => b.textContent), ["booking.example", "flats.example", "All"], "a tab on another site: its new name");
   applyBrowserTabs({ tabs: [tab("c", "a2", 3, "booking.example"), tab("c", "a1", 4, "rooms.example")] });
   browserTabsChanged();
   // × goes back to the chat.

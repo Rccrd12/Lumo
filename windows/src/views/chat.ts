@@ -4849,12 +4849,15 @@ export function buildPrompt(
       State.notify();
       askAgent(chatId, { agentId, title: row.title, line: row.now ? activityLabel(row.now) : "", look: "working" });
     },
-    // As Stop on its row: back to the chat, where the row says it stops and offers Undo.
+    // As Stop on its row: back to the chat, where the row says it stops and
+    // offers Undo. Another chat's agent (not on screen to undo) stops at once.
     stop: (chatId, agentId) => {
-      if (chatId === State.chatId && editing == null) {
-        State.view = "prompt";
-        State.notify();
+      if (chatId !== State.chatId) {
+        agentsHost(chatId).stop(agentId);
+        return;
       }
+      State.view = "prompt";
+      State.notify();
       stopLater(chatId, agentId, agentsHost(chatId), () => drawAgents(chatId));
     },
   });

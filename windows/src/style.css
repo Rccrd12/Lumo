@@ -10066,14 +10066,19 @@ button.bg-row:hover {
 .bw-body.all {
   display: grid;
   grid-template-columns: repeat(var(--bw-cols, 3), minmax(0, 1fr));
-  align-content: start;
+  /* A row as tall as the view holds, its pages cut to fit when too tall; more rows scroll. */
+  grid-auto-rows: minmax(150px, 1fr);
+  align-items: start;
   gap: 10px;
+  overflow-y: auto;
 }
 
 .bw-tile {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  max-height: 100%;
   border-radius: 12px;
   background: #141518;
   cursor: pointer;
@@ -10084,7 +10089,12 @@ button.bg-row:hover {
 }
 
 .bw-tile .bw-frame {
+  flex: 0 1 auto;
   border-radius: 12px 12px 0 0;
+}
+
+.bw-tile .bw-page {
+  flex: 0 1 auto;
 }
 
 .bw-cap {

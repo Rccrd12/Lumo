@@ -203,7 +203,7 @@ export class LivePicture {
     let wait = this.opts.small ? SMALL_FRAME_MS : FRAME_MS;
     try {
       const f = await Bridge.browserFrame(this.chatId, this.agentId);
-      if (f?.opening) this.waiting(f.url);
+      if (f?.opening) this.waiting(f);
       else if (f) this.draw(f);
     } catch (err) {
       // Only a tab that is gone stops the pictures: a page changing, or one
@@ -230,9 +230,14 @@ export class LivePicture {
   }
 
   /** A tab still opening: its address, no picture yet. */
-  private waiting(url: string) {
-    if (url) this.drawAddress(url);
-    if (this.last) return;
+  private waiting(f: BrowserFrame) {
+    if (f.url) this.drawAddress(f.url);
+    // The tab already pictured stays; another one's picture isn't this tab's.
+    if (this.last?.tab === f.tab) return;
+    this.last = null;
+    this.img.hidden = true;
+    this.ring.hidden = true;
+    this.tag.hidden = true;
     this.liveMark.hidden = true;
     this.note.textContent = t(WATCH_TEXT.waiting);
     this.note.hidden = false;
@@ -440,7 +445,7 @@ export function buildBrowserView(actions: ViewActions): ViewHost {
       focus = { chatId, agentId: list[0].agent };
     }
     const one = focus?.agentId !== "all" ? list.find((x) => x.agent === focus?.agentId) : undefined;
-    const key = `${chatId}|${focus?.agentId}|${list.map((x) => `${x.agent}:${x.tab}:${nameOf(x)}`).join(",")}`;
+    const key = `${chatId}|${focus?.agentId}|${list.map((x) => `${x.agent}:${x.tab}:${x.host}:${nameOf(x)}`).join(",")}`;
     if (key === drawn) {
       for (const live of shown.values()) live.ensure();
       return;
