@@ -21761,17 +21761,17 @@
    "id": "Izinkan agen menjelajah web",
    "it": "Lascia navigare gli agenti sul web"
   },
-  "Claude Code and its agents open websites in hidden tabs of their own, apart from your browser: none of your accounts or cookies. Pages run as in Edge. Each agent's row in the Agents card has Watch.": {
-   "zh-Hans": "Claude Code 及其代理在自己的隐藏标签页中打开网站，与你的浏览器分开：没有你的任何账户或 Cookie。页面像在 Edge 中一样运行。代理卡片中每个代理的行都有“查看”。",
-   "hi": "Claude Code और उसके एजेंट वेबसाइटें अपने छिपे हुए टैब में खोलते हैं, आपके ब्राउज़र से अलग: आपका कोई खाता या कुकी नहीं। पेज Edge की तरह चलते हैं। एजेंट कार्ड में हर एजेंट की पंक्ति में देखें है।",
-   "es": "Claude Code y sus agentes abren sitios web en pestañas ocultas propias, aparte de tu navegador: ninguna de tus cuentas ni cookies. Las páginas funcionan como en Edge. La fila de cada agente en la tarjeta Agentes tiene Ver.",
-   "ar": "يفتح Claude Code ووكلاؤه المواقع في علامات تبويب مخفية خاصة بهم، بعيدًا عن متصفحك: لا شيء من حساباتك أو ملفات تعريف الارتباط. تعمل الصفحات كما في Edge. في صف كل وكيل في بطاقة الوكلاء زر شاهد.",
-   "fr": "Claude Code et ses agents ouvrent des sites dans leurs propres onglets cachés, à part de votre navigateur : aucun de vos comptes ni cookies. Les pages fonctionnent comme dans Edge. La ligne de chaque agent dans la carte Agents propose Regarder.",
-   "bn": "Claude Code ও তার এজেন্টরা নিজেদের লুকানো ট্যাবে ওয়েবসাইট খোলে, আপনার ব্রাউজার থেকে আলাদা: আপনার কোনো অ্যাকাউন্ট বা কুকি নেই। পেজগুলো Edge-এর মতোই চলে। এজেন্ট কার্ডে প্রতিটি এজেন্টের সারিতে দেখুন আছে।",
-   "pt-BR": "O Claude Code e seus agentes abrem sites em abas ocultas próprias, separadas do seu navegador: nenhuma das suas contas ou cookies. As páginas funcionam como no Edge. A linha de cada agente no cartão Agentes tem Ver.",
-   "ru": "Claude Code и его агенты открывают сайты в своих скрытых вкладках, отдельно от вашего браузера: без ваших аккаунтов и cookie. Страницы работают как в Edge. В строке каждого агента на карточке «Агенты» есть «Смотреть».",
-   "id": "Claude Code dan agennya membuka situs web di tab tersembunyi milik mereka sendiri, terpisah dari browser Anda: tanpa akun atau cookie Anda. Halaman berjalan seperti di Edge. Baris setiap agen di kartu Agen punya Lihat.",
-   "it": "Claude Code e i suoi agenti aprono i siti in schede nascoste tutte loro, separate dal tuo browser: nessuno dei tuoi account né dei tuoi cookie. Le pagine funzionano come in Edge. Nella scheda Agenti, la riga di ogni agente ha Guarda."
+  "Agents open websites in hidden tabs of their own.": {
+   "zh-Hans": "代理在自己的隐藏标签页中打开网站。",
+   "hi": "एजेंट अपने छिपे हुए टैब में वेबसाइटें खोलते हैं।",
+   "es": "Los agentes abren los sitios en pestañas ocultas propias.",
+   "ar": "يفتح الوكلاء المواقع في علامات تبويب مخفية خاصة بهم.",
+   "fr": "Les agents ouvrent les sites dans leurs propres onglets cachés.",
+   "bn": "এজেন্টরা নিজেদের লুকানো ট্যাবে সাইট খোলে।",
+   "pt-BR": "Os agentes abrem os sites em abas ocultas só deles.",
+   "ru": "Агенты открывают сайты в собственных скрытых вкладках.",
+   "id": "Agen membuka situs di tab tersembunyi milik mereka sendiri.",
+   "it": "Gli agenti aprono i siti in schede nascoste tutte loro."
   },
   "For now only Claude Code browses.": {
    "zh-Hans": "目前只有 Claude Code 会浏览网页。",

@@ -816,7 +816,7 @@ const COMPUTER_SETTINGS = {
 /** The agents' own hidden browser tabs (browser.rs): Claude Code alone for now. */
 const BROWSER_SETTINGS = {
   get label() { return t("Let agents browse the web"); },
-  get hint() { return t("Claude Code and its agents open websites in hidden tabs of their own, apart from your browser: none of your accounts or cookies. Pages run as in Edge. Each agent's row in the Agents card has Watch."); },
+  get hint() { return t("Agents open websites in hidden tabs of their own."); },
   get claudeOnly() { return t("For now only Claude Code browses."); },
 };
 
