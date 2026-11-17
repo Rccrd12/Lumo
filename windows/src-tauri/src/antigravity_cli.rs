@@ -2351,6 +2351,82 @@ mod tests {
     }
 
     #[test]
+    fn last_transcript_context_takes_latest_model_step_not_sum() {
+        assert_eq!(last_transcript_context(b""), None);
+        assert_eq!(last_transcript_context(b"not json\n{\"type\":\"USER_INPUT\",\"content\":\"hi\"}\n"), None);
+        assert_eq!(
+            last_transcript_context(br#"{"type":"PLANNER_RESPONSE","output_tokens":24,"content":"done"}"#),
+            None,
+            "output_tokens alone without prompt tokens is ignored"
+        );
+
+        let transcript = concat!(
+            r#"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"hello"}"#, "\n",
+            r#"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","input_tokens":20000,"cache_read_tokens":0,"output_tokens":500}"#, "\n",
+            r#"{"step_index":2,"source":"MODEL","type":"GENERIC","content":"tool output"}"#, "\n",
+            r#"{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","input_tokens":12000,"cache_read_tokens":20500,"output_tokens":300}"#, "\n",
+            r#"{"step_index":4,"source":"MODEL","type":"GENERIC","content":"more tool output"}"#, "\n",
+            r#"{"step_index":5,"source":"MODEL","type":"PLANNER_RESPONSE","output_tokens":24,"content":"final summary"}"#, "\n",
+            "{malformed json\n",
+        );
+        assert_eq!(last_transcript_context(transcript.as_bytes()), Some(12000 + 20500 + 300));
+    }
+
+    #[test]
+    fn conversation_transcript_validates_id_and_falls_back() {
+        let home = std::env::temp_dir().join(format!("lumo-agy-ctx-{}", chat_agents::run_mark()));
+        let valid_id = "11111111-2222-3333-4444-555555555555";
+        for bad in ["", "../evil", "sub-1", "11111111-2222-3333-4444-55555555555/", "not-a-uuid"] {
+            assert_eq!(conversation_transcript(bad), None, "{bad}");
+            assert_eq!(conversation_transcript_in(&home, bad), None, "{bad}");
+        }
+        assert_eq!(conversation_transcript_in(&home, valid_id), None);
+
+        let fallback = home.join(".gemini").join("antigravity").join("brain").join(valid_id).join(".system_generated").join("logs").join("transcript.jsonl");
+        std::fs::create_dir_all(fallback.parent().unwrap()).unwrap();
+        std::fs::write(&fallback, b"").unwrap();
+        assert_eq!(conversation_transcript_in(&home, valid_id), Some(fallback.clone()));
+
+        let primary = home.join(".gemini").join("antigravity-cli").join("brain").join(valid_id).join(".system_generated").join("logs").join("transcript.jsonl");
+        std::fs::create_dir_all(primary.parent().unwrap()).unwrap();
+        std::fs::write(&primary, b"").unwrap();
+        assert_eq!(conversation_transcript_in(&home, valid_id), Some(primary));
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_transcript_context_reads_tail_past_chunk_boundary() {
+        let dir = std::env::temp_dir().join(format!("lumo-agy-tail-{}", chat_agents::run_mark()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let small = dir.join("small.jsonl");
+        std::fs::write(
+            &small,
+            r#"{"type":"PLANNER_RESPONSE","input_tokens":1500,"cache_read_tokens":500,"output_tokens":42}"#,
+        )
+        .unwrap();
+        assert_eq!(read_transcript_context(&small), Some(2042));
+
+        let large = dir.join("large.jsonl");
+        let filler_line = format!(
+            "{{\"step_index\":1,\"type\":\"PLANNER_RESPONSE\",\"input_tokens\":999999,\"cache_read_tokens\":0,\"output_tokens\":1,\"thinking\":\"{}\"}}\n",
+            "x".repeat(1024)
+        );
+        let mut bytes = Vec::with_capacity((TRANSCRIPT_CHUNK as usize) + 8192);
+        while bytes.len() <= TRANSCRIPT_CHUNK as usize {
+            bytes.extend_from_slice(filler_line.as_bytes());
+        }
+        bytes.extend_from_slice(br#"{"step_index":2,"type":"PLANNER_RESPONSE","input_tokens":4000,"cache_read_tokens":50000,"output_tokens":250}"#);
+        bytes.push(b'\n');
+        bytes.extend_from_slice(br#"{"step_index":3,"type":"GENERIC","content":"done"}"#);
+        bytes.push(b'\n');
+        std::fs::write(&large, &bytes).unwrap();
+        assert_eq!(read_transcript_context(&large), Some(54250));
+
+        assert_eq!(read_transcript_context(&dir.join("missing.jsonl")), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
     fn a_failed_result_says_why() {
         let mut run = Run::default();
         run.feed(br#"{"event":"result","status":"ERROR","error":{"type":"INVALID_ARGUMENT","message":"unknown model: gemini-9"},"response":""}"#);
@@ -2852,82 +2928,5 @@ mod tests {
         sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "c" } }));
         sub.run_ended(AgentState::Done);
         assert!(sub.agents.get("c").unwrap().error.is_none());
-    }
-
-    #[test]
-    fn last_transcript_context_takes_latest_model_step_not_sum() {
-        assert_eq!(last_transcript_context(b""), None);
-        assert_eq!(last_transcript_context(b"not json\n{\"type\":\"USER_INPUT\",\"content\":\"hi\"}\n"), None);
-        assert_eq!(
-            last_transcript_context(br#"{"type":"PLANNER_RESPONSE","output_tokens":24,"content":"done"}"#),
-            None,
-            "output_tokens alone without prompt tokens is ignored"
-        );
-
-        let transcript = concat!(
-            r#"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"hello"}"#, "\n",
-            r#"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","input_tokens":20000,"cache_read_tokens":0,"output_tokens":500}"#, "\n",
-            r#"{"step_index":2,"source":"MODEL","type":"GENERIC","content":"tool output"}"#, "\n",
-            r#"{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","input_tokens":12000,"cache_read_tokens":20500,"output_tokens":300}"#, "\n",
-            r#"{"step_index":4,"source":"MODEL","type":"GENERIC","content":"more tool output"}"#, "\n",
-            r#"{"step_index":5,"source":"MODEL","type":"PLANNER_RESPONSE","output_tokens":24,"content":"final summary"}"#, "\n",
-            "{malformed json\n",
-        );
-        assert_eq!(last_transcript_context(transcript.as_bytes()), Some(12000 + 20500 + 300));
-    }
-
-    #[test]
-    fn conversation_transcript_validates_id_and_falls_back() {
-        let home = std::env::temp_dir().join(format!("lumo-agy-ctx-{}", chat_agents::run_mark()));
-        let valid_id = "11111111-2222-3333-4444-555555555555";
-        for bad in ["", "../evil", "sub-1", "11111111-2222-3333-4444-55555555555/", "not-a-uuid"] {
-            assert_eq!(conversation_transcript(bad), None, "{bad}");
-            assert_eq!(conversation_transcript_in(&home, bad), None, "{bad}");
-        }
-        assert_eq!(conversation_transcript_in(&home, valid_id), None);
-
-        let fallback = home.join(".gemini").join("antigravity").join("brain").join(valid_id).join(".system_generated").join("logs").join("transcript.jsonl");
-        std::fs::create_dir_all(fallback.parent().unwrap()).unwrap();
-        std::fs::write(&fallback, b"").unwrap();
-        assert_eq!(conversation_transcript_in(&home, valid_id), Some(fallback.clone()));
-
-        let primary = home.join(".gemini").join("antigravity-cli").join("brain").join(valid_id).join(".system_generated").join("logs").join("transcript.jsonl");
-        std::fs::create_dir_all(primary.parent().unwrap()).unwrap();
-        std::fs::write(&primary, b"").unwrap();
-        assert_eq!(conversation_transcript_in(&home, valid_id), Some(primary));
-
-        let _ = std::fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn read_transcript_context_reads_tail_past_chunk_boundary() {
-        let dir = std::env::temp_dir().join(format!("lumo-agy-tail-{}", chat_agents::run_mark()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let small = dir.join("small.jsonl");
-        std::fs::write(
-            &small,
-            r#"{"type":"PLANNER_RESPONSE","input_tokens":1500,"cache_read_tokens":500,"output_tokens":42}"#,
-        )
-        .unwrap();
-        assert_eq!(read_transcript_context(&small), Some(2042));
-
-        let large = dir.join("large.jsonl");
-        let filler_line = format!(
-            "{{\"step_index\":1,\"type\":\"PLANNER_RESPONSE\",\"input_tokens\":999999,\"cache_read_tokens\":0,\"output_tokens\":1,\"thinking\":\"{}\"}}\n",
-            "x".repeat(1024)
-        );
-        let mut bytes = Vec::with_capacity((TRANSCRIPT_CHUNK as usize) + 8192);
-        while bytes.len() <= TRANSCRIPT_CHUNK as usize {
-            bytes.extend_from_slice(filler_line.as_bytes());
-        }
-        bytes.extend_from_slice(br#"{"step_index":2,"type":"PLANNER_RESPONSE","input_tokens":4000,"cache_read_tokens":50000,"output_tokens":250}"#);
-        bytes.push(b'\n');
-        bytes.extend_from_slice(br#"{"step_index":3,"type":"GENERIC","content":"done"}"#);
-        bytes.push(b'\n');
-        std::fs::write(&large, &bytes).unwrap();
-        assert_eq!(read_transcript_context(&large), Some(54250));
-
-        assert_eq!(read_transcript_context(&dir.join("missing.jsonl")), None);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
