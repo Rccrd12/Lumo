@@ -599,7 +599,7 @@ function foldButton(actions: ViewActions): HTMLElement {
   );
 }
 
-/** The card of an email the AI wants to send (mail.rs send): the email itself is views/mail-editor.ts. */
+/** The card of an email the AI wants to send (mail_send.rs send): the email itself is views/mail-editor.ts. */
 const EMAIL_TEXT = {
   wants: N_("wants to send an email"),
   send: N_("Send"),

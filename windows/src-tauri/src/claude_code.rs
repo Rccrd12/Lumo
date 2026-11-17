@@ -116,7 +116,7 @@ const MAIL_ALLOWED: &str = "mcp__lumo__mail_recent mcp__lumo__mail_search mcp__l
 /// The tools that send have Lumo's own card, with the email on it (mail.rs
 /// deliver), and a draft is only saved: no card of Claude Code's before them.
 const MAIL_SEND_ALLOWED: &str = "mcp__lumo__mail_send mcp__lumo__mail_reply mcp__lumo__mail_forward mcp__lumo__mail_draft";
-/// The tools that change the mailbox have Lumo's own card too (mail.rs manage).
+/// The tools that change the mailbox have Lumo's own card too (mail_agents.rs manage).
 const MAIL_MANAGE_ALLOWED: &str = "mcp__lumo__mail_mark mcp__lumo__mail_move mcp__lumo__mail_archive mcp__lumo__mail_trash";
 
 /// The MCP server of the user's own tools (the Tools tab, tools.rs): its

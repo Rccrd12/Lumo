@@ -932,7 +932,7 @@ mod tests {
         let lumo = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_mail"]["tool"], "mail_search");
             assert_eq!(req["lumo_mail"]["input"]["query"], "from:amazon");
-            // With the chat it came from, for an email's files (mail.rs serve).
+            // With the chat it came from, for an email's files (mail_agents.rs serve).
             assert!(req["lumo_mail"]["chat"].is_string());
             Ok(json!({ "text": "1 email." }))
         };

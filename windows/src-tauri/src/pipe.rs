@@ -42,7 +42,7 @@ use crate::session_window;
 /// Slightly under lumo-hook's own 110 s wait, so we always answer first.
 pub(crate) const DECISION_TIMEOUT: Duration = Duration::from_secs(108);
 /// An email's card waits longer: its fields can be changed before Send
-/// (mail.rs deliver). lumo-hook's MAIL_SEND_BUDGET counts on it.
+/// (mail_send.rs deliver). lumo-hook's MAIL_SEND_BUDGET counts on it.
 pub const MAIL_CARD_TIMEOUT: Duration = Duration::from_secs(300);
 /// How long the island gets to say "the card is up". This is the whole of B4:
 /// without it, an island that is paused, hidden behind a crashed webview or
@@ -86,9 +86,9 @@ fn with_auto_allowable<T>(f: impl FnOnce(&mut HashSet<String>) -> T) -> T {
     f(AUTO_ALLOWABLE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashSet::new))
 }
 
-/// The cards of an email Lumo itself is about to send (mail.rs deliver): the
-/// only ones whose Send may carry the email as the user changed it on the
-/// card (`answer_mail`). Never an agent's request through the relay.
+/// The cards of an email Lumo itself is about to send (mail_send.rs
+/// deliver): the only ones whose Send may carry the email as the user changed
+/// it on the card (`answer_mail`). Never an agent's request through the relay.
 static MAIL_CARDS: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 fn with_mail_cards<T>(f: impl FnOnce(&mut HashSet<String>) -> T) -> T {

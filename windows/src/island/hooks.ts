@@ -339,9 +339,9 @@ interface HookPayload {
   lumo_agy_gate?: boolean;
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
-  /** An email the AI wants to send, on a card of its own (mail.rs send). */
+  /** An email the AI wants to send, on a card of its own (mail_send.rs send). */
   lumo_mail_send?: { from?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown; attachments?: unknown; accounts?: unknown; limits?: unknown };
-  /** A change the AI wants to make to one email (read, star, move, archive, trash), on a card of its own (mail.rs manage). */
+  /** A change the AI wants to make to one email (read, star, move, archive, trash), on a card of its own (mail_agents.rs manage). */
   lumo_mail_action?: { actions?: unknown; folder?: unknown; from?: unknown; subject?: unknown; date?: unknown };
   /** Gemini Live wants to read or open a file the user didn't give it (live.rs may_use). */
   lumo_live_file?: { action?: unknown };
@@ -413,7 +413,7 @@ export function liveFileChange(raw: HookPayload["lumo_live_file"], input: Record
   return { command: path, reason: t(raw.action === "open" ? LIVE_FILE.open : LIVE_FILE.read) };
 }
 
-/** What each change of mail.rs manage does, as its card says it. */
+/** What each change of mail_agents.rs manage does, as its card says it. */
 const MAIL_ACTIONS: Record<string, string> = {
   read: N_("Mark as read"),
   unread: N_("Mark as unread"),
