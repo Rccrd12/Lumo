@@ -5,7 +5,10 @@
 // island is back on top and opens as before. An image the tool pinned to the
 // screen is no capture: the island keeps opening under the mouse while it is
 // in front. With the island set to close on a click outside it, the clicks of
-// a capture (picking the window to take) never close it (#265).
+// a capture (picking the window to take) never close it (#265). An overlay
+// that shows over everything without ever taking the front, as the Windows 11
+// Snipping Tool's can, is a capture too: with Open on hover, the island under
+// it neither opens nor climbs above it.
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -156,4 +159,39 @@ flow(G, "Closing on a click outside: a click in a capture leaves the island open
   await sleep(60);
   await app.mouse.up();
   await d.until("return document.getElementById('island').getBoundingClientRect().height < 60", 5_000, "the island closing on a click outside it");
+});
+
+flow(G, "An overlay that never takes the front is a capture too: with Open on hover the island neither opens under it nor climbs above it", app, async () => {
+  step("Lumo again, set to open on hover (Settings → Island)");
+  await app.quit();
+  await app.launch({ settings: { islandHoverOpen: true } });
+  await frontTool();
+  const overlay = await tool.quiet();
+  step(`overlay ${overlay.hwnd}: ${overlay.seen}`);
+  try {
+    assert.ok(!overlay.front, "the overlay is over everything without being in front");
+    await sleep(500);
+    let z = await lumoAround(overlay.hwnd);
+    assert.equal(z.above, 0, "no window of Lumo's above the overlay as it comes");
+
+    step("the cursor rests on the island, under the overlay, as when a capture's selection starts there");
+    const box = await app.islandBox();
+    await app.mouse.glide(box.x + box.w / 2, box.y + box.h / 2);
+    await sleep(2_000);
+    const h = await app.islandHeight();
+    step(`the island under the overlay: ${Math.round(h)} px tall`);
+    z = await lumoAround(overlay.hwnd);
+    assert.ok(h < 60, "the island did not open under the capture's mouse");
+    assert.equal(z.above, 0, "no window of Lumo's climbed above the overlay");
+  } finally {
+    await app.away();
+    step(`the capture ends: ${await tool.end()}`);
+  }
+  await sleep(1_000);
+
+  step("with no capture, the cursor on the island opens it, as set");
+  const box = await app.islandBox();
+  await app.mouse.glide(box.x + box.w / 2, box.y + box.h / 2);
+  await d.until("return document.getElementById('island').getBoundingClientRect().height > 100", 6_000, "the island opening on hover");
+  await app.closed();
 });

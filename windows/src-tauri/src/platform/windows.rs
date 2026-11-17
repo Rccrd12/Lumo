@@ -38,6 +38,8 @@ use ::windows::Win32::UI::WindowsAndMessaging::{
 };
 // The drag's own (thread_under, may_carry_file): apart, so the list above stays as other changes edit it.
 use ::windows::Win32::UI::WindowsAndMessaging::{GetGUIThreadInfo, WindowFromPoint, GUITHREADINFO, GUI_INMOVESIZE};
+// The windows above the island (overlay_above_island).
+use ::windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
 
 use super::LocalTime;
 use crate::session_window::{self, Proc};
@@ -843,15 +845,97 @@ fn covers_with_another(pid: u32) -> bool {
     search.found
 }
 
-/// A screen capture's overlay is in front now. Asked of the window in front
-/// each time rather than remembered, so a capture that ended without another
-/// app coming to the front (Lumo's own Settings did) never leaves it set; and
-/// an overlay the tool only hid is no capture either.
+/// A screen capture is open over the island: its overlay is in front, or it
+/// is above the island without being in front (`overlay_above_island`: the
+/// Windows 11 Snipping Tool's can show over everything without taking the
+/// front, so no foreground event ever says it came). Asked each time rather
+/// than remembered, so a capture that ended without another app coming to the
+/// front (Lumo's own Settings did) never leaves it set; and an overlay the
+/// tool only hid is no capture either.
 pub fn capturing() -> bool {
     let overlay = CAPTURE_WINDOW.load(Ordering::Relaxed);
-    overlay != 0
+    if overlay != 0
         && unsafe { GetForegroundWindow() }.0 as isize == overlay
         && unsafe { IsWindowVisible(HWND(overlay as *mut _)) }.as_bool()
+    {
+        return true;
+    }
+    overlay_above_island().is_some()
+}
+
+/// The island's own window, from the app the foreground watch was given.
+fn island_hwnd() -> Option<HWND> {
+    let app = FOREGROUND_APP.get()?;
+    hwnd_of(&crate::island::window(app)?)
+}
+
+/// Program names by process, for the windows above the island: asked of the
+/// cursor poll many times a second, read from the process once.
+static EXE_NAMES: std::sync::Mutex<Option<HashMap<u32, String>>> = std::sync::Mutex::new(None);
+
+fn exe_name_cached(pid: u32) -> String {
+    let mut names = EXE_NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    let map = names.get_or_insert_with(HashMap::new);
+    if let Some(name) = map.get(&pid) {
+        return name.clone();
+    }
+    // Process ids come back once their process ended: a few dozen at most.
+    if map.len() >= 64 {
+        map.clear();
+    }
+    let name = crate::screen::exe_name(pid);
+    map.insert(pid, name.clone());
+    name
+}
+
+/// The last overlay found above the island without being in front, and the
+/// full-screen programs on top of the island already written in the log.
+static ABOVE_LOGGED: AtomicIsize = AtomicIsize::new(0);
+static OVER_LOGGED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// A capture tool's overlay above the island in the windows' order, in front
+/// or not. Only the always-on-top windows above the island are looked at:
+/// none, most of the time (the island is the top one), a handful at most.
+/// A full-screen window on top of the island from a program that is no known
+/// capture tool is written in the log once, to tell which one a capture that
+/// Lumo did not recognise came from.
+fn overlay_above_island() -> Option<isize> {
+    let island = island_hwnd()?;
+    let own = std::process::id();
+    let mut hwnd = island;
+    for _ in 0..64 {
+        hwnd = match unsafe { GetWindow(hwnd, GW_HWNDPREV) } {
+            Ok(h) if !h.0.is_null() => h,
+            _ => break,
+        };
+        unsafe {
+            if !IsWindowVisible(hwnd).as_bool() || !is_topmost(hwnd) || is_cloaked(hwnd) {
+                continue;
+            }
+        }
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid == 0 || pid == own {
+            continue;
+        }
+        let name = exe_name_cached(pid);
+        let known = crate::island::is_capture_tool(&name);
+        let whole = unsafe { covers_a_display(hwnd) };
+        if known && (whole || crate::island::capture_is_any_window(&name)) {
+            if ABOVE_LOGGED.swap(hwnd.0 as isize, Ordering::Relaxed) != hwnd.0 as isize {
+                crate::log::line(format!("screen capture over the island, not in front ({name}): the island stays under it"));
+            }
+            return Some(hwnd.0 as isize);
+        }
+        if whole && !known {
+            let mut seen = OVER_LOGGED.lock().unwrap_or_else(|e| e.into_inner());
+            if !seen.contains(&name) && seen.len() < 32 {
+                crate::log::line(format!("a full-screen window on top of the island, not a known capture tool: {name}"));
+                seen.push(name);
+            }
+        }
+    }
+    None
 }
 
 /// Puts the window right under `overlay` (a screen capture's, `capturing`),
