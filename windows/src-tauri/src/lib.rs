@@ -714,7 +714,7 @@ fn approval_decision(app: AppHandle, request_id: String, decision: String) {
 }
 
 /// Send on an email's card the user changed: the email as it is now on the
-/// card (mail.rs deliver checks it all again before sending).
+/// card (mail_send.rs deliver checks it all again before sending).
 #[tauri::command]
 fn approval_mail_send(app: AppHandle, request_id: String, revised: serde_json::Value) {
     recap::record_decision(&app, &request_id, "allow");

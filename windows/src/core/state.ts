@@ -163,7 +163,7 @@ export interface OutgoingEmail {
   attachments: { name: string; size: number; path: string }[];
   /** The accounts a new email may go from, when there is more than one: the card's From picks one. */
   accounts?: string[];
-  /** What the card checks the fields against (mail.rs card_mail). */
+  /** What the card checks the fields against (mail_send.rs card_mail). */
   limits?: import("./mail-edit").MailLimits;
 }
 
