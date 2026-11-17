@@ -141,6 +141,13 @@ public static class LumoE2eCapture {
           On(delegate { ToFront(overlay); return ""; });
           answer = Hwnd(overlay) + " " + Settled(overlay) + " other:" + otherFront;
           break;
+        case "quiet":
+          // The overlay over everything without ever taking the front, as
+          // the Windows 11 Snipping Tool's can: no foreground event says it came.
+          On(delegate { overlay.Show(); return ""; });
+          Thread.Sleep(300);
+          answer = Hwnd(overlay) + " " + On(delegate { return Front(overlay); });
+          break;
         case "end":
           On(delegate { overlay.Hide(); other.Hide(); ToFront(main); return ""; });
           answer = Settled(main);
@@ -225,6 +232,12 @@ export class FakeCapture {
   async capture() {
     const [hwnd, front, other] = (await this.send("capture")).split(" ");
     return { hwnd, front: front === "front", seen: `${front} ${other}` };
+  }
+
+  /** Opens the capture's overlay over everything without taking the front; { hwnd, front }. */
+  async quiet() {
+    const [hwnd, front] = (await this.send("quiet")).split(" ");
+    return { hwnd, front: front === "front", seen: front };
   }
 
   /** Closes the capture: the tool's ordinary window comes to the front. */
