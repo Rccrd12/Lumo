@@ -1,0 +1,1168 @@
+/* ── Content shell (expanded) ───────────────────────────────────────────── */
+
+#content {
+  position: absolute;
+  inset: 0;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  transition: opacity 0.2s ease-in-out;
+}
+
+#header {
+  height: 34px;
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  margin: 0 -10px;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.tabs {
+  display: flex;
+  gap: 5px;
+  padding-left: 14px;
+}
+
+.tab {
+  width: 30px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  border-radius: 11px;
+  color: var(--dim-2);
+  cursor: default;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #b0b5be;
+}
+
+.tab.on {
+  background: var(--tab-on);
+  color: var(--ink);
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 14px;
+  padding-right: 16px;
+}
+
+.header-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--dim-2);
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+.header-actions button.on {
+  color: var(--ink);
+}
+
+#views {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.view {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.16s ease-in;
+}
+
+.view.on {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+  transition: opacity 0.3s ease-out 0.16s, transform 0.3s cubic-bezier(0.3, 1.2, 0.4, 1) 0.16s;
+}
+
+/* A view that is not on is only transparent, not gone: an infinite animation
+   inside it (the drop frame's marching dashes) would keep the webview
+   repainting every frame for as long as the app runs, island hidden or not. */
+.view:not(.on) * {
+  animation-play-state: paused;
+}
+
+/* The same for the whole page while the island is hidden (island.ts
+   markHidden): nothing can be seen, so nothing may keep it repainting. */
+.island-hidden *,
+.island-hidden *::before,
+.island-hidden *::after {
+  animation-play-state: paused !important;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+
+.card {
+  position: relative;
+  height: 100%;
+  border-radius: 20px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+}
+
+.card.wash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    280px 280px at 50% 130%,
+    var(--wash) 0%,
+    rgba(0, 0, 0, 0) 70%
+  );
+  pointer-events: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  display: inline-block;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.btn {
+  font: 500 12.5px var(--font);
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 999px;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: transform 0.08s ease-out, background 0.12s ease-out;
+}
+
+.btn:active {
+  transform: scale(0.94);
+}
+
+.btn.primary {
+  background: var(--ink);
+  color: #0b0c0e;
+}
+
+.btn.secondary {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--ink-2);
+}
+
+.btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn .kbd {
+  font-size: 10.5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  opacity: 0.55;
+}
+
+.btn.primary .kbd {
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.btn.secondary .kbd {
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.link-btn {
+  border: 0;
+  background: transparent;
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.icon-btn {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--dim-4);
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+/* ── Overview ───────────────────────────────────────────────────────────── */
+
+.overview {
+  display: flex;
+  gap: 10px;
+  height: 100%;
+}
+
+.overview > .left {
+  flex: 0 0 322px;
+  width: 322px;
+}
+
+.overview > .right {
+  flex: 1 1 auto;
+}
+
+.card-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-top: 10px;
+}
+
+.who {
+  padding: 0 36px 0 108px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.who .name {
+  font: 600 12px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.who .tool {
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+}
+
+.who .count {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.jump {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+}
+
+/* Folds a waiting permission card or question away without answering it:
+   24 px to click, centred where the 16 px one was, and lit under the mouse. */
+.fold {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  color: var(--dim-2);
+}
+
+.fold:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--ink);
+}
+
+/* Ticker */
+
+/* As many lines as the card holds (views/ticker.ts counts them); no fade at
+   the edges, which made the newest step hard to read: the oldest lines dim
+   instead, and the one leaving fades on its own. */
+.ticker {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 44px;
+  margin: 6px 12px 12px 108px;
+  overflow: hidden;
+}
+
+.ticker-row {
+  position: absolute;
+  left: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform-origin: left center;
+  will-change: transform, opacity;
+}
+
+.ticker-row:not(.empty):hover .tick-text {
+  filter: brightness(1.3);
+}
+
+.ticker-row .tick-icon {
+  width: 12px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 12px;
+  color: var(--dim-2);
+}
+
+.ticker-row .tick-text {
+  font: 500 13px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Live diff step: file name, then +N −M right after it (TickerRowView). */
+.ticker-row .tick-count {
+  flex: 0 0 auto;
+  margin-left: -6px; /* no row gap: the counts sit right after the name */
+  font: 500 10px var(--mono);
+  white-space: pre;
+}
+
+.ticker-row .tick-count .plus {
+  color: var(--green);
+}
+
+.ticker-row .tick-count .minus {
+  color: var(--red);
+}
+
+/* ── Steps card (overview, left card): the session's steps, whole ──────── */
+
+.steps-card {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 10px 6px 108px;
+}
+
+.steps-card .diff-head {
+  padding-right: 22px; /* clear of the ↗ in the corner */
+}
+
+.steps-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-top: 2px;
+}
+
+.steps-list::-webkit-scrollbar {
+  display: none;
+}
+
+.step-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 4px;
+  margin: 0 -4px;
+  border-radius: 6px;
+}
+
+.step.more .step-line:hover,
+.step.diff .step-line:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.step-icon {
+  flex: 0 0 12px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: #454850;
+}
+
+.step.more .step-icon,
+.step.current .step-icon {
+  color: var(--dim-2);
+}
+
+.step-icon svg {
+  transition: transform 0.15s ease;
+}
+
+.step.open .step-icon svg {
+  transform: rotate(90deg);
+}
+
+.step-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  font: 500 12px/16px var(--font);
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+.step.current .step-text {
+  color: var(--ink);
+}
+
+.step.diff .step-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step .tick-count {
+  flex: 0 0 auto;
+  margin-left: -6px; /* the counts sit right after the name */
+  font: 500 10px/16px var(--mono);
+  white-space: pre;
+}
+
+.step .plus {
+  color: var(--green);
+}
+
+.step .minus {
+  color: var(--red);
+}
+
+.step-detail {
+  margin: 2px 0 6px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  user-select: text;
+}
+
+.step-detail-text {
+  font: 400 11.5px/1.4 var(--font);
+  color: var(--dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.step-detail-code {
+  font: 400 10.5px/1.4 var(--mono);
+  color: #c9cdd4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  padding: 5px 7px;
+}
+
+/* ── Diff card (overview, left card) — DiffCardView ─────────────────────── */
+
+.diff-card {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 10px 4px 108px;
+}
+
+.diff-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 3px;
+  min-width: 0;
+}
+
+.diff-back {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: default;
+}
+
+.diff-back b {
+  font: 600 12px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-head .grow {
+  flex: 1 1 auto;
+}
+
+.diff-head .tick-count {
+  flex: 0 0 auto;
+  font: 500 10px var(--mono);
+}
+
+.diff-head .plus {
+  color: var(--green);
+}
+
+.diff-head .minus {
+  color: var(--red);
+}
+
+.diff-head .icon-btn {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.diff-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+.diff-lines {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  user-select: text;
+}
+
+.diff-lines::-webkit-scrollbar {
+  display: none;
+}
+
+.diff-line {
+  display: flex;
+  min-height: 14px; /* an empty line still takes a row */
+  font: 400 10.5px/1.35 var(--mono);
+  color: var(--dim-3);
+}
+
+.diff-line .sym {
+  flex: 0 0 12px;
+  color: #454850;
+}
+
+.diff-line .txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-line.added {
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+}
+
+.diff-line.added .sym {
+  color: var(--green);
+}
+
+.diff-line.removed {
+  background: rgba(244, 80, 94, 0.12);
+  color: #fca5a5;
+}
+
+.diff-line.removed .sym {
+  color: var(--red);
+}
+
+/* Shimmer sweep, 2.2 s — same as TickerShimmerText / ShimmeringText */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #7c818a 0%,
+    #f2f3f5 40%,
+    #7c818a 70%
+  );
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+
+/* ── Agent pills ────────────────────────────────────────────────────────── */
+
+.pills {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 28px;
+  gap: 4px;
+  align-content: center;
+  padding: 0 8px;
+}
+
+.pill {
+  position: relative;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--card-flat);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  cursor: default;
+  transition: transform 0.2s cubic-bezier(0.3, 1.2, 0.4, 1), background 0.18s, border-color 0.18s,
+    box-shadow 0.18s, filter 0.18s;
+}
+
+.pill .mini {
+  margin-left: 7px;
+}
+
+/* The name sits in the middle of the pill, and never under Lumo: between
+   him and an empty slot as wide as he is, which gives way first when the
+   island is narrow (then the name moves right, then it is cut with "…"). */
+.pill .lbl {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 auto;
+  text-align: center;
+  font: 600 10px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  pointer-events: none;
+}
+
+.pill .pill-end {
+  flex: 0 1000 31px;
+  min-width: 4px;
+}
+
+.pill:hover {
+  transform: scale(1.04);
+  filter: brightness(1.06);
+}
+
+.pill-badge {
+  position: absolute;
+  top: -3px;
+  right: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0b0c0e;
+  display: grid;
+  place-items: center;
+}
+
+.pill-badge i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #000;
+}
+
+.pill-badge svg {
+  width: 6px;
+  height: 6px;
+}
+
+/* ── Generic text blocks ────────────────────────────────────────────────── */
+
+.title {
+  font: 600 15px var(--font);
+}
+
+/* Claude's final message on the finished card: up to three lines, never past
+   the card (the island grows for them, layout.ts finishedCardHeight). */
+.title.final {
+  font-weight: 500;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.sub {
+  font: 400 13px var(--font);
+  color: var(--dim);
+}
+
+.detail {
+  font: 400 12px var(--font);
+  color: var(--red-text);
+}
+
+/* The error card: the code beside the reason, and the last step under it, in grey. */
+.detail .err-code,
+.detail-last {
+  color: var(--dim-3);
+}
+
+.detail-last {
+  font: 400 12px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.detail-last[hidden] {
+  display: none;
+}
+
+.who-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 400 12px var(--font);
+  color: var(--dim-2);
+}
+
+.who-row .n {
+  font: 600 12px var(--font);
+  color: var(--ink);
+}
+
+.code {
+  font: 400 12px var(--mono);
+  color: #e8e9ec;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 5px 10px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+/* The permission card's line saying what the request is for. */
+.approval-about {
+  font: 400 12px var(--font);
+  color: var(--dim);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.approval-about[hidden] {
+  display: none;
+}
+
+/* The card of an email the AI wants to send: the whole email, read before Send. */
+.mail-slot[hidden],
+.actions[hidden],
+.code[hidden] {
+  display: none;
+}
+
+.stack.mail-on {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 12px 44px 14px 116px !important;
+}
+
+.stack.mail-on > :not(.mail-slot) {
+  flex-shrink: 0;
+}
+
+.mail-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.mail-line {
+  display: flex;
+  gap: 8px;
+  font: 400 12px var(--font);
+  min-width: 0;
+}
+
+.mail-label {
+  color: var(--dim);
+  flex: 0 0 auto;
+  min-width: 52px;
+}
+
+.mail-value {
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+.mail-value.wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mail-body.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
+.mail-body {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font: 400 12px/1.45 var(--font);
+  color: #e8e9ec;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  user-select: text;
+}
+
+/* The email can be changed before Send (views/mail-editor.ts). At rest it
+   reads as above; a click on a field turns the card into a form. */
+.mail-edit .mail-field {
+  position: relative;
+  align-items: center;
+  min-height: 15px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  cursor: text;
+}
+
+.mail-edit .mail-field[hidden],
+.mail-edit .mail-cc-link[hidden] {
+  display: none;
+}
+
+.mail-edit .mail-pen {
+  display: none;
+  margin-left: auto;
+  color: var(--dim);
+  flex: none;
+}
+
+.mail-edit:not(.editing) .mail-field:hover {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.mail-edit:not(.editing) .mail-field:hover .mail-pen {
+  display: inline-flex;
+}
+
+.mail-edit .mail-input,
+.mail-edit .mail-add {
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  user-select: text;
+  cursor: text;
+}
+
+.mail-edit .mail-input {
+  flex: 1 1 auto;
+  height: 15px;
+  text-overflow: ellipsis;
+}
+
+.mail-edit .mail-input::placeholder,
+.mail-edit .mail-add::placeholder {
+  color: var(--dim-3);
+}
+
+.mail-edit select.mail-input {
+  flex: 0 1 auto;
+  appearance: none;
+  cursor: pointer;
+}
+
+.mail-edit .mail-from-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mail-edit .mail-from-arrow {
+  display: none;
+  position: absolute;
+  right: 8px;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+.mail-edit.editing .mail-from-arrow {
+  display: inline-flex;
+}
+
+.mail-edit.editing select.mail-input {
+  padding-right: 24px;
+}
+
+.mail-edit select.mail-input option {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+.mail-edit .mail-people,
+.mail-edit .mail-files {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+}
+
+.mail-edit .mail-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mail-edit .mail-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-edit .mail-chip-x {
+  display: none;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.mail-edit .mail-chip-x:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+/* At rest the addresses and files read as a list, as before. */
+.mail-edit:not(.editing) .mail-chip:not(:last-of-type)::after {
+  content: ",";
+  margin-right: 4px;
+}
+
+.mail-edit:not(.editing) .mail-add,
+.mail-edit:not(.editing) .mail-cc-link {
+  display: none;
+}
+
+.mail-edit .mail-cc-link {
+  flex: none;
+  align-self: flex-start;
+  padding: 2px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mail-edit .mail-cc-link:hover {
+  color: var(--ink);
+}
+
+/* The form: each field in its box, the addresses and files as chips. */
+.mail-edit.editing {
+  gap: 4px;
+}
+
+.mail-edit.editing .mail-field {
+  min-height: 24px;
+}
+
+.mail-edit.editing .mail-people,
+.mail-edit.editing .mail-files {
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.mail-edit.editing .mail-chip {
+  height: 20px;
+  padding: 0 3px 0 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.09);
+  font-size: 11.5px;
+}
+
+.mail-edit.editing .mail-chip-x {
+  display: inline-grid;
+}
+
+.mail-edit.editing .mail-chip.bad {
+  background: rgba(244, 80, 94, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(244, 80, 94, 0.55);
+  color: var(--red-text);
+}
+
+.mail-edit.editing .mail-add {
+  flex: 1 1 90px;
+  height: 20px;
+}
+
+.mail-edit.editing .mail-input {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.mail-edit.editing textarea.mail-body {
+  padding: 6px 8px;
+  border-top-color: transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.mail-edit.editing .mail-input:focus,
+.mail-edit.editing textarea.mail-body:focus {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+
+/* The text: as .mail-body above, in a field. */
+.mail-edit textarea.mail-body {
+  display: block;
+  width: 100%;
+  resize: none;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  outline: 0;
+  padding: 6px 0 0;
+  background: transparent;
+  color: #e8e9ec;
+  cursor: text;
+}
+
+/* Send's line: what the editor says, then Attach at the end. */
+.mail-actions {
+  align-items: center;
+}
+
+.mail-note-slot {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mail-note {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim-3);
+  font: 400 11.5px var(--font);
+}
+
+.mail-note.bad {
+  color: var(--red-text);
+}
+
+.mail-note.edited {
+  color: var(--dim);
+}
+
+.mail-undo {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.mail-attach-slot {
+  flex: none;
+}
+
+.stack {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Options to pick from when Claude Code asks a question. */
+.actions.options {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.question-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.btn.off {
+  opacity: 0.4;
+}

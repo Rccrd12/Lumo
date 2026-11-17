@@ -1,0 +1,843 @@
+/* ── The question queued while an answer is written (views/chat.ts) ─────── */
+
+.chat-queue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  animation: queue-in 0.18s ease-out;
+}
+
+.chat-queue[hidden],
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .chat-queue {
+  display: none;
+}
+
+@keyframes queue-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.queue-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 500 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+.queue-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 12px var(--font);
+  color: var(--ink-2);
+  cursor: text;
+}
+
+.queue-btn {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.queue-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* ── Copy, Retry, Edit and when, on a line under a message (views/chat.ts) ── */
+
+.msg-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 20px;
+  margin-top: 1px;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+
+.chat-row.user .msg-actions {
+  margin-right: -3px;
+}
+
+.reply-wrap .msg-actions {
+  margin-left: -4px;
+}
+
+.chat-row:hover .msg-actions,
+.chat-row:focus-within .msg-actions,
+.msg-actions.shown {
+  opacity: 1;
+}
+
+.msg-action {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dim-3);
+  cursor: default;
+}
+
+.msg-action:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--dim);
+}
+
+.msg-action.done {
+  color: var(--green);
+}
+
+.msg-time {
+  padding: 0 5px;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+}
+
+.msg-actions .msg-stopped {
+  padding-left: 4px;
+}
+
+.reply-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* The copies a local model changed in its folder (workspace.rs), under its answer. */
+.reply-copies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.reply-copies-title {
+  font: 500 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+.reply-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.reply-copy-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 11.5px var(--font);
+  color: #c8cdd4;
+}
+
+.reply-copy-btn {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 10.5px var(--font);
+  color: #c8cdd4;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.reply-copy-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6e9ee;
+}
+
+.reply-copy-btn.primary {
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+.reply-copy-btn:disabled {
+  opacity: 0.5;
+}
+
+.reply-copy-detail:empty {
+  display: none;
+}
+
+.reply-copy-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.reply-copy-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  overflow-wrap: anywhere;
+}
+
+.reply-copy-where {
+  font-weight: 400;
+  color: var(--dim-3);
+}
+
+.reply-copy-count {
+  flex: none;
+  font: 500 10px var(--mono);
+}
+
+.reply-copy-count .plus { color: var(--green); }
+.reply-copy-count .minus { color: var(--red); }
+
+.reply-copy-btn.on {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--ink);
+}
+
+.reply-copy-row .reply-copy-note {
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-copy-view {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The copy rewritten: its text, read as a document. */
+.reply-copy-text {
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font: 400 12px/1.5 var(--font);
+  color: #d6d9de;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* A few changed lines: before and after side by side. */
+.reply-copy-pair {
+  display: flex;
+  gap: 6px;
+}
+
+.reply-copy-side {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font: 400 11.5px/1.45 var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.reply-copy-side.del { color: #fca5a5; }
+.reply-copy-side.add { color: #86efac; }
+
+.reply-copy-side mark {
+  border-radius: 2px;
+  color: inherit;
+}
+
+.reply-copy-side.del mark { background: rgba(244, 80, 94, 0.28); color: #fecaca; }
+.reply-copy-side.add mark { background: rgba(34, 197, 94, 0.28); color: #bbf7d0; }
+
+.reply-copy-label {
+  margin-bottom: 2px;
+  font: 500 10px var(--font);
+  color: var(--dim-3);
+}
+
+/* The changed lines and their neighbours, numbered, each wrapped. */
+.reply-copy-diff {
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  user-select: text;
+}
+
+.copy-line {
+  display: flex;
+  min-height: 15px; /* an empty line still takes a row */
+  padding: 0 8px 0 0;
+  font: 400 10.5px/1.45 var(--mono);
+  color: #7b8089;
+}
+
+.copy-line .num {
+  flex: 0 0 30px;
+  padding-right: 6px;
+  text-align: right;
+  color: #454850;
+}
+
+.copy-line .sym {
+  flex: 0 0 12px;
+  color: #454850;
+}
+
+.copy-line .txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.copy-line.add { background: rgba(34, 197, 94, 0.12); color: #86efac; }
+.copy-line.add .sym { color: var(--green); }
+.copy-line.del { background: rgba(244, 80, 94, 0.12); color: #fca5a5; }
+.copy-line.del .sym { color: var(--red); }
+.copy-line.gap { padding-left: 36px; color: #454850; }
+
+.msg-stopped {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+/* An answer that failed: what went wrong, where the answer would be. */
+.msg-failed {
+  font: 400 12.5px/1.45 var(--font);
+  color: var(--red-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A question once sent is Markdown too (views/chat.ts sentBubble), in its
+   bubble's own colour, size and line height: plain words read as before. */
+.bubble.md {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bubble.md .md-p,
+.bubble.md .md-bullet,
+.bubble.md .md-h {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.bubble.md strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chat-log .bubble.md .md-math {
+  padding: 4px 0;
+}
+
+/* The message has its own Copy: a formula in it needs none. */
+.bubble.md .md-math .md-copy {
+  display: none;
+}
+
+html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+/* A long question, folded (views/chat.ts foldLong): its first lines, the
+   last ones fading out, and Show more at the bottom of its bubble. */
+.bubble-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bubble-body.folded {
+  max-height: 160px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
+}
+
+/* Folded, its blocks keep their height and are cut by the fade. A block that
+   scrolls (a table, a formula) would otherwise shrink to fit the 160 px, the
+   question then measure short, open, measure long, fold again, at every
+   frame: two pictures of the log drawn over each other. */
+.bubble-body > * {
+  flex-shrink: 0;
+}
+
+.msg-fold {
+  align-self: flex-start;
+  margin: 2px 0 1px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font);
+  font-size: inherit;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.msg-fold[hidden] {
+  display: none;
+}
+
+.msg-fold:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Open and taller than the log, Show less stays at the log's bottom edge
+   while the question is read, on the bubble's own colour (white 13 % over
+   the island's black), the lines above fading into it. Not in the tool
+   workshop, whose questions have a bubble of their own colours. */
+.chat-card:not(.forge) .msg-fold[aria-expanded="true"] {
+  position: sticky;
+  /* Over the log's own 2 px of padding too, which would show the lines under it. */
+  bottom: -2px;
+  align-self: stretch;
+  margin: -6px -10px -5px;
+  padding: 8px 10px 6px;
+  border-radius: 0 0 12px 12px;
+  text-align: start;
+  background: linear-gradient(to bottom, rgba(33, 33, 33, 0), #212121 8px);
+}
+
+/* The question being edited, and what sending it would drop. */
+.chat-row.editing .bubble {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.chat-row.dropped {
+  opacity: 0.4;
+}
+
+/* What went with a question (views/chat.ts sentBadges): a small capsule on
+   the bubble's top right corner, above its edge, one icon for each kind in its colour
+   (the attachments' tiles), how many beside it, a picture's own small
+   picture. A click lists them under the bubble. */
+.bubble-wrap {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+  margin-top: 12px;
+}
+
+.bubble.has-sent {
+  padding-top: 8px;
+}
+
+.sent-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 18px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 9px;
+  background: #26272b;
+  box-shadow: 0 0 0 2px #000, inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  font: inherit;
+  cursor: default;
+  transition: box-shadow 0.15s ease-out;
+}
+
+.bubble-wrap > .sent-badges {
+  position: absolute;
+  top: -12px;
+  right: 10px;
+}
+
+.bubble-wrap > .sent-badges:hover,
+.bubble-wrap > .sent-badges.open {
+  box-shadow: 0 0 0 2px #000, inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.sent-badges:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #000, inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.sent-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tile);
+}
+
+.sent-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+/* Digits sit high in their line box: a pixel down centres them on the icon. */
+.sent-count {
+  font: 600 10px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  color: #a5aab3;
+  transform: translateY(1px);
+}
+
+.sent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: min(300px, 100%);
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #16171b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sent-list[hidden] {
+  display: none;
+}
+
+.sent-list-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px 3px;
+  font: 600 11px var(--font);
+  color: #8b9099;
+}
+
+/* As an attachment's row (.attach-row), with an arrow where its × would be. */
+.sent-row {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 16px;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 42px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.sent-row:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.sent-row:focus-visible {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.sent-open {
+  display: grid;
+  place-items: center;
+  color: #6b7079;
+}
+
+/* While a question is edited, over the field: what comes back with it, and
+   what leaves the chat's context (views/chat.ts drawEditStrip). */
+.edit-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(247, 179, 43, 0.07);
+  border: 1px solid rgba(247, 179, 43, 0.22);
+  font: 400 11.5px/1.35 var(--font);
+  color: #d9dce1;
+}
+
+.edit-strip[hidden],
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .edit-strip {
+  display: none;
+}
+
+.edit-strip-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.edit-strip-label {
+  font-weight: 600;
+  color: #f7c55a;
+}
+
+.edit-strip .sent-badges {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.edit-strip-hint {
+  font-size: 11px;
+  color: #9aa0aa;
+}
+
+/* ── Screen button: menu, preview, chips (views/chat.ts) ─────────────────── */
+
+.chat-body .screen-panel {
+  display: none;
+}
+
+.chat-body.screening .screen-panel {
+  display: flex;
+}
+
+/* The model picker shares the .picker look: only it shows while it is open. */
+.chat-body.picking .screen-panel {
+  display: none;
+}
+
+.chat-body.screening .chat-log,
+.chat-body.screening .chip-row {
+  display: none;
+}
+
+.screen-shots {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.screen-shot {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.screen-shot img {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  align-self: center;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.screen-shot figcaption {
+  font: 400 10.5px var(--font);
+  color: #8b929e;
+  text-align: center;
+}
+
+.screen-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* A click on an attachment: what it sends, as it will go (views/chat.ts openPreview). */
+.screen-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.screen-preview-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.screen-preview-head {
+  font: 500 12px var(--font);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.screen-preview-detail {
+  font: 400 10.5px var(--font);
+  color: #8b929e;
+  overflow-wrap: anywhere;
+}
+
+.screen-preview-note {
+  font: 400 10.5px var(--font);
+  color: #8b929e;
+  font-style: italic;
+}
+
+.screen-preview-img {
+  width: 100%;
+  max-height: 70vh;
+  align-self: stretch;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* One picture alone: as big as the panel lets it be. */
+.screen-preview.single {
+  overflow: hidden;
+}
+
+.screen-preview.single .screen-preview-item {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.screen-preview.single .screen-preview-img {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
+}
+
+/* A preview's picture opens big on a click (views/chat.ts openZoom). */
+img.zoomable {
+  cursor: zoom-in;
+}
+
+/* The whole open island, its top bar too (views/picture.ts); Lumo steps out
+   of its way meanwhile (island.ts). */
+.zoom {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 14px 10px;
+  border-radius: inherit;
+  background: #000;
+  cursor: zoom-out;
+}
+
+.zoom.open {
+  display: flex;
+}
+
+.zoom-img {
+  flex: 1 1 0;
+  min-height: 0;
+  max-width: 100%;
+  width: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.zoom-caption {
+  flex: 0 0 auto;
+  max-width: 100%;
+  font: 400 11px var(--font);
+  color: #8b929e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zoom-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #e6e8eb;
+  cursor: pointer;
+}
+
+.zoom-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.screen-preview-text {
+  margin: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font: 400 11px/1.45 var(--font);
+  color: #c9ccd2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.chip + .chip {
+  margin-left: 6px;
+}
+
+.chip-remove {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.chip-remove:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

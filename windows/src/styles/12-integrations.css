@@ -1,0 +1,1250 @@
+/* ── Integration cards (overview, left card) ────────────────────────────── */
+
+.left-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+}
+
+.int-card {
+  padding: 10px 12px 0 108px;
+  display: flex;
+  flex-direction: column;
+}
+
+.int-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 24px;
+}
+
+.int-head b {
+  font: 600 12px var(--font);
+  color: var(--ink);
+}
+
+.int-head > span {
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+}
+
+.int-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+}
+
+.int-total span {
+  font: 500 11px var(--font);
+  color: #c5c8cd;
+  font-variant-numeric: tabular-nums;
+}
+
+.pulse {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+.int-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 4px;
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+/* A long error (an address with no space in it) wraps instead of running off the card. */
+.int-status-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A tool's or service's own card (views/integrations.ts idleCard): bigger
+   text, what it did lately filling the room below, and its buttons at the
+   bottom. On a short island the facts that do not fit are left out whole. */
+.int-card.tool-card {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px 12px 108px;
+  gap: 6px;
+}
+
+.tool-card .int-head b {
+  font-size: 14px;
+}
+
+.tool-card .int-head > span {
+  font-size: 12px;
+}
+
+.tool-card .int-status {
+  gap: 6px;
+  padding-top: 0;
+  font-size: 12.5px;
+  color: #b4b9c1;
+}
+
+/* A service's card with its data (views/integrations.ts framed): the tools'
+   card around it, its rows read like the tools' facts. */
+.data-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.data-card .int-stats {
+  gap: 5px;
+  padding-top: 4px;
+  padding-right: 0;
+}
+
+.data-card .int-stat {
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.data-card .int-stat-label {
+  font-size: 12px;
+  color: var(--dim-2);
+}
+
+.data-card .int-stat-value {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.data-card .int-rows {
+  padding-top: 4px;
+}
+
+.data-card .int-name {
+  font-size: 12px;
+}
+
+.data-card .int-ago,
+.data-card .int-sub {
+  font-size: 11px;
+}
+
+.tool-facts {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-flow: column wrap;
+  align-content: flex-start;
+  gap: 5px;
+  overflow: hidden;
+  padding-top: 4px;
+}
+
+.tool-fact {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font: 400 12px var(--font);
+}
+
+.tool-fact-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim-2);
+}
+
+.tool-fact.alone .tool-fact-label {
+  flex: 1 1 auto;
+}
+
+.tool-fact-value {
+  flex: 0 0 auto;
+  max-width: 62%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "All sessions ›" under the facts. */
+.tool-more {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: #8b929e;
+  font: 500 11.5px var(--font);
+  cursor: pointer;
+}
+
+.tool-more:hover {
+  color: var(--ink);
+}
+
+/* A tool's sessions (views/integrations.ts sessionsDetail). */
+.int-card.detail.sessions {
+  height: 100%;
+  box-sizing: border-box;
+  padding-bottom: 10px;
+}
+
+.session-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.session-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 26px 7px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.session-row.link {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.session-row.link:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.session-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.session-project {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 12.5px var(--font);
+  color: var(--ink-2);
+}
+
+.session-when {
+  flex: none;
+  font: 400 11px var(--font);
+  color: #8b929e;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-meta {
+  font: 400 11px var(--font);
+  color: #8b929e;
+}
+
+.session-open {
+  position: absolute;
+  top: 9px;
+  right: 8px;
+  display: flex;
+  color: #6b7079;
+}
+
+.session-row.link:hover .session-open {
+  color: var(--ink);
+}
+
+.tool-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* One row, even on a short island: the first button gives way (with an
+   ellipsis, its full name on hover) before Refresh does. */
+.tool-actions {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tool-actions .tool-action {
+  flex: none;
+}
+
+.tool-actions .tool-action:first-child:not(:last-child) {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.tool-action {
+  --tool: #f5f6f8;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #d4d7dc;
+  font: 500 12px var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+
+.tool-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-action.primary {
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: color-mix(in srgb, var(--tool) 35%, transparent);
+  background: color-mix(in srgb, var(--tool) 14%, transparent);
+}
+
+.tool-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: var(--ink);
+}
+
+.tool-action:active:not(:disabled) {
+  transform: scale(0.96);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.tool-action:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.7);
+  outline-offset: 1px;
+}
+
+.tool-action.busy {
+  cursor: default;
+  color: #9aa0a9;
+}
+
+/* Refresh at work: a small ring turning. */
+.tool-spin {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: tool-spin 0.7s linear infinite;
+}
+
+@keyframes tool-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tool-note {
+  font: 400 11px var(--font);
+  color: #22c55e;
+}
+
+.tool-note.bad {
+  color: var(--red-text, #ff8a8a);
+  overflow-wrap: anywhere;
+}
+
+.int-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.int-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 5px;
+}
+
+.int-rows.tight {
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.int-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  min-width: 0;
+}
+
+.int-name {
+  font: 500 11px var(--font);
+  color: #9398a1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-row.first .int-name {
+  color: #c5c8cd;
+}
+
+.int-ago {
+  font: 400 10px var(--font);
+  color: var(--dim-3);
+  flex: 0 0 auto;
+}
+
+/* The Email card's two buttons, for its newest message. */
+.int-mail-actions {
+  display: flex;
+  gap: 6px;
+  padding: 3px 8px 0;
+}
+
+.int-mail-action {
+  height: 20px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(234, 67, 53, 0.16);
+  color: #f1f2f4;
+  font: 600 10.5px var(--font);
+  cursor: pointer;
+}
+
+.int-mail-action:hover {
+  background: rgba(234, 67, 53, 0.28);
+}
+
+.int-sub {
+  font: 400 10px var(--font);
+  color: #4d5159;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-amount {
+  font: 500 11px var(--mono);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.int-time {
+  font: 500 10px var(--mono);
+  color: #c9956a;
+  flex: 0 0 auto;
+}
+
+.int-more,
+.int-back {
+  border: 0;
+  background: transparent;
+  color: var(--dim-3);
+  display: grid;
+  place-items: center;
+  cursor: default;
+  flex: 0 0 auto;
+}
+
+.int-more {
+  width: 18px;
+  height: 18px;
+}
+
+.int-back {
+  width: 28px;
+  height: 28px;
+}
+
+.int-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+  padding-right: 12px;
+}
+
+.int-stat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.int-stat-icon {
+  width: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.int-stat-label {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.int-stat-value {
+  margin-left: auto;
+  font: 600 12px var(--font);
+  color: #c5c8cd;
+  font-variant-numeric: tabular-nums;
+}
+
+.int-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  padding-top: 4px;
+}
+
+.int-balance span {
+  font: 700 20px var(--mono);
+  color: var(--ink);
+}
+
+.int-balance i {
+  font: 600 9px var(--font);
+  font-style: normal;
+  color: var(--dim-3);
+}
+
+.int-page {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: default;
+  min-width: 0;
+}
+
+.int-page:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 5px;
+}
+
+.int-emoji {
+  width: 14px;
+  font-size: 10px;
+  color: var(--dim-3);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  font-style: normal;
+}
+
+.int-empty {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+  padding-left: 8px;
+}
+
+.int-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--dim-3);
+  cursor: default;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.int-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.int-detail-head b {
+  font: 600 11px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-badge {
+  font: 500 10px var(--font);
+  padding: 2px 6px;
+  border-radius: 999px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.int-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.int-commit {
+  font: 400 10.5px var(--font);
+  color: #c5c8cd;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.int-meta {
+  display: flex;
+  gap: 8px;
+  font: 400 10px var(--font);
+  color: var(--dim-3);
+}
+
+.int-link {
+  border: 0;
+  background: transparent;
+  font: 400 10px var(--mono);
+  color: #7c5cffd9;
+  text-align: left;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.int-detail-text {
+  font: 400 10.5px/1.5 var(--mono);
+  color: var(--dim);
+  margin-top: 8px;
+  max-height: 88px;
+  overflow: auto;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.int-card.detail {
+  padding-top: 8px;
+}
+
+/* ── Plan usage: the pills in the header and the card behind them ────────────
+   Nothing here applies until a pill is turned on in Settings. */
+
+/* Off: takes no room, so the header is exactly as it shipped. */
+.plan-pills {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  /* .header-actions spaces its items 14px apart; the pills sit 8px from
+     the gear. */
+  margin-right: -6px;
+}
+
+.plan-pills.on {
+  display: flex;
+}
+
+/* Both pills: the right side tightens (icons 10px apart, pills 5px
+   from the gear, 8px from the edge). */
+.header-actions.both-plans {
+  gap: 10px;
+  padding-right: 8px;
+}
+
+.header-actions.both-plans .plan-pills {
+  margin-right: -5px;
+}
+
+.header-actions .plan-pill {
+  --plan: #6b7079;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--plan) 14%, transparent);
+  border-radius: 999px;
+  background: #0e0f11;
+  color: var(--dim-3);
+  font: 600 10px var(--font);
+  line-height: 12px;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.header-actions .plan-pill:hover,
+.header-actions .plan-pill.active {
+  background: color-mix(in srgb, var(--plan) 18%, transparent);
+  border-color: color-mix(in srgb, var(--plan) 55%, transparent);
+  color: color-mix(in srgb, var(--plan) 70%, white);
+}
+
+.plan-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* Head, limits, Refresh: the limits give way and scroll when the island is
+   too short for them, so the head and Refresh always show. */
+.plan-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 0;
+}
+
+.plan-card > .plan-head,
+.plan-card > .plan-foot {
+  flex: 0 0 auto;
+}
+
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 36px 0 108px;
+  white-space: nowrap;
+}
+
+.plan-head > * {
+  flex: 0 0 auto;
+}
+
+.plan-title {
+  font: 600 14px var(--font);
+  color: var(--ink);
+}
+
+.plan-head > .plan-sub {
+  flex: 0 1 auto; /* the one part that gives way, with an ellipsis */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 400 12px var(--font);
+  color: var(--dim-2);
+}
+
+.plan-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px 0 108px;
+}
+
+.plan-card > .plan-rows {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 10px;
+  margin-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.plan-card > .plan-rows.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 400 12px var(--font);
+  white-space: nowrap;
+}
+
+/* One limit: its name and how much is used, a bar, and when it resets. */
+.plan-gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.plan-gauge-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plan-label {
+  flex: 0 0 auto;
+  font: 400 12.5px var(--font);
+  color: #b4b9c1;
+}
+
+.plan-row .plan-label {
+  flex: 0 0 56px;
+  font-size: 12px;
+  color: var(--dim-3);
+}
+
+.plan-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.plan-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.plan-pct {
+  font: 600 13px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: #e3e5e8;
+}
+
+.plan-reset {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 400 11.5px var(--font);
+  color: var(--dim-2);
+}
+
+.plan-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 0 108px;
+}
+
+.plan-none {
+  color: var(--dim-3);
+}
+
+.plan-credits {
+  font-weight: 600;
+  color: #c5c8cd;
+}
+
+/* ── GitHub pulse (GitHubPulseCardView / GitHubDetailView) ─────────────── */
+
+.gh-spark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  cursor: default;
+  min-width: 0;
+}
+
+.gh-mini {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.gh-mini i,
+.gh-cell {
+  width: 7px;
+  height: 7px;
+  border-radius: 1.5px;
+  flex: 0 0 auto;
+}
+
+.int-stats.gh-rows {
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.gh-stat {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  cursor: default;
+}
+
+.gh-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gh-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: 600 12px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: default;
+  flex: 0 0 auto;
+}
+
+.gh-head-right {
+  margin-left: auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  cursor: default;
+}
+
+.gh-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 60px; /* three 20 px rows; the rest scrolls */
+  overflow-y: auto;
+  margin-top: 4px;
+  scrollbar-width: none;
+}
+
+.gh-list::-webkit-scrollbar {
+  display: none;
+}
+
+.gh-list.fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 80%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 80%, transparent 100%);
+}
+
+.gh-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  flex: 0 0 20px;
+  padding: 0 4px 0 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  cursor: default;
+  min-width: 0;
+}
+
+.gh-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gh-gap {
+  width: 5px;
+  flex: 0 0 5px;
+}
+
+.gh-ref {
+  font: 400 10.5px var(--font);
+  color: #9398a1;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.gh-title {
+  font: 400 11px var(--font);
+  color: #c5c8cd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* The reference and the title, side by side on the row's one line (two lines in the new look). */
+.gh-text {
+  display: contents;
+}
+
+/* How the checks went: said in the new look only (look-new.css). */
+.gh-pr-word {
+  display: none;
+}
+
+.gh-draft {
+  font: 400 9.5px var(--font);
+  color: var(--dim-3);
+  flex: 0 0 auto;
+}
+
+.gh-word {
+  margin-left: auto;
+  padding-left: 4px;
+  font: 400 10px var(--font);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.gh-empty {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  padding-top: 8px;
+}
+
+.gh-grid {
+  display: flex;
+  gap: 1.5px;
+  padding-top: 5px;
+}
+
+.gh-week {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px;
+}
+
+.gh-cell.empty {
+  background: transparent;
+}
+
+/* ── Weekly recap ───────────────────────────────────────────────────────── */
+/* WeeklyRecapCardView: text from x = 116, indigo wash, chips of 17 px values. */
+
+.recap-stack {
+  padding: 4px 16px 4px 116px;
+  gap: 4px;
+}
+
+.recap-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.recap-title {
+  font: 600 11px var(--font);
+  color: #818cf8;
+}
+
+.recap-range {
+  font: 400 10px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+}
+
+.recap-chips {
+  display: flex;
+  gap: 14px;
+  white-space: nowrap;
+}
+
+.recap-chip .v {
+  font: 700 17px var(--font);
+  color: var(--ink-2);
+}
+
+.recap-chip .l {
+  font: 400 9px var(--font);
+  color: var(--dim-2);
+}
+
+.recap-meta {
+  display: flex;
+  gap: 5px;
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recap-meta .n {
+  color: var(--ink-2);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recap-meta .sep {
+  color: var(--dim-4);
+}
+
+.recap-stack .actions {
+  margin-top: 3px;
+}
+
+.recap-share {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  padding: 8px 16px 8px 116px;
+}
+
+.recap-thumb {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 114px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.recap-share-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recap-status {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 14px;
+  font: 400 11px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recap-link {
+  color: #818cf8;
+  padding: 0;
+}
+
+/* ── Wardrobe (right-click on Lumo) ──────────────────────────────────────── */
+
+.wardrobe-stack {
+  padding: 12px 16px 12px 104px;
+  gap: 10px;
+}
+
+.wardrobe-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wardrobe-title {
+  font: 600 12px var(--font);
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+
+.wardrobe-note {
+  margin-left: auto;
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wardrobe-part {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wardrobe-label {
+  font: 600 10px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wardrobe-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.wardrobe-item {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  display: grid;
+  place-items: center;
+  cursor: default;
+  transition: background 0.12s ease-out, border-color 0.12s ease-out;
+}
+
+.wardrobe-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.wardrobe-item.on {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.wardrobe-item canvas {
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+}
+
+/* Computer use, under the edge lights: its title beside its buttons. */
+.wardrobe-extra {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.wardrobe-extra .wardrobe-part {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}

@@ -1,0 +1,534 @@
+/* Watch: a live picture of an agent's browser tab (views/browser-watch.ts).
+   Concept: concepts/browser-agenti-guarda. Under the agent's row on the
+   Agents card, and in the agents' browser view; the ring and the words say
+   what the agent last did on the page. */
+.agents-btn.watch.on {
+  background: rgba(59, 158, 255, 0.18);
+  color: #a9d2ff;
+}
+
+.agents-row.watching .agents-row-head {
+  background: rgba(59, 158, 255, 0.06);
+}
+
+.bw-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 12px 12px 34px;
+}
+
+.bw-frame {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: #0e0f11;
+  overflow: hidden;
+}
+
+.bw-frame [hidden],
+.bw-view [hidden] {
+  display: none !important;
+}
+
+.bw-bar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  background: #141518;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font: 400 11px var(--font);
+  color: var(--dim);
+}
+
+.bw-bar > svg {
+  flex: none;
+  color: var(--dim-3);
+}
+
+.bw-url {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bw-url b {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.bw-url span {
+  color: var(--dim-3);
+}
+
+.bw-live {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 5px;
+  font: 500 10.5px var(--font);
+  color: #8fc5ff;
+}
+
+.bw-live i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b9eff;
+  box-shadow: 0 0 0 2.5px rgba(59, 158, 255, 0.25);
+}
+
+.bw-ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.bw-ico:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.bw-page {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #0e0f11;
+}
+
+.bw-shot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  transition: transform 0.35s ease;
+}
+
+.bw-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+}
+
+/* The box of what the agent clicked or typed in. */
+.bw-ring {
+  position: absolute;
+  /* A little larger than what it shows, so its line doesn't cover its edge. */
+  margin: -5px 0 0 -5px;
+  padding: 3px;
+  box-sizing: content-box;
+  border: 2px solid #3b9eff;
+  border-radius: 6px;
+  background: rgba(59, 158, 255, 0.1);
+  pointer-events: none;
+}
+
+.bw-ring.typing {
+  background: rgba(59, 158, 255, 0.06);
+}
+
+/* The agent's pointer: it glides from where it was to where it clicks or types. */
+.bw-cursor {
+  position: absolute;
+  z-index: 3;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  transition: left 0.45s cubic-bezier(0.3, 0.7, 0.3, 1), top 0.45s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+
+.bw-cursor svg {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.bw-cursor .bw-arrow {
+  left: -4px;
+  top: -2px;
+}
+
+.bw-cursor .bw-ibeam {
+  left: -11px;
+  top: -11px;
+  display: none;
+}
+
+.bw-cursor.text .bw-arrow {
+  display: none;
+}
+
+.bw-cursor.text .bw-ibeam {
+  display: block;
+}
+
+.bw-frame.small .bw-cursor svg {
+  width: 15px;
+  height: 15px;
+}
+
+.bw-frame.small .bw-cursor .bw-ibeam {
+  left: -7.5px;
+  top: -7.5px;
+}
+
+/* A click: a ring that opens and fades where it landed, once. */
+.bw-ripple {
+  position: absolute;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 2px solid rgba(59, 158, 255, 0.85);
+  border-radius: 50%;
+  background: rgba(59, 158, 255, 0.18);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bw-ripple.on {
+  animation: bw-ripple 0.9s ease-out 0.4s both;
+}
+
+@keyframes bw-ripple {
+  0% { opacity: 1; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(1.7); }
+}
+
+.bw-frame.small .bw-ripple {
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+}
+
+/* A page loading: the last picture dimmed, a bar running along its top. */
+.bw-frame.loading .bw-shot img {
+  opacity: 0.38;
+  filter: saturate(0.4);
+  transition: opacity 0.3s ease;
+}
+
+.bw-load {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 4;
+  height: 2px;
+  overflow: hidden;
+  background: rgba(59, 158, 255, 0.18);
+}
+
+.bw-load i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  border-radius: 2px;
+  background: #3b9eff;
+  animation: bw-load 1.2s ease-in-out infinite;
+}
+
+@keyframes bw-load {
+  0% { left: -38%; }
+  100% { left: 100%; }
+}
+
+.bw-wait,
+.bw-empty {
+  display: grid;
+  place-items: center;
+  min-height: 90px;
+  padding: 16px;
+  font: 400 11.5px var(--font);
+  color: var(--dim);
+  text-align: center;
+}
+
+/* Over the picture: what opens, or why there is none; on the dark page without one. */
+.bw-wait {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  display: inline-flex;
+  min-height: 0;
+  max-width: 86%;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(20, 22, 26, 0.92);
+  color: var(--ink);
+  font: 500 11.5px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.bw-wait.plain {
+  background: none;
+  box-shadow: none;
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.bw-frame.small .bw-wait {
+  padding: 5px 9px;
+  font-size: 10.5px;
+}
+
+/* Under the picture: what the agent does now, and in small the steps before. */
+.bw-steps {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bw-steps:not([hidden]) + .bw-note {
+  display: none;
+}
+
+.bw-now {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font: 500 12px var(--font);
+  color: var(--ink);
+}
+
+.bw-now-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bw-now-ico {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: #3b9eff;
+}
+
+.bw-now-ico.up svg {
+  transform: rotate(180deg);
+}
+
+.bw-now-ico.busy {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(59, 158, 255, 0.25);
+  border-top-color: #3b9eff;
+  border-radius: 50%;
+  animation: bw-spin 0.8s linear infinite;
+}
+
+@keyframes bw-spin {
+  to { transform: rotate(360deg); }
+}
+
+.bw-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.bw-done span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.75;
+}
+
+.bw-done em {
+  font-style: normal;
+  opacity: 0.5;
+}
+
+.bw-note.now .bw-steps,
+.bw-cap-now .bw-steps {
+  flex: 1;
+}
+
+.bw-cap-now .bw-now {
+  font-size: 11px;
+}
+
+.bw-foot {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  min-width: 0;
+  font: 400 11px var(--font);
+  color: var(--dim);
+}
+
+.bw-note {
+  flex: 1;
+  min-width: 0;
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bw-note.now {
+  color: var(--dim);
+}
+
+/* The agents' browser, a view of its own (the island's "browser" view). */
+.bw-view {
+  --ag-done: #22c55e;
+  --ag-working: #3b9eff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 16px 14px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.bw-view .mv-head {
+  gap: 10px;
+}
+
+.bw-gap {
+  flex: 1;
+}
+
+.bw-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bw-tab i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ag-working);
+}
+
+.bw-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.bw-body.one .bw-frame {
+  flex: 1;
+}
+
+/* The whole page, as large as the view holds (the view is as tall as it needs when the screen allows). */
+.bw-body.one .bw-page {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  align-items: flex-start;
+  container-type: size;
+}
+
+.bw-body.one .bw-shot {
+  flex: none;
+  width: min(100cqw, 160cqh);
+}
+
+.bw-body.all {
+  display: grid;
+  grid-template-columns: repeat(var(--bw-cols, 3), minmax(0, 1fr));
+  /* A row as tall as the view holds, its pages cut to fit when too tall; more rows scroll. */
+  grid-auto-rows: minmax(150px, 1fr);
+  align-items: start;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.bw-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  border-radius: 12px;
+  background: #141518;
+  cursor: pointer;
+}
+
+.bw-tile:hover .bw-frame {
+  border-color: rgba(59, 158, 255, 0.4);
+}
+
+.bw-tile .bw-frame {
+  flex: 0 1 auto;
+  border-radius: 12px 12px 0 0;
+}
+
+.bw-tile .bw-page {
+  flex: 0 1 auto;
+}
+
+.bw-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px 10px;
+}
+
+.bw-cap-now {
+  font: 400 10.5px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 13px;
+}
+
+.bw-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: none;
+  max-width: 45%;
+  font: 500 11.5px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bw-cap .bw-agent {
+  max-width: 100%;
+}

@@ -1,0 +1,18 @@
+/* ── Arabic: right to left ─────────────────────────────────────────────────────
+   i18n.ts sets <html data-dir="rtl">. The text of the cards reads and aligns
+   right to left; Lumo, the pills, the header and the cards themselves keep
+   their places, and code, commands and the contribution grid stay left to
+   right. A chat message follows its own text's direction (an English answer
+   stays left to right). */
+html[data-dir="rtl"] #views :is(.stack, .int-card, .plan-card, .drop-body, .up-card) {
+  direction: rtl;
+}
+
+html[data-dir="rtl"] #views :is(.code, .gh-grid, .diff-card, .md-pre) {
+  direction: ltr;
+}
+
+html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-item, .reply .md-quote, .chat-input) {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
