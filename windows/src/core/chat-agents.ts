@@ -233,9 +233,12 @@ export function askable(e: AgentEntry | undefined): boolean {
  * which answers in the user's language. Of an agent with no sign of life, or
  * one that ended, the CLI is told to look at what it did when no answer comes.
  */
-export function agentAsk(q: AskQuote, question: string): string {
+export function agentAsk(q: AskQuote, question: string, provider = "claude-code"): string {
   const to = JSON.stringify(q.agentId);
-  let ask = `My question below is for your agent "${q.title}" (agentId: ${q.agentId}). Send it to that agent with SendMessage (to: ${to}), then tell me its answer.`;
+  const how = provider === "antigravity-cli"
+    ? `send_message (Recipient: ${to})`
+    : `SendMessage (to: ${to})`;
+  let ask = `My question below is for your agent "${q.title}" (agentId: ${q.agentId}). Send it to that agent with ${how}, then tell me its answer.`;
   if (q.look === "stalled") ask += " It has given no sign of life for a while: if it does not answer, look at what it did last and tell me why it is stuck.";
   else if (q.look === "done" || q.look === "failed") ask += " It had ended: the message takes it up again.";
   return `${ask}\n\n${question}`;

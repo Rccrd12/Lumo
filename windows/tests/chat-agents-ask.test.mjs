@@ -108,6 +108,7 @@ test("what goes to the CLI says which agent, how to pass it on, and what to do w
   assert.match(text, /^My question below is for your agent "counter" \(agentId: a593b8fb9d51326c3\)\. Send it to that agent with SendMessage \(to: "a593b8fb9d51326c3"\), then tell me its answer\.\n\nChe passo stai facendo\?$/);
   assert.match(agentAsk({ ...q, look: "stalled" }, "?"), /no sign of life for a while.*why it is stuck\./);
   assert.match(agentAsk({ ...q, look: "done" }, "?"), /It had ended: the message takes it up again\./);
+  assert.match(agentAsk(q, "Che passo stai facendo?", "antigravity-cli"), /send_message \(Recipient: "a593b8fb9d51326c3"\)/);
   assert.deepEqual(askQuoteOf(q), q);
   assert.equal(askQuoteOf({ agentId: "a" }), undefined);
 });
