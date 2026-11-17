@@ -255,7 +255,7 @@ export interface IntegrationInfo {
 export type IslandCloseMode = "timer" | "leave" | "click" | "never";
 
 export function parseCloseMode(v: unknown): IslandCloseMode {
-  return v === "leave" || v === "click" || v === "never" ? v : "timer";
+  return v === "timer" || v === "leave" || v === "click" || v === "never" ? v : "leave";
 }
 
 /**
@@ -487,8 +487,8 @@ export const DEFAULT_SETTINGS: Settings = {
   islandHeight: 0,
   islandSizes: {},
   iconScale: 1.25,
-  islandClose: "timer",
-  islandHoverOpen: false,
+  islandClose: "leave",
+  islandHoverOpen: true,
   islandAutoHide: false,
   compactActivity: true,
   compactMedia: true,

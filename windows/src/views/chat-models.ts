@@ -259,7 +259,14 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
         h("button", {
           class: "picker-link",
           text: tl(STRINGS.openSettings),
-          onclick: () => openSettings(),
+          onclick: () => {
+            try {
+              window.localStorage.setItem("lumo.settings.page", "chat");
+            } catch {
+              // Settings open on the page they were on.
+            }
+            openSettings();
+          },
         }),
       );
     }
