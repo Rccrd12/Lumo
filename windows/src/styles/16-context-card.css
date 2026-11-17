@@ -1,0 +1,325 @@
+/* ── Claude Code's /context, as a card (views/context-card.ts) ─────────────── */
+
+.ctx-card {
+  align-self: stretch;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: normal;
+}
+
+.ctx-head,
+.ctx-numbers {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ctx-title {
+  font: 600 12px var(--font);
+  color: var(--ink);
+}
+
+.ctx-model {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctx-used {
+  font: 500 15px var(--font);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ctx-percent {
+  font: 500 11px var(--font);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.ctx-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ctx-bar i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+}
+
+.ctx-bar b {
+  flex: 1;
+}
+
+/* Room kept for compacting: hatched, as it is reserved rather than taken. */
+.ctx-buffer {
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0 2px, transparent 2px 4px);
+}
+
+.ctx-free {
+  margin-top: -3px;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  text-align: end;
+}
+
+.ctx-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.ctx-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 400 11px var(--font);
+  color: #b0b5be;
+}
+
+.ctx-key i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.ctx-key-tokens {
+  color: var(--dim-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ctx-more {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
+.ctx-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 500 11px var(--font);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.ctx-toggle:hover {
+  color: var(--ink);
+}
+
+.ctx-toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.ctx-more.open .ctx-toggle svg {
+  transform: rotate(90deg);
+}
+
+.ctx-details {
+  display: none;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ctx-more.open .ctx-details {
+  display: flex;
+}
+
+.ctx-group,
+.ctx-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font: 400 11px var(--font);
+  min-width: 0;
+}
+
+.ctx-group {
+  margin-top: 4px;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.ctx-group > span:first-child,
+.ctx-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctx-item {
+  color: #b0b5be;
+  padding-inline-start: 8px;
+}
+
+.ctx-item-count {
+  color: var(--dim-3);
+}
+
+html[data-dir="rtl"] .ctx-toggle svg {
+  transform: scaleX(-1);
+}
+
+html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
+  transform: rotate(90deg);
+}
+
+.ctx-item.ctx-rest {
+  color: var(--dim-3);
+}
+
+/* Antigravity's /usage in the chat: the usage menu's rows, in a card. */
+.ctx-usage {
+  gap: 10px;
+}
+
+/* What a local model can do, next to it in the model picker (local_models.rs caps). */
+.picker-model-caps {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #8b929e;
+}
+
+/* The chat picker's − / + on a local model: eject it from memory or load it. */
+.picker-model-load {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: auto;
+  border-radius: 9px;
+  color: #8b929e;
+  cursor: pointer;
+}
+
+.picker-model-load[hidden] {
+  display: none;
+}
+
+.picker-model-load:hover {
+  color: #e6e9ee;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.picker-model-load[data-busy] {
+  cursor: default;
+}
+
+.picker-model-load-pct {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Under a local model's context bar: /compact, a small pill at the bottom right. */
+/* margin-top: auto keeps it at the bottom of the menu, however tall. */
+.usage-compact-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.usage-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 11px var(--font);
+  color: #c8cdd4;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.usage-compact:hover {
+  color: #e6e9ee;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.usage-compact svg {
+  opacity: 0.8;
+}
+
+/* ── Back to the end of the chat (views/chat.ts) ─────────────────────────── */
+
+/* Over the bottom of the log, when it is scrolled a little way up from its end. */
+.chat-to-end {
+  position: absolute;
+  z-index: 4;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: rgba(36, 37, 42, 0.92);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  cursor: default;
+  animation: chat-to-end-in 0.12s ease-out;
+  transition: transform 0.08s ease-out;
+}
+
+.chat-to-end[hidden] {
+  display: none;
+}
+
+.chat-to-end:hover {
+  background: rgba(52, 53, 59, 0.95);
+}
+
+.chat-to-end:active {
+  transform: scale(0.94);
+}
+
+@keyframes chat-to-end-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* The line under a tool's name holds only its description in this look
+   (look-new.css writes what the tool uses after it). */
+.tool-sub {
+  display: contents;
+}
+
+.tool-needs-text {
+  display: none;
+}

@@ -1,0 +1,68 @@
+/* Lumo for Windows: the island's palette, sizes and type scale. */
+
+:root {
+  color-scheme: dark;
+
+  /* After the Latin fonts: the scripts of the other interface languages —
+     Devanagari and Bengali (Nirmala UI), Simplified Chinese (Microsoft YaHei).
+     Arabic and Cyrillic are in Segoe UI. */
+  --font: system-ui, "Segoe UI Variable Text", "Segoe UI", "Segoe UI Emoji", "Nirmala UI",
+    "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  --ink: #f5f6f8;        /* primary text */
+  --ink-2: #f1f2f4;
+  --dim: #9398a1;
+  --dim-2: #8e939c;
+  --dim-3: #6b7079;
+  --dim-4: #5f646d;
+  --dim-5: #4b5563;
+  --card: #141518;
+  --card-flat: #0e0f11;
+  --tab-on: #1d1f23;
+  --hairline: rgba(255, 255, 255, 0.035);
+  --red: #f4505e;
+  --red-text: #ff8d97;
+  --green: #22c55e;
+  --green-2: #34d399;
+  --amber: #f5a524;
+  --cyan: #22d3ee;
+  --indigo: #6366f1;
+  --pink: #f472b6;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+#root {
+  position: fixed;
+  inset: 0;
+}
+
+/* Invisible strip that wakes the island when it is hidden. */
+#wake-strip {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  /* As long as the closed island (layout.ts COMPACT_W, island.rs STRIP_W). */
+  width: 288px;
+  height: 6px;
+  background: transparent;
+}

@@ -1,0 +1,111 @@
+/* ── Chat (prompt view) ─────────────────────────────────────────────────── */
+
+.chat-card {
+  overflow: hidden;
+}
+
+.chat-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 14px 84px;
+}
+
+.chip-row:empty {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font: 400 11.5px var(--font);
+  color: var(--ink-2);
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  transform: scale(1.06);
+  transition: border-color 0.3s ease-out 0.45s, transform 0.3s ease-out 0.45s;
+}
+
+.chip.settled {
+  border-color: rgba(255, 255, 255, 0);
+  transform: scale(1);
+}
+
+/* "File uploaded", for a moment after a drop. */
+.chip-check {
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #34d399;
+  color: #07130e;
+}
+
+.chip.uploaded {
+  color: var(--green-2);
+}
+
+.chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff6b5b, #f7b32b, #2dd4a7, #38bdf8, #a78bfa);
+}
+
+/* 4 px on each side that the content never uses, given back by the
+   margin: the line under each message reaches 3-4 px past its text, so its
+   icons sit on the text's edge, and must stay inside the scroll box or the
+   chat gets a horizontal scrollbar. */
+.chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 -4px;
+  padding: 2px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.chat-row {
+  display: flex;
+}
+
+/* A question, its actions under it, on the right. */
+.chat-row.user {
+  flex-direction: column;
+  align-items: flex-end;
+  padding-left: 32px;
+}
+
+.bubble {
+  background: rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font: 400 12.5px var(--font);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.reply {
+  font: 400 12.5px var(--font);
+  color: #b0b5be;
+  white-space: pre-wrap;
+  padding-right: 8px;
+  user-select: text;
+  /* Answers are Markdown blocks (views/markdown.ts), spaced as ChatMarkdownView. */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
