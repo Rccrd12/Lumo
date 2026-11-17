@@ -205,7 +205,13 @@ test("a provider without a key is never asked for its models", async () => {
   assert.match($(".picker-status").textContent, /No API key/);
 });
 
-test("only the providers set up show: no Anthropic without its key", async () => {
+test("only the providers set up show: no Anthropic without its key", async (t) => {
+  const mem = new Map([["lumo.settings.page", "island"]]);
+  const before = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  t.after(() => {
+    globalThis.localStorage = before;
+  });
   answers.chat_providers = ["claude-code", "antigravity-cli"];
   State.settings = { ...State.settings, chatProvider: "claude-code" };
   answers.chat_models = [{ id: "default", label: "Default" }];
@@ -221,6 +227,7 @@ test("only the providers set up show: no Anthropic without its key", async () =>
   assert.match($(".picker-status").textContent, /No provider is set up yet/);
   assert.ok($(".picker.models").classList.contains("empty"));
   $(".picker-link").fire("click");
+  assert.equal(mem.get("lumo.settings.page"), "chat");
   answers.chat_providers = null;
   $(".model-btn").fire("click");
   await flush();
