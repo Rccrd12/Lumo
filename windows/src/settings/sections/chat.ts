@@ -6,7 +6,7 @@ import { providerDef } from "../../core/providers";
 import { h } from "../../views/dom";
 import { accentDot, sectionHead, setting, statusDot, wideSetting } from "../parts";
 import { t, tn } from "../../i18n/i18n";
-import { save, settings, toggle } from "../store";
+import { save, select, settings, toggle } from "../store";
 
 // ── Chat providers section ────────────────────────────────────────────────────
 
@@ -106,6 +106,39 @@ export function chatProvidersSection(
     {},
     ...sectionHead(CHAT_STRINGS.providersTitle, CHAT_STRINGS.providersHint),
     ...list.children,
+  );
+}
+
+// ── Chat names ────────────────────────────────────────────────────────────────
+
+/**
+ * Who names the chats: their own AI once the first answer is in
+ * (chat_title.rs), with the provider's lightest model or the chat's; off,
+ * the start of the first question, as before. On by default.
+ */
+export function chatNamesSection(): HTMLElement {
+  const model = select(
+    [["light", t("The provider's lightest")], ["chat", t("The chat's own")]],
+    settings.chatTitleModel === "chat" ? "chat" : "light",
+    (v) => {
+      settings.chatTitleModel = v === "chat" ? "chat" : "light";
+      void save();
+    },
+  );
+  model.disabled = settings.chatAiTitles === false;
+  return h(
+    "section",
+    {},
+    ...sectionHead(t("Chat names")),
+    setting(t("The AI names the chats"),
+      t("After the first answer, the chat's AI picks a name of a few words. Off, the name is the start of the first question, as before. A chat you rename yourself keeps its name."),
+      toggle(settings.chatAiTitles !== false, (on) => {
+        settings.chatAiTitles = on;
+        model.disabled = !on;
+        void save();
+      }),
+    ),
+    setting(t("Model for names"), t("Only the chat's provider is asked."), model),
   );
 }
 

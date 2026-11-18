@@ -17,7 +17,7 @@ import { installTextMenu } from "../views/context-menu";
 import { FRAME_CLOSE, FRAME_READY, FRAME_SHOWN } from "../views/settings-frame";
 import { VOICE_SETTINGS } from "../live/strings";
 import { N_, isRtl, onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t } from "../i18n/i18n";
-import { CLOUD, chatProvidersSection, chatUsageSection } from "./sections/chat";
+import { CLOUD, chatNamesSection, chatProvidersSection, chatUsageSection } from "./sections/chat";
 import { COPILOT_MISSING, CURSOR_MISSING, apiSection, backgroundSection, claudeSection, cliSection, planSection } from "./sections/claude";
 import { energyRedraw, generalSection } from "./sections/general";
 import { islandSection } from "./sections/island";
@@ -270,7 +270,7 @@ export async function render() {
   const pages: Record<PageId, HTMLElement[]> = {
     general: [generalSection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), cliSection("copilot-cli", N_("Uses your GitHub Copilot plan. No key needed."), COPILOT_MISSING), cliSection("cursor-cli", N_("Uses your Cursor plan. No key needed."), CURSOR_MISSING), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatUsageSection()],
+    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), cliSection("copilot-cli", N_("Uses your GitHub Copilot plan. No key needed."), COPILOT_MISSING), cliSection("cursor-cli", N_("Uses your Cursor plan. No key needed."), CURSOR_MISSING), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatNamesSection(), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), backgroundSection(), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present, keyChanged)],

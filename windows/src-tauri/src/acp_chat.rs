@@ -1743,15 +1743,21 @@ pub async fn send(
 /// Lumo's, so it reads and answers without changing anything (whatever the
 /// CLI would ask is rejected). Blocking.
 pub(crate) fn complete(provider: &str, model: &str, prompt: &str) -> Result<String, String> {
-    const REVIEW: &str = "lumo-tool-review";
+    complete_in("tool-review", provider, model, prompt, Arc::new(Stop::default()))
+}
+
+/// `complete`, in the folder `work` of its own under Lumo's local data (a
+/// chat's name, chat_title.rs); `stop` ends it early.
+pub(crate) fn complete_in(work: &str, provider: &str, model: &str, prompt: &str, stop: Arc<Stop>) -> Result<String, String> {
+    let id = format!("lumo-{work}");
     let agent = Agent::of(provider).ok_or_else(|| format!("Unknown chat provider: {provider}"))?;
     let exe = agent.exe().ok_or_else(|| agent.not_installed())?;
     let spec = TurnSpec {
         agent,
         exe,
         args: agent.args(""),
-        dir: platform::local_dir().join("tool-review"),
-        chat_id: REVIEW.into(),
+        dir: platform::local_dir().join(work),
+        chat_id: id.clone(),
         session: None,
         mcp: json!([]),
         extra_key: String::new(),
@@ -1759,8 +1765,8 @@ pub(crate) fn complete(provider: &str, model: &str, prompt: &str) -> Result<Stri
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
-    close(REVIEW);
+    let result = live_turn(spec, move |_| prompt, stop, |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
+    close(&id);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {
         return Err(e.clone());

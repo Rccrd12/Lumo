@@ -1422,12 +1422,18 @@ pub async fn send(
 /// a new thread in Plan only, in a folder of its own, so it reads and answers
 /// without changing anything (whatever Codex would ask is declined). Blocking.
 pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
-    const REVIEW: &str = "lumo-tool-review";
+    complete_in("tool-review", model, prompt, Arc::new(Stop::default()))
+}
+
+/// `complete`, in the folder `work` of its own under Lumo's local data (a
+/// chat's name, chat_title.rs); `stop` ends it early.
+pub(crate) fn complete_in(work: &str, model: &str, prompt: &str, stop: Arc<Stop>) -> Result<String, String> {
+    let id = format!("lumo-{work}");
     let exe = platform::codex_candidates().into_iter().next().ok_or_else(not_installed)?;
     let spec = TurnSpec {
         exe,
-        dir: platform::local_dir().join("tool-review"),
-        chat_id: REVIEW.into(),
+        dir: platform::local_dir().join(work),
+        chat_id: id.clone(),
         thread: None,
         config: Value::Null,
         model: model.to_string(),
@@ -1435,8 +1441,8 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
-    close(REVIEW);
+    let result = live_turn(spec, move |_| prompt, stop, |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
+    close(&id);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {
         return Err(codex_error(e));

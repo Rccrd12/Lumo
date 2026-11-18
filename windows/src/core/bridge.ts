@@ -449,6 +449,13 @@ export const Bridge = {
     call<void>("chat_load", { chatId, turns, session, cli, compact }),
   /** /compact with a provider called by its API: the summary that now stands for the chat's turns; null with nothing new. */
   /** The summary, and the history sent to the model before and after it (characters). */
+  /**
+   * A chat's name, from its first exchanges (question, answer), given by its
+   * own provider (chat_title.rs): with the provider's lightest model when
+   * `light`, else the chat's `model`. Null when none came.
+   */
+  chatTitle: (provider: string, model: string, exchanges: [string, string][], light: boolean) =>
+    call<string | null>("chat_title", { provider, model, exchanges, light }),
   chatCompact: (chatId: string) => callOrThrow<(ChatCompact & { before: number; after: number }) | null>("chat_compact", { chatId }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
   pickFile: async () => {
