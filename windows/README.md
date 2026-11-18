@@ -902,6 +902,16 @@ CLI, so Settings no longer offers Gemini CLI: its pill is gone, and
 **Settings… → Agents** only lists its hooks when they were installed before,
 so they can be removed.
 
+The subagents agy starts (`invoke_subagent`) show on the chat's Agents card,
+read from their own transcripts under `.gemini\antigravity-cli\brain`, and so
+do the agents they start in turn, found by the conversation that sent them
+their task: each sits in under the one that started it. An agent that started
+others and answered waits for them ("Its subagents: 2 of 5 finished") rather
+than ending. An agent that writes its own plan (Lumo's `update_plan` with its
+name in `agent`, or Claude Code's to-do list or tasks inside a subagent) has
+the chat's plan chip on its row, and its steps when the row is opened; that
+plan never replaces the chat's own.
+
 ### Chat with your ChatGPT account (Codex)
 
 Pick **Codex** above the chat box and the island talks to the Codex CLI

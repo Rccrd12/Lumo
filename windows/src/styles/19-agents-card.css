@@ -321,3 +321,55 @@
 .agents-btn.watch {
   color: #a5b4fc;
 }
+
+/* An agent started by another one, set in under it (concepts/agy-sotto-agenti-annidati). */
+.agents-row.child .agents-row-head {
+  padding-left: calc(12px + var(--depth, 1) * 22px);
+}
+
+.agents-row.child .agents-detail {
+  padding-left: calc(34px + var(--depth, 1) * 22px);
+}
+
+/* An agent's own plan (concepts/piano-dei-sotto-agenti): on its row the chat's
+   plan chip, a little smaller; opened, its steps as the chat's plan lists them. */
+html.look-new .agents-row .agents-plan-chip {
+  height: 20px;
+  padding: 0 7px;
+  margin-right: 4px;
+  flex: none;
+  background: #1c1d21;
+}
+
+.agents-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 4px;
+  padding: 10px 8px 8px;
+  border-radius: 12px;
+  background: #111214;
+  font-size: 11.5px;
+}
+
+.agents-plan .agent-plan {
+  width: auto;
+  height: auto;
+  background: transparent;
+  border-radius: 0;
+  transition: none;
+  font-size: 11.5px;
+}
+
+.agents-plan .plan-lit-ring {
+  stroke: #3b9eff;
+}
+
+.agents-plan .plan-lit-dot {
+  fill: #3b9eff;
+}
+
+.agents-plan .plan-step.done .plan-text {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--dim) 60%, transparent);
+}

@@ -123,6 +123,76 @@ pub struct AgentRow {
     /// read from this field, never from the words of `error`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ended_by: Option<&'static str>,
+    /// The row of the agent that started this one, when an agent started it
+    /// (an Antigravity CLI subagent's own subagents): the island draws it
+    /// under that one (concepts/agy-sotto-agenti-annidati).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// Its own plan, when it wrote one (its TodoWrite, its update_plan): the
+    /// island shows how far along it is (concepts/piano-dei-sotto-agenti).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<Vec<PlanStep>>,
+}
+
+/// One step of an agent's plan, as src/core/agent-plan.ts has them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PlanStep {
+    pub text: String,
+    /// "pending", "active", "done" or "skipped".
+    pub status: &'static str,
+}
+
+/// Steps kept of an agent's plan (agent-plan.ts MAX_STEPS).
+const MAX_PLAN_STEPS: usize = 40;
+/// Longest step text kept.
+const MAX_STEP_TEXT: usize = 200;
+
+/// Where a step stands, whatever the tool calls it (agent-plan.ts stepStatus).
+pub fn step_status(raw: &str) -> &'static str {
+    let s = raw.trim().to_ascii_lowercase().replace([' ', '-'], "_");
+    match s.as_str() {
+        "completed" | "complete" | "done" | "finished" | "success" => "done",
+        "in_progress" | "inprogress" | "active" | "running" | "doing" | "current" => "active",
+        "cancelled" | "canceled" | "skipped" | "deleted" | "removed" | "abandoned" => "skipped",
+        _ => "pending",
+    }
+}
+
+/// A step's text, on one line, cut short; None when there is none.
+pub fn step_text(raw: &str) -> Option<String> {
+    let line = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.is_empty() {
+        return None;
+    }
+    if line.chars().count() <= MAX_STEP_TEXT {
+        return Some(line);
+    }
+    let cut: String = line.chars().take(MAX_STEP_TEXT - 1).collect();
+    Some(format!("{}…", cut.trim_end()))
+}
+
+/// The plan a call of Lumo's update_plan (`{"plan": [{step, status}]}`) or of
+/// Claude Code's TodoWrite (`{"todos": [{content, status}]}`) gives: None when
+/// it gives no step. `input` may be the object or its JSON text.
+pub fn plan_of(input: &Value) -> Option<Vec<PlanStep>> {
+    let parsed;
+    let input = match input {
+        Value::String(text) => {
+            parsed = serde_json::from_str::<Value>(text).ok()?;
+            &parsed
+        }
+        other => other,
+    };
+    let list = input.get("plan").or_else(|| input.get("todos")).or_else(|| input.get("steps")).and_then(Value::as_array)?;
+    let steps: Vec<PlanStep> = list
+        .iter()
+        .filter_map(|item| {
+            let text = ["step", "content", "text", "subject", "title"].iter().filter_map(|k| item[*k].as_str()).find(|t| !t.trim().is_empty())?;
+            Some(PlanStep { text: step_text(text)?, status: step_status(item["status"].as_str().unwrap_or("")) })
+        })
+        .take(MAX_PLAN_STEPS)
+        .collect();
+    (!steps.is_empty()).then_some(steps)
 }
 
 /// A message the chat's CLI sent one of its agents (Claude Code's SendMessage),
@@ -201,6 +271,8 @@ impl AgentRow {
             talk: None,
             queue: None,
             ended_by: None,
+            parent: None,
+            plan: None,
         }
     }
 
@@ -585,6 +657,19 @@ pub fn stop(chat: &str, agent: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_plan_is_read_from_update_plan_or_todo_write_whatever_their_words() {
+        let plan = plan_of(&json!({ "plan": [{ "step": "Read", "status": "completed" }, { "step": "Write", "status": "in_progress" }, { "step": " ", "status": "pending" }, { "step": "Check", "status": "cancelled" }] })).unwrap();
+        assert_eq!(plan.iter().map(|s| (s.text.as_str(), s.status)).collect::<Vec<_>>(), [("Read", "done"), ("Write", "active"), ("Check", "skipped")]);
+        // As its JSON text too (a transcript's argument), and TodoWrite's shape.
+        let text = json!(r#"{"todos":[{"content":"One","status":"pending"}]}"#);
+        assert_eq!(plan_of(&text).unwrap(), vec![PlanStep { text: "One".into(), status: "pending" }]);
+        assert_eq!(plan_of(&json!({ "plan": [] })), None);
+        assert_eq!(plan_of(&json!({ "nothing": 1 })), None);
+        let long = "x".repeat(500);
+        assert_eq!(plan_of(&json!({ "plan": [{ "step": long, "status": "pending" }] })).unwrap()[0].text.chars().count(), 200);
+    }
 
     #[test]
     fn an_agent_is_sent_once_for_each_batch_of_changes_and_never_changes_once_ended() {

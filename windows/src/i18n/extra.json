@@ -22180,6 +22180,42 @@
    "ru": "Разговор",
    "id": "Percakapan",
    "it": "La conversazione"
+  },
+  "Waiting for its subagents": {
+   "zh-Hans": "正在等待其子代理",
+   "hi": "अपने सब-एजेंट्स का इंतज़ार कर रहा है",
+   "es": "Esperando a sus subagentes",
+   "ar": "ينتظر وكلاءه الفرعيين",
+   "fr": "Attend ses sous-agents",
+   "bn": "নিজের সাব-এজেন্টদের অপেক্ষায়",
+   "pt-BR": "Aguardando seus subagentes",
+   "ru": "Ждёт своих субагентов",
+   "id": "Menunggu subagennya",
+   "it": "Aspetta i suoi sotto-agenti"
+  },
+  "Its subagents: {done} of {total} finished": {
+   "zh-Hans": "其子代理：已完成 {done}/{total}",
+   "hi": "इसके सब-एजेंट: {total} में से {done} पूरे",
+   "es": "Sus subagentes: {done} de {total} terminados",
+   "ar": "وكلاؤه الفرعيون: انتهى {done} من {total}",
+   "fr": "Ses sous-agents : {done} sur {total} terminés",
+   "bn": "এর সাব-এজেন্ট: {total}টির মধ্যে {done}টি শেষ",
+   "pt-BR": "Seus subagentes: {done} de {total} concluídos",
+   "ru": "Его субагенты: готово {done} из {total}",
+   "id": "Subagennya: {done} dari {total} selesai",
+   "it": "I suoi sotto-agenti: {done} di {total} finiti"
+  },
+  "Latest actions": {
+   "zh-Hans": "最近的操作",
+   "hi": "हाल की कार्रवाइयाँ",
+   "es": "Últimas acciones",
+   "ar": "آخر الإجراءات",
+   "fr": "Dernières actions",
+   "bn": "সাম্প্রতিক কাজ",
+   "pt-BR": "Últimas ações",
+   "ru": "Последние действия",
+   "id": "Tindakan terakhir",
+   "it": "Ultime azioni"
   }
  }
 }
