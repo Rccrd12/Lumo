@@ -4025,3 +4025,7 @@ mod tests {
         assert!(!row_b.can_stop);
     }
 }
+
+#[cfg(test)]
+#[path = "antigravity_cli_audit.rs"]
+mod audit;
