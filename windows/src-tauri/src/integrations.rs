@@ -295,6 +295,7 @@ fn stripe_balance(json: &Value) -> (i64, String) {
 
 async fn poll_github(app: AppHandle) {
     let Some(token) = secrets::get("github-token") else { return };
+    let generation = GITHUB.generation.load(Ordering::SeqCst);
     let http = client();
 
     let user = http
@@ -329,7 +330,8 @@ async fn poll_github(app: AppHandle) {
         .header("User-Agent", "Lumo")
         .send()
         .await;
-    let stars: i64 = match repos {
+    // None when GitHub didn't give the list: the stars told before stay.
+    let stars: Option<i64> = match repos {
         Ok(r) if r.status().is_success() => r
             .json::<Value>()
             .await
@@ -339,12 +341,19 @@ async fn poll_github(app: AppHandle) {
                 list.iter()
                     .filter_map(|r| r.get("stargazers_count").and_then(Value::as_i64))
                     .sum()
-            })
-            .unwrap_or(0),
-        _ => 0,
+            }),
+        _ => None,
     };
 
-    GITHUB.cache.lock().unwrap().stats = Some((public + private, stars));
+    {
+        let mut cache = GITHUB.cache.lock().unwrap();
+        // The token changed while this was in flight: it answers for someone else.
+        if GITHUB.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        let stars = stars.or(cache.stats.map(|(_, stars)| stars)).unwrap_or(0);
+        cache.stats = Some((public + private, stars));
+    }
     emit_github(&app);
 }
 
@@ -567,9 +576,8 @@ pub fn github_token_changed(app: &AppHandle) {
         cache.pulse = None;
         cache.gone_prs.clear();
         cache.activity = None;
-        if !has_token {
-            cache.stats = None;
-        }
+        // The old account's numbers, which a failed stars request would keep.
+        cache.stats = None;
     }
     emit_github(app);
     GITHUB.pulse_wake.notify_one();
@@ -585,10 +593,13 @@ pub fn settings_saved(app: &AppHandle, active_integrations: &[String]) {
     if active_integrations.iter().any(|id| id == GITHUB_ID) {
         return;
     }
+    // A pulse still in flight would put back what is forgotten here.
+    GITHUB.generation.fetch_add(1, Ordering::SeqCst);
     let had_data = {
         let mut cache = GITHUB.cache.lock().unwrap();
         let had = cache.pulse.is_some() || cache.activity.is_some();
         cache.pulse = None;
+        cache.gone_prs.clear();
         cache.activity = None;
         had
     };
