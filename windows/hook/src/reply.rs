@@ -314,7 +314,21 @@ pub fn blocking_wait(command: &str) -> bool {
         return true;
     }
     // A single long sleep: the first number after it, in seconds (30, 30s, 2m, 1h).
-    sleeps.iter().any(|c| c[1..].iter().take(3).find_map(|w| seconds(w.trim_start_matches(['-', '/']))).is_some_and(|s| s >= 30.0))
+    sleeps.iter().any(|c| wait_seconds(c).is_some_and(|s| s >= 30.0))
+}
+
+/// How long one wait (`sleep 45`, `Start-Sleep -Milliseconds 500`, `timeout /t 90`)
+/// lasts, in seconds: the first number after it, in milliseconds after
+/// PowerShell's `-Milliseconds` (or `-m`, `-ms`, `-milli`…).
+fn wait_seconds(c: &[&str]) -> Option<f64> {
+    let words = &c[1..c.len().min(4)];
+    let millis = c[0] == "start-sleep"
+        && words.iter().any(|w| {
+            let name = w.strip_prefix('-').unwrap_or("");
+            name == "ms" || (name.starts_with('m') && "milliseconds".starts_with(name))
+        });
+    let n = words.iter().find_map(|w| seconds(w.trim_start_matches(['-', '/'])))?;
+    Some(if millis { n / 1000.0 } else { n })
 }
 
 /// `command` with what is in quotes left out: text, not commands.
@@ -336,6 +350,10 @@ fn unquoted(command: &str) -> String {
 }
 
 fn seconds(word: &str) -> Option<f64> {
+    // `sleep infinity`: never ends.
+    if matches!(word, "infinity" | "inf") {
+        return Some(f64::INFINITY);
+    }
     let (num, unit) = word.split_at(word.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(word.len()));
     let n: f64 = num.parse().ok()?;
     match unit {
@@ -555,6 +573,9 @@ mod tests {
             "while true; do gh pr view 22 --json state; sleep 10; done",
             "until gh pr view 22 --json mergedAt -q .mergedAt | grep -q T; do sleep 5; done",
             "timeout /t 90",
+            "sleep infinity",
+            "sleep inf && gh pr view 22",
+            "Start-Sleep -Milliseconds 45000",
         ] {
             assert!(blocking_wait(cmd), "{cmd}");
         }
@@ -570,6 +591,11 @@ mod tests {
             "for f in *.log; do echo \"sleep 90\"; done",
             "echo 'while sleep 100'",
             "grep -r sleep src/ | head -30",
+            // A short wait counted in milliseconds.
+            "Start-Sleep -Milliseconds 500",
+            "Start-Sleep -m 100",
+            "Start-Sleep -ms 200; git status",
+            "Start-Sleep -Milli 900",
         ] {
             assert!(!blocking_wait(cmd), "{cmd}");
         }
