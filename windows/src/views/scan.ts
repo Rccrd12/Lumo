@@ -73,10 +73,23 @@ export function scan(text: string, multiline = true): Span[] {
       while (text[k] === "`") k++;
       const ticks = k - i;
       const stop = lineEnd(k);
-      const close = text.slice(k, stop).indexOf("`".repeat(ticks));
-      const end = close < 0 ? -1 : k + close;
-      // A run of the same length closes it, on the same line, not part of a longer run.
-      if (end >= 0 && end <= stop && text[end + ticks] !== "`" && end > k) {
+      // A run of the same length closes it, on the same line; a longer or a
+      // shorter run is part of the code (`a``b` is the code a``b).
+      let end = -1;
+      for (let j = k; j < stop; ) {
+        if (text[j] !== "`") {
+          j++;
+          continue;
+        }
+        let r = j;
+        while (text[r] === "`") r++;
+        if (r - j === ticks) {
+          end = j;
+          break;
+        }
+        j = r;
+      }
+      if (end > k) {
         spans.push({ kind: "code", from: i, to: end + ticks, text: text.slice(k, end) });
         i = end + ticks;
         continue;
