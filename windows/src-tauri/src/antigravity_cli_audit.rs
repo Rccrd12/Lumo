@@ -214,11 +214,13 @@ fn bug6_a_subagent_cut_off_by_the_end_of_the_turn_is_not_done() {
 #[test]
 fn bug7_ask_reaches_the_tenth_subagent_not_the_first() {
     let mut run = Run::default();
-    let list: Vec<Value> = (1..=10).map(|n| json!({ "role": format!("Batch {n}"), "conversation_id": format!("conv-{n}") })).collect();
+    // Conversation ids as agy gives them: nothing in common with the place.
+    let ids = ["9f2c", "41aa", "c03e", "7b19", "e5d0", "2a6f", "d8c4", "06be", "b37a", "5e91"];
+    let list: Vec<Value> = ids.iter().enumerate().map(|(n, id)| json!({ "role": format!("Batch {}", n + 1), "conversation_id": id })).collect();
     run.feed(json!({ "event": "step_update", "step_update": { "step_index": 2, "state": "DONE", "step_type": "subagent", "subagent_info": { "subagents": list } } }).to_string().as_bytes());
     let tenth = run.subagents.spawns[9].row.clone();
     let ask = rewrite_ask_ids(&format!("Send it with send_message (Recipient: \"{tenth}\")"), Some(&run.subagents));
-    assert!(ask.contains("\"conv-10\""), "got {ask}");
+    assert!(ask.contains("\"5e91\""), "got {ask}");
 }
 
 /// BUG 8: swarm with 10+ workers: "w-10: [done]" on the board ends w-1 too
