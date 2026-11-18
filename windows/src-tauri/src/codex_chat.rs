@@ -1818,3 +1818,7 @@ mod tests {
         assert_eq!(sub.agents.get(&format!("{SUB}~3")).unwrap().state, AgentState::Working);
     }
 }
+
+#[cfg(test)]
+#[path = "codex_chat_audit.rs"]
+mod audit;
