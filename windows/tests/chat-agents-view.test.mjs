@@ -298,6 +298,14 @@ test("an edited question takes the agents of the answers it drops with it", asyn
   $(".chat-log").children[2].find(".msg-edit")[0].fire("click");
   view.sync();
   answer = await ask("second, but better");
+  // r1 is still at work and would stop with Claude Code: the bar asks first.
+  assert.deepEqual(rows(), ["question", "answer", "question", "answer", "agents"]);
+  assert.equal($(".hold-text").textContent, "Editing the question starts Claude Code again and stops the agent still working.");
+  assert.equal($(".chat-input").value, "second, but better", "still in the field, an edit");
+  $(".chat-hold").find(".agents-btn")[1].fire("click");
+  await flush();
+  await flush();
+  view.sync();
   assert.deepEqual(rows(), ["question", "answer", "question", "dots"]);
   // The end Rust still sends for the dropped agent makes no card.
   emit("chat-agent", { chat, agent: agent("r1", { state: "failed", error: "Claude Code ended" }) });
@@ -362,4 +370,118 @@ test("an agent its CLI was asked to stop says so until the CLI confirms, and off
   assert.ok(!row.className.includes("stopping"));
   assert.ok($(".agents-detail").querySelector(".agents-btn.stop"));
   await answer({ text: "Started.", turns: 2 });
+});
+
+test("an edited question under agents at work waits for them when the user says so, and goes once they finish", async () => {
+  const answer = await ask("first");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("e1") });
+  emit("chat-agent", { chat, agent: agent("e2") });
+  await answer({ text: "Two agents.", turns: 2 });
+  const rewinds = sent("chat_rewind").length;
+  $(".chat-log").children[0].find(".msg-edit")[0].fire("click");
+  view.sync();
+  let asked = null;
+  answers.chat_send = (args) => { asked = args.query; return new Promise(() => {}); };
+  $(".chat-input").value = "first, again";
+  $(".send-btn").fire("click");
+  await flush();
+  view.sync();
+  assert.equal(asked, null, "held");
+  assert.equal(sent("chat_rewind").length, rewinds, "nothing dropped yet");
+  assert.equal($(".chat-hold").hidden, false);
+  assert.equal($(".hold-text").textContent, "Editing the question starts Claude Code again and stops the 2 agents still working.");
+  assert.equal($(".hold-sub").textContent, "You can wait for them to finish, or edit it now.");
+  assert.deepEqual($(".chat-hold").find(".agents-btn").map((b) => b.textContent), ["Edit when they finish", "Edit now and stop them", "Cancel"]);
+
+  // Edit when they finish: the edit leaves the field and waits above it.
+  $(".chat-hold").find(".agents-btn")[0].fire("click");
+  assert.equal($(".chat-input").value, "");
+  assert.equal($(".hold-text").textContent, "Your edit goes when the 2 agents still working finish.");
+  assert.equal($(".hold-sub").textContent, "first, again");
+  emit("chat-agent", { chat, agent: agent("e1", { state: "done", endedAt: now + 1 }) });
+  await flush();
+  assert.equal(asked, null, "one is still at work");
+  emit("chat-agent", { chat, agent: agent("e2", { state: "done", endedAt: now + 2 }) });
+  await flush();
+  await flush();
+  view.sync();
+  assert.equal(asked, "first, again", "both done: the edit goes");
+  assert.equal(sent("chat_rewind").length, rewinds + 1, "as an edit: what followed the question goes");
+  assert.equal($(".chat-hold").hidden, true);
+  assert.deepEqual(rows(), ["question", "dots"]);
+});
+
+test("Cancel on the edit's bar leaves the edit in the field, and giving up the edit takes the bar away", async () => {
+  const answer = await ask("first");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("k1") });
+  await answer({ text: "One agent.", turns: 2 });
+  $(".chat-log").children[0].find(".msg-edit")[0].fire("click");
+  view.sync();
+  $(".chat-input").value = "first, edited";
+  $(".send-btn").fire("click");
+  await flush();
+  assert.equal($(".chat-hold").hidden, false);
+  $(".chat-hold").find(".agents-btn")[2].fire("click");
+  assert.equal($(".chat-hold").hidden, true);
+  assert.equal($(".chat-input").value, "first, edited");
+  // Sent again: asked again.
+  $(".send-btn").fire("click");
+  await flush();
+  assert.equal($(".chat-hold").hidden, false);
+  // Escape gives up the edit: the bar goes with it.
+  $(".chat-input").fire("keydown", { key: "Escape" });
+  view.sync();
+  assert.equal($(".chat-hold").hidden, true);
+});
+
+test("Stop all stops each agent at work with its Undo, and a stopped answer says its agents in the background go on", async () => {
+  const answer = await ask("three readers");
+  const chat = State.chatId;
+  for (const id of ["s1", "s2", "s3"]) emit("chat-agent", { chat, agent: agent(id) });
+  view.sync();
+  const stopAll = () => $(".agents-head").find(".agents-btn").filter((b) => b.textContent === "Stop all");
+  assert.equal(stopAll().length, 1);
+
+  // The answer stopped while they work: they go on, and the card says so.
+  $(".send-btn").fire("click");
+  await flush();
+  assert.deepEqual(sent("chat_stop").at(-1), { chatId: chat });
+  await answer({ text: "Stopped.", turns: 2 });
+  assert.equal($(".agents-live-text").textContent, "You stopped the answer: the agents in the background go on");
+  assert.deepEqual($(".agents-live").find(".agents-btn").map((b) => b.textContent), ["Stop them too"]);
+
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    stopAll()[0].fire("click");
+    assert.deepEqual($(".chat-log").find(".agents-line").map((l) => /^Stopping in \d s…$/.test(l.textContent)), [true, true, true]);
+    assert.equal(stopAll().length, 0, "nothing left to stop meanwhile");
+    assert.deepEqual(sent("chat_stop_agent").filter((x) => x.chatId === chat), []);
+    mock.timers.tick(STOP_UNDO_MS);
+  } finally {
+    mock.timers.reset();
+  }
+  assert.deepEqual(sent("chat_stop_agent").filter((x) => x.chatId === chat).map((x) => x.agentId), ["s1", "s2", "s3"]);
+
+  // A new question: the note goes.
+  for (const id of ["s1", "s2", "s3"]) emit("chat-agent", { chat, agent: agent(id, { state: "stopped", endedAt: now + 9 }) });
+  emit("chat-agent", { chat, agent: agent("s4") });
+  await ask("next");
+  view.sync();
+  assert.ok(!$(".chat-log").find(".agents-live-text").some((x) => x.textContent.startsWith("You stopped")));
+});
+
+test("a paused agent says so, nothing asked of the user; an agent stopped before it answered says that under the message", async () => {
+  const answer = await ask("go");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("p1", { state: "waiting", waitingFor: "paused" }) });
+  emit("chat-agent", { chat, agent: agent("q1", { state: "stopped", endedAt: now + 5, talk: { call: "toolu_T", message: "Which file?", sentAt: now + 1, stopped: true } }) });
+  await answer({ text: "Two.", turns: 2 });
+  view.sync();
+  const row = $(".chat-log").find(".agents-row")[0];
+  assert.equal(row.querySelector(".agents-line").textContent, "Paused");
+  assert.equal($(".agents-live-text").textContent, "Paused");
+  const talk = $(".chat-log").find(".agents-talk-text").map((x) => x.textContent);
+  assert.ok(talk.includes("Stopped before it answered"), talk.join(" | "));
 });

@@ -376,3 +376,8 @@ html.look-new .agents-row .agents-plan-chip {
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, var(--dim) 60%, transparent);
 }
+
+/* Stop all, in the header while two or more work. */
+.agents-head .agents-btn {
+  flex: none;
+}

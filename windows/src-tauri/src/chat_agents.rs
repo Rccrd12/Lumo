@@ -216,16 +216,19 @@ pub struct AgentTalk {
     /// Why it did not reach the agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failed: Option<String>,
+    /// The agent was stopped before it answered: no answer will come.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
 }
 
 impl AgentTalk {
     pub fn new(call: &str, message: &str) -> Self {
-        AgentTalk { call: call.to_string(), message: talk_text(message), sent_at: now_ms(), reply: None, replied_at: None, failed: None }
+        AgentTalk { call: call.to_string(), message: talk_text(message), sent_at: now_ms(), reply: None, replied_at: None, failed: None, stopped: false }
     }
 
-    /// Neither answered nor failed yet.
+    /// Neither answered nor failed yet, and its agent not stopped.
     pub fn pending(&self) -> bool {
-        self.reply.is_none() && self.failed.is_none()
+        self.reply.is_none() && self.failed.is_none() && !self.stopped
     }
 
     /// The agent's answer: the first one only.
@@ -315,6 +318,10 @@ impl AgentRow {
         self.stopping = false;
         self.ended_at = Some(now);
         self.last_signal_at = now;
+        // Stopped: a message it was asked will never be answered.
+        if let Some(talk) = self.talk.as_mut().filter(|t| state == AgentState::Stopped && t.pending()) {
+            talk.stopped = true;
+        }
         if let Some(error) = error.map(|e| crate::claude_code::short(&e)).filter(|e| !e.is_empty()) {
             self.error = Some(error);
         }

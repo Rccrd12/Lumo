@@ -98,6 +98,8 @@ export interface TalkEntry {
   reply?: string;
   repliedAt?: number;
   failed?: string;
+  /** Its agent was stopped before it answered. */
+  stopped?: boolean;
   /** From a chat saved before it was answered: its answer will never come. */
   stale?: boolean;
 }
@@ -195,18 +197,19 @@ function noteTalk(c: ChatAgents, agent: ChatAgent, anchor: () => number) {
     known.reply = talk.reply;
     known.repliedAt = talk.repliedAt;
     known.failed = talk.failed;
+    known.stopped = talk.stopped;
     return;
   }
   c.talks.push({
     call: talk.call, agentId: agent.id, title: agent.title, anchor: anchor(), message: talk.message, sentAt: talk.sentAt,
-    reply: talk.reply, repliedAt: talk.repliedAt, failed: talk.failed,
+    reply: talk.reply, repliedAt: talk.repliedAt, failed: talk.failed, stopped: talk.stopped,
   });
   if (c.talks.length > MAX_TALKS) c.talks.splice(0, c.talks.length - MAX_TALKS);
 }
 
 /** A talk still waiting for its agent's answer. */
-export function talkWaits(talk: { reply?: string; failed?: string; stale?: boolean }): boolean {
-  return !talk.reply && !talk.failed && !talk.stale;
+export function talkWaits(talk: { reply?: string; failed?: string; stopped?: boolean; stale?: boolean }): boolean {
+  return !talk.reply && !talk.failed && !talk.stopped && !talk.stale;
 }
 
 /** The newest talk of the chat still waiting for its answer, if any. */
@@ -224,7 +227,8 @@ export function waitingTalk(c: ChatAgents | undefined): TalkEntry | undefined {
 
 /** Whether the chat can pass this agent a message: its CLI said so (Claude Code with SendMessage, still running). */
 export function askable(e: AgentEntry | undefined): boolean {
-  return !!e?.row.canAsk;
+  // Claude Code never takes up an agent it stopped (its SendMessage says success:false).
+  return !!e?.row.canAsk && !(e.row.source === "claude-code" && e.row.state === "stopped");
 }
 
 /**
@@ -551,7 +555,7 @@ export function withAgents<T extends { role: string }>(c: ChatAgents | undefined
 function savedTalk(x: TalkEntry): SavedTalk {
   return {
     call: x.call, agentId: x.agentId, title: x.title, message: x.message, sentAt: x.sentAt,
-    ...(x.reply ? { reply: x.reply } : {}), ...(x.failed ? { failed: x.failed } : {}),
+    ...(x.reply ? { reply: x.reply } : {}), ...(x.failed ? { failed: x.failed } : {}), ...(x.stopped ? { stopped: true } : {}),
   };
 }
 
@@ -580,7 +584,7 @@ export function restoreAgents(store: AgentStore, chat: string, turns: readonly P
     const anchor = turn.role === "assistant" ? ++answer : answer + 1;
     const talks = Array.isArray(turn.talks) ? turn.talks.filter(isSavedTalk) : [];
     // Not answered when it was saved: its answer will not come any more.
-    for (const x of talks) c.talks.push({ ...x, anchor, ...(x.reply || x.failed ? {} : { stale: true }) });
+    for (const x of talks) c.talks.push({ ...x, anchor, ...(x.reply || x.failed || x.stopped ? {} : { stale: true }) });
     const agents = Array.isArray(turn.agents) ? turn.agents.filter(isSavedAgent) : [];
     if (!agents.length) continue;
     for (const a of agents) {

@@ -119,7 +119,7 @@ import { SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, to
 import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachRow, chatFileRow, fileDetail, saveSettings } from "./chat-attach";
 import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, inWorkspace, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
-import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
+import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
 // ── Usage ring ────────────────────────────────────────────────────────────────
 
@@ -450,9 +450,15 @@ export function buildPrompt(
    * agents it left at work. `waiting`: it goes once they finish; else it is
    * back in the field and the bar asks. `stuck`: sent once they seemed done
    * and held again, so it waits for news of an agent before it tries again.
+   * `edit`: an edited question (its message's id), which would end them too;
+   * `retry` when Retry sent it (its text never was in the field).
    */
-  const held = new Map<string, { text: string; quote?: AskQuote; count: number; name: string; waiting: boolean; stuck?: boolean }>();
+  const held = new Map<string, { text: string; quote?: AskQuote; count: number; name: string; waiting: boolean; stuck?: boolean; edit?: number; retry?: boolean }>();
   let holdShown = "";
+  /** The chats whose next edited question goes even under their agents at work: the user said so. */
+  const editAnyway = new Set<string>();
+  /** The chats whose answer the user stopped while agents of theirs worked on: their cards say those go on. */
+  const answerStopped = new Set<string>();
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -1081,6 +1087,11 @@ export function buildPrompt(
     if (!run || run.stopping) return;
     run.stopping = true;
     drawSend();
+    // Its agents in the background go on: their cards say so, and offer to stop them too.
+    if (openCount(agentStore.get(run.chatId)) > 0) {
+      answerStopped.add(run.chatId);
+      drawAgents(run.chatId, false, false);
+    }
     void Bridge.chatStop(run.chatId);
   }
 
@@ -1104,6 +1115,11 @@ export function buildPrompt(
   function cancelEdit() {
     if (editing == null) return;
     editing = null;
+    // The bar asking about the agents goes with the edit.
+    if (held.get(State.chatId)?.edit != null && !held.get(State.chatId)?.waiting) {
+      held.delete(State.chatId);
+      drawHold();
+    }
     takeBackAgain();
     setInput("");
     Sound.play("pop");
@@ -3069,7 +3085,7 @@ export function buildPrompt(
     for (const { el, batch } of shownCards.values()) {
       // Each second, only the cards whose agents are still at work.
       if (onlyOpen && !batch.ids.some((id) => { const e = c.rows.get(id); return e && !isFinal(e.row.state); })) continue;
-      fillAgentsCard(el, { chatId, chat: c, batch, permission }, agentsHost(chatId));
+      fillAgentsCard(el, { chatId, chat: c, batch, permission, answerStopped: answerStopped.has(chatId) }, agentsHost(chatId));
     }
     const who = agentsSpeaker(chatId, c).who;
     for (const { el, talk } of shownTalks.values()) {
@@ -3098,7 +3114,7 @@ export function buildPrompt(
     const permission = permissionOf(chatId).agents;
     const host = agentsHost(chatId);
     return c.batches.filter((b) => (after ? b.anchor >= answer : b.anchor === answer)).map((batch) => {
-      const el = agentsCard({ chatId, chat: c, batch, permission }, host);
+      const el = agentsCard({ chatId, chat: c, batch, permission, answerStopped: answerStopped.has(chatId) }, host);
       shownCards.set(agentsCardKey(chatId, batch), { el, batch });
       return el;
     });
@@ -3397,17 +3413,26 @@ export function buildPrompt(
     const entry = held.get(State.chatId);
     const open = openCount(agentStore.get(State.chatId));
     const count = open || entry?.count || 0;
-    const key = entry ? `${State.chatId}:${entry.waiting}:${count}:${entry.text}` : "";
+    const key = entry ? `${State.chatId}:${entry.waiting}:${count}:${entry.text}:${entry.edit ?? ""}` : "";
     if (key === holdShown) return;
     holdShown = key;
     holdEl.hidden = !entry;
     if (entry) {
+      const edit = entry.edit != null;
       holdEl.classList.toggle("waiting", entry.waiting);
-      holdText.textContent = entry.waiting
-        ? tn("Your message goes when the agent still working finishes.", HOLD_TEXT.waiting, count)
-        : tn("{name} starts again with the new settings and stops the agent still working.", HOLD_TEXT.stops, count, { name: entry.name });
-      holdSub.textContent = entry.waiting ? entry.text : t(HOLD_TEXT.choose);
+      if (entry.waiting) {
+        holdText.textContent = edit
+          ? tn("Your edit goes when the agent still working finishes.", HOLD_TEXT.editWaiting, count)
+          : tn("Your message goes when the agent still working finishes.", HOLD_TEXT.waiting, count);
+      } else {
+        holdText.textContent = edit
+          ? tn("Editing the question starts {name} again and stops the agent still working.", HOLD_TEXT.editStops, count, { name: entry.name })
+          : tn("{name} starts again with the new settings and stops the agent still working.", HOLD_TEXT.stops, count, { name: entry.name });
+      }
+      holdSub.textContent = entry.waiting ? entry.text : t(edit ? HOLD_TEXT.editChoose : HOLD_TEXT.choose);
       holdSub.title = holdSub.textContent;
+      holdWait.textContent = t(edit ? HOLD_TEXT.editWait : HOLD_TEXT.wait);
+      holdNow.textContent = t(edit ? HOLD_TEXT.editNow : HOLD_TEXT.now);
       holdWait.hidden = entry.waiting;
     }
     onHeightChange();
@@ -3421,12 +3446,32 @@ export function buildPrompt(
     if (openCount(agentStore.get(chatId)) > 0) return;
     held.delete(chatId);
     drawHold();
+    if (entry.edit != null) {
+      // The question it edits may have gone meanwhile (a new chat, another edit): it goes as a new one.
+      if (State.chatHistory.some((m) => m.id === entry.edit)) editing = entry.edit;
+    }
     void submit(undefined, entry.text, undefined, entry.quote);
+  }
+
+  /** The agents at work an edited question of `chatId` would stop, and whose they are; null for none. */
+  function agentsAnEditStops(chatId: string): { count: number; name: string } | null {
+    const c = agentStore.get(chatId);
+    if (!c) return null;
+    const open = [...c.rows.values()].filter((e) => !isFinal(e.row.state) && RESTART_ON_EDIT.has(e.row.source));
+    return open.length ? { count: open.length, name: t(providerDef(open[0].row.source as ProviderId).name) } : null;
+  }
+
+  /** The edited question (the message `edit`) waits: the bar asks to wait for the agents or to stop them. */
+  function holdEdit(chatId: string, edit: number, text: string, count: number, name: string) {
+    held.set(chatId, { text, count, name, waiting: false, edit, retry: !!text });
+    Sound.play("pop");
+    drawHold();
   }
 
   holdWait.addEventListener("click", (e) => {
     e.stopPropagation();
     const entry = held.get(State.chatId);
+    if (entry?.edit != null) return waitToEdit(entry);
     const text = input.value.trim();
     if (!entry || !text) return;
     const quote = askFor.get(State.chatId);
@@ -3439,6 +3484,23 @@ export function buildPrompt(
     releaseHeld();
   });
 
+  /** Edit when they finish: the edited question waits above the field, the edit no longer in it. */
+  function waitToEdit(entry: NonNullable<ReturnType<typeof held.get>>) {
+    const text = entry.retry ? entry.text : input.value.trim();
+    if (!text) return;
+    if (!entry.retry) setInput("");
+    // What the edit put back in the attachments stays there, for it.
+    editing = null;
+    editBack = null;
+    editSent = null;
+    renderedCount = -1;
+    held.set(State.chatId, { ...entry, text, waiting: true, stuck: false });
+    Sound.play("blip");
+    drawHold();
+    State.notify();
+    releaseHeld();
+  }
+
   holdNow.addEventListener("click", (e) => {
     e.stopPropagation();
     const chatId = State.chatId;
@@ -3446,6 +3508,13 @@ export function buildPrompt(
     if (!entry) return;
     held.delete(chatId);
     drawHold();
+    if (entry.edit != null) {
+      // The edit goes now: its CLI starts again, and its agents stop with the old one.
+      editAnyway.add(chatId);
+      if (!entry.waiting && !entry.retry) return void submit();
+      if (State.chatHistory.some((m) => m.id === entry.edit)) editing = entry.edit;
+      return void submit(undefined, entry.text);
+    }
     // The next message may start the CLI again: its agents stop with the old one.
     void invoke("chat_allow_restart", { chatId }).then(() => {
       if (State.chatId !== chatId) return;
@@ -3459,6 +3528,24 @@ export function buildPrompt(
     const entry = held.get(State.chatId);
     if (!entry) return;
     held.delete(State.chatId);
+    if (entry.edit != null) {
+      if (entry.waiting) {
+        // The edit that waited is back in the field, an edit again.
+        if (State.chatHistory.some((m) => m.id === entry.edit)) editing = entry.edit;
+        const now = input.value.trim();
+        setInput(now ? `${entry.text}\n${now}` : entry.text);
+      } else if (entry.retry) {
+        // Retry given up: what it put back in the attachments goes again.
+        editing = null;
+        takeBackAgain();
+      }
+      renderedCount = -1;
+      Sound.play("pop");
+      drawHold();
+      State.notify();
+      input.focus();
+      return;
+    }
     // A message that waited goes back in the field, its quote with it.
     if (entry.waiting && entry.text) {
       const now = input.value.trim();
@@ -3587,6 +3674,15 @@ export function buildPrompt(
       runLumo(own);
       return;
     }
+    // An edited question starts the chat's CLI again, and its agents still at
+    // work stop with it: not without the user (concepts/sotto-agenti-completo 4).
+    if (!auto && !away && editing != null) {
+      const inTheWay = agentsAnEditStops(State.chatId);
+      if (inTheWay && !editAnyway.delete(State.chatId)) {
+        holdEdit(State.chatId, editing, typed ? "" : query, inTheWay.count, inTheWay.name);
+        return;
+      }
+    }
     // A plan asking to start (concept C1): what is typed says what to change.
     // The plan is declined, so Claude keeps planning, and the text goes next.
     const asking = typed ? planAsking() : null;
@@ -3690,6 +3786,8 @@ export function buildPrompt(
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: newMessageId(), role: "user", content: query, at: Date.now() };
+      // A new question: the note that the last answer was stopped under its agents goes.
+      answerStopped.delete(chatId);
       // What went with it shows on its bubble, and goes again on Edit.
       const went = screenContext || sent.length ? sentItems(screenContext ? shared : emptyScreen(), sent, fileDetail) : [];
       if (went.length) {

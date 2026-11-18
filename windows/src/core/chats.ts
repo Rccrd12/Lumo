@@ -55,6 +55,8 @@ export interface SavedTalk {
   sentAt: number;
   reply?: string;
   failed?: string;
+  /** Its agent was stopped before it answered. */
+  stopped?: boolean;
 }
 
 /** One agent an answer started, as the chat keeps it once it ended (bridge.ts ChatAgent, in short). */
