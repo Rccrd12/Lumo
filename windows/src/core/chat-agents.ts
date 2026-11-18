@@ -41,7 +41,7 @@ export const MAX_SAVED_AGENTS = 24;
 /** What a local model does before its first word: slow, but alive (a retry reads the prompt again). */
 const LOCAL_STARTING = new Set(["starting", "loading", "prompt", "retry"]);
 /** What a CLI does that can rightly last minutes without a word. */
-const CLI_LONG = new Set(["command", "subtask", "tool", "calling"]);
+const CLI_LONG = new Set(["command", "subtask", "agents", "tool", "calling"]);
 
 // ── The store ─────────────────────────────────────────────────────────────────
 
