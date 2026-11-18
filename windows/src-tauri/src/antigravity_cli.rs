@@ -37,7 +37,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1441,6 +1441,69 @@ fn usage_tokens(usage: &Value) -> Option<u64> {
     (total > 0).then_some(total)
 }
 
+/// The context window used at the latest model step in a transcript's bytes:
+/// `input_tokens + cache_read_tokens + output_tokens` of the last valid JSON
+/// line where `input_tokens + cache_read_tokens > 0`. Lines without token
+/// usage (`GENERIC`, `USER_INPUT`, etc.) and malformed lines are ignored.
+fn last_transcript_context(bytes: &[u8]) -> Option<u64> {
+    for line in bytes.split(|&b| b == b'\n').rev() {
+        let Ok(v) = serde_json::from_slice::<Value>(line) else { continue };
+        let n = |k: &str| v[k].as_u64().unwrap_or(0);
+        let prompt = n("input_tokens").saturating_add(n("cache_read_tokens"));
+        if prompt > 0 {
+            return Some(prompt.saturating_add(n("output_tokens")));
+        }
+    }
+    None
+}
+
+/// Locates `conversation_id`'s `transcript.jsonl` under `home`'s `.gemini`
+/// directory (`antigravity-cli`, falling back to `antigravity`).
+fn conversation_transcript_in(home: &Path, conversation_id: &str) -> Option<PathBuf> {
+    let id = safe_session(conversation_id)?;
+    ["antigravity-cli", "antigravity"]
+        .into_iter()
+        .map(|dir| home.join(".gemini").join(dir).join("brain").join(id).join(".system_generated").join("logs").join("transcript.jsonl"))
+        .find(|p| p.is_file())
+}
+
+/// Locates the main conversation's `transcript.jsonl` in agy's `.gemini`
+/// folder, or `None` if `conversation_id` is invalid, home isn't set, or
+/// neither `antigravity-cli` nor `antigravity` has the file.
+fn conversation_transcript(conversation_id: &str) -> Option<PathBuf> {
+    let home = std::env::var_os(platform::HOME_VAR).filter(|v| !v.is_empty()).map(PathBuf::from)?;
+    conversation_transcript_in(&home, conversation_id)
+}
+
+/// Reads up to `TRANSCRIPT_CHUNK` bytes from the tail of `path`, skipping a
+/// partial first line when seeking past byte `0`, and returns the latest
+/// step's context size.
+fn read_transcript_context(path: &Path) -> Option<u64> {
+    use std::io::{Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let start = len.saturating_sub(TRANSCRIPT_CHUNK);
+    if start > 0 {
+        file.seek(SeekFrom::Start(start)).ok()?;
+    }
+    let mut buf = Vec::with_capacity((len - start).min(TRANSCRIPT_CHUNK) as usize);
+    (&mut file).take(TRANSCRIPT_CHUNK).read_to_end(&mut buf).ok()?;
+    let tail = if start > 0 {
+        let nl = buf.iter().position(|&b| b == b'\n')?;
+        &buf[nl + 1..]
+    } else {
+        &buf[..]
+    };
+    last_transcript_context(tail)
+}
+
+/// Actual context window used at the latest model step of `conversation_id`,
+/// read from agy's main `transcript.jsonl` instead of the cumulative `result.usage`.
+fn transcript_context_tokens(conversation_id: &str) -> Option<u64> {
+    let path = conversation_transcript(conversation_id)?;
+    read_transcript_context(&path)
+}
+
 impl Run {
     /// Takes one line; true when the visible text changed.
     fn feed(&mut self, line: &[u8]) -> bool {
@@ -2032,6 +2095,11 @@ fn run_with_subagents(
     }
     if let Some(line) = &state.failed_line {
         crate::log::line(format!("antigravity: the turn ended with an error: {line}"));
+    }
+    // `result.usage` sums every step and subagent of the turn; prefer the main
+    // transcript's latest model step for the actual context window in use.
+    if let Some(used) = state.conversation.as_deref().and_then(transcript_context_tokens) {
+        state.context_used = Some(used);
     }
     Ok(state)
 }
@@ -2869,6 +2937,82 @@ mod tests {
         assert_eq!(bare.context_used, None);
     }
 
+    #[test]
+    fn last_transcript_context_takes_latest_model_step_not_sum() {
+        assert_eq!(last_transcript_context(b""), None);
+        assert_eq!(last_transcript_context(b"not json\n{\"type\":\"USER_INPUT\",\"content\":\"hi\"}\n"), None);
+        assert_eq!(
+            last_transcript_context(br#"{"type":"PLANNER_RESPONSE","output_tokens":24,"content":"done"}"#),
+            None,
+            "output_tokens alone without prompt tokens is ignored"
+        );
+
+        let transcript = concat!(
+            r#"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"hello"}"#, "\n",
+            r#"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","input_tokens":20000,"cache_read_tokens":0,"output_tokens":500}"#, "\n",
+            r#"{"step_index":2,"source":"MODEL","type":"GENERIC","content":"tool output"}"#, "\n",
+            r#"{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","input_tokens":12000,"cache_read_tokens":20500,"output_tokens":300}"#, "\n",
+            r#"{"step_index":4,"source":"MODEL","type":"GENERIC","content":"more tool output"}"#, "\n",
+            r#"{"step_index":5,"source":"MODEL","type":"PLANNER_RESPONSE","output_tokens":24,"content":"final summary"}"#, "\n",
+            "{malformed json\n",
+        );
+        assert_eq!(last_transcript_context(transcript.as_bytes()), Some(12000 + 20500 + 300));
+    }
+
+    #[test]
+    fn conversation_transcript_validates_id_and_falls_back() {
+        let home = std::env::temp_dir().join(format!("lumo-agy-ctx-{}", chat_agents::run_mark()));
+        let valid_id = "11111111-2222-3333-4444-555555555555";
+        for bad in ["", "../evil", "sub-1", "11111111-2222-3333-4444-55555555555/", "not-a-uuid"] {
+            assert_eq!(conversation_transcript(bad), None, "{bad}");
+            assert_eq!(conversation_transcript_in(&home, bad), None, "{bad}");
+        }
+        assert_eq!(conversation_transcript_in(&home, valid_id), None);
+
+        let fallback = home.join(".gemini").join("antigravity").join("brain").join(valid_id).join(".system_generated").join("logs").join("transcript.jsonl");
+        std::fs::create_dir_all(fallback.parent().unwrap()).unwrap();
+        std::fs::write(&fallback, b"").unwrap();
+        assert_eq!(conversation_transcript_in(&home, valid_id), Some(fallback.clone()));
+
+        let primary = home.join(".gemini").join("antigravity-cli").join("brain").join(valid_id).join(".system_generated").join("logs").join("transcript.jsonl");
+        std::fs::create_dir_all(primary.parent().unwrap()).unwrap();
+        std::fs::write(&primary, b"").unwrap();
+        assert_eq!(conversation_transcript_in(&home, valid_id), Some(primary));
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_transcript_context_reads_tail_past_chunk_boundary() {
+        let dir = std::env::temp_dir().join(format!("lumo-agy-tail-{}", chat_agents::run_mark()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let small = dir.join("small.jsonl");
+        std::fs::write(
+            &small,
+            r#"{"type":"PLANNER_RESPONSE","input_tokens":1500,"cache_read_tokens":500,"output_tokens":42}"#,
+        )
+        .unwrap();
+        assert_eq!(read_transcript_context(&small), Some(2042));
+
+        let large = dir.join("large.jsonl");
+        let filler_line = format!(
+            "{{\"step_index\":1,\"type\":\"PLANNER_RESPONSE\",\"input_tokens\":999999,\"cache_read_tokens\":0,\"output_tokens\":1,\"thinking\":\"{}\"}}\n",
+            "x".repeat(1024)
+        );
+        let mut bytes = Vec::with_capacity((TRANSCRIPT_CHUNK as usize) + 8192);
+        while bytes.len() <= TRANSCRIPT_CHUNK as usize {
+            bytes.extend_from_slice(filler_line.as_bytes());
+        }
+        bytes.extend_from_slice(br#"{"step_index":2,"type":"PLANNER_RESPONSE","input_tokens":4000,"cache_read_tokens":50000,"output_tokens":250}"#);
+        bytes.push(b'\n');
+        bytes.extend_from_slice(br#"{"step_index":3,"type":"GENERIC","content":"done"}"#);
+        bytes.push(b'\n');
+        std::fs::write(&large, &bytes).unwrap();
+        assert_eq!(read_transcript_context(&large), Some(54250));
+
+        assert_eq!(read_transcript_context(&dir.join("missing.jsonl")), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     #[test]
     fn a_failed_result_says_why() {
         let mut run = Run::default();
