@@ -995,9 +995,12 @@ fn chat_allow_restart(chat_id: String) {
 #[tauri::command]
 fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
     chats.get(&chat_id).rewind(keep);
-    // Its Claude Code is in the session the edit leaves: what it would still
-    // write by itself belongs to the answers dropped.
+    // Its CLI is in the session the edit leaves: what it would still write by
+    // itself, and the agents it started, belong to the answers dropped
+    // (as chat_reset and chat_close, for each CLI kept between two turns).
     claude_code::close(&chat_id);
+    codex_chat::close(&chat_id);
+    acp_chat::close(&chat_id);
 }
 
 /// The × of one of the chat's files: out of the chat's context from the next
