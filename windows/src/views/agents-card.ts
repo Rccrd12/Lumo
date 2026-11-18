@@ -90,6 +90,8 @@ export const AGENTS_CARD_TEXT = {
   /** Stop clicked: it goes after STOP_UNDO_MS, unless Undo takes it back. */
   stopping: N_("Stopping in {time}…"),
   undo: N_("agents|Undo"),
+  /** Its CLI was asked to stop it and has not said it did yet. */
+  halting: N_("Stopping it…"),
 };
 
 /**
@@ -498,17 +500,20 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
 /** One agent: its marker, its task, what it does, and its time or what can be done about it. */
 function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, depth = 0): HTMLElement {
   const r = e.row;
+  // Its CLI was asked to stop it: until it says it did, the row says so and offers no Stop.
+  const halting = !isFinal(r.state) && !!r.stopping;
   const look = lookOf(e, now, input.permission);
   const marker = look === "done"
     ? h("span", { class: "agents-mark done" }, svg(ICONS.check, 12, { stroke: 2.2 }))
-    : h("span", { class: `agents-mark ${look}` }, h("i"));
-  const left = isFinal(r.state) ? null : stopPending(input.chatId, r.id, now);
-  const line = left != null ? t(AGENTS_CARD_TEXT.stopping, { time: durationText(left + 999) }) : rowLine(e, look, host, now);
+    : h("span", { class: `agents-mark ${halting ? "stopping" : look}` }, h("i"));
+  const left = isFinal(r.state) || halting ? null : stopPending(input.chatId, r.id, now);
+  const line = halting ? t(AGENTS_CARD_TEXT.halting)
+    : left != null ? t(AGENTS_CARD_TEXT.stopping, { time: durationText(left + 999) }) : rowLine(e, look, host, now);
   const side = h("span", { class: "agents-side" });
   // Its own plan, when it wrote one: how far along it is, before its time.
   if (r.plan?.length && left == null) side.append(planChip(r.plan));
   const ask = canAsk(e, host) && left == null ? () => host.ask!({ agentId: r.id, title: r.title, line, look }) : null;
-  const stop = () => stopLater(input.chatId, r.id, host, redraw);
+  const stop = halting ? null : () => stopLater(input.chatId, r.id, host, redraw);
   // A tab it browses in, while it is at work: Watch shows it under the row, Hide closes it.
   const tab = isFinal(r.state) ? undefined : browserOf(input.chatId, r.id);
   const watch = tab && host.watchBrowser && left == null ? () => {
@@ -529,7 +534,7 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
       snooze(e);
       redraw();
     }));
-    if (r.canStop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), stop));
+    if (r.canStop && stop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), stop));
   } else if (look === "waiting") {
     // Only on the row whose card is the one up: not while Claude Code checks a call itself (no card), nor for another's card.
     if (r.waitingFor !== "rate_limit" && input.permission?.has(r.id) && host.requestOnTop === r.id) {
@@ -565,7 +570,7 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     ...(site ? [site] : []),
     h("span", { class: "agents-line", text: line, title: line }),
     side);
-  const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}${watching ? " watching" : ""}${depth ? " child" : ""}` }, head);
+  const el = h("div", { class: `agents-row ${look}${halting ? " stopping" : ""}${open ? " open" : ""}${watching ? " watching" : ""}${depth ? " child" : ""}` }, head);
   if (depth) el.style.setProperty("--depth", String(depth));
   head.addEventListener("click", () => {
     if (open) ui.open.delete(r.id);

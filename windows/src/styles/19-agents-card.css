@@ -199,6 +199,9 @@
 .agents-row.stalled .agents-line { color: var(--ag-stalled); }
 .agents-row.waiting .agents-line { color: var(--ag-waiting); }
 .agents-row.failed .agents-line { color: var(--red-text); }
+/* Stopping: asked, not yet confirmed. */
+.agents-mark.stopping i { background: var(--ag-failed); opacity: .55; }
+.agents-row.stopping .agents-line { color: var(--red-text); opacity: .8; }
 
 .agents-side {
   display: inline-flex;

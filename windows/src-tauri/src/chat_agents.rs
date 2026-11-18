@@ -132,6 +132,10 @@ pub struct AgentRow {
     /// island shows how far along it is (concepts/piano-dei-sotto-agenti).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan: Option<Vec<PlanStep>>,
+    /// The user stopped it and its CLI was asked to: it is stopping until the
+    /// CLI says it stopped (concepts/sotto-agenti-completo, "Lo sto fermando").
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub stopping: bool,
 }
 
 /// One step of an agent's plan, as src/core/agent-plan.ts has them.
@@ -273,6 +277,7 @@ impl AgentRow {
             ended_by: None,
             parent: None,
             plan: None,
+            stopping: false,
         }
     }
 
@@ -288,6 +293,7 @@ impl AgentRow {
         self.ended_at = None;
         self.error = None;
         self.ended_by = None;
+        self.stopping = false;
         self.heard();
     }
 
@@ -306,6 +312,7 @@ impl AgentRow {
         self.waiting_for = None;
         self.queue = None;
         self.now = None;
+        self.stopping = false;
         self.ended_at = Some(now);
         self.last_signal_at = now;
         if let Some(error) = error.map(|e| crate::claude_code::short(&e)).filter(|e| !e.is_empty()) {

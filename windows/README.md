@@ -904,13 +904,31 @@ so they can be removed.
 
 The subagents agy starts (`invoke_subagent`) show on the chat's Agents card,
 read from their own transcripts under `.gemini\antigravity-cli\brain`, and so
-do the agents they start in turn, found by the conversation that sent them
-their task: each sits in under the one that started it. An agent that started
-others and answered waits for them ("Its subagents: 2 of 5 finished") rather
-than ending. An agent that writes its own plan (Lumo's `update_plan` with its
-name in `agent`, or Claude Code's to-do list or tasks inside a subagent) has
-the chat's plan chip on its row, and its steps when the row is opened; that
-plan never replaces the chat's own.
+do the agents they start in turn, from the file agy keeps for each child in
+its parent's folder (`.system_generated\subagents`): each sits in under the
+one that started it, named by the role its call gave it, in the order they
+started. An agent that started others and answered waits for them ("Its
+subagents: 2 of 5 finished") rather than ending. Its report is what it sent the
+agent that started it, never an order it gave one of its own. One that agy
+stopped (its coordinator stopped it, or you did) says Stopped; one still at
+work when agy ended says so in red and offers Resume, never Done. **Stop** on a
+row asks agy to stop it: the row says *Stopping it…* until agy confirms, and
+is at work again if agy never does.
+
+They work in the background, as Claude Code's do: once the answer is written
+and agy only waits for them, the chat's answer ends and you can write again,
+while agy goes on with them. What agy writes when their messages wake it joins
+the chat by itself, and your next message goes to the same agy. A message with
+another model, mode, folder or set of tools would need a new agy, which would
+end them: the island asks first (wait for them, or send now and stop them).
+Once they are all done and agy is quiet, it ends.
+
+An agent that writes its own plan (Lumo's `update_plan` with its name in
+`agent`, or Claude Code's to-do list or tasks inside a subagent) has the chat's
+plan chip on its row, and its steps when the row is opened; that plan never
+replaces the chat's own, even when a subagent forgets `agent`: while subagents
+work, a plan that comes without it reaches the chat only if it is none of
+theirs.
 
 ### Chat with your ChatGPT account (Codex)
 

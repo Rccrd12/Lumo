@@ -22216,6 +22216,18 @@
    "ru": "Последние действия",
    "id": "Tindakan terakhir",
    "it": "Ultime azioni"
+  },
+  "Stopping it…": {
+   "zh-Hans": "正在停止…",
+   "hi": "रोका जा रहा है…",
+   "es": "Deteniéndolo…",
+   "ar": "جارٍ إيقافه…",
+   "fr": "Arrêt en cours…",
+   "bn": "থামানো হচ্ছে…",
+   "pt-BR": "Parando…",
+   "ru": "Останавливаю…",
+   "id": "Sedang menghentikan…",
+   "it": "Lo sto fermando…"
   }
  }
 }

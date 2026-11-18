@@ -342,3 +342,24 @@ test("an agent started by another sits in under it, and an agent's own plan show
   assert.deepEqual(opened.find(".plan-text").map((s) => s.textContent), ["Read the files", "Write the notes", "Check them"]);
   await answer({ text: "Started.", turns: 2 });
 });
+
+test("an agent its CLI was asked to stop says so until the CLI confirms, and offers no Stop meanwhile", async () => {
+  const answer = await ask("start two writers");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("w1", { title: "Writer", canStop: true, stopping: true }) });
+  view.sync();
+  let row = $(".chat-log").find(".agents-row")[0];
+  assert.ok(row.className.includes("stopping"));
+  assert.equal(row.querySelector(".agents-line").textContent, "Stopping it…");
+  row.querySelector(".agents-row-head").fire("click");
+  view.sync();
+  assert.ok($(".agents-detail"), "opened");
+  assert.equal($(".agents-detail").querySelector(".agents-btn.stop"), null, "asked already");
+  // Not confirmed in time: at work again, Stop offered again.
+  emit("chat-agent", { chat, agent: agent("w1", { title: "Writer", canStop: true }) });
+  view.sync();
+  row = $(".chat-log").find(".agents-row")[0];
+  assert.ok(!row.className.includes("stopping"));
+  assert.ok($(".agents-detail").querySelector(".agents-btn.stop"));
+  await answer({ text: "Started.", turns: 2 });
+});

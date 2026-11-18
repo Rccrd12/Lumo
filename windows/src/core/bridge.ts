@@ -861,6 +861,8 @@ export interface ChatAgent {
   parent?: string;
   /** Its own plan, when it wrote one (its TodoWrite, its update_plan): its row shows how far along it is. */
   plan?: PlanStep[];
+  /** The user stopped it and its CLI was asked to: stopping until the CLI says it stopped. */
+  stopping?: boolean;
 }
 
 /** A message the chat's CLI sent one of its agents, and the agent's answer (the "Talking to …" box). */
