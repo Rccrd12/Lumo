@@ -35,9 +35,9 @@
 // not): everything runs without asking, and the island lets its cards
 // through (src/island/hooks.ts).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
@@ -46,7 +46,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
-use crate::chat_agents::{self, AgentRow, AgentState, Agents, PlanStep, Tell};
+use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, PlanStep, Tell};
 use crate::claude_code::{self, file_name, host, is_screenshot, kill_tree, pretty_tool, safe_dir, safe_session, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
@@ -267,10 +267,26 @@ fn activity_for(name: &str, params: &Value) -> Activity {
             p => Activity::new("tool", p),
         };
     }
+    if n == "send_message" {
+        return match field(&["Recipient", "recipient", "to"]).as_str() {
+            "" | "main" | "coordinator" => Activity::new("talk", ""),
+            to => Activity::new("talk", short(to)),
+        };
+    }
+    if n == "post_message" {
+        let text = field(&["text", "message", "Message"]);
+        let target = text
+            .split_whitespace()
+            .find(|w| w.starts_with('@') && w.len() > 1)
+            .map(|w| w.trim_start_matches('@').trim_end_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_'))
+            .filter(|w| !w.is_empty())
+            .unwrap_or("");
+        return Activity::new("talk", short(target));
+    }
     if has(&["screenshot"]) {
         return Activity::new("screen", "");
     }
-    if has(&["subagent", "delegate"]) {
+    if has(&["subagent", "delegate", "workflow", "swarm"]) {
         return Activity::new("subtask", "");
     }
     if has(&["command", "shell", "terminal"]) {
@@ -527,13 +543,45 @@ fn params_of(params: &Value) -> Value {
 /// else the tool's name in words ("browser subagent").
 fn delegated_title(name: &str, params: &Value) -> String {
     let params = params_of(params);
-    ["TaskName", "TaskSummary", "Task", "Prompt", "Description", "task", "prompt", "description"]
+    ["TaskName", "TaskSummary", "Task", "Prompt", "Description", "title", "brief", "task", "prompt", "description"]
         .iter()
         .filter_map(|k| params.get(*k).and_then(Value::as_str))
         .map(str::trim)
         .find(|s| !s.is_empty())
         .map(str::to_string)
+        .or_else(|| {
+            params
+                .get("Script")
+                .and_then(Value::as_str)
+                .map(extract_workflow_roles)
+                .filter(|r| !r.is_empty())
+                .map(|r| r.join(", "))
+        })
         .unwrap_or_else(|| pretty_tool(name))
+}
+
+/// Extracts static `role="..."` / `role='...'` names from a `run_workflow` Python script.
+fn extract_workflow_roles(script: &str) -> Vec<String> {
+    let mut roles = Vec::new();
+    let mut rest = script;
+    while let Some(pos) = rest.find("role") {
+        rest = &rest[pos + 4..];
+        let trimmed = rest.trim_start();
+        let Some(after_eq) = trimmed.strip_prefix('=') else { continue };
+        let after_eq = after_eq.trim_start();
+        let quote = match after_eq.chars().next() {
+            Some(q @ ('"' | '\'')) => q,
+            _ => continue,
+        };
+        let inside = &after_eq[1..];
+        let Some(end) = inside.find(quote) else { break };
+        let role = inside[..end].trim();
+        if !role.is_empty() && !role.contains('{') && !role.contains('}') && !roles.iter().any(|r| r == role) {
+            roles.push(role.to_string());
+        }
+        rest = &inside[end + 1..];
+    }
+    roles
 }
 
 /// The subagents of a turn: one row for each, by its conversation.
@@ -550,6 +598,8 @@ struct Subagents {
     mark: Option<String>,
     /// The subagents `invoke_subagent` started, each with its transcript.
     spawns: Vec<Spawn>,
+    /// `send_message` / `post_message` calls still running: step index → (row id, previous final state if reopened).
+    talks: HashMap<u64, (String, Option<AgentState>)>,
     /// Files the subagents wrote, not passed on yet.
     files: Vec<FileTouch>,
     /// agy's folder of conversations (`…/brain`), where the subagents a
@@ -571,6 +621,11 @@ struct Spawn {
     n: usize,
     /// Its row's id.
     row: String,
+    /// Its conversation's id (`conversation_id`, from `log_uri`, or its folder
+    /// in agy's `brain`): the sender its own subagents name in their first line.
+    conversation: Option<String>,
+    /// Its roster name (swarm worker or named subagent), when known.
+    name: Option<String>,
     /// Its transcript, once the step is done and names it.
     log: Option<PathBuf>,
     /// How far the transcript was read, and a line not yet whole.
@@ -582,9 +637,6 @@ struct Spawn {
     pending: Vec<FileTouch>,
     /// Inside a line past MAX_LINE: dropped up to its end.
     skipping: bool,
-    /// Its conversation's id (its folder in agy's `brain`): the sender its
-    /// own subagents name in their first line.
-    conversation: Option<String>,
     /// The row of the subagent that started it, when one did.
     parent: Option<String>,
     /// The subagents its own calls started, by the role each call gave ("" for none), in order.
@@ -597,19 +649,20 @@ struct Spawn {
 }
 
 impl Spawn {
-    fn new(step: u64, n: usize, row: String, log: Option<PathBuf>) -> Spawn {
-        let conversation = log.as_deref().and_then(conversation_of);
+    fn new(step: u64, n: usize, row: String, conversation: Option<String>, name: Option<String>, log: Option<PathBuf>) -> Spawn {
+        let conversation = conversation.or_else(|| log.as_deref().and_then(conversation_of));
         Spawn {
             step,
             n,
             row,
+            conversation,
+            name,
             log,
             read: 0,
             partial: Vec::new(),
             report: None,
             pending: Vec::new(),
             skipping: false,
-            conversation,
             parent: None,
             roles: Vec::new(),
             children: 0,
@@ -756,6 +809,15 @@ fn transcript_path(uri: &str) -> Option<PathBuf> {
     ours.then(|| PathBuf::from(path))
 }
 
+/// The subagent's conversation id carried by its `log_uri` (`.../brain/<cid>/.../transcript.jsonl`).
+fn conversation_from_log_uri(uri: &str) -> Option<String> {
+    let path = transcript_path(uri)?;
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let (_, rest) = normalized.split_once("/brain/")?;
+    let cid = rest.split('/').next()?.trim();
+    (!cid.is_empty() && cid != "." && cid != "..").then(|| cid.to_string())
+}
+
 /// A tool call's arguments, as a subagent's transcript writes them: each
 /// value is its JSON text ("\"C:\\\\a.txt\""), read back here.
 fn transcript_args(args: &Value) -> Value {
@@ -824,6 +886,9 @@ fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mu
             if let Some(text) = args["Message"].as_str().map(str::trim).filter(|t| !t.is_empty()) {
                 *report = Some(text.to_string());
                 row.summary = Some(crate::chat_agents::summary_of(text));
+                if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
+                    talk.answer(text);
+                }
             }
         }
         let lower = name.to_ascii_lowercase();
@@ -850,7 +915,11 @@ fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mu
     let answer = line["content"].as_str().map(str::trim).filter(|t| !t.is_empty());
     match answer {
         Some(answer) if calls.is_empty() && line["type"] == "PLANNER_RESPONSE" && line["source"] == "MODEL" => {
-            row.summary = Some(crate::chat_agents::summary_of(report.as_deref().unwrap_or(answer)));
+            let reply_text = report.as_deref().unwrap_or(answer);
+            row.summary = Some(crate::chat_agents::summary_of(reply_text));
+            if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
+                talk.answer(reply_text);
+            }
             heard.answered = true;
             heard
         }
@@ -897,10 +966,21 @@ impl Subagents {
         for (n, entry) in list.iter().enumerate() {
             let text = |keys: &[&str]| keys.iter().filter_map(|k| entry[*k].as_str()).map(str::trim).find(|s| !s.is_empty()).map(str::to_string);
             let log = text(&["log_uri", "logUri"]).and_then(|u| transcript_path(&u));
+            let conv = text(&["conversation_id", "conversationId"])
+                .or_else(|| text(&["log_uri", "logUri"]).and_then(|u| conversation_from_log_uri(&u)));
+            let name = text(&["name", "role"]);
             if let Some(spawn) = self.spawns.iter_mut().find(|s| s.step == index && s.n == n) {
                 if spawn.log.is_none() {
-                    spawn.conversation = log.as_deref().and_then(conversation_of);
+                    if spawn.conversation.is_none() {
+                        spawn.conversation = log.as_deref().and_then(conversation_of);
+                    }
                     spawn.log = log;
+                }
+                if spawn.conversation.is_none() {
+                    spawn.conversation = conv;
+                }
+                if spawn.name.is_none() {
+                    spawn.name = name;
                 }
                 if self.brain.is_none() {
                     self.brain = spawn.log.as_deref().and_then(brain_of).map(|(b, _)| b);
@@ -911,9 +991,301 @@ impl Subagents {
             let title = text(&["role", "name", "type_name"]).map(|s| if s.contains('_') { pretty_tool(&s) } else { s }).unwrap_or_else(|| t("Agent"));
             let made = self.agents.upsert(&row, || AgentRow::new(row.as_str(), PROVIDER, &title));
             made.now = Some(Activity::thinking());
+            made.can_ask = true;
+            made.can_stop = true;
             self.since.get_or_insert_with(|| SystemTime::now() - Duration::from_secs(5));
-            self.spawns.push(Spawn::new(index, n, row, log));
+            if self.brain.is_none() {
+                self.brain = log.as_deref().and_then(brain_of).map(|(b, _)| b);
+            }
+            self.spawns.push(Spawn::new(index, n, row, conv, name, log));
         }
+    }
+
+    /// Finds a subagent's row id by row id, conversation id, roster name, or title.
+    fn resolve(&self, to: &str) -> Option<String> {
+        let to = to.trim().trim_start_matches('@');
+        if to.is_empty() || to == "main" || to == "coordinator" || to == "all" {
+            return None;
+        }
+        if self.agents.get(to).is_some() {
+            return Some(to.to_string());
+        }
+        if let Some(spawn) = self.spawns.iter().rev().find(|s| s.conversation.as_deref() == Some(to)) {
+            return Some(spawn.row.clone());
+        }
+        if let Some(spawn) = self.spawns.iter().rev().find(|s| s.name.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(to))) {
+            return Some(spawn.row.clone());
+        }
+        self.agents
+            .ids()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .find(|id| self.agents.get(id).is_some_and(|r| r.title.eq_ignore_ascii_case(to)))
+    }
+
+    /// The main agent sent a message to a subagent (`send_message` / `post_message`).
+    fn talk_sent(&mut self, index: u64, to: &str, message: &str) {
+        if self.talks.contains_key(&index) {
+            return;
+        }
+        let Some(id) = self.resolve(to) else { return };
+        let call = format!("step-{index}");
+        let was_final = self.agents.get(&id).map(|r| r.state).filter(|s| s.is_final());
+        let Some(row) = self.agents.touch(&id) else { return };
+        if row.talk.as_ref().is_some_and(|t| t.call == call) {
+            return;
+        }
+        row.talk = Some(AgentTalk::new(&call, message));
+        if row.state.is_final() {
+            row.reopen();
+            row.can_stop = true;
+            row.can_ask = true;
+        }
+        if let Some(spawn) = self.spawns.iter_mut().find(|s| s.row == id) {
+            spawn.report = None;
+        }
+        self.talks.insert(index, (id, was_final));
+    }
+
+    /// The main agent's `send_message` / `post_message` step ended.
+    fn talk_done(&mut self, index: u64, failed: Option<Option<String>>) {
+        let Some((id, was_final)) = self.talks.remove(&index) else { return };
+        let Some(err) = failed else { return };
+        let why = err.unwrap_or_default();
+        let Some(row) = self.agents.touch(&id) else { return };
+        let call = format!("step-{index}");
+        if let Some(talk) = row.talk.as_mut().filter(|t| t.call == call && t.pending()) {
+            talk.failed = Some(why);
+        }
+        if let Some(prev) = was_final {
+            row.end(prev, None);
+            row.can_stop = false;
+        }
+    }
+
+    /// A `system_message` step in the main stream carrying a subagent's reply.
+    fn system_reply(&mut self, v: &Value) {
+        let Some((sender, content)) = system_message_reply(v) else { return };
+        let Some(id) = self.resolve(&sender) else { return };
+        if !self.agents.get(&id).is_some_and(|r| r.talk.as_ref().is_some_and(AgentTalk::pending)) {
+            return;
+        }
+        if let Some(row) = self.agents.touch(&id) {
+            if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
+                talk.answer(&content);
+            }
+        }
+    }
+
+    /// Handles `swarm` tool calls (`add` and `kill`) as rows in the Agents card.
+    fn swarm_step(&mut self, index: u64, done: bool, failed: Option<Option<String>>, info: &Value) {
+        let params = params_of(&info["parameters"]);
+        let action = params["action"].as_str().unwrap_or("").trim();
+        match action {
+            "add" => {
+                let base = params["name"].as_str().unwrap_or("").trim();
+                if base.is_empty() {
+                    return;
+                }
+                let names: Vec<String> = if let Some(tasks) = params["tasks"].as_array().filter(|t| !t.is_empty()) {
+                    (1..=tasks.len()).map(|i| format!("{base}-{i}")).collect()
+                } else {
+                    let count = params["n"].as_u64().unwrap_or(1).min(32);
+                    if count > 1 {
+                        (1..=count).map(|i| format!("{base}-{i}")).collect()
+                    } else {
+                        vec![base.to_string()]
+                    }
+                };
+                if !done {
+                    for (n, worker_name) in names.into_iter().enumerate() {
+                        let row_id = format!("swarm-{worker_name}");
+                        let made = self.agents.upsert(&row_id, || AgentRow::new(row_id.as_str(), PROVIDER, &worker_name));
+                        if made.state.is_final() {
+                            made.reopen();
+                        }
+                        made.now = Some(Activity::thinking());
+                        made.background = true;
+                        made.can_ask = true;
+                        made.can_stop = true;
+                        if !self.spawns.iter().any(|s| s.row == row_id) {
+                            self.spawns.push(Spawn::new(index, n, row_id, None, Some(worker_name), None));
+                        }
+                    }
+                } else if let Some(err) = failed {
+                    let ids: Vec<String> = self.spawns.iter().filter(|s| s.step == index && s.row.starts_with("swarm-")).map(|s| s.row.clone()).collect();
+                    for id in ids {
+                        if let Some(row) = self.agents.touch(&id) {
+                            row.end(AgentState::Failed, err.clone());
+                            row.can_stop = false;
+                        }
+                    }
+                }
+            }
+            "kill" if done && failed.is_none() => {
+                let target = params["name"].as_str().unwrap_or("").trim().trim_start_matches('@');
+                if target.is_empty() {
+                    return;
+                }
+                let prefix = format!("{target}-");
+                let ids: Vec<String> = self
+                    .spawns
+                    .iter()
+                    .filter(|s| s.name.as_deref().is_some_and(|n| n == target || n.starts_with(&prefix)))
+                    .map(|s| s.row.clone())
+                    .collect();
+                for id in ids {
+                    if self.agents.get(&id).is_some_and(|r| !r.state.is_final()) {
+                        if let Some(row) = self.agents.touch(&id) {
+                            row.end(AgentState::Stopped, None);
+                            row.can_stop = false;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Handles `post_message` tool calls by attaching a Talk to the first `@mention`ed swarm worker.
+    fn post_message_step(&mut self, index: u64, info: &Value) {
+        let params = params_of(&info["parameters"]);
+        let text = ["text", "message", "Message"]
+            .iter()
+            .filter_map(|k| params[*k].as_str())
+            .map(str::trim)
+            .find(|s| !s.is_empty())
+            .unwrap_or("");
+        for word in text.split_whitespace() {
+            let Some(rest) = word.strip_prefix('@') else { continue };
+            let name = rest.trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_');
+            if name.is_empty() || name == "all" || name == "coordinator" {
+                continue;
+            }
+            if self.resolve(name).is_some() {
+                self.talk_sent(index, name, text);
+                break;
+            }
+        }
+    }
+
+    /// Handles `read_board` tool output: `[done]` messages from known swarm workers finish their row.
+    fn read_board_step(&mut self, info: &Value) {
+        let Some(output) = ["output", "response", "result"].iter().filter_map(|k| info[*k].as_str()).find(|s| !s.trim().is_empty()) else {
+            return;
+        };
+        let workers: Vec<(String, String)> = self
+            .spawns
+            .iter()
+            .filter(|s| s.row.starts_with("swarm-"))
+            .filter_map(|s| Some((s.name.clone()?, s.row.clone())))
+            .collect();
+        for line in output.lines() {
+            let Some(done_at) = line.find("[done]") else { continue };
+            let summary = line[done_at + "[done]".len()..].trim();
+            for (name, row_id) in &workers {
+                let prefix = format!("{name}:");
+                let author = format!("\"{name}\"");
+                let mentioned = line.contains(&prefix) || line.contains(&author) || line.starts_with(name);
+                if !mentioned {
+                    continue;
+                }
+                if self.agents.get(row_id).is_some_and(|r| !r.state.is_final()) {
+                    if let Some(row) = self.agents.touch(row_id) {
+                        if !summary.is_empty() {
+                            row.summary = Some(crate::chat_agents::summary_of(summary));
+                            if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
+                                talk.answer(summary);
+                            }
+                        }
+                        row.end(AgentState::Done, None);
+                        row.can_stop = false;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Handles `run_workflow` tool calls: spawns one row per static `role="..."` in `Script` and finishes them when the step ends.
+    fn workflow_step(&mut self, index: u64, done: bool, failed: Option<Option<String>>, info: &Value) {
+        if !done {
+            if self.spawns.iter().any(|s| s.step == index) {
+                return;
+            }
+            let params = params_of(&info["parameters"]);
+            let Some(script) = params["Script"].as_str() else { return };
+            for (n, role) in extract_workflow_roles(script).into_iter().enumerate() {
+                let row_id = format!("wf-{}-{index}-{}", self.mark(), n + 1);
+                let made = self.agents.upsert(&row_id, || AgentRow::new(row_id.as_str(), PROVIDER, &role));
+                made.now = Some(Activity::thinking());
+                self.spawns.push(Spawn::new(index, n, row_id, None, Some(role), None));
+            }
+            return;
+        }
+        let ids: Vec<String> = self
+            .spawns
+            .iter()
+            .filter(|s| s.step == index && s.row.starts_with("wf-") && s.log.is_none())
+            .map(|s| s.row.clone())
+            .collect();
+        for id in ids {
+            if self.agents.get(&id).is_some_and(|r| !r.state.is_final()) {
+                if let Some(row) = self.agents.touch(&id) {
+                    match &failed {
+                        Some(err) => row.end(AgentState::Failed, err.clone()),
+                        None => row.end(AgentState::Done, None),
+                    }
+                    row.can_stop = false;
+                }
+            }
+        }
+    }
+
+    /// Handles `manage_subagents` (`kill` / `kill_all`) called by agy itself.
+    fn manage_step(&mut self, info: &Value) {
+        let params = params_of(&info["parameters"]);
+        let action = params["Action"].as_str().or_else(|| params["action"].as_str()).unwrap_or("").trim();
+        if action.eq_ignore_ascii_case("kill_all") {
+            let ids = self.agents.open_ids();
+            for id in ids {
+                if let Some(row) = self.agents.touch(&id) {
+                    row.end(AgentState::Stopped, None);
+                    row.can_stop = false;
+                }
+            }
+            return;
+        }
+        if action.eq_ignore_ascii_case("kill") {
+            let list = params["ConversationIds"].as_array().or_else(|| params["conversationIds"].as_array());
+            for item in list.into_iter().flatten() {
+                let Some(raw) = item.as_str() else { continue };
+                if let Some(id) = self.resolve(raw) {
+                    if self.agents.get(&id).is_some_and(|r| !r.state.is_final()) {
+                        if let Some(row) = self.agents.touch(&id) {
+                            row.end(AgentState::Stopped, None);
+                            row.can_stop = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Stops one open subagent on user request and returns the stream-json instruction to write to `agy`.
+    fn stop_one(&mut self, id: &str) -> Option<String> {
+        if !self.agents.get(id).is_some_and(|r| !r.state.is_final()) {
+            return None;
+        }
+        let spawn = self.spawns.iter().rev().find(|s| s.row == id);
+        let swarm_name = spawn.filter(|s| s.row.starts_with("swarm-")).and_then(|s| s.name.as_deref());
+        let target = spawn.and_then(|s| s.conversation.as_deref()).unwrap_or(id);
+        let line = stop_agent_event(swarm_name, target);
+        if let Some(row) = self.agents.touch(id) {
+            row.end(AgentState::Stopped, None);
+            row.can_stop = false;
+        }
+        Some(line)
     }
 
     /// Whether a subagent `invoke_subagent` started is still at work.
@@ -982,6 +1354,7 @@ impl Subagents {
                 if heard.answered {
                     if spawn.roles.is_empty() {
                         row.end(AgentState::Done, None);
+                        row.can_stop = false;
                         break;
                     }
                     // Subagents of its own: done once they are (`settle`).
@@ -1030,13 +1403,14 @@ impl Subagents {
             let role = parent.roles.get(parent.children).filter(|r| !r.is_empty()).cloned();
             parent.children += 1;
             let parent_row = parent.row.clone();
-            let title = role.or_else(|| prompt_title(&first)).unwrap_or_else(|| t("Agent"));
+            let title = role.clone().or_else(|| prompt_title(&first)).unwrap_or_else(|| t("Agent"));
             let row = format!("agy-{}-{name}", self.mark());
             let made = self.agents.upsert(&row, || AgentRow::new(row.as_str(), PROVIDER, &title));
             made.parent = Some(parent_row.clone());
             made.now = Some(Activity::thinking());
-            let mut spawn = Spawn::new(u64::MAX, 0, row, Some(log));
-            spawn.conversation = Some(name);
+            made.can_ask = true;
+            made.can_stop = true;
+            let mut spawn = Spawn::new(u64::MAX, 0, row, Some(name), role, Some(log));
             spawn.parent = Some(parent_row);
             self.spawns.push(spawn);
             added = true;
@@ -1070,6 +1444,7 @@ impl Subagents {
                 }
             } else if let Some(row) = self.agents.touch(&id) {
                 row.end(AgentState::Done, None);
+                row.can_stop = false;
                 changed = true;
             }
         }
@@ -1162,6 +1537,63 @@ impl Subagents {
         if self.agents.open() > 0 {
             self.agents.end_open(state, &error);
         }
+        let ids: Vec<String> = self.agents.ids().collect();
+        for id in ids {
+            let needs_update = self.agents.get(&id).is_some_and(|r| {
+                r.can_stop
+                    || (state != AgentState::Done && r.can_ask)
+                    || (state != AgentState::Done && r.talk.as_ref().is_some_and(AgentTalk::pending))
+            });
+            if !needs_update {
+                continue;
+            }
+            if let Some(row) = self.agents.touch(&id) {
+                row.can_stop = false;
+                if state != AgentState::Done {
+                    row.can_ask = false;
+                    if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
+                        talk.failed = Some(if error.is_empty() { t("The task was stopped.") } else { error.clone() });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Extracts `(sender, content)` from an agy `system_message` step (`[Message] ... sender=<id> ... content=<msg>`).
+fn system_message_reply(v: &Value) -> Option<(String, String)> {
+    let text = v["content"].as_str().or_else(|| v["text_delta"].as_str()).or_else(|| v["message"].as_str())?;
+    let s_at = text.find("sender=")?;
+    let sender_rest = &text[s_at + "sender=".len()..];
+    let sender = sender_rest.split_whitespace().next()?.trim();
+    if sender.is_empty() {
+        return None;
+    }
+    let c_at = text.find("content=")?;
+    let content_rest = &text[c_at + "content=".len()..];
+    let content = content_rest.split("\n</SYSTEM_MESSAGE>").next().unwrap_or(content_rest).trim();
+    if content.is_empty() {
+        return None;
+    }
+    Some((sender.to_string(), content.to_string()))
+}
+
+/// Builds the stream-json user event instructing `agy` to stop a single swarm worker or subagent.
+fn stop_agent_event(swarm_name: Option<&str>, target: &str) -> String {
+    match swarm_name {
+        Some(worker) => user_event(&format!("Stop swarm worker \"{worker}\" now with swarm (action: \"kill\", name: \"{worker}\").")),
+        None => user_event(&format!("Stop subagent \"{target}\" now with manage_subagents (Action: \"kill\", ConversationIds: [\"{target}\"]).")),
+    }
+}
+
+struct StopperGuard {
+    chat: String,
+    id: u64,
+}
+
+impl Drop for StopperGuard {
+    fn drop(&mut self) {
+        chat_agents::forget_stopper_of(&self.chat, self.id);
     }
 }
 
@@ -1227,6 +1659,69 @@ fn usage_tokens(usage: &Value) -> Option<u64> {
     (total > 0).then_some(total)
 }
 
+/// The context window used at the latest model step in a transcript's bytes:
+/// `input_tokens + cache_read_tokens + output_tokens` of the last valid JSON
+/// line where `input_tokens + cache_read_tokens > 0`. Lines without token
+/// usage (`GENERIC`, `USER_INPUT`, etc.) and malformed lines are ignored.
+fn last_transcript_context(bytes: &[u8]) -> Option<u64> {
+    for line in bytes.split(|&b| b == b'\n').rev() {
+        let Ok(v) = serde_json::from_slice::<Value>(line) else { continue };
+        let n = |k: &str| v[k].as_u64().unwrap_or(0);
+        let prompt = n("input_tokens").saturating_add(n("cache_read_tokens"));
+        if prompt > 0 {
+            return Some(prompt.saturating_add(n("output_tokens")));
+        }
+    }
+    None
+}
+
+/// Locates `conversation_id`'s `transcript.jsonl` under `home`'s `.gemini`
+/// directory (`antigravity-cli`, falling back to `antigravity`).
+fn conversation_transcript_in(home: &Path, conversation_id: &str) -> Option<PathBuf> {
+    let id = safe_session(conversation_id)?;
+    ["antigravity-cli", "antigravity"]
+        .into_iter()
+        .map(|dir| home.join(".gemini").join(dir).join("brain").join(id).join(".system_generated").join("logs").join("transcript.jsonl"))
+        .find(|p| p.is_file())
+}
+
+/// Locates the main conversation's `transcript.jsonl` in agy's `.gemini`
+/// folder, or `None` if `conversation_id` is invalid, home isn't set, or
+/// neither `antigravity-cli` nor `antigravity` has the file.
+fn conversation_transcript(conversation_id: &str) -> Option<PathBuf> {
+    let home = std::env::var_os(platform::HOME_VAR).filter(|v| !v.is_empty()).map(PathBuf::from)?;
+    conversation_transcript_in(&home, conversation_id)
+}
+
+/// Reads up to `TRANSCRIPT_CHUNK` bytes from the tail of `path`, skipping a
+/// partial first line when seeking past byte `0`, and returns the latest
+/// step's context size.
+fn read_transcript_context(path: &Path) -> Option<u64> {
+    use std::io::{Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let start = len.saturating_sub(TRANSCRIPT_CHUNK);
+    if start > 0 {
+        file.seek(SeekFrom::Start(start)).ok()?;
+    }
+    let mut buf = Vec::with_capacity((len - start).min(TRANSCRIPT_CHUNK) as usize);
+    (&mut file).take(TRANSCRIPT_CHUNK).read_to_end(&mut buf).ok()?;
+    let tail = if start > 0 {
+        let nl = buf.iter().position(|&b| b == b'\n')?;
+        &buf[nl + 1..]
+    } else {
+        &buf[..]
+    };
+    last_transcript_context(tail)
+}
+
+/// Actual context window used at the latest model step of `conversation_id`,
+/// read from agy's main `transcript.jsonl` instead of the cumulative `result.usage`.
+fn transcript_context_tokens(conversation_id: &str) -> Option<u64> {
+    let path = conversation_transcript(conversation_id)?;
+    read_transcript_context(&path)
+}
+
 impl Run {
     /// Takes one line; true when the visible text changed.
     fn feed(&mut self, line: &[u8]) -> bool {
@@ -1282,21 +1777,23 @@ impl Run {
         // A step ends DONE, or ERROR (a tool refused or failed).
         let done = matches!(v["state"].as_str(), Some("DONE" | "ERROR"));
         // A step that starts subagents: a row for each; the answer waits on them.
-        if let Some(list) = v["subagent_info"]["subagents"].as_array().filter(|_| v["step_type"] == "subagent" || v.get("tool_info").is_none()) {
+        if let Some(list) = v["subagent_info"]["subagents"].as_array().filter(|a| !a.is_empty()) {
             self.subagents.spawned(index, list);
             if v["state"] == "ERROR" {
                 self.subagents.spawn_failed(index, error_text(&v["error"]).or_else(|| error_text(&v["subagent_info"]["error"])));
             }
-            if done {
-                self.finished_tool(index);
-                // Started, not finished: the answer waits on them.
-                if self.subagents.spawns_open() {
-                    self.set_activity(Activity::new("agents", ""));
+            if v["step_type"] == "subagent" || v.get("tool_info").is_none() {
+                if done {
+                    self.finished_tool(index);
+                    // Started, not finished: the answer waits on them.
+                    if self.subagents.spawns_open() {
+                        self.set_activity(Activity::new("agents", ""));
+                    }
+                } else {
+                    self.started_tool(index, Activity::new("subtask", ""));
                 }
-            } else {
-                self.started_tool(index, Activity::new("subtask", ""));
+                return false;
             }
-            return false;
         }
         // A subagent at work: its own steps are its row's, not the answer's.
         if v.get("subagent_info").is_some_and(|s| !s.is_null()) {
@@ -1340,6 +1837,16 @@ impl Run {
                     // A step that delegated: its subagent is done, or failed with it.
                     let failed = v["state"] == "ERROR" || error_text(&info["error"]).is_some();
                     self.subagents.delegation_ended(index, failed.then(|| error_text(&info["error"])));
+                    self.subagents.talk_done(index, failed.then(|| error_text(&info["error"])));
+                    if name == "swarm" {
+                        self.subagents.swarm_step(index, true, failed.then(|| error_text(&info["error"])), info);
+                    } else if name == "read_board" && !failed {
+                        self.subagents.read_board_step(info);
+                    } else if name == "run_workflow" {
+                        self.subagents.workflow_step(index, true, failed.then(|| error_text(&info["error"])), info);
+                    } else if name == "manage_subagents" && !failed {
+                        self.subagents.manage_step(info);
+                    }
                     if is_denial(&info["error"]) {
                         self.denied += 1;
                     }
@@ -1355,7 +1862,18 @@ impl Run {
                     if is_plan_tool(name) {
                         self.saw_plan(&info["parameters"]);
                     }
-                    if activity_for(name, &Value::Null).kind == "subtask" {
+                    if name == "send_message" {
+                        let params = params_of(&info["parameters"]);
+                        let to = ["Recipient", "recipient", "to"].iter().filter_map(|k| params[*k].as_str()).map(str::trim).find(|s| !s.is_empty()).unwrap_or("");
+                        let message = ["Message", "message", "content"].iter().filter_map(|k| params[*k].as_str()).map(str::trim).find(|s| !s.is_empty()).unwrap_or("");
+                        self.subagents.talk_sent(index, to, message);
+                    } else if name == "swarm" {
+                        self.subagents.swarm_step(index, false, None, info);
+                    } else if name == "post_message" {
+                        self.subagents.post_message_step(index, info);
+                    } else if name == "run_workflow" {
+                        self.subagents.workflow_step(index, false, None, info);
+                    } else if activity_for(name, &Value::Null).kind == "subtask" {
                         self.subagents.delegated(index, delegated_title(name, &info["parameters"]));
                     }
                     if !self.touching.iter().any(|(i, _)| *i == index) {
@@ -1369,8 +1887,11 @@ impl Run {
             }
             Some("user_input" | "checkpoint") => false,
             // A subagent's message woke the answer: it coordinates them.
-            Some("system_message") if self.subagents.spawns_open() => {
-                self.set_activity(Activity::new("agents", ""));
+            Some("system_message") => {
+                self.subagents.system_reply(v);
+                if self.subagents.spawns_open() {
+                    self.set_activity(Activity::new("agents", ""));
+                }
                 false
             }
             // Any other step agy is working on: it thinks.
@@ -1585,11 +2106,29 @@ fn run(
     dir: PathBuf,
     chat_id: &str,
     stop: Arc<Stop>,
+    on_text: impl FnMut(&str),
+    on_activity: impl FnMut(&Activity),
+    on_file: impl FnMut(&FileTouch),
+    on_plan: impl FnMut(&Value),
+    tell: &Tell,
+) -> Result<Run, String> {
+    run_with_subagents(exe, args, input, dir, chat_id, stop, on_text, on_activity, on_file, on_plan, tell, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_with_subagents(
+    exe: PathBuf,
+    args: Vec<String>,
+    input: String,
+    dir: PathBuf,
+    chat_id: &str,
+    stop: Arc<Stop>,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
     mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&Value),
     tell: &Tell,
+    seeded: Option<Subagents>,
 ) -> Result<Run, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -1658,10 +2197,24 @@ fn run(
 
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     let mut unsent = false;
-    let mut state = Run::default();
+    let mut state = Run { subagents: seeded.unwrap_or_default(), ..Run::default() };
     let mut last_look = Instant::now();
     // When the turn's result came.
     let mut result_at: Option<Instant> = None;
+    let stop_requests: Arc<Mutex<Vec<String>>> = Arc::default();
+    let _stopper_guard = if !chat_id.is_empty() {
+        let q = stop_requests.clone();
+        let id = chat_agents::register_stopper(
+            chat_id,
+            Box::new(move |agent_id: &str| {
+                q.lock().unwrap_or_else(|e| e.into_inner()).push(agent_id.to_string());
+                Ok(())
+            }),
+        );
+        Some(StopperGuard { chat: chat_id.to_string(), id })
+    } else {
+        None
+    };
     loop {
         if stop.is_stopped() && state.result.is_none() {
             drop(stdin.take());
@@ -1670,6 +2223,25 @@ fn run(
             state.subagents.run_ended(AgentState::Stopped);
             tell(&mut state.subagents.agents, false);
             return Ok(state);
+        }
+        let requested: Vec<String> = {
+            let mut q = stop_requests.lock().unwrap_or_else(|e| e.into_inner());
+            std::mem::take(&mut *q)
+        };
+        if !requested.is_empty() {
+            let mut changed = false;
+            for agent_id in requested {
+                if let Some(line) = state.subagents.stop_one(&agent_id) {
+                    changed = true;
+                    if let Some(pipe) = stdin.as_mut() {
+                        let _ = pipe.write_all(line.as_bytes());
+                        let _ = pipe.flush();
+                    }
+                }
+            }
+            if changed {
+                tell(&mut state.subagents.agents, false);
+            }
         }
         // The answer is in: agy gets a moment to end, then it and what it
         // started are ended, at once on Stop. A process left holding its
@@ -1747,6 +2319,11 @@ fn run(
     }
     if let Some(line) = &state.failed_line {
         crate::log::line(format!("antigravity: the turn ended with an error: {line}"));
+    }
+    // `result.usage` sums every step and subagent of the turn; prefer the main
+    // transcript's latest model step for the actual context window in use.
+    if let Some(used) = state.conversation.as_deref().and_then(transcript_context_tokens) {
+        state.context_used = Some(used);
     }
     Ok(state)
 }
@@ -1830,6 +2407,50 @@ pub async fn models() -> Result<Vec<ModelInfo>, String> {
 
 // ── One turn ──────────────────────────────────────────────────────────────────
 
+/// Subagents kept per chat across turns (along with its conversation id), so
+/// Ask in a later turn can reach an earlier subagent and follow its transcript.
+static CHAT_SUBAGENTS: Mutex<Option<HashMap<String, (String, Subagents)>>> = Mutex::new(None);
+const MAX_CHAT_SUBAGENTS: usize = 64;
+
+fn take_chat_subagents(chat_id: &str, conversation: Option<&str>) -> Option<Subagents> {
+    let conv = conversation?;
+    let mut all = CHAT_SUBAGENTS.lock().unwrap_or_else(|e| e.into_inner());
+    let map = all.as_mut()?;
+    if map.get(chat_id).is_some_and(|(c, _)| c == conv) {
+        map.remove(chat_id).map(|(_, s)| s)
+    } else {
+        None
+    }
+}
+
+fn save_chat_subagents(chat_id: &str, conversation: &str, subagents: Subagents) {
+    if chat_id.is_empty() || conversation.is_empty() || subagents.spawns.is_empty() {
+        return;
+    }
+    let mut all = CHAT_SUBAGENTS.lock().unwrap_or_else(|e| e.into_inner());
+    let map = all.get_or_insert_with(HashMap::new);
+    if map.len() >= MAX_CHAT_SUBAGENTS && !map.contains_key(chat_id) {
+        if let Some(oldest) = map.keys().next().cloned() {
+            map.remove(&oldest);
+        }
+    }
+    map.insert(chat_id.to_string(), (conversation.to_string(), subagents));
+}
+
+/// Replaces internal `agy-...` row ids in an Ask prompt with the real
+/// subagent conversation id or swarm worker name that `agy` knows.
+fn rewrite_ask_ids(query: &str, subagents: Option<&Subagents>) -> String {
+    let Some(sub) = subagents else { return query.to_string() };
+    let mut out = query.to_string();
+    for spawn in &sub.spawns {
+        let Some(target) = spawn.conversation.as_deref().or(spawn.name.as_deref()) else { continue };
+        if spawn.row != target && out.contains(&spawn.row) {
+            out = out.replace(&spawn.row, target);
+        }
+    }
+    out
+}
+
 /// One chat turn through Antigravity CLI.
 #[allow(clippy::too_many_arguments)]
 pub async fn send(
@@ -1851,13 +2472,15 @@ pub async fn send(
     let turn = chat.begin(PROVIDER);
     // Only an Antigravity conversation: never a Claude Code session.
     let conversation = chat.cli_session_for(PROVIDER);
+    let seeded_subagents = take_chat_subagents(chat.id(), conversation.as_deref());
+    let effective_query = rewrite_ask_ids(&query, seeded_subagents.as_ref());
     // Turns this conversation has not seen (another provider answered them, or
     // a message was edited) are carried over once, as text, with the instructions.
     let carried: Vec<Value> = if conversation.is_none() { turn.history.clone() } else { Vec::new() };
     // The turns another provider answered since this conversation last did:
     // they go in front of the question, and the conversation goes on.
     let unseen = chat.cli_unseen(PROVIDER);
-    let text = format!("{}{}", claude_code::catch_up(&unseen), claude_code::prompt(context.as_ref(), &carried, &chat.files(), &query));
+    let text = format!("{}{}", claude_code::catch_up(&unseen), claude_code::prompt(context.as_ref(), &carried, &chat.files(), &effective_query));
     let text = match conversation {
         Some(_) => text,
         None if chat.is_workshop() => with_workshop_instructions(&text),
@@ -1903,7 +2526,7 @@ pub async fn send(
         let emit = |tool: &str, input: Value| emit_plan(&app2, &chat_id, tool, input);
         let by_tool = std::cell::Cell::new(false);
         let mut plan_sent = String::new();
-        run(
+        run_with_subagents(
             exe,
             args,
             input,
@@ -1926,6 +2549,7 @@ pub async fn send(
                 emit("update_plan", plan.clone());
             },
             &tell,
+            seeded_subagents,
         )
     })
     .await
@@ -1941,7 +2565,7 @@ pub async fn send(
         chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
         Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
     };
-    let state = match state {
+    let mut state = match state {
         Ok(Ok(state)) => state,
         Ok(Err(e)) | Err(e) => return failed(e, recap),
     };
@@ -1964,6 +2588,7 @@ pub async fn send(
         if computer {
             crate::computer::note_given(chat.id(), id, grid);
         }
+        save_chat_subagents(chat.id(), id, std::mem::take(&mut state.subagents));
     }
     if state.stopped {
         let shown = state.shown.trim().to_string();
@@ -2536,6 +3161,82 @@ mod tests {
         assert_eq!(bare.context_used, None);
     }
 
+    #[test]
+    fn last_transcript_context_takes_latest_model_step_not_sum() {
+        assert_eq!(last_transcript_context(b""), None);
+        assert_eq!(last_transcript_context(b"not json\n{\"type\":\"USER_INPUT\",\"content\":\"hi\"}\n"), None);
+        assert_eq!(
+            last_transcript_context(br#"{"type":"PLANNER_RESPONSE","output_tokens":24,"content":"done"}"#),
+            None,
+            "output_tokens alone without prompt tokens is ignored"
+        );
+
+        let transcript = concat!(
+            r#"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"hello"}"#, "\n",
+            r#"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","input_tokens":20000,"cache_read_tokens":0,"output_tokens":500}"#, "\n",
+            r#"{"step_index":2,"source":"MODEL","type":"GENERIC","content":"tool output"}"#, "\n",
+            r#"{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","input_tokens":12000,"cache_read_tokens":20500,"output_tokens":300}"#, "\n",
+            r#"{"step_index":4,"source":"MODEL","type":"GENERIC","content":"more tool output"}"#, "\n",
+            r#"{"step_index":5,"source":"MODEL","type":"PLANNER_RESPONSE","output_tokens":24,"content":"final summary"}"#, "\n",
+            "{malformed json\n",
+        );
+        assert_eq!(last_transcript_context(transcript.as_bytes()), Some(12000 + 20500 + 300));
+    }
+
+    #[test]
+    fn conversation_transcript_validates_id_and_falls_back() {
+        let home = std::env::temp_dir().join(format!("lumo-agy-ctx-{}", chat_agents::run_mark()));
+        let valid_id = "11111111-2222-3333-4444-555555555555";
+        for bad in ["", "../evil", "sub-1", "11111111-2222-3333-4444-55555555555/", "not-a-uuid"] {
+            assert_eq!(conversation_transcript(bad), None, "{bad}");
+            assert_eq!(conversation_transcript_in(&home, bad), None, "{bad}");
+        }
+        assert_eq!(conversation_transcript_in(&home, valid_id), None);
+
+        let fallback = home.join(".gemini").join("antigravity").join("brain").join(valid_id).join(".system_generated").join("logs").join("transcript.jsonl");
+        std::fs::create_dir_all(fallback.parent().unwrap()).unwrap();
+        std::fs::write(&fallback, b"").unwrap();
+        assert_eq!(conversation_transcript_in(&home, valid_id), Some(fallback.clone()));
+
+        let primary = home.join(".gemini").join("antigravity-cli").join("brain").join(valid_id).join(".system_generated").join("logs").join("transcript.jsonl");
+        std::fs::create_dir_all(primary.parent().unwrap()).unwrap();
+        std::fs::write(&primary, b"").unwrap();
+        assert_eq!(conversation_transcript_in(&home, valid_id), Some(primary));
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_transcript_context_reads_tail_past_chunk_boundary() {
+        let dir = std::env::temp_dir().join(format!("lumo-agy-tail-{}", chat_agents::run_mark()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let small = dir.join("small.jsonl");
+        std::fs::write(
+            &small,
+            r#"{"type":"PLANNER_RESPONSE","input_tokens":1500,"cache_read_tokens":500,"output_tokens":42}"#,
+        )
+        .unwrap();
+        assert_eq!(read_transcript_context(&small), Some(2042));
+
+        let large = dir.join("large.jsonl");
+        let filler_line = format!(
+            "{{\"step_index\":1,\"type\":\"PLANNER_RESPONSE\",\"input_tokens\":999999,\"cache_read_tokens\":0,\"output_tokens\":1,\"thinking\":\"{}\"}}\n",
+            "x".repeat(1024)
+        );
+        let mut bytes = Vec::with_capacity((TRANSCRIPT_CHUNK as usize) + 8192);
+        while bytes.len() <= TRANSCRIPT_CHUNK as usize {
+            bytes.extend_from_slice(filler_line.as_bytes());
+        }
+        bytes.extend_from_slice(br#"{"step_index":2,"type":"PLANNER_RESPONSE","input_tokens":4000,"cache_read_tokens":50000,"output_tokens":250}"#);
+        bytes.push(b'\n');
+        bytes.extend_from_slice(br#"{"step_index":3,"type":"GENERIC","content":"done"}"#);
+        bytes.push(b'\n');
+        std::fs::write(&large, &bytes).unwrap();
+        assert_eq!(read_transcript_context(&large), Some(54250));
+
+        assert_eq!(read_transcript_context(&dir.join("missing.jsonl")), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     #[test]
     fn a_failed_result_says_why() {
         let mut run = Run::default();
@@ -3177,5 +3878,150 @@ mod tests {
         sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "c" } }));
         sub.run_ended(AgentState::Done);
         assert!(sub.agents.get("c").unwrap().error.is_none());
+    }
+
+    #[test]
+    fn invoke_subagent_supports_ask_talk_reopen_reply_and_rewrite_ids() {
+        let dir = std::env::temp_dir()
+            .join(format!("lumo-agy-ask-{}", chat_agents::run_mark()))
+            .join(".gemini")
+            .join("antigravity-cli")
+            .join("brain")
+            .join("sub-ask-1")
+            .join(".system_generated")
+            .join("logs");
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("transcript.jsonl");
+        std::fs::write(&log, TRANSCRIPT_A).unwrap();
+        let uri = format!("file:///{}", log.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
+        assert_eq!(conversation_from_log_uri(&uri).as_deref(), Some("sub-ask-1"));
+
+        let mut run = Run::default();
+        run.feed(SPAWN_A.as_bytes());
+        run.feed(done_with(SPAWN_A, &uri).replace(r#""conversation_id":"sub""#, r#""conversation_id":"sub-ask-1""#).as_bytes());
+        let id = run.subagents.spawns[0].row.clone();
+        let row = run.subagents.agents.get(&id).unwrap();
+        assert!(row.can_ask);
+        assert!(row.can_stop);
+
+        assert!(run.subagents.read_transcripts().0);
+        let row = run.subagents.agents.get(&id).unwrap();
+        assert_eq!(row.state, AgentState::Done);
+        assert!(row.can_ask);
+        assert!(!row.can_stop);
+
+        let rewritten = rewrite_ask_ids(&format!("send_message (Recipient: \"{id}\")"), Some(&run.subagents));
+        assert!(rewritten.contains("\"sub-ask-1\""), "got {rewritten}");
+        assert!(!rewritten.contains(&id), "internal row id must be rewritten: {rewritten}");
+
+        let send_active = r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":10,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"send_message","parameters":{"Recipient":"sub-ask-1","Message":"Controlla i test"}}}}"#;
+        run.feed(send_active.as_bytes());
+        let row = run.subagents.agents.get(&id).unwrap();
+        assert_eq!(row.state, AgentState::Working);
+        assert_eq!(row.round, 1);
+        assert_eq!(row.talk.as_ref().map(|t| t.message.as_str()), Some("Controlla i test"));
+        assert!(row.talk.as_ref().unwrap().reply.is_none());
+
+        let send_done = r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":10,"state":"DONE","step_type":"tool","tool_info":{"name":"send_message"}}}"#;
+        run.feed(send_done.as_bytes());
+
+        let followup = concat!(
+            r#"{"step_index":6,"source":"SYSTEM","type":"SYSTEM_MESSAGE","status":"DONE","content":"[Message] sender=main-1 content=Controlla i test"}"#, "\n",
+            r#"{"step_index":7,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"Tutti i test unitari passano."}"#, "\n",
+        );
+        std::fs::write(&log, format!("{TRANSCRIPT_A}{followup}")).unwrap();
+        run.subagents.read_transcripts();
+        let row = run.subagents.agents.get(&id).unwrap();
+        assert_eq!(row.state, AgentState::Done);
+        assert_eq!(row.talk.as_ref().and_then(|t| t.reply.as_deref()), Some("Tutti i test unitari passano."));
+
+        // Failed send_message reports error in talk.failed.
+        let send_fail_active = r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":11,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"send_message","parameters":{"Recipient":"sub-ask-1","Message":"Ancora?"}}}}"#;
+        let send_fail_done = r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":11,"state":"DONE","step_type":"tool","tool_info":{"name":"send_message","error":{"message":"Recipient unavailable"}}}}"#;
+        run.feed(send_fail_active.as_bytes());
+        run.feed(send_fail_done.as_bytes());
+        let row = run.subagents.agents.get(&id).unwrap();
+        assert_eq!(row.talk.as_ref().and_then(|t| t.failed.as_deref()), Some("Recipient unavailable"));
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn swarm_workflow_post_message_read_board_and_nested_subagents_are_tracked() {
+        let mut run = Run::default();
+
+        // Single swarm worker + sharded tasks swarm workers.
+        let swarm_add = r#"{"event":"step_update","step_update":{"step_index":1,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"add","name":"worker-a","brief":"Inspect parser"}}}}"#;
+        let swarm_tasks = r#"{"event":"step_update","step_update":{"step_index":2,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"add","name":"shard","brief":"Audit module","tasks":["auth","billing"]}}}}"#;
+        run.feed(swarm_add.as_bytes());
+        run.feed(swarm_tasks.as_bytes());
+
+        let w = run.subagents.agents.get("swarm-worker-a").expect("swarm-worker-a row");
+        assert_eq!(w.state, AgentState::Working);
+        assert!(w.can_ask);
+        assert!(w.can_stop);
+        assert!(run.subagents.agents.get("swarm-shard-1").is_some());
+        assert!(run.subagents.agents.get("swarm-shard-2").is_some());
+
+        // post_message attaches AgentTalk via @mention.
+        let post_msg = r#"{"event":"step_update","step_update":{"step_index":3,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"post_message","parameters":{"message":"@worker-a check edge cases"}}}}"#;
+        run.feed(post_msg.as_bytes());
+        let w = run.subagents.agents.get("swarm-worker-a").unwrap();
+        assert!(w.talk.as_ref().is_some_and(|t| t.message.contains("check edge cases")));
+
+        // read_board [done] finishes worker with summary.
+        let board = r#"{"event":"step_update","step_update":{"step_index":4,"state":"DONE","step_type":"tool","tool_info":{"name":"read_board","response":"worker-a: [done] Parser handles empty input."}}}"#;
+        run.feed(board.as_bytes());
+        let w = run.subagents.agents.get("swarm-worker-a").unwrap();
+        assert_eq!(w.state, AgentState::Done);
+        assert!(!w.can_stop);
+
+        // extract_workflow_roles and run_workflow.
+        let roles = extract_workflow_roles("parallel([agent('a', role='Security Reviewer'), agent('b', role=\"Docs Writer\")])");
+        assert_eq!(roles, vec!["Security Reviewer", "Docs Writer"]);
+
+        let wf_active = r#"{"event":"step_update","step_update":{"step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"run_workflow","parameters":{"Description":"Audit","Script":"agent('x', role='Code Auditor')"}}}}"#;
+        let wf_done = r#"{"event":"step_update","step_update":{"step_index":5,"state":"DONE","step_type":"tool","tool_info":{"name":"run_workflow"}}}"#;
+        run.feed(wf_active.as_bytes());
+        let rows = run.subagents.agents.changed();
+        assert!(rows.iter().any(|r| r.title == "Code Auditor" && r.state == AgentState::Working));
+        run.feed(wf_done.as_bytes());
+        let auditor = run.subagents.agents.changed().into_iter().find(|r| r.title == "Code Auditor").unwrap();
+        assert_eq!(auditor.state, AgentState::Done);
+
+        // tool step with subagent_info.subagents list.
+        let nested = r#"{"event":"step_update","step_update":{"step_index":6,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"delegate"},"subagent_info":{"subagents":[{"conversation_id":"nested-1","role":"Helper"}]}}}"#;
+        run.feed(nested.as_bytes());
+        let nested_id = run.subagents.resolve("nested-1").expect("nested-1");
+        assert_eq!(run.subagents.agents.get(&nested_id).unwrap().title, "Helper");
+    }
+
+    #[test]
+    fn manage_subagents_and_stop_one_stop_workers() {
+        let mut run = Run::default();
+        run.feed(SPAWN_A.as_bytes());
+        run.feed(done_with(SPAWN_A, "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub-stop/.system_generated/logs/transcript.jsonl").replace(r#""conversation_id":"sub""#, r#""conversation_id":"sub-stop""#).as_bytes());
+        run.feed(SPAWN_B.as_bytes());
+        run.feed(done_with(SPAWN_B, "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub-keep/.system_generated/logs/transcript.jsonl").replace(r#""conversation_id":"sub""#, r#""conversation_id":"sub-keep""#).as_bytes());
+
+        let id_a = run.subagents.spawns[0].row.clone();
+        let id_b = run.subagents.spawns[1].row.clone();
+
+        let ev = run.subagents.stop_one(&id_a).expect("stop event for invoke_subagent");
+        assert!(ev.contains("manage_subagents") && ev.contains("sub-stop"), "got {ev}");
+        let row_a = run.subagents.agents.get(&id_a).unwrap();
+        assert_eq!(row_a.state, AgentState::Stopped);
+        assert!(!row_a.can_stop);
+
+        // Swarm worker stop_one emits swarm kill event.
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":4,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"add","name":"worker-s","brief":"Run checks"}}}}"#);
+        let sw_ev = run.subagents.stop_one("swarm-worker-s").expect("stop event for swarm");
+        assert!(sw_ev.contains("swarm") && sw_ev.contains("worker-s"), "got {sw_ev}");
+        assert_eq!(run.subagents.agents.get("swarm-worker-s").unwrap().state, AgentState::Stopped);
+
+        // manage_subagents kill_all stops remaining active rows.
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":5,"state":"DONE","step_type":"tool","tool_info":{"name":"manage_subagents","parameters":{"Action":"kill_all"}}}}"#);
+        let row_b = run.subagents.agents.get(&id_b).unwrap();
+        assert_eq!(row_b.state, AgentState::Stopped);
+        assert!(!row_b.can_stop);
     }
 }

@@ -3578,7 +3578,7 @@ export function buildPrompt(
     const quote = auto || away || editing != null ? undefined : queuedText != null ? queuedQuote : askFor.get(State.chatId);
     const command = !called && query.trim().startsWith("/");
     const quoted = quote && !command ? quote : undefined;
-    const asked = quoted ? agentAsk(quoted, called ? toolAsk(called.tool, called.rest) : query) : called ? toolAsk(called.tool, called.rest) : query;
+    const asked = quoted ? agentAsk(quoted, called ? toolAsk(called.tool, called.rest) : query, State.settings.chatProvider) : called ? toolAsk(called.tool, called.rest) : query;
     // "/new", "/model"…: Lumo's own, run here like a pick in the menu.
     const own = auto || editing != null ? null : lumoCommand(query, State.settings.chatProvider);
     if (own) {

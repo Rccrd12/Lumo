@@ -867,7 +867,7 @@ fn activity_for(name: &str, input: &Value) -> Activity {
         },
         "Task" | "Agent" => Activity::new("subtask", ""),
         // A message to one of its agents: who to (Run names the agent by its title).
-        "SendMessage" => match field(&["to"]) {
+        "SendMessage" => match field(&["to", "recipient"]) {
             // An agent's answer to the conversation that started it.
             to if to == "main" => Activity::new("talk", ""),
             to => Activity::new("talk", short(&to)),
@@ -961,15 +961,21 @@ fn result_text(content: &Value) -> Option<&str> {
 /// running in the background (`local_bash`): those have no card.
 fn is_agent_task(v: &Value) -> bool {
     match v["task_type"].as_str() {
-        Some("local_agent") => true,
-        Some(_) => text_of(v, "subagent_type").is_some(),
-        None => text_of(v, "subagent_type").is_some() || text_of(v, "description").is_some(),
+        Some("local_agent" | "in_process_teammate" | "teammate" | "remote_agent") => true,
+        Some("local_bash" | "bash" | "background_bash") => false,
+        Some(_) => text_of(v, "subagent_type").is_some() || text_of(v, "teammate_id").is_some() || text_of(v, "name").is_some(),
+        None => text_of(v, "subagent_type").is_some() || text_of(v, "description").is_some() || text_of(v, "name").is_some(),
     }
 }
 
-/// An agent's title: its task as Claude Code described it, else its kind.
+/// An agent's title: its task as Claude Code described it, else its name or kind.
 fn agent_title(v: &Value) -> String {
-    text_of(v, "description").or_else(|| text_of(v, "subagent_type")).map(str::to_string).unwrap_or_else(|| t("Agent"))
+    text_of(v, "description")
+        .or_else(|| text_of(v, "name"))
+        .or_else(|| text_of(v, "teammate_id"))
+        .or_else(|| text_of(v, "subagent_type"))
+        .map(str::to_string)
+        .unwrap_or_else(|| t("Agent"))
 }
 
 /// The state a task's status ends it in; None while it runs.
@@ -1077,10 +1083,9 @@ impl Subagents {
     }
 
     /// The agent a SendMessage `to` names: its task id (Claude Code's agentId),
-    /// or the name its Agent call gave it. Another session, a teammate or
-    /// "main" is none of the chat's agents.
+    /// or the name its Agent call / teammate task gave it. "main" is none of the chat's agents.
     fn resolve(&self, to: &str) -> Option<String> {
-        let to = to.trim();
+        let to = to.trim().trim_start_matches('@');
         // A pinned name may come with its reference ("counter [26c776]").
         let to = match to.rfind(" [") {
             Some(at) if to.ends_with(']') => to[..at].trim(),
@@ -1089,7 +1094,10 @@ impl Subagents {
         if self.agents.get(to).is_some() {
             return Some(to.to_string());
         }
-        self.named.get(to).cloned()
+        if let Some(id) = self.named.get(to) {
+            return Some(id.clone());
+        }
+        to.split_once('@').and_then(|(name, _)| self.named.get(name.trim()).cloned())
     }
 
     /// The title of the agent a SendMessage `to` names, for the typing line.
@@ -1110,7 +1118,7 @@ impl Subagents {
                     }
                 }
                 Some("SendMessage") if !call.is_empty() => {
-                    let Some(id) = text_of(input, "to").and_then(|to| self.resolve(to)) else { continue };
+                    let Some(id) = text_of(input, "to").or_else(|| text_of(input, "recipient")).and_then(|to| self.resolve(to)) else { continue };
                     let message = text_of(input, "message").or_else(|| text_of(input, "content")).unwrap_or("");
                     let Some(row) = self.agents.touch(&id) else { continue };
                     if row.talk.as_ref().is_some_and(|t| t.call == call) {
@@ -1180,6 +1188,17 @@ impl Subagents {
                     self.origin.insert(id.clone(), call.to_string());
                     if let Some(name) = self.names.remove(call) {
                         self.named.insert(name, id.clone());
+                    }
+                }
+                for key in ["name", "teammate_id"] {
+                    if let Some(name) = text_of(v, key) {
+                        self.named.insert(name.to_string(), id.clone());
+                        if let Some((short_name, _)) = name.split_once('@') {
+                            let short_name = short_name.trim();
+                            if !short_name.is_empty() {
+                                self.named.insert(short_name.to_string(), id.clone());
+                            }
+                        }
                     }
                 }
                 if let Some(call) = text_of(v, "tool_use_id") {
@@ -1282,7 +1301,7 @@ impl Subagents {
         let mut tools: Vec<(String, Activity)> = Vec::new();
         for block in v["message"]["content"].as_array().into_iter().flatten() {
             // Its answer to a message the chat sent it.
-            if block["type"] == "tool_use" && block["name"] == "SendMessage" && text_of(&block["input"], "to") == Some("main") {
+            if block["type"] == "tool_use" && block["name"] == "SendMessage" && text_of(&block["input"], "to").or_else(|| text_of(&block["input"], "recipient")) == Some("main") {
                 let message = text_of(&block["input"], "message").or_else(|| text_of(&block["input"], "content")).unwrap_or("");
                 if let Some(talk) = self.agents.touch(&id).and_then(|r| r.talk.as_mut()) {
                     talk.answer(message);
@@ -4158,5 +4177,33 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert!(!rows[0].can_ask);
         assert_eq!(rows[0].talk.as_ref().unwrap().failed, Some(cli_ended()));
+    }
+
+    #[test]
+    fn teammate_and_swarm_tasks_are_tracked_resolved_and_addressed_via_recipient() {
+        let (link, seen) = recording();
+        let teammate_started = r#"{"type":"system","subtype":"task_started","task_id":"tm-1","task_type":"in_process_teammate","name":"researcher","teammate_id":"researcher@my-team","description":"Audit auth"}"#;
+        let teammate_two = r#"{"type":"system","subtype":"task_started","task_id":"tm-2","task_type":"teammate","teammate_id":"reviewer@my-team"}"#;
+        let send_recipient = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"m1","name":"SendMessage","input":{"recipient":"@researcher","message":"Status update?"}}]}}"#;
+        {
+            let mut sub = link.lock();
+            feed_agents(&mut sub, &[
+                r#"{"type":"system","subtype":"init","tools":["SendMessage"]}"#,
+                teammate_started,
+                teammate_two,
+                send_recipient,
+            ]);
+            assert_eq!(sub.resolve("researcher").as_deref(), Some("tm-1"));
+            assert_eq!(sub.resolve("@researcher").as_deref(), Some("tm-1"));
+            assert_eq!(sub.resolve("researcher@my-team").as_deref(), Some("tm-1"));
+            assert_eq!(sub.resolve("@reviewer").as_deref(), Some("tm-2"));
+        }
+        link.tell(false);
+        let rows = seen.lock().unwrap().0.clone();
+        let r1 = rows.iter().find(|r| r.id == "tm-1").expect("tm-1 row");
+        assert_eq!(r1.title, "Audit auth");
+        assert_eq!(r1.talk.as_ref().map(|t| t.message.as_str()), Some("Status update?"));
+        let r2 = rows.iter().find(|r| r.id == "tm-2").expect("tm-2 row");
+        assert_eq!(r2.title, "reviewer@my-team");
     }
 }
