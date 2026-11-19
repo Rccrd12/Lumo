@@ -63,6 +63,8 @@ export const STRINGS = {
   searchChats: N_("Search the past chats"),
   noMatch: N_("No chat says that."),
   deleteChat: N_("Delete this chat"),
+  renameChat: N_("Rename this chat"),
+  renameKeys: N_("Enter saves · Esc cancels"),
   attach: N_("Attach a file"),
   attachShots: N_("Attach"),
   cancel: N_("Cancel"),
@@ -103,7 +105,16 @@ export const HOLD_TEXT = {
   waiting: N_("Your message goes when the {count} agents still working finish."),
   wait: N_("Send when they finish"),
   now: N_("Send now and stop them"),
+  /** An edited question (Edit, Retry) starts the chat's CLI again: its agents stop with it. */
+  editStops: N_("Editing the question starts {name} again and stops the {count} agents still working."),
+  editChoose: N_("You can wait for them to finish, or edit it now."),
+  editWaiting: N_("Your edit goes when the {count} agents still working finish."),
+  editWait: N_("Edit when they finish"),
+  editNow: N_("Edit now and stop them"),
 };
+
+/** The providers whose CLI an edited question starts again (chat_rewind closes it): their agents at work stop with it. */
+export const RESTART_ON_EDIT: ReadonlySet<string> = new Set(["claude-code", "antigravity-cli"]);
 
 /** The commands' icons drawn filled (core/slash.ts); the others are strokes. */
 export const FILLED_ICONS = new Set(["plus", "gear", "timer", "stack"]);

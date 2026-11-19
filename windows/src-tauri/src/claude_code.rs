@@ -48,7 +48,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, Chats, ModelInfo, Stop};
-use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, StopAgent, Tell};
+use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, PlanStep, StopAgent, Tell};
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
@@ -73,7 +73,7 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
+Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. When you start agents (the Agent or Task tool), tell each one in its prompt to begin with a plan of its own in the same way (TaskCreate once per step, or TodoWrite) and to mark its steps as it works: Lumo shows each agent's plan on its row. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
@@ -89,7 +89,7 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. ",
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-Lumo shows the user your plan on its Plan island. When the job uses the computer, its plan goes in Lumo's update_plan tool, as said above, not in TaskCreate or TodoWrite. Whenever the user gives you another job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
+Lumo shows the user your plan on its Plan island. When the job uses the computer, its plan goes in Lumo's update_plan tool, as said above, not in TaskCreate or TodoWrite. Whenever the user gives you another job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. When you start agents (the Agent or Task tool), tell each one in its prompt to begin with a plan of its own in the same way (TaskCreate once per step, or TodoWrite) and to mark its steps as it works: Lumo shows each agent's plan on its row. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
@@ -936,6 +936,10 @@ struct Subagents {
     named: HashMap<String, String>,
     /// SendMessage calls not answered yet → the agent each went to.
     talks: HashMap<String, String>,
+    /// Each agent's plan as its TaskCreate and TaskUpdate calls make it: the
+    /// task's id once its TaskCreate answered (TaskUpdate names it), the call
+    /// that made it, the step.
+    tasks: HashMap<String, Vec<(Option<String>, String, PlanStep)>>,
 }
 
 /// A field's text, when there is some.
@@ -989,6 +993,17 @@ fn error_of(v: &Value) -> Option<String> {
     text_of(v, "error").or_else(|| text_of(&v["error"], "message")).map(str::to_string)
 }
 
+/// A SendMessage Claude Code refused without calling it an error: its result
+/// is `{"success":false,"message":…}` (an agent stopped, never taken up again).
+fn refused(content: &Value) -> bool {
+    result_text(content).and_then(|t| serde_json::from_str::<Value>(t).ok()).is_some_and(|v| v["success"] == false)
+}
+
+/// A refused SendMessage's reason: its `message`, else the whole text.
+fn refusal(text: &str) -> String {
+    serde_json::from_str::<Value>(text).ok().and_then(|v| text_of(&v, "message").map(str::to_string)).unwrap_or_else(|| text.to_string())
+}
+
 impl Subagents {
     /// One line of the stream, whichever turn (or none) it belongs to.
     fn feed(&mut self, v: &Value) {
@@ -1019,6 +1034,7 @@ impl Subagents {
         }
         if let Some(row) = self.open_row(&id) {
             row.end(AgentState::Stopped, None);
+            row.can_ask = false;
         }
         self.forget(&id);
     }
@@ -1033,8 +1049,8 @@ impl Subagents {
         for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result") {
             if let Some(call) = block["tool_use_id"].as_str() {
                 if let Some(id) = self.talks.remove(call) {
-                    if block["is_error"] == true {
-                        let why = result_text(&block["content"]).map(chat_agents::summary_of).unwrap_or_default();
+                    if block["is_error"] == true || refused(&block["content"]) {
+                        let why = result_text(&block["content"]).map(refusal).map(|t| chat_agents::summary_of(&t)).unwrap_or_default();
                         if let Some(talk) = self.agents.touch(&id).and_then(|r| r.talk.as_mut()).filter(|t| t.call == call && t.pending()) {
                             talk.failed = Some(why);
                         }
@@ -1068,12 +1084,14 @@ impl Subagents {
 
     /// Whether Claude Code offers SendMessage, as its `init` line says (each
     /// turn): the agents learn whether the chat can ask them.
+    /// A stopped agent is never asked: Claude Code doesn't take it up again.
     fn offers(&mut self, can_message: bool) {
         self.can_message = can_message;
-        let ids: Vec<String> = self.agents.ids().filter(|id| self.agents.get(id).is_some_and(|r| r.can_ask != can_message)).collect();
+        let askable = |r: &AgentRow| can_message && r.state != AgentState::Stopped;
+        let ids: Vec<String> = self.agents.ids().filter(|id| self.agents.get(id).is_some_and(|r| r.can_ask != askable(r))).collect();
         for id in ids {
             if let Some(row) = self.agents.touch(&id) {
-                row.can_ask = can_message;
+                row.can_ask = askable(row);
             }
         }
     }
@@ -1143,6 +1161,7 @@ impl Subagents {
 
     /// An agent ended: what was kept to follow it goes.
     fn forget(&mut self, id: &str) {
+        self.tasks.remove(id);
         self.by_call.retain(|_, task| task != id);
         self.calls.retain(|_, task| task != id);
         self.stopping.retain(|_, task| task != id);
@@ -1165,7 +1184,12 @@ impl Subagents {
                 }
                 let title = agent_title(v);
                 let can_ask = self.can_message;
+                // Started by another of the chat's agents: drawn under it.
+                let parent = text_of(v, "parent_task_id").filter(|p| *p != id && self.agents.get(p).is_some()).map(str::to_string);
                 let row = self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title));
+                if parent.is_some() {
+                    row.parent = parent;
+                }
                 // Started again: a message (SendMessage) took it up after it ended.
                 let resumed = row.state.is_final();
                 row.reopen();
@@ -1214,9 +1238,6 @@ impl Subagents {
                 }
                 let counted = self.counted.get(&id).copied().unwrap_or(0);
                 let Some(row) = self.open_row(&id) else { return };
-                if let Some(description) = text_of(v, "description") {
-                    row.title = short(description);
-                }
                 let usage = &v["usage"];
                 if let Some(tokens) = usage["total_tokens"].as_u64() {
                     row.tokens = Some(tokens);
@@ -1225,38 +1246,67 @@ impl Subagents {
                 if let Some(summary) = text_of(v, "summary") {
                     row.summary = Some(chat_agents::summary_of(summary));
                 }
-                // Only the tool's name: what the agent's own message said of it
-                // (the file, the search) stays when it is the same kind.
+                // Its `description` is the step under way ("Reading f1.txt"), never
+                // its task: the title stays. What the agent's own message said of
+                // its call (the file, the search, in the user's language) stays
+                // when it is the same kind; the step's words only stand in for
+                // a call its message didn't show.
+                let step = text_of(v, "description").map(|d| Activity::new("step", short(d)));
                 if let Some(tool) = text_of(v, "last_tool_name") {
                     let now = activity_for(tool, &Value::Null);
                     if row.now.as_ref().map(|a| a.kind) != Some(now.kind) {
-                        row.now = Some(now);
+                        row.now = Some(step.unwrap_or(now));
                     }
+                } else if row.now.is_none() {
+                    row.now = step;
                 }
             }
             "task_updated" => {
                 let patch = &v["patch"];
                 let Some(row) = self.open_row(&id) else { return };
-                if let Some(description) = text_of(patch, "description") {
-                    row.title = short(description);
+                if let Some(step) = text_of(patch, "description").filter(|_| row.now.is_none()) {
+                    row.now = Some(Activity::new("step", short(step)));
                 }
                 if let Some(background) = patch["is_backgrounded"].as_bool() {
                     row.background = background;
                 }
-                if let Some(state) = patch["status"].as_str().and_then(final_state) {
-                    row.end(state, error_of(patch).filter(|_| state == AgentState::Failed));
-                    self.forget(&id);
+                match patch["status"].as_str() {
+                    // Paused (its CLI holds it), until it runs again.
+                    Some("paused") => {
+                        row.state = AgentState::Waiting;
+                        row.waiting_for = Some("paused");
+                    }
+                    Some("running" | "pending" | "in_progress") if row.waiting_for == Some("paused") => {
+                        row.state = AgentState::Working;
+                        row.waiting_for = None;
+                    }
+                    Some(status) => {
+                        if let Some(state) = final_state(status) {
+                            row.end(state, error_of(patch).filter(|_| state == AgentState::Failed));
+                            if state == AgentState::Stopped {
+                                row.can_ask = false;
+                            }
+                            self.forget(&id);
+                        }
+                    }
+                    None => {}
                 }
             }
             "task_notification" => {
                 // Its last word comes after `task_updated` ended it: kept all the same.
                 let Some(row) = self.agents.touch(&id) else { return };
-                if let Some(talk) = row.talk.as_mut() {
-                    talk.answer(text_of(v, "summary").unwrap_or(""));
-                }
+                let state = v["status"].as_str().and_then(final_state);
+                // Its own report, or only its task said again: a stopped one's
+                // `summary` is its task (`summary_is_report` says, when given).
+                let report = v["summary_is_report"].as_bool().unwrap_or(state != Some(AgentState::Stopped));
                 let summary = text_of(v, "summary").map(chat_agents::summary_of);
-                if let Some(summary) = &summary {
-                    row.summary = Some(summary.clone());
+                if report {
+                    if let Some(talk) = row.talk.as_mut() {
+                        talk.answer(text_of(v, "summary").unwrap_or(""));
+                    }
+                    if let Some(summary) = &summary {
+                        row.summary = Some(summary.clone());
+                    }
                 }
                 if let Some(tokens) = v["usage"]["total_tokens"].as_u64() {
                     row.tokens = Some(tokens);
@@ -1264,9 +1314,12 @@ impl Subagents {
                 if let Some(uses) = v["usage"]["tool_uses"].as_u64() {
                     row.steps = row.steps.max(uses);
                 }
-                if let Some(state) = v["status"].as_str().and_then(final_state) {
+                if let Some(state) = state {
                     let error = (state == AgentState::Failed).then(|| error_of(v).or(summary)).flatten();
                     row.end(state, error);
+                    if row.state == AgentState::Stopped {
+                        row.can_ask = false;
+                    }
                     self.forget(&id);
                 }
             }
@@ -1304,6 +1357,7 @@ impl Subagents {
             }
             if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                 tools.push((block["id"].as_str().unwrap_or("").to_string(), activity_for(block["name"].as_str().unwrap_or(""), &block["input"])));
+                self.plan_call(&id, block);
             }
         }
         for (call, _) in tools.iter().filter(|(c, _)| !c.is_empty()) {
@@ -1326,11 +1380,74 @@ impl Subagents {
         }
     }
 
+    /// A call of an agent's own plan (concepts/piano-dei-sotto-agenti): its
+    /// TodoWrite is the whole plan; its TaskCreate adds a step, which its
+    /// TaskUpdate moves on once TaskCreate's result said the task's id.
+    fn plan_call(&mut self, id: &str, block: &Value) {
+        let input = &block["input"];
+        let call = block["id"].as_str().unwrap_or("").to_string();
+        match block["name"].as_str().unwrap_or("") {
+            "TodoWrite" => {
+                let plan = chat_agents::plan_of(input);
+                if let Some(row) = self.open_row(id).filter(|_| plan.is_some()) {
+                    row.plan = plan;
+                }
+                return;
+            }
+            "TaskCreate" => {
+                let Some(text) = ["subject", "content", "description", "title"].iter().filter_map(|k| text_of(input, k)).find_map(chat_agents::step_text) else { return };
+                let tasks = self.tasks.entry(id.to_string()).or_default();
+                if tasks.iter().any(|t| t.1 == call) || tasks.len() >= 40 {
+                    return;
+                }
+                tasks.push((None, call, PlanStep { text, status: "pending" }));
+            }
+            "TaskUpdate" => {
+                let task = match &input["taskId"] {
+                    Value::String(s) => s.clone(),
+                    Value::Number(n) => n.to_string(),
+                    _ => return,
+                };
+                let Some(tasks) = self.tasks.get_mut(id) else { return };
+                let Some(pos) = tasks.iter().position(|t| t.0.as_deref() == Some(task.as_str())) else { return };
+                if let Some(status) = input["status"].as_str() {
+                    if status == "deleted" {
+                        tasks.remove(pos);
+                    } else {
+                        tasks[pos].2.status = chat_agents::step_status(status);
+                    }
+                }
+                if let Some(text) = text_of(input, "subject").and_then(chat_agents::step_text) {
+                    if let Some(t) = tasks.get_mut(pos) {
+                        t.2.text = text;
+                    }
+                }
+            }
+            _ => return,
+        }
+        self.plan_from_tasks(id);
+    }
+
+    /// The agent `id`'s plan, from its tasks.
+    fn plan_from_tasks(&mut self, id: &str) {
+        let steps: Vec<PlanStep> = self.tasks.get(id).map(|t| t.iter().map(|(_, _, s)| s.clone()).collect()).unwrap_or_default();
+        if let Some(row) = self.open_row(id) {
+            row.plan = (!steps.is_empty()).then_some(steps);
+        }
+    }
+
     /// A subagent's tool results: its calls answered, and a sign it is alive.
     fn results_of(&mut self, v: &Value) {
         for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result") {
             if let Some(call) = block["tool_use_id"].as_str() {
                 self.calls.remove(call);
+                // A TaskCreate of its plan answered: the task's id, for its TaskUpdate.
+                let made = created_task_id(v, block);
+                for tasks in self.tasks.values_mut() {
+                    if let Some(t) = tasks.iter_mut().find(|t| t.1 == call && t.0.is_none()) {
+                        t.0 = made.clone();
+                    }
+                }
             }
         }
         if let Some(id) = self.agent_of(v) {
@@ -2027,6 +2144,26 @@ fn read_turn(
     }
 }
 
+/// Claude Code's own words when it is not signed in, or its sign-in ran out
+/// ("Not logged in · Please run /login", "OAuth token has expired…").
+fn is_signed_out(text: &str) -> bool {
+    let l = text.to_lowercase();
+    ["not logged in", "please run /login", "oauth token has expired", "token has been revoked", "not signed in"]
+        .iter()
+        .any(|w| l.contains(w))
+}
+
+/// A chat turn's error as the island shows it: a sign-in that is missing or
+/// ran out said in plain words, Claude Code's own after them (ERROR_DETAIL),
+/// with the card that opens Claude Code to sign in (chat::FIX_MARK).
+fn chat_error(error: String) -> String {
+    if error.contains(chat::FIX_MARK) || !is_signed_out(&error) {
+        return error;
+    }
+    let said = t("Claude Code isn't signed in to your Claude plan, or its sign-in has run out.");
+    chat::with_fix(format!("{said}\n{}{error}", chat::ERROR_DETAIL), chat::FIX_CLAUDE_SIGN_IN)
+}
+
 /// Why the CLI ended without a result, from what it wrote on stderr.
 fn ended_without_answer(stderr: &str, status: Option<std::process::ExitStatus>) -> String {
     let detail = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
@@ -2290,6 +2427,16 @@ fn user_line(text: &str) -> String {
     format!("{}\n", json!({ "type": "user", "message": { "role": "user", "content": [{ "type": "text", "text": text }] } }))
 }
 
+/// What a chat's Claude Code is told first, as the Agent SDK does
+/// (`initialize`): an interrupt ends the turn but leaves the agents it
+/// started at work (`perTaskStopAffordance`: each is stopped on its own,
+/// `stop_task`), and their own text comes on the stream too
+/// (`forwardSubagentText`). Its answer names no stop request: ignored.
+fn initialize_line() -> String {
+    let request = json!({ "subtype": "initialize", "perTaskStopAffordance": true, "forwardSubagentText": true });
+    format!("{}\n", json!({ "type": "control_request", "request_id": "lumo-init", "request": request }))
+}
+
 /// Asks Claude Code to end the turn it is on, keeping the process and the session.
 fn interrupt_line(n: u64) -> String {
     format!("{}\n", json!({ "type": "control_request", "request_id": format!("lumo-interrupt-{n}"), "request": { "subtype": "interrupt" } }))
@@ -2358,6 +2505,9 @@ fn live_for(
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let mut child = spawn(exe, &live_args(args.to_vec()), dir, chat_id)?;
     let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("no stdin")?));
+    // Before any message: Stop then ends the answer only, its agents going on.
+    // A Claude Code that doesn't know the request ignores it.
+    let _ = write_stdin(&stdin, &initialize_line());
     let stderr = read_stderr(&mut child);
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let feed: Feed = Arc::new(std::sync::Mutex::new(Some(tx)));
@@ -2511,6 +2661,9 @@ pub fn close(chat_id: &str) {
     // Ending it waits for taskkill: never on the caller's thread, which is
     // the window's for a new chat or an edited message.
     if let Some(gone) = lives(|all| all.remove(chat_id)) {
+        // The user ended it (a new chat, an edited question, the chat closed):
+        // its agents still at work are stopped, not failed under it.
+        gone.link.ended_as(AgentState::Stopped);
         std::thread::spawn(move || drop(gone));
     }
 }
@@ -2563,7 +2716,7 @@ pub async fn send(
     let exe = platform::claude_candidates()
         .into_iter()
         .next()
-        .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
+        .ok_or_else(|| chat::with_fix(t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."), chat::FIX_CLAUDE_INSTALL))?;
 
     // A command goes alone, as typed: anything in front of it and it is a question.
     let command = command_of(&query).map(str::to_string);
@@ -2655,7 +2808,7 @@ pub async fn send(
     // answer that says why, so the recap of what was done on the screen is
     // shown and saved under it (and the next turn knows it was done).
     let failed = |error: String, recap: Option<Value>| -> Result<ChatReply, String> {
-        let Some(recap) = recap else { return Err(error) };
+        let Some(recap) = recap else { return Err(chat_error(error)) };
         chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
         Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
     };
@@ -2814,18 +2967,28 @@ pub(crate) fn helper_folder(folder: Option<&str>) -> Option<String> {
 /// folder of its own, none of the user's tools): the supervisor's review of a tool
 /// (tool_review.rs). The question goes on stdin, never the command line.
 pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
+    complete_in("tool-review", model, prompt, false, Arc::new(Stop::default()))
+}
+
+/// `complete`, in the folder `work` of its own under Lumo's local data; with
+/// `forget`, Claude Code keeps no session of it (a chat's name, chat_title.rs).
+/// `stop` ends it early.
+pub(crate) fn complete_in(work: &str, model: &str, prompt: &str, forget: bool, stop: Arc<Stop>) -> Result<String, String> {
     let exe = platform::claude_candidates()
         .into_iter()
         .next()
         .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
     let mut args: Vec<String> =
         ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "plan"].iter().map(|s| s.to_string()).collect();
+    if forget {
+        args.push("--no-session-persistence".into());
+    }
     if let Some(m) = safe_model(model) {
         args.push("--model".into());
         args.push(m.into());
     }
-    let dir = platform::local_dir().join("tool-review");
-    let state = run(exe, args, prompt.to_string(), dir, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_, _| {})?;
+    let dir = platform::local_dir().join(work);
+    let state = run(exe, args, prompt.to_string(), dir, "", stop, |_| {}, |_| {}, |_| {}, |_, _| {})?;
     match state.result {
         Some(Ok(text)) if !text.trim().is_empty() => Ok(text),
         Some(Ok(_)) => Ok(state.visible.trim().to_string()),
@@ -2837,6 +3000,18 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_sign_in_is_said_in_plain_words_with_the_card_that_puts_it_right() {
+        let error = chat_error("Not logged in · Please run /login".into());
+        let (said, fix) = error.rsplit_once(chat::FIX_MARK).unwrap();
+        assert_eq!(fix, chat::FIX_CLAUDE_SIGN_IN);
+        assert!(said.ends_with(&format!("{}Not logged in · Please run /login", chat::ERROR_DETAIL)), "Claude Code's own words stay, apart: {said}");
+        assert!(is_signed_out("OAuth token has expired. Please obtain a new token or refresh your existing token."));
+        // Anything else is left as it was, and a card is never added twice.
+        assert_eq!(chat_error("Claude Code stopped: overloaded".into()), "Claude Code stopped: overloaded");
+        assert_eq!(chat_error(error.clone()), error);
+    }
 
     /// A command that runs a minute unless it is ended.
     #[cfg(windows)]
@@ -3733,6 +3908,138 @@ mod tests {
         }
     }
 
+    // ── Real Claude Code 2.1.327 output (`claude -p --output-format stream-json
+    // --verbose --include-partial-messages --input-format stream-json`, as a
+    // chat runs it), its partial messages and folders left out.
+
+    fn real(log: &str) -> Subagents {
+        let mut sub = Subagents::default();
+        for line in log.lines() {
+            if let Ok(v) = serde_json::from_str::<Value>(line) {
+                sub.feed(&v);
+            }
+        }
+        sub
+    }
+
+    /// A: one agent in the background reads six files and ends with its report.
+    #[test]
+    fn a_real_agent_keeps_its_task_as_its_title_and_its_step_as_its_line() {
+        let sub = real(include_str!("fixtures/claude-code-2.1.327/A.jsonl"));
+        let row = sub.agents.get("a04bf4d5405c763d8").unwrap();
+        assert_eq!((row.state, row.steps), (AgentState::Done, 6));
+        assert_eq!(row.title, "Read files", "task_progress's description is the step under way, never the task");
+        assert!(row.summary.as_deref().unwrap().starts_with("f1.txt through f6.txt"), "its report: summary_is_report");
+        // While it worked: what its own message showed (the file it read), not the step's English words.
+        let mut sub = Subagents::default();
+        let log = include_str!("fixtures/claude-code-2.1.327/A.jsonl");
+        for line in log.lines().take_while(|l| !l.contains(r#""subtype":"task_updated""#)) {
+            if let Ok(v) = serde_json::from_str::<Value>(line) {
+                sub.feed(&v);
+            }
+        }
+        let row = sub.agents.get("a04bf4d5405c763d8").unwrap();
+        assert_eq!(row.now, Some(Activity::new("read", "f6.txt")));
+    }
+
+    /// B: an agent in the foreground, the chat's Stop (interrupt) half way.
+    #[test]
+    fn a_real_foreground_agent_interrupted_ends_stopped_with_no_report() {
+        let sub = real(include_str!("fixtures/claude-code-2.1.327/B.jsonl"));
+        let row = sub.agents.get("ab64a0fe7683b2a48").unwrap();
+        assert_eq!(row.state, AgentState::Stopped);
+        assert_eq!(row.ended_by, None, "the user's Stop, not its CLI ending under it");
+        assert_eq!(row.summary, None, "\"Read twelve files\" is its task said again, not a report");
+        assert!(!row.can_ask);
+    }
+
+    /// C: an agent in the background stopped (stop_task), then asked:
+    /// Claude Code refuses with {"success":false} and no is_error.
+    #[test]
+    fn a_real_stopped_agent_is_never_offered_ask_and_a_refused_message_fails() {
+        let sub = real(include_str!("fixtures/claude-code-2.1.327/C.jsonl"));
+        let row = sub.agents.get("af9262f4af6dda819").unwrap();
+        assert_eq!(row.state, AgentState::Stopped);
+        assert!(!row.can_ask, "Claude Code never takes a stopped agent up again");
+        let talk = row.talk.as_ref().expect("the SendMessage is its talk");
+        assert!(!talk.pending(), "refused: the box doesn't wait for ever");
+        assert!(talk.failed.as_deref().unwrap().contains("was stopped"));
+    }
+
+    /// D: an agent that ended, asked: taken up again (same task), it answers and ends.
+    #[test]
+    fn a_real_finished_agent_asked_is_taken_up_again_and_answers() {
+        let sub = real(include_str!("fixtures/claude-code-2.1.327/D.jsonl"));
+        let row = sub.agents.get("a1f24e1a9a28b3380").unwrap();
+        assert_eq!((row.state, row.round), (AgentState::Done, 1));
+        assert_eq!(row.talk.as_ref().unwrap().reply.as_deref(), Some("f3.txt, the last of the three files I read."));
+        assert!(row.can_ask);
+    }
+
+    /// D, but the agent taken up is stopped by the chat's Stop before it answers:
+    /// the notification's summary is its task, not its answer.
+    #[test]
+    fn a_real_agent_stopped_before_it_answered_has_no_answer() {
+        let sub = real(include_str!("fixtures/claude-code-2.1.327/D-stopped-while-asked.jsonl"));
+        let row = sub.agents.get("a1f24e1a9a28b3380").unwrap();
+        assert_eq!(row.state, AgentState::Stopped);
+        let talk = row.talk.as_ref().unwrap();
+        assert_eq!(talk.reply, None, "\"Read three files\" is its title, not its answer");
+        assert!(talk.stopped && !talk.pending());
+    }
+
+    /// E, F, G: an agent in the foreground that ends by itself; the chat's Stop
+    /// in the turn that started one in the background; and in a later turn.
+    #[test]
+    fn real_agents_end_as_their_cli_said() {
+        let e = real(include_str!("fixtures/claude-code-2.1.327/E.jsonl"));
+        assert!(e.agents.ids().all(|id| e.agents.get(&id).unwrap().state == AgentState::Done));
+        for log in [include_str!("fixtures/claude-code-2.1.327/F.jsonl"), include_str!("fixtures/claude-code-2.1.327/G.jsonl")] {
+            let sub = real(log);
+            let rows: Vec<&AgentRow> = sub.agents.ids().map(|id| sub.agents.get(&id).unwrap()).collect::<Vec<_>>();
+            assert!(!rows.is_empty());
+            for row in rows {
+                assert_eq!(row.state, AgentState::Stopped, "{}", row.title);
+                assert!(!row.can_ask && row.summary.is_none(), "{}", row.title);
+            }
+        }
+    }
+
+    #[test]
+    fn a_chats_claude_code_is_told_to_leave_its_agents_at_work_when_stop_ends_the_answer() {
+        let v: Value = serde_json::from_str(initialize_line().trim()).unwrap();
+        assert_eq!(v["type"], "control_request");
+        assert_eq!(v["request"]["subtype"], "initialize");
+        assert_eq!(v["request"]["perTaskStopAffordance"], true);
+        assert_eq!(v["request"]["forwardSubagentText"], true);
+        let mut sub = Subagents::default();
+        // Its answer stops nothing.
+        feed_agents(&mut sub, &[AGENT_STARTED, r#"{"type":"control_response","response":{"subtype":"success","request_id":"lumo-init","response":{}}}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().state, AgentState::Working);
+    }
+
+    #[test]
+    fn an_agent_another_started_goes_under_it_and_a_paused_one_says_so() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[
+            AGENT_STARTED,
+            r#"{"type":"system","subtype":"task_started","task_id":"c1","tool_use_id":"toolu_C","description":"Check the tests","subagent_type":"x","task_type":"local_agent","parent_task_id":"a1b2","spawn_depth":2}"#,
+            r#"{"type":"system","subtype":"task_started","task_id":"c2","tool_use_id":"toolu_D","description":"Odd","subagent_type":"x","task_type":"local_agent","parent_task_id":"nobody"}"#,
+        ]);
+        assert_eq!(sub.agents.get("c1").unwrap().parent.as_deref(), Some("a1b2"));
+        assert_eq!(sub.agents.get("c2").unwrap().parent, None, "a parent the chat doesn't know: at the top");
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_updated","task_id":"c1","patch":{"status":"paused"}}"#]);
+        let row = sub.agents.get("c1").unwrap();
+        assert_eq!((row.state, row.waiting_for), (AgentState::Waiting, Some("paused")));
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_updated","task_id":"c1","patch":{"status":"running"}}"#]);
+        let row = sub.agents.get("c1").unwrap();
+        assert_eq!((row.state, row.waiting_for), (AgentState::Working, None));
+        // Its step, when no message of its own showed its call.
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_progress","task_id":"c1","description":"Running the suite","last_tool_name":"Bash","usage":{"tool_uses":1}}"#]);
+        assert_eq!(sub.agents.get("c1").unwrap().now, Some(Activity::new("step", "Running the suite")));
+        assert_eq!(sub.agents.get("c1").unwrap().title, "Check the tests");
+    }
+
     // As Claude Code writes them: one agent in the background, one command left running.
     const AGENT_STARTED: &str = r#"{"type":"system","subtype":"task_started","task_id":"a1b2","tool_use_id":"toolu_A","description":"Transcribe L03-L04","subagent_type":"general-purpose","is_backgrounded":true,"task_type":"local_agent","prompt":"..."}"#;
     const BASH_STARTED: &str = r#"{"type":"system","subtype":"task_started","task_id":"b9","tool_use_id":"toolu_B","description":"npm run dev","task_type":"local_bash"}"#;
@@ -3783,6 +4090,43 @@ mod tests {
         // A message of the main conversation, or of an agent Lumo never saw start, is none of its.
         feed_agents(&mut sub, &[r#"{"type":"assistant","parent_tool_use_id":"toolu_Z","message":{"content":[{"type":"tool_use","id":"z","name":"Bash","input":{}}]}}"#]);
         assert_eq!(sub.agents.get("a1b2").unwrap().steps, 7);
+    }
+
+    #[test]
+    fn an_agents_own_todo_list_or_tasks_are_its_plan_on_its_row() {
+        let mut sub = Subagents::default();
+        feed_agents(
+            &mut sub,
+            &[
+                AGENT_STARTED,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"p1","name":"TodoWrite","input":{"todos":[{"content":"Read page 37","status":"completed"},{"content":"Write L03.tex","status":"in_progress"},{"content":"Check   the\nformulas","status":"pending"}]}}]}}"#,
+            ],
+        );
+        let plan = sub.agents.get("a1b2").unwrap().plan.clone().unwrap();
+        assert_eq!(
+            plan,
+            vec![
+                PlanStep { text: "Read page 37".into(), status: "done" },
+                PlanStep { text: "Write L03.tex".into(), status: "active" },
+                PlanStep { text: "Check the formulas".into(), status: "pending" },
+            ]
+        );
+        // Its tasks instead: a step each, moved on by TaskUpdate once TaskCreate said the id.
+        let mut sub = Subagents::default();
+        feed_agents(
+            &mut sub,
+            &[
+                AGENT_STARTED,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"c1","name":"TaskCreate","input":{"subject":"Run the tests"}},{"type":"tool_use","id":"c2","name":"TaskCreate","input":{"subject":"Fix the rounding"}}]}}"#,
+                r#"{"type":"user","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_result","tool_use_id":"c1","content":"Task #7 created successfully: Run the tests"},{"type":"tool_result","tool_use_id":"c2","content":"Task #8 created successfully: Fix the rounding"}]}}"#,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"u1","name":"TaskUpdate","input":{"taskId":"7","status":"completed"}},{"type":"tool_use","id":"u2","name":"TaskUpdate","input":{"taskId":"8","status":"in_progress"}}]}}"#,
+            ],
+        );
+        let plan = sub.agents.get("a1b2").unwrap().plan.clone().unwrap();
+        assert_eq!(plan.iter().map(|s| (s.text.as_str(), s.status)).collect::<Vec<_>>(), [("Run the tests", "done"), ("Fix the rounding", "active")]);
+        // The main conversation's plan is the chat's, never a row's.
+        feed_agents(&mut sub, &[r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"m1","name":"TodoWrite","input":{"todos":[{"content":"Main step","status":"pending"}]}}]}}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().plan.as_ref().unwrap().len(), 2);
     }
 
     #[test]

@@ -15,7 +15,7 @@ import type { AntigravityPlanUsage, CodexPlanUsage, PlanKind, PlanUsage } from "
 import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
-import type { SharedContext } from "./bridge";
+import type { ChatFix, SharedContext } from "./bridge";
 import type { EdgeLight } from "./layout";
 import type { BackgroundInfo } from "./background";
 import type { SentAgain, SentItem } from "./sent";
@@ -186,6 +186,8 @@ export interface ChatMessage {
   failed?: boolean;
   /** The answer came, but the CLI ended its turn with an error: said under it (ChatReply.warning). */
   warning?: AnswerWarning;
+  /** What puts the CLI right, as a card in its place (failed) or under it (views/chat-fix.ts): in memory only. */
+  fix?: ChatFix;
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
   /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing, a question asked of an agent). */
@@ -393,6 +395,10 @@ export interface Settings {
   chatWebSearch: boolean;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
   chatAutoCompact: boolean;
+  /** Once its first answer is in, the chat's own provider names the chat (chat_title.rs). Off: the start of the first question. */
+  chatAiTitles: boolean;
+  /** The model that names the chats: "light", the provider's lightest, or "chat", the chat's own. */
+  chatTitleModel: "light" | "chat";
   /**
    * Whether an image line in the chat's answers is downloaded and shown at once
    * (views/rich/image.ts, web_image.rs). Off: the card shows only its site and a
@@ -526,6 +532,8 @@ export const DEFAULT_SETTINGS: Settings = {
   chatBrowser: false,
   chatWebSearch: false,
   chatAutoCompact: true,
+  chatAiTitles: true,
+  chatTitleModel: "light",
   webImages: false,
   mailImagesAlways: false,
   aiMailAccess: "manage",

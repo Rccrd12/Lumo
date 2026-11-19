@@ -27,6 +27,7 @@ import { takeListens } from "../core/listen";
 import { draftIn, isWorkshopChat, stripDraft } from "../core/tools";
 import { FORGE_STRINGS, draftChip } from "./forge";
 import { STRINGS } from "./chat-strings";
+import { fixCard } from "./chat-fix";
 
 let nextId = 1;
 
@@ -62,6 +63,8 @@ interface BubbleOptions {
   scope?: string;
   /** A click on one of the things that went with a question, in the list under it. */
   onOpenSent?: (message: ChatMessage, item: SentItem) => void;
+  /** Settings → Agents, for a card that sets up the chat's CLI there (views/chat-fix.ts). */
+  onOpenAgents?: () => void;
 }
 
 /** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
@@ -139,6 +142,11 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
   // own words for it apart and smaller when Lumo said it in plain words.
   if (message.role === "assistant" && message.failed) {
     const [said, words] = failedParts(message.content);
+    // Something Lumo can put right (signed out, not installed): a card that does, in its place.
+    if (message.fix) {
+      const card = fixCard(message.fix, words, { onRetry: opts.onRetry, openAgents: opts.onOpenAgents });
+      return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, card));
+    }
     const detail = words ? h("div", { class: "msg-warning-detail", text: words }) : null;
     return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: said }), detail));
   }
@@ -211,7 +219,9 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
     // The turn used the computer: how it went, under the answer (views/computer-recap.ts).
     const computer = message.computer ? computerRecapBox(message.computer, message.id) : null;
     const copies = message.copies?.length ? copiesBox(message.copies) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, bar, detail));
+    // What would have let the CLI do more (agy skipped commands): a card under the answer.
+    const fix = message.fix ? fixCard(message.fix, "", { openAgents: opts.onOpenAgents }) : null;
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, fix, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
@@ -641,6 +651,10 @@ export const ACTIVITY_STRINGS = {
   editingFile: N_("Editing a file"),
   web: N_("Searching the web"),
   subtask: N_("Working on a sub-task"),
+  /** Its subagents at work (antigravity_cli.rs): the answer, or an agent that started some, waits for them. */
+  agents: N_("Waiting for its subagents"),
+  /** An agent waiting for the subagents it started: how many finished ("done/total", antigravity_cli.rs settle). */
+  agentsDone: N_("Its subagents: {done} of {total} finished"),
   /** Claude Code's SendMessage to one of its agents (claude_code.rs activity_for). */
   talking: N_("Talking to {name}"),
   message: N_("Sending a message"),
@@ -774,10 +788,17 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.web);
     case "subtask":
       return t(ACTIVITY_STRINGS.subtask);
+    case "agents": {
+      const [done, total] = detail.split("/");
+      return done && total ? t(ACTIVITY_STRINGS.agentsDone, { done, total }) : t(ACTIVITY_STRINGS.agents);
+    }
     case "talk":
       return detail ? t(ACTIVITY_STRINGS.talking, { name: detail }) : t(ACTIVITY_STRINGS.message);
     case "plan":
       return t(ACTIVITY_STRINGS.plan);
+    // The step under way in its CLI's own words (Claude Code's task_progress).
+    case "step":
+      return detail || t(ACTIVITY_STRINGS.thinking);
     case "screen":
       return t(ACTIVITY_STRINGS.screen);
     case "computer": {
@@ -838,6 +859,7 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "command":
       return t(COMPACT_TEXT.command);
     case "subtask":
+    case "agents":
       return t(ISLAND_ACTIVITY_STRINGS.subtask);
     case "tool":
     case "calling":

@@ -26,6 +26,8 @@
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
+import { MAX_SEGMENTS, planMarker, STRIP_TEXT } from "./plan-strip";
+import { planFinished, planProgress, type PlanStep } from "../core/agent-plan";
 import { isWatching, mountInline, toggleWatch, unwatchOthers, WATCH_TEXT, type InlineActions } from "./browser-watch";
 import type { ChatActivity } from "../core/bridge";
 import {
@@ -52,6 +54,9 @@ export const AGENTS_CARD_TEXT = {
   ago: N_("{time} ago"),
   wait: N_("agents|Wait"),
   stop: N_("agents|Stop"),
+  stopAll: N_("agents|Stop all"),
+  answerStopped: N_("You stopped the answer: the agents in the background go on"),
+  stopThem: N_("Stop them too"),
   seeRequest: N_("See request"),
   ended: N_("{name} ended: {count} agents stopped halfway"),
   /** What Rust says of an agent whose CLI ended under it (chat_agents.rs end_open). */
@@ -66,6 +71,8 @@ export const AGENTS_CARD_TEXT = {
   tokens: N_("{tokens} tokens"),
   stopThis: N_("Stop this agent"),
   close: N_("Close"),
+  /** Over an opened agent's last steps, under its plan. */
+  latest: N_("Latest actions"),
   show: N_("Show the agents"),
   hide: N_("Hide the agents"),
   ask: N_("agents|Ask"),
@@ -74,6 +81,8 @@ export const AGENTS_CARD_TEXT = {
   waitingReply: N_("waiting for the reply… {time}"),
   notReached: N_("The message did not reach {name}"),
   noReply: N_("No reply came"),
+  stoppedFirst: N_("Stopped before it answered"),
+  paused: N_("Paused"),
   queued: N_("Waiting its turn · {place} in line"),
   usesComputer: N_("uses the computer"),
   waitingComputer: N_("Waiting for the computer · {place} of {total} · {time}"),
@@ -86,6 +95,8 @@ export const AGENTS_CARD_TEXT = {
   /** Stop clicked: it goes after STOP_UNDO_MS, unless Undo takes it back. */
   stopping: N_("Stopping in {time}…"),
   undo: N_("agents|Undo"),
+  /** Its CLI was asked to stop it and has not said it did yet. */
+  halting: N_("Stopping it…"),
 };
 
 /**
@@ -173,6 +184,8 @@ export interface AgentsCardInput {
   batch: AgentBatch;
   /** The agents a permission card waits on (core/chat-agents.ts permissionMatch). */
   permission?: ReadonlySet<string>;
+  /** The user stopped the chat's answer while these agents worked on: the live line says they go on. */
+  answerStopped?: boolean;
   now?: number;
 }
 
@@ -370,7 +383,21 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
   } else {
     into.append(fullCard(entries, input, host, ui, now, redraw));
   }
-  if (!allOver) into.append(liveLine(entries, now, input.permission));
+  if (!allOver) {
+    const stoppable = stoppableOf(entries, input.chatId, now);
+    const stopThem = input.answerStopped && stoppable.length ? () => stopEach(stoppable, input.chatId, host, redraw) : null;
+    into.append(liveLine(entries, now, input.permission, stopThem));
+  }
+}
+
+/** The agents at work the user can still stop (no Stop under way on them). */
+function stoppableOf(entries: AgentEntry[], chatId: string, now: number): AgentEntry[] {
+  return entries.filter((e) => !isFinal(e.row.state) && e.row.canStop && !e.row.stopping && stopPending(chatId, e.row.id, now) == null);
+}
+
+/** Stop all, Stop them too: each agent as its own Stop does, Undo on each row. */
+function stopEach(entries: AgentEntry[], chatId: string, host: AgentsCardHost, redraw: () => void) {
+  for (const e of entries) stopLater(chatId, e.row.id, host, redraw);
 }
 
 /** The header and the rows. */
@@ -384,11 +411,15 @@ function fullCard(entries: AgentEntry[], input: AgentsCardInput, host: AgentsCar
     : t(AGENTS_CARD_TEXT.doneOf, { done: counts.done, total: counts.total });
   // Folded rows show again with the chevron; once all are over it folds the card into one line.
   const folded = !allOver && ui.collapsed;
+  // Two or more at work: Stop all, each with its Undo.
+  const stoppable = stoppableOf(entries, input.chatId, now);
+  const stopAll = stoppable.length >= 2 ? cardButton("stop", tc(AGENTS_CARD_TEXT.stopAll), () => stopEach(stoppable, input.chatId, host, redraw)) : null;
   const head = h("div", { class: "agents-head" },
     h("span", { class: "agents-title", text: t(AGENTS_CARD_TEXT.title) }),
     h("span", { class: "agents-status", text: status }),
     segments(looksOf(entries, now, input.permission)),
     h("span", { class: "agents-gap" }),
+    stopAll,
     h("span", { class: "agents-time", text: durationText(ended - started) }),
     chevron(folded, t(folded ? AGENTS_CARD_TEXT.show : AGENTS_CARD_TEXT.hide)));
   head.addEventListener("click", () => {
@@ -402,7 +433,67 @@ function fullCard(entries: AgentEntry[], input: AgentsCardInput, host: AgentsCar
 }
 
 function rows(entries: AgentEntry[], input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void): HTMLElement {
-  return h("div", { class: "agents-rows" }, ...entries.map((e) => row(e, input, host, ui, now, redraw)));
+  return h("div", { class: "agents-rows" }, ...nested(entries).map(([e, depth]) => row(e, input, host, ui, now, redraw, depth)));
+}
+
+/** Deepest an agent started by another one is set in under it. */
+const MAX_DEPTH = 3;
+
+/**
+ * The rows in the order they show: each agent an agent started right under
+ * it, after its brothers started before (concepts/agy-sotto-agenti-annidati),
+ * with how deep it is; one whose starter isn't on the card stays in its place.
+ */
+export function nested(entries: AgentEntry[]): [AgentEntry, number][] {
+  const ids = new Set(entries.map((e) => e.row.id));
+  const kids = new Map<string, AgentEntry[]>();
+  for (const e of entries) {
+    const parent = e.row.parent;
+    if (parent && parent !== e.row.id && ids.has(parent)) kids.set(parent, [...(kids.get(parent) ?? []), e]);
+  }
+  const out: [AgentEntry, number][] = [];
+  const seen = new Set<string>();
+  const add = (e: AgentEntry, depth: number) => {
+    if (seen.has(e.row.id)) return;
+    seen.add(e.row.id);
+    out.push([e, Math.min(depth, MAX_DEPTH)]);
+    for (const k of kids.get(e.row.id) ?? []) add(k, depth + 1);
+  };
+  for (const e of entries) {
+    const parent = e.row.parent;
+    if (!parent || parent === e.row.id || !ids.has(parent)) add(e, 0);
+  }
+  // A loop of starters (never sent, but never lost either).
+  for (const e of entries) add(e, 0);
+  return out;
+}
+
+/** An agent's plan on its row: the chat's plan chip, a segment per step and how many are done. */
+function planChip(plan: PlanStep[]): HTMLElement {
+  const { done, total } = planProgress(plan);
+  const segs = h("span", { class: "plan-chip-segs", "aria-hidden": "true" });
+  if (total <= MAX_SEGMENTS) for (const s of plan) segs.append(h("i", { class: s.status }));
+  else {
+    segs.classList.add("bar");
+    const bar = h("i", { class: "fill" });
+    bar.style.setProperty("--k", String(total ? done / total : 0));
+    segs.append(bar);
+  }
+  const status = planFinished(plan) ? t(STRIP_TEXT.done) : t(STRIP_TEXT.stepOf, { done, total });
+  const chip = h("span", { class: `plan-chip agents-plan-chip${planFinished(plan) ? " finished" : ""}`, title: `${t(STRIP_TEXT.title)} · ${status}` },
+    segs, h("span", { class: "plan-chip-count", text: `${done}/${total}` }));
+  return chip;
+}
+
+/** An opened agent's plan: its steps, as the chat's plan lists them. */
+function planList(plan: PlanStep[]): HTMLElement {
+  const { done, total } = planProgress(plan);
+  return h("div", { class: "agents-plan" },
+    h("div", { class: "plan-strip-head" },
+      h("span", { class: "plan-strip-head-title", text: t(STRIP_TEXT.title) }),
+      h("span", { class: "plan-strip-head-count", text: planFinished(plan) ? t(STRIP_TEXT.done) : t(STRIP_TEXT.stepOf, { done, total }) })),
+    h("div", { class: "agent-plan" }, ...plan.map((s) =>
+      h("div", { class: `plan-step plan-strip-item ${s.status}` }, planMarker(s), h("span", { class: "plan-text", text: s.text })))));
 }
 
 /** What a row says next to its title. */
@@ -415,6 +506,7 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
       return r.error || t(r.state === "stopped" ? AGENTS_CARD_TEXT.stopped : AGENTS_CARD_TEXT.failed);
     case "waiting": {
       if (r.waitingFor === "queue") return t(AGENTS_CARD_TEXT.queued, { place: r.queue ?? 1 });
+      if (r.waitingFor === "paused") return t(AGENTS_CARD_TEXT.paused);
       const pc = computerOf(r.id);
       if (pc?.waits && r.state !== "waiting") {
         return t(AGENTS_CARD_TEXT.waitingComputer, { place: pc.place, total: pc.of, time: durationText(now - pc.since) });
@@ -432,17 +524,22 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
 }
 
 /** One agent: its marker, its task, what it does, and its time or what can be done about it. */
-function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void): HTMLElement {
+function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: CardUi, now: number, redraw: () => void, depth = 0): HTMLElement {
   const r = e.row;
+  // Its CLI was asked to stop it: until it says it did, the row says so and offers no Stop.
+  const halting = !isFinal(r.state) && !!r.stopping;
   const look = lookOf(e, now, input.permission);
   const marker = look === "done"
     ? h("span", { class: "agents-mark done" }, svg(ICONS.check, 12, { stroke: 2.2 }))
-    : h("span", { class: `agents-mark ${look}` }, h("i"));
-  const left = isFinal(r.state) ? null : stopPending(input.chatId, r.id, now);
-  const line = left != null ? t(AGENTS_CARD_TEXT.stopping, { time: durationText(left + 999) }) : rowLine(e, look, host, now);
+    : h("span", { class: `agents-mark ${halting ? "stopping" : look}` }, h("i"));
+  const left = isFinal(r.state) || halting ? null : stopPending(input.chatId, r.id, now);
+  const line = halting ? t(AGENTS_CARD_TEXT.halting)
+    : left != null ? t(AGENTS_CARD_TEXT.stopping, { time: durationText(left + 999) }) : rowLine(e, look, host, now);
   const side = h("span", { class: "agents-side" });
+  // Its own plan, when it wrote one: how far along it is, before its time.
+  if (r.plan?.length && left == null) side.append(planChip(r.plan));
   const ask = canAsk(e, host) && left == null ? () => host.ask!({ agentId: r.id, title: r.title, line, look }) : null;
-  const stop = () => stopLater(input.chatId, r.id, host, redraw);
+  const stop = halting ? null : () => stopLater(input.chatId, r.id, host, redraw);
   // A tab it browses in, while it is at work: Watch shows it under the row, Hide closes it.
   const tab = isFinal(r.state) ? undefined : browserOf(input.chatId, r.id);
   const watch = tab && host.watchBrowser && left == null ? () => {
@@ -463,7 +560,7 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
       snooze(e);
       redraw();
     }));
-    if (r.canStop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), stop));
+    if (r.canStop && stop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), stop));
   } else if (look === "waiting") {
     // Only on the row whose card is the one up: not while Claude Code checks a call itself (no card), nor for another's card.
     if (r.waitingFor !== "rate_limit" && input.permission?.has(r.id) && host.requestOnTop === r.id) {
@@ -499,7 +596,8 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     ...(site ? [site] : []),
     h("span", { class: "agents-line", text: line, title: line }),
     side);
-  const el = h("div", { class: `agents-row ${look}${open ? " open" : ""}${watching ? " watching" : ""}` }, head);
+  const el = h("div", { class: `agents-row ${look}${halting ? " stopping" : ""}${open ? " open" : ""}${watching ? " watching" : ""}${depth ? " child" : ""}` }, head);
+  if (depth) el.style.setProperty("--depth", String(depth));
   head.addEventListener("click", () => {
     if (open) ui.open.delete(r.id);
     else {
@@ -517,6 +615,9 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   if (open) el.append(rowDetail(e, host, ui, now, redraw, ask, left == null ? stop : null, watch ? watchButton : null));
   return el;
 }
+
+/** The last actions an opened agent with a plan shows under it. */
+const PLANNED_STEPS = 3;
 
 /** Opening `agentId` folds every other agent of the card: their details and their picture. */
 function onlyOpen(ui: CardUi, chatId: string, agentId: string) {
@@ -537,8 +638,13 @@ function rowDetail(
   const box = h("div", { class: "agents-detail" });
   if (r.summary) box.append(h("div", { class: "agents-summary", text: r.summary }));
   if (r.error && r.error !== r.summary) box.append(h("div", { class: "agents-summary failed", text: r.error }));
-  if (e.steps.length) {
-    box.append(h("div", { class: "agents-steps" }, ...e.steps.map((s) =>
+  // Its plan, then its last few actions under it.
+  const plan = r.plan?.length ? r.plan : null;
+  if (plan) box.append(planList(plan));
+  const steps = plan ? e.steps.slice(0, PLANNED_STEPS) : e.steps;
+  if (steps.length) {
+    if (plan) box.append(h("div", { class: "agents-numbers", text: t(AGENTS_CARD_TEXT.latest) }));
+    box.append(h("div", { class: "agents-steps" }, ...steps.map((s) =>
       h("div", { class: "agents-step" },
         h("span", { class: "agents-step-what", text: host.label(s.now) }),
         h("span", { class: "agents-time", text: t(AGENTS_CARD_TEXT.ago, { time: durationText(now - s.at) }) })))));
@@ -646,6 +752,7 @@ function drawTalk(into: HTMLElement, x: TalkEntry, who: string, now: number) {
     h("span", { class: "agents-talk-text", text: x.message })));
   let answer: HTMLElement;
   if (x.reply) answer = h("span", { class: "agents-talk-text", text: x.reply });
+  else if (x.stopped) answer = h("span", { class: "agents-talk-text dim", text: t(AGENTS_CARD_TEXT.stoppedFirst) });
   else if (x.failed != null) answer = h("span", { class: "agents-talk-text failed", text: t(AGENTS_CARD_TEXT.notReached, { name: x.title }), title: x.failed });
   else if (x.stale) answer = h("span", { class: "agents-talk-text dim", text: t(AGENTS_CARD_TEXT.noReply) });
   else {
@@ -661,7 +768,7 @@ function drawTalk(into: HTMLElement, x: TalkEntry, who: string, now: number) {
  * sign came, so a number that stays small says they are alive (concept 1).
  * The dots take the colour of the worst case (concept 3).
  */
-function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<string>): HTMLElement {
+function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<string>, stopThem?: (() => void) | null): HTMLElement {
   const counts = countAgents(entries, now, permission);
   const worst = counts.stalled ? worstStall(entries, now) : null;
   let tone: string;
@@ -673,8 +780,15 @@ function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<s
   } else if (counts.waiting && !counts.working) {
     tone = "waiting";
     // Those waiting only in line for the computer have no card for the user.
-    const onUser = entries.some((e) => !isFinal(e.row.state) && (e.row.state === "waiting" || permission?.has(e.row.id)));
-    text = t(onUser ? AGENTS_CARD_TEXT.permission : AGENTS_CARD_TEXT.inLineComputer);
+    const waits = entries.filter((e) => !isFinal(e.row.state) && (e.row.state === "waiting" || permission?.has(e.row.id)));
+    const onUser = waits.length > 0;
+    // Paused by their CLI: nothing is asked of the user.
+    const paused = onUser && waits.every((e) => e.row.waitingFor === "paused" && !permission?.has(e.row.id));
+    text = t(paused ? AGENTS_CARD_TEXT.paused : onUser ? AGENTS_CARD_TEXT.permission : AGENTS_CARD_TEXT.inLineComputer);
+  } else if (stopThem) {
+    // The answer stopped, its agents in the background on.
+    tone = counts.waiting ? "waiting" : "working";
+    text = t(AGENTS_CARD_TEXT.answerStopped);
   } else {
     tone = counts.waiting ? "waiting" : "working";
     const last = Math.max(...entries.filter((e) => !isFinal(e.row.state)).map((e) => e.row.lastSignalAt || 0));
@@ -682,5 +796,6 @@ function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<s
   }
   return h("div", { class: `agents-live ${tone}` },
     h("span", { class: "agents-dots" }, h("i"), h("i"), h("i")),
-    h("span", { class: "agents-live-text", text }));
+    h("span", { class: "agents-live-text", text }),
+    stopThem && !worst ? cardButton("stop", tc(AGENTS_CARD_TEXT.stopThem), stopThem) : null);
 }

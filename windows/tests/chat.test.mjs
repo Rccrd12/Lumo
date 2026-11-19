@@ -54,13 +54,13 @@ test("the model button shows the active provider's model", () => {
 test("Antigravity CLI needs no key, and a model with one level only keeps its name, with no slider", async () => {
   State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatEffort: "high" };
   view.sync();
-  assert.equal($(".model-name").textContent, "default", "a saved effort never reaches agy");
+  assert.equal($(".model-name").textContent, "Default", "a saved effort never reaches agy");
 
   answers.chat_models = [{ id: "default", label: "Default" }, { id: "gemini-3.8-flash-low", label: "gemini-3.8-flash-low" }];
   $(".model-btn").fire("click");
   await flush();
   assert.deepEqual(sent("chat_models"), [{ provider: "antigravity-cli" }]);
-  assert.deepEqual(models(), ["Default", "gemini-3.8-flash-low"]);
+  assert.deepEqual(models(), ["Default", "Gemini 3.8 Flash Low"], "agy's models by their names, not their ids");
   assert.equal($(".picker-efforts").hidden, true);
   assert.equal($(".effort-slider"), null);
 });
@@ -69,7 +69,7 @@ test("Antigravity CLI's variants by effort are one model, with Claude Code's sli
   State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatModels: { "antigravity-cli": "gemini-4-hydrogen-medium" } };
   view.sync();
   // Before agy is asked for its list, the name says the level.
-  assert.equal($(".model-name").textContent, "gemini-4-hydrogen · Medium");
+  assert.equal($(".model-name").textContent, "Gemini 4 Hydrogen · Medium");
 
   answers.chat_models = [
     "default", "gemini-4-argon-medium", "gemini-4-argon-high", "gemini-4-argon-low",
@@ -78,8 +78,9 @@ test("Antigravity CLI's variants by effort are one model, with Claude Code's sli
   ].map((id) => ({ id, label: id === "default" ? "Default" : id }));
   $(".model-btn").fire("click");
   await flush();
-  assert.deepEqual(models(), ["Default", "gemini-4-argon", "gemini-4-hydrogen", "gemini-pro-orchestrator-g1-pro", "gemini-3.8-flash"]);
-  assert.equal($(".picker-model.on").textContent, "gemini-4-hydrogen");
+  assert.deepEqual(models(), ["Default", "Gemini 4 Argon", "Gemini 4 Hydrogen", "Gemini Pro Orchestrator G1 Pro", "Gemini 3.8 Flash"]);
+  assert.equal($(".picker-model.on").textContent, "Gemini 4 Hydrogen");
+  assert.equal($(".picker-model.on").getAttribute("title"), "gemini-4-hydrogen-medium", "the id shows on hover");
 
   // The slider has the model's own levels, and no Auto.
   assert.equal($(".picker-efforts").hidden, false);
@@ -96,15 +97,15 @@ test("Antigravity CLI's variants by effort are one model, with Claude Code's sli
   assert.equal(State.settings.chatEffort, before);
   assert.equal($(".effort-value").textContent, "Extra high");
   view.sync();
-  assert.equal($(".model-name").textContent, "gemini-4-hydrogen · Extra high");
+  assert.equal($(".model-name").textContent, "Gemini 4 Hydrogen · Extra high");
 
   // Another model keeps the level when it has it, else takes medium.
   $(".effort-slider").fire("keydown", { key: "ArrowLeft" });
-  view.el.find(".picker-model").find((m) => m.textContent === "gemini-3.8-flash").fire("click");
+  view.el.find(".picker-model").find((m) => m.textContent === "Gemini 3.8 Flash").fire("click");
   assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-3.8-flash-high");
   $(".model-btn").fire("click");
   await flush();
-  view.el.find(".picker-model").find((m) => m.textContent === "gemini-4-argon").fire("click");
+  view.el.find(".picker-model").find((m) => m.textContent === "Gemini 4 Argon").fire("click");
   assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-4-argon-high");
   $(".model-btn").fire("click");
   await flush();
@@ -112,10 +113,10 @@ test("Antigravity CLI's variants by effort are one model, with Claude Code's sli
   assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-4-argon-high", "argon's highest is high");
 
   // A model with no levels: its name as it is, and no slider.
-  view.el.find(".picker-model").find((m) => m.textContent === "gemini-pro-orchestrator-g1-pro").fire("click");
+  view.el.find(".picker-model").find((m) => m.textContent === "Gemini Pro Orchestrator G1 Pro").fire("click");
   assert.equal(State.settings.chatModels["antigravity-cli"], "gemini-pro-orchestrator-g1-pro");
   view.sync();
-  assert.equal($(".model-name").textContent, "gemini-pro-orchestrator-g1-pro");
+  assert.equal($(".model-name").textContent, "Gemini Pro Orchestrator G1 Pro");
   $(".model-btn").fire("click");
   await flush();
   assert.equal($(".picker-efforts").hidden, true);
@@ -154,7 +155,7 @@ test("Claude Code's effort is one row: a filled slider, its level, and Auto at t
   $(".model-btn").fire("click");
   State.settings = { ...State.settings, chatEffort: "xhigh" };
   view.sync();
-  assert.equal($(".model-name").textContent, "default · Extra high");
+  assert.equal($(".model-name").textContent, "Default · Extra high");
 });
 
 test("the shield picks what Claude Code and Antigravity CLI may do without asking", () => {
@@ -902,6 +903,53 @@ test("a failed answer shows the CLI's own words apart, the note only Lumo's", as
   assert.equal(failed.find(".msg-warning-detail")[0].textContent, "Antigravity CLI's message: Malformed function call");
 });
 
+test("signed out or not installed: a card that puts it right, in place of the error", async () => {
+  answers.chat_send = () => Promise.reject(new Error("Claude Code isn't signed in to your Claude plan, or its sign-in has run out.\n\u2063Not logged in · Please run /login\u2064claude-sign-in"));
+  await ask("hello");
+  const card = rows()[1].find(".chat-fix")[0];
+  assert.equal(card.getAttribute("data-fix"), "claude-sign-in");
+  assert.equal(card.find(".chat-fix-title")[0].textContent, "Claude Code isn't signed in to your Claude plan");
+  assert.equal(card.find(".chat-fix-detail")[0].textContent, "Not logged in · Please run /login", "Claude Code's own words, small under it");
+  assert.equal(rows()[1].find(".msg-failed").length, 0);
+  // Sign in opens Claude Code's own window; Retry sends the question again.
+  card.find(".chat-fix-btn").find((b) => b.classList.contains("primary")).fire("click");
+  assert.deepEqual(sent("cli_sign_in"), [{ provider: "claude-code" }]);
+  answers.chat_send = { text: "Hi!" };
+  card.find(".chat-fix-btn").find((b) => b.textContent === "Retry").fire("click");
+  await flush();
+  await flush();
+  view.sync();
+  assert.equal(sent("chat_send").length, 2);
+  assert.equal(rows().at(-1).find(".chat-fix").length, 0);
+
+  // Not installed: the command, to copy.
+  answers.chat_send = () => Promise.reject(new Error("Antigravity CLI isn't installed.\u2064agy-install"));
+  await ask("again");
+  const install = rows().at(-1).find(".chat-fix")[0];
+  assert.equal(install.find("code")[0].textContent, "irm https://antigravity.google/cli/install.ps1 | iex");
+});
+
+test("agy skipped commands: under its answer, a card that leads to Settings → Agents", async (t) => {
+  const mem = new Map();
+  const before = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  t.after(() => {
+    globalThis.localStorage = before;
+  });
+  let opened = 0;
+  view = buildPrompt(() => {}, () => opened++);
+  view.sync();
+  answers.chat_send = { text: "I couldn't create the folders: the command wasn't allowed.", fix: "agy-hooks" };
+  await ask("make the folders");
+  const answer = rows()[1];
+  assert.match(answer.find(".reply")[0].textContent, /couldn't create/);
+  const card = answer.find(".chat-fix")[0];
+  assert.equal(card.getAttribute("data-fix"), "agy-hooks");
+  card.find(".chat-fix-btn").find((b) => b.classList.contains("primary")).fire("click");
+  assert.equal(mem.get("lumo.settings.page"), "agents");
+  assert.equal(opened, 1);
+});
+
 test("Past chats keep an answer's warning, also when Claude Code adds to the chat by itself", async (t) => {
   if (!globalThis.localStorage) {
     t.after(() => delete globalThis.localStorage);
@@ -1574,4 +1622,94 @@ test("an agent that answered nothing goes back to Rust as no answer, not as Lumo
   const shown = { role: "assistant", content: "Codex gave no answer.", kept: "(No answer.)" };
   assert.deepEqual(conversationTurn(shown), { role: "assistant", content: "(No answer.)" });
   assert.deepEqual(conversationTurn({ role: "user", content: "Ciao", at: 1 }), { role: "user", content: "Ciao" });
+});
+
+// ── Chat names (chat_title.rs) ────────────────────────────────────────────────
+
+/** A storage of its own for Past chats, as the webview has. */
+function freshStorage() {
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+}
+
+async function askNamed(text) {
+  $(".chat-input").value = text;
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  view.sync();
+}
+
+test("once the first answer is in, the chat's AI names it, and the pencil renames it for good", async () => {
+  freshStorage();
+  const { loadChats } = await import("../src/core/chats.ts");
+  State.chatId = "named-chat";
+  answers.chat_send = { text: "Set the toolchain first." };
+  answers.chat_title = "Lumo's build on Windows";
+  await askNamed("how do I set up the build of Lumo on Windows?");
+  assert.deepEqual(sent("chat_title"), [{
+    provider: "anthropic",
+    model: "claude-opus-5-5",
+    exchanges: [["how do I set up the build of Lumo on Windows?", "Set the toolchain first."]],
+    light: true,
+  }]);
+  assert.equal(loadChats().find((c) => c.id === "named-chat").title, "Lumo's build on Windows");
+
+  // Named once: the next answer asks nothing.
+  await askNamed("and the hook?");
+  assert.equal(sent("chat_title").length, 1);
+  assert.equal(loadChats().find((c) => c.id === "named-chat").title, "Lumo's build on Windows", "saved again, the name stays");
+
+  // The pencil: the name in a field, Enter keeps what is typed.
+  view.el.find(".tool-btn").find((b) => b.getAttribute("title") === "Past chats").fire("click");
+  const row = () => view.el.find(".history-row").find((r) => r.getAttribute("title") === "Lumo's build on Windows");
+  row().find(".history-rename")[0].fire("click");
+  const field = $(".history-rename-input");
+  assert.equal(field.value, "Lumo's build on Windows");
+  field.value = "My build notes";
+  field.fire("keydown", { key: "Escape" });
+  assert.equal($(".history-rename-input"), null, "Esc: back to the row");
+  assert.equal(loadChats().find((c) => c.id === "named-chat").title, "Lumo's build on Windows", "Esc keeps the name");
+  row().find(".history-rename")[0].fire("click");
+  $(".history-rename-input").value = "My build notes";
+  $(".history-rename-input").fire("keydown", { key: "Enter" });
+  const saved = loadChats().find((c) => c.id === "named-chat");
+  assert.equal(saved.title, "My build notes");
+  assert.equal(saved.named, "user");
+  assert.ok(view.el.find(".history-row").some((r) => r.getAttribute("title") === "My build notes"));
+});
+
+test("a question of a word waits for the second answer; off in Settings, nothing is asked", async () => {
+  freshStorage();
+  State.chatId = "short-chat";
+  answers.chat_send = { text: "Hi! How can I help?" };
+  await askNamed("hi");
+  assert.deepEqual(sent("chat_title"), [], "too little to go on");
+  answers.chat_send = { text: "Three ideas." };
+  await askNamed("ideas for Marta's birthday");
+  assert.deepEqual(sent("chat_title").map((a) => a.exchanges), [[["hi", "Hi! How can I help?"], ["ideas for Marta's birthday", "Three ideas."]]]);
+
+  calls.length = 0;
+  State.chatId = "off-chat";
+  State.settings = { ...State.settings, chatAiTitles: false };
+  await askNamed("how do I set up the build of Lumo on Windows?");
+  assert.deepEqual(sent("chat_title"), []);
+});
+
+test("the model for names: the chat's own when Settings says so; a name that doesn't come is asked once more", async () => {
+  freshStorage();
+  const { loadChats } = await import("../src/core/chats.ts");
+  State.chatId = "retry-chat";
+  State.settings = { ...State.settings, chatTitleModel: "chat" };
+  answers.chat_send = { text: "Here it is." };
+  answers.chat_title = null;
+  await askNamed("summarise the March invoice for me");
+  await askNamed("and the April one?");
+  await askNamed("thanks a lot");
+  assert.deepEqual(sent("chat_title").map((a) => a.light), [false, false], "twice at most");
+  assert.equal(loadChats().find((c) => c.id === "retry-chat").title, "summarise the March invoice for me", "no name: the first question");
 });

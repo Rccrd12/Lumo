@@ -1,4 +1,5 @@
 import type { CopyDiff } from "./copy-diff";
+import type { PlanStep } from "./agent-plan";
 import type { ChatCompact } from "./chats";
 import type { MailRevision } from "./mail-edit";
 // Thin wrapper over the Tauri commands/events. Every call is a no-op when the
@@ -80,6 +81,14 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
     console.error(`[lumo] ${cmd} failed`, err);
     return null;
   }
+}
+
+/** Claude Code or the Antigravity CLI as Settings → Agents shows it (cli_setup.rs). */
+export interface CliInfo {
+  installed: boolean;
+  path: string | null;
+  /** "2.1.3"; null when `--version` didn't say. */
+  version: string | null;
 }
 
 /** Settings → Pills → Email: the classic Outlook on this PC (outlook.rs). */
@@ -236,6 +245,12 @@ export const Bridge = {
 
   /** The Claude desktop app, for the Claude Desktop pill (Windows only). */
   openClaudeDesktop: () => call<boolean>("open_claude_desktop"),
+
+  /** Settings → Agents: whether Claude Code or agy is installed, where, which version. */
+  cliInfo: (provider: string) => call<CliInfo>("cli_info", { provider }),
+
+  /** Opens Claude Code or agy in a window of its own, where it asks the user to sign in. */
+  cliSignIn: (provider: string) => callOrThrow<void>("cli_sign_in", { provider }),
 
   /** The diff card's ↗: an existing file, in VS Code; never launched by its type. */
   openFileInVSCode: (path: string) => call<boolean>("open_file_in_vscode", { path }),
@@ -449,6 +464,13 @@ export const Bridge = {
     call<void>("chat_load", { chatId, turns, session, cli, compact }),
   /** /compact with a provider called by its API: the summary that now stands for the chat's turns; null with nothing new. */
   /** The summary, and the history sent to the model before and after it (characters). */
+  /**
+   * A chat's name, from its first exchanges (question, answer), given by its
+   * own provider (chat_title.rs): with the provider's lightest model when
+   * `light`, else the chat's `model`. Null when none came.
+   */
+  chatTitle: (provider: string, model: string, exchanges: [string, string][], light: boolean) =>
+    call<string | null>("chat_title", { provider, model, exchanges, light }),
   chatCompact: (chatId: string) => callOrThrow<(ChatCompact & { before: number; after: number }) | null>("chat_compact", { chatId }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
   pickFile: async () => {
@@ -824,8 +846,8 @@ export interface ChatAgent {
   /** Its task, as the CLI described it. */
   title: string;
   state: ChatAgentState;
-  /** With "waiting": what it waits for. */
-  waitingFor?: "permission" | "rate_limit" | "queue";
+  /** With "waiting": what it waits for ("paused": its CLI holds it, nothing asked of the user). */
+  waitingFor?: "permission" | "rate_limit" | "queue" | "paused";
   /** Waiting for "queue": its place in line (a local model's agents run as many at once as its server's slots). */
   queue?: number;
   /** What it is doing now, worded as the typing line is (activityLabel). */
@@ -856,6 +878,12 @@ export interface ChatAgent {
    * The Agents card offers Resume for those.
    */
   endedBy?: "cli" | "lumo";
+  /** The agent that started this one (an Antigravity CLI subagent's own): its row shows under that one's. */
+  parent?: string;
+  /** Its own plan, when it wrote one (its TodoWrite, its update_plan): its row shows how far along it is. */
+  plan?: PlanStep[];
+  /** The user stopped it and its CLI was asked to: stopping until the CLI says it stopped. */
+  stopping?: boolean;
 }
 
 /** A message the chat's CLI sent one of its agents, and the agent's answer (the "Talking to …" box). */
@@ -869,6 +897,8 @@ export interface ChatAgentTalk {
   repliedAt?: number;
   /** Why it did not reach the agent. */
   failed?: string;
+  /** The agent was stopped before it answered. */
+  stopped?: boolean;
 }
 
 /** The `chat-agent` event. */
@@ -982,7 +1012,12 @@ export interface ChatReply {
   computer?: ComputerRecap;
   /** The answer came, but the CLI ended its turn with an error (antigravity_cli.rs): said under the answer. */
   warning?: ChatWarning;
+  /** What would have let the CLI do more (chat.rs `fix`): a card under the answer (views/chat-fix.ts). */
+  fix?: ChatFix;
 }
+
+/** What a card in the chat puts right (chat.rs FIX_*, views/chat-fix.ts). */
+export type ChatFix = "claude-sign-in" | "claude-install" | "agy-sign-in" | "agy-install" | "agy-hooks";
 
 /**
  * A problem under an answer (chat.rs ChatWarning): its kind ("malformed": the

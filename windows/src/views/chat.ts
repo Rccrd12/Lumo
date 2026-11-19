@@ -86,7 +86,7 @@ import { Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type
 import { activeModel, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
-import { chatModelOf, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
+import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import { cliOf, setChatCli } from "../core/chats";
 import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore, noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns, type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
@@ -117,9 +117,11 @@ import { planAskSteps } from "./plan-ask";
 import { planKey } from "../core/agent-plan";
 import { SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand } from "../core/slash";
 import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachRow, chatFileRow, fileDetail, saveSettings } from "./chat-attach";
+import { splitFix } from "./chat-fix";
+import { cliModelName } from "../core/model-names";
 import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, inWorkspace, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
-import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
+import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
 // ── Usage ring ────────────────────────────────────────────────────────────────
 
@@ -217,6 +219,15 @@ export function buildPrompt(
   // Copies no past chat names any more (deleted before Lumo released them,
   // or gone past the history's end) leave the inbox once a day old.
   void Bridge.inboxTidy([...keptCopies(), ...fieldCopies()]);
+  /** Settings on its Agents page, where a chat's CLI is set up (views/chat-fix.ts). */
+  const openAgents = () => {
+    try {
+      window.localStorage.setItem("lumo.settings.page", "agents");
+    } catch {
+      // Settings open on the page they were on.
+    }
+    openSettings();
+  };
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
   // The log stays where it is read: sending a question and the answer being
@@ -450,9 +461,15 @@ export function buildPrompt(
    * agents it left at work. `waiting`: it goes once they finish; else it is
    * back in the field and the bar asks. `stuck`: sent once they seemed done
    * and held again, so it waits for news of an agent before it tries again.
+   * `edit`: an edited question (its message's id), which would end them too;
+   * `retry` when Retry sent it (its text never was in the field).
    */
-  const held = new Map<string, { text: string; quote?: AskQuote; count: number; name: string; waiting: boolean; stuck?: boolean }>();
+  const held = new Map<string, { text: string; quote?: AskQuote; count: number; name: string; waiting: boolean; stuck?: boolean; edit?: number; retry?: boolean }>();
   let holdShown = "";
+  /** The chats whose next edited question goes even under their agents at work: the user said so. */
+  const editAnyway = new Set<string>();
+  /** The chats whose answer the user stopped while agents of theirs worked on: their cards say those go on. */
+  const answerStopped = new Set<string>();
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -635,7 +652,7 @@ export function buildPrompt(
     }
     seen(line.chatId);
     if (saved) openChat(saved);
-    else if (inFlight) openChat({ id: line.chatId, title: chatTitle(inFlight.history), updatedAt: Date.now(), provider: inFlight.provider, model: inFlight.model, session: inFlight.session, turns: [] });
+    else if (inFlight) openChat({ id: line.chatId, title: chatName(line.chatId, inFlight.history), updatedAt: Date.now(), provider: inFlight.provider, model: inFlight.model, session: inFlight.session, turns: [] });
     State.notify();
   }
 
@@ -1047,7 +1064,9 @@ export function buildPrompt(
     // Antigravity CLI: its model's effort, said as Claude Code's is (`gemini-4-argon · High`).
     const variant = p.id === AGY ? picker.variantOf(model) : null;
     const effort = variant ? variant.level : effortFor(p.id, State.settings.chatEffort);
-    const name = variant ? variant.base : model;
+    // Claude Code's and agy's models by their names ("Opus 5.5"), not their ids.
+    const id = variant ? variant.base : model;
+    const name = activeModel(State.settings) ? cliModelName(p.id, id, picker.labelOf(p.id, id)) : id;
     modelName.textContent = effort ? `${name} · ${effortLabel(effort)}` : name;
     // A long name is cut; the whole of it shows on hover.
     modelName.title = modelName.textContent;
@@ -1081,6 +1100,11 @@ export function buildPrompt(
     if (!run || run.stopping) return;
     run.stopping = true;
     drawSend();
+    // Its agents in the background go on: their cards say so, and offer to stop them too.
+    if (openCount(agentStore.get(run.chatId)) > 0) {
+      answerStopped.add(run.chatId);
+      drawAgents(run.chatId, false, false);
+    }
     void Bridge.chatStop(run.chatId);
   }
 
@@ -1104,6 +1128,11 @@ export function buildPrompt(
   function cancelEdit() {
     if (editing == null) return;
     editing = null;
+    // The bar asking about the agents goes with the edit.
+    if (held.get(State.chatId)?.edit != null && !held.get(State.chatId)?.waiting) {
+      held.delete(State.chatId);
+      drawHold();
+    }
     takeBackAgain();
     setInput("");
     Sound.play("pop");
@@ -2147,6 +2176,9 @@ export function buildPrompt(
     return loadChats().filter((c) => isWorkshopChat(c.id) === workshop);
   }
 
+  /** The chat being renamed in Past chats (its pencil), and what is typed so far. */
+  let renaming: { id: string; draft: string } | null = null;
+
   function drawHistory() {
     clear(historyList);
     const chats = slotChats();
@@ -2206,6 +2238,16 @@ export function buildPrompt(
         Sound.play("pop");
         drawHistory();
       });
+      if (c.id === renaming?.id) {
+        historyList.append(renameRow(c));
+        continue;
+      }
+      const rename = h("button", { class: "history-rename", title: tl(STRINGS.renameChat) }, svg(ICONS.pencil, 12, { stroke: 1.6 }));
+      rename.addEventListener("click", (e) => {
+        e.stopPropagation();
+        renaming = { id: c.id, draft: c.title };
+        drawHistory();
+      });
       const name = h("span", { class: "picker-model-name", text: c.title || "…" });
       // It heard something not seen yet: what, in its colour, and the waves.
       const heard = State.chatSlot === "chat" ? State.listenPending.find((p) => p.chatId === c.id) : undefined;
@@ -2217,11 +2259,104 @@ export function buildPrompt(
         under ? h("span", { class: "history-text" }, name, under) : name,
         heard ? h("span", { class: "history-heard" }, svg(ICONS.waves, 13, { stroke: 1.8 })) : null,
         h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
+        rename,
         remove,
       );
       row.addEventListener("click", () => openChat(c));
       historyList.append(row);
     }
+    if (renaming) {
+      const field = historyList.querySelector<HTMLInputElement>(".history-rename-input");
+      if (field && document.activeElement !== field) {
+        field.focus();
+        field.setSelectionRange(field.value.length, field.value.length);
+      }
+    }
+  }
+
+  /**
+   * A past chat's row while it is renamed: its name in a field. Enter (or a
+   * click away) keeps what is typed, and its AI never names it again; Esc,
+   * or a name left empty, keeps the one it had.
+   */
+  function renameRow(c: SavedChat): HTMLElement {
+    const field = h("input", {
+      type: "text",
+      class: "history-search history-rename-input",
+      maxlength: String(NAME_CHARS),
+      spellcheck: "false",
+      "aria-label": tl(STRINGS.renameChat),
+    }) as HTMLInputElement;
+    field.value = renaming?.draft ?? c.title;
+    let done = false;
+    const finish = (keep: boolean) => {
+      if (done) return;
+      done = true;
+      renaming = null;
+      const name = field.value.trim();
+      if (keep && name && name !== c.title && nameChat(c.id, name, "user")) {
+        Sound.play("pop");
+        drawIslandActivity();
+        State.notify();
+      }
+      drawHistory();
+    };
+    field.addEventListener("input", () => {
+      if (renaming?.id === c.id) renaming.draft = field.value;
+    });
+    field.addEventListener("click", (e) => e.stopPropagation());
+    field.addEventListener("keydown", (e) => {
+      const ke = e as KeyboardEvent;
+      e.stopPropagation(); // Escape here cancels the name, not the island
+      if (ke.key === "Enter" && !ke.isComposing) {
+        e.preventDefault();
+        finish(true);
+      } else if (ke.key === "Escape") {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    // A click elsewhere keeps the name; the field gone with a redraw does not.
+    field.addEventListener("blur", () => {
+      if (field.isConnected) finish(true);
+    });
+    return h("div", { class: "picker-model history-row history-renaming" },
+      field,
+      h("span", { class: "history-date", text: tl(STRINGS.renameKeys) }));
+  }
+
+  /** The chats being named by their AI now, and how often each was asked. */
+  const naming = new Set<string>();
+  const namingTries = new Map<string, number>();
+  /** A name that doesn't come after this many asks: the chat keeps its own. */
+  const NAMING_TRIES = 2;
+
+  /**
+   * Once an answer is in, the chat's own AI names the chat in a few words
+   * (Settings → Chat → Chat names, chat_title.rs), with the provider's
+   * lightest model or the chat's: unless it has a name already, from its AI
+   * or from the user. A name that doesn't come is said nowhere: the chat
+   * keeps the start of its first question.
+   */
+  function nameByAi(run: Run) {
+    const chatId = run.chatId;
+    if (State.settings.chatAiTitles === false || run.forgotten || naming.has(chatId) || chatNamedBy(chatId)) return;
+    const tries = namingTries.get(chatId) ?? 0;
+    if (tries >= NAMING_TRIES) return;
+    const exchanges = namingExchanges(run.history);
+    if (!exchanges) return;
+    naming.add(chatId);
+    namingTries.set(chatId, tries + 1);
+    void Bridge.chatTitle(run.provider, run.model, exchanges, State.settings.chatTitleModel !== "chat")
+      .then((title) => {
+        // Renamed by the user meanwhile, or deleted: that stands.
+        if (!title || run.forgotten || chatNamedBy(chatId)) return;
+        if (!nameChat(chatId, title, "ai")) return;
+        drawIslandActivity();
+        if (body.classList.contains("browsing") && renaming == null) drawHistory();
+        State.notify();
+      })
+      .finally(() => naming.delete(chatId));
   }
 
   /** The passage that matched, with the match lit (text nodes only, never markup). */
@@ -2553,7 +2688,7 @@ export function buildPrompt(
     void Bridge.chatRestore(State.chatId, turns, null);
     const parsed = latestDraft(State.chatHistory);
     if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
-    saveChat({ id: State.chatId, title: chatTitle(turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), session: null, turns });
+    saveChat({ id: State.chatId, title: chatName(State.chatId, turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), session: null, turns });
     renderedCount = -1;
     State.notify();
   }
@@ -2568,7 +2703,7 @@ export function buildPrompt(
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
-      title: chatTitle(turns),
+      title: chatName(run.chatId, turns),
       updatedAt: Date.now(),
       provider: run.provider,
       model: run.model,
@@ -2697,7 +2832,7 @@ export function buildPrompt(
 
   function noteFinishedChat(run: Run) {
     clearFinishedChat(run.chatId);
-    const title = chatTitle(run.history);
+    const title = chatName(run.chatId, run.history);
     const timer = setTimeout(() => {
       finishedChats.delete(run.chatId);
       drawIslandActivity();
@@ -2734,7 +2869,7 @@ export function buildPrompt(
         chatId: r.chatId,
         who,
         color,
-        title: chatTitle(r.history) || t("Chat"),
+        title: chatName(r.chatId, r.history) || t("Chat"),
         line: r.text === "" || r.dots ? runLabel(r) : t(COMPACT_TEXT.writing),
       };
     });
@@ -2744,7 +2879,7 @@ export function buildPrompt(
         chatId: State.chatId,
         who,
         color,
-        title: chatTitle(State.chatHistory) || t("Chat"),
+        title: chatName(State.chatId, State.chatHistory) || t("Chat"),
         line: compactingLabel,
       });
     }
@@ -3069,7 +3204,7 @@ export function buildPrompt(
     for (const { el, batch } of shownCards.values()) {
       // Each second, only the cards whose agents are still at work.
       if (onlyOpen && !batch.ids.some((id) => { const e = c.rows.get(id); return e && !isFinal(e.row.state); })) continue;
-      fillAgentsCard(el, { chatId, chat: c, batch, permission }, agentsHost(chatId));
+      fillAgentsCard(el, { chatId, chat: c, batch, permission, answerStopped: answerStopped.has(chatId) }, agentsHost(chatId));
     }
     const who = agentsSpeaker(chatId, c).who;
     for (const { el, talk } of shownTalks.values()) {
@@ -3098,7 +3233,7 @@ export function buildPrompt(
     const permission = permissionOf(chatId).agents;
     const host = agentsHost(chatId);
     return c.batches.filter((b) => (after ? b.anchor >= answer : b.anchor === answer)).map((batch) => {
-      const el = agentsCard({ chatId, chat: c, batch, permission }, host);
+      const el = agentsCard({ chatId, chat: c, batch, permission, answerStopped: answerStopped.has(chatId) }, host);
       shownCards.set(agentsCardKey(chatId, batch), { el, batch });
       return el;
     });
@@ -3397,17 +3532,26 @@ export function buildPrompt(
     const entry = held.get(State.chatId);
     const open = openCount(agentStore.get(State.chatId));
     const count = open || entry?.count || 0;
-    const key = entry ? `${State.chatId}:${entry.waiting}:${count}:${entry.text}` : "";
+    const key = entry ? `${State.chatId}:${entry.waiting}:${count}:${entry.text}:${entry.edit ?? ""}` : "";
     if (key === holdShown) return;
     holdShown = key;
     holdEl.hidden = !entry;
     if (entry) {
+      const edit = entry.edit != null;
       holdEl.classList.toggle("waiting", entry.waiting);
-      holdText.textContent = entry.waiting
-        ? tn("Your message goes when the agent still working finishes.", HOLD_TEXT.waiting, count)
-        : tn("{name} starts again with the new settings and stops the agent still working.", HOLD_TEXT.stops, count, { name: entry.name });
-      holdSub.textContent = entry.waiting ? entry.text : t(HOLD_TEXT.choose);
+      if (entry.waiting) {
+        holdText.textContent = edit
+          ? tn("Your edit goes when the agent still working finishes.", HOLD_TEXT.editWaiting, count)
+          : tn("Your message goes when the agent still working finishes.", HOLD_TEXT.waiting, count);
+      } else {
+        holdText.textContent = edit
+          ? tn("Editing the question starts {name} again and stops the agent still working.", HOLD_TEXT.editStops, count, { name: entry.name })
+          : tn("{name} starts again with the new settings and stops the agent still working.", HOLD_TEXT.stops, count, { name: entry.name });
+      }
+      holdSub.textContent = entry.waiting ? entry.text : t(edit ? HOLD_TEXT.editChoose : HOLD_TEXT.choose);
       holdSub.title = holdSub.textContent;
+      holdWait.textContent = t(edit ? HOLD_TEXT.editWait : HOLD_TEXT.wait);
+      holdNow.textContent = t(edit ? HOLD_TEXT.editNow : HOLD_TEXT.now);
       holdWait.hidden = entry.waiting;
     }
     onHeightChange();
@@ -3421,12 +3565,32 @@ export function buildPrompt(
     if (openCount(agentStore.get(chatId)) > 0) return;
     held.delete(chatId);
     drawHold();
+    if (entry.edit != null) {
+      // The question it edits may have gone meanwhile (a new chat, another edit): it goes as a new one.
+      if (State.chatHistory.some((m) => m.id === entry.edit)) editing = entry.edit;
+    }
     void submit(undefined, entry.text, undefined, entry.quote);
+  }
+
+  /** The agents at work an edited question of `chatId` would stop, and whose they are; null for none. */
+  function agentsAnEditStops(chatId: string): { count: number; name: string } | null {
+    const c = agentStore.get(chatId);
+    if (!c) return null;
+    const open = [...c.rows.values()].filter((e) => !isFinal(e.row.state) && RESTART_ON_EDIT.has(e.row.source));
+    return open.length ? { count: open.length, name: t(providerDef(open[0].row.source as ProviderId).name) } : null;
+  }
+
+  /** The edited question (the message `edit`) waits: the bar asks to wait for the agents or to stop them. */
+  function holdEdit(chatId: string, edit: number, text: string, count: number, name: string) {
+    held.set(chatId, { text, count, name, waiting: false, edit, retry: !!text });
+    Sound.play("pop");
+    drawHold();
   }
 
   holdWait.addEventListener("click", (e) => {
     e.stopPropagation();
     const entry = held.get(State.chatId);
+    if (entry?.edit != null) return waitToEdit(entry);
     const text = input.value.trim();
     if (!entry || !text) return;
     const quote = askFor.get(State.chatId);
@@ -3439,6 +3603,23 @@ export function buildPrompt(
     releaseHeld();
   });
 
+  /** Edit when they finish: the edited question waits above the field, the edit no longer in it. */
+  function waitToEdit(entry: NonNullable<ReturnType<typeof held.get>>) {
+    const text = entry.retry ? entry.text : input.value.trim();
+    if (!text) return;
+    if (!entry.retry) setInput("");
+    // What the edit put back in the attachments stays there, for it.
+    editing = null;
+    editBack = null;
+    editSent = null;
+    renderedCount = -1;
+    held.set(State.chatId, { ...entry, text, waiting: true, stuck: false });
+    Sound.play("blip");
+    drawHold();
+    State.notify();
+    releaseHeld();
+  }
+
   holdNow.addEventListener("click", (e) => {
     e.stopPropagation();
     const chatId = State.chatId;
@@ -3446,6 +3627,13 @@ export function buildPrompt(
     if (!entry) return;
     held.delete(chatId);
     drawHold();
+    if (entry.edit != null) {
+      // The edit goes now: its CLI starts again, and its agents stop with the old one.
+      editAnyway.add(chatId);
+      if (!entry.waiting && !entry.retry) return void submit();
+      if (State.chatHistory.some((m) => m.id === entry.edit)) editing = entry.edit;
+      return void submit(undefined, entry.text);
+    }
     // The next message may start the CLI again: its agents stop with the old one.
     void invoke("chat_allow_restart", { chatId }).then(() => {
       if (State.chatId !== chatId) return;
@@ -3459,6 +3647,24 @@ export function buildPrompt(
     const entry = held.get(State.chatId);
     if (!entry) return;
     held.delete(State.chatId);
+    if (entry.edit != null) {
+      if (entry.waiting) {
+        // The edit that waited is back in the field, an edit again.
+        if (State.chatHistory.some((m) => m.id === entry.edit)) editing = entry.edit;
+        const now = input.value.trim();
+        setInput(now ? `${entry.text}\n${now}` : entry.text);
+      } else if (entry.retry) {
+        // Retry given up: what it put back in the attachments goes again.
+        editing = null;
+        takeBackAgain();
+      }
+      renderedCount = -1;
+      Sound.play("pop");
+      drawHold();
+      State.notify();
+      input.focus();
+      return;
+    }
     // A message that waited goes back in the field, its quote with it.
     if (entry.waiting && entry.text) {
       const now = input.value.trim();
@@ -3587,6 +3793,15 @@ export function buildPrompt(
       runLumo(own);
       return;
     }
+    // An edited question starts the chat's CLI again, and its agents still at
+    // work stop with it: not without the user (concepts/sotto-agenti-completo 4).
+    if (!auto && !away && editing != null) {
+      const inTheWay = agentsAnEditStops(State.chatId);
+      if (inTheWay && !editAnyway.delete(State.chatId)) {
+        holdEdit(State.chatId, editing, typed ? "" : query, inTheWay.count, inTheWay.name);
+        return;
+      }
+    }
     // A plan asking to start (concept C1): what is typed says what to change.
     // The plan is declined, so Claude keeps planning, and the text goes next.
     const asking = typed ? planAsking() : null;
@@ -3690,6 +3905,8 @@ export function buildPrompt(
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: newMessageId(), role: "user", content: query, at: Date.now() };
+      // A new question: the note that the last answer was stopped under its agents goes.
+      answerStopped.delete(chatId);
       // What went with it shows on its bubble, and goes again on Edit.
       const went = screenContext || sent.length ? sentItems(screenContext ? shared : emptyScreen(), sent, fileDetail) : [];
       if (went.length) {
@@ -3793,6 +4010,7 @@ export function buildPrompt(
           stopped: reply.stopped || undefined,
           kept: reply.kept,
           warning: reply.warning,
+          fix: reply.fix,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
@@ -3810,6 +4028,7 @@ export function buildPrompt(
         void peekExplorer(true);
       }
       remember(run);
+      if (recorded && !reply.stopped) nameByAi(run);
       askOpenRouter(true);
       // An answer from agy used some of its quota: asked again (at most once a minute).
       if (antigravityUsage()) refreshAntigravityPlanUsage();
@@ -3831,11 +4050,12 @@ export function buildPrompt(
       }
       outcome = "error";
       noticeAway(COMPACT_TEXT.failed, runSpeaker(run));
-      const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who });
+      // What puts it right, when Lumo can (signed out, not installed): a card in its place (views/chat-fix.ts).
+      const [problem, fix] = splitFix(String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who }));
       const [plainProblem] = failedParts(problem);
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
-      run.history.push({ id: newMessageId(), role: "assistant", content: problem, failed: true, at: Date.now() });
+      run.history.push({ id: newMessageId(), role: "assistant", content: problem, failed: true, fix, at: Date.now() });
       if (!away && !(State.mode === "expanded" && State.view === "prompt")) {
         State.noteMessage = plainProblem;
         State.view = "note";
@@ -3940,7 +4160,7 @@ export function buildPrompt(
       if (!joinOwnAnswer(history, content)) return;
       const turns = savedTurns(history);
       if (run) remember(run);
-      else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns: withAgents(agents, turns) });
+      else if (saved) saveChat({ ...saved, title: chatName(saved.id, turns), updatedAt: Date.now(), turns: withAgents(agents, turns) });
       if (onScreen) renderedCount = -1;
     } else {
       if (!saved) return;
@@ -4056,11 +4276,11 @@ export function buildPrompt(
   function chatNamed(chatId: string, chats: () => SavedChat[] = loadChats): string | null {
     // The chat on screen, even still empty (a watch started from the panel),
     // or the one the other slot put aside.
-    if (chatId === State.chatId) return chatTitle(State.chatHistory);
+    if (chatId === State.chatId) return chatName(chatId, State.chatHistory);
     const parked = State.parkedChat();
-    if (parked && chatId === parked.chatId) return chatTitle(parked.chatHistory);
+    if (parked && chatId === parked.chatId) return chatName(chatId, parked.chatHistory);
     const run = runs.get(chatId);
-    if (run) return chatTitle(run.history);
+    if (run) return chatName(chatId, run.history);
     const saved = chats().find((c) => c.id === chatId);
     return saved ? saved.title : null;
   }
@@ -4550,7 +4770,7 @@ export function buildPrompt(
           const inFlight = !saved ? runs.get(id) : undefined;
           const target = saved ?? (inFlight ? {
             id,
-            title: chatTitle(inFlight.history),
+            title: chatName(id, inFlight.history),
             updatedAt: Date.now(),
             provider: inFlight.provider,
             model: inFlight.model,
@@ -4745,12 +4965,14 @@ export function buildPrompt(
           for (const line of heardLines.before[i]) log.append(heardRow(line));
           // A message's scope is its place among those kept with the chat, as the checklists count them.
           const scope = messageScope(State.chatId, m.failed ? -1 : place++);
-          const retries = asked != null && (i === lastAsked || (i === lastAsked + 1 && !m.failed));
+          // A failed answer with a card to put it right has its own Retry (views/chat-fix.ts).
+          const retries = asked != null && (i === lastAsked || (i === lastAsked + 1 && (!m.failed || !!m.fix)));
           const last = i === history.length - 1 && m.role === "assistant" && !run;
           const shown = editing == null && (unanswered ? i === lastAsked : last);
           lastBubble = bubble(m, {
             onEdit: startEdit, onRetry: retries && asked ? () => retry(asked) : undefined, shown,
             editing: i === at, dropped: at >= 0 && i > at, workshop, scope, onOpenSent: (msg, item) => void openSent(msg, item),
+            onOpenAgents: openAgents,
           });
           // The messages the CLI sent its agents meanwhile, before its answer.
           if (m.role === "assistant" && !m.failed) log.append(...talkBoxesFor(State.chatId, answer));

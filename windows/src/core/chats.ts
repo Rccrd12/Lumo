@@ -55,6 +55,8 @@ export interface SavedTalk {
   sentAt: number;
   reply?: string;
   failed?: string;
+  /** Its agent was stopped before it answered. */
+  stopped?: boolean;
 }
 
 /** One agent an answer started, as the chat keeps it once it ended (bridge.ts ChatAgent, in short). */
@@ -171,6 +173,12 @@ export interface SavedChat {
    * Settings → Security → Default permissions.
    */
   permissions?: ChatPermissions;
+  /**
+   * Who gave the chat its `title`: its AI, once its first answer was in
+   * (Settings → Chat → Chat names, chat_title.rs), or the user, with the
+   * pencil in Past chats. None: the start of its first question.
+   */
+  named?: ChatNamedBy;
 }
 
 const KEY = "lumo.chats.v1";
@@ -340,6 +348,84 @@ export function chatTitle(turns: SavedTurn[]): string {
   return line.length > TITLE_CHARS ? `${line.slice(0, TITLE_CHARS - 1)}…` : line;
 }
 
+/** Who named a chat: its AI, or the user. */
+export type ChatNamedBy = "ai" | "user";
+
+/** The longest name the user may give a chat, in characters. */
+export const NAME_CHARS = 80;
+
+/**
+ * The chats named so far, by id: read once from Past chats, then kept here,
+ * so a chat named while it is still answered keeps its name when it is saved.
+ */
+const names = new Map<string, { title: string; by: ChatNamedBy }>();
+let namesRead = false;
+
+function namedOf(id: string, chats?: SavedChat[]): { title: string; by: ChatNamedBy } | null {
+  if (!namesRead) {
+    namesRead = true;
+    for (const c of chats ?? loadChats()) {
+      if ((c.named === "ai" || c.named === "user") && c.title.trim() && !names.has(c.id)) names.set(c.id, { title: c.title, by: c.named });
+    }
+  }
+  return names.get(id) ?? null;
+}
+
+/** A chat's name: the one its AI or the user gave it, else the start of its first question. */
+export function chatName(id: string, turns: SavedTurn[]): string {
+  return namedOf(id)?.title ?? chatTitle(turns);
+}
+
+/** Who named the chat `id`, or null when nobody did. */
+export function chatNamedBy(id: string): ChatNamedBy | null {
+  return namedOf(id)?.by ?? null;
+}
+
+/**
+ * Names the chat `id`: on one line, at most NAME_CHARS characters (never
+ * half of one); saved at once when it is in Past chats, where it keeps its
+ * place. False when nothing is left of the name.
+ */
+export function nameChat(id: string, title: string, by: ChatNamedBy): boolean {
+  const name = [...title.replace(/\s+/g, " ").trim()].slice(0, NAME_CHARS).join("").trim();
+  if (!name) return false;
+  namedOf(id);
+  names.set(id, { title: name, by });
+  const list = loadChats();
+  const chat = list.find((c) => c.id === id);
+  if (chat) {
+    chat.title = name;
+    chat.named = by;
+    store(list);
+  }
+  return true;
+}
+
+/** A first question with fewer words than this ("ciao", "ok") says too little: the name waits for the second answer. */
+const FEW_WORDS = 3;
+/** The exchanges a name is asked from, at most. */
+const NAMING_EXCHANGES = 2;
+
+/**
+ * What the AI names a chat from (chat_title.rs): its first two questions with
+ * their answers, leaving out commands ("/compact") and answers that failed or
+ * said nothing. Null while there is too little to go on: no answer yet, or
+ * one answer to a question of a word or two.
+ */
+export function namingExchanges(turns: { role: string; content: string; failed?: boolean }[]): [string, string][] | null {
+  const out: [string, string][] = [];
+  for (let i = 0; i + 1 < turns.length && out.length < NAMING_EXCHANGES; i++) {
+    const question = turns[i];
+    const answer = turns[i + 1];
+    if (question.role !== "user" || answer.role !== "assistant" || answer.failed) continue;
+    if (question.content.trim().startsWith("/") || !answer.content.trim()) continue;
+    out.push([question.content, answer.content]);
+  }
+  if (out.length === 0) return null;
+  const words = out[0][0].trim().split(/\s+/).filter(Boolean).length;
+  return out.length === 1 && words < FEW_WORDS ? null : out;
+}
+
 /**
  * Claude Code answered by itself between two questions (a command it left
  * running in the background ended): `text` joins the chat's last answer, so
@@ -466,6 +552,9 @@ export function saveChat(chat: SavedChat): SavedChat[] {
   if (permissions) chat = { ...chat, permissions };
   const ticks = chat.checklists ?? chats.find((c) => c.id === chat.id)?.checklists ?? unsaved.get(chat.id);
   unsaved.delete(chat.id);
+  // A name given to it, by its AI or the user, stays whatever the turns say.
+  const name = namedOf(chat.id, chats);
+  if (name) chat = { ...chat, title: name.title, named: name.by };
   const saved = ticks && Object.keys(ticks).length ? { ...chat, checklists: ticks } : chat;
   const list = [saved, ...chats.filter((c) => c.id !== chat.id)].slice(0, MAX_CHATS);
   return store(list);
@@ -504,6 +593,7 @@ export function updateChatTurns(id: string, change: (turns: SavedTurn[]) => Save
 
 export function deleteChat(id: string): SavedChat[] {
   unsaved.delete(id);
+  names.delete(id);
   picks.delete(id);
   ownModes.delete(id);
   const list = loadChats().filter((c) => c.id !== id);

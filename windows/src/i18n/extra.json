@@ -745,18 +745,6 @@
    "id": "Ditolak oleh mode otomatis: {action}",
    "it": "Negato dalla modalità automatica: {action}"
   },
-  "Show Antigravity CLI usage in the island": {
-   "zh-Hans": "在岛中显示 Antigravity CLI 用量",
-   "hi": "द्वीप में Antigravity CLI का उपयोग दिखाएँ",
-   "es": "Mostrar el uso de Antigravity CLI en la isla",
-   "ar": "إظهار استخدام Antigravity CLI في الجزيرة",
-   "fr": "Afficher l'utilisation d'Antigravity CLI dans l'île",
-   "bn": "দ্বীপে Antigravity CLI-এর ব্যবহার দেখান",
-   "pt-BR": "Mostrar o uso do Antigravity CLI na ilha",
-   "ru": "Показывать использование Antigravity CLI на острове",
-   "id": "Tampilkan pemakaian Antigravity CLI di pulau",
-   "it": "Mostra l'utilizzo di Antigravity CLI nell'isola"
-  },
   "Shows your Antigravity CLI quotas (5-hour and weekly) in the island's header, asked from agy as its /usage does; nothing is installed. agy must be signed in with your Google account.": {
    "zh-Hans": "在岛的顶栏中显示你的 Antigravity CLI 配额（5 小时和每周），像 /usage 一样向 agy 询问；无需安装任何东西。agy 必须已用你的 Google 账号登录。",
    "hi": "आपके Antigravity CLI कोटा (5 घंटे और साप्ताहिक) द्वीप के हेडर में दिखाता है, जो /usage की तरह agy से पूछे जाते हैं; कुछ भी इंस्टॉल नहीं होता। agy में आपके Google खाते से साइन इन होना ज़रूरी है।",
@@ -912,18 +900,6 @@
    "ru": "Lumo считает ваши сессии агентов по ходу дела — загляните в следующий понедельник.",
    "id": "Lumo menghitung sesi agen Anda saat berlangsung — cek lagi Senin depan.",
    "it": "Lumo conta le tue sessioni degli agenti man mano che avvengono — ricontrolla lunedì prossimo."
-  },
-  "Lumo is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there.": {
-   "zh-Hans": "Lumo 已接入你的 Claude Code 会话。工具调用、问题和权限请求都会显示在岛中，你可以直接在那里回应。",
-   "hi": "Lumo आपके Claude Code सत्रों से जुड़ा है। टूल कॉल, प्रश्न और अनुमति अनुरोध आइलैंड में दिखते हैं, और आप वहीं उनका जवाब दे सकते हैं।",
-   "es": "Lumo está conectado a tus sesiones de Claude Code. Las llamadas a herramientas, las preguntas y las solicitudes de permiso aparecen en la isla y puedes responderlas ahí.",
-   "ar": "Lumo متصل بجلسات Claude Code لديك. تظهر استدعاءات الأدوات والأسئلة وطلبات الإذن في الشريط، ويمكنك الرد عليها من هناك.",
-   "fr": "Lumo est branché sur tes sessions Claude Code. Les appels d'outils, les questions et les demandes de permission s'affichent dans l'île, et tu peux y répondre directement.",
-   "bn": "Lumo আপনার Claude Code সেশনের সঙ্গে যুক্ত। টুল কল, প্রশ্ন আর অনুমতির অনুরোধ আইল্যান্ডে দেখা যায়, এবং আপনি সেখানেই উত্তর দিতে পারেন।",
-   "pt-BR": "O Lumo está conectado às suas sessões do Claude Code. Chamadas de ferramentas, perguntas e pedidos de permissão aparecem na ilha, e você pode respondê-los ali.",
-   "ru": "Lumo подключён к вашим сессиям Claude Code. Вызовы инструментов, вопросы и запросы разрешений появляются в острове, и отвечать можно прямо там.",
-   "id": "Lumo terhubung ke sesi Claude Code Anda. Panggilan alat, pertanyaan, dan permintaan izin muncul di pulau, dan Anda bisa menjawabnya di sana.",
-   "it": "Lumo è collegato alle tue sessioni di Claude Code. Chiamate agli strumenti, domande e richieste di permesso compaiono nell'isola, e puoi rispondere direttamente lì."
   },
   "Could not remove {path}: {error}": {
    "zh-Hans": "无法删除 {path}：{error}",
@@ -1345,18 +1321,6 @@
    "id": "Dipakai aplikasi lain",
    "it": "In uso da un'altra app"
   },
-  "Install hooks…": {
-   "zh-Hans": "安装 hooks…",
-   "hi": "hooks इंस्टॉल करें…",
-   "es": "Instalar hooks…",
-   "ar": "تثبيت الـ hooks…",
-   "fr": "Installer les hooks…",
-   "bn": "hooks ইনস্টল করুন…",
-   "pt-BR": "Instalar hooks…",
-   "ru": "Установить хуки…",
-   "id": "Pasang hooks…",
-   "it": "Installa gli hook…"
-  },
   "Install relay…": {
    "zh-Hans": "安装中继…",
    "hi": "रिले इंस्टॉल करें…",
@@ -1368,18 +1332,6 @@
    "ru": "Установить ретранслятор…",
    "id": "Pasang relay…",
    "it": "Installa il relay…"
-  },
-  "Install the hooks to see your Claude Code sessions in the island and approve permissions without leaving what you are doing.": {
-   "zh-Hans": "安装 hooks，即可在岛中查看 Claude Code 会话，并在不打断手头工作的情况下批准权限。",
-   "hi": "आइलैंड में अपने Claude Code सत्र देखने और अपना काम छोड़े बिना अनुमतियाँ देने के लिए hooks इंस्टॉल करें।",
-   "es": "Instala los hooks para ver tus sesiones de Claude Code en la isla y aprobar permisos sin dejar lo que estás haciendo.",
-   "ar": "ثبّت الـ hooks لترى جلسات Claude Code في الشريط وتوافق على الأذونات دون أن تترك ما تفعله.",
-   "fr": "Installe les hooks pour voir tes sessions Claude Code dans l'île et valider les permissions sans quitter ce que tu fais.",
-   "bn": "আইল্যান্ডে আপনার Claude Code সেশন দেখতে এবং কাজ না থামিয়ে অনুমতি দিতে hooks ইনস্টল করুন।",
-   "pt-BR": "Instale os hooks para ver suas sessões do Claude Code na ilha e aprovar permissões sem largar o que está fazendo.",
-   "ru": "Установите хуки, чтобы видеть сессии Claude Code в острове и давать разрешения, не отрываясь от работы.",
-   "id": "Pasang hooks untuk melihat sesi Claude Code di pulau dan menyetujui izin tanpa meninggalkan pekerjaan Anda.",
-   "it": "Installa gli hook per vedere le tue sessioni di Claude Code nell'isola e approvare i permessi senza lasciare quello che stai facendo."
   },
   "Install…": {
    "zh-Hans": "安装…",
@@ -8496,18 +8448,6 @@
    "ru": "чтение и команды, которые только смотрят (ls, git status…), подтверждаются со свёрнутого острова; всё остальное открывает полную карточку",
    "id": "pembacaan dan perintah yang hanya melihat (ls, git status…) dijawab dari pulau yang tertutup; selebihnya membuka kartu lengkap",
    "it": "letture e comandi che guardano soltanto (ls, git status…) si approvano dall'isola chiusa; il resto apre la scheda completa"
-  },
-  "Show in the island": {
-   "zh-Hans": "在岛上显示",
-   "hi": "आइलैंड में दिखाएँ",
-   "es": "Mostrar en la isla",
-   "ar": "عرض في الجزيرة",
-   "fr": "Afficher dans l'île",
-   "bn": "আইল্যান্ডে দেখান",
-   "pt-BR": "Mostrar na ilha",
-   "ru": "Показывать на острове",
-   "id": "Tampilkan di pulau",
-   "it": "Mostra nell'isola"
   },
   "Show Codex plan in the island": {
    "zh-Hans": "在岛上显示 Codex 套餐",
@@ -22180,6 +22120,770 @@
    "ru": "Разговор",
    "id": "Percakapan",
    "it": "La conversazione"
+  },
+  "Waiting for its subagents": {
+   "zh-Hans": "正在等待其子代理",
+   "hi": "अपने सब-एजेंट्स का इंतज़ार कर रहा है",
+   "es": "Esperando a sus subagentes",
+   "ar": "ينتظر وكلاءه الفرعيين",
+   "fr": "Attend ses sous-agents",
+   "bn": "নিজের সাব-এজেন্টদের অপেক্ষায়",
+   "pt-BR": "Aguardando seus subagentes",
+   "ru": "Ждёт своих субагентов",
+   "id": "Menunggu subagennya",
+   "it": "Aspetta i suoi sotto-agenti"
+  },
+  "Its subagents: {done} of {total} finished": {
+   "zh-Hans": "其子代理：已完成 {done}/{total}",
+   "hi": "इसके सब-एजेंट: {total} में से {done} पूरे",
+   "es": "Sus subagentes: {done} de {total} terminados",
+   "ar": "وكلاؤه الفرعيون: انتهى {done} من {total}",
+   "fr": "Ses sous-agents : {done} sur {total} terminés",
+   "bn": "এর সাব-এজেন্ট: {total}টির মধ্যে {done}টি শেষ",
+   "pt-BR": "Seus subagentes: {done} de {total} concluídos",
+   "ru": "Его субагенты: готово {done} из {total}",
+   "id": "Subagennya: {done} dari {total} selesai",
+   "it": "I suoi sotto-agenti: {done} di {total} finiti"
+  },
+  "Latest actions": {
+   "zh-Hans": "最近的操作",
+   "hi": "हाल की कार्रवाइयाँ",
+   "es": "Últimas acciones",
+   "ar": "آخر الإجراءات",
+   "fr": "Dernières actions",
+   "bn": "সাম্প্রতিক কাজ",
+   "pt-BR": "Últimas ações",
+   "ru": "Последние действия",
+   "id": "Tindakan terakhir",
+   "it": "Ultime azioni"
+  },
+  "Stopping it…": {
+   "zh-Hans": "正在停止…",
+   "hi": "रोका जा रहा है…",
+   "es": "Deteniéndolo…",
+   "ar": "جارٍ إيقافه…",
+   "fr": "Arrêt en cours…",
+   "bn": "থামানো হচ্ছে…",
+   "pt-BR": "Parando…",
+   "ru": "Останавливаю…",
+   "id": "Sedang menghentikan…",
+   "it": "Lo sto fermando…"
+  },
+  "Rename this chat": {
+   "zh-Hans": "重命名此聊天",
+   "hi": "इस चैट का नाम बदलें",
+   "es": "Cambiar el nombre de este chat",
+   "ar": "إعادة تسمية هذه الدردشة",
+   "fr": "Renommer cette discussion",
+   "bn": "এই চ্যাটের নাম বদলান",
+   "pt-BR": "Renomear esta conversa",
+   "ru": "Переименовать этот чат",
+   "id": "Ganti nama obrolan ini",
+   "it": "Rinomina questa chat"
+  },
+  "Enter saves · Esc cancels": {
+   "zh-Hans": "Enter 保存 · Esc 取消",
+   "hi": "Enter सहेजता है · Esc रद्द करता है",
+   "es": "Intro guarda · Esc cancela",
+   "ar": "Enter للحفظ · Esc للإلغاء",
+   "fr": "Entrée enregistre · Échap annule",
+   "bn": "Enter সংরক্ষণ করে · Esc বাতিল করে",
+   "pt-BR": "Enter salva · Esc cancela",
+   "ru": "Enter — сохранить · Esc — отменить",
+   "id": "Enter simpan · Esc batal",
+   "it": "Invio salva · Esc annulla"
+  },
+  "Chat names": {
+   "zh-Hans": "聊天名称",
+   "hi": "चैट के नाम",
+   "es": "Nombres de los chats",
+   "ar": "أسماء الدردشات",
+   "fr": "Noms des discussions",
+   "bn": "চ্যাটের নাম",
+   "pt-BR": "Nomes das conversas",
+   "ru": "Названия чатов",
+   "id": "Nama obrolan",
+   "it": "Nomi delle chat"
+  },
+  "The AI names the chats": {
+   "zh-Hans": "由 AI 为聊天命名",
+   "hi": "AI चैट के नाम रखता है",
+   "es": "La IA pone nombre a los chats",
+   "ar": "الذكاء الاصطناعي يسمّي الدردشات",
+   "fr": "L'IA nomme les discussions",
+   "bn": "AI চ্যাটের নাম দেয়",
+   "pt-BR": "A IA dá nome às conversas",
+   "ru": "ИИ даёт чатам названия",
+   "id": "AI memberi nama obrolan",
+   "it": "L'AI dà il nome alle chat"
+  },
+  "After the first answer, the chat's AI picks a name of a few words. Off, the name is the start of the first question, as before. A chat you rename yourself keeps its name.": {
+   "zh-Hans": "第一次回答后，由该聊天的 AI 取一个简短的名字。关闭时，名称是第一个问题的开头，和以前一样。你自己重命名的聊天会保留它的名字。",
+   "hi": "पहले जवाब के बाद, चैट का AI कुछ शब्दों का नाम चुनता है। बंद होने पर, नाम पहले सवाल की शुरुआत होता है, पहले की तरह। जिस चैट का नाम आप खुद बदलते हैं, उसका नाम वही रहता है।",
+   "es": "Tras la primera respuesta, la IA del chat elige un nombre de pocas palabras. Desactivado, el nombre es el comienzo de la primera pregunta, como antes. Un chat al que tú cambies el nombre conserva ese nombre.",
+   "ar": "بعد الإجابة الأولى، يختار الذكاء الاصطناعي للدردشة اسمًا من بضع كلمات. عند الإيقاف، يكون الاسم بداية السؤال الأول، كما كان من قبل. الدردشة التي تعيد تسميتها بنفسك تحتفظ باسمها.",
+   "fr": "Après la première réponse, l'IA de la discussion choisit un nom de quelques mots. Désactivé, le nom est le début de la première question, comme avant. Une discussion que vous renommez vous-même garde son nom.",
+   "bn": "প্রথম উত্তরের পরে, চ্যাটের AI কয়েক শব্দের একটি নাম বেছে নেয়। বন্ধ থাকলে, নাম হয় প্রথম প্রশ্নের শুরু, আগের মতো। আপনি নিজে যে চ্যাটের নাম বদলান, সেটি তার নাম রাখে।",
+   "pt-BR": "Depois da primeira resposta, a IA da conversa escolhe um nome de poucas palavras. Desligado, o nome é o início da primeira pergunta, como antes. Uma conversa que você renomear mantém o nome.",
+   "ru": "После первого ответа ИИ чата придумывает название из нескольких слов. Если выключено, название — начало первого вопроса, как раньше. Чат, который вы переименовали сами, сохраняет своё название.",
+   "id": "Setelah jawaban pertama, AI obrolan memilih nama beberapa kata. Jika mati, namanya adalah awal pertanyaan pertama, seperti sebelumnya. Obrolan yang Anda ganti namanya sendiri tetap memakai nama itu.",
+   "it": "Dopo la prima risposta, l'AI della chat sceglie un nome di poche parole. Spento, il nome è l'inizio della prima domanda, come prima. Una chat che rinomini tu non cambia più nome."
+  },
+  "Model for names": {
+   "zh-Hans": "命名所用的模型",
+   "hi": "नामों के लिए मॉडल",
+   "es": "Modelo para los nombres",
+   "ar": "النموذج المستخدم للأسماء",
+   "fr": "Modèle pour les noms",
+   "bn": "নামের জন্য মডেল",
+   "pt-BR": "Modelo para os nomes",
+   "ru": "Модель для названий",
+   "id": "Model untuk nama",
+   "it": "Modello per i nomi"
+  },
+  "Only the chat's provider is asked.": {
+   "zh-Hans": "只询问该聊天的提供商。",
+   "hi": "सिर्फ़ चैट के प्रदाता से पूछा जाता है।",
+   "es": "Solo se le pregunta al proveedor del chat.",
+   "ar": "يُسأل مزوّد الدردشة فقط.",
+   "fr": "Seul le fournisseur de la discussion est sollicité.",
+   "bn": "শুধু চ্যাটের প্রদানকারীকে জিজ্ঞাসা করা হয়।",
+   "pt-BR": "Só o provedor da conversa é consultado.",
+   "ru": "Запрос идёт только к провайдеру чата.",
+   "id": "Hanya penyedia obrolan yang ditanya.",
+   "it": "Lo chiede solo al provider della chat."
+  },
+  "The provider's lightest": {
+   "zh-Hans": "提供商最轻量的模型",
+   "hi": "प्रदाता का सबसे हल्का",
+   "es": "El más ligero del proveedor",
+   "ar": "الأخف لدى المزوّد",
+   "fr": "Le plus léger du fournisseur",
+   "bn": "প্রদানকারীর সবচেয়ে হালকা",
+   "pt-BR": "O mais leve do provedor",
+   "ru": "Самая лёгкая у провайдера",
+   "id": "Yang paling ringan dari penyedia",
+   "it": "Il più leggero del provider"
+  },
+  "The chat's own": {
+   "zh-Hans": "与聊天相同",
+   "hi": "चैट वाला ही",
+   "es": "El mismo del chat",
+   "ar": "نفس نموذج الدردشة",
+   "fr": "Celui de la discussion",
+   "bn": "চ্যাটেরটাই",
+   "pt-BR": "O mesmo da conversa",
+   "ru": "Та же, что в чате",
+   "id": "Sama dengan obrolan",
+   "it": "Lo stesso della chat"
+  },
+  "Stopped before it answered": {
+   "zh-Hans": "回答前已停止",
+   "hi": "जवाब देने से पहले रोका गया",
+   "es": "Detenido antes de responder",
+   "ar": "أُوقف قبل أن يجيب",
+   "fr": "Arrêté avant de répondre",
+   "bn": "উত্তর দেওয়ার আগেই থামানো হয়েছে",
+   "pt-BR": "Parado antes de responder",
+   "ru": "Остановлен до ответа",
+   "id": "Dihentikan sebelum menjawab",
+   "it": "Fermato prima di rispondere"
+  },
+  "agents|Stop all": {
+   "zh-Hans": "全部停止",
+   "hi": "सभी रोकें",
+   "es": "Detener todos",
+   "ar": "أوقف الكل",
+   "fr": "Tout arrêter",
+   "bn": "সব থামান",
+   "pt-BR": "Parar todos",
+   "ru": "Остановить все",
+   "id": "Hentikan semua",
+   "it": "Ferma tutti"
+  },
+  "You stopped the answer: the agents in the background go on": {
+   "zh-Hans": "你已停止回答：后台的代理仍在继续",
+   "hi": "आपने जवाब रोक दिया: बैकग्राउंड के एजेंट काम जारी रखते हैं",
+   "es": "Detuviste la respuesta: los agentes en segundo plano siguen",
+   "ar": "أوقفت الإجابة: الوكلاء في الخلفية يواصلون العمل",
+   "fr": "Vous avez arrêté la réponse : les agents en arrière-plan continuent",
+   "bn": "আপনি উত্তর থামিয়েছেন: ব্যাকগ্রাউন্ডের এজেন্টরা কাজ চালিয়ে যাচ্ছে",
+   "pt-BR": "Você parou a resposta: os agentes em segundo plano continuam",
+   "ru": "Вы остановили ответ: фоновые агенты продолжают работу",
+   "id": "Anda menghentikan jawaban: agen di latar belakang tetap berjalan",
+   "it": "Hai fermato la risposta: gli agenti in sfondo continuano"
+  },
+  "Stop them too": {
+   "zh-Hans": "也停止它们",
+   "hi": "उन्हें भी रोकें",
+   "es": "Detenerlos también",
+   "ar": "أوقفهم أيضًا",
+   "fr": "Les arrêter aussi",
+   "bn": "ওদেরও থামান",
+   "pt-BR": "Parar eles também",
+   "ru": "Остановить и их",
+   "id": "Hentikan juga",
+   "it": "Ferma anche loro"
+  },
+  "Editing the question starts {name} again and stops the {count} agents still working.": {
+   "zh-Hans": {
+    "other": "修改问题会让 {name} 重新启动，并停止仍在工作的 {count} 个代理。"
+   },
+   "hi": {
+    "one": "सवाल बदलने से {name} फिर से शुरू होगा और अभी काम कर रहे {count} एजेंट को रोक देगा।",
+    "other": "सवाल बदलने से {name} फिर से शुरू होगा और अभी काम कर रहे {count} एजेंटों को रोक देगा।"
+   },
+   "es": {
+    "one": "Editar la pregunta reinicia {name} y detiene el agente que sigue trabajando.",
+    "other": "Editar la pregunta reinicia {name} y detiene los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "تعديل السؤال يعيد تشغيل {name}.",
+    "one": "تعديل السؤال يعيد تشغيل {name} ويوقف الوكيل الذي لا يزال يعمل.",
+    "two": "تعديل السؤال يعيد تشغيل {name} ويوقف الوكيلين اللذين لا يزالان يعملان.",
+    "few": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكلاء لا يزالون يعملون.",
+    "many": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكيلًا لا يزالون يعملون.",
+    "other": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "Modifier la question redémarre {name} et arrête l'agent encore au travail.",
+    "other": "Modifier la question redémarre {name} et arrête les {count} agents encore au travail."
+   },
+   "bn": {
+    "one": "প্রশ্ন বদলালে {name} আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।",
+    "other": "প্রশ্ন বদলালে {name} আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।"
+   },
+   "pt-BR": {
+    "one": "Editar a pergunta reinicia o {name} e para o agente que ainda está trabalhando.",
+    "other": "Editar a pergunta reinicia o {name} e para os {count} agentes que ainda estão trabalhando."
+   },
+   "ru": {
+    "one": "Изменение вопроса перезапустит {name} и остановит {count} работающего агента.",
+    "few": "Изменение вопроса перезапустит {name} и остановит {count} работающих агента.",
+    "many": "Изменение вопроса перезапустит {name} и остановит {count} работающих агентов.",
+    "other": "Изменение вопроса перезапустит {name} и остановит {count} работающих агента."
+   },
+   "id": {
+    "other": "Mengedit pertanyaan memulai ulang {name} dan menghentikan {count} agen yang masih bekerja."
+   },
+   "it": {
+    "one": "Modificare la domanda fa ripartire {name} e ferma l'agente ancora al lavoro.",
+    "other": "Modificare la domanda fa ripartire {name} e ferma i {count} agenti ancora al lavoro."
+   }
+  },
+  "Your edit goes when the {count} agents still working finish.": {
+   "zh-Hans": {
+    "other": "仍在工作的 {count} 个代理完成后，你的修改就会发送。"
+   },
+   "hi": {
+    "one": "अभी काम कर रहा {count} एजेंट पूरा होते ही आपका बदलाव जाएगा।",
+    "other": "अभी काम कर रहे {count} एजेंट पूरे होते ही आपका बदलाव जाएगा।"
+   },
+   "es": {
+    "one": "Tu edición se enviará cuando termine el agente que sigue trabajando.",
+    "other": "Tu edición se enviará cuando terminen los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "سيُرسل تعديلك الآن.",
+    "one": "سيُرسل تعديلك عندما ينتهي الوكيل الذي لا يزال يعمل.",
+    "two": "سيُرسل تعديلك عندما ينتهي الوكيلان اللذان لا يزالان يعملان.",
+    "few": "سيُرسل تعديلك عندما ينتهي {count} وكلاء لا يزالون يعملون.",
+    "many": "سيُرسل تعديلك عندما ينتهي {count} وكيلًا لا يزالون يعملون.",
+    "other": "سيُرسل تعديلك عندما ينتهي {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "Votre modification partira quand l'agent encore au travail aura fini.",
+    "other": "Votre modification partira quand les {count} agents encore au travail auront fini."
+   },
+   "bn": {
+    "one": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার সম্পাদনা যাবে।",
+    "other": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার সম্পাদনা যাবে।"
+   },
+   "pt-BR": {
+    "one": "Sua edição vai quando o agente que ainda está trabalhando terminar.",
+    "other": "Sua edição vai quando os {count} agentes que ainda estão trabalhando terminarem."
+   },
+   "ru": {
+    "one": "Правка уйдёт, когда закончит {count} работающий агент.",
+    "few": "Правка уйдёт, когда закончат {count} работающих агента.",
+    "many": "Правка уйдёт, когда закончат {count} работающих агентов.",
+    "other": "Правка уйдёт, когда закончат {count} работающих агента."
+   },
+   "id": {
+    "other": "Suntingan Anda dikirim setelah {count} agen yang masih bekerja selesai."
+   },
+   "it": {
+    "one": "La modifica parte quando finisce l'agente ancora al lavoro.",
+    "other": "La modifica parte quando finiscono i {count} agenti ancora al lavoro."
+   }
+  },
+  "You can wait for them to finish, or edit it now.": {
+   "zh-Hans": "你可以等它们完成，或者现在就修改。",
+   "hi": "आप उनके पूरा होने तक रुक सकते हैं, या अभी बदल सकते हैं।",
+   "es": "Puedes esperar a que terminen o editarla ahora.",
+   "ar": "يمكنك انتظار انتهائهم أو تعديله الآن.",
+   "fr": "Vous pouvez attendre qu'ils finissent, ou la modifier maintenant.",
+   "bn": "আপনি ওদের শেষ হওয়া পর্যন্ত অপেক্ষা করতে পারেন, বা এখনই বদলাতে পারেন।",
+   "pt-BR": "Você pode esperar que terminem ou editar agora.",
+   "ru": "Можно дождаться, пока они закончат, или изменить сейчас.",
+   "id": "Anda bisa menunggu mereka selesai, atau mengeditnya sekarang.",
+   "it": "Puoi aspettare che finiscano, o modificarla subito."
+  },
+  "Edit when they finish": {
+   "zh-Hans": "等它们完成后修改",
+   "hi": "पूरा होने पर बदलें",
+   "es": "Editar cuando terminen",
+   "ar": "عدّل عند انتهائهم",
+   "fr": "Modifier quand ils ont fini",
+   "bn": "শেষ হলে বদলান",
+   "pt-BR": "Editar quando terminarem",
+   "ru": "Изменить, когда закончат",
+   "id": "Edit setelah selesai",
+   "it": "Modifica quando finiscono"
+  },
+  "Edit now and stop them": {
+   "zh-Hans": "现在修改并停止它们",
+   "hi": "अभी बदलें और उन्हें रोकें",
+   "es": "Editar ahora y detenerlos",
+   "ar": "عدّل الآن وأوقفهم",
+   "fr": "Modifier maintenant et les arrêter",
+   "bn": "এখনই বদলান এবং ওদের থামান",
+   "pt-BR": "Editar agora e parar eles",
+   "ru": "Изменить сейчас и остановить их",
+   "id": "Edit sekarang dan hentikan",
+   "it": "Modifica ora e fermali"
+  },
+  "All connected": {
+   "zh-Hans": "全部已连接",
+   "hi": "सब जुड़ा हुआ है",
+   "es": "Todo conectado",
+   "ar": "كل شيء متصل",
+   "fr": "Tout est connecté",
+   "bn": "সব সংযুক্ত",
+   "pt-BR": "Tudo conectado",
+   "ru": "Всё подключено",
+   "id": "Semua terhubung",
+   "it": "Tutto collegato"
+  },
+  "One step missing": {
+   "zh-Hans": "还差一步",
+   "hi": "एक कदम बाकी है",
+   "es": "Falta un paso",
+   "ar": "تبقّت خطوة واحدة",
+   "fr": "Il manque une étape",
+   "bn": "একটি ধাপ বাকি",
+   "pt-BR": "Falta um passo",
+   "ru": "Остался один шаг",
+   "id": "Kurang satu langkah",
+   "it": "Manca un passo"
+  },
+  "Installed on this PC": {
+   "zh-Hans": "已安装在此电脑上",
+   "hi": "इस पीसी पर इंस्टॉल है",
+   "es": "Instalado en este PC",
+   "ar": "مثبّت على هذا الحاسوب",
+   "fr": "Installé sur ce PC",
+   "bn": "এই পিসিতে ইনস্টল করা",
+   "pt-BR": "Instalado neste PC",
+   "ru": "Установлено на этом ПК",
+   "id": "Terpasang di PC ini",
+   "it": "Installato su questo PC"
+  },
+  "Version {version}": {
+   "zh-Hans": "版本 {version}",
+   "hi": "संस्करण {version}",
+   "es": "Versión {version}",
+   "ar": "الإصدار {version}",
+   "fr": "Version {version}",
+   "bn": "সংস্করণ {version}",
+   "pt-BR": "Versão {version}",
+   "ru": "Версия {version}",
+   "id": "Versi {version}",
+   "it": "Versione {version}"
+  },
+  "Not on this PC yet. Paste this command in PowerShell to install it:": {
+   "zh-Hans": "此电脑上还没有。将此命令粘贴到 PowerShell 中进行安装：",
+   "hi": "इस पीसी पर अभी नहीं है। इसे इंस्टॉल करने के लिए यह कमांड PowerShell में पेस्ट करें:",
+   "es": "Aún no está en este PC. Pega este comando en PowerShell para instalarlo:",
+   "ar": "ليس على هذا الحاسوب بعد. الصق هذا الأمر في PowerShell لتثبيته:",
+   "fr": "Pas encore sur ce PC. Collez cette commande dans PowerShell pour l'installer :",
+   "bn": "এই পিসিতে এখনও নেই। ইনস্টল করতে এই কমান্ডটি PowerShell-এ পেস্ট করুন:",
+   "pt-BR": "Ainda não está neste PC. Cole este comando no PowerShell para instalá-lo:",
+   "ru": "На этом ПК пока нет. Вставьте эту команду в PowerShell, чтобы установить:",
+   "id": "Belum ada di PC ini. Tempel perintah ini di PowerShell untuk memasangnya:",
+   "it": "Non è ancora su questo PC. Incolla questo comando in PowerShell per installarlo:"
+  },
+  "Sign-in": {
+   "zh-Hans": "登录",
+   "hi": "साइन-इन",
+   "es": "Inicio de sesión",
+   "ar": "تسجيل الدخول",
+   "fr": "Connexion",
+   "bn": "সাইন-ইন",
+   "pt-BR": "Login",
+   "ru": "Вход",
+   "id": "Masuk",
+   "it": "Accesso"
+  },
+  "With your Claude plan, in Claude Code's own window. Lumo never sees or keeps your sign-in.": {
+   "zh-Hans": "使用你的 Claude 套餐，在 Claude Code 自己的窗口中登录。Lumo 不会看到也不会保存你的登录信息。",
+   "hi": "आपके Claude प्लान से, Claude Code की अपनी विंडो में। Lumo आपका साइन-इन न देखता है, न रखता है।",
+   "es": "Con tu plan de Claude, en la propia ventana de Claude Code. Lumo nunca ve ni guarda tu inicio de sesión.",
+   "ar": "بخطة Claude الخاصة بك، في نافذة Claude Code نفسها. لا يرى Lumo تسجيل دخولك ولا يحتفظ به أبدًا.",
+   "fr": "Avec votre forfait Claude, dans la fenêtre de Claude Code. Lumo ne voit ni ne garde jamais votre connexion.",
+   "bn": "আপনার Claude প্ল্যান দিয়ে, Claude Code-এর নিজস্ব উইন্ডোতে। Lumo কখনও আপনার সাইন-ইন দেখে না বা রাখে না।",
+   "pt-BR": "Com seu plano Claude, na própria janela do Claude Code. O Lumo nunca vê nem guarda seu login.",
+   "ru": "С вашим планом Claude, в собственном окне Claude Code. Lumo никогда не видит и не хранит ваш вход.",
+   "id": "Dengan paket Claude Anda, di jendela Claude Code sendiri. Lumo tidak pernah melihat atau menyimpan info masuk Anda.",
+   "it": "Con il tuo piano Claude, nella finestra di Claude Code. Lumo non vede né conserva il tuo accesso."
+  },
+  "With your Google account, in agy's own window. Lumo never sees or keeps your sign-in.": {
+   "zh-Hans": "使用你的 Google 账号，在 agy 自己的窗口中登录。Lumo 不会看到也不会保存你的登录信息。",
+   "hi": "आपके Google खाते से, agy की अपनी विंडो में। Lumo आपका साइन-इन न देखता है, न रखता है।",
+   "es": "Con tu cuenta de Google, en la propia ventana de agy. Lumo nunca ve ni guarda tu inicio de sesión.",
+   "ar": "بحساب Google الخاص بك، في نافذة agy نفسها. لا يرى Lumo تسجيل دخولك ولا يحتفظ به أبدًا.",
+   "fr": "Avec votre compte Google, dans la fenêtre d'agy. Lumo ne voit ni ne garde jamais votre connexion.",
+   "bn": "আপনার Google অ্যাকাউন্ট দিয়ে, agy-এর নিজস্ব উইন্ডোতে। Lumo কখনও আপনার সাইন-ইন দেখে না বা রাখে না।",
+   "pt-BR": "Com sua conta Google, na própria janela do agy. O Lumo nunca vê nem guarda seu login.",
+   "ru": "С вашим аккаунтом Google, в собственном окне agy. Lumo никогда не видит и не хранит ваш вход.",
+   "id": "Dengan akun Google Anda, di jendela agy sendiri. Lumo tidak pernah melihat atau menyimpan info masuk Anda.",
+   "it": "Con il tuo account Google, nella finestra di agy. Lumo non vede né conserva il tuo accesso."
+  },
+  "Open sign-in…": {
+   "zh-Hans": "打开登录…",
+   "hi": "साइन-इन खोलें…",
+   "es": "Abrir inicio de sesión…",
+   "ar": "فتح تسجيل الدخول…",
+   "fr": "Ouvrir la connexion…",
+   "bn": "সাইন-ইন খুলুন…",
+   "pt-BR": "Abrir login…",
+   "ru": "Открыть вход…",
+   "id": "Buka masuk…",
+   "it": "Apri l'accesso…"
+  },
+  "Terminal sessions in the island": {
+   "zh-Hans": "岛中的终端会话",
+   "hi": "आइलैंड में टर्मिनल सत्र",
+   "es": "Sesiones del terminal en la isla",
+   "ar": "جلسات الطرفية في الجزيرة",
+   "fr": "Sessions du terminal dans l'îlot",
+   "bn": "আইল্যান্ডে টার্মিনাল সেশন",
+   "pt-BR": "Sessões do terminal na ilha",
+   "ru": "Сеансы терминала на острове",
+   "id": "Sesi terminal di pulau",
+   "it": "Sessioni del terminale nell'isola"
+  },
+  "You see them, approve permissions and answer questions from here.": {
+   "zh-Hans": "在这里查看它们、批准权限并回答问题。",
+   "hi": "आप उन्हें यहीं से देखते हैं, अनुमतियाँ स्वीकृत करते हैं और सवालों के जवाब देते हैं।",
+   "es": "Las ves, apruebas permisos y respondes preguntas desde aquí.",
+   "ar": "تراها وتوافق على الأذونات وتجيب عن الأسئلة من هنا.",
+   "fr": "Vous les voyez, approuvez les autorisations et répondez aux questions d'ici.",
+   "bn": "এখান থেকেই সেগুলো দেখুন, অনুমতি দিন এবং প্রশ্নের উত্তর দিন।",
+   "pt-BR": "Você as vê, aprova permissões e responde perguntas daqui.",
+   "ru": "Вы видите их, одобряете разрешения и отвечаете на вопросы прямо отсюда.",
+   "id": "Anda melihatnya, menyetujui izin, dan menjawab pertanyaan dari sini.",
+   "it": "Le vedi, approvi i permessi e rispondi alle domande da qui."
+  },
+  "Not connected yet: Lumo shows you the change to settings.json before writing it.": {
+   "zh-Hans": "尚未连接：Lumo 会在写入前向你展示对 settings.json 的修改。",
+   "hi": "अभी जुड़ा नहीं: लिखने से पहले Lumo आपको settings.json में होने वाला बदलाव दिखाता है।",
+   "es": "Aún no conectado: Lumo te muestra el cambio en settings.json antes de escribirlo.",
+   "ar": "غير متصل بعد: يعرض لك Lumo التغيير على settings.json قبل كتابته.",
+   "fr": "Pas encore connecté : Lumo vous montre la modification de settings.json avant de l'écrire.",
+   "bn": "এখনও সংযুক্ত নয়: লেখার আগে Lumo আপনাকে settings.json-এর পরিবর্তনটি দেখায়।",
+   "pt-BR": "Ainda não conectado: o Lumo mostra a alteração no settings.json antes de gravá-la.",
+   "ru": "Пока не подключено: Lumo покажет изменение settings.json, прежде чем его записать.",
+   "id": "Belum terhubung: Lumo menunjukkan perubahan pada settings.json sebelum menuliskannya.",
+   "it": "Non ancora collegate: Lumo ti mostra la modifica a settings.json prima di scriverla."
+  },
+  "Sessions and commands in the island": {
+   "zh-Hans": "岛中的会话和命令",
+   "hi": "आइलैंड में सत्र और कमांड",
+   "es": "Sesiones y comandos en la isla",
+   "ar": "الجلسات والأوامر في الجزيرة",
+   "fr": "Sessions et commandes dans l'îlot",
+   "bn": "আইল্যান্ডে সেশন ও কমান্ড",
+   "pt-BR": "Sessões e comandos na ilha",
+   "ru": "Сеансы и команды на острове",
+   "id": "Sesi dan perintah di pulau",
+   "it": "Sessioni e comandi nell'isola"
+  },
+  "The Antigravity app's and agy's sessions show here, and agy's commands come as Allow / Deny.": {
+   "zh-Hans": "Antigravity 应用和 agy 的会话会显示在这里，agy 的命令以“允许 / 拒绝”的形式出现。",
+   "hi": "Antigravity ऐप और agy के सत्र यहाँ दिखते हैं, और agy के कमांड अनुमति दें / अस्वीकार करें के रूप में आते हैं।",
+   "es": "Las sesiones de la app Antigravity y de agy se muestran aquí, y los comandos de agy llegan como Permitir / Denegar.",
+   "ar": "تظهر جلسات تطبيق Antigravity وagy هنا، وتصل أوامر agy بصيغة سماح / رفض.",
+   "fr": "Les sessions de l'app Antigravity et d'agy s'affichent ici, et les commandes d'agy arrivent en Autoriser / Refuser.",
+   "bn": "Antigravity অ্যাপ ও agy-এর সেশন এখানে দেখায়, আর agy-এর কমান্ড আসে অনুমতি দিন / প্রত্যাখ্যান হিসেবে।",
+   "pt-BR": "As sessões do app Antigravity e do agy aparecem aqui, e os comandos do agy chegam como Permitir / Negar.",
+   "ru": "Сеансы приложения Antigravity и agy видны здесь, а команды agy приходят как «Разрешить / Запретить».",
+   "id": "Sesi aplikasi Antigravity dan agy tampil di sini, dan perintah agy datang sebagai Izinkan / Tolak.",
+   "it": "Le sessioni dell'app Antigravity e di agy compaiono qui, e i comandi di agy arrivano come Consenti / Nega."
+  },
+  "Not connected yet: agy skips the commands it should ask you about, and its answer only says it didn't run them.": {
+   "zh-Hans": "尚未连接：agy 会跳过本应询问你的命令，它的回答只会说没有运行这些命令。",
+   "hi": "अभी जुड़ा नहीं: agy उन कमांड को छोड़ देता है जिनके बारे में उसे आपसे पूछना चाहिए, और उसका जवाब बस इतना कहता है कि उसने उन्हें नहीं चलाया।",
+   "es": "Aún no conectado: agy se salta los comandos que debería preguntarte, y su respuesta solo dice que no los ejecutó.",
+   "ar": "غير متصل بعد: يتخطى agy الأوامر التي يجب أن يسألك عنها، ولا يقول ردّه إلا أنه لم ينفّذها.",
+   "fr": "Pas encore connecté : agy saute les commandes qu'il devrait vous demander, et sa réponse dit seulement qu'il ne les a pas exécutées.",
+   "bn": "এখনও সংযুক্ত নয়: যে কমান্ডগুলোর বিষয়ে agy-এর আপনাকে জিজ্ঞেস করা উচিত সেগুলো সে বাদ দেয়, আর তার উত্তরে শুধু বলে যে সেগুলো চালায়নি।",
+   "pt-BR": "Ainda não conectado: o agy pula os comandos que deveria perguntar a você, e a resposta só diz que não os executou.",
+   "ru": "Пока не подключено: agy пропускает команды, о которых должен спросить вас, и в ответе лишь говорит, что не выполнил их.",
+   "id": "Belum terhubung: agy melewati perintah yang seharusnya ditanyakan kepada Anda, dan jawabannya hanya mengatakan bahwa perintah itu tidak dijalankan.",
+   "it": "Non ancora collegato: agy salta i comandi che dovrebbe chiederti, e la risposta dice solo che non li ha eseguiti."
+  },
+  "Connect…": {
+   "zh-Hans": "连接…",
+   "hi": "कनेक्ट करें…",
+   "es": "Conectar…",
+   "ar": "اتصال…",
+   "fr": "Connecter…",
+   "bn": "সংযুক্ত করুন…",
+   "pt-BR": "Conectar…",
+   "ru": "Подключить…",
+   "id": "Hubungkan…",
+   "it": "Collega…"
+  },
+  "Update…": {
+   "zh-Hans": "更新…",
+   "hi": "अपडेट करें…",
+   "es": "Actualizar…",
+   "ar": "تحديث…",
+   "fr": "Mettre à jour…",
+   "bn": "আপডেট করুন…",
+   "pt-BR": "Atualizar…",
+   "ru": "Обновить…",
+   "id": "Perbarui…",
+   "it": "Aggiorna…"
+  },
+  "Technical details": {
+   "zh-Hans": "技术细节",
+   "hi": "तकनीकी विवरण",
+   "es": "Detalles técnicos",
+   "ar": "التفاصيل التقنية",
+   "fr": "Détails techniques",
+   "bn": "প্রযুক্তিগত বিবরণ",
+   "pt-BR": "Detalhes técnicos",
+   "ru": "Технические подробности",
+   "id": "Detail teknis",
+   "it": "Dettagli tecnici"
+  },
+  "Program": {
+   "zh-Hans": "程序",
+   "hi": "प्रोग्राम",
+   "es": "Programa",
+   "ar": "البرنامج",
+   "fr": "Programme",
+   "bn": "প্রোগ্রাম",
+   "pt-BR": "Programa",
+   "ru": "Программа",
+   "id": "Program",
+   "it": "Programma"
+  },
+  "Status line relay": {
+   "zh-Hans": "状态栏中继",
+   "hi": "स्टेटस लाइन रिले",
+   "es": "Relay de la línea de estado",
+   "ar": "مُرحِّل سطر الحالة",
+   "fr": "Relais de la ligne d'état",
+   "bn": "স্ট্যাটাস লাইন রিলে",
+   "pt-BR": "Relay da linha de status",
+   "ru": "Ретранслятор строки состояния",
+   "id": "Relay baris status",
+   "it": "Relay della riga di stato"
+  },
+  "Hooks file": {
+   "zh-Hans": "钩子文件",
+   "hi": "हुक फ़ाइल",
+   "es": "Archivo de hooks",
+   "ar": "ملف الخطافات",
+   "fr": "Fichier des hooks",
+   "bn": "হুক ফাইল",
+   "pt-BR": "Arquivo de hooks",
+   "ru": "Файл хуков",
+   "id": "Berkas hook",
+   "it": "File degli hook"
+  },
+  "It couldn't open: {error}": {
+   "zh-Hans": "无法打开：{error}",
+   "hi": "यह नहीं खुल सका: {error}",
+   "es": "No se pudo abrir: {error}",
+   "ar": "تعذّر الفتح: {error}",
+   "fr": "Impossible de l'ouvrir : {error}",
+   "bn": "এটি খোলা যায়নি: {error}",
+   "pt-BR": "Não foi possível abrir: {error}",
+   "ru": "Не удалось открыть: {error}",
+   "id": "Tidak dapat dibuka: {error}",
+   "it": "Non si è potuto aprire: {error}"
+  },
+  "Claude Code isn't signed in to your Claude plan": {
+   "zh-Hans": "Claude Code 尚未登录你的 Claude 套餐",
+   "hi": "Claude Code आपके Claude प्लान में साइन इन नहीं है",
+   "es": "Claude Code no ha iniciado sesión en tu plan de Claude",
+   "ar": "لم يسجّل Claude Code الدخول إلى خطة Claude الخاصة بك",
+   "fr": "Claude Code n'est pas connecté à votre forfait Claude",
+   "bn": "Claude Code আপনার Claude প্ল্যানে সাইন ইন করা নেই",
+   "pt-BR": "O Claude Code não está conectado ao seu plano Claude",
+   "ru": "Claude Code не вошёл в ваш план Claude",
+   "id": "Claude Code belum masuk ke paket Claude Anda",
+   "it": "Claude Code non ha ancora fatto l'accesso al tuo piano"
+  },
+  "It takes a moment, once: Claude Code opens in a window of its own and asks you to sign in (if it doesn't, type /login there). Then press Retry.": {
+   "zh-Hans": "只需一次，片刻即可：Claude Code 会在自己的窗口中打开并请你登录（如果没有，请在那里输入 /login）。然后点击“重试”。",
+   "hi": "एक बार, बस एक पल: Claude Code अपनी विंडो में खुलता है और आपसे साइन इन करने को कहता है (अगर न कहे, तो वहाँ /login लिखें)। फिर फिर से कोशिश करें दबाएँ।",
+   "es": "Es un momento, una sola vez: Claude Code se abre en su propia ventana y te pide iniciar sesión (si no lo hace, escribe /login allí). Luego pulsa Reintentar.",
+   "ar": "يستغرق لحظة، مرة واحدة: يُفتح Claude Code في نافذة خاصة به ويطلب منك تسجيل الدخول (إن لم يفعل، اكتب /login هناك). ثم اضغط إعادة المحاولة.",
+   "fr": "Un instant, une seule fois : Claude Code s'ouvre dans sa propre fenêtre et vous demande de vous connecter (sinon, tapez /login). Puis appuyez sur Réessayer.",
+   "bn": "একবারই, এক মুহূর্ত: Claude Code নিজের উইন্ডোতে খোলে এবং আপনাকে সাইন ইন করতে বলে (না বললে, সেখানে /login লিখুন)। তারপর আবার চেষ্টা করুন চাপুন।",
+   "pt-BR": "Leva um instante, uma vez só: o Claude Code abre numa janela própria e pede que você entre (se não pedir, digite /login lá). Depois toque em Tentar novamente.",
+   "ru": "Это минутное дело и только один раз: Claude Code откроется в своём окне и попросит войти (если нет, введите там /login). Затем нажмите «Повторить».",
+   "id": "Hanya sebentar, sekali saja: Claude Code terbuka di jendelanya sendiri dan meminta Anda masuk (jika tidak, ketik /login di sana). Lalu tekan Coba lagi.",
+   "it": "Serve una volta sola: Claude Code si apre in una finestra sua e ti chiede di accedere (se non lo fa, scrivi /login lì). Poi premi Riprova."
+  },
+  "Sign in to Claude": {
+   "zh-Hans": "登录 Claude",
+   "hi": "Claude में साइन इन करें",
+   "es": "Iniciar sesión en Claude",
+   "ar": "تسجيل الدخول إلى Claude",
+   "fr": "Se connecter à Claude",
+   "bn": "Claude-এ সাইন ইন করুন",
+   "pt-BR": "Entrar no Claude",
+   "ru": "Войти в Claude",
+   "id": "Masuk ke Claude",
+   "it": "Accedi a Claude"
+  },
+  "Antigravity CLI isn't signed in": {
+   "zh-Hans": "Antigravity CLI 尚未登录",
+   "hi": "Antigravity CLI साइन इन नहीं है",
+   "es": "Antigravity CLI no ha iniciado sesión",
+   "ar": "لم يسجّل Antigravity CLI الدخول",
+   "fr": "Antigravity CLI n'est pas connecté",
+   "bn": "Antigravity CLI সাইন ইন করা নেই",
+   "pt-BR": "O Antigravity CLI não está conectado",
+   "ru": "Antigravity CLI не выполнил вход",
+   "id": "Antigravity CLI belum masuk",
+   "it": "Antigravity CLI non ha ancora fatto l'accesso"
+  },
+  "It takes a moment, once: Antigravity CLI opens in a window of its own and asks you to sign in with your Google account. Then press Retry.": {
+   "zh-Hans": "只需一次，片刻即可：Antigravity CLI 会在自己的窗口中打开，并请你用 Google 账号登录。然后点击“重试”。",
+   "hi": "एक बार, बस एक पल: Antigravity CLI अपनी विंडो में खुलता है और आपसे अपने Google खाते से साइन इन करने को कहता है। फिर फिर से कोशिश करें दबाएँ।",
+   "es": "Es un momento, una sola vez: Antigravity CLI se abre en su propia ventana y te pide iniciar sesión con tu cuenta de Google. Luego pulsa Reintentar.",
+   "ar": "يستغرق لحظة، مرة واحدة: يُفتح Antigravity CLI في نافذة خاصة به ويطلب منك تسجيل الدخول بحساب Google. ثم اضغط إعادة المحاولة.",
+   "fr": "Un instant, une seule fois : Antigravity CLI s'ouvre dans sa propre fenêtre et vous demande de vous connecter avec votre compte Google. Puis appuyez sur Réessayer.",
+   "bn": "একবারই, এক মুহূর্ত: Antigravity CLI নিজের উইন্ডোতে খোলে এবং আপনার Google অ্যাকাউন্ট দিয়ে সাইন ইন করতে বলে। তারপর আবার চেষ্টা করুন চাপুন।",
+   "pt-BR": "Leva um instante, uma vez só: o Antigravity CLI abre numa janela própria e pede que você entre com sua conta Google. Depois toque em Tentar novamente.",
+   "ru": "Это минутное дело и только один раз: Antigravity CLI откроется в своём окне и попросит войти с аккаунтом Google. Затем нажмите «Повторить».",
+   "id": "Hanya sebentar, sekali saja: Antigravity CLI terbuka di jendelanya sendiri dan meminta Anda masuk dengan akun Google. Lalu tekan Coba lagi.",
+   "it": "Serve una volta sola: Antigravity CLI si apre in una finestra sua e ti chiede di accedere con il tuo account Google. Poi premi Riprova."
+  },
+  "Lumo never sees or keeps your sign-in": {
+   "zh-Hans": "Lumo 不会看到也不会保存你的登录信息",
+   "hi": "Lumo आपका साइन-इन न देखता है, न रखता है",
+   "es": "Lumo nunca ve ni guarda tu inicio de sesión",
+   "ar": "لا يرى Lumo تسجيل دخولك ولا يحتفظ به أبدًا",
+   "fr": "Lumo ne voit ni ne garde jamais votre connexion",
+   "bn": "Lumo কখনও আপনার সাইন-ইন দেখে না বা রাখে না",
+   "pt-BR": "O Lumo nunca vê nem guarda seu login",
+   "ru": "Lumo никогда не видит и не хранит ваш вход",
+   "id": "Lumo tidak pernah melihat atau menyimpan info masuk Anda",
+   "it": "Lumo non vede né conserva il tuo accesso"
+  },
+  "Claude Code isn't installed yet": {
+   "zh-Hans": "尚未安装 Claude Code",
+   "hi": "Claude Code अभी इंस्टॉल नहीं है",
+   "es": "Claude Code aún no está instalado",
+   "ar": "لم يُثبَّت Claude Code بعد",
+   "fr": "Claude Code n'est pas encore installé",
+   "bn": "Claude Code এখনও ইনস্টল করা নেই",
+   "pt-BR": "O Claude Code ainda não está instalado",
+   "ru": "Claude Code ещё не установлен",
+   "id": "Claude Code belum terpasang",
+   "it": "Claude Code non è ancora installato"
+  },
+  "Antigravity CLI isn't installed yet": {
+   "zh-Hans": "尚未安装 Antigravity CLI",
+   "hi": "Antigravity CLI अभी इंस्टॉल नहीं है",
+   "es": "Antigravity CLI aún no está instalado",
+   "ar": "لم يُثبَّت Antigravity CLI بعد",
+   "fr": "Antigravity CLI n'est pas encore installé",
+   "bn": "Antigravity CLI এখনও ইনস্টল করা নেই",
+   "pt-BR": "O Antigravity CLI ainda não está instalado",
+   "ru": "Antigravity CLI ещё не установлен",
+   "id": "Antigravity CLI belum terpasang",
+   "it": "Antigravity CLI non è ancora installato"
+  },
+  "Paste this command in PowerShell to install it, then sign in once and press Retry.": {
+   "zh-Hans": "将此命令粘贴到 PowerShell 中进行安装，然后登录一次并点击“重试”。",
+   "hi": "इसे इंस्टॉल करने के लिए यह कमांड PowerShell में पेस्ट करें, फिर एक बार साइन इन करें और फिर से कोशिश करें दबाएँ।",
+   "es": "Pega este comando en PowerShell para instalarlo, inicia sesión una vez y pulsa Reintentar.",
+   "ar": "الصق هذا الأمر في PowerShell لتثبيته، ثم سجّل الدخول مرة واحدة واضغط إعادة المحاولة.",
+   "fr": "Collez cette commande dans PowerShell pour l'installer, connectez-vous une fois, puis appuyez sur Réessayer.",
+   "bn": "ইনস্টল করতে এই কমান্ডটি PowerShell-এ পেস্ট করুন, তারপর একবার সাইন ইন করে আবার চেষ্টা করুন চাপুন।",
+   "pt-BR": "Cole este comando no PowerShell para instalá-lo, entre uma vez e toque em Tentar novamente.",
+   "ru": "Вставьте эту команду в PowerShell, чтобы установить, затем один раз войдите и нажмите «Повторить».",
+   "id": "Tempel perintah ini di PowerShell untuk memasangnya, lalu masuk sekali dan tekan Coba lagi.",
+   "it": "Incolla questo comando in PowerShell per installarlo, poi accedi una volta e premi Riprova."
+  },
+  "Antigravity CLI skipped commands it should have asked you about": {
+   "zh-Hans": "Antigravity CLI 跳过了本应询问你的命令",
+   "hi": "Antigravity CLI ने वे कमांड छोड़ दिए जिनके बारे में उसे आपसे पूछना था",
+   "es": "Antigravity CLI se saltó comandos que debía preguntarte",
+   "ar": "تخطى Antigravity CLI أوامر كان يجب أن يسألك عنها",
+   "fr": "Antigravity CLI a sauté des commandes qu'il aurait dû vous demander",
+   "bn": "Antigravity CLI এমন কমান্ড বাদ দিয়েছে যেগুলোর বিষয়ে আপনাকে জিজ্ঞেস করার কথা ছিল",
+   "pt-BR": "O Antigravity CLI pulou comandos que deveria ter perguntado a você",
+   "ru": "Antigravity CLI пропустил команды, о которых должен был спросить вас",
+   "id": "Antigravity CLI melewati perintah yang seharusnya ditanyakan kepada Anda",
+   "it": "Antigravity CLI ha saltato dei comandi che avrebbe dovuto chiederti"
+  },
+  "To ask you here, Lumo needs to connect to Antigravity CLI: it shows you the change before writing it, and from then on each command comes to the island as Allow / Deny.": {
+   "zh-Hans": "要在这里询问你，Lumo 需要连接到 Antigravity CLI：它会在写入前向你展示修改，此后每条命令都会以“允许 / 拒绝”的形式出现在岛中。",
+   "hi": "यहाँ आपसे पूछने के लिए Lumo को Antigravity CLI से जुड़ना होगा: लिखने से पहले वह आपको बदलाव दिखाता है, और उसके बाद हर कमांड आइलैंड में अनुमति दें / अस्वीकार करें के रूप में आता है।",
+   "es": "Para preguntarte aquí, Lumo tiene que conectarse a Antigravity CLI: te muestra el cambio antes de escribirlo y, desde entonces, cada comando llega a la isla como Permitir / Denegar.",
+   "ar": "ليسألك هنا، يحتاج Lumo إلى الاتصال بـ Antigravity CLI: يعرض لك التغيير قبل كتابته، ومن بعدها يصل كل أمر إلى الجزيرة بصيغة سماح / رفض.",
+   "fr": "Pour vous demander ici, Lumo doit se connecter à Antigravity CLI : il vous montre la modification avant de l'écrire, et ensuite chaque commande arrive dans l'îlot en Autoriser / Refuser.",
+   "bn": "এখানে আপনাকে জিজ্ঞেস করতে Lumo-কে Antigravity CLI-এর সাথে সংযুক্ত হতে হবে: লেখার আগে সে আপনাকে পরিবর্তনটি দেখায়, আর তারপর থেকে প্রতিটি কমান্ড আইল্যান্ডে অনুমতি দিন / প্রত্যাখ্যান হিসেবে আসে।",
+   "pt-BR": "Para perguntar aqui, o Lumo precisa se conectar ao Antigravity CLI: ele mostra a alteração antes de gravá-la e, daí em diante, cada comando chega à ilha como Permitir / Negar.",
+   "ru": "Чтобы спрашивать вас здесь, Lumo нужно подключиться к Antigravity CLI: он покажет изменение перед записью, и затем каждая команда будет приходить на остров как «Разрешить / Запретить».",
+   "id": "Agar bisa bertanya di sini, Lumo perlu terhubung ke Antigravity CLI: perubahan ditunjukkan sebelum ditulis, dan sejak itu setiap perintah datang ke pulau sebagai Izinkan / Tolak.",
+   "it": "Per chiedertelo qui Lumo deve collegarsi ad Antigravity CLI: ti mostra la modifica prima di scriverla, e da lì in poi ogni comando arriva nell'isola come Consenti / Nega."
+  },
+  "Connect in Settings…": {
+   "zh-Hans": "在设置中连接…",
+   "hi": "सेटिंग्स में कनेक्ट करें…",
+   "es": "Conectar en Ajustes…",
+   "ar": "الاتصال من الإعدادات…",
+   "fr": "Connecter dans les Réglages…",
+   "bn": "সেটিংসে সংযুক্ত করুন…",
+   "pt-BR": "Conectar nas Configurações…",
+   "ru": "Подключить в настройках…",
+   "id": "Hubungkan di Pengaturan…",
+   "it": "Collega nelle Impostazioni…"
+  },
+  "Claude Code isn't signed in to your Claude plan, or its sign-in has run out.": {
+   "zh-Hans": "Claude Code 尚未登录你的 Claude 套餐，或其登录已过期。",
+   "hi": "Claude Code आपके Claude प्लान में साइन इन नहीं है, या उसका साइन-इन समाप्त हो गया है।",
+   "es": "Claude Code no ha iniciado sesión en tu plan de Claude, o su sesión ha caducado.",
+   "ar": "لم يسجّل Claude Code الدخول إلى خطة Claude الخاصة بك، أو انتهت صلاحية تسجيل دخوله.",
+   "fr": "Claude Code n'est pas connecté à votre forfait Claude, ou sa connexion a expiré.",
+   "bn": "Claude Code আপনার Claude প্ল্যানে সাইন ইন করা নেই, অথবা এর সাইন-ইনের মেয়াদ শেষ হয়ে গেছে।",
+   "pt-BR": "O Claude Code não está conectado ao seu plano Claude, ou o login expirou.",
+   "ru": "Claude Code не вошёл в ваш план Claude, или срок его входа истёк.",
+   "id": "Claude Code belum masuk ke paket Claude Anda, atau info masuknya sudah kedaluwarsa.",
+   "it": "Claude Code non ha fatto l'accesso al tuo piano Claude, oppure l'accesso è scaduto."
+  },
+  "It isn't installed yet.": {
+   "zh-Hans": "尚未安装。",
+   "hi": "यह अभी इंस्टॉल नहीं है।",
+   "es": "Aún no está instalado.",
+   "ar": "لم يُثبَّت بعد.",
+   "fr": "Il n'est pas encore installé.",
+   "bn": "এটি এখনও ইনস্টল করা নেই।",
+   "pt-BR": "Ainda não está instalado.",
+   "ru": "Он ещё не установлен.",
+   "id": "Belum terpasang.",
+   "it": "Non è ancora installato."
   }
  }
 }

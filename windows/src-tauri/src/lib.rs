@@ -22,9 +22,11 @@ mod calendar;
 mod chat;
 mod chat_agents;
 mod chat_files;
+mod chat_title;
 mod chat_usage;
 mod claude;
 mod claude_code;
+mod cli_setup;
 mod click_hold;
 mod clipboard;
 mod acp_chat;
@@ -487,6 +489,20 @@ fn open_claude_desktop() -> bool {
     platform::open_claude_desktop()
 }
 
+/// Settings → Agents: whether Claude Code or the Antigravity CLI is
+/// installed, where, and which version.
+#[tauri::command]
+async fn cli_info(provider: String) -> Option<cli_setup::CliInfo> {
+    tauri::async_runtime::spawn_blocking(move || cli_setup::info(&provider)).await.ok().flatten()
+}
+
+/// The sign-in card and Settings → Agents: opens the CLI in a window of its
+/// own, where it asks the user to sign in.
+#[tauri::command]
+fn cli_sign_in(provider: String) -> Result<(), String> {
+    cli_setup::sign_in(&provider)
+}
+
 /// The file behind a live diff, if it may be handed to the editor: an existing
 /// regular file given by its full path. Anything else — a relative path, a
 /// folder, a path `code` could read as an option — goes no further.
@@ -916,6 +932,7 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
     acp_chat::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// A deleted chat: its CLI, waiting for its next message, ends, and the
@@ -926,6 +943,7 @@ fn chat_close(chat_id: String) {
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
     acp_chat::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// The shield picked another mode in chat `chat_id`: from now on its turns,
@@ -995,9 +1013,13 @@ fn chat_allow_restart(chat_id: String) {
 #[tauri::command]
 fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
     chats.get(&chat_id).rewind(keep);
-    // Its Claude Code is in the session the edit leaves: what it would still
-    // write by itself belongs to the answers dropped.
+    // Its CLI is in the session the edit leaves: what it would still write by
+    // itself, and the agents it started, belong to the answers dropped
+    // (as chat_reset and chat_close, for each CLI kept between two turns).
     claude_code::close(&chat_id);
+    codex_chat::close(&chat_id);
+    acp_chat::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// The × of one of the chat's files: out of the chat's context from the next
@@ -1523,6 +1545,8 @@ pub fn run() {
             open_in_vscode,
             open_session,
             open_claude_desktop,
+            cli_info,
+            cli_sign_in,
             open_file_in_vscode,
             quit_app,
             hooks_status,
@@ -1566,6 +1590,7 @@ pub fn run() {
             chat_restore,
             chat_load,
             chat_compact,
+            chat_title::chat_title,
             chat_commands,
             chat_stop,
             chat_stop_agent,
