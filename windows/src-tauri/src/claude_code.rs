@@ -48,7 +48,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, Chats, ModelInfo, Stop};
-use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, StopAgent, Tell};
+use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, PlanStep, StopAgent, Tell};
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
@@ -73,7 +73,7 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
+Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. When you start agents (the Agent or Task tool), tell each one in its prompt to begin with a plan of its own in the same way (TaskCreate once per step, or TodoWrite) and to mark its steps as it works: Lumo shows each agent's plan on its row. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
@@ -89,7 +89,7 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. ",
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-Lumo shows the user your plan on its Plan island. When the job uses the computer, its plan goes in Lumo's update_plan tool, as said above, not in TaskCreate or TodoWrite. Whenever the user gives you another job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
+Lumo shows the user your plan on its Plan island. When the job uses the computer, its plan goes in Lumo's update_plan tool, as said above, not in TaskCreate or TodoWrite. Whenever the user gives you another job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. When you start agents (the Agent or Task tool), tell each one in its prompt to begin with a plan of its own in the same way (TaskCreate once per step, or TodoWrite) and to mark its steps as it works: Lumo shows each agent's plan on its row. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
@@ -936,6 +936,10 @@ struct Subagents {
     named: HashMap<String, String>,
     /// SendMessage calls not answered yet → the agent each went to.
     talks: HashMap<String, String>,
+    /// Each agent's plan as its TaskCreate and TaskUpdate calls make it: the
+    /// task's id once its TaskCreate answered (TaskUpdate names it), the call
+    /// that made it, the step.
+    tasks: HashMap<String, Vec<(Option<String>, String, PlanStep)>>,
 }
 
 /// A field's text, when there is some.
@@ -1143,6 +1147,7 @@ impl Subagents {
 
     /// An agent ended: what was kept to follow it goes.
     fn forget(&mut self, id: &str) {
+        self.tasks.remove(id);
         self.by_call.retain(|_, task| task != id);
         self.calls.retain(|_, task| task != id);
         self.stopping.retain(|_, task| task != id);
@@ -1304,6 +1309,7 @@ impl Subagents {
             }
             if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                 tools.push((block["id"].as_str().unwrap_or("").to_string(), activity_for(block["name"].as_str().unwrap_or(""), &block["input"])));
+                self.plan_call(&id, block);
             }
         }
         for (call, _) in tools.iter().filter(|(c, _)| !c.is_empty()) {
@@ -1326,11 +1332,74 @@ impl Subagents {
         }
     }
 
+    /// A call of an agent's own plan (concepts/piano-dei-sotto-agenti): its
+    /// TodoWrite is the whole plan; its TaskCreate adds a step, which its
+    /// TaskUpdate moves on once TaskCreate's result said the task's id.
+    fn plan_call(&mut self, id: &str, block: &Value) {
+        let input = &block["input"];
+        let call = block["id"].as_str().unwrap_or("").to_string();
+        match block["name"].as_str().unwrap_or("") {
+            "TodoWrite" => {
+                let plan = chat_agents::plan_of(input);
+                if let Some(row) = self.open_row(id).filter(|_| plan.is_some()) {
+                    row.plan = plan;
+                }
+                return;
+            }
+            "TaskCreate" => {
+                let Some(text) = ["subject", "content", "description", "title"].iter().filter_map(|k| text_of(input, k)).find_map(chat_agents::step_text) else { return };
+                let tasks = self.tasks.entry(id.to_string()).or_default();
+                if tasks.iter().any(|t| t.1 == call) || tasks.len() >= 40 {
+                    return;
+                }
+                tasks.push((None, call, PlanStep { text, status: "pending" }));
+            }
+            "TaskUpdate" => {
+                let task = match &input["taskId"] {
+                    Value::String(s) => s.clone(),
+                    Value::Number(n) => n.to_string(),
+                    _ => return,
+                };
+                let Some(tasks) = self.tasks.get_mut(id) else { return };
+                let Some(pos) = tasks.iter().position(|t| t.0.as_deref() == Some(task.as_str())) else { return };
+                if let Some(status) = input["status"].as_str() {
+                    if status == "deleted" {
+                        tasks.remove(pos);
+                    } else {
+                        tasks[pos].2.status = chat_agents::step_status(status);
+                    }
+                }
+                if let Some(text) = text_of(input, "subject").and_then(chat_agents::step_text) {
+                    if let Some(t) = tasks.get_mut(pos) {
+                        t.2.text = text;
+                    }
+                }
+            }
+            _ => return,
+        }
+        self.plan_from_tasks(id);
+    }
+
+    /// The agent `id`'s plan, from its tasks.
+    fn plan_from_tasks(&mut self, id: &str) {
+        let steps: Vec<PlanStep> = self.tasks.get(id).map(|t| t.iter().map(|(_, _, s)| s.clone()).collect()).unwrap_or_default();
+        if let Some(row) = self.open_row(id) {
+            row.plan = (!steps.is_empty()).then_some(steps);
+        }
+    }
+
     /// A subagent's tool results: its calls answered, and a sign it is alive.
     fn results_of(&mut self, v: &Value) {
         for block in v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result") {
             if let Some(call) = block["tool_use_id"].as_str() {
                 self.calls.remove(call);
+                // A TaskCreate of its plan answered: the task's id, for its TaskUpdate.
+                let made = created_task_id(v, block);
+                for tasks in self.tasks.values_mut() {
+                    if let Some(t) = tasks.iter_mut().find(|t| t.1 == call && t.0.is_none()) {
+                        t.0 = made.clone();
+                    }
+                }
             }
         }
         if let Some(id) = self.agent_of(v) {
@@ -2814,18 +2883,28 @@ pub(crate) fn helper_folder(folder: Option<&str>) -> Option<String> {
 /// folder of its own, none of the user's tools): the supervisor's review of a tool
 /// (tool_review.rs). The question goes on stdin, never the command line.
 pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
+    complete_in("tool-review", model, prompt, false, Arc::new(Stop::default()))
+}
+
+/// `complete`, in the folder `work` of its own under Lumo's local data; with
+/// `forget`, Claude Code keeps no session of it (a chat's name, chat_title.rs).
+/// `stop` ends it early.
+pub(crate) fn complete_in(work: &str, model: &str, prompt: &str, forget: bool, stop: Arc<Stop>) -> Result<String, String> {
     let exe = platform::claude_candidates()
         .into_iter()
         .next()
         .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
     let mut args: Vec<String> =
         ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "plan"].iter().map(|s| s.to_string()).collect();
+    if forget {
+        args.push("--no-session-persistence".into());
+    }
     if let Some(m) = safe_model(model) {
         args.push("--model".into());
         args.push(m.into());
     }
-    let dir = platform::local_dir().join("tool-review");
-    let state = run(exe, args, prompt.to_string(), dir, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_, _| {})?;
+    let dir = platform::local_dir().join(work);
+    let state = run(exe, args, prompt.to_string(), dir, "", stop, |_| {}, |_| {}, |_| {}, |_, _| {})?;
     match state.result {
         Some(Ok(text)) if !text.trim().is_empty() => Ok(text),
         Some(Ok(_)) => Ok(state.visible.trim().to_string()),
@@ -3783,6 +3862,43 @@ mod tests {
         // A message of the main conversation, or of an agent Lumo never saw start, is none of its.
         feed_agents(&mut sub, &[r#"{"type":"assistant","parent_tool_use_id":"toolu_Z","message":{"content":[{"type":"tool_use","id":"z","name":"Bash","input":{}}]}}"#]);
         assert_eq!(sub.agents.get("a1b2").unwrap().steps, 7);
+    }
+
+    #[test]
+    fn an_agents_own_todo_list_or_tasks_are_its_plan_on_its_row() {
+        let mut sub = Subagents::default();
+        feed_agents(
+            &mut sub,
+            &[
+                AGENT_STARTED,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"p1","name":"TodoWrite","input":{"todos":[{"content":"Read page 37","status":"completed"},{"content":"Write L03.tex","status":"in_progress"},{"content":"Check   the\nformulas","status":"pending"}]}}]}}"#,
+            ],
+        );
+        let plan = sub.agents.get("a1b2").unwrap().plan.clone().unwrap();
+        assert_eq!(
+            plan,
+            vec![
+                PlanStep { text: "Read page 37".into(), status: "done" },
+                PlanStep { text: "Write L03.tex".into(), status: "active" },
+                PlanStep { text: "Check the formulas".into(), status: "pending" },
+            ]
+        );
+        // Its tasks instead: a step each, moved on by TaskUpdate once TaskCreate said the id.
+        let mut sub = Subagents::default();
+        feed_agents(
+            &mut sub,
+            &[
+                AGENT_STARTED,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"c1","name":"TaskCreate","input":{"subject":"Run the tests"}},{"type":"tool_use","id":"c2","name":"TaskCreate","input":{"subject":"Fix the rounding"}}]}}"#,
+                r#"{"type":"user","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_result","tool_use_id":"c1","content":"Task #7 created successfully: Run the tests"},{"type":"tool_result","tool_use_id":"c2","content":"Task #8 created successfully: Fix the rounding"}]}}"#,
+                r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"u1","name":"TaskUpdate","input":{"taskId":"7","status":"completed"}},{"type":"tool_use","id":"u2","name":"TaskUpdate","input":{"taskId":"8","status":"in_progress"}}]}}"#,
+            ],
+        );
+        let plan = sub.agents.get("a1b2").unwrap().plan.clone().unwrap();
+        assert_eq!(plan.iter().map(|s| (s.text.as_str(), s.status)).collect::<Vec<_>>(), [("Run the tests", "done"), ("Fix the rounding", "active")]);
+        // The main conversation's plan is the chat's, never a row's.
+        feed_agents(&mut sub, &[r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"m1","name":"TodoWrite","input":{"todos":[{"content":"Main step","status":"pending"}]}}]}}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().plan.as_ref().unwrap().len(), 2);
     }
 
     #[test]

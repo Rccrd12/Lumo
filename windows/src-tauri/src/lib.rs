@@ -22,6 +22,7 @@ mod calendar;
 mod chat;
 mod chat_agents;
 mod chat_files;
+mod chat_title;
 mod chat_usage;
 mod claude;
 mod claude_code;
@@ -916,6 +917,7 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
     acp_chat::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// A deleted chat: its CLI, waiting for its next message, ends, and the
@@ -926,6 +928,7 @@ fn chat_close(chat_id: String) {
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
     acp_chat::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// The shield picked another mode in chat `chat_id`: from now on its turns,
@@ -996,8 +999,9 @@ fn chat_allow_restart(chat_id: String) {
 fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
     chats.get(&chat_id).rewind(keep);
     // Its Claude Code is in the session the edit leaves: what it would still
-    // write by itself belongs to the answers dropped.
+    // write by itself belongs to the answers dropped. So is its agy.
     claude_code::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// The × of one of the chat's files: out of the chat's context from the next
@@ -1566,6 +1570,7 @@ pub fn run() {
             chat_restore,
             chat_load,
             chat_compact,
+            chat_title::chat_title,
             chat_commands,
             chat_stop,
             chat_stop_agent,
