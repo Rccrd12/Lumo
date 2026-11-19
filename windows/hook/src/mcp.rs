@@ -374,6 +374,7 @@ with every step (the first one in_progress, the others pending); then call it ag
 time a step is done (completed) and the next one starts (in_progress). Keep steps short.",
         json!({
             "explanation": { "type": "string", "description": "Optional: a short note on the plan or what changed." },
+            "agent": { "type": "string", "description": "Only when you are a subagent: your role or name. Lumo then shows this plan on your own row, apart from the plan of the conversation that started you. Leave it out otherwise." },
             "plan": {
                 "type": "array",
                 "minItems": 1,
@@ -704,6 +705,13 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
     if name == PLAN_NAME {
         if !input.get("plan").and_then(Value::as_array).is_some_and(|p| !p.is_empty()) {
             return failed("The plan needs at least one step.");
+        }
+        // A subagent's own plan (`agent`): Lumo reads it from that subagent's
+        // transcript, for its row; it is never the chat's plan. Unless this
+        // server lends the computer, which works by the plan it is given.
+        let subagent = input.get("agent").and_then(Value::as_str).is_some_and(|a| !a.trim().is_empty());
+        if subagent && !kit.computer {
+            return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
         }
         // `computer`: this server lends the computer, so the plan is the one
         // the computer works by (pipe.rs routes it by that, never by what else runs).
@@ -1059,6 +1067,15 @@ mod tests {
         assert_eq!(v["result"]["isError"], true, "no Lumo, no computer: the agent is told");
         let v: Value = serde_json::from_str(&handle_with(line, kit, &refused).unwrap()).unwrap();
         assert_eq!(v["result"]["isError"], true, "a refusal is told without the computer too");
+        // A subagent's own plan: shown on its row from its transcript, never
+        // sent as the chat's plan; the agent still hears the step to work on.
+        let own = r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"update_plan","arguments":{"agent":"Batch 1","plan":[{"step":"Read","status":"in_progress"}]}}}"#;
+        let v: Value = serde_json::from_str(&handle_with(own, kit, &never).unwrap()).unwrap();
+        assert!(v["result"].get("isError").is_none());
+        assert!(v["result"]["content"][0]["text"].as_str().unwrap().contains("\"Read\""));
+        // With the computer, it is still the plan the computer works by.
+        let v: Value = serde_json::from_str(&handle_with(own, computer, &taken).unwrap()).unwrap();
+        assert!(v["result"].get("isError").is_none());
         let line = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"update_plan","arguments":{"plan":[]}}}"#;
         let v: Value = serde_json::from_str(&handle_with(line, kit, &never).unwrap()).unwrap();
         assert_eq!(v["result"]["isError"], true);

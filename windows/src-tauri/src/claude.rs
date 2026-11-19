@@ -161,6 +161,11 @@ fn cached(body: &Value) -> bool {
     body.get("cache_control").is_some() || body.pointer("/system/0/cache_control").is_some()
 }
 
+/// A 400 that says the request's `cache_control` is not taken (a gateway's).
+fn refuses_cache(body: &Value, error: &str) -> bool {
+    cached(body) && error.contains("cache_control")
+}
+
 /// The island's tools (island_tools.rs) and the user's that are on and
 /// reviewed (tools.rs), as the Messages API takes them, after its web search.
 fn with_user_tools(mut body: Value, tools: &[(String, String, Value)]) -> Value {
@@ -280,6 +285,10 @@ struct Launch {
 async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api_agents::Task, sink: crate::api_agents::Sink) -> Result<String, String> {
     let user = json!({ "role": "user", "content": task.task });
     let mut body = with_user_tools(request_body(&l.model, crate::api_agents::SYSTEM, &[], &user, l.max_tokens), &l.tools);
+    // A gateway that refused the cache (the chat found out, or another agent): asked without it.
+    if NO_CACHE.load(Ordering::Relaxed) {
+        without_cache(&mut body);
+    }
     if let Some(effort) = &l.effort {
         body["output_config"] = json!({ "effort": effort });
     }
@@ -295,6 +304,13 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch, task: crate::api
             }
             Err(Failed::Status(400, e)) if body.get("output_config").is_some() && e.contains("effort") => {
                 body.as_object_mut().map(|b| b.remove("output_config"));
+                continue;
+            }
+            // A gateway (LUMO_ANTHROPIC_BASE_URL) that doesn't take the cache, as in `send`.
+            Err(Failed::Status(400, e)) if refuses_cache(&body, &e) => {
+                NO_CACHE.store(true, Ordering::Relaxed);
+                crate::log::line("agents: the Claude endpoint refused cache_control: asked without the cache");
+                without_cache(&mut body);
                 continue;
             }
             // Agents at once may meet the rate limit: each waits it out a few times.
@@ -514,7 +530,7 @@ pub async fn send(
                     continue;
                 }
                 // A gateway (LUMO_ANTHROPIC_BASE_URL) that doesn't take the cache: without it, from now on.
-                Err(Failed::Status(400, e)) if cached(&body) && e.contains("cache_control") => {
+                Err(Failed::Status(400, e)) if refuses_cache(&body, &e) => {
                     NO_CACHE.store(true, Ordering::Relaxed);
                     crate::log::line("chat: the Claude endpoint refused cache_control: asked without the cache");
                     without_cache(&mut body);
@@ -1371,6 +1387,18 @@ mod tests {
         // The conversation is cached for the next message.
         assert_eq!(body["cache_control"], json!({ "type": "ephemeral" }));
         assert!(cached(&body));
+    }
+
+    #[test]
+    fn a_gateway_refusing_the_cache_is_asked_again_without_it_once() {
+        // Chat and agents alike (`send`, `agent_turn`): a 400 naming cache_control on a request that asks for it.
+        let mut body = request_body("claude-x", "sys", &[], &json!({"role":"user","content":"c"}), 1_000);
+        let error = r#"{"type":"invalid_request_error","message":"cache_control: Extra inputs are not permitted"}"#;
+        assert!(refuses_cache(&body, error));
+        assert!(!refuses_cache(&body, "max_tokens: too large"));
+        without_cache(&mut body);
+        // Asked without it, the same error again is not retried for ever.
+        assert!(!refuses_cache(&body, error));
     }
 
     #[test]
