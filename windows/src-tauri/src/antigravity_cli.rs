@@ -8,7 +8,9 @@
 //
 // - The prompt goes in on stdin as one stream-json `user` event, never on the
 //   command line. Every argument is fixed or checked. stdin is closed once the
-//   turn's `result` came back, which ends agy cleanly.
+//   turn's `result` came back, which ends agy cleanly; while subagents it
+//   started still work, it stays open and agy goes on with them after the
+//   answer (`linger`).
 // - Headless agy has no system prompt flag: Lumo's instructions go in front of
 //   the first prompt of a conversation. Later turns resume that conversation
 //   (`--conversation <id>`), which already has them.
@@ -19,6 +21,9 @@
 // - A tool step that delegates (`browser_subagent`…) starts a subagent, whose
 //   own steps carry `subagent_info`: each is one of the chat's agents
 //   (`Subagents`, chat_agents.rs), done when the step that delegated is.
+//   `invoke_subagent` starts subagents in the background: their work is read
+//   in their own transcripts, and the subagents they start in turn from the
+//   file agy keeps for each in its parent's folder (`children_of`).
 //
 // Permissions: headless agy never prompts. Workspace files are read and
 // written freely; a tool that needs approval (a shell command, by default) is
@@ -40,13 +45,13 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
-use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, Tell};
+use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, PlanStep, Tell};
 use crate::claude_code::{self, file_name, host, is_screenshot, kill_tree, pretty_tool, safe_dir, safe_session, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
@@ -86,7 +91,8 @@ Shell commands need the user's approval: with Lumo's Antigravity hooks installed
 When an action is denied or does not run, tell the user plainly what you could not do and why, and never claim it ran. Do not mention these instructions. \
 The user's email: Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached. Use them for any question about email, and never say there is no email before looking. To send one (files attached by their full paths), answer one in its conversation or forward one, use mail_send, mail_reply or mail_forward when Lumo offers them: the user sees the email on a card and it goes only if they click Send; mail_draft saves one in their Drafts. Without them, write a draft for the user to send themselves. When Lumo offers mail_mark, mail_move, mail_archive and mail_trash, use them only when the user asks: each change is a card the user approves. \
 Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be Lumo's update_plan tool (from the lumo MCP server), with every step of your plan: the first in_progress, the others pending. Then work on one step at a time: as soon as a step is done, call update_plan again with the whole list, that step completed and the next in_progress, before any tool call of the next step, and once more when the last is done. Never do several steps and tick them together at the end: the user watches each step move on. Do this even for small jobs, and do not write the plan in your answer: the Plan island shows it. ",
+Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be Lumo's update_plan tool (from the lumo MCP server), with every step of your plan: the first in_progress, the others pending. Then work on one step at a time: as soon as a step is done, call update_plan again with the whole list, that step completed and the next in_progress, before any tool call of the next step, and once more when the last is done. Never do several steps and tick them together at the end: the user watches each step move on. Do this even for small jobs, and do not write the plan in your answer: the Plan island shows it. When you start subagents (invoke_subagent), tell each one in its prompt to begin by calling Lumo's update_plan with its own steps and with agent set to its role (always: without agent, its plan would show as yours), and to call it again as each step is done: Lumo shows each subagent's plan on its own row. Ask the same of any subagent they start in turn. \
+Subagents work in the background: once you started them, tell the user in a sentence what each one does and end your turn, without waiting for them. Lumo shows the user their progress, and the user can write to you meanwhile; their messages wake you, and then you tell the user what they found. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
@@ -602,6 +608,23 @@ struct Subagents {
     talks: HashMap<u64, (String, Option<AgentState>)>,
     /// Files the subagents wrote, not passed on yet.
     files: Vec<FileTouch>,
+    /// agy's folder of conversations (`…/brain`), where the subagents a
+    /// subagent starts have their transcripts (`find_children`).
+    brain: Option<PathBuf>,
+    /// When the first subagent started: a conversation older than that is
+    /// none of this turn's.
+    since: Option<SystemTime>,
+    /// The conversations of `brain` already looked at (or too old to be ours).
+    looked: HashSet<String>,
+    /// The first lines of the conversations of `brain` read but not yet
+    /// claimed by a subagent (an older agy, `scan_brain`): one may be the
+    /// child of a subagent whose call to start it is read only later.
+    firsts: HashMap<String, Value>,
+    /// agy keeps its subagents in their parent's folder (`children_of`):
+    /// `brain` is not looked through.
+    child_files: bool,
+    /// The main conversation (the chat's), as agy's stream names it.
+    main: Option<String>,
 }
 
 /// A subagent `invoke_subagent` started. agy's stream says nothing of its
@@ -613,7 +636,8 @@ struct Spawn {
     n: usize,
     /// Its row's id.
     row: String,
-    /// Its conversation id, when known (`conversation_id` or from `log_uri`).
+    /// Its conversation's id (`conversation_id`, from `log_uri`, or its folder
+    /// in agy's `brain`): the sender its own subagents name in their first line.
     conversation: Option<String>,
     /// Its roster name (swarm worker or named subagent), when known.
     name: Option<String>,
@@ -622,12 +646,333 @@ struct Spawn {
     /// How far the transcript was read, and a line not yet whole.
     read: u64,
     partial: Vec<u8>,
-    /// What it sent its parent (`send_message`): its report.
-    report: Option<String>,
-    /// Files its last call writes, told once the call's result says it did.
-    pending: Vec<FileTouch>,
+    /// Its report, the files and subagents its calls are waiting on.
+    reading: Reading,
     /// Inside a line past MAX_LINE: dropped up to its end.
     skipping: bool,
+    /// The conversation that started it, from the first line of its
+    /// transcript: its messages there are its report.
+    sender: Option<String>,
+    /// The first line of its transcript was read.
+    began: bool,
+    /// The row of the subagent that started it, when one did.
+    parent: Option<String>,
+    /// The subagents its own calls started: the role each call gave ("" for
+    /// none) and its task, in order, and whether a subagent found took it.
+    roles: Vec<(String, String)>,
+    claimed: Vec<bool>,
+    /// How many of them were found.
+    children: usize,
+    /// It answered (no more calls) at least once.
+    answered: bool,
+    /// It answered while subagents of its own still work, at this time: it
+    /// waits for them (agy wakes it with their messages), it is not done.
+    waiting_since: Option<Instant>,
+    /// The user asked agy to stop it, at this time: it is stopping until agy
+    /// says it stopped, or STOP_WAIT passed.
+    stop_asked: Option<Instant>,
+    /// Its folder of children was listed once (`find_children`).
+    listed: bool,
+}
+
+impl Spawn {
+    fn new(step: u64, n: usize, row: String, conversation: Option<String>, name: Option<String>, log: Option<PathBuf>) -> Spawn {
+        let conversation = conversation.or_else(|| log.as_deref().and_then(conversation_of));
+        Spawn {
+            step,
+            n,
+            row,
+            conversation,
+            name,
+            log,
+            read: 0,
+            partial: Vec::new(),
+            reading: Reading::default(),
+            skipping: false,
+            sender: None,
+            began: false,
+            parent: None,
+            roles: Vec::new(),
+            claimed: Vec::new(),
+            children: 0,
+            answered: false,
+            waiting_since: None,
+            stop_asked: None,
+            listed: false,
+        }
+    }
+
+    /// A subagent it started was found: the role its call gave it, by its
+    /// task when the task is known, else the next one not taken. None when
+    /// the call named no role (or no call is known).
+    fn claim(&mut self, prompt: Option<&str>, role: Option<&str>) -> Option<String> {
+        self.children += 1;
+        let free = |i: &usize| !self.claimed[*i];
+        let n = self.roles.len();
+        let by = |f: &dyn Fn(&(String, String)) -> bool| (0..n).filter(free).find(|i| f(&self.roles[*i]));
+        let pick = role
+            .and_then(|r| by(&|(have, _)| have.eq_ignore_ascii_case(r)))
+            .or_else(|| prompt.map(str::trim).filter(|p| !p.is_empty()).and_then(|p| by(&|(_, task)| task.trim() == p)))
+            .or_else(|| (0..n).find(free));
+        let i = pick?;
+        self.claimed[i] = true;
+        Some(self.roles[i].0.clone()).filter(|r| !r.is_empty())
+    }
+
+    /// Its calls started these subagents.
+    fn invoked(&mut self, started: Vec<(String, String)>) {
+        self.claimed.extend(started.iter().map(|_| false));
+        self.roles.extend(started);
+    }
+
+    /// The last `n` it started never did (their call failed).
+    fn cancelled(&mut self, mut n: usize) {
+        let mut i = self.roles.len();
+        while n > 0 && i > 0 {
+            i -= 1;
+            if !self.claimed[i] {
+                self.roles.remove(i);
+                self.claimed.remove(i);
+                n -= 1;
+            }
+        }
+    }
+}
+
+/// How long a subagent that started subagents of its own and then answered
+/// is waited for, when they don't all show (agy may name them in another
+/// way): then it is done, as before.
+const CHILD_GRACE: Duration = Duration::from_secs(30);
+/// The most conversations of agy's `brain` not seen before looked at in one go.
+const MAX_SCAN: usize = 4000;
+/// The most first lines kept while no subagent claims them.
+const MAX_FIRSTS: usize = 512;
+/// How long a subagent the user stopped says it is stopping, until agy says
+/// it stopped: past that, agy did not (the row is at work again).
+const STOP_WAIT: Duration = Duration::from_secs(20);
+
+/// The conversation a transcript is the log of, and agy's folder of them:
+/// `…/brain/<conversation>/…/transcript.jsonl`.
+fn brain_of(log: &std::path::Path) -> Option<(PathBuf, String)> {
+    let parts: Vec<_> = log.components().collect();
+    let at = parts.iter().position(|c| c.as_os_str().eq_ignore_ascii_case("brain"))?;
+    let conversation = parts.get(at + 1)?.as_os_str().to_str()?.to_string();
+    // The conversation's folder, then at least the transcript: never the brain itself.
+    if parts.len() < at + 3 || conversation.is_empty() || conversation == ".." {
+        return None;
+    }
+    let brain: PathBuf = parts[..=at].iter().collect();
+    Some((brain, conversation))
+}
+
+fn conversation_of(log: &std::path::Path) -> Option<String> {
+    brain_of(log).map(|(_, c)| c)
+}
+
+/// The first line of a transcript, once it is whole.
+fn first_line(path: &std::path::Path) -> Option<Value> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut head = Vec::new();
+    file.take(64 * 1024).read_to_end(&mut head).ok()?;
+    let end = head.iter().position(|b| *b == b'\n')?;
+    serde_json::from_slice(&head[..end]).ok()
+}
+
+/// The message a subagent's transcript begins with: agy's own words around
+/// it ("The following is a <SYSTEM_MESSAGE> not actually sent by the user…"),
+/// then "[Message] timestamp=… sender=<parent> priority=… content=<task>".
+fn first_message(first: &Value) -> Option<&str> {
+    let content = first["content"].as_str()?;
+    let at = content.find("[Message]")?;
+    Some(&content[at + "[Message]".len()..])
+}
+
+/// Who started the subagent whose transcript begins with `first`: the
+/// conversation its first message came from.
+fn sender_of(first: &Value) -> Option<&str> {
+    let message = first_message(first)?;
+    let head = message.split_once(" content=").map_or(message, |(h, _)| h);
+    let at = head.find("sender=")?;
+    head[at + "sender=".len()..].split_whitespace().next().filter(|s| !s.is_empty())
+}
+
+/// The task a subagent was given, from the message that started it.
+fn first_prompt(first: &Value) -> Option<&str> {
+    let (_, prompt) = first_message(first)?.split_once(" content=")?;
+    let prompt = prompt.split("</SYSTEM_MESSAGE>").next().unwrap_or(prompt).trim();
+    (!prompt.is_empty()).then_some(prompt)
+}
+
+/// A title for a subagent from the message that started it, when no role names it.
+fn prompt_title(first: &Value) -> Option<String> {
+    first_prompt(first).map(|p| short(&chat_agents::summary_of(p)))
+}
+
+/// Whether a tool is agy's `invoke_subagent` (whatever agy puts in front).
+/// Not `define_subagent`, `manage_subagents`, nor Lumo's `browser_subagent`.
+fn is_invoke(name: &str) -> bool {
+    let n = name.trim().to_ascii_lowercase();
+    n == "invoke_subagent" || n.ends_with("_invoke_subagent") || n.ends_with("/invoke_subagent")
+}
+
+/// One subagent as agy keeps it in its parent's folder,
+/// `brain/<parent>/.system_generated/subagents/<child>.json`: one file per
+/// child (swarm workers too), written as it starts, its state changed as it ends.
+#[derive(Clone, Debug, PartialEq)]
+struct ChildFile {
+    conversation: String,
+    /// The role its call gave it, else its type ("code reviewer").
+    role: Option<String>,
+    /// Ended by agy: stopped by its parent (or the user), or closed after it
+    /// finished. "SUBAGENT_STATE_KILLED".
+    killed: bool,
+    /// The step of its parent's conversation that started it: their order.
+    step: u64,
+}
+
+/// A conversation id of agy's as a folder name: letters, digits, `-`, `_`
+/// and dots, never `.` or `..`.
+fn safe_id(id: &str) -> Option<&str> {
+    let ok = !id.is_empty() && id.len() <= 128 && id != "." && id != ".." && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    ok.then_some(id)
+}
+
+/// A role or a type, as a title: "code_reviewer" reads "code reviewer".
+fn role_title(s: &str) -> String {
+    if s.contains('_') && !s.contains(' ') {
+        pretty_tool(s)
+    } else {
+        s.to_string()
+    }
+}
+
+fn child_file(v: &Value) -> Option<ChildFile> {
+    let conversation = ["conversationId", "conversation_id"].iter().filter_map(|k| v[*k].as_str()).map(str::trim).find(|s| !s.is_empty())?;
+    let conversation = safe_id(conversation)?.to_string();
+    let d = &v["subagentDescriptor"];
+    let text = |keys: &[&str]| keys.iter().filter_map(|k| d[*k].as_str()).map(str::trim).find(|s| !s.is_empty() && *s != "self").map(role_title);
+    let role = text(&["role", "Role"]).or_else(|| text(&["typeName", "type_name"]));
+    let state = v["state"].as_str().unwrap_or("").to_ascii_uppercase();
+    let step = v["spawnStepIndex"].as_u64().or_else(|| v["spawnStepIndex"].as_str().and_then(|s| s.trim().parse().ok())).unwrap_or(u64::MAX);
+    Some(ChildFile { conversation, role, killed: state.contains("KILLED"), step })
+}
+
+/// The most child files read for one parent.
+const MAX_CHILD_FILES: usize = 256;
+
+/// The subagents agy keeps for conversation `parent` in `brain`, in the
+/// order they started; None when it keeps none there (an older agy, or none
+/// started yet).
+fn children_of(brain: &Path, parent: &str) -> Option<Vec<ChildFile>> {
+    let parent = safe_id(parent)?;
+    let dir = brain.join(parent).join(".system_generated").join("subagents");
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut out: Vec<ChildFile> = entries
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("json")))
+        .take(MAX_CHILD_FILES)
+        .filter_map(|e| {
+            let file = std::fs::File::open(e.path()).ok()?;
+            let mut text = Vec::new();
+            file.take(64 * 1024).read_to_end(&mut text).ok()?;
+            child_file(&serde_json::from_slice(&text).ok()?)
+        })
+        .collect();
+    out.sort_by(|a, b| a.step.cmp(&b.step).then_with(|| a.conversation.cmp(&b.conversation)));
+    Some(out)
+}
+
+/// The subagents an `invoke_subagent` call starts, one per subagent: the role
+/// it gives each ("" when it names none) and its task; nothing for any other
+/// call (`define_subagent`, `manage_subagents`, Lumo's browser agent…).
+fn invoked(name: &str, args: &Value) -> Vec<(String, String)> {
+    if !is_invoke(name) {
+        return Vec::new();
+    }
+    let pick = |v: &Value, keys: &[&str]| keys.iter().filter_map(|k| v[*k].as_str()).map(str::trim).find(|s| !s.is_empty()).map(str::to_string);
+    let one = |v: &Value| {
+        let role = pick(v, &["role", "Role", "name", "Name"]).or_else(|| pick(v, &["type_name", "TypeName", "typeName"]).filter(|t| t != "self"));
+        (role.map(|r| role_title(&r)).unwrap_or_default(), pick(v, &["initial_prompt", "Prompt", "prompt", "InitialPrompt", "task", "Task"]).unwrap_or_default())
+    };
+    let listed: Vec<(String, String)> = args
+        .as_object()
+        .into_iter()
+        .flat_map(|m| m.values())
+        .filter_map(Value::as_array)
+        .flat_map(|list| list.iter().filter(|e| e.is_object()).map(one))
+        .collect();
+    if !listed.is_empty() {
+        return listed;
+    }
+    vec![one(args)]
+}
+
+/// The roles alone (`invoked`).
+#[cfg(test)]
+fn invoked_roles(name: &str, args: &Value) -> Vec<String> {
+    invoked(name, args).into_iter().map(|(r, _)| r).collect()
+}
+
+/// The conversations a `manage_subagents` call stops: Some(empty) for all of them.
+fn kills_of(name: &str, args: &Value) -> Option<Vec<String>> {
+    let n = name.trim().to_ascii_lowercase();
+    if !(n == "manage_subagents" || n.ends_with("_manage_subagents") || n.ends_with("/manage_subagents")) {
+        return None;
+    }
+    let action = args["Action"].as_str().or_else(|| args["action"].as_str()).unwrap_or("").trim().to_ascii_lowercase();
+    match action.as_str() {
+        "kill_all" => Some(Vec::new()),
+        "kill" => {
+            // A list, or its JSON text.
+            let list = match args.get("ConversationIds").or_else(|| args.get("conversationIds"))? {
+                Value::String(text) => serde_json::from_str::<Value>(text).ok()?,
+                other => other.clone(),
+            };
+            let ids: Vec<String> = list.as_array()?.iter().filter_map(Value::as_str).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            (!ids.is_empty()).then_some(ids)
+        }
+        _ => None,
+    }
+}
+
+/// The plan a subagent gives Lumo's update_plan, by the tool's own name or
+/// through `call_mcp_tool`.
+fn plan_call_of(name: &str, args: &Value) -> Option<Vec<PlanStep>> {
+    if is_plan_tool(name) {
+        return chat_agents::plan_of(args);
+    }
+    let (server, tool, args) = mcp_call(name, args)?;
+    let lumo = server.is_empty() || server.to_ascii_lowercase().contains("lumo");
+    (lumo && tool.to_ascii_lowercase().ends_with("update_plan")).then(|| chat_agents::plan_of(&args)).flatten()
+}
+
+/// What one line of a subagent's transcript said, past its row.
+#[derive(Default, Debug, PartialEq)]
+struct Heard {
+    /// Its answer: no more calls.
+    answered: bool,
+    /// It called tools.
+    called: bool,
+    /// The subagents its calls started: role and task (`invoked`).
+    invoked: Vec<(String, String)>,
+    /// How many of the last ones it started never did: the call failed.
+    cancelled: usize,
+    /// The subagents it stopped (`manage_subagents`), by conversation, once
+    /// the call went through; Some(empty) for all of its own.
+    killed: Option<Vec<String>>,
+}
+
+/// What reading a subagent's transcript keeps from line to line.
+#[derive(Default, Debug)]
+struct Reading {
+    /// What it sent its parent (`send_message`): its report.
+    report: Option<String>,
+    /// Files its last calls write, told once their result says they did.
+    pending: Vec<FileTouch>,
+    /// How many subagents its last calls started, until their result says they did.
+    unconfirmed: usize,
+    /// The subagents its last calls stop, until their result says they did.
+    kills: Option<Vec<String>>,
 }
 
 /// How much of a transcript is read at a time.
@@ -712,21 +1057,31 @@ fn transcript_browsing(line: &Value) -> Vec<(&'static str, Value)> {
 
 /// One line of a subagent's transcript on its row: its steps, what it does
 /// now, its tokens, its report, and the files it wrote (`pending` until the
-/// call's result says it went through). True once it is done: its answer,
-/// with no more calls.
-fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mut Vec<FileTouch>, files: &mut Vec<FileTouch>, line: &Value) -> bool {
+/// call's result says it went through). `to_parent`: whether a conversation
+/// is the one that started it, whose messages are its report (a message to
+/// a subagent of its own is an order, not its report).
+fn transcript_line(row: &mut AgentRow, reading: &mut Reading, files: &mut Vec<FileTouch>, line: &Value, to_parent: &dyn Fn(&str) -> bool) -> Heard {
+    let mut heard = Heard::default();
     let read = |k: &str| line[k].as_u64().unwrap_or(0);
     let context = read("input_tokens") + read("cache_read_tokens");
     if context > 0 {
         row.tokens = Some(row.tokens.unwrap_or(0).max(context));
     }
-    // A call's result: the files it wrote, unless it failed.
-    if line["type"] == "GENERIC" && !pending.is_empty() {
+    // A call's result: the files it wrote and the subagents it started or
+    // stopped, unless it failed.
+    if line["type"] == "GENERIC" && (!reading.pending.is_empty() || reading.unconfirmed > 0 || reading.kills.is_some()) {
         let failed = line["status"].as_str().is_some_and(|s| s != "DONE") || call_failed(line["content"].as_str().unwrap_or(""));
-        for touch in pending.drain(..) {
+        for touch in reading.pending.drain(..) {
             if !failed && !files.contains(&touch) {
                 files.push(touch);
             }
+        }
+        if failed {
+            heard.cancelled = std::mem::take(&mut reading.unconfirmed);
+            reading.kills = None;
+        } else {
+            reading.unconfirmed = 0;
+            heard.killed = reading.kills.take();
         }
     }
     let calls = line["tool_calls"].as_array().map(Vec::as_slice).unwrap_or(&[]);
@@ -735,9 +1090,26 @@ fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mu
         let args = transcript_args(&call["args"]);
         row.steps += 1;
         row.now = Some(activity_for(name, &args));
+        heard.called = true;
+        // Its own plan (concepts/piano-dei-sotto-agenti), and the subagents it starts or stops.
+        if let Some(plan) = plan_call_of(name, &args) {
+            row.plan = Some(plan);
+        }
+        let started = invoked(name, &args);
+        reading.unconfirmed += started.len();
+        heard.invoked.extend(started);
+        if let Some(ids) = kills_of(name, &args) {
+            match (&mut reading.kills, ids.is_empty()) {
+                (_, true) => reading.kills = Some(Vec::new()),
+                (Some(all), _) if all.is_empty() => {}
+                (Some(list), _) => list.extend(ids),
+                (None, _) => reading.kills = Some(ids),
+            }
+        }
         if name == "send_message" {
-            if let Some(text) = args["Message"].as_str().map(str::trim).filter(|t| !t.is_empty()) {
-                *report = Some(text.to_string());
+            let to = ["Recipient", "recipient", "to"].iter().filter_map(|k| args[*k].as_str()).map(str::trim).find(|s| !s.is_empty()).unwrap_or("");
+            if let Some(text) = args["Message"].as_str().or_else(|| args["message"].as_str()).map(str::trim).filter(|t| !t.is_empty() && to_parent(to)) {
+                reading.report = Some(text.to_string());
                 row.summary = Some(crate::chat_agents::summary_of(text));
                 if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
                     talk.answer(text);
@@ -754,7 +1126,7 @@ fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mu
             } else {
                 None
             };
-            pending.extend(touch);
+            reading.pending.extend(touch);
         }
     }
     // Its calls cut from the line (a long one): a step all the same, never its answer.
@@ -762,23 +1134,25 @@ fn transcript_line(row: &mut AgentRow, report: &mut Option<String>, pending: &mu
     if cut && calls.is_empty() {
         row.steps += 1;
         row.now = Some(Activity::new("tool", ""));
-        return false;
+        heard.called = true;
+        return heard;
     }
     let answer = line["content"].as_str().map(str::trim).filter(|t| !t.is_empty());
     match answer {
         Some(answer) if calls.is_empty() && line["type"] == "PLANNER_RESPONSE" && line["source"] == "MODEL" => {
-            let reply_text = report.as_deref().unwrap_or(answer);
+            let reply_text = reading.report.as_deref().unwrap_or(answer);
             row.summary = Some(crate::chat_agents::summary_of(reply_text));
             if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
                 talk.answer(reply_text);
             }
-            true
+            heard.answered = true;
+            heard
         }
         _ => {
             if calls.is_empty() && line["source"] == "MODEL" && line["type"] == "PLANNER_RESPONSE" {
                 row.now = Some(Activity::thinking());
             }
-            false
+            heard
         }
     }
 }
@@ -822,6 +1196,9 @@ impl Subagents {
             let name = text(&["name", "role"]);
             if let Some(spawn) = self.spawns.iter_mut().find(|s| s.step == index && s.n == n) {
                 if spawn.log.is_none() {
+                    if spawn.conversation.is_none() {
+                        spawn.conversation = log.as_deref().and_then(conversation_of);
+                    }
                     spawn.log = log;
                 }
                 if spawn.conversation.is_none() {
@@ -829,6 +1206,9 @@ impl Subagents {
                 }
                 if spawn.name.is_none() {
                     spawn.name = name;
+                }
+                if self.brain.is_none() {
+                    self.brain = spawn.log.as_deref().and_then(brain_of).map(|(b, _)| b);
                 }
                 continue;
             }
@@ -838,19 +1218,11 @@ impl Subagents {
             made.now = Some(Activity::thinking());
             made.can_ask = true;
             made.can_stop = true;
-            self.spawns.push(Spawn {
-                step: index,
-                n,
-                row,
-                conversation: conv,
-                name,
-                log,
-                read: 0,
-                partial: Vec::new(),
-                report: None,
-                pending: Vec::new(),
-                skipping: false,
-            });
+            self.since.get_or_insert_with(|| SystemTime::now() - Duration::from_secs(5));
+            if self.brain.is_none() {
+                self.brain = log.as_deref().and_then(brain_of).map(|(b, _)| b);
+            }
+            self.spawns.push(Spawn::new(index, n, row, conv, name, log));
         }
     }
 
@@ -896,7 +1268,8 @@ impl Subagents {
             row.can_ask = true;
         }
         if let Some(spawn) = self.spawns.iter_mut().find(|s| s.row == id) {
-            spawn.report = None;
+            spawn.reading.report = None;
+            spawn.answered = false;
         }
         self.talks.insert(index, (id, was_final));
     }
@@ -963,19 +1336,7 @@ impl Subagents {
                         made.can_ask = true;
                         made.can_stop = true;
                         if !self.spawns.iter().any(|s| s.row == row_id) {
-                            self.spawns.push(Spawn {
-                                step: index,
-                                n,
-                                row: row_id,
-                                conversation: None,
-                                name: Some(worker_name),
-                                log: None,
-                                read: 0,
-                                partial: Vec::new(),
-                                report: None,
-                                pending: Vec::new(),
-                                skipping: false,
-                            });
+                            self.spawns.push(Spawn::new(index, n, row_id, None, Some(worker_name), None));
                         }
                     }
                 } else if let Some(err) = failed {
@@ -993,20 +1354,16 @@ impl Subagents {
                 if target.is_empty() {
                     return;
                 }
-                let prefix = format!("{target}-");
+                // The worker of that name, or the workers `add` numbered after it ("w" → "w-1", "w-2"…).
+                let numbered = |n: &str| n.strip_prefix(target).and_then(|r| r.strip_prefix('-')).is_some_and(|r| !r.is_empty() && r.bytes().all(|b| b.is_ascii_digit()));
                 let ids: Vec<String> = self
                     .spawns
                     .iter()
-                    .filter(|s| s.name.as_deref().is_some_and(|n| n == target || n.starts_with(&prefix)))
+                    .filter(|s| s.row.starts_with("swarm-") && s.name.as_deref().is_some_and(|n| n == target || numbered(n)))
                     .map(|s| s.row.clone())
                     .collect();
                 for id in ids {
-                    if self.agents.get(&id).is_some_and(|r| !r.state.is_final()) {
-                        if let Some(row) = self.agents.touch(&id) {
-                            row.end(AgentState::Stopped, None);
-                            row.can_stop = false;
-                        }
-                    }
+                    self.stopped(&id);
                 }
             }
             _ => {}
@@ -1050,10 +1407,7 @@ impl Subagents {
             let Some(done_at) = line.find("[done]") else { continue };
             let summary = line[done_at + "[done]".len()..].trim();
             for (name, row_id) in &workers {
-                let prefix = format!("{name}:");
-                let author = format!("\"{name}\"");
-                let mentioned = line.contains(&prefix) || line.contains(&author) || line.starts_with(name);
-                if !mentioned {
+                if !names(&line[..done_at], name) {
                     continue;
                 }
                 if self.agents.get(row_id).is_some_and(|r| !r.state.is_final()) {
@@ -1084,19 +1438,7 @@ impl Subagents {
                 let row_id = format!("wf-{}-{index}-{}", self.mark(), n + 1);
                 let made = self.agents.upsert(&row_id, || AgentRow::new(row_id.as_str(), PROVIDER, &role));
                 made.now = Some(Activity::thinking());
-                self.spawns.push(Spawn {
-                    step: index,
-                    n,
-                    row: row_id,
-                    conversation: None,
-                    name: Some(role),
-                    log: None,
-                    read: 0,
-                    partial: Vec::new(),
-                    report: None,
-                    pending: Vec::new(),
-                    skipping: false,
-                });
+                self.spawns.push(Spawn::new(index, n, row_id, None, Some(role), None));
             }
             return;
         }
@@ -1122,47 +1464,55 @@ impl Subagents {
     /// Handles `manage_subagents` (`kill` / `kill_all`) called by agy itself.
     fn manage_step(&mut self, info: &Value) {
         let params = params_of(&info["parameters"]);
-        let action = params["Action"].as_str().or_else(|| params["action"].as_str()).unwrap_or("").trim();
-        if action.eq_ignore_ascii_case("kill_all") {
-            let ids = self.agents.open_ids();
-            for id in ids {
-                if let Some(row) = self.agents.touch(&id) {
-                    row.end(AgentState::Stopped, None);
-                    row.can_stop = false;
-                }
-            }
-            return;
-        }
-        if action.eq_ignore_ascii_case("kill") {
-            let list = params["ConversationIds"].as_array().or_else(|| params["conversationIds"].as_array());
-            for item in list.into_iter().flatten() {
-                let Some(raw) = item.as_str() else { continue };
-                if let Some(id) = self.resolve(raw) {
-                    if self.agents.get(&id).is_some_and(|r| !r.state.is_final()) {
-                        if let Some(row) = self.agents.touch(&id) {
-                            row.end(AgentState::Stopped, None);
-                            row.can_stop = false;
-                        }
-                    }
-                }
-            }
+        let Some(ids) = kills_of("manage_subagents", &params) else { return };
+        let targets: Vec<String> = if ids.is_empty() {
+            // Its own subagents, and theirs with them.
+            self.spawns.iter().filter(|s| s.parent.is_none()).map(|s| s.row.clone()).collect()
+        } else {
+            ids.iter().filter_map(|id| self.resolve(id)).collect()
+        };
+        for id in targets {
+            self.stopped(&id);
         }
     }
 
-    /// Stops one open subagent on user request and returns the stream-json instruction to write to `agy`.
+    /// The user asked to stop one open subagent: the stream-json message
+    /// that asks agy to, to write on its input. The row says it is stopping
+    /// until agy says it stopped (`stopped`), or STOP_WAIT passed.
     fn stop_one(&mut self, id: &str) -> Option<String> {
-        if !self.agents.get(id).is_some_and(|r| !r.state.is_final()) {
+        if !self.agents.get(id).is_some_and(|r| !r.state.is_final() && r.can_stop) {
             return None;
         }
-        let spawn = self.spawns.iter().rev().find(|s| s.row == id);
-        let swarm_name = spawn.filter(|s| s.row.starts_with("swarm-")).and_then(|s| s.name.as_deref());
-        let target = spawn.and_then(|s| s.conversation.as_deref()).unwrap_or(id);
+        let spawn = self.spawns.iter_mut().rev().find(|s| s.row == id)?;
+        let swarm_name = spawn.name.as_deref().filter(|_| spawn.row.starts_with("swarm-"));
+        let target = spawn.conversation.as_deref().unwrap_or(id);
         let line = stop_agent_event(swarm_name, target);
+        spawn.stop_asked = Some(Instant::now());
         if let Some(row) = self.agents.touch(id) {
-            row.end(AgentState::Stopped, None);
-            row.can_stop = false;
+            row.stopping = true;
         }
         Some(line)
+    }
+
+    /// Row `id` was stopped, by the user or by the agent that started it:
+    /// and every subagent it started, which agy stops with it.
+    fn stopped(&mut self, id: &str) {
+        let mut ids = vec![id.to_string()];
+        let mut i = 0;
+        while i < ids.len() {
+            let parent = ids[i].clone();
+            ids.extend(self.spawns.iter().filter(|s| s.parent.as_deref() == Some(parent.as_str())).map(|s| s.row.clone()));
+            i += 1;
+        }
+        for id in ids {
+            if self.agents.get(&id).is_some_and(|r| !r.state.is_final()) {
+                if let Some(row) = self.agents.touch(&id) {
+                    row.end(AgentState::Stopped, None);
+                    row.can_stop = false;
+                    row.can_ask = false;
+                }
+            }
+        }
     }
 
     /// Whether a subagent `invoke_subagent` started is still at work.
@@ -1176,7 +1526,18 @@ impl Subagents {
     fn read_transcripts(&mut self) -> (bool, bool) {
         use std::io::{Seek, SeekFrom};
         let (mut changed, mut read_any) = (false, false);
-        for spawn in &mut self.spawns {
+        // Who each one's parent is: its messages there are its report.
+        let known: HashSet<String> = self.spawns.iter().filter_map(|s| s.conversation.clone()).collect();
+        let parents: Vec<Option<String>> = self
+            .spawns
+            .iter()
+            .map(|s| match &s.parent {
+                Some(p) => self.spawns.iter().find(|o| o.row == *p).and_then(|o| o.conversation.clone()),
+                None => self.main.clone(),
+            })
+            .collect();
+        let mut kills: Vec<(usize, Vec<String>)> = Vec::new();
+        for (i, spawn) in self.spawns.iter_mut().enumerate() {
             let Some(path) = spawn.log.as_ref() else { continue };
             if self.agents.get(&spawn.row).is_none_or(|r| r.state.is_final()) {
                 continue;
@@ -1219,18 +1580,266 @@ impl Subagents {
             let mut browsed = Vec::new();
             for line in whole.split(|b| *b == b'\n').filter(|l| l.len() <= MAX_LINE) {
                 let Ok(v) = serde_json::from_slice::<Value>(line) else { continue };
+                if !std::mem::replace(&mut spawn.began, true) {
+                    spawn.sender = sender_of(&v).map(str::to_string);
+                }
                 browsed.extend(transcript_browsing(&v));
-                if transcript_line(row, &mut spawn.report, &mut spawn.pending, &mut self.files, &v) {
-                    row.end(AgentState::Done, None);
-                    row.can_stop = false;
-                    break;
+                let parent = spawn.sender.clone().or_else(|| parents[i].clone());
+                let to_parent = |to: &str| {
+                    let to = to.trim().trim_start_matches('@');
+                    match &parent {
+                        Some(p) => to.eq_ignore_ascii_case(p),
+                        // Who started it is not known: anyone but a subagent of ours.
+                        None => !known.contains(to),
+                    }
+                };
+                let heard = transcript_line(row, &mut spawn.reading, &mut self.files, &v, &to_parent);
+                spawn.invoked(heard.invoked);
+                spawn.cancelled(heard.cancelled);
+                if let Some(ids) = heard.killed {
+                    kills.push((i, ids));
+                }
+                if heard.called {
+                    // Woken (by its subagents' messages): at work again.
+                    spawn.waiting_since = None;
+                }
+                if heard.answered {
+                    spawn.answered = true;
+                    if spawn.roles.is_empty() {
+                        row.end(AgentState::Done, None);
+                        row.can_stop = false;
+                        break;
+                    }
+                    // Subagents of its own: done once they are (`settle`).
+                    spawn.waiting_since = Some(Instant::now());
                 }
             }
             for (tool, input) in browsed {
                 self.agents.browsed(&spawn.row, tool, input);
             }
         }
+        // The subagents they stopped themselves (manage_subagents).
+        for (i, ids) in kills {
+            let parent = self.spawns[i].row.clone();
+            let targets: Vec<String> = if ids.is_empty() {
+                self.spawns.iter().filter(|s| s.parent.as_deref() == Some(parent.as_str())).map(|s| s.row.clone()).collect()
+            } else {
+                ids.iter().filter_map(|id| self.resolve(id)).filter(|r| *r != parent).collect()
+            };
+            for id in targets {
+                self.stopped(&id);
+                changed = true;
+            }
+        }
+        // The subagents the subagents started, as soon as agy names them.
+        changed |= self.find_children();
+        changed |= self.settle();
         (changed, read_any)
+    }
+
+    /// The subagents the open subagents started (and the end agy gave any of
+    /// them): agy keeps each in its parent's folder (`children_of`). An older
+    /// agy keeps none there: then they are looked for through its whole
+    /// `brain` (`scan_brain`). Whether a row changed.
+    fn find_children(&mut self) -> bool {
+        let Some(brain) = self.brain.clone() else { return false };
+        let mut changed = false;
+        // The chat's own conversation (the end of the subagents it started),
+        // then each subagent still open.
+        let mut parents: Vec<(Option<usize>, String)> = self.main.iter().map(|m| (None, m.clone())).collect();
+        for (i, s) in self.spawns.iter().enumerate() {
+            let open = self.agents.get(&s.row).is_some_and(|r| !r.state.is_final());
+            if let (true, Some(c)) = (open, &s.conversation) {
+                parents.push((Some(i), c.clone()));
+            }
+        }
+        for (parent, conversation) in parents {
+            let Some(list) = children_of(&brain, &conversation) else { continue };
+            self.child_files = true;
+            if let Some(i) = parent {
+                // Taken up again (Ask): the subagents of its earlier rounds are none of this one's.
+                if !std::mem::replace(&mut self.spawns[i].listed, true) && self.agents.get(&self.spawns[i].row).is_some_and(|r| r.round > 0) {
+                    for child in &list {
+                        if !self.spawns.iter().any(|s| s.conversation.as_deref() == Some(child.conversation.as_str())) {
+                            self.looked.insert(child.conversation.clone());
+                        }
+                    }
+                }
+            }
+            for child in list {
+                changed |= self.child_seen(&brain, parent, child);
+            }
+        }
+        if !self.child_files {
+            changed |= self.scan_brain();
+        }
+        changed
+    }
+
+    /// Subagent `child`, as agy keeps it in the folder of its parent (the
+    /// spawn at `parent`, or the chat's own conversation): a row under its
+    /// parent the first time, and its end once agy ended it.
+    fn child_seen(&mut self, brain: &Path, parent: Option<usize>, child: ChildFile) -> bool {
+        let known = self.spawns.iter().position(|s| s.conversation.as_deref() == Some(child.conversation.as_str()));
+        let pos = match known {
+            Some(pos) => pos,
+            // The chat's own subagents are named by its stream, and one of an earlier round is not ours.
+            None if parent.is_none() || self.looked.contains(&child.conversation) => return false,
+            None => {
+                let Some(p) = parent else { return false };
+                let log = brain.join(&child.conversation).join(".system_generated").join("logs").join("transcript.jsonl");
+                let first = first_line(&log);
+                let role = self.spawns[p].claim(first.as_ref().and_then(first_prompt), child.role.as_deref());
+                let parent_row = self.spawns[p].row.clone();
+                let title = child.role.clone().or(role.clone()).or_else(|| first.as_ref().and_then(prompt_title)).unwrap_or_else(|| t("Agent"));
+                let row = format!("agy-{}-{}", self.mark(), child.conversation);
+                let made = self.agents.upsert(&row, || AgentRow::new(row.as_str(), PROVIDER, &title));
+                made.parent = Some(parent_row.clone());
+                made.now = Some(Activity::thinking());
+                made.can_ask = true;
+                made.can_stop = true;
+                let mut spawn = Spawn::new(u64::MAX, 0, row, Some(child.conversation.clone()), child.role.clone().or(role), Some(log));
+                spawn.parent = Some(parent_row);
+                self.spawns.push(spawn);
+                self.spawns.len() - 1
+            }
+        };
+        let mut changed = known.is_none();
+        let id = self.spawns[pos].row.clone();
+        // Found first by its first line (an older way): now its parent and role are certain.
+        if let Some(p) = parent.filter(|p| *p != pos) {
+            if self.spawns[pos].parent.is_none() && self.spawns[pos].step == u64::MAX {
+                let parent_row = self.spawns[p].row.clone();
+                self.spawns[pos].parent = Some(parent_row.clone());
+                if let Some(row) = self.agents.touch(&id) {
+                    row.parent = Some(parent_row);
+                }
+                changed = true;
+            }
+        }
+        // Ended by agy: stopped, or closed once it had answered.
+        if child.killed && self.agents.get(&id).is_some_and(|r| !r.state.is_final()) {
+            let spawn = &self.spawns[pos];
+            if spawn.answered || spawn.reading.report.is_some() {
+                if let Some(row) = self.agents.touch(&id) {
+                    row.end(AgentState::Done, None);
+                    row.can_stop = false;
+                }
+            } else {
+                self.stopped(&id);
+            }
+            changed = true;
+        }
+        changed
+    }
+
+    /// The subagents a subagent started, for an agy that keeps none in its
+    /// parent's folder: a conversation of this turn whose first message came
+    /// from that subagent's conversation. Looked for only while a subagent
+    /// started more than were found; a conversation read but not claimed
+    /// yet (its parent's call is read later) waits in `firsts`. Whether a
+    /// row was added.
+    fn scan_brain(&mut self) -> bool {
+        let wanted = |s: &Spawn| s.conversation.is_some() && s.roles.len() > s.children;
+        if !self.spawns.iter().any(wanted) {
+            return false;
+        }
+        let (Some(brain), Some(since)) = (self.brain.clone(), self.since) else { return false };
+        let Ok(entries) = std::fs::read_dir(&brain) else { return false };
+        // At most MAX_SCAN conversations not seen yet, each look: the ones seen don't count.
+        let mut fresh = 0;
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if self.looked.contains(&name) || self.firsts.contains_key(&name) || self.spawns.iter().any(|s| s.conversation.as_deref() == Some(name.as_str())) {
+                continue;
+            }
+            if fresh >= MAX_SCAN {
+                break;
+            }
+            fresh += 1;
+            let Ok(meta) = entry.metadata() else { continue };
+            let born = meta.created().or_else(|_| meta.modified()).ok();
+            if !meta.is_dir() || born.is_some_and(|b| b < since) {
+                self.looked.insert(name);
+                continue;
+            }
+            let log = entry.path().join(".system_generated").join("logs").join("transcript.jsonl");
+            // Not written yet: looked at again next time.
+            let Some(first) = first_line(&log) else { continue };
+            match sender_of(&first) {
+                Some(_) if self.firsts.len() < MAX_FIRSTS => {
+                    self.firsts.insert(name, first);
+                }
+                _ => {
+                    self.looked.insert(name);
+                }
+            }
+        }
+        let mut names: Vec<String> = self.firsts.keys().cloned().collect();
+        names.sort();
+        let mut added = false;
+        for name in names {
+            let Some(sender) = self.firsts.get(&name).and_then(sender_of).map(str::to_string) else { continue };
+            let Some(p) = self.spawns.iter().position(|s| wanted(s) && s.conversation.as_deref() == Some(sender.as_str())) else { continue };
+            let Some(first) = self.firsts.remove(&name) else { continue };
+            self.looked.insert(name.clone());
+            let role = self.spawns[p].claim(first_prompt(&first), None);
+            let parent_row = self.spawns[p].row.clone();
+            let title = role.clone().or_else(|| prompt_title(&first)).unwrap_or_else(|| t("Agent"));
+            let row = format!("agy-{}-{name}", self.mark());
+            let made = self.agents.upsert(&row, || AgentRow::new(row.as_str(), PROVIDER, &title));
+            made.parent = Some(parent_row.clone());
+            made.now = Some(Activity::thinking());
+            made.can_ask = true;
+            made.can_stop = true;
+            let log = brain.join(&name).join(".system_generated").join("logs").join("transcript.jsonl");
+            let mut spawn = Spawn::new(u64::MAX, 0, row, Some(name), role, Some(log));
+            spawn.parent = Some(parent_row);
+            self.spawns.push(spawn);
+            added = true;
+        }
+        added
+    }
+
+    /// The subagents that answered while subagents of their own work: each
+    /// says how many of those finished, and is done once they all are (or,
+    /// when some never showed, a moment after it answered). A Stop agy never
+    /// confirmed is taken back. Whether a row changed.
+    fn settle(&mut self) -> bool {
+        let mut changed = false;
+        for i in 0..self.spawns.len() {
+            let id = self.spawns[i].row.clone();
+            if self.agents.get(&id).is_none_or(|r| r.state.is_final()) {
+                continue;
+            }
+            if self.spawns[i].stop_asked.is_some_and(|at| at.elapsed() >= STOP_WAIT) {
+                self.spawns[i].stop_asked = None;
+                if let Some(row) = self.agents.touch(&id) {
+                    row.stopping = false;
+                    changed = true;
+                }
+            }
+            let Some(since) = self.spawns[i].waiting_since else { continue };
+            let kids: Vec<&Spawn> = self.spawns.iter().filter(|s| s.parent.as_deref() == Some(id.as_str())).collect();
+            let done = kids.iter().filter(|k| self.agents.get(&k.row).is_some_and(|r| r.state.is_final())).count();
+            let open = kids.len() - done;
+            let missing = self.spawns[i].roles.len().saturating_sub(kids.len());
+            let total = kids.len() + missing;
+            if open > 0 || (missing > 0 && since.elapsed() < CHILD_GRACE) {
+                let now = Activity::new("agents", format!("{done}/{total}"));
+                if self.agents.get(&id).is_some_and(|r| r.now.as_ref() != Some(&now)) {
+                    if let Some(row) = self.agents.touch(&id) {
+                        row.now = Some(now);
+                        changed = true;
+                    }
+                }
+            } else if let Some(row) = self.agents.touch(&id) {
+                row.end(AgentState::Done, None);
+                row.can_stop = false;
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// The step that started subagents failed: they never ran.
@@ -1313,33 +1922,66 @@ impl Subagents {
         });
     }
 
-    /// The run is over: the subagents still open end as it did.
+    /// agy ended (`state`: as its turn did): no subagent outlives it. One
+    /// still at work was cut off, never done: it failed, and the island
+    /// offers Resume (`ended_by`); stopped with the user's Stop.
     fn run_ended(&mut self, state: AgentState) {
-        let error = if state == AgentState::Failed { tf("{agent} ended", &[("agent", "Antigravity CLI")]) } else { String::new() };
+        let (state, error) = match state {
+            AgentState::Stopped => (AgentState::Stopped, String::new()),
+            _ => (AgentState::Failed, tf("{agent} ended", &[("agent", "Antigravity CLI")])),
+        };
         if self.agents.open() > 0 {
             self.agents.end_open(state, &error);
         }
         let ids: Vec<String> = self.agents.ids().collect();
         for id in ids {
-            let needs_update = self.agents.get(&id).is_some_and(|r| {
-                r.can_stop
-                    || (state != AgentState::Done && r.can_ask)
-                    || (state != AgentState::Done && r.talk.as_ref().is_some_and(AgentTalk::pending))
-            });
+            let needs_update = self
+                .agents
+                .get(&id)
+                .is_some_and(|r| r.can_stop || r.stopping || (r.state == AgentState::Stopped && r.can_ask) || r.talk.as_ref().is_some_and(AgentTalk::pending));
             if !needs_update {
                 continue;
             }
             if let Some(row) = self.agents.touch(&id) {
                 row.can_stop = false;
-                if state != AgentState::Done {
+                row.stopping = false;
+                // Stopped, it can't be asked again; cut off or done, a later turn can.
+                if row.state == AgentState::Stopped {
                     row.can_ask = false;
-                    if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
-                        talk.failed = Some(if error.is_empty() { t("The task was stopped.") } else { error.clone() });
-                    }
+                }
+                if let Some(talk) = row.talk.as_mut().filter(|t| t.pending()) {
+                    talk.failed = Some(if error.is_empty() { t("The task was stopped.") } else { error.clone() });
                 }
             }
         }
     }
+}
+
+/// Whether `text` names `name` as a whole: "w-1" in "w-1: [done]" or
+/// "\"w-1\"", not in "w-10" nor "xw-1".
+fn names(text: &str, name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let part = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '-' || c == '_');
+    text.match_indices(name).any(|(at, _)| !part(text[..at].chars().next_back()) && !part(text[at + name.len()..].chars().next()))
+}
+
+/// `text` with every whole `from` (`names`) made `to`.
+fn replace_whole(text: &str, from: &str, to: &str) -> String {
+    let part = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '-' || c == '_');
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    for (at, _) in text.match_indices(from) {
+        if at < last || part(text[..at].chars().next_back()) || part(text[at + from.len()..].chars().next()) {
+            continue;
+        }
+        out.push_str(&text[last..at]);
+        out.push_str(to);
+        last = at + from.len();
+    }
+    out.push_str(&text[last..]);
+    out
 }
 
 /// Extracts `(sender, content)` from an agy `system_message` step (`[Message] ... sender=<id> ... content=<msg>`).
@@ -1431,6 +2073,18 @@ struct Run {
     context_used: Option<u64>,
     /// The subagents its steps delegated to.
     subagents: Subagents,
+    /// The steps of the chat's own conversation still going, and when it was last heard.
+    open_steps: HashSet<u64>,
+    last_main: Option<Instant>,
+    /// agy's stream showed a plan of the chat's own: a plan lumo-hook hands
+    /// over while subagents work is that one again, or one of theirs (`release_plans`).
+    stream_plans: bool,
+    /// agy, going on with the subagents after the turn's answer (`agy_turn`).
+    agy: Option<Box<Agy>>,
+    /// agy's input is open (`drive` says, for `leave`).
+    agy_open: bool,
+    /// What agy writes by itself, between two messages of the chat (`linger`).
+    own: bool,
 }
 
 /// The tokens a result's `usage` counts: what the model read (cached or not,
@@ -1505,6 +2159,53 @@ fn transcript_context_tokens(conversation_id: &str) -> Option<u64> {
 }
 
 impl Run {
+    /// What agy writes by itself while `subagents` work, in `conversation`.
+    fn lingering(subagents: Subagents, conversation: &str) -> Run {
+        Run { subagents, conversation: Some(conversation.to_string()), own: true, ..Run::default() }
+    }
+
+    /// The same, after what it wrote went to the chat.
+    fn next_turn(&mut self) -> Run {
+        Run {
+            subagents: std::mem::take(&mut self.subagents),
+            conversation: self.conversation.take(),
+            plan_seen: self.plan_seen.take(),
+            stream_plans: self.stream_plans,
+            own: true,
+            ..Run::default()
+        }
+    }
+
+    /// A step of the chat's own conversation began, or ended.
+    fn main_step(&mut self, index: u64, done: bool) {
+        if done {
+            self.open_steps.remove(&index);
+        } else {
+            self.open_steps.insert(index);
+        }
+        self.last_main = Some(Instant::now());
+    }
+
+    /// Writing: a step of its own still going.
+    fn writing(&self) -> bool {
+        !self.open_steps.is_empty() || !self.pending.is_empty()
+    }
+
+    /// Not writing, and quiet for QUIET_ANSWER.
+    fn idle(&self) -> bool {
+        !self.writing() && self.last_main.is_none_or(|at| at.elapsed() >= QUIET_ANSWER)
+    }
+
+    /// Its answer is written, all its steps done, quiet for `quiet`, while
+    /// its subagents work: agy waits for them.
+    fn answered_with_agents(&self, quiet: Duration) -> bool {
+        self.result.is_none()
+            && !self.shown.trim().is_empty()
+            && !self.writing()
+            && self.last_main.is_some_and(|at| at.elapsed() >= quiet)
+            && self.subagents.spawns_open()
+    }
+
     /// Takes one line; true when the visible text changed.
     fn feed(&mut self, line: &[u8]) -> bool {
         let Ok(frame) = serde_json::from_slice::<Value>(line) else { return false };
@@ -1558,24 +2259,28 @@ impl Run {
         let index = v["step_index"].as_u64().unwrap_or(u64::MAX);
         // A step ends DONE, or ERROR (a tool refused or failed).
         let done = matches!(v["state"].as_str(), Some("DONE" | "ERROR"));
-        // A step that starts subagents: a row for each; the answer waits on them.
+        // The chat's own conversation: its subagents' messages to it are their reports.
+        if self.subagents.main.is_none() && v.get("subagent_info").is_none_or(Value::is_null) {
+            self.subagents.main = v["conversation_id"].as_str().map(str::trim).filter(|c| safe_id(c).is_some()).map(str::to_string);
+        }
+        // A step that starts subagents (step_type "subagent", or a tool's
+        // step that names them): a row for each, and none for the step itself.
         if let Some(list) = v["subagent_info"]["subagents"].as_array().filter(|a| !a.is_empty()) {
             self.subagents.spawned(index, list);
             if v["state"] == "ERROR" {
                 self.subagents.spawn_failed(index, error_text(&v["error"]).or_else(|| error_text(&v["subagent_info"]["error"])));
             }
-            if v["step_type"] == "subagent" || v.get("tool_info").is_none() {
-                if done {
-                    self.finished_tool(index);
-                    // Started, not finished: the answer waits on them.
-                    if self.subagents.spawns_open() {
-                        self.set_activity(Activity::new("subtask", ""));
-                    }
-                } else {
-                    self.started_tool(index, Activity::new("subtask", ""));
+            if done {
+                self.finished_tool(index);
+                // Started, not finished: they work on.
+                if self.subagents.spawns_open() {
+                    self.set_activity(Activity::new("agents", ""));
                 }
-                return false;
+            } else {
+                self.started_tool(index, Activity::new("subtask", ""));
             }
+            self.main_step(index, done);
+            return false;
         }
         // A subagent at work: its own steps are its row's, not the answer's.
         if v.get("subagent_info").is_some_and(|s| !s.is_null()) {
@@ -1587,6 +2292,7 @@ impl Run {
             }
             return false;
         }
+        self.main_step(index, done);
         match v["step_type"].as_str() {
             Some("agent_response") => {
                 let text = v["text_delta"].as_str().unwrap_or("");
@@ -1672,7 +2378,7 @@ impl Run {
             Some("system_message") => {
                 self.subagents.system_reply(v);
                 if self.subagents.spawns_open() {
-                    self.set_activity(Activity::new("subtask", ""));
+                    self.set_activity(Activity::new("agents", ""));
                 }
                 false
             }
@@ -1715,10 +2421,13 @@ impl Run {
             Value::String(s) => serde_json::from_str::<Value>(s).unwrap_or(Value::Null),
             v => v.clone(),
         };
-        if !params["plan"].as_array().is_some_and(|p| !p.is_empty()) || self.plan_seen.as_ref() == Some(&params) {
+        // A subagent's plan (`agent`) is its row's, never the chat's.
+        let subagent = params["agent"].as_str().is_some_and(|a| !a.trim().is_empty());
+        if subagent || !params["plan"].as_array().is_some_and(|p| !p.is_empty()) || self.plan_seen.as_ref() == Some(&params) {
             return;
         }
         self.plan_seen = Some(params.clone());
+        self.stream_plans = true;
         self.plan = Some(params);
     }
 
@@ -1777,6 +2486,69 @@ impl Drop for AtWork {
     }
 }
 
+/// The island chats whose agy has subagents at work.
+static WITH_AGENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Chat `chat`'s agy has subagents at work (`open`), or none.
+fn with_agents(chat: &str, open: bool) {
+    if chat.is_empty() {
+        return;
+    }
+    let mut all = WITH_AGENTS.lock().unwrap_or_else(|e| e.into_inner());
+    let at = all.iter().position(|c| c == chat);
+    match (open, at) {
+        (true, None) => all.push(chat.to_string()),
+        (false, Some(i)) => {
+            all.remove(i);
+        }
+        _ => {}
+    }
+}
+
+fn has_agents(chat: &str) -> bool {
+    WITH_AGENTS.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|c| c == chat)
+}
+
+/// The plans lumo-hook handed over while the chat's subagents work, by chat, with when.
+static HELD_PLANS: Mutex<Vec<(String, Value, Instant)>> = Mutex::new(Vec::new());
+/// How long such a plan waits: the subagent that gave it has its transcript read by then.
+const PLAN_HOLD: Duration = Duration::from_millis(4500);
+/// The most plans held.
+const MAX_HELD_PLANS: usize = 64;
+
+fn hold_plan(chat: &str, input: Value) {
+    let mut all = HELD_PLANS.lock().unwrap_or_else(|e| e.into_inner());
+    if all.len() >= MAX_HELD_PLANS {
+        all.remove(0);
+    }
+    all.push((chat.to_string(), input, Instant::now()));
+}
+
+/// The plans held for chat `chat` that are its own (`all`: every one held,
+/// else those held PLAN_HOLD): none that agy's stream already showed as the
+/// chat's (it shows them), none a subagent's row has as its own.
+fn release_plans(chat: &str, state: &Run, all: bool) -> Vec<Value> {
+    if chat.is_empty() {
+        return Vec::new();
+    }
+    let ripe: Vec<Value> = {
+        let mut held = HELD_PLANS.lock().unwrap_or_else(|e| e.into_inner());
+        let (ripe, keep): (Vec<_>, Vec<_>) = held.drain(..).partition(|(c, _, at)| c == chat && (all || at.elapsed() >= PLAN_HOLD));
+        *held = keep;
+        ripe.into_iter().map(|(_, input, _)| input).collect()
+    };
+    if state.stream_plans {
+        return Vec::new();
+    }
+    let agents = &state.subagents.agents;
+    ripe.into_iter()
+        .filter(|input| {
+            let steps = chat_agents::plan_of(input);
+            !agents.ids().any(|id| agents.get(&id).is_some_and(|r| r.plan.is_some() && r.plan == steps))
+        })
+        .collect()
+}
+
 /// The chat an update_plan from lumo-hook belongs to: the one it names
 /// (`LUMO_CHAT_ID`), else the only chat agy is answering. With none named and
 /// several (or none) at work, nobody: the plan never lands in the chat on
@@ -1800,9 +2572,17 @@ pub fn serve_plan(app: &AppHandle, request: &Value) -> Value {
     if !input["plan"].as_array().is_some_and(|p| !p.is_empty()) {
         return json!({ "error": "The plan needs at least one step." });
     }
+    // A subagent's own plan: its row shows it (read from its transcript), never the chat.
+    if input["agent"].as_str().is_some_and(|a| !a.trim().is_empty()) {
+        return json!({ "text": "Plan shown to the user." });
+    }
     let named = request["chat"].as_str().unwrap_or("");
     let at_work = AT_WORK.lock().unwrap_or_else(|e| e.into_inner()).clone();
     match plan_chat(named, &at_work) {
+        // Its subagents at work: theirs come this way too, without `agent`
+        // when one forgets it, and lumo-hook can't say whose it is. Held a
+        // moment, it goes to the chat only if it is none of theirs (`release_plans`).
+        Some(chat) if has_agents(&chat) => hold_plan(&chat, input.clone()),
         Some(chat) => emit_plan(app, &chat, "update_plan", input.clone()),
         None => crate::log::line("antigravity: a plan naming no chat, with no single chat at work, left out"),
     }
@@ -1868,48 +2648,71 @@ fn result_error(error: &str) -> String {
     }
 }
 
-/// Runs agy headless once in `dir`, blocking. `on_text` gets the visible text as
-/// it grows, `on_activity` what agy is doing each time it changes, `on_file`
-/// each file a tool step read or wrote once it finished, `on_plan` each plan
-/// it gives Lumo's update_plan tool, `tell` every line (a sign of life) and
-/// the subagents it delegates to. Stop ends the CLI and its children; the
-/// run so far is returned, `stopped`.
-#[allow(clippy::too_many_arguments)]
-fn run(
-    exe: PathBuf,
-    args: Vec<String>,
-    input: String,
-    dir: PathBuf,
-    chat_id: &str,
-    stop: Arc<Stop>,
-    on_text: impl FnMut(&str),
-    on_activity: impl FnMut(&Activity),
-    on_file: impl FnMut(&FileTouch),
-    on_plan: impl FnMut(&Value),
-    tell: &Tell,
-) -> Result<Run, String> {
-    run_with_subagents(exe, args, input, dir, chat_id, stop, on_text, on_activity, on_file, on_plan, tell, None)
+/// agy at work for a chat: the process, its input (open while it may be
+/// told more: a message, a subagent to stop) and its output, by lines.
+struct Agy {
+    child: std::process::Child,
+    stdin: Option<std::process::ChildStdin>,
+    /// When its input was closed: it ends by itself, or is ended AFTER_RESULT later.
+    closed_at: Option<Instant>,
+    /// Turns that ended before their result (`Ended::Early`): results still to come.
+    owed: usize,
+    rx: mpsc::Receiver<Vec<u8>>,
+    /// The first 64 KB of its stderr, once it closed.
+    err_text: mpsc::Receiver<String>,
+    /// The agents the island asked to stop, not passed on yet.
+    stop_requests: Arc<Mutex<Vec<String>>>,
+    _stopper: Option<StopperGuard>,
+    /// The island chat it answers ("" for none).
+    chat: String,
+    /// What it was started with but its conversation: another message of the
+    /// chat with the same key may go to it.
+    key: String,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run_with_subagents(
-    exe: PathBuf,
-    args: Vec<String>,
-    input: String,
-    dir: PathBuf,
-    chat_id: &str,
-    stop: Arc<Stop>,
-    mut on_text: impl FnMut(&str),
-    mut on_activity: impl FnMut(&Activity),
-    mut on_file: impl FnMut(&FileTouch),
-    mut on_plan: impl FnMut(&Value),
-    tell: &Tell,
-    seeded: Option<Subagents>,
-) -> Result<Run, String> {
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+impl std::fmt::Debug for Agy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Agy").field("chat", &self.chat).field("open", &self.stdin.is_some()).finish()
+    }
+}
 
-    let mut cmd = Command::new(&exe);
-    cmd.args(&args).current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+impl Agy {
+    /// Its input closes: agy ends once it is done.
+    fn close_input(&mut self) {
+        if self.stdin.take().is_some() {
+            self.closed_at = Some(Instant::now());
+        }
+    }
+
+    /// Writes `line` on its input; false when it is closed or gone.
+    fn write(&mut self, line: &str) -> bool {
+        let Some(pipe) = self.stdin.as_mut() else { return false };
+        pipe.write_all(line.as_bytes()).and_then(|_| pipe.flush()).is_ok()
+    }
+}
+
+/// The key of a run with `args`: all of them but the conversation it resumes.
+fn agy_key(exe: &Path, args: &[String], extra: &str) -> String {
+    let mut parts = vec![exe.to_string_lossy().to_string(), extra.to_string()];
+    let mut skip = false;
+    for a in args {
+        if std::mem::take(&mut skip) {
+            continue;
+        }
+        if a == "--conversation" {
+            skip = true;
+            continue;
+        }
+        parts.push(a.clone());
+    }
+    parts.join("\n")
+}
+
+/// Starts agy headless in `dir` for the island chat `chat_id`.
+fn start_agy(exe: &Path, args: &[String], dir: &Path, chat_id: &str, key: String) -> Result<Agy, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let mut cmd = Command::new(exe);
+    cmd.args(args).current_dir(dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
     // Which chat the island's tools are called from (lumo-hook's MCP server, island_tools.rs).
@@ -1921,13 +2724,7 @@ fn run_with_subagents(
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
     platform::chat_ends_with_lumo(&child);
-
-    // Open until the turn's result: closing it ends agy's stream-json input.
-    let mut stdin = child.stdin.take();
-    if let Some(pipe) = stdin.as_mut() {
-        let _ = pipe.write_all(input.as_bytes());
-        let _ = pipe.flush();
-    }
+    let stdin = child.stdin.take();
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let stderr = child.stderr.take();
     let (err_tx, err_text) = mpsc::channel::<String>();
@@ -1941,7 +2738,6 @@ fn run_with_subagents(
         }
         let _ = err_tx.send(s);
     });
-
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
@@ -1970,15 +2766,8 @@ fn run_with_subagents(
         }
         let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
-
-    let mut last_emit = Instant::now() - DELTA_INTERVAL;
-    let mut unsent = false;
-    let mut state = Run { subagents: seeded.unwrap_or_default(), ..Run::default() };
-    let mut last_look = Instant::now();
-    // When the turn's result came.
-    let mut result_at: Option<Instant> = None;
     let stop_requests: Arc<Mutex<Vec<String>>> = Arc::default();
-    let _stopper_guard = if !chat_id.is_empty() {
+    let stopper = (!chat_id.is_empty()).then(|| {
         let q = stop_requests.clone();
         let id = chat_agents::register_stopper(
             chat_id,
@@ -1987,85 +2776,223 @@ fn run_with_subagents(
                 Ok(())
             }),
         );
-        Some(StopperGuard { chat: chat_id.to_string(), id })
-    } else {
-        None
-    };
+        StopperGuard { chat: chat_id.to_string(), id }
+    });
+    Ok(Agy { child, stdin, closed_at: None, owed: 0, rx, err_text, stop_requests, _stopper: stopper, chat: chat_id.to_string(), key })
+}
+
+/// Where what a turn reads goes.
+struct Sink<'a> {
+    text: &'a mut dyn FnMut(&str),
+    activity: &'a mut dyn FnMut(&Activity),
+    file: &'a mut dyn FnMut(&FileTouch),
+    plan: &'a mut dyn FnMut(&Value),
+}
+
+/// How reading a turn ended.
+#[derive(Debug, PartialEq)]
+enum Ended {
+    /// Its result came: with subagents still at work, agy goes on (`may_linger`).
+    Result,
+    /// No result yet, but the answer is written and agy waits for its
+    /// subagents (`answered_with_agents`): it goes on with them.
+    Early,
+    /// Stop: agy is to be ended.
+    Stopped,
+    /// agy's output closed (it ended), or it was ended AFTER_RESULT past its input.
+    Closed,
+    /// `leave` said to.
+    Left,
+}
+
+/// How long the answer stays quiet, all its steps done and its subagents at
+/// work, before it counts as written: agy waits for them (they wake it with
+/// their messages), and the user can write again meanwhile.
+const QUIET_ANSWER: Duration = Duration::from_secs(4);
+/// How long agy still going with its subagents has to take a message up:
+/// it says so at once (a step of its conversation for the message).
+const NOT_TAKEN: Duration = Duration::from_secs(45);
+
+/// Reads agy's output for one turn (or, lingering, for what it does by
+/// itself) into `state`, until it ends as `Ended` says. `may_linger`: a
+/// result (or an answer, `Early`) with subagents at work leaves agy going.
+/// `leave`: asked each time round, to leave at once.
+#[allow(clippy::too_many_arguments)]
+fn drive(agy: &mut Agy, state: &mut Run, stop: &Stop, may_linger: bool, sink: &mut Sink, tell: &Tell, leave: &mut dyn FnMut(&Run) -> bool) -> Ended {
+    let mut last_emit = Instant::now() - DELTA_INTERVAL;
+    let mut unsent = false;
+    let mut last_look = Instant::now();
     loop {
         if stop.is_stopped() && state.result.is_none() {
-            drop(stdin.take());
-            kill_tree(&mut child);
-            state.stopped = true;
-            state.subagents.run_ended(AgentState::Stopped);
-            tell(&mut state.subagents.agents, false);
-            return Ok(state);
+            return Ended::Stopped;
         }
-        let requested: Vec<String> = {
-            let mut q = stop_requests.lock().unwrap_or_else(|e| e.into_inner());
-            std::mem::take(&mut *q)
-        };
-        if !requested.is_empty() {
+        // The agents the island asked to stop: agy is asked to, while it can be told.
+        let requested: Vec<String> = std::mem::take(&mut *agy.stop_requests.lock().unwrap_or_else(|e| e.into_inner()));
+        if !requested.is_empty() && agy.stdin.is_some() {
             let mut changed = false;
             for agent_id in requested {
                 if let Some(line) = state.subagents.stop_one(&agent_id) {
-                    changed = true;
-                    if let Some(pipe) = stdin.as_mut() {
-                        let _ = pipe.write_all(line.as_bytes());
-                        let _ = pipe.flush();
-                    }
+                    changed |= agy.write(&line);
                 }
             }
             if changed {
                 tell(&mut state.subagents.agents, false);
             }
         }
-        // The answer is in: agy gets a moment to end, then it and what it
+        // Its input closed: agy gets a moment to end, then it and what it
         // started are ended, at once on Stop. A process left holding its
         // output would otherwise keep the turn, and Stop, waiting for ever.
-        if done_waiting(result_at, stop.is_stopped(), claude_code::AFTER_RESULT) {
-            kill_tree(&mut child);
-            break;
+        if done_waiting(agy.closed_at, stop.is_stopped(), claude_code::AFTER_RESULT) {
+            kill_tree(&mut agy.child);
+            return Ended::Closed;
         }
-        // The subagents' own work, from their transcripts.
+        // The subagents' own work, from their transcripts, and the plans
+        // held meanwhile (`serve_plan`).
         if last_look.elapsed() >= TRANSCRIPT_POLL {
             last_look = Instant::now();
             if state.subagents.read_transcripts().0 {
                 tell(&mut state.subagents.agents, true);
                 for file in state.take_files() {
-                    on_file(&file);
+                    (sink.file)(&file);
                 }
             }
+            for plan in release_plans(&agy.chat, state, false) {
+                (sink.plan)(&plan);
+            }
+            with_agents(&agy.chat, state.subagents.spawns_open());
         }
-        match rx.recv_timeout(STOP_POLL) {
+        // The answer is written and agy waits for its subagents: it goes on with them.
+        if may_linger && state.result.is_none() && state.answered_with_agents(QUIET_ANSWER) {
+            if unsent {
+                (sink.text)(&state.shown);
+            }
+            return Ended::Early;
+        }
+        match agy.rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
-                tell(&mut state.subagents.agents, true);
-                if state.result.is_some() && result_at.is_none() {
-                    // The turn is over: agy may end.
-                    drop(stdin.take());
-                    result_at = Some(Instant::now());
+                // The result of a turn that ended before it: in a turn of the
+                // user's, none of its own (lingering, it ends what agy wrote by itself).
+                if state.result.is_some() && agy.owed > 0 {
+                    agy.owed -= 1;
+                    if !state.own {
+                        state.result = None;
+                    }
                 }
+                tell(&mut state.subagents.agents, true);
                 let activity = state.take_activity();
-                if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) {
+                if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL || state.result.is_some()) {
                     unsent = false;
                     last_emit = Instant::now();
-                    on_text(&state.shown);
+                    (sink.text)(&state.shown);
                 }
                 if let Some(activity) = activity {
-                    on_activity(&activity);
+                    (sink.activity)(&activity);
                 }
                 for file in state.take_files() {
-                    on_file(&file);
+                    (sink.file)(&file);
                 }
                 if let Some(plan) = state.take_plan() {
-                    on_plan(&plan);
+                    (sink.plan)(&plan);
+                }
+                if state.result.is_some() && agy.closed_at.is_none() {
+                    // Its subagents work on: agy too, its input open for what comes next.
+                    if may_linger && state.subagents.spawns_open() {
+                        return Ended::Result;
+                    }
+                    // The turn is over: agy may end.
+                    agy.close_input();
                 }
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            // Nothing more to read for now: it may be left.
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                state.agy_open = agy.stdin.is_some();
+                if leave(state) {
+                    return Ended::Left;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Ended::Closed,
         }
     }
-    drop(stdin);
+}
+
+/// Runs agy headless once in `dir`, blocking. `on_text` gets the visible text as
+/// it grows, `on_activity` what agy is doing each time it changes, `on_file`
+/// each file a tool step read or wrote once it finished, `on_plan` each plan
+/// it gives Lumo's update_plan tool, `tell` every line (a sign of life) and
+/// the subagents it delegates to. Stop ends the CLI and its children; the
+/// run so far is returned, `stopped`.
+#[allow(clippy::too_many_arguments)]
+fn run(
+    exe: PathBuf,
+    args: Vec<String>,
+    input: String,
+    dir: PathBuf,
+    chat_id: &str,
+    stop: Arc<Stop>,
+    mut on_text: impl FnMut(&str),
+    mut on_activity: impl FnMut(&Activity),
+    mut on_file: impl FnMut(&FileTouch),
+    mut on_plan: impl FnMut(&Value),
+    tell: &Tell,
+) -> Result<Run, String> {
+    let agy = start_agy(&exe, &args, &dir, chat_id, String::new())?;
+    let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+    agy_turn(agy, input, Run::default(), &stop, false, &mut sink, tell, None)
+}
+
+/// One turn of agy (`agy`: started for it, or one still at work for the
+/// chat): `input` goes on its input, its output is read (`drive`) into a run
+/// that starts from `state`. With `may_linger`, a turn that ends while its
+/// subagents work leaves agy going with them: the run carries it (`agy`).
+/// `again`: agy was still going with its subagents; should it never take
+/// the message up (nothing of the chat's own conversation comes in
+/// NOT_TAKEN), it ends and `again` starts a new one for it.
+#[allow(clippy::too_many_arguments)]
+fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger: bool, sink: &mut Sink, tell: &Tell, again: Option<&dyn Fn() -> Result<Agy, String>>) -> Result<Run, String> {
+    let mut ended = Ended::Left;
+    if agy.write(&input) {
+        let sent = Instant::now();
+        let mut not_taken = |run: &Run| again.is_some() && run.last_main.is_none() && run.result.is_none() && sent.elapsed() >= NOT_TAKEN;
+        ended = drive(&mut agy, &mut state, stop, may_linger, sink, tell, &mut not_taken);
+    }
+    if ended == Ended::Left {
+        // It never took the message (or could not be told): a new agy answers it,
+        // and what the old one still had at work ends with it.
+        agy.close_input();
+        kill_tree(&mut agy.child);
+        state.subagents.run_ended(AgentState::Failed);
+        tell(&mut state.subagents.agents, false);
+        let Some(again) = again else { return Err(t("Antigravity CLI didn't answer.")) };
+        crate::log::line("antigravity: agy at work with its subagents did not take the message; a new one answers it");
+        return agy_turn(again()?, input, Run { subagents: std::mem::take(&mut state.subagents), ..Run::default() }, stop, may_linger, sink, tell, None);
+    }
+    if ended == Ended::Stopped {
+        agy.close_input();
+        kill_tree(&mut agy.child);
+        state.stopped = true;
+        state.subagents.run_ended(AgentState::Stopped);
+        tell(&mut state.subagents.agents, false);
+        with_agents(&agy.chat, false);
+        return Ok(state);
+    }
+    if matches!(ended, Ended::Result | Ended::Early) {
+        // The answer is in, its subagents work on: so does agy, after it.
+        if ended == Ended::Early {
+            state.result = Some(Ok(String::new()));
+            agy.owed += 1;
+        }
+        state.agy = Some(Box::new(agy));
+        return Ok(state);
+    }
+    finish(agy, &mut state, sink, tell)?;
+    Ok(state)
+}
+
+/// agy ended (or is ended): what its subagents wrote last, their end, and why
+/// a run without a result failed.
+fn finish(mut agy: Agy, state: &mut Run, sink: &mut Sink, tell: &Tell) -> Result<(), String> {
+    agy.close_input();
     // What they wrote last (their answer comes a moment after their report), to the end.
     for _ in 0..64 {
         if !state.subagents.read_transcripts().1 {
@@ -2073,20 +3000,24 @@ fn run_with_subagents(
         }
     }
     for file in state.take_files() {
-        on_file(&file);
+        (sink.file)(&file);
     }
-    // The turn is over: a subagent can't outlive it.
+    for plan in release_plans(&agy.chat, state, true) {
+        (sink.plan)(&plan);
+    }
+    // agy is over: a subagent can't outlive it.
     state.subagents.run_ended(if matches!(state.result, Some(Ok(_))) { AgentState::Done } else { AgentState::Failed });
     tell(&mut state.subagents.agents, false);
+    with_agents(&agy.chat, false);
     let status = if state.result.is_some() {
         // Ended already, or its output closed with the answer in: it may not
         // be gone yet, and is not waited for past AFTER_RESULT.
-        claude_code::end_after_result(&mut child, &stop, claude_code::AFTER_RESULT)
+        claude_code::end_after_result(&mut agy.child, &Stop::default(), claude_code::AFTER_RESULT)
     } else {
-        child.wait().ok()
+        agy.child.wait().ok()
     };
     // A process agy left behind may still hold stderr: what was read by then.
-    let stderr = err_text.recv_timeout(STDERR_WAIT).unwrap_or_default();
+    let stderr = agy.err_text.recv_timeout(STDERR_WAIT).unwrap_or_default();
     state.denied += stderr_denials(&stderr);
     state.stderr_tail = stderr_tail(&stderr);
     if state.result.is_none() {
@@ -2101,7 +3032,233 @@ fn run_with_subagents(
     if let Some(used) = state.conversation.as_deref().and_then(transcript_context_tokens) {
         state.context_used = Some(used);
     }
-    Ok(state)
+    Ok(())
+}
+
+// ── agy going on with its subagents ──────────────────────────────────────────
+//
+// agy's subagents work in the background: the one that started them ends its
+// turn, and their messages wake it later. The chat's answer ends with the
+// turn (or once it is written and agy only waits, `Ended::Early`), and agy
+// goes on with them here, between two messages of the chat, as Claude Code
+// does (concepts/sotto-agenti-completo): their rows keep moving, what agy
+// writes when they wake it joins the chat (`own_answer`), Stop on a row
+// still reaches it. The chat's next message goes to it (`take_lingering`);
+// with other settings, it would end them: not without the user (WOULD_STOP).
+// Once its subagents are all done and it is quiet, its input closes and it ends.
+
+/// How long agy stays quiet with no subagent at work before its input closes.
+const LINGER_QUIET: Duration = Duration::from_secs(15);
+
+/// A chat's agy going on with its subagents.
+struct Lingering {
+    key: String,
+    conversation: String,
+    /// The chat's next message wants it (handed back on `back`), or the
+    /// chat ends it (`end`).
+    want: Arc<std::sync::atomic::AtomicBool>,
+    end: Arc<Stop>,
+    back: mpsc::Receiver<(Agy, Subagents)>,
+    /// Its subagents still at work.
+    open: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+static LINGERING: Mutex<Option<HashMap<String, Lingering>>> = Mutex::new(None);
+
+fn lingering<T>(f: impl FnOnce(&mut HashMap<String, Lingering>) -> T) -> T {
+    f(LINGERING.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new))
+}
+
+/// What the chat's next message finds of its agy: one to answer it (the
+/// same settings, the same conversation), handed back once agy is not
+/// writing by itself; `Err(WOULD_STOP)` when a new one would end subagents
+/// at work and the user did not say to; else nothing (one still going ends).
+fn take_lingering(chat_id: &str, key: &str, conversation: Option<&str>, stop: &Stop) -> Result<Option<(Agy, Subagents)>, String> {
+    let Some(l) = lingering(|all| all.remove(chat_id)) else { return Ok(None) };
+    let same = l.key == key && Some(l.conversation.as_str()) == conversation;
+    if !same {
+        let open = l.open.load(std::sync::atomic::Ordering::SeqCst);
+        if let Some(open) = chat_agents::in_the_way(chat_id, open) {
+            lingering(|all| all.insert(chat_id.to_string(), l));
+            return Err(chat_agents::would_stop(open));
+        }
+        l.end.stop();
+        return Ok(None);
+    }
+    l.want.store(true, std::sync::atomic::Ordering::SeqCst);
+    loop {
+        match l.back.recv_timeout(STOP_POLL) {
+            Ok(got) => return Ok(Some(got)),
+            // It ended meanwhile: a new one answers.
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(None),
+            Err(mpsc::RecvTimeoutError::Timeout) if stop.is_stopped() => {
+                l.want.store(false, std::sync::atomic::Ordering::SeqCst);
+                // Handed back just now: it goes on as it was.
+                if let Ok((agy, subagents)) = l.back.try_recv() {
+                    drop(l);
+                    return Ok(Some((agy, subagents)));
+                }
+                lingering(|all| all.insert(chat_id.to_string(), l));
+                return Ok(None);
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
+/// Ends the chat's agy still going with its subagents (a new chat, a deleted one, an edited question).
+pub fn close(chat_id: &str) {
+    if let Some(l) = lingering(|all| all.remove(chat_id)) {
+        l.end.stop();
+    }
+}
+
+/// agy goes on with its subagents for chat `chat_id`, in conversation
+/// `conversation`, on a thread of its own (`linger`).
+fn keep_going(app: &AppHandle, chat_id: &str, conversation: &str, agy: Agy, mut subagents: Subagents, tell: Tell) {
+    // Their turn is over: they work in the background.
+    let open = subagents.agents.open_ids();
+    for id in &open {
+        if let Some(row) = subagents.agents.touch(id) {
+            row.background = true;
+        }
+    }
+    tell(&mut subagents.agents, false);
+    let want = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let end = Arc::new(Stop::default());
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(open.len()));
+    let (tx, back) = mpsc::channel();
+    let l = Lingering { key: agy.key.clone(), conversation: conversation.to_string(), want: want.clone(), end: end.clone(), back, open: count.clone() };
+    if let Some(old) = lingering(|all| all.insert(chat_id.to_string(), l)) {
+        old.end.stop();
+    }
+    let app = app.clone();
+    let chat_id = chat_id.to_string();
+    let conversation = conversation.to_string();
+    std::thread::spawn(move || {
+        let events = chat::ChatEvents::new(&chat_id);
+        let mut on_text = |_: &str| {};
+        let mut on_activity = |_: &Activity| {};
+        let mut on_file = |file: &FileTouch| events.file(&app, file);
+        let mut on_plan = |plan: &Value| emit_plan(&app, &chat_id, "update_plan", plan.clone());
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let mut own = |text: &str| own_answer(&app, &chat_id, &conversation, text);
+        let subagents = linger(&chat_id, &conversation, agy, subagents, &tell, &want, end, &count, tx, &mut sink, &mut own);
+        if let Some(subagents) = subagents {
+            save_chat_subagents(&chat_id, &conversation, subagents);
+        }
+    });
+}
+
+/// agy going on with its subagents (`keep_going`): what it writes by itself
+/// goes to `own`, until the chat's next message wants it (then it goes back
+/// to it on `back`, with its subagents), the chat ends it (`end`), or it ends
+/// once quiet with none at work. Its subagents, when it ended.
+#[allow(clippy::too_many_arguments)]
+fn linger(
+    chat_id: &str,
+    conversation: &str,
+    mut agy: Agy,
+    subagents: Subagents,
+    tell: &Tell,
+    want: &std::sync::atomic::AtomicBool,
+    end: Arc<Stop>,
+    count: &std::sync::atomic::AtomicUsize,
+    back: mpsc::Sender<(Agy, Subagents)>,
+    sink: &mut Sink,
+    own: &mut dyn FnMut(&str),
+) -> Option<Subagents> {
+    use std::sync::atomic::Ordering;
+    let mut state = Run::lingering(subagents, conversation);
+    // What agy last wrote to the chat: a result that repeats it is no news.
+    let mut said = String::new();
+    let mut quiet = Instant::now();
+    loop {
+        let mut leave = |run: &Run| {
+            let open = run.subagents.spawns_open();
+            count.store(run.subagents.agents.open(), Ordering::SeqCst);
+            if open || !run.idle() {
+                quiet = Instant::now();
+            }
+            // Not while it writes by itself: the message goes once it is done.
+            run.agy_open && run.idle() && (want.load(Ordering::SeqCst) || (!open && quiet.elapsed() >= LINGER_QUIET))
+        };
+        let ended = drive(&mut agy, &mut state, &end, true, sink, tell, &mut leave);
+        // What it wrote by itself, woken by its subagents: to the chat.
+        if matches!(ended, Ended::Result | Ended::Early | Ended::Closed) {
+            if let Some(text) = own_text(&mut state, &mut said) {
+                own(&text);
+            }
+        }
+        match ended {
+            Ended::Result | Ended::Early => {
+                if ended == Ended::Early {
+                    agy.owed += 1;
+                }
+                state = state.next_turn();
+            }
+            Ended::Left if want.load(Ordering::SeqCst) && agy.stdin.is_some() => {
+                lingering(|all| {
+                    if all.get(chat_id).is_some_and(|l| Arc::ptr_eq(&l.end, &end)) {
+                        all.remove(chat_id);
+                    }
+                });
+                let _ = back.send((agy, std::mem::take(&mut state.subagents)));
+                return None;
+            }
+            // Nothing at work, all quiet: its input closes, and it ends.
+            Ended::Left => {
+                agy.close_input();
+                state = state.next_turn();
+            }
+            Ended::Stopped => {
+                agy.close_input();
+                kill_tree(&mut agy.child);
+                state.subagents.run_ended(AgentState::Stopped);
+                break;
+            }
+            Ended::Closed => {
+                let _ = finish(agy, &mut state, sink, tell);
+                break;
+            }
+        }
+    }
+    tell(&mut state.subagents.agents, false);
+    with_agents(chat_id, false);
+    // No message can go to it now: the next one starts agy again.
+    lingering(|all| {
+        if all.get(chat_id).is_some_and(|l| Arc::ptr_eq(&l.end, &end)) {
+            all.remove(chat_id);
+        }
+    });
+    Some(std::mem::take(&mut state.subagents))
+}
+
+/// What agy wrote by itself since it last went to the chat; None when it
+/// wrote nothing new (a result that repeats it).
+fn own_text(state: &mut Run, said: &mut String) -> Option<String> {
+    let text = match state.result.take() {
+        Some(Ok(text)) => chat::keep_lumo_lines(chat::turn_answer(&state.shown, &state.visible, &text), &state.said),
+        _ => state.shown.trim().to_string(),
+    };
+    let text = text.trim().to_string();
+    if text.is_empty() || text == *said || said.ends_with(&text) {
+        return None;
+    }
+    *said = text.clone();
+    Some(text)
+}
+
+/// What agy wrote by itself in the chat `chat_id`, woken by its subagents:
+/// it joins the chat's last answer, here (chat.rs `add_own`) and on the
+/// island (`chat-own-answer`), as Claude Code's do.
+fn own_answer(app: &AppHandle, chat_id: &str, conversation: &str, text: &str) {
+    let mut cli = None;
+    if let Some(chat) = tauri::Manager::try_state::<chat::Chats>(app).and_then(|c| c.find(chat_id)) {
+        chat.add_own(PROVIDER, Some(conversation), text);
+        cli = chat.cli_state();
+    }
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-own-answer", json!({ "chat": chat_id, "text": text, "session": conversation, "cli": cli }));
 }
 
 /// Whether a turn whose result came at `result_at` waited long enough for agy
@@ -2220,8 +3377,8 @@ fn rewrite_ask_ids(query: &str, subagents: Option<&Subagents>) -> String {
     let mut out = query.to_string();
     for spawn in &sub.spawns {
         let Some(target) = spawn.conversation.as_deref().or(spawn.name.as_deref()) else { continue };
-        if spawn.row != target && out.contains(&spawn.row) {
-            out = out.replace(&spawn.row, target);
+        if spawn.row != target && names(&out, &spawn.row) {
+            out = replace_whole(&out, &spawn.row, target);
         }
     }
     out
@@ -2249,14 +3406,13 @@ pub async fn send(
     // Only an Antigravity conversation: never a Claude Code session.
     let conversation = chat.cli_session_for(PROVIDER);
     let seeded_subagents = take_chat_subagents(chat.id(), conversation.as_deref());
-    let effective_query = rewrite_ask_ids(&query, seeded_subagents.as_ref());
     // Turns this conversation has not seen (another provider answered them, or
     // a message was edited) are carried over once, as text, with the instructions.
     let carried: Vec<Value> = if conversation.is_none() { turn.history.clone() } else { Vec::new() };
     // The turns another provider answered since this conversation last did:
     // they go in front of the question, and the conversation goes on.
     let unseen = chat.cli_unseen(PROVIDER);
-    let text = format!("{}{}", claude_code::catch_up(&unseen), claude_code::prompt(context.as_ref(), &carried, &chat.files(), &effective_query));
+    let text = format!("{}{}", claude_code::catch_up(&unseen), claude_code::prompt(context.as_ref(), &carried, &chat.files(), &query));
     let text = match conversation {
         Some(_) => text,
         None if chat.is_workshop() => with_workshop_instructions(&text),
@@ -2271,7 +3427,6 @@ pub async fn send(
     } else {
         text
     };
-    let input = user_event(&text);
     // This chat's folder of the inbox, or all of it with "Other chats' files" on.
     let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
     let work = claude_code::work_dir();
@@ -2279,7 +3434,10 @@ pub async fn send(
     // Lumo's plan tool, its email tools while the Email pill is on and Security
     // lets the AI read it (only during this turn), and the user's tools that are on (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
-    crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools, computer, browser);
+    let mail = crate::mail::ai_tools(app);
+    // What it starts with: the same, agy still going with its subagents answers this message too.
+    let key = agy_key(&exe, &args, &format!("{mail}|{tools}|{computer}|{browser}"));
+    crate::computer::agy_workspace(&work, mail, tools, computer, browser);
     let _mail = crate::mail::agent_turn();
     // The computer usable while this turn runs, each action asked for by Lumo.
     let computer_turn = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
@@ -2295,43 +3453,48 @@ pub async fn send(
     let _at_work = AtWork::start(&chat_id);
     // The subagents agy delegates to, and the turn's sign of life.
     let tell = chat_agents::teller(app, chat.id());
-    let state = tauri::async_runtime::spawn_blocking(move || {
+    let tell2 = tell.clone();
+    let conversation2 = conversation.clone();
+    let state = tauri::async_runtime::spawn_blocking(move || -> Result<Run, String> {
+        let conversation = conversation2;
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
         // its plan only while it has not called the tool.
         let emit = |tool: &str, input: Value| emit_plan(&app2, &chat_id, tool, input);
         let by_tool = std::cell::Cell::new(false);
         let mut plan_sent = String::new();
-        run_with_subagents(
-            exe,
-            args,
-            input,
-            work,
-            &chat_id,
-            stop,
-            |text| {
-                events.delta(&app2, text);
-                if let Some(list) = checklist(text).filter(|_| !by_tool.get()) {
-                    if list != plan_sent {
-                        emit("Checklist", json!({ "text": list }));
-                        plan_sent = list;
-                    }
+        // agy still going with its subagents answers it, else a new one.
+        let start = || start_agy(&exe, &args, &work, &chat_id, key.clone());
+        let (agy, seeded, reused) = match take_lingering(&chat_id, &key, conversation.as_deref(), &stop)? {
+            Some((agy, subagents)) => (agy, Some(subagents), true),
+            None => (start()?, seeded_subagents, false),
+        };
+        // Ask on a row names it by its row: agy knows it by its conversation.
+        let input = user_event(&rewrite_ask_ids(&text, seeded.as_ref()));
+        let mut on_text = |text: &str| {
+            events.delta(&app2, text);
+            if let Some(list) = checklist(text).filter(|_| !by_tool.get()) {
+                if list != plan_sent {
+                    emit("Checklist", json!({ "text": list }));
+                    plan_sent = list;
                 }
-            },
-            |activity| events.activity(&app2, activity),
-            |file| events.file(&app2, file),
-            |plan| {
-                by_tool.set(true);
-                emit("update_plan", plan.clone());
-            },
-            &tell,
-            seeded_subagents,
-        )
+            }
+        };
+        let mut on_activity = |activity: &Activity| events.activity(&app2, activity);
+        let mut on_file = |file: &FileTouch| events.file(&app2, file);
+        let mut on_plan = |plan: &Value| {
+            by_tool.set(true);
+            emit("update_plan", plan.clone());
+        };
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let state = Run { subagents: seeded.unwrap_or_default(), ..Run::default() };
+        agy_turn(agy, input, state, &stop, true, &mut sink, &tell2, reused.then_some(&start as &dyn Fn() -> Result<Agy, String>))
     })
     .await
-    .map_err(|e| e.to_string());
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
     // What the turn did on the computer, for under its answer (as Claude Code's).
-    let recap = computer_turn.and_then(|t| t.finish(matches!(&state, Ok(Ok(s)) if s.stopped)));
+    let recap = computer_turn.and_then(|t| t.finish(matches!(&state, Ok(s) if s.stopped)));
     let plain = chat::plain_question(true, context.as_ref(), &query);
     // It failed after using the computer: the turn is kept as an empty answer
     // that says why, so the recap of what was done on the screen is shown and
@@ -2342,8 +3505,8 @@ pub async fn send(
         Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
     };
     let mut state = match state {
-        Ok(Ok(state)) => state,
-        Ok(Err(e)) | Err(e) => return failed(e, recap),
+        Ok(state) => state,
+        Err(e) => return failed(e, recap),
     };
 
     // About how full the conversation is, for the chat's usage menu: agy does
@@ -2364,7 +3527,19 @@ pub async fn send(
         if computer {
             crate::computer::note_given(chat.id(), id, grid);
         }
-        save_chat_subagents(chat.id(), id, std::mem::take(&mut state.subagents));
+        match state.agy.take() {
+            // Its subagents work on, and agy with them.
+            Some(agy) => keep_going(app, chat.id(), id, *agy, std::mem::take(&mut state.subagents), tell.clone()),
+            None => save_chat_subagents(chat.id(), id, std::mem::take(&mut state.subagents)),
+        }
+    }
+    // No conversation to go on in: agy ends, and its subagents with it.
+    if let Some(mut agy) = state.agy.take() {
+        agy.close_input();
+        kill_tree(&mut agy.child);
+        state.subagents.run_ended(AgentState::Failed);
+        tell(&mut state.subagents.agents, false);
+        with_agents(chat.id(), false);
     }
     if state.stopped {
         let shown = state.shown.trim().to_string();
@@ -3316,8 +4491,8 @@ mod tests {
         assert_eq!(run.subagents.agents.open(), 2);
         assert_eq!(run.subagents.spawns[0].log, Some(PathBuf::from(r"C:\Users\me\.gemini\antigravity-cli\brain\sub\.system_generated\logs\transcript.jsonl")));
         run.feed(done_with(SPAWN_B, "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub-b/.system_generated/logs/transcript.jsonl").as_bytes());
-        // Both started: the answer coordinates them, it doesn't think.
-        assert_eq!(run.take_activity(), Some(Activity::new("subtask", "")));
+        // Both started: the answer waits for its agents, it doesn't think.
+        assert_eq!(run.take_activity(), Some(Activity::new("agents", "")));
         // A subagent's message wakes the answer: still so.
         run.feed(br#"{"event":"step_update","step_update":{"step_index":5,"state":"DONE","step_type":"system_message"}}"#);
         assert_eq!(run.take_activity(), None, "unchanged");
@@ -3327,6 +4502,145 @@ mod tests {
         assert_eq!(c.state, AgentState::Failed);
         run.subagents.run_ended(AgentState::Done);
         assert_eq!(run.subagents.agents.open(), 0);
+    }
+
+    /// A folder of agy's own for a test: `<temp>/<mark>/.gemini/antigravity-cli/brain`.
+    fn test_brain() -> PathBuf {
+        let brain = std::env::temp_dir().join(format!("lumo-agy-{}", chat_agents::run_mark())).join(".gemini").join("antigravity-cli").join("brain");
+        std::fs::create_dir_all(&brain).unwrap();
+        brain
+    }
+
+    /// The transcript of conversation `id` in `brain`, and its `log_uri`.
+    fn transcript_of(brain: &std::path::Path, id: &str) -> (PathBuf, String) {
+        let logs = brain.join(id).join(".system_generated").join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        let path = logs.join("transcript.jsonl");
+        let slashed = path.to_string_lossy().replace('\\', "/").replace(' ', "%20");
+        let uri = if slashed.starts_with('/') { format!("file://{slashed}") } else { format!("file:///{slashed}") };
+        (path, uri)
+    }
+
+    fn append(path: &std::path::Path, lines: &[String]) {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+        for l in lines {
+            writeln!(f, "{l}").unwrap();
+        }
+    }
+
+    fn started_by(sender: &str, prompt: &str) -> String {
+        json!({ "step_index": 0, "source": "SYSTEM", "type": "SYSTEM_MESSAGE", "status": "DONE", "content": format!("[Message] sender={sender} content={prompt}") }).to_string()
+    }
+
+    fn calls(calls: Value) -> String {
+        json!({ "source": "MODEL", "type": "PLANNER_RESPONSE", "status": "DONE", "tool_calls": calls }).to_string()
+    }
+
+    fn answer(text: &str) -> String {
+        json!({ "source": "MODEL", "type": "PLANNER_RESPONSE", "status": "DONE", "content": text }).to_string()
+    }
+
+    #[test]
+    fn a_subagent_that_starts_subagents_waits_for_them_and_each_is_a_row_under_it() {
+        let brain = test_brain();
+        let (coord, uri) = transcript_of(&brain, "sub");
+        let mut run = Run::default();
+        run.feed(SPAWN_A.as_bytes());
+        run.feed(done_with(SPAWN_A, &uri).as_bytes());
+        let coordinator = run.subagents.spawns[0].row.clone();
+        assert_eq!(run.subagents.spawns[0].conversation.as_deref(), Some("sub"));
+        // It plans, starts two subagents of its own (a transcript writes each argument as JSON text), then answers.
+        let plan = json!({ "plan": [{ "step": "Start the batches", "status": "completed" }, { "step": "Wait for them", "status": "in_progress" }], "agent": "Writer A" });
+        let roles = json!([{ "role": "Batch 1", "initial_prompt": "Do 1" }, { "role": "Batch 2", "initial_prompt": "Do 2" }]);
+        append(&coord, &[
+            started_by("main-1", "Coordinate the batches"),
+            calls(json!([{ "name": "mcp_lumo_update_plan", "args": { "plan": plan["plan"].to_string(), "agent": "\"Writer A\"" } }])),
+            calls(json!([{ "name": "invoke_subagent", "args": { "Subagents": roles.to_string() } }])),
+            answer("Started both batches: waiting for them."),
+        ]);
+        run.subagents.read_transcripts();
+        let row = run.subagents.agents.get(&coordinator).unwrap();
+        assert!(!row.state.is_final(), "it waits for its subagents");
+        assert_eq!(row.now, Some(Activity::new("agents", "0/2")));
+        assert_eq!(row.plan.as_ref().unwrap().iter().map(|s| s.status).collect::<Vec<_>>(), ["done", "active"]);
+        // Their transcripts show: a row each, under it, named by the role its call gave.
+        let (one, _) = transcript_of(&brain, "child-1");
+        let (two, _) = transcript_of(&brain, "child-2");
+        append(&one, &[started_by("sub", "Do 1")]);
+        append(&two, &[started_by("sub", "Do 2")]);
+        // Another session's conversation, started by someone else: none of ours.
+        let (other, _) = transcript_of(&brain, "elsewhere");
+        append(&other, &[started_by("someone-else", "Hello")]);
+        run.subagents.read_transcripts();
+        let kids: Vec<&AgentRow> = run.subagents.agents.ids().filter_map(|id| run.subagents.agents.get(&id)).filter(|r| r.parent.as_deref() == Some(coordinator.as_str())).collect();
+        let mut titles: Vec<&str> = kids.iter().map(|r| r.title.as_str()).collect();
+        titles.sort();
+        assert_eq!(titles, ["Batch 1", "Batch 2"]);
+        assert_eq!(run.subagents.agents.open(), 3);
+        // One finishes: the coordinator says so, and still waits.
+        append(&one, &[answer("Batch 1 done.")]);
+        run.subagents.read_transcripts();
+        assert_eq!(run.subagents.agents.open(), 2);
+        assert_eq!(run.subagents.agents.get(&coordinator).unwrap().now, Some(Activity::new("agents", "1/2")));
+        // Woken by their messages, it works again, and answers once more; the last one finishes.
+        append(&coord, &[calls(json!([{ "name": "view_file", "args": { "AbsolutePath": "\"C:\\\\work\\\\one.md\"" } }]))]);
+        append(&two, &[answer("Batch 2 done.")]);
+        run.subagents.read_transcripts();
+        assert!(!run.subagents.agents.get(&coordinator).unwrap().state.is_final(), "it hasn't answered since");
+        append(&coord, &[answer("Both batches are done.")]);
+        run.subagents.read_transcripts();
+        let row = run.subagents.agents.get(&coordinator).unwrap();
+        assert_eq!(row.state, AgentState::Done);
+        assert_eq!(row.summary.as_deref(), Some("Both batches are done."));
+        assert_eq!(run.subagents.agents.open(), 0);
+        let _ = std::fs::remove_dir_all(brain.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn a_subagent_whose_subagents_never_show_is_done_a_moment_after_it_answered() {
+        let brain = test_brain();
+        let (coord, uri) = transcript_of(&brain, "sub");
+        let mut run = Run::default();
+        run.feed(done_with(SPAWN_A, &uri).as_bytes());
+        let coordinator = run.subagents.spawns[0].row.clone();
+        append(&coord, &[calls(json!([{ "name": "invoke_subagent", "args": { "Role": "\"Helper\"" } }])), answer("Started a helper.")]);
+        run.subagents.read_transcripts();
+        assert!(!run.subagents.agents.get(&coordinator).unwrap().state.is_final());
+        run.subagents.spawns[0].waiting_since = Some(Instant::now() - CHILD_GRACE);
+        run.subagents.read_transcripts();
+        assert_eq!(run.subagents.agents.get(&coordinator).unwrap().state, AgentState::Done);
+        let _ = std::fs::remove_dir_all(brain.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn what_starts_a_subagent_and_who_started_one() {
+        assert_eq!(invoked_roles("invoke_subagent", &json!({ "Subagents": [{ "role": "A" }, { "type_name": "code_reviewer" }, {}] })), ["A", "code reviewer", ""]);
+        assert_eq!(invoked_roles("invoke_subagent", &json!({ "Role": "Solo" })), ["Solo"]);
+        assert_eq!(invoked_roles("invoke_subagent", &json!({})), [""]);
+        assert!(invoked_roles("browser_subagent", &json!({})).is_empty(), "Lumo's browser is no conversation");
+        assert!(invoked_roles("view_file", &json!({})).is_empty());
+        let first = json!({ "content": "[Message] sender=abc-123 content=Convert chapter 7" });
+        assert_eq!(sender_of(&first), Some("abc-123"));
+        assert_eq!(prompt_title(&first).as_deref(), Some("Convert chapter 7"));
+        assert_eq!(sender_of(&json!({ "content": "Hello" })), None);
+        let (brain, conversation) = brain_of(std::path::Path::new("/home/me/.gemini/antigravity-cli/brain/c1/.system_generated/logs/transcript.jsonl")).unwrap();
+        assert_eq!((brain, conversation.as_str()), (PathBuf::from("/home/me/.gemini/antigravity-cli/brain"), "c1"));
+        assert_eq!(brain_of(std::path::Path::new("/home/me/.gemini/antigravity-cli/x/transcript.jsonl")), None);
+        // A subagent's plan, by name or through call_mcp_tool; another server's update_plan is not Lumo's.
+        assert!(plan_call_of("mcp_lumo_update_plan", &json!({ "plan": [{ "step": "a", "status": "pending" }] })).is_some());
+        assert!(plan_call_of("call_mcp_tool", &json!({ "ServerName": "lumo", "ToolName": "update_plan", "Arguments": { "plan": [{ "step": "a", "status": "pending" }] } })).is_some());
+        assert!(plan_call_of("call_mcp_tool", &json!({ "ServerName": "other", "ToolName": "update_plan", "Arguments": { "plan": [{ "step": "a", "status": "pending" }] } })).is_none());
+    }
+
+    #[test]
+    fn a_subagents_plan_is_never_the_chats() {
+        let mut run = Run::default();
+        let step = |params: Value| format!(r#"{{"event":"step_update","step_index":4,"state":"ACTIVE","step_type":"tool","tool_info":{{"name":"mcp_lumo_update_plan","parameters":{params}}}}}"#);
+        run.feed(step(json!({ "plan": [{ "step": "Mine", "status": "pending" }], "agent": "Batch 1" })).as_bytes());
+        assert_eq!(run.take_plan(), None);
+        run.feed(step(json!({ "plan": [{ "step": "Main", "status": "pending" }] })).as_bytes());
+        assert!(run.take_plan().is_some());
     }
 
     #[test]
@@ -3342,11 +4656,12 @@ mod tests {
     #[test]
     fn a_subagents_transcript_gives_its_steps_its_files_and_its_report() {
         let mut row = AgentRow::new("r", PROVIDER, "Writer A");
-        let (mut report, mut pending, mut files) = (None, Vec::new(), Vec::new());
+        let (mut reading, mut files) = (Reading::default(), Vec::new());
         let lines: Vec<Value> = TRANSCRIPT_A.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         let mut ended = Vec::new();
+        let anyone = |_: &str| true;
         for (i, l) in lines.iter().enumerate() {
-            ended.push(transcript_line(&mut row, &mut report, &mut pending, &mut files, l));
+            ended.push(transcript_line(&mut row, &mut reading, &mut files, l, &anyone).answered);
             if i == 1 {
                 assert!(files.is_empty(), "not before the call's result");
             }
@@ -3355,12 +4670,12 @@ mod tests {
         assert_eq!(row.steps, 2);
         assert_eq!(row.tokens, Some(10_514));
         assert_eq!(files, vec![FileTouch { kind: "created", path: r"C:\work\a.txt".into() }]);
-        assert_eq!(report.as_deref(), Some("File a.txt has been created."));
+        assert_eq!(reading.report.as_deref(), Some("File a.txt has been created."));
         assert_eq!(row.summary.as_deref(), Some("File a.txt has been created."), "what it told its parent");
         // A write that failed lists nothing; a line whose calls were cut is a step, never its answer.
-        let (mut row, mut report, mut pending, mut files) = (AgentRow::new("r", PROVIDER, "W"), None, Vec::new(), Vec::new());
+        let (mut row, mut reading, mut files) = (AgentRow::new("r", PROVIDER, "W"), Reading::default(), Vec::new());
         {
-            let mut feed = |l: &str| transcript_line(&mut row, &mut report, &mut pending, &mut files, &serde_json::from_str(l).unwrap());
+            let mut feed = |l: &str| transcript_line(&mut row, &mut reading, &mut files, &serde_json::from_str(l).unwrap(), &anyone).answered;
             assert!(!feed(&lines_of(1)));
             assert!(!feed(r#"{"source":"MODEL","type":"GENERIC","status":"DONE","content":"Error: file already exists"}"#));
             assert!(!feed(&lines_of(1)));
@@ -3519,8 +4834,10 @@ mod tests {
         assert_eq!((b.state, b.error.as_deref()), (AgentState::Failed, Some("Antigravity CLI ended")));
         let mut sub = Subagents::default();
         sub.step(0, false, &json!({ "step_type": "tool", "subagent_info": { "conversation_id": "c" } }));
+        // The turn's answer came while it worked: it was cut off, not done, and Resume is offered.
         sub.run_ended(AgentState::Done);
-        assert!(sub.agents.get("c").unwrap().error.is_none());
+        let c = sub.agents.get("c").unwrap();
+        assert_eq!((c.state, c.ended_by), (AgentState::Failed, Some("cli")));
     }
 
     #[test]
@@ -3651,20 +4968,614 @@ mod tests {
 
         let ev = run.subagents.stop_one(&id_a).expect("stop event for invoke_subagent");
         assert!(ev.contains("manage_subagents") && ev.contains("sub-stop"), "got {ev}");
+        // Stopping, until agy says it stopped it.
         let row_a = run.subagents.agents.get(&id_a).unwrap();
-        assert_eq!(row_a.state, AgentState::Stopped);
-        assert!(!row_a.can_stop);
+        assert_eq!((row_a.state, row_a.stopping), (AgentState::Working, true));
+        assert!(run.subagents.stop_one(&id_a).is_some(), "asked again, it is asked again");
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":3,"state":"DONE","step_type":"tool","tool_info":{"name":"manage_subagents","parameters":{"Action":"kill","ConversationIds":["sub-stop"]}}}}"#);
+        let row_a = run.subagents.agents.get(&id_a).unwrap();
+        assert_eq!((row_a.state, row_a.stopping), (AgentState::Stopped, false));
+        assert!(!row_a.can_stop && !row_a.can_ask);
+        assert_eq!(run.subagents.stop_one(&id_a), None, "stopped already");
 
         // Swarm worker stop_one emits swarm kill event.
         run.feed(br#"{"event":"step_update","step_update":{"step_index":4,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"add","name":"worker-s","brief":"Run checks"}}}}"#);
         let sw_ev = run.subagents.stop_one("swarm-worker-s").expect("stop event for swarm");
         assert!(sw_ev.contains("swarm") && sw_ev.contains("worker-s"), "got {sw_ev}");
+        assert!(run.subagents.agents.get("swarm-worker-s").unwrap().stopping);
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":6,"state":"DONE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"kill","name":"worker-s"}}}}"#);
         assert_eq!(run.subagents.agents.get("swarm-worker-s").unwrap().state, AgentState::Stopped);
 
         // manage_subagents kill_all stops remaining active rows.
-        run.feed(br#"{"event":"step_update","step_update":{"step_index":5,"state":"DONE","step_type":"tool","tool_info":{"name":"manage_subagents","parameters":{"Action":"kill_all"}}}}"#);
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":7,"state":"DONE","step_type":"tool","tool_info":{"name":"manage_subagents","parameters":{"Action":"kill_all"}}}}"#);
         let row_b = run.subagents.agents.get(&id_b).unwrap();
         assert_eq!(row_b.state, AgentState::Stopped);
         assert!(!row_b.can_stop);
+    }
+
+    /// agy's own file of a subagent, in its parent's folder.
+    fn child_json(brain: &std::path::Path, parent: &str, child: &str, role: &str, state: &str, step: u64) {
+        let dir = brain.join(parent).join(".system_generated").join("subagents");
+        std::fs::create_dir_all(&dir).unwrap();
+        let v = json!({ "conversationId": child, "subagentDescriptor": { "typeName": "self", "role": role }, "state": state, "spawnStepIndex": step, "workspaceUris": [] });
+        std::fs::write(dir.join(format!("{child}.json")), v.to_string()).unwrap();
+    }
+
+    /// The first line of a child's transcript, as agy 1.5.9 writes it.
+    fn real_first(sender: &str, task: &str) -> String {
+        json!({ "step_index": 0, "source": "SYSTEM", "type": "SYSTEM_MESSAGE", "status": "DONE",
+            "content": format!("The following is a <SYSTEM_MESSAGE> not actually sent by the user, but provided by the system.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-11-18T21:04:11Z sender={sender} priority=MESSAGE_PRIORITY_HIGH content={task}\n</SYSTEM_MESSAGE>") })
+        .to_string()
+    }
+
+    #[test]
+    fn the_first_line_agy_really_writes_names_the_parent_and_the_task() {
+        let first: Value = serde_json::from_str(&real_first("9b1c-parent", "Convert chapter 7\nto Markdown")).unwrap();
+        assert_eq!(sender_of(&first), Some("9b1c-parent"));
+        assert_eq!(first_prompt(&first), Some("Convert chapter 7\nto Markdown"));
+        assert_eq!(prompt_title(&first).as_deref(), Some("Convert chapter 7 to Markdown"));
+        // A message whose task mentions a sender is not fooled by it.
+        let tricky = json!({ "content": "[Message] sender=real content=Reply to sender=fake please" });
+        assert_eq!(sender_of(&tricky), Some("real"));
+        let file = child_file(&json!({ "conversationId": "c-1", "subagentDescriptor": { "typeName": "code_reviewer", "role": "" }, "state": "SUBAGENT_STATE_KILLED", "spawnStepIndex": "12" })).unwrap();
+        assert_eq!(file, ChildFile { conversation: "c-1".into(), role: Some("code reviewer".into()), killed: true, step: 12 });
+        assert_eq!(child_file(&json!({ "conversationId": "../x" })), None, "never a path");
+        assert_eq!(kills_of("manage_subagents", &json!({ "Action": "kill", "ConversationIds": "[\"a\",\"b\"]" })), Some(vec!["a".to_string(), "b".to_string()]));
+        assert_eq!(kills_of("manage_subagents", &json!({ "Action": "kill_all" })), Some(vec![]));
+        assert_eq!(kills_of("manage_subagents", &json!({ "Action": "list" })), None);
+        assert_eq!(kills_of("define_subagent", &json!({ "Action": "kill_all" })), None);
+    }
+
+    #[test]
+    fn the_children_agy_keeps_in_their_parents_folder_are_rows_under_it_by_their_role_and_end_as_agy_ends_them() {
+        let brain = test_brain();
+        let (coord, uri) = transcript_of(&brain, "coord");
+        let mut run = Run::default();
+        run.feed(done_with(SPAWN_A, &uri).replace(r#""conversation_id":"sub""#, r#""conversation_id":"coord""#).as_bytes());
+        let coordinator = run.subagents.spawns[0].row.clone();
+        append(&coord, &[
+            real_first("main-1", "Coordinate"),
+            calls(json!([{ "name": "invoke_subagent", "args": { "TypeName": "\"self\"", "Role": "\"Tester\"", "Prompt": "\"Run the tests\"" } }])),
+            calls(json!([{ "name": "invoke_subagent", "args": { "TypeName": "\"self\"", "Role": "\"Reviewer\"", "Prompt": "\"Review the diff\"" } }])),
+            answer("Both started."),
+        ]);
+        // agy names them in the coordinator's folder: the later one first on disk.
+        child_json(&brain, "coord", "zz-tester", "Tester", "SUBAGENT_STATE_ALIVE", 3);
+        child_json(&brain, "coord", "aa-reviewer", "Reviewer", "SUBAGENT_STATE_ALIVE", 5);
+        // A conversation elsewhere in the brain that names it as sender: never looked through.
+        let (stray, _) = transcript_of(&brain, "stray");
+        append(&stray, &[real_first("coord", "Not one of them")]);
+        run.subagents.read_transcripts();
+        let kids: Vec<AgentRow> = run.subagents.agents.ids().filter_map(|id| run.subagents.agents.get(&id).cloned()).filter(|r| r.parent.as_deref() == Some(coordinator.as_str())).collect();
+        assert_eq!(kids.iter().map(|r| r.title.as_str()).collect::<Vec<_>>(), ["Tester", "Reviewer"], "in the order they started");
+        assert_eq!(run.subagents.agents.get(&coordinator).unwrap().now, Some(Activity::new("agents", "0/2")));
+        // The tester answers its parent and agy closes it; the reviewer is stopped before it said anything.
+        let (tester, _) = transcript_of(&brain, "zz-tester");
+        append(&tester, &[
+            real_first("coord", "Run the tests"),
+            calls(json!([{ "name": "send_message", "args": { "Recipient": "\"coord\"", "Message": "\"All 40 tests pass.\"" } }])),
+        ]);
+        run.subagents.read_transcripts();
+        child_json(&brain, "coord", "zz-tester", "Tester", "SUBAGENT_STATE_KILLED", 3);
+        child_json(&brain, "coord", "aa-reviewer", "Reviewer", "SUBAGENT_STATE_KILLED", 5);
+        run.subagents.read_transcripts();
+        let by = |t: &str| run.subagents.agents.ids().filter_map(|id| run.subagents.agents.get(&id).cloned()).find(|r| r.title == t).unwrap();
+        assert_eq!((by("Tester").state, by("Tester").summary.as_deref()), (AgentState::Done, Some("All 40 tests pass.")));
+        assert_eq!(by("Reviewer").state, AgentState::Stopped);
+        // Both ended: the coordinator, which had answered, is done.
+        assert_eq!(run.subagents.agents.get(&coordinator).unwrap().state, AgentState::Done);
+        assert_eq!(run.subagents.agents.open(), 0);
+        let _ = std::fs::remove_dir_all(brain.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn a_stop_says_stopping_until_agy_confirms_it_and_is_taken_back_when_it_never_does() {
+        let brain = test_brain();
+        let (_, uri) = transcript_of(&brain, "w1");
+        let mut run = Run::default();
+        run.feed(br#"{"event":"step_update","step_update":{"conversation_id":"main-x","step_index":1,"state":"DONE","step_type":"user_input"}}"#);
+        run.feed(done_with(SPAWN_A, &uri).replace(r#""conversation_id":"sub""#, r#""conversation_id":"w1""#).as_bytes());
+        let row = run.subagents.spawns[0].row.clone();
+        assert_eq!(run.subagents.main.as_deref(), Some("main-x"));
+        assert!(run.subagents.stop_one(&row).is_some());
+        assert!(run.subagents.agents.get(&row).unwrap().stopping);
+        // Never confirmed: past STOP_WAIT it is at work again, its Stop offered again.
+        run.subagents.spawns[0].stop_asked = Some(Instant::now() - STOP_WAIT);
+        run.subagents.read_transcripts();
+        let r = run.subagents.agents.get(&row).unwrap();
+        assert_eq!((r.state, r.stopping, r.can_stop), (AgentState::Working, false, true));
+        // Asked again, and agy's file of the chat's own subagents says it was stopped.
+        run.subagents.stop_one(&row);
+        child_json(&brain, "main-x", "w1", "Writer A", "SUBAGENT_STATE_KILLED", 2);
+        run.subagents.read_transcripts();
+        let r = run.subagents.agents.get(&row).unwrap();
+        assert_eq!((r.state, r.stopping), (AgentState::Stopped, false));
+        let _ = std::fs::remove_dir_all(brain.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn the_chats_plan_while_subagents_work_is_its_own_never_the_last_subagents() {
+        let chat = "chat-plans";
+        let mut run = Run::default();
+        run.feed(SPAWN_A.as_bytes());
+        let row = run.subagents.spawns[0].row.clone();
+        let theirs = json!({ "plan": [{ "step": "Read", "status": "in_progress" }, { "step": "Write", "status": "pending" }] });
+        let mine = json!({ "plan": [{ "step": "Start the writers", "status": "completed" }, { "step": "Merge", "status": "pending" }] });
+        // lumo-hook hands both over, without `agent`: whose they are is not said.
+        with_agents(chat, true);
+        assert!(has_agents(chat));
+        hold_plan(chat, theirs.clone());
+        hold_plan(chat, mine.clone());
+        // Too early: both wait.
+        assert!(release_plans(chat, &run, false).is_empty());
+        // The subagent's transcript shows the first as its own.
+        run.subagents.agents.touch(&row).unwrap().plan = chat_agents::plan_of(&theirs);
+        assert_eq!(release_plans(chat, &run, true), vec![mine.clone()]);
+        // agy's stream shows the chat's plans itself: what lumo-hook hands over then is never news.
+        hold_plan(chat, mine.clone());
+        run.stream_plans = true;
+        assert!(release_plans(chat, &run, true).is_empty());
+        with_agents(chat, false);
+        assert!(!has_agents(chat));
+    }
+
+    #[test]
+    fn the_answer_is_written_once_quiet_with_its_subagents_at_work() {
+        let mut run = Run::default();
+        run.feed(SPAWN_A.as_bytes());
+        assert!(!run.answered_with_agents(Duration::ZERO), "still starting it");
+        run.feed(done_with(SPAWN_A, "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub/.system_generated/logs/transcript.jsonl").as_bytes());
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":3,"state":"ACTIVE","step_type":"agent_response","text_delta":"I started a writer."}}"#);
+        assert!(!run.answered_with_agents(Duration::ZERO), "still writing");
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":3,"state":"DONE","step_type":"agent_response","text_delta":""}}"#);
+        assert!(run.answered_with_agents(Duration::ZERO));
+        assert!(!run.answered_with_agents(Duration::from_secs(60)), "not quiet long enough");
+        // Its subagent done: nothing to wait for, the result ends the turn.
+        run.subagents.agents.touch(&run.subagents.spawns[0].row.clone()).unwrap().end(AgentState::Done, None);
+        assert!(!run.answered_with_agents(Duration::ZERO));
+        // Nothing written: never.
+        let mut quiet = Run::default();
+        quiet.feed(SPAWN_A.as_bytes());
+        assert!(!quiet.answered_with_agents(Duration::ZERO));
+    }
+
+    #[test]
+    fn another_message_goes_to_agy_still_at_work_only_with_the_same_settings() {
+        let exe = std::path::Path::new("agy");
+        let a = ["--model".to_string(), "m".to_string(), "--conversation".to_string(), "c1".to_string()];
+        let b = ["--model".to_string(), "m".to_string()];
+        assert_eq!(agy_key(exe, &a, "x"), agy_key(exe, &b, "x"), "the conversation is not part of it");
+        assert_ne!(agy_key(exe, &b, "x"), agy_key(exe, &b, "y"));
+        // Other settings, 2 agents at work: not without the user.
+        let chat = "chat-linger";
+        let (_tx, back) = mpsc::channel();
+        let end = Arc::new(Stop::default());
+        let l = Lingering { key: "k1".into(), conversation: "c1".into(), want: Arc::default(), end: end.clone(), back, open: Arc::new(std::sync::atomic::AtomicUsize::new(2)) };
+        lingering(|all| all.insert(chat.to_string(), l));
+        let err = take_lingering(chat, "k2", Some("c1"), &Stop::default()).err().unwrap();
+        assert_eq!(err, chat_agents::would_stop(2));
+        assert!(!end.is_stopped());
+        // The user said to send all the same: agy ends, and a new one answers.
+        chat_agents::allow_restart(chat);
+        assert!(take_lingering(chat, "k2", Some("c1"), &Stop::default()).unwrap().is_none());
+        assert!(end.is_stopped());
+        assert!(lingering(|all| all.get(chat).is_none()));
+        // Its thread gone (the channel closed): a new one answers.
+        let (tx, back) = mpsc::channel::<(Agy, Subagents)>();
+        drop(tx);
+        let l = Lingering { key: "k1".into(), conversation: "c1".into(), want: Arc::default(), end: Arc::default(), back, open: Arc::default() };
+        lingering(|all| all.insert(chat.to_string(), l));
+        assert!(take_lingering(chat, "k1", Some("c1"), &Stop::default()).unwrap().is_none());
+    }
+
+    /// A stand-in for agy: prints `lines`, then copies its input to its
+    /// output until it closes (`more`), as agy stays until its input closes.
+    fn fake_agy(lines: &[String]) -> (Agy, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("lumo-fake-agy-{}", chat_agents::run_mark()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stream = dir.join("stream.jsonl");
+        std::fs::write(&stream, lines.join("\n") + "\n").unwrap();
+        let args = ["/c".to_string(), "type".to_string(), stream.to_string_lossy().to_string(), "&".to_string(), "more".to_string()];
+        (start_agy(std::path::Path::new("cmd"), &args, &dir, "", "k".into()).unwrap(), dir)
+    }
+
+    #[test]
+    fn an_answer_written_while_its_subagents_work_ends_the_turn_and_agy_goes_on_with_them() {
+        let uri = "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub/.system_generated/logs/transcript.jsonl";
+        let (agy, dir) = fake_agy(&[
+            done_with(SPAWN_A, uri),
+            r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":3,"state":"ACTIVE","step_type":"agent_response","text_delta":"I started a writer."}}"#.to_string(),
+            r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":3,"state":"DONE","step_type":"agent_response","text_delta":""}}"#.to_string(),
+        ]);
+        let shown = std::cell::RefCell::new(String::new());
+        let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|t: &str| *shown.borrow_mut() = t.to_string(), |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let started = Instant::now();
+        let mut state = agy_turn(agy, user_event("go"), Run::default(), &Stop::default(), true, &mut sink, &chat_agents::silent(), None).unwrap();
+        // Written and quiet, its writer at work: the answer is in, agy goes on.
+        assert!(started.elapsed() >= QUIET_ANSWER && started.elapsed() < Duration::from_secs(30));
+        assert_eq!(state.result, Some(Ok(String::new())));
+        assert_eq!(chat::turn_answer(&state.shown, &state.visible, ""), "I started a writer.");
+        assert_eq!(*shown.borrow(), "I started a writer.");
+        assert_eq!(state.subagents.agents.open(), 1);
+        let mut agy = state.agy.take().expect("agy goes on");
+        assert_eq!(agy.owed, 1, "its result is still to come");
+        assert!(agy.write(&user_event("a message for the subagent")), "it can still be told");
+        // Its input closed, it ends; a writer still at work then was cut off, never done.
+        agy.close_input();
+        let mut own = state.next_turn();
+        let ended = drive(&mut agy, &mut own, &Stop::default(), true, &mut sink, &chat_agents::silent(), &mut |_| false);
+        assert_eq!(ended, Ended::Closed);
+        let _ = finish(*agy, &mut own, &mut sink, &chat_agents::silent());
+        let row = own.subagents.agents.get(&own.subagents.spawns[0].row).unwrap();
+        assert_eq!((row.state, row.ended_by), (AgentState::Failed, Some("cli")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_turn_without_subagents_ends_with_its_result_and_agy_with_it() {
+        let (agy, dir) = fake_agy(&[
+            r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"Hello."}}"#.to_string(),
+            r#"{"event":"result","result":{"status":"SUCCESS","response":"Hello.","conversation_id":"main-1"}}"#.to_string(),
+        ]);
+        let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|_: &str| {}, |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let started = Instant::now();
+        let state = agy_turn(agy, user_event("hi"), Run::default(), &Stop::default(), true, &mut sink, &chat_agents::silent(), None).unwrap();
+        assert!(state.agy.is_none());
+        assert_eq!(state.result, Some(Ok("Hello.".to_string())));
+        assert!(started.elapsed() < claude_code::AFTER_RESULT, "its input closed with the result: it ended at once");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn agy_going_on_with_its_subagents_tells_the_chat_what_it_writes_and_hands_itself_to_the_next_message() {
+        let brain = test_brain();
+        let (writer, uri) = transcript_of(&brain, "sub");
+        append(&writer, &[started_by("main-1", "Create a.txt")]);
+        let (agy, dir) = fake_agy(&[
+            done_with(SPAWN_A, &uri),
+            r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":3,"state":"DONE","step_type":"agent_response","text_delta":"I started a writer."}}"#.to_string(),
+        ]);
+        let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|_: &str| {}, |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let silent = chat_agents::silent();
+        let mut state = agy_turn(agy, user_event("go"), Run::default(), &Stop::default(), true, &mut sink, &silent, None).unwrap();
+        let mut agy = *state.agy.take().unwrap();
+        // The writer finishes; its message wakes agy, which tells the chat, and its turn ends.
+        append(&writer, &[answer("a.txt is ready.")]);
+        for line in [
+            r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":4,"state":"DONE","step_type":"system_message"}}"#,
+            r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":5,"state":"DONE","step_type":"agent_response","text_delta":"The writer finished: a.txt is ready."}}"#,
+            r#"{"event":"result","result":{"status":"SUCCESS","response":"The writer finished: a.txt is ready.","conversation_id":"main-1"}}"#,
+        ] {
+            assert!(agy.write(&format!("{line}\n")));
+        }
+        // The chat's next message wants it meanwhile.
+        let want = std::sync::atomic::AtomicBool::new(true);
+        let (tx, back) = mpsc::channel();
+        let mut told = Vec::new();
+        let mut own = |text: &str| told.push(text.to_string());
+        let left = linger("", "main-1", agy, std::mem::take(&mut state.subagents), &silent, &want, Arc::default(), &std::sync::atomic::AtomicUsize::new(0), tx, &mut sink, &mut own);
+        assert!(left.is_none(), "handed over, not ended");
+        assert_eq!(told, ["The writer finished: a.txt is ready."], "once, though its result says it again");
+        let (mut agy, mut subagents) = back.try_recv().expect("handed to the next message");
+        assert!(agy.stdin.is_some(), "it can take the message");
+        // Its writer goes on being read with the next message.
+        subagents.read_transcripts();
+        assert_eq!(subagents.agents.open(), 0, "its writer is done");
+        assert_eq!(agy.owed, 0, "the result it owed came");
+        agy.close_input();
+        kill_tree(&mut agy.child);
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(brain.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    /// The subagents' bugs an audit found (each test failed before its fix),
+    /// on agy's older layout too: no folder of children, each found by the
+    /// first line of its transcript.
+    mod audit {
+    use super::*;
+
+    fn brain() -> PathBuf {
+        let b = std::env::temp_dir().join(format!("lumo-audit-{}", chat_agents::run_mark())).join(".gemini").join("antigravity-cli").join("brain");
+        std::fs::create_dir_all(&b).unwrap();
+        b
+    }
+
+    fn transcript(brain: &std::path::Path, id: &str) -> (PathBuf, String) {
+        let logs = brain.join(id).join(".system_generated").join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        let path = logs.join("transcript.jsonl");
+        let slashed = path.to_string_lossy().replace('\\', "/");
+        let uri = if slashed.starts_with('/') { format!("file://{slashed}") } else { format!("file:///{slashed}") };
+        (path, uri)
+    }
+
+    fn append(path: &std::path::Path, lines: &[String]) {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+        for l in lines {
+            writeln!(f, "{l}").unwrap();
+        }
+    }
+
+    fn started_by(sender: &str, prompt: &str) -> String {
+        json!({ "source": "SYSTEM", "type": "SYSTEM_MESSAGE", "status": "DONE", "content": format!("[Message] sender={sender} content={prompt}") }).to_string()
+    }
+
+    fn calls(calls: Value) -> String {
+        json!({ "source": "MODEL", "type": "PLANNER_RESPONSE", "status": "DONE", "tool_calls": calls }).to_string()
+    }
+
+    fn result(content: &str) -> String {
+        json!({ "source": "MODEL", "type": "GENERIC", "status": "DONE", "content": content }).to_string()
+    }
+
+    fn answer(text: &str) -> String {
+        json!({ "source": "MODEL", "type": "PLANNER_RESPONSE", "status": "DONE", "content": text }).to_string()
+    }
+
+    /// The main stream starting one subagent per role, its transcript at `uri` (DONE: it names it).
+    fn spawn(step: u64, role: &str, conv: &str, uri: &str) -> String {
+        json!({ "event": "step_update", "step_update": { "conversation_id": "main-1", "step_index": step, "state": "DONE", "step_type": "subagent", "tool_name": "invoke_subagent",
+            "subagent_info": { "subagents": [{ "type_name": "self", "role": role, "conversation_id": conv, "log_uri": uri }] } } })
+        .to_string()
+    }
+
+    fn invoke(roles: &[(&str, &str)]) -> String {
+        let list: Vec<Value> = roles.iter().map(|(r, p)| json!({ "role": r, "initial_prompt": p })).collect();
+        calls(json!([{ "name": "invoke_subagent", "args": { "Subagents": Value::Array(list).to_string() } }]))
+    }
+
+    fn kids_of<'a>(run: &'a Run, parent: &str) -> Vec<&'a AgentRow> {
+        run.subagents.agents.ids().filter_map(|id| run.subagents.agents.get(&id)).filter(|r| r.parent.as_deref() == Some(parent)).collect()
+    }
+
+    fn clean(brain: &std::path::Path) {
+        let _ = std::fs::remove_dir_all(brain.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    /// two coordinators at work. A's child shows in the same look as A's
+    /// call that started it, while B still waits for one of its own: A's child
+    /// is marked "looked at" before A asked for it, and is never shown. A then
+    /// waits 30 s ("0 of 1 finished") and turns Done while its child still works.
+    #[test]
+    fn a_child_seen_while_a_sibling_waits_is_never_lost() {
+        let brain = brain();
+        let (a, ua) = transcript(&brain, "coord-a");
+        let (b, ub) = transcript(&brain, "coord-b");
+        let mut run = Run::default();
+        run.feed(spawn(2, "Coordinator A", "coord-a", &ua).as_bytes());
+        run.feed(spawn(3, "Coordinator B", "coord-b", &ub).as_bytes());
+        let row_a = run.subagents.spawns[0].row.clone();
+        // B asked for a child that has not shown yet: B is "wanted".
+        append(&b, &[started_by("main-1", "Batch B"), invoke(&[("B child", "Do B")])]);
+        append(&a, &[started_by("main-1", "Batch A")]);
+        run.subagents.read_transcripts();
+        // In the next 1.5 s: A starts its child, and the child's transcript appears.
+        append(&a, &[invoke(&[("A child", "Do A")])]);
+        let (ac, _) = transcript(&brain, "a-child");
+        append(&ac, &[started_by("coord-a", "Do A")]);
+        run.subagents.read_transcripts();
+        run.subagents.read_transcripts();
+        let titles: Vec<String> = kids_of(&run, &row_a).iter().map(|r| r.title.clone()).collect();
+        clean(&brain);
+        assert_eq!(titles, ["A child"], "A's child must show under A");
+    }
+
+    /// a coordinator starts "Tester" then "Reviewer". Their folders in
+    /// agy's brain are found in folder order (on NTFS: by name, a random id),
+    /// and each takes the next role in the list: the titles can be swapped.
+    #[test]
+    fn each_child_gets_the_role_its_call_gave_it() {
+        for (first, second) in [("zz-child", "aa-child"), ("aa-child", "zz-child")] {
+            let brain = brain();
+            let (c, uc) = transcript(&brain, "coord");
+            let mut run = Run::default();
+            run.feed(spawn(2, "Coordinator", "coord", &uc).as_bytes());
+            let coord = run.subagents.spawns[0].row.clone();
+            append(&c, &[started_by("main-1", "Coordinate"), invoke(&[("Tester", "Run the tests"), ("Reviewer", "Review the diff")])]);
+            run.subagents.read_transcripts();
+            let (t, _) = transcript(&brain, first);
+            append(&t, &[started_by("coord", "Run the tests")]);
+            let (r, _) = transcript(&brain, second);
+            append(&r, &[started_by("coord", "Review the diff")]);
+            run.subagents.read_transcripts();
+            let tester = run.subagents.spawns.iter().find(|s| s.conversation.as_deref() == Some(first)).map(|s| s.row.clone()).unwrap();
+            let title = run.subagents.agents.get(&tester).unwrap().title.clone();
+            let parent = run.subagents.agents.get(&tester).unwrap().parent.clone();
+            clean(&brain);
+            assert_eq!(parent.as_deref(), Some(coord.as_str()));
+            assert_eq!(title, "Tester", "the child told to run the tests (folder {first}) is the Tester");
+        }
+    }
+
+    /// Once a bug: a subagent that tells one of its own subagents what to do
+    /// (send_message to the child) has that order taken as its report: its
+    /// summary, and the reply of a question the user asked it, are the order.
+    #[test]
+    fn a_message_to_its_own_child_is_not_its_report() {
+        let brain = brain();
+        let (c, uc) = transcript(&brain, "coord");
+        let mut run = Run::default();
+        run.feed(spawn(2, "Coordinator", "coord", &uc).as_bytes());
+        let coord = run.subagents.spawns[0].row.clone();
+        append(&c, &[
+            started_by("main-1", "Coordinate"),
+            calls(json!([{ "name": "send_message", "args": { "Recipient": "\"child-1\"", "Message": "\"Now do batch 2, skip the docs\"" } }])),
+            result("Message sent to \"child-1\"."),
+            answer("Both batches are done: 14 files fixed."),
+        ]);
+        run.subagents.read_transcripts();
+        let summary = run.subagents.agents.get(&coord).unwrap().summary.clone();
+        clean(&brain);
+        assert_eq!(summary.as_deref(), Some("Both batches are done: 14 files fixed."));
+    }
+
+    /// Once a bug: any call whose name has "subagent" in it counts as starting one:
+    /// define_subagent, manage_subagents (kill), and an invoke_subagent that
+    /// failed. The subagent then "waits for its subagents: 0 of 1 finished" for
+    /// 30 s after its answer, for a child that never existed.
+    #[test]
+    fn only_a_call_that_started_a_subagent_counts() {
+        for (name, args, res) in [
+            ("define_subagent", json!({ "Name": "\"reviewer\"", "Prompt": "\"Review code\"" }), "Defined subagent reviewer."),
+            ("manage_subagents", json!({ "Action": "\"kill\"", "ConversationIds": "[\"x\"]" }), "Killed 1 subagent."),
+            ("invoke_subagent", json!({ "Subagents": "[{\"type_name\":\"reviewer\"}]" }), "Error: subagent reviewer not found or not allowed to be invoked"),
+        ] {
+            let brain = brain();
+            let (c, uc) = transcript(&brain, "sub");
+            let mut run = Run::default();
+            run.feed(spawn(2, "Helper", "sub", &uc).as_bytes());
+            let row = run.subagents.spawns[0].row.clone();
+            append(&c, &[started_by("main-1", "Help"), calls(json!([{ "name": name, "args": args }])), result(res), answer("Done.")]);
+            run.subagents.read_transcripts();
+            let state = run.subagents.agents.get(&row).unwrap().state;
+            let now = run.subagents.agents.get(&row).unwrap().now.clone();
+            clean(&brain);
+            assert_eq!(state, AgentState::Done, "{name}: it answered and started nobody, yet shows {now:?}");
+        }
+    }
+
+    /// Once a bug: a coordinator stops one of its own subagents (manage_subagents
+    /// kill, in its transcript): that row is never told, it goes on "working"
+    /// (then "No signal") until the turn ends, and then turns green Done.
+    #[test]
+    fn a_child_its_coordinator_stopped_is_stopped() {
+        let brain = brain();
+        let (c, uc) = transcript(&brain, "coord");
+        let mut run = Run::default();
+        run.feed(spawn(2, "Coordinator", "coord", &uc).as_bytes());
+        append(&c, &[started_by("main-1", "Coordinate"), invoke(&[("Slow one", "Do it")])]);
+        run.subagents.read_transcripts();
+        let (k, _) = transcript(&brain, "kid");
+        append(&k, &[started_by("coord", "Do it")]);
+        run.subagents.read_transcripts();
+        let kid = run.subagents.resolve("kid").unwrap();
+        append(&c, &[calls(json!([{ "name": "manage_subagents", "args": { "Action": "\"kill\"", "ConversationIds": "[\"kid\"]" } }])), result("Killed 1 subagent.")]);
+        run.subagents.read_transcripts();
+        let state = run.subagents.agents.get(&kid).unwrap().state;
+        clean(&brain);
+        assert_eq!(state, AgentState::Stopped);
+    }
+
+    /// Once a bug: the turn's answer came while a subagent was still at work (its
+    /// transcript has no answer): Lumo ends agy and every process it started,
+    /// and the row says Done, green, with no summary. It never finished: it
+    /// was cut off, and should say so (and offer Resume).
+    #[test]
+    fn a_subagent_cut_off_by_the_end_of_the_turn_is_not_done() {
+        let brain = brain();
+        let (c, uc) = transcript(&brain, "sub");
+        let mut run = Run::default();
+        run.feed(spawn(2, "Writer", "sub", &uc).as_bytes());
+        let row = run.subagents.spawns[0].row.clone();
+        append(&c, &[started_by("main-1", "Write the docs"), calls(json!([{ "name": "write_file", "args": { "Path": "\"C:\\\\w\\\\a.md\"" } }]))]);
+        run.subagents.read_transcripts();
+        run.feed(br#"{"event":"result","result":{"status":"SUCCESS","response":"I started a writer.","conversation_id":"main-1"}}"#);
+        // What run_with_subagents does once the answer is in.
+        run.subagents.read_transcripts();
+        run.subagents.run_ended(AgentState::Done);
+        let state = run.subagents.agents.get(&row).unwrap().state;
+        clean(&brain);
+        assert_ne!(state, AgentState::Done, "it never answered: it was cut off");
+    }
+
+    /// Once a bug: with 10 or more subagents from one call, Ask on the 10th is sent
+    /// to the 1st: its row id `agy-<mark>-2-10` holds the 1st's `agy-<mark>-2-1`.
+    #[test]
+    fn ask_reaches_the_tenth_subagent_not_the_first() {
+        let mut run = Run::default();
+        // Conversation ids as agy gives them: nothing in common with the place.
+        let ids = ["9f2c", "41aa", "c03e", "7b19", "e5d0", "2a6f", "d8c4", "06be", "b37a", "5e91"];
+        let list: Vec<Value> = ids.iter().enumerate().map(|(n, id)| json!({ "role": format!("Batch {}", n + 1), "conversation_id": id })).collect();
+        run.feed(json!({ "event": "step_update", "step_update": { "step_index": 2, "state": "DONE", "step_type": "subagent", "subagent_info": { "subagents": list } } }).to_string().as_bytes());
+        let tenth = run.subagents.spawns[9].row.clone();
+        let ask = rewrite_ask_ids(&format!("Send it with send_message (Recipient: \"{tenth}\")"), Some(&run.subagents));
+        assert!(ask.contains("\"5e91\""), "got {ask}");
+    }
+
+    /// Once a bug: swarm with 10+ workers: "w-10: [done]" on the board ends w-1 too
+    /// (`line.starts_with(name)`), while w-1 is still at work.
+    #[test]
+    fn the_board_saying_w10_is_done_does_not_end_w1() {
+        let mut run = Run::default();
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":1,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"add","name":"w","n":12}}}}"#);
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_info":{"name":"read_board","response":"w-10 [done] parser fixed"}}}"#);
+        assert_eq!(run.subagents.agents.get("swarm-w-10").unwrap().state, AgentState::Done);
+        assert_eq!(run.subagents.agents.get("swarm-w-1").unwrap().state, AgentState::Working);
+    }
+
+    /// Once a bug: swarm kill "test" also stops the worker "test-runner".
+    #[test]
+    fn killing_one_worker_stops_only_it() {
+        let mut run = Run::default();
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":1,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"add","name":"test"}}}}"#);
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":2,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"add","name":"test-runner"}}}}"#);
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":3,"state":"DONE","step_type":"tool","tool_info":{"name":"swarm","parameters":{"action":"kill","name":"test"}}}}"#);
+        assert_eq!(run.subagents.agents.get("swarm-test").unwrap().state, AgentState::Stopped);
+        assert_eq!(run.subagents.agents.get("swarm-test-runner").unwrap().state, AgentState::Working);
+    }
+
+    /// Once a bug: agy's brain holds one folder per conversation, and every subagent
+    /// is one: past 4000 (MAX_SCAN) the folders looked at are always the same
+    /// first 4000, already-looked ones included, and a new child past them is
+    /// never found.
+    #[test]
+    fn a_child_is_found_in_a_brain_of_many_conversations() {
+        let brain = brain();
+        for i in 0..MAX_SCAN {
+            std::fs::create_dir_all(brain.join(format!("old-{i:05}"))).unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(20));
+        let (c, uc) = transcript(&brain, "coord");
+        let mut run = Run::default();
+        run.feed(spawn(2, "Coordinator", "coord", &uc).as_bytes());
+        let coord = run.subagents.spawns[0].row.clone();
+        // The old folders predate the turn.
+        run.subagents.since = Some(SystemTime::now());
+        std::thread::sleep(Duration::from_millis(20));
+        append(&c, &[started_by("main-1", "Coordinate"), invoke(&[("Kid", "Do it")])]);
+        run.subagents.read_transcripts();
+        let (k, _) = transcript(&brain, "zzzz-kid");
+        append(&k, &[started_by("coord", "Do it")]);
+        for _ in 0..3 {
+            run.subagents.read_transcripts();
+        }
+        let n = kids_of(&run, &coord).len();
+        clean(&brain);
+        assert_eq!(n, 1);
+    }
+
+    /// Once a bug: agy starts subagents from an
+    /// ordinary tool step (`step_type: "tool"` with `subagent_info.subagents`):
+    /// besides the right row ("Helper"), the same step makes a row "Agent" (or
+    /// the tool's title) that nothing ever ends: it works until the turn ends.
+    #[test]
+    fn subagents_from_a_tool_step_make_no_extra_row() {
+        let mut run = Run::default();
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":6,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"delegate"},"subagent_info":{"subagents":[{"conversation_id":"nested-1","role":"Helper"}]}}}"#);
+        let titles: Vec<String> = run.subagents.agents.ids().filter_map(|id| run.subagents.agents.get(&id).map(|r| r.title.clone())).collect();
+        assert_eq!(titles, ["Helper"]);
+    }
+
+    /// Once a bug: Stop on a subagent marks its row
+    /// Stopped at once and only asks the main agent, in words, to stop it: once
+    /// the turn's answer came the message has nowhere to go (agy's input is
+    /// closed), and the row says Stopped all the same. Here: the answer is in,
+    /// Stop is clicked, the row is Stopped though nothing reached agy.
+    #[test]
+    fn stop_after_the_answer_does_not_claim_a_stop() {
+        let mut run = Run::default();
+        run.feed(spawn(2, "Writer", "sub", "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub/.system_generated/logs/transcript.jsonl").as_bytes());
+        let row = run.subagents.spawns[0].row.clone();
+        run.feed(br#"{"event":"result","result":{"status":"SUCCESS","response":"Started.","conversation_id":"main-1"}}"#);
+        // run_with_subagents: stdin was dropped with the result; stop_one is still called.
+        let stdin_open = run.result.is_none();
+        let _line = run.subagents.stop_one(&row);
+        let state = run.subagents.agents.get(&row).unwrap().state;
+        assert!(stdin_open || state != AgentState::Stopped, "nothing was sent to agy, yet the row says Stopped");
+    }
     }
 }

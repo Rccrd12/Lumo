@@ -1,4 +1,5 @@
 import type { CopyDiff } from "./copy-diff";
+import type { PlanStep } from "./agent-plan";
 import type { ChatCompact } from "./chats";
 import type { MailRevision } from "./mail-edit";
 // Thin wrapper over the Tauri commands/events. Every call is a no-op when the
@@ -863,6 +864,12 @@ export interface ChatAgent {
    * The Agents card offers Resume for those.
    */
   endedBy?: "cli" | "lumo";
+  /** The agent that started this one (an Antigravity CLI subagent's own): its row shows under that one's. */
+  parent?: string;
+  /** Its own plan, when it wrote one (its TodoWrite, its update_plan): its row shows how far along it is. */
+  plan?: PlanStep[];
+  /** The user stopped it and its CLI was asked to: stopping until the CLI says it stopped. */
+  stopping?: boolean;
 }
 
 /** A message the chat's CLI sent one of its agents, and the agent's answer (the "Talking to …" box). */
