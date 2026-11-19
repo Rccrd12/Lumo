@@ -916,6 +916,7 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
     acp_chat::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// A deleted chat: its CLI, waiting for its next message, ends, and the
@@ -926,6 +927,7 @@ fn chat_close(chat_id: String) {
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
     acp_chat::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// The shield picked another mode in chat `chat_id`: from now on its turns,
@@ -1001,6 +1003,7 @@ fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
     acp_chat::close(&chat_id);
+    antigravity_cli::close(&chat_id);
 }
 
 /// The × of one of the chat's files: out of the chat's context from the next
