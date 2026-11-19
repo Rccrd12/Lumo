@@ -2676,6 +2676,16 @@ impl std::fmt::Debug for Agy {
     }
 }
 
+/// The first `cap` bytes `from` writes, as text. Not always UTF-8: cmd.exe
+/// says what went wrong in the console's code page ("La riga di comando è
+/// troppo lunga."), and a cap can cut a character in two: kept all the same,
+/// as claude_code::read_stderr does, rather than lost whole.
+fn first_text(from: &mut impl Read, cap: u64) -> String {
+    let mut bytes = Vec::new();
+    let _ = from.take(cap).read_to_end(&mut bytes);
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 impl Agy {
     /// Its input closes: agy ends once it is done.
     fn close_input(&mut self) {
@@ -2730,9 +2740,8 @@ fn start_agy(exe: &Path, args: &[String], dir: &Path, chat_id: &str, key: String
     let (err_tx, err_text) = mpsc::channel::<String>();
     std::thread::spawn(move || {
         let mut s = String::new();
-        if let Some(e) = stderr {
-            let mut e = e;
-            let _ = (&mut e).take(64 * 1024).read_to_string(&mut s);
+        if let Some(mut e) = stderr {
+            s = first_text(&mut e, 64 * 1024);
             // Past the cap, keep the pipe flowing: a full one would stall agy.
             let _ = std::io::copy(&mut e, &mut std::io::sink());
         }
@@ -3815,6 +3824,20 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_agy_wrote_on_stderr_is_kept_when_it_is_not_utf8() {
+        // cmd.exe in Italian: "è" in the console's code page (0xE8), not UTF-8.
+        let mut cp = std::io::Cursor::new(b"La riga di comando \xe8 troppo lunga.\r\n".to_vec());
+        let text = first_text(&mut cp, 64 * 1024);
+        assert!(text.starts_with("La riga di comando ") && text.contains("troppo lunga."), "{text:?}");
+        assert_eq!(failure(&text, "1"), tf("Antigravity CLI: {error}", &[("error", text.trim())]));
+        // The cap cuts "é" in two: what came before stays.
+        let mut cut = std::io::Cursor::new(format!("{}é", "a".repeat(9)).into_bytes());
+        assert_eq!(first_text(&mut cut, 10), format!("{}\u{FFFD}", "a".repeat(9)));
+        // The rest is still there to be drained.
+        assert_eq!(cut.position(), 10);
+    }
 
     #[test]
     fn a_plan_naming_no_chat_goes_to_the_only_chat_agy_answers_or_to_none() {
