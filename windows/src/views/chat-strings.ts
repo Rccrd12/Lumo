@@ -63,6 +63,8 @@ export const STRINGS = {
   searchChats: N_("Search the past chats"),
   noMatch: N_("No chat says that."),
   deleteChat: N_("Delete this chat"),
+  renameChat: N_("Rename this chat"),
+  renameKeys: N_("Enter saves · Esc cancels"),
   attach: N_("Attach a file"),
   attachShots: N_("Attach"),
   cancel: N_("Cancel"),

@@ -22,6 +22,7 @@ mod calendar;
 mod chat;
 mod chat_agents;
 mod chat_files;
+mod chat_title;
 mod chat_usage;
 mod claude;
 mod claude_code;
@@ -1572,6 +1573,7 @@ pub fn run() {
             chat_restore,
             chat_load,
             chat_compact,
+            chat_title::chat_title,
             chat_commands,
             chat_stop,
             chat_stop_agent,
