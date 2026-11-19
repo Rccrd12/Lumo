@@ -54,14 +54,7 @@ const ASKS_WINDOWS = new Set(["hooks_apply", "agent_hooks_apply", "status_line_a
 export function lendTauri() {
   const lent: typeof invoke = async (cmd, args, options) => {
     if (!ASKS_WINDOWS.has(cmd)) return invoke(cmd, args, options);
-    dialogs++;
-    dialogsChanged?.();
-    try {
-      return await invoke(cmd, args, options);
-    } finally {
-      dialogs--;
-      dialogsChanged?.();
-    }
+    return withDialog(() => invoke(cmd, args, options));
   };
   (window as unknown as { __LUMO_HOST__?: TauriHost }).__LUMO_HOST__ = { invoke: lent, listen };
 }
@@ -156,6 +149,22 @@ export const isDialogOpen = () => dialogs > 0;
 let dialogsChanged: (() => void) | null = null;
 export function onDialogsChanged(fn: () => void) {
   dialogsChanged = fn;
+}
+
+/**
+ * Runs `ask`, which puts up one of those dialogs, and says so as it opens and
+ * as it closes: the island's leave countdown holds meanwhile and starts again
+ * once the dialog is gone, wherever the mouse went.
+ */
+async function withDialog<T>(ask: () => Promise<T>): Promise<T> {
+  dialogs++;
+  dialogsChanged?.();
+  try {
+    return await ask();
+  } finally {
+    dialogs--;
+    dialogsChanged?.();
+  }
 }
 
 /** What hold_clicks was last asked (null: not since the island took the keyboard). */
@@ -308,13 +317,7 @@ export const Bridge = {
     call<void>("approval_mail_send", { requestId, revised }),
   /** Attach on an email's card: the system's picker; each file picked, by name, size and path (mail.rs). */
   pickAttachments: async (): Promise<{ name: string; size: number; path: string }[]> => {
-    let picked: unknown;
-    dialogs++;
-    try {
-      picked = await call<unknown>("pick_attachments");
-    } finally {
-      dialogs--;
-    }
+    const picked = await withDialog(() => call<unknown>("pick_attachments"));
     if (!Array.isArray(picked)) return [];
     return picked
       .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
@@ -451,23 +454,9 @@ export const Bridge = {
   /** The summary, and the history sent to the model before and after it (characters). */
   chatCompact: (chatId: string) => callOrThrow<(ChatCompact & { before: number; after: number }) | null>("chat_compact", { chatId }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
-  pickFile: async () => {
-    dialogs++;
-    try {
-      return await callOrThrow<DroppedFile | null>("pick_file");
-    } finally {
-      dialogs--;
-    }
-  },
+  pickFile: () => withDialog(() => callOrThrow<DroppedFile | null>("pick_file")),
   /** The system's folder picker, for the Listening panel: the path, or null. */
-  pickFolder: async () => {
-    dialogs++;
-    try {
-      return await call<string | null>("pick_folder");
-    } finally {
-      dialogs--;
-    }
-  },
+  pickFolder: () => withDialog(() => call<string | null>("pick_folder")),
   // The chat's screen button (screen.rs). Each runs on the user's click only.
   /** The displays, for the menu. Captures nothing. */
   screenDisplays: () => callOrThrow<ScreenDisplay[]>("screen_displays"),

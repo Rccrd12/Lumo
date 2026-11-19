@@ -178,11 +178,10 @@ function activityDetail(
     onclick: () => open(profileUrl(login)),
   });
 
-  // A click pins a day, which stays told once the mouse leaves the grid;
-  // hovering another day shows that one only while the mouse is on it.
+  // A day clicked stays in the header; hovering another shows that one meanwhile.
   let pinned: ContributionDay | null = null;
   const show = (day: ContributionDay | null) => {
-    right.textContent = activityHeader(activity, stats, day ?? pinned);
+    right.textContent = activityHeader(activity, stats, day);
   };
 
   const head = h("div", { class: "gh-detail-head" }, backButton(GH_STRINGS.activity, onBack));
@@ -202,10 +201,10 @@ function activityDetail(
       }
       const cell = h("i", { class: "gh-cell", style: `background:${contributionColor(day.level)}` });
       cell.addEventListener("mouseenter", () => show(day));
-      cell.addEventListener("mouseleave", () => show(null));
+      cell.addEventListener("mouseleave", () => show(pinned));
       cell.addEventListener("click", () => {
         pinned = pinned?.date === day.date ? null : day;
-        show(pinned);
+        show(pinned ?? day);
       });
       column.append(cell);
     }

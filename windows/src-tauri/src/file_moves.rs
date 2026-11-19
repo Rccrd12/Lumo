@@ -173,7 +173,7 @@ pub fn plan_in(asks: &[Ask], folders: &[String], home: &Path) -> Result<Plan, St
             skipped.push(format!("{}: the folder it would go to doesn't exist; add it to the folders to make.", show(&dest)));
             continue;
         }
-        if dest.exists() || taken.contains(&dest) {
+        if (dest.exists() && !case_only(&from, &dest)) || taken.contains(&dest) {
             skipped.push(format!("{}: something already has that name there, and nothing is overwritten.", show(&dest)));
             continue;
         }
@@ -191,25 +191,56 @@ pub fn plan_in(asks: &[Ask], folders: &[String], home: &Path) -> Result<Plan, St
     Ok(plan)
 }
 
+/// `to` is `from` with only its letters' case changed (`a.pdf` → `A.pdf`):
+/// on Windows `to` then "exists", being `from` itself, and the rename is a
+/// rename, not an overwrite.
+fn case_only(from: &Path, to: &Path) -> bool {
+    let (Some(a), Some(b)) = (from.file_name(), to.file_name()) else { return false };
+    a != b
+        && a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+        && from.parent() == to.parent()
+        && !std::fs::symlink_metadata(to).is_ok_and(|m| m.file_type().is_symlink())
+        && real_path(from) == real_path(to)
+}
+
+/// The rename failed only because `to` is on another drive: the one case a
+/// copy may stand in for it. A file another program holds open, or one we
+/// may not move, is reported, never copied.
+fn crosses_drives(err: &std::io::Error) -> bool {
+    // ERROR_NOT_SAME_DEVICE, as Windows says it.
+    err.kind() == std::io::ErrorKind::CrossesDevices || (cfg!(windows) && err.raw_os_error() == Some(17))
+}
+
 /// Moves one file or folder; across drives a file is copied, checked, then
-/// the original removed (a folder across drives is refused).
+/// the original removed (a folder across drives is refused). A move that
+/// can't be finished leaves nothing behind: never a second copy of the file.
 fn move_one(from: &Path, to: &Path) -> Result<(), String> {
-    if to.exists() {
+    if to.exists() && !case_only(from, to) {
         return Err("something already has that name".into());
     }
-    if std::fs::rename(from, to).is_ok() {
-        return Ok(());
+    match std::fs::rename(from, to) {
+        Ok(()) => return Ok(()),
+        Err(e) if !crosses_drives(&e) => return Err(e.to_string()),
+        Err(_) => {}
     }
     if from.is_dir() {
         return Err("a folder can't be moved to another drive this way".into());
     }
     let size = std::fs::metadata(from).map_err(|e| e.to_string())?.len();
-    std::fs::copy(from, to).map_err(|e| e.to_string())?;
+    if let Err(e) = std::fs::copy(from, to) {
+        let _ = std::fs::remove_file(to);
+        return Err(e.to_string());
+    }
     if std::fs::metadata(to).map(|m| m.len()).ok() != Some(size) {
         let _ = std::fs::remove_file(to);
         return Err("the copy came out different".into());
     }
-    std::fs::remove_file(from).map_err(|e| e.to_string())
+    if let Err(e) = std::fs::remove_file(from) {
+        // In use elsewhere, say: the file stays where it was, and only there.
+        let _ = std::fs::remove_file(to);
+        return Err(e.to_string());
+    }
+    Ok(())
 }
 
 /// Does the waiting plan `id`, the one the user agreed to.
@@ -355,6 +386,52 @@ mod tests {
         assert!(undo().is_err());
 
         assert!(plan_in(&[], &[], &home).is_err());
+
+        // Only the case changes: on Windows the name "exists", being the file itself.
+        if cfg!(windows) {
+            let plan = plan_in(&[ask(&downloads.join("a.pdf"), &downloads.join("A.pdf"))], &[], &home).unwrap();
+            assert_eq!(plan.moves.len(), 1, "{:?}", plan.skipped);
+            assert_eq!(apply(plan.id).unwrap().moved, 1);
+            let names: Vec<String> = std::fs::read_dir(&downloads).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            assert!(names.contains(&"A.pdf".to_string()) && !names.contains(&"a.pdf".to_string()), "{names:?}");
+            assert_eq!(undo().unwrap().moved, 1);
+            let names: Vec<String> = std::fs::read_dir(&downloads).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            assert!(names.contains(&"a.pdf".to_string()), "{names:?}");
+        }
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_name_taken_by_another_file_is_not_a_case_change() {
+        let dir = std::env::temp_dir().join(format!("lumo-case-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.pdf"), b"a").unwrap();
+        std::fs::write(dir.join("b.pdf"), b"b").unwrap();
+        assert!(!case_only(&dir.join("a.pdf"), &dir.join("b.pdf")));
+        assert!(!case_only(&dir.join("a.pdf"), &dir.join("a.pdf")));
+        assert!(!case_only(&dir.join("a.pdf"), &dir.join("sub").join("A.pdf")));
+        assert!(move_one(&dir.join("a.pdf"), &dir.join("b.pdf")).is_err());
+        assert_eq!(std::fs::read(dir.join("b.pdf")).unwrap(), b"b", "never overwritten");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A file another program holds open (Word, a viewer) can't be moved: the
+    /// move fails and leaves no copy of it behind, which undo would not remove.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_in_use_is_not_copied() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = std::env::temp_dir().join(format!("lumo-in-use-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Sorted")).unwrap();
+        std::fs::write(dir.join("report.docx"), b"doc").unwrap();
+        // Shared for reading only, as an editor keeps a document it has open.
+        let held = std::fs::OpenOptions::new().read(true).share_mode(1).open(dir.join("report.docx")).unwrap();
+        assert!(move_one(&dir.join("report.docx"), &dir.join("Sorted").join("report.docx")).is_err());
+        assert!(!dir.join("Sorted").join("report.docx").exists(), "no copy left behind");
+        assert!(dir.join("report.docx").exists());
+        drop(held);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
