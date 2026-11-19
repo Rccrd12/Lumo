@@ -641,6 +641,10 @@ export const ACTIVITY_STRINGS = {
   editingFile: N_("Editing a file"),
   web: N_("Searching the web"),
   subtask: N_("Working on a sub-task"),
+  /** Its subagents at work (antigravity_cli.rs): the answer, or an agent that started some, waits for them. */
+  agents: N_("Waiting for its subagents"),
+  /** An agent waiting for the subagents it started: how many finished ("done/total", antigravity_cli.rs settle). */
+  agentsDone: N_("Its subagents: {done} of {total} finished"),
   /** Claude Code's SendMessage to one of its agents (claude_code.rs activity_for). */
   talking: N_("Talking to {name}"),
   message: N_("Sending a message"),
@@ -774,10 +778,17 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.web);
     case "subtask":
       return t(ACTIVITY_STRINGS.subtask);
+    case "agents": {
+      const [done, total] = detail.split("/");
+      return done && total ? t(ACTIVITY_STRINGS.agentsDone, { done, total }) : t(ACTIVITY_STRINGS.agents);
+    }
     case "talk":
       return detail ? t(ACTIVITY_STRINGS.talking, { name: detail }) : t(ACTIVITY_STRINGS.message);
     case "plan":
       return t(ACTIVITY_STRINGS.plan);
+    // The step under way in its CLI's own words (Claude Code's task_progress).
+    case "step":
+      return detail || t(ACTIVITY_STRINGS.thinking);
     case "screen":
       return t(ACTIVITY_STRINGS.screen);
     case "computer": {
@@ -838,6 +849,7 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "command":
       return t(COMPACT_TEXT.command);
     case "subtask":
+    case "agents":
       return t(ISLAND_ACTIVITY_STRINGS.subtask);
     case "tool":
     case "calling":

@@ -56,6 +56,7 @@ with every step (the first one in_progress, the others pending); then call it ag
 time a step is done (completed) and the next one starts (in_progress). Keep steps short.",
         json!({
             "explanation": { "type": "string", "description": "Optional: a short note on the plan or what changed." },
+            "agent": { "type": "string", "description": "Only when you are a subagent: your role or name. Lumo then shows this plan on your own row, apart from the plan of the conversation that started you. Leave it out otherwise." },
             "plan": {
                 "type": "array",
                 "minItems": 1,
