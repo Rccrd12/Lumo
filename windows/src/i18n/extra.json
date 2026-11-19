@@ -22121,6 +22121,338 @@
    "id": "Percakapan",
    "it": "La conversazione"
   },
+  "Waiting for its subagents": {
+   "zh-Hans": "正在等待其子代理",
+   "hi": "अपने सब-एजेंट्स का इंतज़ार कर रहा है",
+   "es": "Esperando a sus subagentes",
+   "ar": "ينتظر وكلاءه الفرعيين",
+   "fr": "Attend ses sous-agents",
+   "bn": "নিজের সাব-এজেন্টদের অপেক্ষায়",
+   "pt-BR": "Aguardando seus subagentes",
+   "ru": "Ждёт своих субагентов",
+   "id": "Menunggu subagennya",
+   "it": "Aspetta i suoi sotto-agenti"
+  },
+  "Its subagents: {done} of {total} finished": {
+   "zh-Hans": "其子代理：已完成 {done}/{total}",
+   "hi": "इसके सब-एजेंट: {total} में से {done} पूरे",
+   "es": "Sus subagentes: {done} de {total} terminados",
+   "ar": "وكلاؤه الفرعيون: انتهى {done} من {total}",
+   "fr": "Ses sous-agents : {done} sur {total} terminés",
+   "bn": "এর সাব-এজেন্ট: {total}টির মধ্যে {done}টি শেষ",
+   "pt-BR": "Seus subagentes: {done} de {total} concluídos",
+   "ru": "Его субагенты: готово {done} из {total}",
+   "id": "Subagennya: {done} dari {total} selesai",
+   "it": "I suoi sotto-agenti: {done} di {total} finiti"
+  },
+  "Latest actions": {
+   "zh-Hans": "最近的操作",
+   "hi": "हाल की कार्रवाइयाँ",
+   "es": "Últimas acciones",
+   "ar": "آخر الإجراءات",
+   "fr": "Dernières actions",
+   "bn": "সাম্প্রতিক কাজ",
+   "pt-BR": "Últimas ações",
+   "ru": "Последние действия",
+   "id": "Tindakan terakhir",
+   "it": "Ultime azioni"
+  },
+  "Stopping it…": {
+   "zh-Hans": "正在停止…",
+   "hi": "रोका जा रहा है…",
+   "es": "Deteniéndolo…",
+   "ar": "جارٍ إيقافه…",
+   "fr": "Arrêt en cours…",
+   "bn": "থামানো হচ্ছে…",
+   "pt-BR": "Parando…",
+   "ru": "Останавливаю…",
+   "id": "Sedang menghentikan…",
+   "it": "Lo sto fermando…"
+  },
+  "Rename this chat": {
+   "zh-Hans": "重命名此聊天",
+   "hi": "इस चैट का नाम बदलें",
+   "es": "Cambiar el nombre de este chat",
+   "ar": "إعادة تسمية هذه الدردشة",
+   "fr": "Renommer cette discussion",
+   "bn": "এই চ্যাটের নাম বদলান",
+   "pt-BR": "Renomear esta conversa",
+   "ru": "Переименовать этот чат",
+   "id": "Ganti nama obrolan ini",
+   "it": "Rinomina questa chat"
+  },
+  "Enter saves · Esc cancels": {
+   "zh-Hans": "Enter 保存 · Esc 取消",
+   "hi": "Enter सहेजता है · Esc रद्द करता है",
+   "es": "Intro guarda · Esc cancela",
+   "ar": "Enter للحفظ · Esc للإلغاء",
+   "fr": "Entrée enregistre · Échap annule",
+   "bn": "Enter সংরক্ষণ করে · Esc বাতিল করে",
+   "pt-BR": "Enter salva · Esc cancela",
+   "ru": "Enter — сохранить · Esc — отменить",
+   "id": "Enter simpan · Esc batal",
+   "it": "Invio salva · Esc annulla"
+  },
+  "Chat names": {
+   "zh-Hans": "聊天名称",
+   "hi": "चैट के नाम",
+   "es": "Nombres de los chats",
+   "ar": "أسماء الدردشات",
+   "fr": "Noms des discussions",
+   "bn": "চ্যাটের নাম",
+   "pt-BR": "Nomes das conversas",
+   "ru": "Названия чатов",
+   "id": "Nama obrolan",
+   "it": "Nomi delle chat"
+  },
+  "The AI names the chats": {
+   "zh-Hans": "由 AI 为聊天命名",
+   "hi": "AI चैट के नाम रखता है",
+   "es": "La IA pone nombre a los chats",
+   "ar": "الذكاء الاصطناعي يسمّي الدردشات",
+   "fr": "L'IA nomme les discussions",
+   "bn": "AI চ্যাটের নাম দেয়",
+   "pt-BR": "A IA dá nome às conversas",
+   "ru": "ИИ даёт чатам названия",
+   "id": "AI memberi nama obrolan",
+   "it": "L'AI dà il nome alle chat"
+  },
+  "After the first answer, the chat's AI picks a name of a few words. Off, the name is the start of the first question, as before. A chat you rename yourself keeps its name.": {
+   "zh-Hans": "第一次回答后，由该聊天的 AI 取一个简短的名字。关闭时，名称是第一个问题的开头，和以前一样。你自己重命名的聊天会保留它的名字。",
+   "hi": "पहले जवाब के बाद, चैट का AI कुछ शब्दों का नाम चुनता है। बंद होने पर, नाम पहले सवाल की शुरुआत होता है, पहले की तरह। जिस चैट का नाम आप खुद बदलते हैं, उसका नाम वही रहता है।",
+   "es": "Tras la primera respuesta, la IA del chat elige un nombre de pocas palabras. Desactivado, el nombre es el comienzo de la primera pregunta, como antes. Un chat al que tú cambies el nombre conserva ese nombre.",
+   "ar": "بعد الإجابة الأولى، يختار الذكاء الاصطناعي للدردشة اسمًا من بضع كلمات. عند الإيقاف، يكون الاسم بداية السؤال الأول، كما كان من قبل. الدردشة التي تعيد تسميتها بنفسك تحتفظ باسمها.",
+   "fr": "Après la première réponse, l'IA de la discussion choisit un nom de quelques mots. Désactivé, le nom est le début de la première question, comme avant. Une discussion que vous renommez vous-même garde son nom.",
+   "bn": "প্রথম উত্তরের পরে, চ্যাটের AI কয়েক শব্দের একটি নাম বেছে নেয়। বন্ধ থাকলে, নাম হয় প্রথম প্রশ্নের শুরু, আগের মতো। আপনি নিজে যে চ্যাটের নাম বদলান, সেটি তার নাম রাখে।",
+   "pt-BR": "Depois da primeira resposta, a IA da conversa escolhe um nome de poucas palavras. Desligado, o nome é o início da primeira pergunta, como antes. Uma conversa que você renomear mantém o nome.",
+   "ru": "После первого ответа ИИ чата придумывает название из нескольких слов. Если выключено, название — начало первого вопроса, как раньше. Чат, который вы переименовали сами, сохраняет своё название.",
+   "id": "Setelah jawaban pertama, AI obrolan memilih nama beberapa kata. Jika mati, namanya adalah awal pertanyaan pertama, seperti sebelumnya. Obrolan yang Anda ganti namanya sendiri tetap memakai nama itu.",
+   "it": "Dopo la prima risposta, l'AI della chat sceglie un nome di poche parole. Spento, il nome è l'inizio della prima domanda, come prima. Una chat che rinomini tu non cambia più nome."
+  },
+  "Model for names": {
+   "zh-Hans": "命名所用的模型",
+   "hi": "नामों के लिए मॉडल",
+   "es": "Modelo para los nombres",
+   "ar": "النموذج المستخدم للأسماء",
+   "fr": "Modèle pour les noms",
+   "bn": "নামের জন্য মডেল",
+   "pt-BR": "Modelo para os nomes",
+   "ru": "Модель для названий",
+   "id": "Model untuk nama",
+   "it": "Modello per i nomi"
+  },
+  "Only the chat's provider is asked.": {
+   "zh-Hans": "只询问该聊天的提供商。",
+   "hi": "सिर्फ़ चैट के प्रदाता से पूछा जाता है।",
+   "es": "Solo se le pregunta al proveedor del chat.",
+   "ar": "يُسأل مزوّد الدردشة فقط.",
+   "fr": "Seul le fournisseur de la discussion est sollicité.",
+   "bn": "শুধু চ্যাটের প্রদানকারীকে জিজ্ঞাসা করা হয়।",
+   "pt-BR": "Só o provedor da conversa é consultado.",
+   "ru": "Запрос идёт только к провайдеру чата.",
+   "id": "Hanya penyedia obrolan yang ditanya.",
+   "it": "Lo chiede solo al provider della chat."
+  },
+  "The provider's lightest": {
+   "zh-Hans": "提供商最轻量的模型",
+   "hi": "प्रदाता का सबसे हल्का",
+   "es": "El más ligero del proveedor",
+   "ar": "الأخف لدى المزوّد",
+   "fr": "Le plus léger du fournisseur",
+   "bn": "প্রদানকারীর সবচেয়ে হালকা",
+   "pt-BR": "O mais leve do provedor",
+   "ru": "Самая лёгкая у провайдера",
+   "id": "Yang paling ringan dari penyedia",
+   "it": "Il più leggero del provider"
+  },
+  "The chat's own": {
+   "zh-Hans": "与聊天相同",
+   "hi": "चैट वाला ही",
+   "es": "El mismo del chat",
+   "ar": "نفس نموذج الدردشة",
+   "fr": "Celui de la discussion",
+   "bn": "চ্যাটেরটাই",
+   "pt-BR": "O mesmo da conversa",
+   "ru": "Та же, что в чате",
+   "id": "Sama dengan obrolan",
+   "it": "Lo stesso della chat"
+  },
+  "Stopped before it answered": {
+   "zh-Hans": "回答前已停止",
+   "hi": "जवाब देने से पहले रोका गया",
+   "es": "Detenido antes de responder",
+   "ar": "أُوقف قبل أن يجيب",
+   "fr": "Arrêté avant de répondre",
+   "bn": "উত্তর দেওয়ার আগেই থামানো হয়েছে",
+   "pt-BR": "Parado antes de responder",
+   "ru": "Остановлен до ответа",
+   "id": "Dihentikan sebelum menjawab",
+   "it": "Fermato prima di rispondere"
+  },
+  "agents|Stop all": {
+   "zh-Hans": "全部停止",
+   "hi": "सभी रोकें",
+   "es": "Detener todos",
+   "ar": "أوقف الكل",
+   "fr": "Tout arrêter",
+   "bn": "সব থামান",
+   "pt-BR": "Parar todos",
+   "ru": "Остановить все",
+   "id": "Hentikan semua",
+   "it": "Ferma tutti"
+  },
+  "You stopped the answer: the agents in the background go on": {
+   "zh-Hans": "你已停止回答：后台的代理仍在继续",
+   "hi": "आपने जवाब रोक दिया: बैकग्राउंड के एजेंट काम जारी रखते हैं",
+   "es": "Detuviste la respuesta: los agentes en segundo plano siguen",
+   "ar": "أوقفت الإجابة: الوكلاء في الخلفية يواصلون العمل",
+   "fr": "Vous avez arrêté la réponse : les agents en arrière-plan continuent",
+   "bn": "আপনি উত্তর থামিয়েছেন: ব্যাকগ্রাউন্ডের এজেন্টরা কাজ চালিয়ে যাচ্ছে",
+   "pt-BR": "Você parou a resposta: os agentes em segundo plano continuam",
+   "ru": "Вы остановили ответ: фоновые агенты продолжают работу",
+   "id": "Anda menghentikan jawaban: agen di latar belakang tetap berjalan",
+   "it": "Hai fermato la risposta: gli agenti in sfondo continuano"
+  },
+  "Stop them too": {
+   "zh-Hans": "也停止它们",
+   "hi": "उन्हें भी रोकें",
+   "es": "Detenerlos también",
+   "ar": "أوقفهم أيضًا",
+   "fr": "Les arrêter aussi",
+   "bn": "ওদেরও থামান",
+   "pt-BR": "Parar eles também",
+   "ru": "Остановить и их",
+   "id": "Hentikan juga",
+   "it": "Ferma anche loro"
+  },
+  "Editing the question starts {name} again and stops the {count} agents still working.": {
+   "zh-Hans": {
+    "other": "修改问题会让 {name} 重新启动，并停止仍在工作的 {count} 个代理。"
+   },
+   "hi": {
+    "one": "सवाल बदलने से {name} फिर से शुरू होगा और अभी काम कर रहे {count} एजेंट को रोक देगा।",
+    "other": "सवाल बदलने से {name} फिर से शुरू होगा और अभी काम कर रहे {count} एजेंटों को रोक देगा।"
+   },
+   "es": {
+    "one": "Editar la pregunta reinicia {name} y detiene el agente que sigue trabajando.",
+    "other": "Editar la pregunta reinicia {name} y detiene los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "تعديل السؤال يعيد تشغيل {name}.",
+    "one": "تعديل السؤال يعيد تشغيل {name} ويوقف الوكيل الذي لا يزال يعمل.",
+    "two": "تعديل السؤال يعيد تشغيل {name} ويوقف الوكيلين اللذين لا يزالان يعملان.",
+    "few": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكلاء لا يزالون يعملون.",
+    "many": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكيلًا لا يزالون يعملون.",
+    "other": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "Modifier la question redémarre {name} et arrête l'agent encore au travail.",
+    "other": "Modifier la question redémarre {name} et arrête les {count} agents encore au travail."
+   },
+   "bn": {
+    "one": "প্রশ্ন বদলালে {name} আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।",
+    "other": "প্রশ্ন বদলালে {name} আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।"
+   },
+   "pt-BR": {
+    "one": "Editar a pergunta reinicia o {name} e para o agente que ainda está trabalhando.",
+    "other": "Editar a pergunta reinicia o {name} e para os {count} agentes que ainda estão trabalhando."
+   },
+   "ru": {
+    "one": "Изменение вопроса перезапустит {name} и остановит {count} работающего агента.",
+    "few": "Изменение вопроса перезапустит {name} и остановит {count} работающих агента.",
+    "many": "Изменение вопроса перезапустит {name} и остановит {count} работающих агентов.",
+    "other": "Изменение вопроса перезапустит {name} и остановит {count} работающих агента."
+   },
+   "id": {
+    "other": "Mengedit pertanyaan memulai ulang {name} dan menghentikan {count} agen yang masih bekerja."
+   },
+   "it": {
+    "one": "Modificare la domanda fa ripartire {name} e ferma l'agente ancora al lavoro.",
+    "other": "Modificare la domanda fa ripartire {name} e ferma i {count} agenti ancora al lavoro."
+   }
+  },
+  "Your edit goes when the {count} agents still working finish.": {
+   "zh-Hans": {
+    "other": "仍在工作的 {count} 个代理完成后，你的修改就会发送。"
+   },
+   "hi": {
+    "one": "अभी काम कर रहा {count} एजेंट पूरा होते ही आपका बदलाव जाएगा।",
+    "other": "अभी काम कर रहे {count} एजेंट पूरे होते ही आपका बदलाव जाएगा।"
+   },
+   "es": {
+    "one": "Tu edición se enviará cuando termine el agente que sigue trabajando.",
+    "other": "Tu edición se enviará cuando terminen los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "سيُرسل تعديلك الآن.",
+    "one": "سيُرسل تعديلك عندما ينتهي الوكيل الذي لا يزال يعمل.",
+    "two": "سيُرسل تعديلك عندما ينتهي الوكيلان اللذان لا يزالان يعملان.",
+    "few": "سيُرسل تعديلك عندما ينتهي {count} وكلاء لا يزالون يعملون.",
+    "many": "سيُرسل تعديلك عندما ينتهي {count} وكيلًا لا يزالون يعملون.",
+    "other": "سيُرسل تعديلك عندما ينتهي {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "Votre modification partira quand l'agent encore au travail aura fini.",
+    "other": "Votre modification partira quand les {count} agents encore au travail auront fini."
+   },
+   "bn": {
+    "one": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার সম্পাদনা যাবে।",
+    "other": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার সম্পাদনা যাবে।"
+   },
+   "pt-BR": {
+    "one": "Sua edição vai quando o agente que ainda está trabalhando terminar.",
+    "other": "Sua edição vai quando os {count} agentes que ainda estão trabalhando terminarem."
+   },
+   "ru": {
+    "one": "Правка уйдёт, когда закончит {count} работающий агент.",
+    "few": "Правка уйдёт, когда закончат {count} работающих агента.",
+    "many": "Правка уйдёт, когда закончат {count} работающих агентов.",
+    "other": "Правка уйдёт, когда закончат {count} работающих агента."
+   },
+   "id": {
+    "other": "Suntingan Anda dikirim setelah {count} agen yang masih bekerja selesai."
+   },
+   "it": {
+    "one": "La modifica parte quando finisce l'agente ancora al lavoro.",
+    "other": "La modifica parte quando finiscono i {count} agenti ancora al lavoro."
+   }
+  },
+  "You can wait for them to finish, or edit it now.": {
+   "zh-Hans": "你可以等它们完成，或者现在就修改。",
+   "hi": "आप उनके पूरा होने तक रुक सकते हैं, या अभी बदल सकते हैं।",
+   "es": "Puedes esperar a que terminen o editarla ahora.",
+   "ar": "يمكنك انتظار انتهائهم أو تعديله الآن.",
+   "fr": "Vous pouvez attendre qu'ils finissent, ou la modifier maintenant.",
+   "bn": "আপনি ওদের শেষ হওয়া পর্যন্ত অপেক্ষা করতে পারেন, বা এখনই বদলাতে পারেন।",
+   "pt-BR": "Você pode esperar que terminem ou editar agora.",
+   "ru": "Можно дождаться, пока они закончат, или изменить сейчас.",
+   "id": "Anda bisa menunggu mereka selesai, atau mengeditnya sekarang.",
+   "it": "Puoi aspettare che finiscano, o modificarla subito."
+  },
+  "Edit when they finish": {
+   "zh-Hans": "等它们完成后修改",
+   "hi": "पूरा होने पर बदलें",
+   "es": "Editar cuando terminen",
+   "ar": "عدّل عند انتهائهم",
+   "fr": "Modifier quand ils ont fini",
+   "bn": "শেষ হলে বদলান",
+   "pt-BR": "Editar quando terminarem",
+   "ru": "Изменить, когда закончат",
+   "id": "Edit setelah selesai",
+   "it": "Modifica quando finiscono"
+  },
+  "Edit now and stop them": {
+   "zh-Hans": "现在修改并停止它们",
+   "hi": "अभी बदलें और उन्हें रोकें",
+   "es": "Editar ahora y detenerlos",
+   "ar": "عدّل الآن وأوقفهم",
+   "fr": "Modifier maintenant et les arrêter",
+   "bn": "এখনই বদলান এবং ওদের থামান",
+   "pt-BR": "Editar agora e parar eles",
+   "ru": "Изменить сейчас и остановить их",
+   "id": "Edit sekarang dan hentikan",
+   "it": "Modifica ora e fermali"
+  },
   "All connected": {
    "zh-Hans": "全部已连接",
    "hi": "सब जुड़ा हुआ है",

@@ -528,7 +528,14 @@ impl Offer {
                 }
             }
             "session/set_mode" => self.mode = params["modeId"].as_str().map(str::to_string),
-            "session/set_model" => self.model = params["modelId"].as_str().map(str::to_string),
+            "session/set_model" => {
+                self.model = params["modelId"].as_str().map(str::to_string);
+                // A model of the other list: the config option no longer says
+                // which is in use (Copilot's holds "Auto" alone), this one is.
+                if let (Some(c), Some(m)) = (self.choices.iter_mut().find(|c| c.category == "model"), &self.model) {
+                    c.current = m.clone();
+                }
+            }
             _ => {}
         }
     }
@@ -1050,6 +1057,8 @@ struct Live {
     offer: Offer,
     /// The mode the session opened in: where it goes back to after Plan only.
     home_mode: Option<String>,
+    /// The model the session opened with: where Default goes back to after another.
+    home_model: Option<String>,
     next_id: u64,
     used: Instant,
     /// The tasks it handed to subagents, and who hears of them.
@@ -1111,6 +1120,7 @@ impl Live {
             session: None,
             offer: Offer::default(),
             home_mode: None,
+            home_model: None,
             next_id: 1,
             used: Instant::now(),
             tasks: Tasks::default(),
@@ -1235,6 +1245,7 @@ impl Live {
     fn opened(&mut self, result: &Value) {
         self.offer = Offer::parse(result);
         self.home_mode = self.offer.current_mode().map(str::to_string);
+        self.home_model = self.offer.current_model().map(str::to_string);
     }
 
     /// Sets the session's model and mode for the turn, where the CLI offers
@@ -1243,9 +1254,7 @@ impl Live {
     fn prepare(&mut self, model: &str, plan_only: bool) {
         let Some(session) = self.session.clone() else { return };
         let mut wanted = Vec::new();
-        if let Some(m) = safe_model(model).filter(|m| self.offer.current_model() != Some(m)) {
-            wanted.extend(self.offer.set_model(m));
-        }
+        wanted.extend(model_to_set(&self.offer, model, self.home_model.as_deref()));
         let mode = if plan_only { self.offer.plan_mode() } else { self.home_mode.clone() };
         if let Some(mode) = mode.filter(|m| self.offer.current_mode() != Some(m.as_str())) {
             wanted.extend(self.offer.set_mode(&mode));
@@ -1258,6 +1267,16 @@ impl Live {
             }
         }
     }
+}
+
+/// The request that puts the session on the model picked, if it is not on it:
+/// Default is the model it opened with (`home`), not whatever was picked last.
+fn model_to_set(offer: &Offer, picked: &str, home: Option<&str>) -> Option<(&'static str, Value)> {
+    let target = safe_model(picked).or(home)?;
+    if offer.current_model() == Some(target) {
+        return None;
+    }
+    offer.set_model(target)
 }
 
 /// Every chat's CLI, by chat id, while it waits for a message.
@@ -1743,15 +1762,21 @@ pub async fn send(
 /// Lumo's, so it reads and answers without changing anything (whatever the
 /// CLI would ask is rejected). Blocking.
 pub(crate) fn complete(provider: &str, model: &str, prompt: &str) -> Result<String, String> {
-    const REVIEW: &str = "lumo-tool-review";
+    complete_in("tool-review", provider, model, prompt, Arc::new(Stop::default()))
+}
+
+/// `complete`, in the folder `work` of its own under Lumo's local data (a
+/// chat's name, chat_title.rs); `stop` ends it early.
+pub(crate) fn complete_in(work: &str, provider: &str, model: &str, prompt: &str, stop: Arc<Stop>) -> Result<String, String> {
+    let id = format!("lumo-{work}");
     let agent = Agent::of(provider).ok_or_else(|| format!("Unknown chat provider: {provider}"))?;
     let exe = agent.exe().ok_or_else(|| agent.not_installed())?;
     let spec = TurnSpec {
         agent,
         exe,
         args: agent.args(""),
-        dir: platform::local_dir().join("tool-review"),
-        chat_id: REVIEW.into(),
+        dir: platform::local_dir().join(work),
+        chat_id: id.clone(),
         session: None,
         mcp: json!([]),
         extra_key: String::new(),
@@ -1759,8 +1784,8 @@ pub(crate) fn complete(provider: &str, model: &str, prompt: &str) -> Result<Stri
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
-    close(REVIEW);
+    let result = live_turn(spec, move |_| prompt, stop, |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
+    close(&id);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {
         return Err(e.clone());
@@ -1988,6 +2013,38 @@ mod tests {
         offer.applied(method, &params, &json!({}));
         assert_eq!(offer.current_model(), Some("claude-sonnet-4.5"));
         assert!(Offer::parse(&json!({})).plan_mode().is_none());
+    }
+
+    #[test]
+    fn default_and_auto_go_back_after_another_model() {
+        // Copilot: its config option holds "Auto" alone, its models list has more.
+        let mut offer = Offer::parse(&json!({
+            "configOptions": [{ "id": "model", "category": "model", "type": "select", "currentValue": "auto", "options": [{ "value": "auto", "name": "Auto" }] }],
+            "models": { "currentModelId": "auto", "availableModels": [{ "modelId": "auto", "name": "Auto" }, { "modelId": "gpt-5", "name": "GPT-5" }] },
+        }));
+        let home = offer.current_model().map(str::to_string);
+        let (method, mut params) = model_to_set(&offer, "gpt-5", home.as_deref()).unwrap();
+        assert_eq!(method, "session/set_model");
+        params["sessionId"] = json!("s");
+        offer.applied(method, &params, &json!({}));
+        assert_eq!(offer.current_model(), Some("gpt-5"));
+        assert!(model_to_set(&offer, "gpt-5", home.as_deref()).is_none(), "already on it");
+        // Auto picked again: asked for, not taken as already there.
+        let back = model_to_set(&offer, "auto", home.as_deref()).unwrap();
+        assert_eq!(back, ("session/set_config_option", json!({ "configId": "model", "value": "auto" })));
+        // Default: the model the session opened with.
+        assert_eq!(model_to_set(&offer, DEFAULT_MODEL, home.as_deref()), Some(back));
+
+        // Cursor-like, models only: Default after GPT-5 goes back to the first one.
+        let mut offer = Offer::parse(&json!({ "models": { "currentModelId": "claude-sonnet-4.5",
+            "availableModels": [{ "modelId": "claude-sonnet-4.5", "name": "Sonnet" }, { "modelId": "gpt-5", "name": "GPT-5" }] } }));
+        let home = offer.current_model().map(str::to_string);
+        assert!(model_to_set(&offer, DEFAULT_MODEL, home.as_deref()).is_none(), "on it already");
+        let (method, params) = model_to_set(&offer, "gpt-5", home.as_deref()).unwrap();
+        offer.applied(method, &params, &json!({}));
+        assert_eq!(model_to_set(&offer, DEFAULT_MODEL, home.as_deref()), Some(("session/set_model", json!({ "modelId": "claude-sonnet-4.5" }))));
+        // A CLI that says nothing of its model: Default asks for nothing.
+        assert!(model_to_set(&Offer::default(), DEFAULT_MODEL, None).is_none());
     }
 
     #[test]

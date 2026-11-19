@@ -353,3 +353,9 @@
 .agents-btn.undo {
   color: var(--ag-working);
 }
+
+/* Stop them too, after the answer was stopped and its agents went on. */
+.agents-live .agents-btn {
+  flex: none;
+  margin-left: 2px;
+}

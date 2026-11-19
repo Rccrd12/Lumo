@@ -1623,3 +1623,93 @@ test("an agent that answered nothing goes back to Rust as no answer, not as Lumo
   assert.deepEqual(conversationTurn(shown), { role: "assistant", content: "(No answer.)" });
   assert.deepEqual(conversationTurn({ role: "user", content: "Ciao", at: 1 }), { role: "user", content: "Ciao" });
 });
+
+// ── Chat names (chat_title.rs) ────────────────────────────────────────────────
+
+/** A storage of its own for Past chats, as the webview has. */
+function freshStorage() {
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+}
+
+async function askNamed(text) {
+  $(".chat-input").value = text;
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  view.sync();
+}
+
+test("once the first answer is in, the chat's AI names it, and the pencil renames it for good", async () => {
+  freshStorage();
+  const { loadChats } = await import("../src/core/chats.ts");
+  State.chatId = "named-chat";
+  answers.chat_send = { text: "Set the toolchain first." };
+  answers.chat_title = "Lumo's build on Windows";
+  await askNamed("how do I set up the build of Lumo on Windows?");
+  assert.deepEqual(sent("chat_title"), [{
+    provider: "anthropic",
+    model: "claude-opus-5-5",
+    exchanges: [["how do I set up the build of Lumo on Windows?", "Set the toolchain first."]],
+    light: true,
+  }]);
+  assert.equal(loadChats().find((c) => c.id === "named-chat").title, "Lumo's build on Windows");
+
+  // Named once: the next answer asks nothing.
+  await askNamed("and the hook?");
+  assert.equal(sent("chat_title").length, 1);
+  assert.equal(loadChats().find((c) => c.id === "named-chat").title, "Lumo's build on Windows", "saved again, the name stays");
+
+  // The pencil: the name in a field, Enter keeps what is typed.
+  view.el.find(".tool-btn").find((b) => b.getAttribute("title") === "Past chats").fire("click");
+  const row = () => view.el.find(".history-row").find((r) => r.getAttribute("title") === "Lumo's build on Windows");
+  row().find(".history-rename")[0].fire("click");
+  const field = $(".history-rename-input");
+  assert.equal(field.value, "Lumo's build on Windows");
+  field.value = "My build notes";
+  field.fire("keydown", { key: "Escape" });
+  assert.equal($(".history-rename-input"), null, "Esc: back to the row");
+  assert.equal(loadChats().find((c) => c.id === "named-chat").title, "Lumo's build on Windows", "Esc keeps the name");
+  row().find(".history-rename")[0].fire("click");
+  $(".history-rename-input").value = "My build notes";
+  $(".history-rename-input").fire("keydown", { key: "Enter" });
+  const saved = loadChats().find((c) => c.id === "named-chat");
+  assert.equal(saved.title, "My build notes");
+  assert.equal(saved.named, "user");
+  assert.ok(view.el.find(".history-row").some((r) => r.getAttribute("title") === "My build notes"));
+});
+
+test("a question of a word waits for the second answer; off in Settings, nothing is asked", async () => {
+  freshStorage();
+  State.chatId = "short-chat";
+  answers.chat_send = { text: "Hi! How can I help?" };
+  await askNamed("hi");
+  assert.deepEqual(sent("chat_title"), [], "too little to go on");
+  answers.chat_send = { text: "Three ideas." };
+  await askNamed("ideas for Marta's birthday");
+  assert.deepEqual(sent("chat_title").map((a) => a.exchanges), [[["hi", "Hi! How can I help?"], ["ideas for Marta's birthday", "Three ideas."]]]);
+
+  calls.length = 0;
+  State.chatId = "off-chat";
+  State.settings = { ...State.settings, chatAiTitles: false };
+  await askNamed("how do I set up the build of Lumo on Windows?");
+  assert.deepEqual(sent("chat_title"), []);
+});
+
+test("the model for names: the chat's own when Settings says so; a name that doesn't come is asked once more", async () => {
+  freshStorage();
+  const { loadChats } = await import("../src/core/chats.ts");
+  State.chatId = "retry-chat";
+  State.settings = { ...State.settings, chatTitleModel: "chat" };
+  answers.chat_send = { text: "Here it is." };
+  answers.chat_title = null;
+  await askNamed("summarise the March invoice for me");
+  await askNamed("and the April one?");
+  await askNamed("thanks a lot");
+  assert.deepEqual(sent("chat_title").map((a) => a.light), [false, false], "twice at most");
+  assert.equal(loadChats().find((c) => c.id === "retry-chat").title, "summarise the March invoice for me", "no name: the first question");
+});

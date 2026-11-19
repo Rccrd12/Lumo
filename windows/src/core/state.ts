@@ -395,6 +395,10 @@ export interface Settings {
   chatWebSearch: boolean;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
   chatAutoCompact: boolean;
+  /** Once its first answer is in, the chat's own provider names the chat (chat_title.rs). Off: the start of the first question. */
+  chatAiTitles: boolean;
+  /** The model that names the chats: "light", the provider's lightest, or "chat", the chat's own. */
+  chatTitleModel: "light" | "chat";
   /**
    * Whether an image line in the chat's answers is downloaded and shown at once
    * (views/rich/image.ts, web_image.rs). Off: the card shows only its site and a
@@ -528,6 +532,8 @@ export const DEFAULT_SETTINGS: Settings = {
   chatBrowser: false,
   chatWebSearch: false,
   chatAutoCompact: true,
+  chatAiTitles: true,
+  chatTitleModel: "light",
   webImages: false,
   mailImagesAlways: false,
   aiMailAccess: "manage",
