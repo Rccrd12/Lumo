@@ -1,4 +1,5 @@
-// Settings → Agents: one section for every agent other than Claude Code, all
+// Settings → Agents: one section for every agent other than Claude Code and
+// Antigravity (which have cards of their own, sections/agent-cards.ts), all
 // going through the same steps — preview the exact diff, click to confirm, and
 // only then does agents.rs back the file up and write it.
 
@@ -37,7 +38,11 @@ const TEXT = {
   failed: (err: unknown) => t("Could not write: {error}", { error: errorText(err) }),
 };
 
-export function agentsSection(list: AgentHookStatus[] | null): HTMLElement {
+/** The agents with a card of their own on the page (sections/agent-cards.ts), not listed here. */
+export const OWN_CARD = new Set(["antigravity"]);
+
+export function agentsSection(all: AgentHookStatus[] | null): HTMLElement {
+  const list = all?.filter((a) => !OWN_CARD.has(a.id)) ?? null;
   const blocks = h("div", { class: "setting-list" });
   if (!list || list.length === 0) {
     blocks.append(h("div", { class: "hint", text: TEXT.none }));
@@ -99,46 +104,56 @@ function agentBlock(initial: AgentHookStatus): HTMLElement {
     ));
   }
 
-  async function showPreview(install: boolean) {
-    let plan;
-    try {
-      plan = await Bridge.agentHooksPreview(status.id, install);
-    } catch (err) {
-      // An unreadable or unexpected config stops here rather than being
-      // treated as empty and written over.
-      clear(body);
-      body.append(
-        h("div", { class: "notice err", text: errorText(err) }),
-        h("div", { class: "row" }, h("button", { text: TEXT.back, onclick: draw })),
-      );
-      return;
-    }
-    clear(body);
-    body.append(
-      h("div", { class: "hint", text: install ? TEXT.previewInstall(status.name) : TEXT.previewRemove }),
-      renderDiff(plan.diff),
-      h("div", { class: "row" }, h("span", { class: "path", text: TEXT.backup(plan.backup) })),
-    );
-    const confirm = h("button", {
-      class: install ? "primary" : "danger",
-      text: install ? TEXT.confirmInstall : TEXT.confirmRemove,
-    });
-    confirm.addEventListener("click", async () => {
-      confirm.disabled = true;
-      try {
-        const backups = await Bridge.agentHooksApply(status.id, install, plan.fingerprint);
-        clear(body);
-        body.append(h("div", { class: "notice ok", text: TEXT.done(backups, install ? status.note : "") }));
-        window.setTimeout(() => void refresh(), 2600);
-      } catch (err) {
-        confirm.disabled = false;
-        if (cancelledByHand(err)) return;
-        body.append(h("div", { class: "notice err", text: TEXT.failed(err) }));
-      }
-    });
-    body.append(h("div", { class: "row" }, confirm, h("button", { text: TEXT.cancel, onclick: draw })));
+  function showPreview(install: boolean) {
+    void reviewAgentHooks(body, status, install, draw, () => void refresh());
   }
 
   draw();
   return block;
+}
+
+/**
+ * Shows in `body` exactly what installing (or removing) Lumo's hooks changes
+ * in `status`'s config, and writes it only after a click on Back up and
+ * write, with a backup first (agents.rs). `back` draws what was there before;
+ * `applied` runs a moment after it is written.
+ */
+export async function reviewAgentHooks(body: HTMLElement, status: AgentHookStatus, install: boolean, back: () => void, applied: () => void) {
+  let plan;
+  try {
+    plan = await Bridge.agentHooksPreview(status.id, install);
+  } catch (err) {
+    // An unreadable or unexpected config stops here rather than being
+    // treated as empty and written over.
+    clear(body);
+    body.append(
+      h("div", { class: "notice err", text: errorText(err) }),
+      h("div", { class: "row" }, h("button", { text: TEXT.back, onclick: back })),
+    );
+    return;
+  }
+  clear(body);
+  body.append(
+    h("div", { class: "hint", text: install ? TEXT.previewInstall(status.name) : TEXT.previewRemove }),
+    renderDiff(plan.diff),
+    h("div", { class: "row" }, h("span", { class: "path", text: TEXT.backup(plan.backup) })),
+  );
+  const confirm = h("button", {
+    class: install ? "primary" : "danger",
+    text: install ? TEXT.confirmInstall : TEXT.confirmRemove,
+  });
+  confirm.addEventListener("click", async () => {
+    confirm.disabled = true;
+    try {
+      const backups = await Bridge.agentHooksApply(status.id, install, plan.fingerprint);
+      clear(body);
+      body.append(h("div", { class: "notice ok", text: TEXT.done(backups, install ? status.note : "") }));
+      window.setTimeout(applied, 2600);
+    } catch (err) {
+      confirm.disabled = false;
+      if (cancelledByHand(err)) return;
+      body.append(h("div", { class: "notice err", text: TEXT.failed(err) }));
+    }
+  });
+  body.append(h("div", { class: "row" }, confirm, h("button", { text: TEXT.cancel, onclick: back })));
 }

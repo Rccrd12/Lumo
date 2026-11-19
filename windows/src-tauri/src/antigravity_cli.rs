@@ -107,6 +107,32 @@ fn not_signed_in() -> String {
     t("Antigravity CLI isn't signed in. Run `agy` once in a terminal to sign in with your Google account, then try again.")
 }
 
+fn permission_needed() -> String {
+    t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+}
+
+/// A chat turn's error as the island shows it: not installed or not signed
+/// in comes with the card that puts it right (chat::FIX_MARK).
+fn chat_error(error: String) -> String {
+    if error == not_signed_in() {
+        chat::with_fix(error, chat::FIX_AGY_SIGN_IN)
+    } else if error == not_installed() {
+        chat::with_fix(error, chat::FIX_AGY_INSTALL)
+    } else if error == permission_needed() && !crate::agents::antigravity_cards_ready() {
+        chat::with_fix(error, chat::FIX_AGY_HOOKS)
+    } else {
+        error
+    }
+}
+
+/// agy skipped a command it needed the user's OK for (soft-denied, said in
+/// its steps or on stderr) and Lumo's hooks aren't there to ask for it: the
+/// island offers to set them up (chat::FIX_AGY_HOOKS).
+fn needs_hooks(denied: usize, stderr_tail: &str, cards_ready: bool) -> bool {
+    let refused = denied > 0 || (stderr_tail.contains("permission") && stderr_tail.contains("denied"));
+    refused && !cards_ready
+}
+
 /// A model slug or name we are willing to put on the command line. agy's
 /// names can read "Gemini 3.1 Pro (High)": spaces and brackets are fine, a
 /// leading dash (a flag) or anything a shell would read is not.
@@ -1844,11 +1870,11 @@ fn empty_answer(denied: usize, stderr_tail: &str) -> String {
     // island: Lumo's hooks are the way to approve a command from it.
     let refused = stderr_tail.contains("permission") && (stderr_tail.contains("denied") || stderr_tail.contains("auto-denied"));
     if refused && !crate::agents::antigravity_cards_ready() {
-        t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+        permission_needed()
     } else if !stderr_tail.is_empty() {
         tf("Antigravity CLI gave no answer: {error}", &[("error", stderr_tail)])
     } else if denied > 0 {
-        t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+        permission_needed()
     } else {
         t("Antigravity CLI gave no answer.")
     }
@@ -2240,7 +2266,7 @@ pub async fn send(
     context: Option<ChatContext>,
     folder: Option<String>,
 ) -> Result<ChatReply, String> {
-    let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
+    let exe = platform::agy_candidates().into_iter().next().ok_or_else(|| chat_error(not_installed()))?;
     if let Some(name) = command_of(&query) {
         return command(app, chat, exe, name, model, mode, folder).await;
     }
@@ -2337,7 +2363,7 @@ pub async fn send(
     // that says why, so the recap of what was done on the screen is shown and
     // saved under it (and the next turn knows it was done).
     let failed = |error: String, recap: Option<Value>| -> Result<ChatReply, String> {
-        let Some(recap) = recap else { return Err(error) };
+        let Some(recap) = recap else { return Err(chat_error(error)) };
         chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
         Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
     };
@@ -2403,7 +2429,8 @@ pub async fn send(
         answer
     };
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply { warning, computer: recap, ..ChatReply::answer(answer, chat.cli_session()) })
+    let fix = needs_hooks(state.denied, &state.stderr_tail, crate::agents::antigravity_cards_ready()).then_some(chat::FIX_AGY_HOOKS);
+    Ok(ChatReply { warning, fix, computer: recap, ..ChatReply::answer(answer, chat.cli_session()) })
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -2640,6 +2667,19 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn not_signed_in_or_installed_comes_with_its_card_and_skipped_commands_with_the_hooks_one() {
+        assert_eq!(chat_error(not_signed_in()), chat::with_fix(not_signed_in(), chat::FIX_AGY_SIGN_IN));
+        assert_eq!(chat_error(not_installed()), chat::with_fix(not_installed(), chat::FIX_AGY_INSTALL));
+        assert_eq!(chat_error("agy crashed".into()), "agy crashed");
+        // A command agy skipped, while Lumo isn't connected to it: the card to connect.
+        assert!(needs_hooks(1, "", false));
+        assert!(needs_hooks(0, "tool permission auto-denied in headless mode", false));
+        // Connected, or nothing skipped: no card.
+        assert!(!needs_hooks(2, "", true));
+        assert!(!needs_hooks(0, "some other error", false));
+    }
 
     #[test]
     fn a_plan_naming_no_chat_goes_to_the_only_chat_agy_answers_or_to_none() {

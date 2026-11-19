@@ -6,6 +6,7 @@ import { ICONS } from "./icons";
 import { Bridge, onEvent, type LocalLoad, type ModelInfo, type UnslothStudio, UNSLOTH_STUDIO_EVENT } from "../core/bridge";
 import { activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, isApiProvider, localCapsOf, pickModel, providerDef, setLocalCaps, anyProviderReady, visibleProviders, withModel, type ProviderDef } from "../core/providers";
 import { groupByEffort, groupOf, levelOf, splitEffort, variantFor } from "../core/effort-groups";
+import { cliModelName } from "../core/model-names";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { t, tl } from "../i18n/i18n";
@@ -29,6 +30,8 @@ interface Picker {
   replacementFor(id: string, model: string): Promise<string | null>;
   /** Antigravity CLI: `model`'s name and level when the list has other levels of it, else null. */
   variantOf(model: string): { base: string; level: string } | null;
+  /** The name provider `id`'s list gave `model`, once it was asked; else undefined. */
+  labelOf(id: string, model: string): string | undefined;
   readonly isOpen: boolean;
 }
 
@@ -346,7 +349,8 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       const row = h(
         "button",
         { class: on ? "picker-model on" : "picker-model", style: `--accent:${p.accent}`, title: m.id },
-        h("span", { class: "picker-model-name", text: m.label }),
+        // agy lists its models by id: by their names here, the id on hover.
+        h("span", { class: "picker-model-name", text: p.id === AGY ? cliModelName(p.id, m.label) : m.label }),
         on && p.urlField ? h("span", { class: "picker-model-caps" }) : null,
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
@@ -573,6 +577,9 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       const listed = cache.get(AGY);
       if (!listed) return splitEffort(model);
       return groupOf(groupByEffort(listed.map((m) => m.id)), model)?.levels.length ? splitEffort(model) : null;
+    },
+    labelOf(id: string, model: string) {
+      return cache.get(id)?.find((m) => m.id === model)?.label;
     },
     get isOpen() {
       return isOpen;

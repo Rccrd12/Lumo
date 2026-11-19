@@ -73,7 +73,7 @@ test("Antigravity CLI: what is left of each of agy's quotas, Gemini first", asyn
 
 test("Claude Code without the relay points to Settings rather than showing numbers", () => {
   const line = usageLine(on({ chatProvider: "claude-code", planRelayInstalled: false }), plan, undefined, NOW);
-  assert.equal(line.text, "Plan usage: install the relay in Settings → Agents → Plan usage");
+  assert.equal(line.text, "Plan usage: install the relay in Settings → Agents → Claude Code");
   assert.equal(line.setup, true);
   assert.equal(line.color, null);
   // Relay in, no numbers yet: it says it is waiting.

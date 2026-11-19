@@ -52,6 +52,7 @@ pub const HOME_VAR: &str = "USERPROFILE";
 
 /// Keeps spawned helpers from flashing a console window.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,12 @@ pub fn local_time() -> LocalTime {
 /// Spawned helpers must never flash a console window.
 pub fn no_console(cmd: &mut Command) -> &mut Command {
     cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+/// A program the user talks to (a CLI's own sign-in): in a console window of
+/// its own, as if started from a terminal.
+pub fn new_console(cmd: &mut Command) -> &mut Command {
+    cmd.creation_flags(CREATE_NEW_CONSOLE)
 }
 
 /// Ties a chat's program (Claude Code, Codex, an ACP server, agy) to Lumo:

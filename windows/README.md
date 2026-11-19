@@ -108,9 +108,9 @@ Click the Lumo icon in the system tray → **Settings…**
 
 | What | Why | Where the key goes |
 |---|---|---|
-| **Claude Code hooks** | live sessions and approvals | Settings → Agents → Claude Code → **Install hooks** — Lumo backs up `~/.claude/settings.json`, merges its hooks and shows you the diff before writing anything |
+| **Claude Code hooks** | live sessions and approvals | Settings → Agents → Claude Code → Terminal sessions in the island → **Connect…** — Lumo backs up `~/.claude/settings.json`, merges its hooks and shows you the diff before writing anything |
 | **Other agents** | their sessions in the island | Settings → Agents, same backup, diff and confirmation |
-| **Plan usage** | Claude, Codex and Antigravity CLI limits in the island's header | Settings → Agents → Plan usage |
+| **Plan usage** | Claude, Codex and Antigravity CLI limits in the island's header | Settings → Agents → the Claude Code and Antigravity cards; Codex under Plan usage |
 | **Anthropic API key** | chat and questions about files | Settings → Chat → Claude · Windows Credential Manager |
 | **Google AI, OpenAI, OpenRouter keys** | chat with other providers | Settings → Chat → Chat providers · Windows Credential Manager |
 | **Local models** | chat with Ollama, LM Studio or an OpenAI-compatible server | Settings → Chat → Local models |
@@ -589,7 +589,16 @@ only when Lumo is first installed.
 
 <img src="screenshots/settings.png" width="640" alt="Settings inside the island: the search and the sections on top, General below">
 
-Open **Settings… → Agents → Claude Code → Install hooks…**. You get the exact diff of what
+Open **Settings… → Agents**. Claude Code and Antigravity have a card each that
+says in plain words what works: installed (with its version, or the PowerShell
+command that installs it), the sign-in (**Open sign-in…** opens the CLI in a
+window of its own; Lumo never sees or keeps it), the terminal sessions in the
+island and the plan in the header. Files, the relay and the status line are under
+**Technical details**. In the chat, a CLI that isn't signed in or installed
+shows a card that does the same, with **Retry**; an answer of agy's that skipped
+commands because Lumo isn't connected to it yet has a card that leads here.
+
+On Claude Code's card, **Terminal sessions in the island → Connect…** shows the exact diff of what
 will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated backup
 that will be taken, and nothing is written until you click. Your own hooks are
 never touched, and uninstalling removes only Lumo's entries.
@@ -621,10 +630,11 @@ The island's header can show your plan limits: a small pill
 ("Claude 73%", green below 75 %, orange up to 90 %, red above) for the 5-hour and
 weekly Claude limits, another for Codex and one for Antigravity CLI. Click one for
 the details and the reset times. All are off by default; turn them on in
-**Settings… → Agents → Plan usage**.
+**Settings… → Agents**: **Plan usage** on the Claude Code and Antigravity cards,
+Codex's under **Plan usage**.
 
 - **Claude** (Pro and Max plans): the numbers come from Claude Code's own status
-  line. **Show in the island** first shows you the diff of the `statusLine` change in
+  line. **Plan usage** on Claude Code's card first shows you the diff of the `statusLine` change in
   `%USERPROFILE%\.claude\settings.json`, takes a dated backup and writes only
   after your click, with the same writer as the hooks: the status line becomes `lumo-hook --statusline`, which
   passes only the limits on (300 ms at most) and runs the status line you had
