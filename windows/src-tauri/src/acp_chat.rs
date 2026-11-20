@@ -43,6 +43,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -1405,6 +1406,8 @@ fn live_turn(
     let mut unsent = false;
     // Files the turn read or wrote, not told to the island yet.
     let mut noted: Vec<FileTouch> = Vec::new();
+    // Cards the user declined, counted with plan mode's refusals.
+    let declined = Arc::new(AtomicUsize::new(0));
     let ended = loop {
         if stop.is_stopped() && cancelled.is_none() {
             state.stopped = true;
@@ -1462,9 +1465,13 @@ fn live_turn(
                 } else {
                     let stdin = live.stdin.clone();
                     let remember = mode == "auto";
+                    let declined = declined.clone();
                     ask(
                         card(agent, params, &spec.dir, &state.calls, remember),
                         Box::new(move |allowed| {
+                            if !allowed {
+                                declined.fetch_add(1, Ordering::SeqCst);
+                            }
                             write_line(&stdin, &json!({ "id": rid, "result": permission_answer(&options, allowed, remember) }));
                         }),
                     );
@@ -1533,6 +1540,7 @@ fn live_turn(
     for touch in noted.into_iter().chain(state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir))) {
         on_file(&touch);
     }
+    state.denied += declined.load(Ordering::SeqCst);
     let session = Some(session).filter(|s| !s.is_empty());
     match ended {
         Ended::Completed => {
