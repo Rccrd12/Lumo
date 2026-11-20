@@ -109,4 +109,6 @@ test("the steps card shows a cut prompt whole, and marks a cut command", () => {
 
   assert.deepEqual(openedRow("Runs · ls", { code: "ls" }), { text: "Runs · ls", detail: null });
   assert.equal(openedRow("Reads · a.ts", { code: "C:\\p\\a.ts" }).text, "Reads · a.ts");
+  // A row with no verb before the command is marked as cut as well.
+  assert.equal(openedRow("git status --short", { code: "git status --short --branch" }).text, "git status --short…");
 });

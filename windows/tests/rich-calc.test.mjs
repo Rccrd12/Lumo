@@ -601,3 +601,14 @@ test("a line of a card with thousands of spaces is read at once, not in seconds"
   assert.ok(performance.now() - started < 300);
   assert.deepEqual(plot.x, [0, 1]);
 });
+
+test("a zero on the first sample, or just where the curve starts being defined, is a notable point", () => {
+  const { notablePoints } = calcModule;
+  const zeros = (body) => {
+    const plot = parsePlot("", body);
+    return notablePoints(plot, {}, plot).filter((p) => p.kind === "zero").map((p) => p.x);
+  };
+  assert.deepEqual(zeros("y: x^2 - 4\nx: -2..2"), [-2, 2]);
+  assert.deepEqual(zeros("y: x\nx: 0..10"), [0]);
+  assert.deepEqual(zeros("y: sqrt(x)\nx: -5..5"), [0]);
+});

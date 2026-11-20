@@ -215,7 +215,8 @@ impl Kit {
             parts.push(INSTRUCTIONS);
         }
         if self.mail {
-            parts.push(if self.mail_send { MAIL_READ_FIRST } else { MAIL_INSTRUCTIONS });
+            // MAIL_INSTRUCTIONS says nothing can be moved or marked: not with manage on.
+            parts.push(if self.mail_send || self.mail_manage { MAIL_READ_FIRST } else { MAIL_INSTRUCTIONS });
             if self.mail_send {
                 parts.push(MAIL_SEND_INSTRUCTIONS);
             }

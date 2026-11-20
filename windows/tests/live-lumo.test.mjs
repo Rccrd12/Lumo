@@ -145,6 +145,18 @@ test("GitHub: pull requests, reviews, CI, contributions and what Lumo watches", 
   assert.deepEqual(out.defaultBranchCI, [{ repo: "o/r", branch: "main", ci: "success" }]);
   assert.deepEqual(out.contributions, { pastYear: 300, last7Days: 7 });
   assert.deepEqual(out.lumoIsWatching, [{ pr: "o/r#1", until: "green" }]);
+  // What it listens to on this PC is no pull request; the rest of GitHub is named by its target.
+  const mixed = [
+    ...listening,
+    { id: 2, source: "fs", repo: "", number: 0, target: "C:\\Users\\me\\Downloads", until: "download", task: "", chatId: "c", startedAt: NOW },
+    { id: 3, source: "github.branch", repo: "", number: 0, target: "o/r@main", until: "red", task: "fix it", chatId: "c", startedAt: NOW },
+  ];
+  assert.deepEqual(L.lumoStatus(facts({ integrations, listening: mixed }), "github").github.lumoIsWatching, [
+    { pr: "o/r#1", until: "green" },
+    { source: "github.branch", target: "o/r@main", until: "red", then: "fix it" },
+  ]);
+  const onlyHere = L.lumoStatus(facts({ integrations, listening: [mixed[1]] }), "github").github;
+  assert.equal(onlyHere.lumoIsWatching, undefined);
   // Not connected, or failing: said so.
   assert.match(L.lumoStatus(facts(), "github").github.none, /isn't connected/);
   const failing = { integration_github: { data: {}, error: "Bad token", loaded: true, configured: true } };

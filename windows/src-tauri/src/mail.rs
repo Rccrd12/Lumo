@@ -631,7 +631,12 @@ fn publish(app: &AppHandle) {
     let read: Vec<Read> = sources.iter().filter_map(|s| s.as_ref().ok().cloned()).collect();
     if read.is_empty() {
         let error = sources.iter().find_map(|s| s.as_ref().err().cloned());
-        let shown = LAST_SENT.lock().unwrap().take().is_some();
+        // An error shown is remembered too: the account that had it paused or
+        // removed, the island is told there is nothing left to show.
+        let shown = match &error {
+            Some(error) => LAST_SENT.lock().unwrap().replace(format!("error:{error}")).is_some(),
+            None => LAST_SENT.lock().unwrap().take().is_some(),
+        };
         match error {
             Some(error) => emit(app, IntegrationUpdate { id: ID, data: json!({}), error: Some(error), event: None }),
             None if shown => emit(app, IntegrationUpdate { id: ID, data: json!({ "messages": [], "unread": 0 }), error: None, event: None }),

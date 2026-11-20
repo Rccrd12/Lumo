@@ -127,6 +127,11 @@ export function parseIcon(spec: string): CardIcon | null {
     if (c && w.startsWith("#")) color = c;
     else if (!text) text = w;
     else if (c) color = c;
+    else if (cardColor(text)) {
+      // The colour came first ("red A"): the word taken for the character was it.
+      color = cardColor(text)!;
+      text = w;
+    }
   }
   if (!text || graphemes(text) > 2) return null;
   return { kind: "glyph", text, color };

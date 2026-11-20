@@ -586,7 +586,13 @@ pub fn service_news(service: &str, before: Option<&serde_json::Value>, after: &s
         "calcom" => ("bookings", "title", ""),
         _ => return Vec::new(),
     };
-    let key = |item: &serde_json::Value| format!("{}|{}", item["id"].as_str().map_or_else(|| item["id"].to_string(), str::to_string), item[stamp].as_str().unwrap_or(""));
+    let failed = |item: &serde_json::Value| matches!(item["lastEvent"].as_str(), Some("bounced" | "complained" | "failed"));
+    // An email that bounces after it went out is news too: its key changes then
+    // (not at each step that went well, delivered, opened…).
+    let key = |item: &serde_json::Value| {
+        let id = item["id"].as_str().map_or_else(|| item["id"].to_string(), str::to_string);
+        format!("{id}|{}{}", item[stamp].as_str().unwrap_or(""), if failed(item) { "|failed" } else { "" })
+    };
     let seen: HashSet<String> = before[list].as_array().into_iter().flatten().map(key).collect();
     after[list]
         .as_array()
@@ -594,7 +600,7 @@ pub fn service_news(service: &str, before: Option<&serde_json::Value>, after: &s
         .flatten()
         .filter(|item| !seen.contains(&key(item)))
         .map(|item| News {
-            ok: !matches!(item["lastEvent"].as_str(), Some("bounced" | "complained" | "failed")),
+            ok: !failed(item),
             what: item[title].as_str().unwrap_or("").to_string(),
         })
         .collect()
@@ -922,6 +928,11 @@ mod tests {
         let mails = json!({ "emails": [{ "id": "e", "subject": "Welcome", "lastEvent": "bounced" }] });
         let news = service_news("resend", Some(&json!({ "emails": [] })), &mails, None);
         assert!(!news[0].ok && news_matches("failed", &news[0]) && !news_matches("succeeded", &news[0]) && news_matches("event", &news[0]));
+        // One that bounces after it was delivered is news; one only opened is not.
+        let email = |event: &str| json!({ "emails": [{ "id": "e", "subject": "Welcome", "lastEvent": event }] });
+        let news = service_news("resend", Some(&email("delivered")), &email("bounced"), None);
+        assert_eq!(news, vec![News { ok: false, what: "Welcome".into() }]);
+        assert!(service_news("resend", Some(&email("delivered")), &email("opened"), None).is_empty());
     }
 
     #[test]
