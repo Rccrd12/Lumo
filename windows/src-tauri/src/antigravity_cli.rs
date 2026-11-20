@@ -3494,7 +3494,7 @@ pub async fn send(
     // For a plan of Lumo's update_plan that names no chat (serve_plan).
     let _at_work = AtWork::start(&chat_id);
     // The subagents agy delegates to, and the turn's sign of life.
-    let tell = chat_agents::teller(app, chat.id());
+    let tell = chat_agents::teller(app, chat.id(), PROVIDER);
     let tell2 = tell.clone();
     let conversation2 = conversation.clone();
     let state = tauri::async_runtime::spawn_blocking(move || -> Result<Run, String> {
@@ -3756,7 +3756,8 @@ async fn command(
         let stop = chat.stopper();
         let chat_id = chat.id().to_string();
         let input = user_event(&query);
-        let tell = chat_agents::teller(app, chat.id());
+        // A set of its own: the agents of the chat's turns lingering on are not this command's.
+        let tell = chat_agents::teller(app, chat.id(), "antigravity-cli-command");
         let state = tauri::async_runtime::spawn_blocking(move || {
             run(exe, args, input, work, &chat_id, stop, |_| {}, |a| events.activity(&app2, a), |_| {}, |_| {}, &tell)
         })

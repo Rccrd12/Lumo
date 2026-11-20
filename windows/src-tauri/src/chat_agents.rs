@@ -484,10 +484,34 @@ pub fn emit_changed(app: &AppHandle, chat: &str, agents: &mut Agents) {
 /// lives, and a `Tell` with them for when the CLI ends on another thread.
 pub type Tell = Arc<dyn Fn(&mut Agents, bool) + Send + Sync>;
 
-/// The `Tell` of the chat `chat`.
-pub fn teller(app: &AppHandle, chat: &str) -> Tell {
+/// The agents still open of each provider in a chat (each provider's
+/// `teller`), by chat: Claude Code's agents left at work in the background
+/// and those an API model starts next in the same chat keep their tabs and
+/// their place in line for the computer, each set its own.
+type OpenSets = HashMap<String, HashMap<String, Vec<String>>>;
+static OPEN_SETS: Mutex<Option<OpenSets>> = Mutex::new(None);
+
+/// The provider `source` has `open` agents in chat `chat` now: those of all the chat's providers.
+fn open_in_chat(chat: &str, source: &str, open: Vec<String>) -> Vec<String> {
+    let mut all = OPEN_SETS.lock().unwrap_or_else(|e| e.into_inner());
+    let sets = all.get_or_insert_with(HashMap::new).entry(chat.to_string()).or_default();
+    if open.is_empty() {
+        sets.remove(source);
+    } else {
+        sets.insert(source.to_string(), open);
+    }
+    let union: Vec<String> = sets.values().flatten().cloned().collect();
+    if sets.is_empty() {
+        all.as_mut().map(|a| a.remove(chat));
+    }
+    union
+}
+
+/// The `Tell` of the provider `source`'s agents in the chat `chat`.
+pub fn teller(app: &AppHandle, chat: &str, source: &str) -> Tell {
     let app = app.clone();
     let chat = chat.to_string();
+    let source = source.to_string();
     let events = crate::chat::ChatEvents::new(&chat);
     Arc::new(move |agents: &mut Agents, alive: bool| {
         if alive {
@@ -500,7 +524,7 @@ pub fn teller(app: &AppHandle, chat: &str) -> Tell {
         }
         // An agent that ended waits for the computer no more, nor keeps it,
         // and its browser tabs close.
-        let open = agents.open_ids();
+        let open = open_in_chat(&chat, &source, agents.open_ids());
         crate::computer_turns::agents_open(&app, &chat, &open);
         crate::browser::agents_open(&app, &chat, &open);
         events.agents(&app, agents);
@@ -797,6 +821,24 @@ mod tests {
         assert!(signal_due("chat-signal-test-a"));
         assert!(!signal_due("chat-signal-test-a"));
         assert!(signal_due("chat-signal-test-b"));
+    }
+
+    #[test]
+    fn each_set_of_a_chats_agents_keeps_its_own_open() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(open_in_chat("sets-test", "claude-code", s(&["cc1", "cc2"])), s(&["cc1", "cc2"]));
+        // Another provider's agents in the same chat: the first set's stay open.
+        let mut both = open_in_chat("sets-test", "anthropic", s(&["api1"]));
+        both.sort();
+        assert_eq!(both, s(&["api1", "cc1", "cc2"]));
+        // That set's agents end: only its own go.
+        let mut left = open_in_chat("sets-test", "anthropic", Vec::new());
+        left.sort();
+        assert_eq!(left, s(&["cc1", "cc2"]));
+        assert_eq!(open_in_chat("sets-test", "claude-code", Vec::new()), Vec::<String>::new());
+        assert!(OPEN_SETS.lock().unwrap().as_ref().unwrap().get("sets-test").is_none(), "nothing kept");
+        assert_eq!(open_in_chat("sets-other", "codex", s(&["x"])), s(&["x"]), "chats apart");
+        open_in_chat("sets-other", "codex", Vec::new());
     }
 
     #[test]

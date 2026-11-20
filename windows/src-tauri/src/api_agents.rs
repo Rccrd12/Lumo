@@ -225,7 +225,7 @@ pub async fn run(app: &AppHandle, chat: &str, source: &str, input: &Value, limit
         Ok(tasks) => tasks,
         Err(e) => return (e, true),
     };
-    run_with(chat, source, tasks, limit, turn, crate::chat_agents::teller(app, chat), true).await
+    run_with(chat, source, tasks, limit, turn, crate::chat_agents::teller(app, chat, source), true).await
 }
 
 /// `run`, with the island's teller given (`stoppable`: Stop this agent is offered).

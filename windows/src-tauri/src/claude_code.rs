@@ -2803,7 +2803,7 @@ pub async fn send(
         move |run: Run| own_answer(&app, &chat_id, run)
     };
     // The agents Claude Code starts, and the turn's sign of life.
-    let tell = chat_agents::teller(app, chat.id());
+    let tell = chat_agents::teller(app, chat.id(), PROVIDER);
     let state = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             exe,
