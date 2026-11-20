@@ -880,6 +880,15 @@ fn activity_for(name: &str, input: &Value) -> Activity {
             h if h.is_empty() => Activity::new("web", ""),
             h => Activity::new("read", h),
         },
+        // Its plan, email, timer and listening tools: what they are, by name,
+        // as for the API providers (claude.rs tool_activity). The rest is the computer.
+        "mcp__lumo__update_plan" => Activity::new("plan", ""),
+        _ if name.strip_prefix("mcp__lumo__").is_some_and(|tool| {
+            tool.starts_with("mail_") || crate::island_tools::NAMES.contains(&tool) || tool == crate::island_tools::LISTEN_PULL_REQUEST
+        }) =>
+        {
+            Activity::new("tool", pretty_tool(&name["mcp__lumo__".len()..]))
+        }
         _ if name.starts_with("mcp__lumo__") => Activity::new("computer", ""),
         _ if name.to_lowercase().contains("screenshot") => Activity::new("screen", ""),
         _ => match pretty_tool(name) {
@@ -3459,6 +3468,11 @@ mod tests {
         assert_eq!(a("mcp__lumo__screenshot", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__zoom", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__left_click", json!({ "coordinate": [1, 2] })), Activity::new("computer", ""));
+        // Its other tools are not the computer.
+        assert_eq!(a("mcp__lumo__mail_read", json!({ "id": "1" })), Activity::new("tool", "mail read"));
+        assert_eq!(a("mcp__lumo__set_timer", json!({ "seconds": 60 })), Activity::new("tool", "set timer"));
+        assert_eq!(a("mcp__lumo__listen_pull_request", json!({})), Activity::new("tool", "listen pull request"));
+        assert_eq!(a("mcp__lumo__update_plan", json!({ "plan": [] })), Activity::new("plan", ""));
         // Lumo's browser is a hidden tab, not the computer.
         assert_eq!(a("mcp__lumo__browser_open", json!({ "url": "https://www.example.com/a" })), Activity::new("read", "example.com"));
         assert_eq!(a("mcp__lumo__browser_click", json!({ "tab": 1, "ref": 3 })), Activity::new("web", ""));

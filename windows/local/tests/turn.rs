@@ -91,6 +91,45 @@ fn the_island_says_what_the_model_is_doing() {
     assert_eq!(island.doing, [Doing::Prompt, Doing::Reasoning]);
 }
 
+/// One piece of a streamed tool call: its `index`, and what this piece adds.
+fn piece(index: u64, id: Option<&str>, name: Option<&str>, arguments: &str) -> String {
+    let mut function = json!({ "arguments": arguments });
+    if let Some(name) = name {
+        function["name"] = json!(name);
+    }
+    let mut call = json!({ "index": index, "type": "function", "function": function });
+    if let Some(id) = id {
+        call["id"] = json!(id);
+    }
+    json!({ "choices": [{ "delta": { "tool_calls": [call] } }] }).to_string()
+}
+
+#[test]
+fn a_tool_or_a_think_tag_that_comes_in_pieces_is_said_whole() {
+    // The name in two pieces: the tool, never half of it.
+    let mut island = Island::default();
+    let replies = vec![
+        Reply::Events(vec![piece(0, Some("c1"), Some("set_"), ""), piece(0, None, Some("timer"), ""), piece(0, None, None, "{\"minutes\":5}"), finish("tool_calls"), DONE.into()]),
+        answer("Fatto."),
+    ];
+    let (outcome, _) = turn(replies, &mut question("Timer di 5 minuti", &["set_timer"]), &rules("doing-pieces", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fatto.");
+    assert_eq!(island.doing, [Doing::Prompt, Doing::Calling("set_timer".into()), Doing::Prompt]);
+    // A call with no arguments, the last of the answer, is said too.
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![piece(0, Some("c1"), Some("list_listening"), ""), finish("tool_calls"), DONE.into()]), answer("Nessuno.")];
+    let (outcome, _) = turn(replies, &mut question("Cosa ascolti?", &["list_listening"]), &rules("doing-bare", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Nessuno.");
+    assert!(island.doing.contains(&Doing::Calling("list_listening".into())), "{:?}", island.doing);
+    // "<" then "think>": reasoning, hidden.
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![text("<"), text("think>segreto"), text("</think>Fa 4."), finish("stop"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("2+2?", &[]), &rules("doing-half-tag", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fa 4.");
+    assert_eq!(island.doing, [Doing::Prompt, Doing::Reasoning]);
+    assert!(island.shown.iter().all(|s| !s.contains("segreto") && !s.contains('<')), "{:?}", island.shown);
+}
+
 #[test]
 fn a_retry_and_a_model_sent_back_are_said() {
     let mut island = Island::default();
