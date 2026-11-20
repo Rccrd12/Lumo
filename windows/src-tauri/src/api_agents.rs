@@ -225,7 +225,7 @@ pub async fn run(app: &AppHandle, chat: &str, source: &str, input: &Value, limit
         Ok(tasks) => tasks,
         Err(e) => return (e, true),
     };
-    run_with(chat, source, tasks, limit, turn, crate::chat_agents::teller(app, chat), true).await
+    run_with(chat, source, tasks, limit, turn, crate::chat_agents::teller(app, chat, source), true).await
 }
 
 /// `run`, with the island's teller given (`stoppable`: Stop this agent is offered).
@@ -241,6 +241,7 @@ async fn run_with(chat: &str, source: &str, tasks: Vec<Task>, limit: usize, turn
         let (stops, wake, ids) = (stops.clone(), wake.clone(), ids.clone());
         let n = crate::chat_agents::register_stopper(
             chat,
+            source,
             Box::new(move |id: &str| {
                 if !ids.iter().any(|i| i == id) {
                     return Err("This agent can't be stopped on its own.".into());
@@ -569,8 +570,8 @@ mod tests {
             let stop = async {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 let id = seen.lock().unwrap().iter().find(|r| r.title == "A").unwrap().id.clone();
-                crate::chat_agents::stop(&chat, &id).unwrap();
-                assert!(crate::chat_agents::stop(&chat, "someone-else").is_err());
+                crate::chat_agents::stop(&chat, &id, None).unwrap();
+                assert!(crate::chat_agents::stop(&chat, "someone-else", None).is_err());
             };
             let (out, ()) = both(run, stop).await;
             out
@@ -579,7 +580,7 @@ mod tests {
         let seen = seen.lock().unwrap();
         assert_eq!(seen.iter().rev().find(|r| r.title == "A").unwrap().state, AgentState::Stopped);
         assert_eq!(seen.iter().rev().find(|r| r.title == "B").unwrap().state, AgentState::Done);
-        assert!(crate::chat_agents::stop(&chat, "x").is_err(), "no stopper once they ended");
+        assert!(crate::chat_agents::stop(&chat, "x", None).is_err(), "no stopper once they ended");
     }
 
     #[test]
@@ -654,7 +655,7 @@ mod tests {
             let stop = async {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 let id = seen.lock().unwrap().iter().find(|r| r.title == "B").unwrap().id.clone();
-                crate::chat_agents::stop(&chat, &id).unwrap();
+                crate::chat_agents::stop(&chat, &id, None).unwrap();
                 tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                 let seen = seen.lock().unwrap();
                 let last = |t: &str| seen.iter().rev().find(|r| r.title == t).unwrap().clone();

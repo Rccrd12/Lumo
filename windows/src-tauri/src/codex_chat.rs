@@ -310,6 +310,20 @@ fn card(method: &str, params: &Value, files: &HashMap<String, Vec<String>>) -> O
     }))
 }
 
+/// The files a change (`fileChange` item) touches.
+fn change_paths(item: &Value) -> Vec<String> {
+    item["changes"].as_array().into_iter().flatten().filter_map(|c| c["path"].as_str()).map(str::to_string).collect()
+}
+
+/// The card for a request of one of the chat's agents: the chat's own card
+/// (its thread's session), naming the agent, so the island shows it over the
+/// chat and on the agent's row (core/chat-agents.ts permissionMatch).
+fn agent_card(mut payload: Value, main: &str, agent: &str) -> Value {
+    payload["session_id"] = json!(main);
+    payload["agent_id"] = json!(agent);
+    payload
+}
+
 /// The answer to a request of Codex's server that is not a card's: an MCP
 /// server's question is declined, anything else Lumo does not do is an error.
 fn other_answer(method: &str) -> Value {
@@ -422,8 +436,7 @@ impl Run {
                     Some("userMessage") | None => false,
                     Some(kind) => {
                         if kind == "fileChange" && !done {
-                            let paths = item["changes"].as_array().into_iter().flatten().filter_map(|c| c["path"].as_str()).map(str::to_string).collect();
-                            self.files.insert(id.to_string(), paths);
+                            self.files.insert(id.to_string(), change_paths(item));
                         }
                         if !done {
                             let touches = touches_for(item);
@@ -559,7 +572,7 @@ impl Subagents {
         let item = &params["item"];
         if matches!(method, "item/started" | "item/completed") {
             match item["type"].as_str() {
-                Some("collabAgentToolCall") => self.collab(item),
+                Some("collabAgentToolCall") => self.collab(main, item),
                 Some("subAgentActivity") => self.activity(item),
                 _ => {}
             }
@@ -586,6 +599,12 @@ impl Subagents {
         true
     }
 
+    /// The row of the agent working on the thread `thread`, while it is at work.
+    fn at_work(&self, thread: &str) -> Option<String> {
+        let id = self.row_id(thread);
+        self.agents.get(&id).filter(|r| !r.state.is_final()).map(|_| id)
+    }
+
     /// The agent of the thread `thread`, while it is at work, marked changed:
     /// one that ended never changes.
     fn open_row(&mut self, thread: &str) -> Option<&mut AgentRow> {
@@ -598,12 +617,17 @@ impl Subagents {
 
     /// A collaboration tool call: a new agent (`spawnAgent`, its prompt the
     /// title), and what any call says of the agents it names.
-    fn collab(&mut self, item: &Value) {
+    fn collab(&mut self, main: &str, item: &Value) {
         let prompt = text_of(item, "prompt");
         if item["tool"].as_str() == Some("spawnAgent") {
+            // Spawned by one of the chat's agents (its own thread sent it): drawn under it.
+            let parent = text_of(item, "senderThreadId").filter(|t| *t != main).map(|t| self.row_id(t)).filter(|p| self.agents.get(p).is_some());
             for id in item["receiverThreadIds"].as_array().into_iter().flatten().filter_map(Value::as_str).filter(|t| !t.is_empty()) {
                 let title = prompt.map(str::to_string).unwrap_or_else(|| t("Agent"));
                 let row = self.agents.upsert(id, || AgentRow::new(id, PROVIDER, &title));
+                if let Some(parent) = parent.as_ref().filter(|p| p.as_str() != id) {
+                    row.parent = Some(parent.clone());
+                }
                 // First heard of on its own thread, with no title yet.
                 if let (Some(prompt), false) = (prompt, row.state.is_final()) {
                     row.title = short(prompt);
@@ -682,6 +706,13 @@ impl Subagents {
                         row.steps += 1;
                     }
                     row.now = Some(now);
+                }
+            }
+            // Its own plan (its update_plan): its row shows how far along it is.
+            "turn/plan/updated" => {
+                let plan = chat_agents::plan_of(params);
+                if let Some(row) = self.agents.touch(thread) {
+                    row.plan = plan;
                 }
             }
             "item/completed" if item["type"] == "agentMessage" => {
@@ -1170,12 +1201,35 @@ fn live_turn(
             }
             continue;
         }
-        // Another thread's (a subagent's) news is not this answer's.
-        if params["threadId"].as_str().is_some_and(|t| t != thread) {
-            if let Some(rid) = message.get("id") {
-                let mut answer = other_answer(method);
-                answer["id"] = rid.clone();
-                write_line(&live.stdin, &answer);
+        // Another thread's (a subagent's) news is not this answer's; its
+        // request is the user's to answer, as the answer's own are.
+        if let Some(sub) = params["threadId"].as_str().filter(|t| *t != thread) {
+            if method == "item/started" && params["item"]["type"] == "fileChange" {
+                if let Some(id) = params["item"]["id"].as_str() {
+                    state.files.insert(id.to_string(), change_paths(&params["item"]));
+                }
+            }
+            if let Some(rid) = message.get("id").cloned() {
+                match (card(method, params, &state.files), live.agents.at_work(sub)) {
+                    (Some(_), _) if plan_only => {
+                        write_line(&live.stdin, &json!({ "id": rid, "result": { "decision": "decline" } }));
+                    }
+                    (Some(payload), Some(agent)) => {
+                        let stdin = live.stdin.clone();
+                        ask(
+                            agent_card(payload, &thread, &agent),
+                            Box::new(move |allowed| {
+                                let decision = if allowed { "accept" } else { "decline" };
+                                write_line(&stdin, &json!({ "id": rid, "result": { "decision": decision } }));
+                            }),
+                        );
+                    }
+                    _ => {
+                        let mut answer = other_answer(method);
+                        answer["id"] = rid;
+                        write_line(&live.stdin, &answer);
+                    }
+                }
             }
             continue;
         }
@@ -1351,7 +1405,7 @@ pub async fn send(
     };
 
     // The agents Codex starts, and the turn's sign of life.
-    let tell = chat_agents::teller(app, chat.id());
+    let tell = chat_agents::teller(app, chat.id(), PROVIDER);
     let app2 = app.clone();
     let app3 = app.clone();
     let events = chat.events();
@@ -1671,6 +1725,40 @@ mod tests {
     }
 
     const SUB: &str = "02b27513-92cb-8903-bdbb-0390a3b2a4ff";
+
+    #[test]
+    fn an_agent_spawned_by_another_goes_under_it_and_shows_its_own_plan() {
+        let mut sub = Subagents::default();
+        let spawn = |sender: &str, receiver: &str, prompt: &str| {
+            format!(r#"{{"method":"item/completed","params":{{"threadId":"{sender}","item":{{"type":"collabAgentToolCall","id":"s-{receiver}","tool":"spawnAgent","status":"completed","senderThreadId":"{sender}","receiverThreadIds":["{receiver}"],"prompt":"{prompt}","agentsStates":{{}}}}}}}}"#)
+        };
+        feed_agents(&mut sub, &[&spawn(THREAD, SUB, "Coordinate the review"), &spawn(SUB, "grandchild", "Read the parser"), &spawn("stranger", "lost", "Odd")]);
+        assert_eq!(sub.agents.get(SUB).unwrap().parent, None, "the chat's own: at the top");
+        assert_eq!(sub.agents.get("grandchild").unwrap().parent.as_deref(), Some(SUB));
+        assert_eq!(sub.agents.get("lost").unwrap().parent, None, "a sender the chat doesn't know: at the top");
+
+        // Its update_plan, on its own thread: its row's plan, never the chat's.
+        feed_agents(&mut sub, &[r#"{"method":"turn/plan/updated","params":{"threadId":"grandchild","turnId":"t1","explanation":null,"plan":[{"step":"Read lexer.rs","status":"completed"},{"step":"Read parser.rs","status":"inProgress"},{"step":"Report","status":"pending"}]}}"#]);
+        let plan = sub.agents.get("grandchild").unwrap().plan.clone().unwrap();
+        assert_eq!(plan.iter().map(|p| p.status).collect::<Vec<_>>(), ["done", "active", "pending"]);
+        assert_eq!(plan[1].text, "Read parser.rs");
+    }
+
+    #[test]
+    fn an_agents_request_is_a_card_of_the_chat_naming_the_agent() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[&format!(r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"s","tool":"spawnAgent","senderThreadId":"{THREAD}","receiverThreadIds":["{SUB}"],"prompt":"Run the tests","agentsStates":{{}}}}}}}}"#)]);
+        assert_eq!(sub.at_work(SUB).as_deref(), Some(SUB));
+        assert_eq!(sub.at_work("nobody"), None);
+        let params = json!({ "threadId": SUB, "itemId": "c1", "command": "cargo test", "reason": "Run the tests" });
+        let payload = agent_card(card("item/commandExecution/requestApproval", &params, &HashMap::new()).unwrap(), THREAD, SUB);
+        assert_eq!(payload["session_id"], THREAD, "the chat's card");
+        assert_eq!(payload["agent_id"], SUB, "on the agent's row");
+        assert_eq!(payload["tool_name"], "Bash");
+        // One that ended asks nothing any more.
+        feed_agents(&mut sub, &[&format!(r#"{{"method":"turn/completed","params":{{"threadId":"{SUB}","turn":{{"id":"t9","status":"completed","items":[]}}}}}}"#)]);
+        assert_eq!(sub.at_work(SUB), None);
+    }
 
     #[test]
     fn the_agents_codex_spawns_are_rows_of_their_own_threads() {
