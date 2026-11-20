@@ -673,6 +673,9 @@ struct Spawn {
     stop_asked: Option<Instant>,
     /// Its folder of children was listed once (`find_children`).
     listed: bool,
+    /// agy's error stopped it, at this time, with these words: failed unless
+    /// it goes on within FAIL_GRACE.
+    failing: Option<(Instant, String)>,
 }
 
 impl Spawn {
@@ -699,6 +702,7 @@ impl Spawn {
             waiting_since: None,
             stop_asked: None,
             listed: false,
+            failing: None,
         }
     }
 
@@ -750,6 +754,9 @@ const MAX_FIRSTS: usize = 512;
 /// How long a subagent the user stopped says it is stopping, until agy says
 /// it stopped: past that, agy did not (the row is at work again).
 const STOP_WAIT: Duration = Duration::from_secs(20);
+/// How long a subagent whose transcript says agy's error stopped it is given
+/// to go on: agy 1.5.13 never does (it stays "alive", its parent waits).
+const FAIL_GRACE: Duration = Duration::from_secs(20);
 
 /// The conversation a transcript is the log of, and agy's folder of them:
 /// `…/brain/<conversation>/…/transcript.jsonl`.
@@ -960,6 +967,9 @@ struct Heard {
     /// The subagents it stopped (`manage_subagents`), by conversation, once
     /// the call went through; Some(empty) for all of its own.
     killed: Option<Vec<String>>,
+    /// agy's error that stopped it (an `ERROR_MESSAGE` of its transcript:
+    /// the model unavailable…). agy neither tries again nor tells its parent.
+    error: Option<String>,
 }
 
 /// What reading a subagent's transcript keeps from line to line.
@@ -1062,6 +1072,10 @@ fn transcript_browsing(line: &Value) -> Vec<(&'static str, Value)> {
 /// a subagent of its own is an order, not its report).
 fn transcript_line(row: &mut AgentRow, reading: &mut Reading, files: &mut Vec<FileTouch>, line: &Value, to_parent: &dyn Fn(&str) -> bool) -> Heard {
     let mut heard = Heard::default();
+    if line["type"] == "ERROR_MESSAGE" {
+        heard.error = Some(error_text(&line["error"]).or_else(|| line["content"].as_str().map(str::to_string)).unwrap_or_default());
+        return heard;
+    }
     let read = |k: &str| line[k].as_u64().unwrap_or(0);
     let context = read("input_tokens") + read("cache_read_tokens");
     if context > 0 {
@@ -1599,6 +1613,12 @@ impl Subagents {
                 if let Some(ids) = heard.killed {
                     kills.push((i, ids));
                 }
+                if let Some(error) = heard.error {
+                    spawn.failing = Some((Instant::now(), error));
+                }
+                if heard.called || heard.answered {
+                    spawn.failing = None;
+                }
                 if heard.called {
                     // Woken (by its subagents' messages): at work again.
                     spawn.waiting_since = None;
@@ -1810,6 +1830,18 @@ impl Subagents {
         for i in 0..self.spawns.len() {
             let id = self.spawns[i].row.clone();
             if self.agents.get(&id).is_none_or(|r| r.state.is_final()) {
+                continue;
+            }
+            // agy's error stopped it and it never went on: failed, with agy's words.
+            if let Some((_, error)) = self.spawns[i].failing.take_if(|(at, _)| at.elapsed() >= FAIL_GRACE) {
+                if let Some(row) = self.agents.touch(&id) {
+                    // Past agy's prefixes ("API error (attempt 1): UNAVAILABLE (code 503): …").
+                    let said = error.rsplit_once("): ").map_or(error.as_str(), |(_, w)| w);
+                    let words = Some(error_words(said)).filter(|w| !w.is_empty());
+                    row.end(AgentState::Failed, words.map(|w| crate::chat_agents::summary_of(&w)));
+                    row.can_stop = false;
+                    changed = true;
+                }
                 continue;
             }
             if self.spawns[i].stop_asked.is_some_and(|at| at.elapsed() >= STOP_WAIT) {
@@ -4618,6 +4650,35 @@ mod tests {
         assert_eq!(row.state, AgentState::Done);
         assert_eq!(row.summary.as_deref(), Some("Both batches are done."));
         assert_eq!(run.subagents.agents.open(), 0);
+        let _ = std::fs::remove_dir_all(brain.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    /// agy 1.5.13 (live test 3d): a subagent the model's server refuses stops
+    /// on an ERROR_MESSAGE of its transcript, stays "alive" and tells no one.
+    #[test]
+    fn a_subagent_stopped_by_agys_error_fails_unless_it_goes_on() {
+        let brain = test_brain();
+        let (log, uri) = transcript_of(&brain, "sub");
+        let mut run = Run::default();
+        run.feed(done_with(SPAWN_A, &uri).as_bytes());
+        let id = run.subagents.spawns[0].row.clone();
+        let refused = json!({ "type": "ERROR_MESSAGE", "source": "SYSTEM", "status": "DONE", "error": "API error (attempt 1): UNAVAILABLE (code 503): No capacity available for model gemini-3.5-flash-lite" }).to_string();
+        append(&log, &[started_by("main-1", "Count to ten"), refused.clone()]);
+        run.subagents.read_transcripts();
+        assert!(!run.subagents.agents.get(&id).unwrap().state.is_final(), "given a moment to go on");
+        // It goes on: nothing failed.
+        append(&log, &[calls(json!([{ "name": "view_file", "args": { "AbsolutePath": "\"C:\\\\work\\\\a.md\"" } }]))]);
+        run.subagents.read_transcripts();
+        assert!(run.subagents.spawns[0].failing.is_none());
+        // Stopped again, for good: failed past the grace, with agy's words.
+        append(&log, &[refused]);
+        run.subagents.read_transcripts();
+        run.subagents.spawns[0].failing.as_mut().unwrap().0 = Instant::now() - FAIL_GRACE;
+        run.subagents.read_transcripts();
+        let row = run.subagents.agents.get(&id).unwrap();
+        assert_eq!(row.state, AgentState::Failed);
+        assert!(row.error.as_deref().unwrap().contains("No capacity available"), "{:?}", row.error);
+        assert!(!row.can_stop);
         let _ = std::fs::remove_dir_all(brain.parent().unwrap().parent().unwrap().parent().unwrap());
     }
 
