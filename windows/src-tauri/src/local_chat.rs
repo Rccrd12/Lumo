@@ -863,11 +863,13 @@ pub async fn send(
     let sandbox_high = sandbox != "low";
     let workspace = tools.iter().any(|(id, _, _)| id == crate::workspace::COPY);
     let today = profile::today();
-    // What the model is told, for the tools it has loaded (and none, when the server takes none).
+    let mail_on = !crate::mail::ai_tools(app).is_empty();
+    // What the model is told, for the tools it has loaded (and none, when the
+    // server takes none: then, with email on, that it can't read it).
     let prompt_for = |loaded: &[String], tools: bool| {
         let groups: Vec<profile::Group> = profile::Group::ALL.into_iter().filter(|g| loaded.iter().any(|id| profile::group_of(id) == Some(*g))).collect();
         let catalog = profile::catalog(&all, loaded);
-        profile::system_prompt(&profile::Prompt {
+        let mut prompt = profile::system_prompt(&profile::Prompt {
             first_name: crate::identity::first_name(),
             today: &today,
             tools,
@@ -879,12 +881,16 @@ pub async fn send(
             mail: if mode == "plan" && !mail.is_empty() { "mail" } else { mail },
             plan: mode == "plan",
             workshop: chat.is_workshop(),
-        })
+        });
+        if !tools && mail_on {
+            prompt.push_str(NO_MAIL_TOOLS);
+        }
+        prompt
     };
     let mut system = prompt_for(&loaded, !tools.is_empty());
     // No email goes with the question by itself (mail.rs): a model that takes
     // no tools can't read it, and says so instead of finding no email.
-    if caps.tools == Some(false) && !crate::mail::ai_tools(app).is_empty() {
+    if caps.tools == Some(false) && mail_on && !system.ends_with(NO_MAIL_TOOLS) {
         system.push_str(NO_MAIL_TOOLS);
     }
     // Built once the model is in memory, when its server says what it can do.

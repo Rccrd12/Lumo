@@ -249,7 +249,8 @@ async fn poll_stripe(app: AppHandle) {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let event = if !newest.is_empty() && is_new("stripe", &newest) {
+    // An empty list is seen too ("" kept): the very first payment then sounds.
+    let event = if is_new("stripe", &newest) && !newest.is_empty() {
         let label = payments[0]
             .get("description")
             .and_then(Value::as_str)
@@ -659,9 +660,11 @@ async fn poll_vercel(app: AppHandle) {
         })
         .unwrap_or_default();
 
+    // No deployment yet is seen too ("" kept): the very first one then sounds.
+    let newest = deployments.first().and_then(|d| d.get("id")).and_then(Value::as_str).unwrap_or("");
+    let fresh = is_new("vercel", newest);
     let event = deployments.first().and_then(|latest| {
-        let id = latest.get("id")?.as_str()?;
-        if !is_new("vercel", id) {
+        if !fresh {
             return None;
         }
         let success = latest.get("state")?.as_str()? == "READY";
@@ -964,6 +967,7 @@ async fn poll_n8n(app: AppHandle) {
             continue;
         }
         let Ok(json) = response.json::<Value>().await else { continue };
+        let json = n8n_execution(json);
         name = json
             .get("workflowData")
             .and_then(|w| w.get("name"))
@@ -982,6 +986,18 @@ async fn poll_n8n(app: AppHandle) {
         error: None,
         event: fresh.then_some(IntegrationEvent { success, label: name, detail }),
     });
+}
+
+/// The execution itself: `/rest` answers inside `{ "data": … }`, the public
+/// API without it (where `data` is the execution's own run data).
+fn n8n_execution(json: Value) -> Value {
+    if json.get("id").is_some() {
+        return json;
+    }
+    match json.get("data") {
+        Some(inner) if inner.get("id").is_some() => inner.clone(),
+        _ => json,
+    }
 }
 
 fn n8n_detail(json: &Value, success: bool) -> Option<String> {
@@ -1056,6 +1072,16 @@ fn fmt_value(v: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_n8n_execution_is_read_with_or_without_its_envelope() {
+        let execution = json!({ "id": "7", "workflowData": { "name": "Invoices" }, "data": { "resultData": { "lastNodeExecuted": "Send" } } });
+        // The public API: as it is, its run data kept.
+        assert_eq!(n8n_execution(execution.clone()), execution);
+        // /rest: inside { "data": … }.
+        assert_eq!(n8n_execution(json!({ "data": execution.clone() })), execution);
+        assert_eq!(n8n_execution(json!({ "data": [] })), json!({ "data": [] }));
+    }
 
     #[test]
     fn github_card_data_sends_only_what_is_known() {

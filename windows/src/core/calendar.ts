@@ -54,7 +54,8 @@ function findColon(line: string): number {
 }
 
 function unescape(v: string): string {
-  return v.replace(/\\n/gi, " ").replace(/\\([,;\\])/g, "$1").trim();
+  // One pass: iCal writes C:\new as C:\\new, whose "\\" is a backslash and the n after it a letter.
+  return v.replace(/\\([nN,;\\])/g, (_, c: string) => (c === "n" || c === "N" ? " " : c)).trim();
 }
 
 /** Windows's names for the zones met most, as Outlook writes them in TZID. */
@@ -208,6 +209,8 @@ function parseRule(v: string): Rule | null {
   }
   if (!["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(parts.FREQ)) return null;
   if (Object.keys(parts).some((k) => !RULE_PARTS.has(k))) return null;
+  // Read here for months and years only: a daily or weekly rule with them shows its first time only.
+  if ((parts.FREQ === "DAILY" || parts.FREQ === "WEEKLY") && (parts.BYMONTHDAY || parts.BYSETPOS)) return null;
   const byDay = (parts.BYDAY ?? "")
     .split(",")
     .map((x) => /^([+-]?\d+)?(SU|MO|TU|WE|TH|FR|SA)$/.exec(x))
