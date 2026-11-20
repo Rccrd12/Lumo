@@ -2482,6 +2482,10 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             while std::time::Instant::now() < until && !interrupted() {
                 std::thread::sleep(Duration::from_millis(100));
             }
+            // Cut by Stop or a pause: said as such (run's Err arms), never "done".
+            if interrupted() {
+                return Err("Stopped waiting.".into());
+            }
             Ok(json!({ "text": "Done waiting." }))
         }
         Action::Cursor => {
