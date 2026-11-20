@@ -70,6 +70,8 @@ export interface AgentBatch {
   ids: string[];
   /** Resume was sent for its agents that stopped halfway. */
   resumed?: boolean;
+  /** Its answer is over and a new one began: no agent joins it any more (`sealAgents`). */
+  sealed?: boolean;
 }
 
 /** Everything known of one chat's agents and sign of life. */
@@ -175,8 +177,9 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
   if (agent.talk) noteTalk(c, agent, at);
   if (!known) {
     const anchor = at();
-    let mine: AgentBatch | undefined;
-    for (let i = c.batches.length - 1; i >= 0 && !mine; i--) if (c.batches[i].anchor === anchor) mine = c.batches[i];
+    // Started by one of the chat's agents: on its starter's card, wherever that is.
+    let mine = agent.parent ? c.batches.find((b) => b.ids.includes(agent.parent!)) : undefined;
+    for (let i = c.batches.length - 1; i >= 0 && !mine; i--) if (c.batches[i].anchor === anchor && !c.batches[i].sealed) mine = c.batches[i];
     if (mine) mine.ids.push(agent.id);
     else c.batches.push({ anchor, ids: [agent.id] });
     c.rows.set(agent.id, entry);
@@ -187,6 +190,15 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
   }
   c.lastSignalAt = Math.max(c.lastSignalAt, agent.lastSignalAt || 0);
   return true;
+}
+
+/**
+ * A new answer of `chat` begins: the agents it starts get a card of their
+ * own, even where the answer before failed and so shares its place among
+ * the answers (anchor).
+ */
+export function sealAgents(store: AgentStore, chat: string) {
+  for (const b of store.get(chat)?.batches ?? []) b.sealed = true;
 }
 
 /** The talk an agent's row carries, added to the chat's talks or brought up to date. */
@@ -520,6 +532,8 @@ export function savedAgents(entries: AgentEntry[], resumed = false): SavedAgent[
       ...(endedAt != null ? { endedAt } : {}),
       ...(endedBy ? { endedBy } : {}),
       ...(endedBy && resumed ? { resumed: true } : {}),
+      ...(row.parent ? { parent: row.parent } : {}),
+      ...(row.noReport && !open ? { noReport: true } : {}),
     };
   });
 }
@@ -594,6 +608,8 @@ export function restoreAgents(store: AgentStore, chat: string, turns: readonly P
           steps: typeof a.steps === "number" ? a.steps : 0, tokens: a.tokens, startedAt: a.startedAt || 0,
           lastSignalAt: a.endedAt || a.startedAt || 0, endedAt: a.endedAt, background: false, canStop: false,
           ...(a.endedBy === "cli" || a.endedBy === "lumo" ? { endedBy: a.endedBy } : {}),
+          ...(typeof a.parent === "string" ? { parent: a.parent } : {}),
+          ...(a.noReport === true && a.state === "done" ? { noReport: true } : {}),
         },
         steps: [],
       });

@@ -74,6 +74,10 @@ export interface SavedAgent {
   endedBy?: "cli" | "lumo";
   /** Resume was sent for it: the card no longer offers it. */
   resumed?: boolean;
+  /** The agent that started it: its row shows under that one's. */
+  parent?: string;
+  /** Done without a report of its own. */
+  noReport?: boolean;
 }
 
 const STATUSES = new Set(["pending", "active", "done"]);

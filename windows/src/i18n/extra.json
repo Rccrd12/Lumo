@@ -22512,6 +22512,90 @@
    "ru": "Изменить сейчас и остановить их",
    "id": "Edit sekarang dan hentikan",
    "it": "Modifica ora e fermali"
+  },
+  "Stopped after {time}": {
+   "zh-Hans": "{time} 后停止",
+   "hi": "{time} के बाद रोका गया",
+   "es": "Detenido tras {time}",
+   "ar": "أُوقف بعد {time}",
+   "fr": "Arrêté après {time}",
+   "bn": "{time} পরে থামানো হয়েছে",
+   "pt-BR": "Parado após {time}",
+   "ru": "Остановлен через {time}",
+   "id": "Dihentikan setelah {time}",
+   "it": "Fermato dopo {time}"
+  },
+  "Finished without a report": {
+   "zh-Hans": "已完成，未留报告",
+   "hi": "बिना रिपोर्ट के पूरा हुआ",
+   "es": "Terminó sin informe",
+   "ar": "انتهى دون تقرير",
+   "fr": "Terminé sans rapport",
+   "bn": "রিপোর্ট ছাড়াই শেষ হয়েছে",
+   "pt-BR": "Terminou sem relatório",
+   "ru": "Завершён без отчёта",
+   "id": "Selesai tanpa laporan",
+   "it": "Finito senza resoconto"
+  },
+  "Finished without a report · «{text}»": {
+   "zh-Hans": "已完成，未留报告 · «{text}»",
+   "hi": "बिना रिपोर्ट के पूरा हुआ · «{text}»",
+   "es": "Terminó sin informe · «{text}»",
+   "ar": "انتهى دون تقرير · «{text}»",
+   "fr": "Terminé sans rapport · «{text}»",
+   "bn": "রিপোর্ট ছাড়াই শেষ হয়েছে · «{text}»",
+   "pt-BR": "Terminou sem relatório · «{text}»",
+   "ru": "Завершён без отчёта · «{text}»",
+   "id": "Selesai tanpa laporan · «{text}»",
+   "it": "Finito senza resoconto · «{text}»"
+  },
+  "Waiting their turn": {
+   "zh-Hans": "正在排队等候",
+   "hi": "अपनी बारी का इंतज़ार",
+   "es": "Esperando su turno",
+   "ar": "ينتظرون دورهم",
+   "fr": "Attendent leur tour",
+   "bn": "নিজেদের পালার অপেক্ষায়",
+   "pt-BR": "Esperando a vez",
+   "ru": "Ждут своей очереди",
+   "id": "Menunggu giliran",
+   "it": "In coda, aspettano il loro turno"
+  },
+  "Its agents: {done} of {count} finished": {
+   "zh-Hans": "它的智能体：{count} 个中已完成 {done} 个",
+   "hi": "इसके एजेंट: {count} में से {done} पूरे",
+   "es": "Sus agentes: {done} de {count} terminados",
+   "ar": "وكلاؤه: انتهى {done} من {count}",
+   "fr": "Ses agents : {done} sur {count} terminés",
+   "bn": "এর এজেন্ট: {count}টির মধ্যে {done}টি শেষ",
+   "pt-BR": "Seus agentes: {done} de {count} terminados",
+   "ru": "Его агенты: завершено {done} из {count}",
+   "id": "Agennya: {done} dari {count} selesai",
+   "it": "I suoi agenti: {done} di {count} finiti"
+  },
+  "In the background": {
+   "zh-Hans": "在后台",
+   "hi": "बैकग्राउंड में",
+   "es": "En segundo plano",
+   "ar": "في الخلفية",
+   "fr": "En arrière-plan",
+   "bn": "ব্যাকগ্রাউন্ডে",
+   "pt-BR": "Em segundo plano",
+   "ru": "В фоне",
+   "id": "Di latar belakang",
+   "it": "In sfondo"
+  },
+  "for {time}": {
+   "zh-Hans": "已运行 {time}",
+   "hi": "{time} से",
+   "es": "desde hace {time}",
+   "ar": "منذ {time}",
+   "fr": "depuis {time}",
+   "bn": "{time} ধরে",
+   "pt-BR": "há {time}",
+   "ru": "уже {time}",
+   "id": "sejak {time}",
+   "it": "da {time}"
   }
  }
 }

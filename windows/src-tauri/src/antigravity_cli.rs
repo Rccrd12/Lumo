@@ -2780,6 +2780,7 @@ fn start_agy(exe: &Path, args: &[String], dir: &Path, chat_id: &str, key: String
         let q = stop_requests.clone();
         let id = chat_agents::register_stopper(
             chat_id,
+            PROVIDER,
             Box::new(move |agent_id: &str| {
                 q.lock().unwrap_or_else(|e| e.into_inner()).push(agent_id.to_string());
                 Ok(())

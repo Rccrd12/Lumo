@@ -48,7 +48,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, Chats, ModelInfo, Stop};
-use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, PlanStep, StopAgent, Tell};
+use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, BackgroundCommand, PlanStep, StopAgent, Tell};
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
@@ -940,6 +940,11 @@ struct Subagents {
     /// task's id once its TaskCreate answered (TaskUpdate names it), the call
     /// that made it, the step.
     tasks: HashMap<String, Vec<(Option<String>, String, PlanStep)>>,
+    /// The agents' Bash calls → the agent and the command, until Claude Code
+    /// starts the command's task (one it runs in the background) or the agent ends.
+    shells: HashMap<String, (String, String)>,
+    /// The commands' tasks → their command (or Claude Code's description of it).
+    commands: HashMap<String, String>,
 }
 
 /// A field's text, when there is some.
@@ -1166,6 +1171,7 @@ impl Subagents {
         self.calls.retain(|_, task| task != id);
         self.stopping.retain(|_, task| task != id);
         self.counted.remove(id);
+        self.shells.retain(|_, (agent, _)| agent != id);
     }
 
     fn system(&mut self, v: &Value) {
@@ -1176,10 +1182,17 @@ impl Subagents {
         if subtype == "init" {
             return self.offers(v["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "SendMessage")));
         }
+        if subtype == "background_tasks_changed" {
+            return self.running_commands(v);
+        }
         let Some(id) = text_of(v, "task_id").map(str::to_string) else { return };
         match subtype {
             "task_started" => {
                 if !is_agent_task(v) {
+                    // A command: its words, from the agent's Bash call that started it.
+                    if let Some(text) = text_of(v, "tool_use_id").and_then(|call| self.shells.remove(call)).map(|(_, command)| command).or_else(|| text_of(v, "description").map(str::to_string)) {
+                        self.commands.insert(id, text);
+                    }
                     return;
                 }
                 let title = agent_title(v);
@@ -1316,6 +1329,7 @@ impl Subagents {
                 }
                 if let Some(state) = state {
                     let error = (state == AgentState::Failed).then(|| error_of(v).or(summary)).flatten();
+                    row.no_report = state == AgentState::Done && !report;
                     row.end(state, error);
                     if row.state == AgentState::Stopped {
                         row.can_ask = false;
@@ -1358,6 +1372,12 @@ impl Subagents {
             if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                 tools.push((block["id"].as_str().unwrap_or("").to_string(), activity_for(block["name"].as_str().unwrap_or(""), &block["input"])));
                 self.plan_call(&id, block);
+                // Claude Code may move any of them to the background (one that takes long).
+                if block["name"] == "Bash" {
+                    if let (Some(call), Some(command)) = (text_of(block, "id"), text_of(&block["input"], "command")) {
+                        self.shells.insert(call.to_string(), (id.clone(), command.to_string()));
+                    }
+                }
             }
         }
         for (call, _) in tools.iter().filter(|(c, _)| !c.is_empty()) {
@@ -1376,6 +1396,35 @@ impl Subagents {
             if row.state == AgentState::Waiting {
                 row.state = AgentState::Working;
                 row.waiting_for = None;
+            }
+        }
+    }
+
+    /// The tasks running in the background, as Claude Code lists them each time
+    /// the list changes: each agent's own commands (`local_bash` ones that name
+    /// it) go on its row, each with when Lumo first saw it; one no longer
+    /// listed ended.
+    fn running_commands(&mut self, v: &Value) {
+        let mut running: HashMap<String, Vec<(String, String)>> = HashMap::new();
+        for task in v["tasks"].as_array().into_iter().flatten().filter(|t| !is_agent_task(t)) {
+            let (Some(id), Some(owner)) = (text_of(task, "task_id"), text_of(task, "parent_task_id")) else { continue };
+            let text = self.commands.get(id).cloned().or_else(|| text_of(task, "description").map(str::to_string)).unwrap_or_default();
+            running.entry(owner.to_string()).or_default().push((id.to_string(), short(&text)));
+        }
+        let listed: std::collections::HashSet<&str> = running.values().flatten().map(|(id, _)| id.as_str()).collect();
+        self.commands.retain(|id, _| listed.contains(id.as_str()));
+        let ids: Vec<String> = self.agents.ids().filter(|id| running.contains_key(id) || self.agents.get(id).is_some_and(|r| !r.commands.is_empty())).collect();
+        let now = chat_agents::now_ms();
+        for id in ids {
+            let had = &self.agents.get(&id).map(|r| r.commands.clone()).unwrap_or_default();
+            let next: Vec<BackgroundCommand> = running.remove(&id).unwrap_or_default().into_iter().map(|(task, text)| {
+                let since = had.iter().find(|c| c.id == task).map_or(now, |c| c.since);
+                BackgroundCommand { id: task, text, since }
+            }).collect();
+            if &next != had {
+                if let Some(row) = self.agents.touch(&id) {
+                    row.commands = next;
+                }
             }
         }
     }
@@ -2494,7 +2543,7 @@ fn live_for(
     read_lines_to(&mut child, usize::MAX, feed.clone())?;
     let link = AgentLink::new(tell.clone());
     // From now on the island may stop one of its agents, in a turn or between two.
-    let stopper = chat_agents::register_stopper(chat_id, agent_stopper(&stdin, &link));
+    let stopper = chat_agents::register_stopper(chat_id, PROVIDER, agent_stopper(&stdin, &link));
     Ok(Live {
         child,
         stdin,
@@ -3876,6 +3925,28 @@ mod tests {
         }
     }
 
+    #[test]
+    fn an_agent_done_without_a_report_says_so_with_its_last_progress_not_its_task() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[
+            AGENT_STARTED,
+            r#"{"type":"system","subtype":"task_progress","task_id":"a1b2","description":"Reading L04","usage":{"tool_uses":2}}"#,
+            r#"{"type":"system","subtype":"task_notification","task_id":"a1b2","status":"completed","summary":"Transcribe L03-L04","summary_is_report":false}"#,
+        ]);
+        let row = sub.agents.get("a1b2").unwrap();
+        assert_eq!(row.state, AgentState::Done);
+        assert!(row.no_report);
+        assert_ne!(row.summary.as_deref(), Some("Transcribe L03-L04"), "never its task said again");
+        let json = serde_json::to_value(row).unwrap();
+        assert_eq!(json["noReport"], true);
+        // With its report: none of that.
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[AGENT_STARTED, r#"{"type":"system","subtype":"task_notification","task_id":"a1b2","status":"completed","summary":"Both done","summary_is_report":true}"#]);
+        let row = sub.agents.get("a1b2").unwrap();
+        assert!(!row.no_report);
+        assert!(serde_json::to_value(row).unwrap().get("noReport").is_none());
+    }
+
     // ── Real Claude Code 2.1.327 output (`claude -p --output-format stream-json
     // --verbose --include-partial-messages --input-format stream-json`, as a
     // chat runs it), its partial messages and folders left out.
@@ -3888,6 +3959,43 @@ mod tests {
             }
         }
         sub
+    }
+
+    /// H: two agents in the background; one leaves three commands running in
+    /// the background, the other runs one and waits for it.
+    #[test]
+    fn a_real_agent_lists_the_commands_it_left_running_in_the_background() {
+        let mut sub = Subagents::default();
+        let log = include_str!("fixtures/claude-code-2.1.327/H.jsonl");
+        let mut seen = Vec::new();
+        for line in log.lines() {
+            let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+            sub.feed(&v);
+            let row = sub.agents.get("a1f40292918dc72de");
+            seen.push(row.map(|r| r.commands.iter().map(|c| c.text.clone()).collect::<Vec<_>>()).unwrap_or_default());
+        }
+        let row = sub.agents.get("a1f40292918dc72de").unwrap();
+        let texts: Vec<&str> = row.commands.iter().map(|c| c.text.as_str()).collect();
+        // Its Bash call's command, not Claude Code's description of it.
+        assert_eq!(texts[0], "sleep 60");
+        assert_eq!(texts.len(), 3, "{texts:?}");
+        // A Monitor's watch: what Claude Code calls it.
+        assert_eq!(texts[1], "Wait for sleep 60 to finish");
+        assert!(texts[2].starts_with("until [ -f "), "{texts:?}");
+        // The command it ran in the foreground is never one of them.
+        assert!(seen.iter().flatten().all(|t| !t.contains("Sleep for 5")));
+        let quick = sub.agents.get("a2ffd6d7bcaf03df2").unwrap();
+        assert!(quick.commands.is_empty());
+        // When Lumo first saw it, kept as the list changes.
+        let first = row.commands[0].since;
+        sub.feed(&serde_json::from_str::<Value>(r#"{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"bjyzq1fvv","task_type":"local_bash","description":"sleep 60","parent_task_id":"a1f40292918dc72de"}]}"#).unwrap());
+        let row = sub.agents.get("a1f40292918dc72de").unwrap();
+        assert_eq!(row.commands.len(), 1);
+        assert_eq!(row.commands[0].since, first);
+        // None left: none on its row.
+        sub.feed(&serde_json::from_str::<Value>(r#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#).unwrap());
+        assert!(sub.agents.get("a1f40292918dc72de").unwrap().commands.is_empty());
+        assert!(sub.commands.is_empty() && sub.shells.is_empty());
     }
 
     /// A: one agent in the background reads six files and ends with its report.

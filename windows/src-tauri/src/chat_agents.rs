@@ -136,6 +136,28 @@ pub struct AgentRow {
     /// CLI says it stopped (concepts/sotto-agenti-completo, "Lo sto fermando").
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub stopping: bool,
+    /// It finished but its CLI says it wrote no report (Claude Code's
+    /// `summary_is_report: false`): the island says so, with its last progress
+    /// line, never its task said again (concepts/sotto-agenti-completo).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub no_report: bool,
+    /// The commands it left running in the background (Claude Code's
+    /// `local_bash` tasks it owns), while they run: its opened row lists them
+    /// ("In sfondo", concepts/sotto-agenti-completo/6-riga-aperta).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub commands: Vec<BackgroundCommand>,
+}
+
+/// A command an agent left running in the background.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundCommand {
+    /// Its task id in its CLI.
+    pub id: String,
+    /// The command, or what its CLI calls it, cut short.
+    pub text: String,
+    /// Epoch ms: when Lumo first saw it running.
+    pub since: u64,
 }
 
 /// One step of an agent's plan, as src/core/agent-plan.ts has them.
@@ -281,6 +303,8 @@ impl AgentRow {
             parent: None,
             plan: None,
             stopping: false,
+            no_report: false,
+            commands: Vec::new(),
         }
     }
 
@@ -297,6 +321,7 @@ impl AgentRow {
         self.error = None;
         self.ended_by = None;
         self.stopping = false;
+        self.no_report = false;
         self.heard();
     }
 
@@ -624,16 +649,22 @@ pub fn in_the_way(chat: &str, open: usize) -> Option<usize> {
 /// runs, and takes it away when the CLI ends.
 pub type StopAgent = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
-/// Each chat's stopper, with the number it was registered under.
-static STOPPERS: Mutex<Option<HashMap<String, (u64, StopAgent)>>> = Mutex::new(None);
+/// Each chat's stoppers, one per provider (its `source`), with the number
+/// each was registered under, oldest first: Claude Code's agents left at work
+/// in the background stay stoppable while another provider answers the chat.
+type Stoppers = HashMap<String, Vec<(u64, String, StopAgent)>>;
+static STOPPERS: Mutex<Option<Stoppers>> = Mutex::new(None);
 static NEXT_STOPPER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-/// The chat `chat`'s CLI can stop one of its agents with `stop` from now on.
-/// The number it gives is for `forget_stopper_of`.
-pub fn register_stopper(chat: &str, stop: StopAgent) -> u64 {
+/// The chat `chat`'s CLI (the provider `source`) can stop one of its agents
+/// with `stop` from now on, in place of that provider's stopper before. The
+/// number it gives is for `forget_stopper_of`.
+pub fn register_stopper(chat: &str, source: &str, stop: StopAgent) -> u64 {
     let n = NEXT_STOPPER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let mut all = STOPPERS.lock().unwrap_or_else(|e| e.into_inner());
-    all.get_or_insert_with(HashMap::new).insert(chat.to_string(), (n, stop));
+    let list = all.get_or_insert_with(HashMap::new).entry(chat.to_string()).or_default();
+    list.retain(|(_, s, _)| s != source);
+    list.push((n, source.to_string(), stop));
     n
 }
 
@@ -647,23 +678,32 @@ pub fn forget_stopper(chat: &str) {
     }
 }
 
-/// `forget_stopper`, only while the chat's stopper is still the one
-/// registered as `n`: a CLI ended on another thread after the chat started a
-/// new one never takes the new one's away.
+/// The stopper registered as `n` goes, and only it: a CLI ended on another
+/// thread after the chat started a new one never takes the new one's away,
+/// nor another provider's.
 pub fn forget_stopper_of(chat: &str, n: u64) {
     let mut all = STOPPERS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(all) = all.as_mut() {
-        if all.get(chat).is_some_and(|(have, _)| *have == n) {
-            all.remove(chat);
+        if let Some(list) = all.get_mut(chat) {
+            list.retain(|(have, _, _)| *have != n);
+            if list.is_empty() {
+                all.remove(chat);
+            }
         }
     }
 }
 
-/// Stops the agent `agent` of the chat `chat`, if its CLI can.
-pub fn stop(chat: &str, agent: &str) -> Result<(), String> {
+/// Stops the agent `agent` of the chat `chat`, if its CLI can: the stopper of
+/// the provider that runs it (`source`, its row's), else the newest.
+pub fn stop(chat: &str, agent: &str, source: Option<&str>) -> Result<(), String> {
     let all = STOPPERS.lock().unwrap_or_else(|e| e.into_inner());
-    match all.as_ref().and_then(|all| all.get(chat)) {
-        Some((_, stop)) => stop(agent),
+    let list = all.as_ref().and_then(|all| all.get(chat));
+    let found = match source {
+        Some(source) => list.and_then(|l| l.iter().rev().find(|(_, s, _)| s == source)),
+        None => list.and_then(|l| l.last()),
+    };
+    match found {
+        Some((_, _, stop)) => stop(agent),
         None => Err("This agent can't be stopped on its own.".into()),
     }
 }
@@ -761,20 +801,34 @@ mod tests {
 
     #[test]
     fn an_agent_is_stopped_through_its_chats_cli_only() {
-        assert!(stop("chat-stop-test", "a1").is_err());
-        register_stopper("chat-stop-test", Box::new(|id| if id == "a1" { Ok(()) } else { Err("unknown".into()) }));
-        assert!(stop("chat-stop-test", "a1").is_ok());
-        assert!(stop("chat-stop-test", "a2").is_err());
+        assert!(stop("chat-stop-test", "a1", None).is_err());
+        register_stopper("chat-stop-test", "claude-code", Box::new(|id| if id == "a1" { Ok(()) } else { Err("unknown".into()) }));
+        assert!(stop("chat-stop-test", "a1", None).is_ok());
+        assert!(stop("chat-stop-test", "a2", None).is_err());
         forget_stopper("chat-stop-test");
-        assert!(stop("chat-stop-test", "a1").is_err());
+        assert!(stop("chat-stop-test", "a1", None).is_err());
 
         // A CLI that ended late never takes away the stopper of the one after it.
-        let old = register_stopper("chat-stop-test-2", Box::new(|_| Err("old".into())));
-        let new = register_stopper("chat-stop-test-2", Box::new(|_| Ok(())));
+        let old = register_stopper("chat-stop-test-2", "claude-code", Box::new(|_| Err("old".into())));
+        let new = register_stopper("chat-stop-test-2", "claude-code", Box::new(|_| Ok(())));
         forget_stopper_of("chat-stop-test-2", old);
-        assert!(stop("chat-stop-test-2", "a1").is_ok());
+        assert!(stop("chat-stop-test-2", "a1", None).is_ok());
         forget_stopper_of("chat-stop-test-2", new);
-        assert!(stop("chat-stop-test-2", "a1").is_err());
+        assert!(stop("chat-stop-test-2", "a1", None).is_err());
+    }
+
+    #[test]
+    fn another_provider_answering_the_chat_never_takes_the_stopper_of_agents_still_at_work() {
+        // Claude Code's agents in the background, then an API model's run_agents in the same chat.
+        let _claude_code = register_stopper("chat-stop-test-3", "claude-code", Box::new(|id| if id == "cc-agent" { Ok(()) } else { Err("unknown".into()) }));
+        let api_run = register_stopper("chat-stop-test-3", "anthropic", Box::new(|id| if id == "api-1" { Ok(()) } else { Err("unknown".into()) }));
+        assert!(stop("chat-stop-test-3", "api-1", Some("anthropic")).is_ok());
+        assert!(stop("chat-stop-test-3", "cc-agent", Some("claude-code")).is_ok(), "each by its own provider's");
+        forget_stopper_of("chat-stop-test-3", api_run);
+        assert!(stop("chat-stop-test-3", "cc-agent", Some("claude-code")).is_ok(), "the run that ended takes only its own");
+        assert!(stop("chat-stop-test-3", "cc-agent", None).is_ok());
+        assert!(stop("chat-stop-test-3", "api-1", Some("anthropic")).is_err());
+        forget_stopper("chat-stop-test-3");
     }
 
     #[test]

@@ -948,8 +948,8 @@ fn chat_stop(chats: State<Chats>, chat_id: String) {
 /// "Stop this agent" on the chat's Agents card: stops that one agent the
 /// chat's CLI started (Claude Code's `stop_task`), the others go on.
 #[tauri::command]
-fn chat_stop_agent(chat_id: String, agent_id: String) -> Result<(), String> {
-    chat_agents::stop(&chat_id, &agent_id)
+fn chat_stop_agent(chat_id: String, agent_id: String, source: Option<String>) -> Result<(), String> {
+    chat_agents::stop(&chat_id, &agent_id, source.as_deref())
 }
 
 /// "Give it the turn" on an agent waiting for the computer: first in line

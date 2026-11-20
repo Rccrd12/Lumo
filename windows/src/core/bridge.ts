@@ -870,6 +870,19 @@ export interface ChatAgent {
   plan?: PlanStep[];
   /** The user stopped it and its CLI was asked to: stopping until the CLI says it stopped. */
   stopping?: boolean;
+  /** Done, but its last words were no report of its own (Claude Code's summary_is_report false): `summary` holds them. */
+  noReport?: boolean;
+  /** The commands it left running in the background (Claude Code's), while they run: its opened row lists them. */
+  commands?: ChatAgentCommand[];
+}
+
+/** A command an agent left running in the background. */
+export interface ChatAgentCommand {
+  id: string;
+  /** The command, or what its CLI calls it. */
+  text: string;
+  /** Epoch ms: when Lumo first saw it running. */
+  since: number;
 }
 
 /** A message the chat's CLI sent one of its agents, and the agent's answer (the "Talking to …" box). */

@@ -126,7 +126,7 @@ test("the agents' card goes under the answer that started them, and stays there 
   } finally {
     mock.timers.reset();
   }
-  assert.deepEqual(sent("chat_stop_agent"), [{ chatId: chat, agentId: "a2" }]);
+  assert.deepEqual(sent("chat_stop_agent"), [{ chatId: chat, agentId: "a2", source: "claude-code" }]);
 });
 
 test("a message that would start Claude Code again under its agents at work is held, and goes as the user says", async () => {
@@ -484,4 +484,26 @@ test("a paused agent says so, nothing asked of the user; an agent stopped before
   assert.equal($(".agents-live-text").textContent, "Paused");
   const talk = $(".chat-log").find(".agents-talk-text").map((x) => x.textContent);
   assert.ok(talk.includes("Stopped before it answered"), talk.join(" | "));
+});
+
+test("Stop on an agent that ends before its Undo runs out asks nothing of its CLI", async () => {
+  const answer = await ask("one reader");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("e1", { source: "codex" }) });
+  emit("chat-agent", { chat, agent: agent("e2", { source: "codex" }) });
+  view.sync();
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    for (const i of [0, 1]) {
+      $(".chat-log").find(".agents-row-head")[i].fire("click");
+      $(".agents-detail").querySelector(".agents-btn.stop").fire("click");
+    }
+    emit("chat-agent", { chat, agent: agent("e1", { source: "codex", state: "done", endedAt: now + 3 }) });
+    mock.timers.tick(STOP_UNDO_MS);
+  } finally {
+    mock.timers.reset();
+  }
+  // Only the one still at work, with its provider: Rust stops it with that provider's own stopper.
+  assert.deepEqual(sent("chat_stop_agent").filter((x) => x.chatId === chat), [{ chatId: chat, agentId: "e2", source: "codex" }]);
+  await answer({ text: "Done.", turns: 2 });
 });
