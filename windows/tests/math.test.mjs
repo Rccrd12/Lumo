@@ -220,3 +220,14 @@ test("TeX's decimal comma keeps its number whole", () => {
   assert.equal(renderMath("(12{,}5)^2").find("mn")[0].textContent, "12,5");
   assert.equal(renderMath("x{,}y").find("mn").length, 0);
 });
+
+test("an escaped dollar in \\text is a dollar sign, not the edge of a formula", () => {
+  assert.equal(mathText("\\text{costs \\$5 and \\$6}"), "costs $5 and $6");
+  assert.equal(mathText("\\text{if $x$ is \\$1}"), "if x is $1");
+});
+
+test("\\nleqslant and \\ngeqslant are the slanted signs struck through, not \\lneq and \\gneq", () => {
+  assert.equal(mathText("a \\nleqslant b").replace(/\s/g, ""), "a⩽\u0338b");
+  assert.equal(mathText("a \\ngeqslant b").replace(/\s/g, ""), "a⩾\u0338b");
+  assert.notEqual(mathText("\\nleqslant"), mathText("\\lneq"));
+});
