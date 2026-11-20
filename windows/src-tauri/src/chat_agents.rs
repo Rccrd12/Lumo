@@ -491,7 +491,14 @@ pub type Tell = Arc<dyn Fn(&mut Agents, bool) + Send + Sync>;
 type OpenSets = HashMap<String, HashMap<String, Vec<String>>>;
 static OPEN_SETS: Mutex<Option<OpenSets>> = Mutex::new(None);
 
-/// The provider `source` has `open` agents in chat `chat` now: those of all the chat's providers.
+/// What a chat's turn lent its agents at work after the answer (the
+/// computer, the email tools), by chat: each goes (is dropped) when the last
+/// of the chat's agents ends. Locked after OPEN_SETS, never before.
+type Kept = HashMap<String, Vec<Box<dyn std::any::Any + Send>>>;
+static KEPT: Mutex<Option<Kept>> = Mutex::new(None);
+
+/// The provider `source` has `open` agents in chat `chat` now: those of all
+/// the chat's providers. None left: what the chat's turns lent them goes.
 fn open_in_chat(chat: &str, source: &str, open: Vec<String>) -> Vec<String> {
     let mut all = OPEN_SETS.lock().unwrap_or_else(|e| e.into_inner());
     let sets = all.get_or_insert_with(HashMap::new).entry(chat.to_string()).or_default();
@@ -501,10 +508,28 @@ fn open_in_chat(chat: &str, source: &str, open: Vec<String>) -> Vec<String> {
         sets.insert(source.to_string(), open);
     }
     let union: Vec<String> = sets.values().flatten().cloned().collect();
+    let mut gone = Vec::new();
     if sets.is_empty() {
         all.as_mut().map(|a| a.remove(chat));
+        gone = KEPT.lock().unwrap_or_else(|e| e.into_inner()).as_mut().and_then(|k| k.remove(chat)).unwrap_or_default();
     }
+    // Let go with no lock held: ending the computer's turn tells the island.
+    drop(all);
+    drop(gone);
     union
+}
+
+/// `lent` (what a chat's turn gives its agents: the computer's turn, the
+/// email tools) lives on while agents of the chat `chat` are at work after
+/// the answer, and goes when the last of them ends. None at work: it is
+/// given back, for the turn to end it now.
+pub fn keep_while_agents<T: Send + 'static>(chat: &str, lent: T) -> Result<(), T> {
+    let all = OPEN_SETS.lock().unwrap_or_else(|e| e.into_inner());
+    if !all.as_ref().is_some_and(|a| a.contains_key(chat)) {
+        return Err(lent);
+    }
+    KEPT.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).entry(chat.to_string()).or_default().push(Box::new(lent));
+    Ok(())
 }
 
 /// The `Tell` of the provider `source`'s agents in the chat `chat`.
@@ -839,6 +864,36 @@ mod tests {
         assert!(OPEN_SETS.lock().unwrap().as_ref().unwrap().get("sets-test").is_none(), "nothing kept");
         assert_eq!(open_in_chat("sets-other", "codex", s(&["x"])), s(&["x"]), "chats apart");
         open_in_chat("sets-other", "codex", Vec::new());
+    }
+
+    #[test]
+    fn what_a_turn_lends_its_agents_goes_when_the_last_of_the_chat_ends() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static GONE: AtomicUsize = AtomicUsize::new(0);
+        struct Lent;
+        impl Drop for Lent {
+            fn drop(&mut self) {
+                GONE.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // No agent at work: given back, for the turn to end it now.
+        let back = keep_while_agents("lend-test", Lent);
+        assert!(back.is_err());
+        drop(back);
+        assert_eq!(GONE.load(Ordering::SeqCst), 1);
+
+        open_in_chat("lend-test", "claude-code", s(&["a1", "a2"]));
+        open_in_chat("lend-test", "anthropic", s(&["b1"]));
+        assert!(keep_while_agents("lend-test", Lent).is_ok());
+        assert!(keep_while_agents("lend-test", Lent).is_ok(), "the next turn's too");
+        assert!(keep_while_agents("lend-other", Lent).is_err(), "another chat's agents lend nothing");
+        assert_eq!(GONE.load(Ordering::SeqCst), 2);
+        open_in_chat("lend-test", "claude-code", s(&["a2"]));
+        open_in_chat("lend-test", "claude-code", Vec::new());
+        assert_eq!(GONE.load(Ordering::SeqCst), 2, "another provider's agent still works");
+        open_in_chat("lend-test", "anthropic", Vec::new());
+        assert_eq!(GONE.load(Ordering::SeqCst), 4, "the last one ended: both go");
     }
 
     #[test]

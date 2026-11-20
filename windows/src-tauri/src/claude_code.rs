@@ -2460,9 +2460,15 @@ fn user_line(text: &str) -> String {
 /// (`initialize`): an interrupt ends the turn but leaves the agents it
 /// started at work (`perTaskStopAffordance`: each is stopped on its own,
 /// `stop_task`), and their own text comes on the stream too
-/// (`forwardSubagentText`). Its answer names no stop request: ignored.
-fn initialize_line() -> String {
-    let request = json!({ "subtype": "initialize", "perTaskStopAffordance": true, "forwardSubagentText": true });
+/// (`forwardSubagentText`). With `summaries` (Settings → Agents → Progress
+/// summaries), each agent also says now and then what it is doing, a line
+/// `task_progress` brings as its `summary`. Its answer names no stop request:
+/// ignored.
+fn initialize_line(summaries: bool) -> String {
+    let mut request = json!({ "subtype": "initialize", "perTaskStopAffordance": true, "forwardSubagentText": true });
+    if summaries {
+        request["agentProgressSummaries"] = json!(true);
+    }
     format!("{}\n", json!({ "type": "control_request", "request_id": "lumo-init", "request": request }))
 }
 
@@ -2536,7 +2542,7 @@ fn live_for(
     let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("no stdin")?));
     // Before any message: Stop then ends the answer only, its agents going on.
     // A Claude Code that doesn't know the request ignores it.
-    let _ = write_stdin(&stdin, &initialize_line());
+    let _ = write_stdin(&stdin, &initialize_line(crate::settings::load().agent_progress_summaries));
     let stderr = read_stderr(&mut child);
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let feed: Feed = Arc::new(std::sync::Mutex::new(Some(tx)));
@@ -2782,7 +2788,7 @@ pub async fn send(
     let mail = crate::mail::ai_tools(app);
     // Lumo's browser for agents (browser.rs), as Settings → Security says.
     args = with_mcp(args, computer, browser, tools, true, mail);
-    let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
+    let mail_turn = (!mail.is_empty()).then(crate::mail::agent_turn);
     if computer {
         crate::computer::begin_turn(crate::computer::Who::of(PROVIDER), chat.id());
     }
@@ -2826,11 +2832,12 @@ pub async fn send(
     })
     .await
     .map_err(|e| e.to_string());
-    // What the turn did on the computer, for under its answer.
-    let recap = if computer { crate::computer::end_turn(app, chat.id(), matches!(&state, Ok(Ok(s)) if s.stopped)) } else { None };
-    if computer {
-        // Nobody of this chat waits for the computer any more.
-        crate::computer_turns::turn_end(app, chat.id());
+    // What the turn did on the computer, for under its answer. Agents it
+    // started still at work keep the computer and the email tools, with the
+    // same rules, until the last of them ends.
+    let recap = if computer { crate::computer::lend_turn(app, chat.id(), matches!(&state, Ok(Ok(s)) if s.stopped)) } else { None };
+    if let Some(mail_turn) = mail_turn {
+        let _ = chat_agents::keep_while_agents(chat.id(), mail_turn);
     }
     let plain = chat::plain_question(true, context.as_ref(), &query);
     // It failed after using the computer: the turn is kept as an empty
@@ -4083,11 +4090,15 @@ mod tests {
 
     #[test]
     fn a_chats_claude_code_is_told_to_leave_its_agents_at_work_when_stop_ends_the_answer() {
-        let v: Value = serde_json::from_str(initialize_line().trim()).unwrap();
+        let v: Value = serde_json::from_str(initialize_line(true).trim()).unwrap();
         assert_eq!(v["type"], "control_request");
         assert_eq!(v["request"]["subtype"], "initialize");
         assert_eq!(v["request"]["perTaskStopAffordance"], true);
         assert_eq!(v["request"]["forwardSubagentText"], true);
+        assert_eq!(v["request"]["agentProgressSummaries"], true, "on unless turned off in Settings");
+        let off: Value = serde_json::from_str(initialize_line(false).trim()).unwrap();
+        assert!(off["request"].get("agentProgressSummaries").is_none());
+        assert_eq!(off["request"]["perTaskStopAffordance"], true);
         let mut sub = Subagents::default();
         // Its answer stops nothing.
         feed_agents(&mut sub, &[AGENT_STARTED, r#"{"type":"control_response","response":{"subtype":"success","request_id":"lumo-init","response":{}}}"#]);

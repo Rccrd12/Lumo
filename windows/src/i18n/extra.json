@@ -22596,6 +22596,54 @@
    "ru": "уже {time}",
    "id": "sejak {time}",
    "it": "da {time}"
+  },
+  "Agents in the chat": {
+   "zh-Hans": "聊天中的代理",
+   "hi": "चैट में एजेंट",
+   "es": "Agentes en el chat",
+   "ar": "الوكلاء في المحادثة",
+   "fr": "Agents dans le chat",
+   "bn": "চ্যাটে এজেন্ট",
+   "pt-BR": "Agentes no chat",
+   "ru": "Агенты в чате",
+   "id": "Agen di obrolan",
+   "it": "Agenti nella chat"
+  },
+  "The agents an AI starts in the island's chat, each a row of its Agents card.": {
+   "zh-Hans": "AI 在岛屿聊天中启动的代理，每个都是其代理卡片中的一行。",
+   "hi": "AI द्वारा आइलैंड की चैट में शुरू किए गए एजेंट, हर एक उसके एजेंट कार्ड की एक पंक्ति।",
+   "es": "Los agentes que una IA inicia en el chat de la isla, cada uno una fila de su tarjeta de Agentes.",
+   "ar": "الوكلاء الذين يبدؤهم الذكاء الاصطناعي في محادثة الجزيرة، كلٌّ منهم صف في بطاقة الوكلاء.",
+   "fr": "Les agents qu'une IA lance dans le chat de l'île, chacun une ligne de sa carte Agents.",
+   "bn": "আইল্যান্ডের চ্যাটে কোনো AI যে এজেন্টগুলো শুরু করে, প্রতিটি তার এজেন্ট কার্ডের একটি সারি।",
+   "pt-BR": "Os agentes que uma IA inicia no chat da ilha, cada um uma linha do cartão Agentes.",
+   "ru": "Агенты, которых ИИ запускает в чате острова, каждый — строка карточки «Агенты».",
+   "id": "Agen yang dimulai AI di obrolan pulau, masing-masing satu baris kartu Agennya.",
+   "it": "Gli agenti che un'AI avvia nella chat dell'isola, ognuno una riga della sua scheda Agenti."
+  },
+  "Progress summaries": {
+   "zh-Hans": "进度摘要",
+   "hi": "प्रगति सारांश",
+   "es": "Resúmenes de progreso",
+   "ar": "ملخصات التقدم",
+   "fr": "Résumés d'avancement",
+   "bn": "অগ্রগতির সারাংশ",
+   "pt-BR": "Resumos de progresso",
+   "ru": "Сводки хода работы",
+   "id": "Ringkasan kemajuan",
+   "it": "Riepiloghi di avanzamento"
+  },
+  "Claude Code's agents say now and then what they are doing, on their row. It costs a few tokens of your plan. A chat already under way keeps how it started.": {
+   "zh-Hans": "Claude Code 的代理会不时在其行中说明正在做什么。这会消耗你套餐中的少量 token。已在进行的聊天保持开始时的设置。",
+   "hi": "Claude Code के एजेंट समय-समय पर अपनी पंक्ति में बताते हैं कि वे क्या कर रहे हैं। इसमें आपके प्लान के कुछ टोकन लगते हैं। पहले से चल रही चैट जैसे शुरू हुई थी वैसे ही रहती है।",
+   "es": "Los agentes de Claude Code dicen de vez en cuando qué están haciendo, en su fila. Cuesta algunos tokens de tu plan. Un chat ya en curso sigue como empezó.",
+   "ar": "يقول وكلاء Claude Code بين حين وآخر ما يفعلونه، في صفهم. يكلّف ذلك بعض الرموز من خطتك. المحادثة الجارية تبقى كما بدأت.",
+   "fr": "Les agents de Claude Code disent de temps en temps ce qu'ils font, sur leur ligne. Cela coûte quelques tokens de votre forfait. Un chat déjà en cours reste comme il a commencé.",
+   "bn": "Claude Code-এর এজেন্টরা মাঝে মাঝে তাদের সারিতে বলে তারা কী করছে। এতে আপনার প্ল্যানের কিছু টোকেন খরচ হয়। ইতিমধ্যে চলমান চ্যাট যেভাবে শুরু হয়েছিল সেভাবেই থাকে।",
+   "pt-BR": "Os agentes do Claude Code dizem de vez em quando o que estão fazendo, na sua linha. Custa alguns tokens do seu plano. Um chat já em andamento continua como começou.",
+   "ru": "Агенты Claude Code время от времени пишут в своей строке, чем заняты. Это стоит немного токенов вашего плана. Уже идущий чат остаётся таким, как начался.",
+   "id": "Agen Claude Code sesekali menyebutkan apa yang sedang mereka kerjakan, di barisnya. Ini memakai sedikit token paket Anda. Obrolan yang sudah berjalan tetap seperti saat dimulai.",
+   "it": "Gli agenti di Claude Code dicono ogni tanto cosa stanno facendo, sulla loro riga. Costa qualche token del tuo piano. Una chat già in corso resta com'è partita."
   }
  }
 }
