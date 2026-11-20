@@ -281,7 +281,9 @@ pub fn read(raw: &str) -> Result<Reading, String> {
     let path = full_path(raw).ok_or_else(|| missing(raw))?;
     let meta = std::fs::metadata(&path).map_err(|_| missing(raw))?;
     if meta.is_dir() {
-        let (entries, omitted) = explorer::list_folder(&path)?;
+        let (mut entries, omitted) = explorer::list_folder(&path)?;
+        // Key and password files are not even named to the voice (is_sensitive).
+        entries.retain(|e| !is_sensitive(&path.join(&e.name)));
         return Ok(Reading::Folder { path: path.to_string_lossy().to_string(), entries, omitted });
     }
     let name = file_name_of(&path);
@@ -392,12 +394,18 @@ fn skipped_folder(name: &str) -> bool {
 }
 
 /// Files and folders whose name matches `query`, best first, in `within`
-/// when given (else the user's folders). Bounded in depth, size and time. Blocking.
+/// when given (else the user's folders). Bounded in depth, size and time.
+/// Key and password files (is_sensitive) are never found, nor named: not in
+/// the results, not walked into. Blocking.
 pub fn find(query: &str, within: Option<&str>) -> Result<Vec<Found>, String> {
     // A folder that was named but can't be used is an error, never a search
     // of everything else.
     let roots = match within.map(str::trim).filter(|w| !w.is_empty()) {
         Some(raw) => match full_path(raw) {
+            // A folder of keys (`~/.ssh`), however it is reached: nothing in it is found.
+            Some(dir) if dir.is_dir() && (is_sensitive(&dir) || dir.canonicalize().is_ok_and(|real| is_sensitive(&plain(&real)))) => {
+                return Ok(Vec::new())
+            }
             Some(dir) if dir.is_dir() => vec![dir],
             _ => return Err(missing(raw)),
         },
@@ -420,6 +428,9 @@ pub fn find(query: &str, within: Option<&str>) -> Result<Vec<Found>, String> {
         for entry in read.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             let Ok(meta) = entry.metadata() else { continue };
+            if is_sensitive(&entry.path()) {
+                continue;
+            }
             if let Some(score) = match_score(query, &name) {
                 hits.push((score, entry.path(), meta.clone()));
             }
@@ -1380,6 +1391,38 @@ mod tests {
         let gone = dir.join("no such folder");
         assert!(find("fattura", Some(&gone.to_string_lossy())).is_err());
         assert!(find("fattura", Some("relative/folder")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Key and password files are never found by name, and a folder of keys
+    /// lists nothing: the voice is not even told they are there.
+    #[test]
+    fn find_and_read_never_name_key_or_password_files() {
+        let dir = std::env::temp_dir().join(format!("lumo-live-find-secret-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Documents")).unwrap();
+        std::fs::create_dir_all(dir.join(".ssh")).unwrap();
+        std::fs::create_dir_all(dir.join("Keys/.ssh")).unwrap();
+        for file in ["Documents/passwords.txt", "Documents/credentials.json", "Documents/github recovery codes.txt", "Documents/password ideas for the party.docx", ".ssh/id_rsa", "Keys/.ssh/config"] {
+            std::fs::write(dir.join(file), b"x").unwrap();
+        }
+        std::fs::write(dir.join("Documents/credentials notes.md"), b"x").unwrap();
+        let within = dir.to_string_lossy().to_string();
+        for query in ["password", "credentials.json", "recovery codes", "id_rsa", "config"] {
+            assert!(find(query, Some(&within)).unwrap().is_empty(), "{query}");
+        }
+        // A file whose name only mentions a word of a NAMES entry is found as before.
+        assert_eq!(find("credentials notes", Some(&within)).unwrap().len(), 1);
+        // A folder of keys, named directly: nothing.
+        assert!(find("id", Some(&dir.join(".ssh").to_string_lossy())).unwrap().is_empty());
+        // A folder read for the voice leaves them out of its listing.
+        match read(&dir.join("Documents").to_string_lossy()).unwrap() {
+            Reading::Folder { entries, .. } => {
+                let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+                assert_eq!(names, ["credentials notes.md"]);
+            }
+            other => panic!("{other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

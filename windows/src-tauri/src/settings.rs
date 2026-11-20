@@ -532,10 +532,19 @@ fn salvage(fields: Map<String, Value>) -> Settings {
             kept = candidate;
         } else {
             note(unusable_field(&key));
+            // What the AI may reach: what the user had can't be read, so it
+            // gets nothing rather than the first start's access.
+            if AI_ACCESS.contains(&key.as_str()) {
+                kept.insert(key, Value::String("none".into()));
+            }
         }
     }
     serde_json::from_value(Value::Object(kept)).unwrap_or_default()
 }
+
+/// The settings that say what of the user's accounts reaches an AI, where
+/// "none" is the most private value.
+const AI_ACCESS: &[&str] = &["aiMailAccess", "aiCalendarAccess", "aiGithubAccess"];
 
 /// The log line for a field `salvage` had to drop. The name comes straight from
 /// the file, so it is written escaped: a line break in it must not be able to
@@ -927,6 +936,25 @@ mod tests {
         let loaded = parse(&custom_with("pillColors", Some(json!(["#2DD4BF"])))).unwrap();
         assert!(loaded.pill_colors.is_empty());
         assert_eq!(loaded.model, "some-model");
+    }
+
+    #[test]
+    fn an_unusable_ai_access_gives_the_ai_nothing_and_costs_nothing_else() {
+        for key in AI_ACCESS {
+            let loaded = parse(&custom_with(key, Some(json!(1)))).unwrap();
+            let access = match *key {
+                "aiMailAccess" => &loaded.ai_mail_access,
+                "aiCalendarAccess" => &loaded.ai_calendar_access,
+                _ => &loaded.ai_github_access,
+            };
+            assert_eq!(access, "none", "{key}");
+            assert_eq!(loaded.model, "some-model");
+        }
+        // A file from before them, broken elsewhere, keeps what Lumo did then.
+        let mut object = custom().as_object().unwrap().clone();
+        object.remove("aiGithubAccess");
+        object.insert("pillColors".into(), json!(["#2DD4BF"]));
+        assert_eq!(parse(&serde_json::to_vec(&object).unwrap()).unwrap().ai_github_access, "none");
     }
 
     #[test]
