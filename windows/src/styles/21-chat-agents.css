@@ -363,3 +363,8 @@
 /* Only in line or paused: grey. */
 .agents-live.queued .agents-dots i { background: #7d828c; }
 .agents-live.queued .agents-live-text { color: #8b9099; }
+
+/* How many are done, after the agents' segments: grey, the segments carry the colour (concepts/segnale-agenti, image 3). */
+#compact .cp-agents .cp-time {
+  color: var(--dim);
+}

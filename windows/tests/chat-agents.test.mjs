@@ -104,7 +104,7 @@ test("no sign of life is said past each provider's threshold", () => {
   const turn = (provider, kind = "thinking") => ({ kind: "turn", provider, activity: { kind, detail: "" } });
   assert.equal(stalled({ kind: "agent" }, AGENT_STALL_S - 1), null);
   assert.deepEqual(stalled({ kind: "agent" }, AGENT_STALL_S), { seconds: AGENT_STALL_S });
-  assert.equal(AGENT_STALL_S, 300);
+  assert.equal(AGENT_STALL_S, 600);
   // The cloud APIs stream all along.
   for (const p of ["anthropic", "openai", "google", "openrouter"]) {
     assert.equal(stalled(turn(p), CLOUD_STALL_S - 1), null, p);
@@ -133,14 +133,14 @@ test("no sign of life is said past each provider's threshold", () => {
 test("an agent's look: done, at work, no sign, waiting, failed; Wait puts the warning off", () => {
   const store = newAgentStore();
   send(store, "c", agent("done", { state: "done" }));
-  send(store, "c", agent("work", { lastSignalAt: T0 + 400 * S }));
+  send(store, "c", agent("work", { lastSignalAt: T0 + AGENT_STALL_S * S }));
   send(store, "c", agent("quiet"));
   send(store, "c", agent("asks"));
   send(store, "c", agent("limit", { state: "waiting", waitingFor: "rate_limit" }));
   send(store, "c", agent("gone", { state: "failed", error: "Claude Code ended" }));
   send(store, "c", agent("halted", { state: "stopped" }));
   const c = store.get("c");
-  const now = T0 + 401 * S;
+  const now = T0 + (AGENT_STALL_S + 1) * S;
   const permission = new Set(["asks"]);
   const look = (id) => lookOf(c.rows.get(id), now, permission);
   assert.deepEqual(["done", "work", "quiet", "asks", "limit", "gone", "halted"].map(look),
@@ -303,7 +303,7 @@ test("a deleted chat never comes back from its CLI's late news", () => {
   assert.equal(send(store, "kept", agent("a1")), true);
 });
 
-test("the closed island's line: how many work and how far, or one with no sign", () => {
+test("the closed island's line: how many work and how far, or how many to check", () => {
   assert.deepEqual([durationText(45 * S), durationText(14 * 60 * S), durationText(80 * 60 * S), durationText(120 * 60 * S)],
     ["45 s", "14 min", "1 h 20 min", "2 h"]);
   const store = newAgentStore();
@@ -314,7 +314,7 @@ test("the closed island's line: how many work and how far, or one with no sign",
   assert.deepEqual(islandAgentsLine(entries, T0 + 401 * S), { text: "2 agents working", stalled: false });
   send(store, "x", agent("f"));
   const more = [...store.get("x").rows.values()];
-  assert.deepEqual(islandAgentsLine(more, T0 + 360 * S), { text: "1 agent with no signal for 6 min", stalled: true });
+  assert.deepEqual(islandAgentsLine(more, T0 + 660 * S), { text: "1 agent to check", stalled: true });
   for (const id of ["d", "e", "f"]) send(store, "x", agent(id, { state: "done" }));
   assert.equal(islandAgentsLine([...store.get("x").rows.values()], T0), null);
 });
@@ -353,11 +353,11 @@ test("the card: how many are done, a segment each, a row each with what it does"
   const now = T0 + 14 * 60 * S;
   const el = agentsCard({ chatId: "card1", chat: c, batch: c.batches[0], permission: new Set(["L10"]), now }, h);
   assert.equal(el.querySelector(".agents-title").textContent, "Agents");
-  assert.equal(el.querySelector(".agents-status").textContent, "1 of 4 done · 1 with no signal");
+  assert.equal(el.querySelector(".agents-status").textContent, "3 at work · 1 to check");
   assert.deepEqual(el.querySelector(".agents-segs").children.map((i) => i.className), ["done", "working", "stalled", "waiting"]);
   assert.deepEqual(texts(el, ".agents-name"), ["Transcribe L15", "Transcribe L03", "Transcribe L05", "Transcribe L10"]);
   assert.deepEqual(texts(el, ".agents-line"), [
-    "Done: 21 pages, L15.tex", "read pag-037.png", "No signal for 14 min", "Waiting for your permission",
+    "Done: 21 pages, L15.tex", "read pag-037.png", "No sign for 14 min, no command running", "Waiting for your permission",
   ]);
   const rows = el.find(".agents-row");
   assert.equal(rows[0].querySelector(".agents-time").textContent, "done in 6 min");
@@ -398,19 +398,19 @@ test("as each second goes only the card's words change: its buttons stay under t
   send(store, "card5", agent("b", { lastSignalAt: T0 }));
   const c = store.get("card5");
   const { host: h } = host();
-  const input = { chatId: "card5", chat: c, batch: c.batches[0], now: T0 + 400 * S };
+  const input = { chatId: "card5", chat: c, batch: c.batches[0], now: T0 + 660 * S };
   const el = agentsCard(input, h);
   const wait = el.find(".agents-row")[0].querySelector(".agents-btn.wait");
   const line = el.find(".agents-line")[0];
-  assert.equal(line.textContent, "No signal for 6 min");
-  fillAgentsCard(el, { ...input, now: T0 + 430 * S }, h);
+  assert.equal(line.textContent, "No sign for 11 min, no command running");
+  fillAgentsCard(el, { ...input, now: T0 + 720 * S }, h);
   assert.equal(el.find(".agents-row")[0].querySelector(".agents-btn.wait"), wait, "the same button");
   assert.equal(el.find(".agents-line")[0], line);
-  assert.equal(line.textContent, "No signal for 7 min");
-  assert.equal(line.getAttribute("title"), "No signal for 7 min");
+  assert.equal(line.textContent, "No sign for 12 min, no command running");
+  assert.equal(line.getAttribute("title"), "No sign for 12 min, no command running");
   // Something else than words changed (an agent done): drawn anew.
-  send(store, "card5", agent("a", { state: "done", endedAt: T0 + 431 * S }));
-  fillAgentsCard(el, { ...input, now: T0 + 431 * S }, h);
+  send(store, "card5", agent("a", { state: "done", endedAt: T0 + 721 * S }));
+  fillAgentsCard(el, { ...input, now: T0 + 721 * S }, h);
   assert.notEqual(el.find(".agents-row")[0].querySelector(".agents-btn.wait"), wait);
   assert.ok(el.find(".agents-row")[0].className.includes("done"));
 });

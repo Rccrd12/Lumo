@@ -833,7 +833,7 @@ export interface ChatAgent {
   title: string;
   state: ChatAgentState;
   /** With "waiting": what it waits for ("paused": its CLI holds it, nothing asked of the user). */
-  waitingFor?: "permission" | "rate_limit" | "queue" | "paused";
+  waitingFor?: "permission" | "rate_limit" | "queue" | "paused" | "retry";
   /** Waiting for "queue": its place in line (a local model's agents run as many at once as its server's slots). */
   queue?: number;
   /** What it is doing now, worded as the typing line is (activityLabel). */
@@ -874,6 +874,26 @@ export interface ChatAgent {
   noReport?: boolean;
   /** The commands it left running in the background (Claude Code's), while they run: its opened row lists them. */
   commands?: ChatAgentCommand[];
+  /** The command it waits on now (in the foreground), while it runs: its silence is that command at work. */
+  running?: ChatAgentCommand;
+  /** Waiting for "retry": its CLI tries its request again after an API error. */
+  retry?: ChatAgentRetry;
+  /** Whether a tool call of its waits for its result, when its CLI tells (Claude Code): silent with none, it is writing. */
+  inCall?: boolean;
+  /** Its CLI says it is alive apart from its agents (Claude Code): with no word from it for long, it no longer answers. */
+  heartbeat?: boolean;
+}
+
+/** An agent's request tried again after an API error, as its CLI says. */
+export interface ChatAgentRetry {
+  attempt: number;
+  max: number;
+  /** How long its CLI waits before it, from `at` (epoch ms). */
+  delayMs: number;
+  at: number;
+  /** The API's HTTP status (529 overloaded, 429 rate limit…). */
+  status?: number;
+  category?: string;
 }
 
 /** A command an agent left running in the background. */

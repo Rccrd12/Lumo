@@ -79,7 +79,7 @@ pub struct AgentRow {
     /// Its task, as the CLI described it ("Transcribe L03–L04"), cut short.
     pub title: String,
     pub state: AgentState,
-    /// With `Waiting`: "permission" (a card waits for the user) or "rate_limit".
+    /// With `Waiting`: "permission" (a card waits for the user), "rate_limit", "queue", "paused" or "retry" (its CLI tries an API request again).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub waiting_for: Option<&'static str>,
     /// What it is doing now (its last tool call), worded by the island as the typing line is.
@@ -146,6 +146,42 @@ pub struct AgentRow {
     /// ("In sfondo", concepts/sotto-agenti-completo/6-riga-aperta).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<BackgroundCommand>,
+    /// The command it waits on now (Claude Code's `local_bash` task of its
+    /// own, in the foreground), while it runs: a long silence is that
+    /// command at work, not the agent stuck (concepts/segnale-agenti).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub running: Option<BackgroundCommand>,
+    /// With `Waiting` for "retry": its CLI tries its request again after an
+    /// API error (Claude Code's `subagent_retry`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry: Option<AgentRetry>,
+    /// Whether a tool call of its waits for its result, when its CLI tells
+    /// (Claude Code): silent with none, it is writing (its answer, a long file).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub in_call: Option<bool>,
+    /// Its CLI says it is alive every few seconds, apart from its agents
+    /// (Claude Code's `keep_alive` and heartbeats): with no word from it at
+    /// all for long, the island says the CLI no longer answers.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub heartbeat: bool,
+}
+
+/// An agent's request tried again after an API error, as its CLI says.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRetry {
+    /// This try, of `max`.
+    pub attempt: u64,
+    pub max: u64,
+    /// How long its CLI waits before it, from `at` (epoch ms).
+    pub delay_ms: u64,
+    pub at: u64,
+    /// The API's HTTP status (529 overloaded, 429 rate limit…), when given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<u64>,
+    /// Its CLI's kind of error, when given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
 }
 
 /// A command an agent left running in the background.
@@ -305,6 +341,10 @@ impl AgentRow {
             stopping: false,
             no_report: false,
             commands: Vec::new(),
+            running: None,
+            retry: None,
+            in_call: None,
+            heartbeat: false,
         }
     }
 
@@ -322,7 +362,16 @@ impl AgentRow {
         self.ended_by = None;
         self.stopping = false;
         self.no_report = false;
+        self.running = None;
+        self.retry = None;
         self.heard();
+    }
+
+    /// What it waited for is over: at work again.
+    pub fn back_at_work(&mut self) {
+        self.state = AgentState::Working;
+        self.waiting_for = None;
+        self.retry = None;
     }
 
     /// Lumo heard of it just now.
@@ -341,6 +390,9 @@ impl AgentRow {
         self.queue = None;
         self.now = None;
         self.stopping = false;
+        self.running = None;
+        self.retry = None;
+        self.in_call = None;
         self.ended_at = Some(now);
         self.last_signal_at = now;
         // Stopped: a message it was asked will never be answered.
@@ -425,6 +477,16 @@ impl Agents {
         let row = &mut self.rows[pos];
         row.heard();
         Some(row)
+    }
+
+    /// The agent `id`, if it is known, marked changed but not heard of:
+    /// what changes is about its CLI, not news of the agent's own.
+    pub fn mark(&mut self, id: &str) -> Option<&mut AgentRow> {
+        let pos = self.rows.iter().position(|r| r.id == id)?;
+        if !self.dirty.iter().any(|d| d == id) {
+            self.dirty.push(id.to_string());
+        }
+        Some(&mut self.rows[pos])
     }
 
     /// The agents still at work (or waiting).
