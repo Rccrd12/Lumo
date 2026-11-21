@@ -42,6 +42,10 @@ import { stepPlace } from "../core/computer-plan";
 import { computerTargetBox, pausedCardLine } from "./computer-card";
 import { buildComputerView } from "./computer-plan";
 import { buildBrowserView } from "./browser-watch";
+import { fillAgentsCard, type AgentsCardHost } from "./agents-card";
+import { activityLabel } from "./chat-messages";
+import { openCount } from "../core/chat-agents";
+import { sessionCard } from "../core/session-agents";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
@@ -104,6 +108,11 @@ export interface ViewHost {
    */
   fitHeight?(width: number, nowW: number, nowH: number): number | null;
 }
+
+/** Under a session's Agents card, to the bottom of its session card. */
+const SESSION_AGENTS_GAP = 12;
+/** The island's height at most for a session with agents: more rows scroll in the card. */
+const SESSION_AGENTS_MAX_H = 560;
 
 // ── Shared pieces ─────────────────────────────────────────────────────────────
 
@@ -297,7 +306,38 @@ function buildOverview(actions: ViewActions): ViewHost {
     State.notify();
   });
   const who = h("div", { class: "who" });
+  // A terminal session's agents (core/session-agents.ts): their Agents card under its steps.
+  const sessionAgentsEl = h("div", { class: "agents session-agents" });
   const tickerBody = h("div", { class: "card-body" }, who, ticker.el);
+  /** Lumo doesn't run the session: its agents can't be stopped or asked from here. */
+  const sessionAgentsHost: AgentsCardHost = {
+    label: activityLabel,
+    stop: () => {},
+    send: () => false,
+    requestOnTop: null,
+    seeRequest: () => {},
+    // A row opened or the card folded: the island takes its new height.
+    changed: () => State.notify(),
+  };
+  /** The times on the card move each second, only while its agents work and it is on screen. */
+  let sessionAgentsTimer: number | null = null;
+  const syncSessionAgents = (task: AgentTask | null) => {
+    const shown = task && mode === "ticker" && State.view === "overview" && State.mode === "expanded" ? sessionCard(task.sessionId) : null;
+    if (!shown) {
+      sessionAgentsEl.remove();
+      if (sessionAgentsTimer != null) window.clearInterval(sessionAgentsTimer);
+      sessionAgentsTimer = null;
+      return;
+    }
+    fillAgentsCard(sessionAgentsEl, { chatId: task!.sessionId!, chat: shown.chat, batch: shown.batch }, sessionAgentsHost);
+    if (sessionAgentsEl.parentElement !== tickerBody) tickerBody.append(sessionAgentsEl);
+    const open = openCount(shown.chat) > 0;
+    if (open && sessionAgentsTimer == null) sessionAgentsTimer = window.setInterval(() => syncSessionAgents(State.focusTask), 1000);
+    if (!open && sessionAgentsTimer != null) {
+      window.clearInterval(sessionAgentsTimer);
+      sessionAgentsTimer = null;
+    }
+  };
   const leftBody = h("div", { class: "left-body" });
   const jump = h(
     "button",
@@ -380,6 +420,12 @@ function buildOverview(actions: ViewActions): ViewHost {
 
   return {
     el,
+    // A session's agents: as tall as its steps' two lines and their card, up to SESSION_AGENTS_MAX_H.
+    fitHeight(_width, _nowW, nowH) {
+      if (mode !== "ticker" || sessionAgentsEl.parentElement !== tickerBody || leftBody.clientHeight < 40) return null;
+      const need = nowH - leftBody.clientHeight + sessionAgentsEl.offsetTop + sessionAgentsEl.scrollHeight + SESSION_AGENTS_GAP;
+      return Math.min(SESSION_AGENTS_MAX_H, Math.ceil(need));
+    },
     tick(nowMs: number) {
       if (mode !== "ticker") return false;
       ticker.tick(nowMs);
@@ -501,6 +547,7 @@ function buildOverview(actions: ViewActions): ViewHost {
         }
       }
 
+      syncSessionAgents(task);
       jump.style.display = detailOpen || mode === "plan" || mode === "diff" || mode === "background" ? "none" : "";
 
       // Each pill stays in its place when another goes to the card.

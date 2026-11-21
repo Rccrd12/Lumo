@@ -1,0 +1,21 @@
+/* ── A terminal session's agents (views/views.ts, core/session-agents.ts) ────
+   Concept: concepts/sessioni-terminale. The chat's Agents card, under the
+   session's two newest steps in its session card. Its rows never widen the
+   card past the island: their words end in an ellipsis. Past the island's
+   tallest, the rows scroll. */
+
+.card-body:has(> .session-agents) > .ticker {
+  flex: 0 0 44px;
+}
+
+.session-agents {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  contain: inline-size;
+  margin: 8px 0 12px;
+}
+
+.session-agents > * {
+  flex-shrink: 0;
+}

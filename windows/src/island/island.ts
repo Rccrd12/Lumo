@@ -1513,6 +1513,11 @@ export class Island {
         if (fit != null) h = fit;
       }
       if (State.view === "overview" && planCardOpen()) h = Math.max(h, NEW_LOOK_PLAN_CARD_H);
+      // A terminal session's agents: room for their card under its steps.
+      if (State.view === "overview") {
+        const fit = this.views.get("overview")?.fitHeight?.(w, this.islandEl.offsetWidth, this.islandEl.offsetHeight);
+        if (fit != null) h = Math.max(h, fit);
+      }
       if (State.view === "overview" && overviewDetailFor() === "integration_github" && gitHubListSection()) h = Math.max(h, NEW_LOOK_GH_LIST_H);
       const background = State.view === "overview" ? State.focusTask?.background : null;
       if (background) h = Math.max(h, newLookBackgroundHeight(backgroundRows(background)));
