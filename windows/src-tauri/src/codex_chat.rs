@@ -559,6 +559,9 @@ struct Subagents {
     /// the row of its latest work (`<thread>~2`…). A row that ended never
     /// changes, on the island too, so each new piece of work is a row of its own.
     rounds: HashMap<String, (u32, String)>,
+    /// Each agent's thread at work, and the id of its turn under way: what
+    /// `turn/interrupt` names to stop that agent alone (`stopper`).
+    turns: Arc<Mutex<HashMap<String, String>>>,
 }
 
 /// A field's text, when there is some.
@@ -688,6 +691,20 @@ impl Subagents {
         if method == "turn/started" {
             self.again(thread);
         }
+        // Its turn under way can be interrupted on its own: Stop on its row.
+        let turn = text_of(&params["turn"], "id").map(str::to_string);
+        match (method, turn) {
+            ("turn/started", Some(turn)) => {
+                self.turns.lock().unwrap_or_else(|e| e.into_inner()).insert(thread.to_string(), turn);
+                if let Some(row) = self.open_row(thread) {
+                    row.can_stop = true;
+                }
+            }
+            ("turn/completed", _) => {
+                self.turns.lock().unwrap_or_else(|e| e.into_inner()).remove(thread);
+            }
+            _ => {}
+        }
         let id = self.row_id(thread);
         let thread = id.as_str();
         if self.agents.get(thread).is_some_and(|r| r.state.is_final()) {
@@ -755,6 +772,31 @@ impl Subagents {
 /// A line for Codex's server, written whole.
 type Writer = Arc<Mutex<std::process::ChildStdin>>;
 
+/// Stops one agent of the chat's Codex: its thread's turn under way is
+/// interrupted (`turn/interrupt`, which Codex takes for a subagent's thread
+/// too), the agent's row ending when that turn says it was. Codex lets no
+/// message reach a subagent's thread directly: its rows have no Ask.
+fn stopper<W: Write + Send + 'static>(stdin: &Arc<Mutex<W>>, turns: &Arc<Mutex<HashMap<String, String>>>) -> chat_agents::StopAgent {
+    let stdin = Arc::downgrade(stdin);
+    let turns = Arc::downgrade(turns);
+    let asked = std::sync::atomic::AtomicU64::new(1);
+    Box::new(move |id: &str| {
+        let gone = || tf("{agent} ended", &[("agent", "Codex")]);
+        let turns = turns.upgrade().ok_or_else(gone)?;
+        // A row of the thread's later work is `<thread>~2`.
+        let thread = id.split('~').next().unwrap_or(id);
+        let Some(turn) = turns.lock().unwrap_or_else(|e| e.into_inner()).get(thread).cloned() else {
+            // Its turn is over already: nothing to stop.
+            return Ok(());
+        };
+        let stdin = stdin.upgrade().ok_or_else(gone)?;
+        let n = asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let line = json!({ "id": format!("lumo-stop-{n}"), "method": "turn/interrupt", "params": { "threadId": thread, "turnId": turn } });
+        let mut pipe = stdin.lock().unwrap_or_else(|e| e.into_inner());
+        pipe.write_all(format!("{line}\n").as_bytes()).and_then(|_| pipe.flush()).map_err(|_| gone())
+    })
+}
+
 fn write_line(stdin: &Writer, message: &Value) -> bool {
     let mut pipe = stdin.lock().unwrap_or_else(|e| e.into_inner());
     pipe.write_all(format!("{message}\n").as_bytes()).and_then(|_| pipe.flush()).is_ok()
@@ -775,10 +817,15 @@ struct Live {
     /// The agents its thread started, over all its turns, and who hears of them.
     agents: Subagents,
     tell: Tell,
+    /// The chat its Stop of one agent comes from, and the number its stopper has there.
+    stopper: Option<(String, u64)>,
 }
 
 impl Drop for Live {
     fn drop(&mut self) {
+        if let Some((chat, n)) = &self.stopper {
+            chat_agents::forget_stopper_of(chat, *n);
+        }
         // What it wrote last may say an agent finished: read before the rest end with it.
         self.drain();
         if matches!(self.child.try_wait(), Ok(None)) {
@@ -840,6 +887,7 @@ impl Live {
             used: Instant::now(),
             agents: Subagents::default(),
             tell: chat_agents::silent(),
+            stopper: None,
         };
         live.call("initialize", json!({ "clientInfo": { "name": "lumo", "title": "Lumo", "version": env!("CARGO_PKG_VERSION") } }))?;
         write_line(&live.stdin, &json!({ "method": "initialized" }));
@@ -1123,6 +1171,13 @@ fn live_turn(
         Err(e) => return Err(e),
     };
     live.tell = tell;
+    // Stop on one agent's row interrupts that agent's own turn, in this turn or between two.
+    let n = chat_agents::register_stopper(&spec.chat_id, PROVIDER, stopper(&live.stdin, &live.agents.turns));
+    if let Some((chat, old)) = live.stopper.replace((spec.chat_id.clone(), n)) {
+        if old != n {
+            chat_agents::forget_stopper_of(&chat, old);
+        }
+    }
     // What came between two turns, told now.
     (live.tell)(&mut live.agents.agents, false);
     let thread = live.thread.clone().unwrap_or_default();
@@ -1758,6 +1813,40 @@ mod tests {
         // One that ended asks nothing any more.
         feed_agents(&mut sub, &[&format!(r#"{{"method":"turn/completed","params":{{"threadId":"{SUB}","turn":{{"id":"t9","status":"completed","items":[]}}}}}}"#)]);
         assert_eq!(sub.at_work(SUB), None);
+    }
+
+    #[test]
+    fn stop_on_one_agent_interrupts_its_own_threads_turn() {
+        let mut sub = Subagents::default();
+        let spawn = format!(r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"s1","tool":"spawnAgent","status":"completed","senderThreadId":"{THREAD}","receiverThreadIds":["{SUB}"],"prompt":"Read the parser","agentsStates":{{}}}}}}}}"#);
+        feed_agents(&mut sub, &[&spawn]);
+        assert!(!sub.agents.get(SUB).unwrap().can_stop, "no turn of its own to name yet");
+        let started = |turn: &str| format!(r#"{{"method":"turn/started","params":{{"threadId":"{SUB}","turn":{{"id":"{turn}","status":"inProgress","items":[]}}}}}}"#);
+        feed_agents(&mut sub, &[&started("t1")]);
+        assert!(sub.agents.get(SUB).unwrap().can_stop);
+
+        let pipe: Arc<Mutex<Vec<u8>>> = Arc::default();
+        let stop = stopper(&pipe, &sub.turns);
+        stop(SUB).unwrap();
+        let sent: Value = serde_json::from_slice(&pipe.lock().unwrap()).unwrap();
+        assert_eq!(sent["method"], "turn/interrupt");
+        assert_eq!(sent["params"], json!({ "threadId": SUB, "turnId": "t1" }), "its own thread and turn, never the chat's");
+        assert!(sent["id"].as_str().is_some_and(|id| id.starts_with("lumo-stop-")), "an id no answer of the turn's waits for");
+
+        // Its turn over: nothing to stop. Set to work again: its new turn, on its new row.
+        feed_agents(&mut sub, &[&format!(r#"{{"method":"turn/completed","params":{{"threadId":"{SUB}","turn":{{"id":"t1","status":"completed","items":[]}}}}}}"#)]);
+        pipe.lock().unwrap().clear();
+        stop(SUB).unwrap();
+        assert!(pipe.lock().unwrap().is_empty());
+        feed_agents(&mut sub, &[&started("t2")]);
+        let again = format!("{SUB}~2");
+        assert!(sub.agents.get(&again).unwrap().can_stop);
+        stop(&again).unwrap();
+        let sent: Value = serde_json::from_slice(&pipe.lock().unwrap()).unwrap();
+        assert_eq!(sent["params"], json!({ "threadId": SUB, "turnId": "t2" }));
+        // Codex gone: the Stop says so.
+        drop(sub);
+        assert!(stop(&again).is_err());
     }
 
     #[test]

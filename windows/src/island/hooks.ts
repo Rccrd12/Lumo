@@ -26,6 +26,7 @@ import { editStat, isSimpleRequest, requestKind, requestReason } from "../core/a
 import { parsePermissionMode, storedPermissionMode } from "../core/providers";
 import { permissionsFor } from "../core/chats";
 import { rememberFolder } from "../core/sessions";
+import { sessionAgentCall, sessionAgentStarted, sessionAgentStopped, sessionAgentTool, sessionEnded, sessionPrompt, startsAgent, forgetSession } from "../core/session-agents";
 import {
   BACKGROUND_COLOR, BACKGROUND_TEXT, BackgroundRuns, QUIET_MS, STALE_MS, answerLine, answerText, backgroundGroupId, batchTotal, backgroundLine,
   launcherName, parseBackgroundMode, subjectOf, type BackgroundEvent,
@@ -308,8 +309,15 @@ interface HookPayload {
   lumo_island?: boolean;
   /** With `lumo_island`: which of the island's chats it answers (its LUMO_CHAT_ID). */
   lumo_chat?: string;
-  /** PermissionRequest from inside an agent Claude Code started: that agent's id (the chat's Agents card matches it). */
+  /**
+   * From inside an agent Claude Code started: that agent's id. On a
+   * PermissionRequest the chat's Agents card matches it; SubagentStart,
+   * SubagentStop and its PreToolUse make a terminal session's agent rows
+   * (core/session-agents.ts).
+   */
   agent_id?: string;
+  /** SubagentStart / SubagentStop: the agent's kind ("Explore", "general-purpose"…). */
+  agent_type?: string;
   /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
   lumo_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
@@ -636,6 +644,7 @@ function upsert(id: string, projectName: string, cwd: string, sessionId: string)
 function clearSession(id: string) {
   const t = State.tasks.find((x) => x.id === id);
   if (!t) return;
+  if (t.sessionId) forgetSession(t.sessionId);
   if (!State.isKept(id)) {
     State.removeTask(id);
     return;
@@ -741,6 +750,8 @@ function handleHook(island: Island, payload: HookPayload) {
   /** Claude Code, in a terminal or in the Claude app: it asks questions and titles its sessions. */
   const isClaude = !isExternalAgent || validAgent === "claude-desktop";
   const sessionId = payload.session_id ?? "";
+  /** A session of the user's own, not one of the island's chat runs: its agents are rows of its session card. */
+  const terminal = isClaude && payload.lumo_island !== true && sessionId !== "";
 
   /** Alerts force the island open; work events only reveal the compact island. */
   const surface = (view: Parameters<Island["alert"]>[0], isAlert: boolean) => {
@@ -858,6 +869,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // The field is `prompt`; reading `message` meant this step was always blank.
       const asked = payload.prompt ?? payload.message;
       if (asked) State.appendStep(agentId, clipUnits(asked, 60), fullTextDetail(asked, clipUnits(asked, 60)));
+      if (terminal) sessionPrompt(sessionId);
       surface("overview", false);
       break;
     }
@@ -868,7 +880,11 @@ function handleHook(island: Island, payload: HookPayload) {
       clearFinalLine(agentId);
       State.updateTask(agentId, "working");
       const tool = payload.tool_name ?? "Tool";
-      State.appendStep(agentId, stepLabel(tool, payload.tool_input ?? {}), toolStepDetail(tool, payload.tool_input ?? {}));
+      const label = stepLabel(tool, payload.tool_input ?? {});
+      // One of the session's agents at work: its row says it, the session's steps stay its own.
+      const ofAgent = terminal && !!payload.agent_id && sessionAgentTool(sessionId, payload.agent_id, { kind: "step", detail: label });
+      if (!ofAgent) State.appendStep(agentId, label, toolStepDetail(tool, payload.tool_input ?? {}));
+      if (terminal && !payload.agent_id && startsAgent(tool)) sessionAgentCall(sessionId, payload.tool_input ?? {});
       followPlan(false);
       surface("overview", false);
       break;
@@ -974,6 +990,7 @@ function handleHook(island: Island, payload: HookPayload) {
 
     case "SessionEnd":
       liveSessions.end(agentId, sessionId);
+      if (terminal) sessionEnded(sessionId);
       island.plan?.endSession(agentId, sessionId);
       // Other sessions are still behind the pill: its card, diffs and state are
       // theirs; it only shows the one that owns it now.
@@ -994,6 +1011,12 @@ function handleHook(island: Island, payload: HookPayload) {
       break;
 
     case "SubagentStart":
+      // A terminal session's agent gets a row of its own in the session card.
+      if (terminal && payload.agent_id && sessionAgentStarted(sessionId, payload.agent_id, payload.agent_type ?? "")) {
+        ensurePill();
+        State.notify();
+        break;
+      }
       State.appendStep(agentId, t("+ subagent"));
       break;
 
@@ -1023,6 +1046,10 @@ function handleHook(island: Island, payload: HookPayload) {
     }
 
     case "SubagentStop":
+      if (terminal && payload.agent_id && sessionAgentStopped(sessionId, payload.agent_id, payload.last_assistant_message ?? "")) {
+        State.notify();
+        break;
+      }
       State.appendStep(agentId, t("• subagent done"));
       break;
 

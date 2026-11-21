@@ -644,9 +644,68 @@ pub fn begin_turn(who: Who, chat: &str) {
         STOPPED.store(false, Ordering::SeqCst);
         PAUSED.store(false, Ordering::SeqCst);
         *job = Job { who: Some(who), ..Job::EMPTY };
+        running().clear();
     }
     job.leave(chat);
     job.part_mut(chat);
+    running().push(chat.to_string());
+}
+
+/// The chats with a turn under way, one entry for each (the turn its agents
+/// keep after the answer, `lend_turn`, and the chat's next one can overlap).
+static RUNNING: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn running() -> MutexGuard<'static, Vec<String>> {
+    RUNNING.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// One turn of `chat` is over: true when the chat has another one still under way.
+fn turn_of_chat_over(chat: &str) -> bool {
+    let mut running = running();
+    if let Some(i) = running.iter().position(|c| c == chat) {
+        running.remove(i);
+    }
+    running.iter().any(|c| c == chat)
+}
+
+/// The answer is done but agents the chat's turn started go on at work: the
+/// computer stays theirs, with the same rules (the line, the plan, each
+/// action on the island's card, Esc), until the last of them ends
+/// (chat_agents.rs `keep_while_agents`). What the turn did so far goes under
+/// its answer, as `end_turn` would give it. With no agent at work, or the
+/// chat's Stop, the turn ends now (`end_turn`, and nobody of the chat waits
+/// in line any more).
+pub fn lend_turn(app: &AppHandle, chat: &str, stopped: bool) -> Option<Value> {
+    if !stopped {
+        let recap = (TURN.load(Ordering::SeqCst) == 1).then(|| recap_value(&job(), false, now_ms())).flatten();
+        match crate::chat_agents::keep_while_agents(chat, Lent { app: app.clone(), chat: chat.to_string(), armed: true }) {
+            Ok(()) => return recap,
+            Err(mut lent) => lent.armed = false,
+        }
+    }
+    let recap = end_turn(app, chat, stopped);
+    crate::computer_turns::turn_end(app, chat);
+    recap
+}
+
+/// A turn its agents keep (`lend_turn`): it ends when they all have.
+struct Lent {
+    app: AppHandle,
+    chat: String,
+    armed: bool,
+}
+
+impl Drop for Lent {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let _ = end_turn(&self.app, &self.chat, false);
+        // The chat's next turn, if one is under way, keeps its own in line.
+        if !running().contains(&self.chat) {
+            crate::computer_turns::turn_end(&self.app, &self.chat);
+        }
+    }
 }
 
 /// The turn is over: nothing more is done, and Esc and the mouse are the
@@ -659,8 +718,14 @@ pub fn begin_turn(who: Who, chat: &str) {
 /// one that ends first (`chat`, "" for Gemini Live's helper) leaves the job:
 /// its plan is no longer shown nor lets its agent in.
 pub fn end_turn<R: Runtime>(app: &AppHandle<R>, chat: &str, stopped: bool) -> Option<Value> {
+    // Another turn of the same chat under way (the one its agents kept
+    // after the answer, and the next) keeps the chat's plan.
+    let chat_goes_on = turn_of_chat_over(chat);
     // Two chats can be answered at once: the computer is let go after the last one.
     if TURN.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))) != Ok(1) {
+        if chat_goes_on {
+            return None;
+        }
         // The island shows another chat's plan now, or none.
         let moved = {
             let mut job = job();
@@ -793,8 +858,18 @@ impl OtherTurn {
     }
 
     /// The turn is over (`stopped`: the chat's Stop ended it): what it leaves
-    /// under its answer when it used the computer, as Claude Code's (`end_turn`).
+    /// under its answer when it used the computer, as Claude Code's
+    /// (`lend_turn`): its subagents still at work keep the computer until the
+    /// last of them ends (it is dropped then).
     pub fn finish(mut self, stopped: bool) -> Option<Value> {
+        if !stopped {
+            let recap = (TURN.load(Ordering::SeqCst) == 1).then(|| recap_value(&job(), false, now_ms())).flatten();
+            let chat = self.chat.clone();
+            match crate::chat_agents::keep_while_agents(&chat, self) {
+                Ok(()) => return recap,
+                Err(back) => self = back,
+            }
+        }
         self.done = true;
         others().retain(|o| o.id != self.id);
         end_turn(&self.app, &self.chat, stopped)
@@ -3571,6 +3646,13 @@ mod tests {
         assert!(!STOPPED.load(Ordering::SeqCst) && !PAUSED.load(Ordering::SeqCst));
         assert_eq!(gate(&job(), "c1"), Err(PLAN_FIRST));
         assert!(job().plan().is_none() && job().parts.len() == 1);
+        // The turn its agents kept after the answer and the chat's next one:
+        // the first to end leaves the chat's plan to the other.
+        assert_eq!(*running(), ["c1"]);
+        begin_turn(claude(), "c1");
+        assert!(turn_of_chat_over("c1"), "the other turn of the chat goes on");
+        assert!(!turn_of_chat_over("c1"), "the last one");
+        assert!(running().is_empty());
         // One at a time, but never past the call's time.
         let held = ONE_AT_A_TIME.lock().unwrap();
         let since = Instant::now();

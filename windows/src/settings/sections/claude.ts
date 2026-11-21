@@ -185,6 +185,25 @@ export function claudeSection(status: HookStatus): HTMLElement {
   return section;
 }
 
+// ── Agents in the chat section ────────────────────────────────────────────────
+
+/** The agents an AI starts in the island's chat (views/agents-card.ts). */
+const CHAT_AGENTS_TEXT = {
+  get title() { return t("Agents in the chat"); },
+  get intro() { return t("The agents an AI starts in the island's chat, each a row of its Agents card."); },
+  get summaries() { return t("Progress summaries"); },
+  get summariesHint() {
+    return t("Claude Code's agents say now and then what they are doing, on their row. It costs a few tokens of your plan. A chat already under way keeps how it started.");
+  },
+};
+
+export function chatAgentsSection(): HTMLElement {
+  return h("section", {},
+    ...sectionHead(CHAT_AGENTS_TEXT.title, CHAT_AGENTS_TEXT.intro),
+    h("div", { class: "setting-list" }, setting(CHAT_AGENTS_TEXT.summaries, CHAT_AGENTS_TEXT.summariesHint,
+      toggle(settings.agentProgressSummaries !== false, (v) => { settings.agentProgressSummaries = v; void save(); }))));
+}
+
 // ── Background sessions section ───────────────────────────────────────────────
 
 /** Sessions another program starts on its own (core/background.ts). */

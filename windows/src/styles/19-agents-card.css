@@ -470,3 +470,49 @@ html.look-new .agents-row .agents-plan-chip {
   font: 400 10.5px var(--mono);
   color: #c8cdd4;
 }
+
+/* More than eight at work (views/agent-segments.ts): how many, a number per colour. */
+.agents-counts {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.agents-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 600 11px var(--font);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.agents-count i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ag-working);
+}
+
+.agents-count.waiting i { background: var(--ag-waiting); }
+.agents-count.stalled i { background: var(--ag-stalled); }
+.agents-count.stalled { color: var(--ag-stalled); }
+
+/* Its CLI no longer answers (concepts/segnale-agenti): red, not amber, Stop only. */
+.agents-mark.lost i {
+  background: var(--ag-failed);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--ag-failed) 25%, transparent);
+}
+
+.agents-row.stalled.lost .agents-row-head {
+  background: transparent;
+}
+
+.agents-row.stalled.lost .agents-row-head:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.agents-row.stalled.lost .agents-line {
+  color: var(--red-text);
+}

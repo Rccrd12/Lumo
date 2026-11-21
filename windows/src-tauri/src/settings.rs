@@ -304,6 +304,11 @@ pub struct Settings {
     /// One not in it follows what Google Calendar itself shows
     /// (src/core/google-calendar.ts).
     pub google_calendars: BTreeMap<String, bool>,
+    /// Settings → Agents → Progress summaries: the island chat's Claude Code
+    /// asks every agent of its for a line on what it is doing now
+    /// (`agentProgressSummaries`, claude_code.rs), shown on its row. Costs a
+    /// few tokens of the user's plan; on unless turned off.
+    pub agent_progress_summaries: bool,
 }
 
 /// A little bigger than their design size, since a PC's screen sits further away.
@@ -423,6 +428,7 @@ impl Default for Settings {
             island_edge_light: "full".into(),
             home_activities: true,
             google_calendars: BTreeMap::new(),
+            agent_progress_summaries: true,
         }
     }
 }
@@ -824,7 +830,8 @@ mod tests {
   "updateBeta": true,
   "islandEdgeLight": "soft",
   "homeActivities": false,
-  "googleCalendars": { "en.italian#holiday@group.v.calendar.google.com": false, "a@gmail.com": true }
+  "googleCalendars": { "en.italian#holiday@group.v.calendar.google.com": false, "a@gmail.com": true },
+  "agentProgressSummaries": false
 }"##;
 
     fn custom() -> Value {
@@ -979,6 +986,13 @@ mod tests {
         assert!(Settings::default().update_check_on_open);
         assert!(!parse(&custom_with("updateBeta", None)).unwrap().update_beta, "beta versions stay off");
         assert!(parse(CUSTOM.as_bytes()).unwrap().update_beta);
+    }
+
+    #[test]
+    fn a_file_from_before_progress_summaries_asks_for_them() {
+        assert!(parse(&custom_with("agentProgressSummaries", None)).unwrap().agent_progress_summaries);
+        assert!(!parse(CUSTOM.as_bytes()).unwrap().agent_progress_summaries);
+        assert!(Settings::default().agent_progress_summaries);
     }
 
     #[test]
@@ -1414,6 +1428,7 @@ mod tests {
                 "islandEdgeLight",
                 "homeActivities",
                 "googleCalendars",
+                "agentProgressSummaries",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

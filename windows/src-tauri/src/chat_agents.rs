@@ -79,7 +79,7 @@ pub struct AgentRow {
     /// Its task, as the CLI described it ("Transcribe L03–L04"), cut short.
     pub title: String,
     pub state: AgentState,
-    /// With `Waiting`: "permission" (a card waits for the user) or "rate_limit".
+    /// With `Waiting`: "permission" (a card waits for the user), "rate_limit", "queue", "paused" or "retry" (its CLI tries an API request again).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub waiting_for: Option<&'static str>,
     /// What it is doing now (its last tool call), worded by the island as the typing line is.
@@ -146,6 +146,42 @@ pub struct AgentRow {
     /// ("In sfondo", concepts/sotto-agenti-completo/6-riga-aperta).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<BackgroundCommand>,
+    /// The command it waits on now (Claude Code's `local_bash` task of its
+    /// own, in the foreground), while it runs: a long silence is that
+    /// command at work, not the agent stuck (concepts/segnale-agenti).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub running: Option<BackgroundCommand>,
+    /// With `Waiting` for "retry": its CLI tries its request again after an
+    /// API error (Claude Code's `subagent_retry`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry: Option<AgentRetry>,
+    /// Whether a tool call of its waits for its result, when its CLI tells
+    /// (Claude Code): silent with none, it is writing (its answer, a long file).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub in_call: Option<bool>,
+    /// Its CLI says it is alive every few seconds, apart from its agents
+    /// (Claude Code's `keep_alive` and heartbeats): with no word from it at
+    /// all for long, the island says the CLI no longer answers.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub heartbeat: bool,
+}
+
+/// An agent's request tried again after an API error, as its CLI says.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRetry {
+    /// This try, of `max`.
+    pub attempt: u64,
+    pub max: u64,
+    /// How long its CLI waits before it, from `at` (epoch ms).
+    pub delay_ms: u64,
+    pub at: u64,
+    /// The API's HTTP status (529 overloaded, 429 rate limit…), when given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<u64>,
+    /// Its CLI's kind of error, when given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
 }
 
 /// A command an agent left running in the background.
@@ -305,6 +341,10 @@ impl AgentRow {
             stopping: false,
             no_report: false,
             commands: Vec::new(),
+            running: None,
+            retry: None,
+            in_call: None,
+            heartbeat: false,
         }
     }
 
@@ -322,7 +362,16 @@ impl AgentRow {
         self.ended_by = None;
         self.stopping = false;
         self.no_report = false;
+        self.running = None;
+        self.retry = None;
         self.heard();
+    }
+
+    /// What it waited for is over: at work again.
+    pub fn back_at_work(&mut self) {
+        self.state = AgentState::Working;
+        self.waiting_for = None;
+        self.retry = None;
     }
 
     /// Lumo heard of it just now.
@@ -341,6 +390,9 @@ impl AgentRow {
         self.queue = None;
         self.now = None;
         self.stopping = false;
+        self.running = None;
+        self.retry = None;
+        self.in_call = None;
         self.ended_at = Some(now);
         self.last_signal_at = now;
         // Stopped: a message it was asked will never be answered.
@@ -427,6 +479,16 @@ impl Agents {
         Some(row)
     }
 
+    /// The agent `id`, if it is known, marked changed but not heard of:
+    /// what changes is about its CLI, not news of the agent's own.
+    pub fn mark(&mut self, id: &str) -> Option<&mut AgentRow> {
+        let pos = self.rows.iter().position(|r| r.id == id)?;
+        if !self.dirty.iter().any(|d| d == id) {
+            self.dirty.push(id.to_string());
+        }
+        Some(&mut self.rows[pos])
+    }
+
     /// The agents still at work (or waiting).
     pub fn open(&self) -> usize {
         self.rows.iter().filter(|r| !r.state.is_final()).count()
@@ -491,7 +553,14 @@ pub type Tell = Arc<dyn Fn(&mut Agents, bool) + Send + Sync>;
 type OpenSets = HashMap<String, HashMap<String, Vec<String>>>;
 static OPEN_SETS: Mutex<Option<OpenSets>> = Mutex::new(None);
 
-/// The provider `source` has `open` agents in chat `chat` now: those of all the chat's providers.
+/// What a chat's turn lent its agents at work after the answer (the
+/// computer, the email tools), by chat: each goes (is dropped) when the last
+/// of the chat's agents ends. Locked after OPEN_SETS, never before.
+type Kept = HashMap<String, Vec<Box<dyn std::any::Any + Send>>>;
+static KEPT: Mutex<Option<Kept>> = Mutex::new(None);
+
+/// The provider `source` has `open` agents in chat `chat` now: those of all
+/// the chat's providers. None left: what the chat's turns lent them goes.
 fn open_in_chat(chat: &str, source: &str, open: Vec<String>) -> Vec<String> {
     let mut all = OPEN_SETS.lock().unwrap_or_else(|e| e.into_inner());
     let sets = all.get_or_insert_with(HashMap::new).entry(chat.to_string()).or_default();
@@ -501,10 +570,28 @@ fn open_in_chat(chat: &str, source: &str, open: Vec<String>) -> Vec<String> {
         sets.insert(source.to_string(), open);
     }
     let union: Vec<String> = sets.values().flatten().cloned().collect();
+    let mut gone = Vec::new();
     if sets.is_empty() {
         all.as_mut().map(|a| a.remove(chat));
+        gone = KEPT.lock().unwrap_or_else(|e| e.into_inner()).as_mut().and_then(|k| k.remove(chat)).unwrap_or_default();
     }
+    // Let go with no lock held: ending the computer's turn tells the island.
+    drop(all);
+    drop(gone);
     union
+}
+
+/// `lent` (what a chat's turn gives its agents: the computer's turn, the
+/// email tools) lives on while agents of the chat `chat` are at work after
+/// the answer, and goes when the last of them ends. None at work: it is
+/// given back, for the turn to end it now.
+pub fn keep_while_agents<T: Send + 'static>(chat: &str, lent: T) -> Result<(), T> {
+    let all = OPEN_SETS.lock().unwrap_or_else(|e| e.into_inner());
+    if !all.as_ref().is_some_and(|a| a.contains_key(chat)) {
+        return Err(lent);
+    }
+    KEPT.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).entry(chat.to_string()).or_default().push(Box::new(lent));
+    Ok(())
 }
 
 /// The `Tell` of the provider `source`'s agents in the chat `chat`.
@@ -839,6 +926,36 @@ mod tests {
         assert!(OPEN_SETS.lock().unwrap().as_ref().unwrap().get("sets-test").is_none(), "nothing kept");
         assert_eq!(open_in_chat("sets-other", "codex", s(&["x"])), s(&["x"]), "chats apart");
         open_in_chat("sets-other", "codex", Vec::new());
+    }
+
+    #[test]
+    fn what_a_turn_lends_its_agents_goes_when_the_last_of_the_chat_ends() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static GONE: AtomicUsize = AtomicUsize::new(0);
+        struct Lent;
+        impl Drop for Lent {
+            fn drop(&mut self) {
+                GONE.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // No agent at work: given back, for the turn to end it now.
+        let back = keep_while_agents("lend-test", Lent);
+        assert!(back.is_err());
+        drop(back);
+        assert_eq!(GONE.load(Ordering::SeqCst), 1);
+
+        open_in_chat("lend-test", "claude-code", s(&["a1", "a2"]));
+        open_in_chat("lend-test", "anthropic", s(&["b1"]));
+        assert!(keep_while_agents("lend-test", Lent).is_ok());
+        assert!(keep_while_agents("lend-test", Lent).is_ok(), "the next turn's too");
+        assert!(keep_while_agents("lend-other", Lent).is_err(), "another chat's agents lend nothing");
+        assert_eq!(GONE.load(Ordering::SeqCst), 2);
+        open_in_chat("lend-test", "claude-code", s(&["a2"]));
+        open_in_chat("lend-test", "claude-code", Vec::new());
+        assert_eq!(GONE.load(Ordering::SeqCst), 2, "another provider's agent still works");
+        open_in_chat("lend-test", "anthropic", Vec::new());
+        assert_eq!(GONE.load(Ordering::SeqCst), 4, "the last one ended: both go");
     }
 
     #[test]

@@ -20,8 +20,22 @@ import { N_, t, tn } from "../i18n/i18n";
 
 // ── Thresholds ────────────────────────────────────────────────────────────────
 
-/** A CLI's agent with no news for this long (s) is said to give no sign. */
-export const AGENT_STALL_S = 300;
+/**
+ * A CLI's agent with no news for this long (s), and no command of its at
+ * work, is said to give no sign (concepts/segnale-agenti): silent for a few
+ * minutes, it is most often writing its answer or a long file.
+ */
+export const AGENT_STALL_S = 600;
+/** Claude Code's own limit on one command (its Bash tool, in minutes): the warning says it. */
+export const COMMAND_LIMIT_MIN = 10;
+/** An agent's command at work this long (s), past that limit with a margin, is said. */
+export const COMMAND_STALL_S = 720;
+/** An agent silent this long (s) with no command and no call waiting is said to write. */
+export const WRITING_AFTER_S = 60;
+/** No word at all from a CLI that beats (Claude Code) for this long (s): it no longer answers. */
+export const CLI_LOST_S = 180;
+/** A retry still said this long (ms) after it was due: its news was missed, it is at work again. */
+const RETRY_STALE_MS = 120_000;
 /** A provider called by its API (Anthropic, OpenAI, Google, OpenRouter) streams all along. */
 export const CLOUD_STALL_S = 45;
 /** A local model writing or calling its tools sends something every moment… */
@@ -58,6 +72,8 @@ export interface AgentEntry {
   steps: AgentStep[];
   /** The user said Wait: no warning about it before then (epoch ms). */
   snoozedUntil?: number;
+  /** The last word of any kind from its CLI (`chat-signal`, epoch ms): only a CLI's that beats. */
+  cliAt?: number;
 }
 
 /**
@@ -86,6 +102,8 @@ export interface ChatAgents {
   dropped?: Set<string>;
   /** The messages the chat's CLI sent its agents, oldest first: a "Talking to …" box each, under its answer. */
   talks: TalkEntry[];
+  /** The last `chat-signal` (epoch ms): its CLI said something, about any of its agents or none. */
+  cliAt?: number;
 }
 
 /** A message the CLI sent one of its agents (`ChatAgent.talk`), under the answer `anchor`. */
@@ -185,6 +203,8 @@ export function applyAgent(store: AgentStore, ev: ChatAgentEvent, anchor: number
     c.rows.set(agent.id, entry);
   }
   entry.row = agent;
+  // News of it is a word of its CLI's.
+  entry.cliAt = Math.max(entry.cliAt ?? 0, c.cliAt ?? 0, agent.lastSignalAt || 0) || undefined;
   if (agent.now && !sameActivity(entry.steps[0]?.now, agent.now)) {
     entry.steps = [{ now: agent.now, at: agent.lastSignalAt || Date.now() }, ...entry.steps].slice(0, MAX_AGENT_STEPS);
   }
@@ -269,6 +289,11 @@ export function applySignal(store: AgentStore, ev: ChatSignalEvent): boolean {
     c.lastSignalAt = ev.at;
     changed = true;
   }
+  // Its CLI said something: none of its agents is lost with it.
+  if (typeof ev.at === "number" && ev.at > (c.cliAt ?? 0)) {
+    c.cliAt = ev.at;
+    for (const e of c.rows.values()) if (!isFinal(e.row.state) && ev.at > (e.cliAt ?? 0)) e.cliAt = ev.at;
+  }
   if ("waiting" in ev) {
     const waiting = ev.waiting === "permission" ? "permission" : null;
     if (waiting !== c.waiting) {
@@ -333,19 +358,91 @@ export function lookOf(e: AgentEntry, now = Date.now(), permission?: ReadonlySet
   const s = e.row.state;
   if (s === "done") return "done";
   if (s === "failed" || s === "stopped") return "failed";
-  if (s === "waiting" || permission?.has(e.row.id) || computerOf(e.row.id)?.waits) return "waiting";
+  if (agentStall(e, now)?.why === "lost") return "stalled";
+  if ((s === "waiting" && !retryOver(e.row, now)) || permission?.has(e.row.id) || computerOf(e.row.id)?.waits) return "waiting";
   return agentStall(e, now) ? "stalled" : "working";
 }
 
-/** An agent at work with no sign of life for too long (not one waiting in line for the computer). */
-export function agentStall(e: AgentEntry, now = Date.now()): { seconds: number } | null {
-  if (isFinal(e.row.state) || e.row.state === "waiting" || computerOf(e.row.id)?.waits) return null;
-  return stallOf({ kind: "agent", lastSignalAt: e.row.lastSignalAt, snoozedUntil: e.snoozedUntil, source: e.row.source }, now);
+/** Why an agent is said to need a look (concepts/segnale-agenti): its command past the limit, its silence with none, its CLI gone quiet. */
+export type StallWhy = "overlong" | "silent" | "lost";
+
+/** A retry its CLI said, long past due: its news was missed, the agent is at work again. */
+export function retryOver(row: ChatAgent, now = Date.now()): boolean {
+  if (row.waitingFor !== "retry") return false;
+  const r = row.retry;
+  return !r || now > r.at + r.delayMs + RETRY_STALE_MS;
+}
+
+/** The command an agent waits on now, and since when: its CLI's word (Claude Code), else its last step when that is one. */
+export function runningCommand(e: AgentEntry): { text: string; since: number } | null {
+  const r = e.row;
+  if (r.running) return { text: r.running.text, since: r.running.since };
+  // Its CLI tells whether a call of its waits (Claude Code in the chat): no word of a command is none.
+  if (r.inCall !== undefined) return null;
+  const step = e.steps[0];
+  return r.now?.kind === "command" && step?.now.kind === "command" ? { text: r.now.detail, since: step.at } : null;
+}
+
+/**
+ * How long a CLI that beats has said nothing at all, when that is too long
+ * (CLI_LOST_S); null otherwise. Only Claude Code beats, and only in the chat
+ * (`heartbeat`): a session in a terminal speaks through its hooks alone.
+ */
+export function cliSilence(e: AgentEntry, now = Date.now()): number | null {
+  if (!e.row.heartbeat || isFinal(e.row.state)) return null;
+  const last = Math.max(e.cliAt ?? 0, e.row.lastSignalAt || 0);
+  const seconds = last ? Math.floor((now - last) / 1000) : 0;
+  return seconds >= CLI_LOST_S ? seconds : null;
+}
+
+/**
+ * An agent at work that needs a look, and why: its CLI no longer answers
+ * ("lost"), the command it waits on is past Claude Code's limit
+ * ("overlong"), or it gave no sign for long with no command at work
+ * ("silent"). Never one waiting (for the user, the computer, its turn), nor
+ * one the user told to wait.
+ */
+export function agentStall(e: AgentEntry, now = Date.now()): { seconds: number; why: StallWhy } | null {
+  const r = e.row;
+  if (isFinal(r.state) || computerOf(r.id)?.waits) return null;
+  if (r.state === "waiting" && r.waitingFor !== "retry") return null;
+  const lost = cliSilence(e, now);
+  if (lost != null) return { seconds: lost, why: "lost" };
+  if (r.state === "waiting" && !retryOver(r, now)) return null;
+  if (e.snoozedUntil && now < e.snoozedUntil) return null;
+  const command = runningCommand(e);
+  if (command) {
+    const seconds = Math.floor((now - command.since) / 1000);
+    return seconds >= COMMAND_STALL_S ? { seconds, why: "overlong" } : null;
+  }
+  const quiet = stallOf({ kind: "agent", lastSignalAt: r.lastSignalAt, source: r.source }, now);
+  return quiet ? { seconds: quiet.seconds, why: "silent" } : null;
+}
+
+/** An agent at work silent a while with no command and no call waiting: it writes (its answer, a long file); since how long (s). */
+export function agentWriting(e: AgentEntry, now = Date.now()): number | null {
+  const r = e.row;
+  if (r.state !== "working" || r.inCall !== false || r.running || agentStall(e, now)) return null;
+  const seconds = Math.floor((now - r.lastSignalAt) / 1000);
+  return seconds >= WRITING_AFTER_S ? seconds : null;
 }
 
 /** The user said Wait on an agent with no sign: no warning for another threshold. */
 export function snooze(e: AgentEntry, now = Date.now()) {
   e.snoozedUntil = now + stallAfter({ kind: "agent", lastSignalAt: 0, source: e.row.source }) * 1000;
+}
+
+/** How many of `entries` need a look, and whether their CLI no longer answers for one. */
+export function toCheck(entries: AgentEntry[], now = Date.now()): { count: number; lost: boolean } {
+  let count = 0;
+  let lost = false;
+  for (const e of entries) {
+    const s = agentStall(e, now);
+    if (!s) continue;
+    count++;
+    lost ||= s.why === "lost";
+  }
+  return { count, lost };
 }
 
 export interface AgentCounts {
@@ -370,16 +467,6 @@ export function countAgents(entries: AgentEntry[], now = Date.now(), permission?
 /** A segment per agent, in their order: what the header's bar draws. */
 export function looksOf(entries: AgentEntry[], now = Date.now(), permission?: ReadonlySet<string>): AgentLook[] {
   return entries.map((e) => lookOf(e, now, permission));
-}
-
-/** The longest an agent of `entries` has gone without a sign, among those said to give none. */
-export function worstStall(entries: AgentEntry[], now = Date.now()): { seconds: number } | null {
-  let worst: { seconds: number } | null = null;
-  for (const e of entries) {
-    const s = agentStall(e, now);
-    if (s && (!worst || s.seconds > worst.seconds)) worst = s;
-  }
-  return worst;
 }
 
 // ── The computer, one agent at a time ─────────────────────────────────────────
@@ -681,6 +768,8 @@ export const AGENT_TEXT = {
   /** The closed island and the home: a chat whose agents work after its answer. */
   islandWorking: N_("{count} agents working"),
   islandStalled: N_("{count} agents with no signal for {time}"),
+  /** Some need a look (concepts/segnale-agenti): said in amber. */
+  islandToCheck: N_("{count} agents to check"),
 };
 
 /** A length of time in a few words: "45 s", "14 min", "1 h 20 min". */
@@ -703,9 +792,6 @@ export function durationText(ms: number): string {
 export function islandAgentsLine(entries: AgentEntry[], now = Date.now(), permission?: ReadonlySet<string>): { text: string; stalled: boolean } | null {
   const n = countAgents(entries, now, permission);
   if (n.open === 0) return null;
-  const worst = n.stalled ? worstStall(entries, now) : null;
-  if (worst) {
-    return { text: tn("{count} agent with no signal for {time}", AGENT_TEXT.islandStalled, n.stalled, { time: durationText(worst.seconds * 1000) }), stalled: true };
-  }
+  if (n.stalled) return { text: tn("{count} agent to check", AGENT_TEXT.islandToCheck, n.stalled), stalled: true };
   return { text: tn("{count} agent working", AGENT_TEXT.islandWorking, n.open), stalled: false };
 }

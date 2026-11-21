@@ -3480,11 +3480,11 @@ pub async fn send(
     // What it starts with: the same, agy still going with its subagents answers this message too.
     let key = agy_key(&exe, &args, &format!("{mail}|{tools}|{computer}|{browser}"));
     crate::computer::agy_workspace(&work, mail, tools, computer, browser);
-    let _mail = crate::mail::agent_turn();
+    let mail_turn = crate::mail::agent_turn();
     // The computer usable while this turn runs, each action asked for by Lumo.
     let computer_turn = computer.then(|| crate::computer::OtherTurn::begin(app, PROVIDER, chat.id(), "antigravity", mode, grid));
     // Lumo's browser: what changes a page asks on Lumo's card while this turn runs.
-    let _browser = browser.then(|| crate::browser::AskTurn::begin(PROVIDER, chat.id(), "antigravity", mode));
+    let browser_turn = browser.then(|| crate::browser::AskTurn::begin(PROVIDER, chat.id(), "antigravity", mode));
 
     let app2 = app.clone();
     let events = chat.events();
@@ -3535,8 +3535,14 @@ pub async fn send(
     .await
     .map_err(|e| e.to_string())
     .and_then(|r| r);
-    // What the turn did on the computer, for under its answer (as Claude Code's).
+    // What the turn did on the computer, for under its answer (as Claude
+    // Code's). Subagents still at work keep the computer, the email tools
+    // and the browser's cards, with the same rules, until the last ends.
     let recap = computer_turn.and_then(|t| t.finish(matches!(&state, Ok(s) if s.stopped)));
+    let _ = chat_agents::keep_while_agents(chat.id(), mail_turn);
+    if let Some(browser_turn) = browser_turn {
+        let _ = chat_agents::keep_while_agents(chat.id(), browser_turn);
+    }
     let plain = chat::plain_question(true, context.as_ref(), &query);
     // It failed after using the computer: the turn is kept as an empty answer
     // that says why, so the recap of what was done on the screen is shown and

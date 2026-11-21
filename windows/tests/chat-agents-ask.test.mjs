@@ -134,21 +134,21 @@ function host(extra = {}) {
 
 test("Ask on a row its CLI can pass a message to; a row whose message waits says it is in conversation", () => {
   const store = newAgentStore();
-  send(store, "k", agent("a", { now: { kind: "read", detail: "L03.tex" }, lastSignalAt: T0 + 360 * S }));
+  send(store, "k", agent("a", { now: { kind: "read", detail: "L03.tex" }, lastSignalAt: T0 + 660 * S }));
   send(store, "k", agent("b", { lastSignalAt: T0 }));
-  send(store, "k", agent("c", { canAsk: false, lastSignalAt: T0 + 360 * S }));
-  send(store, "k", agent("d", { lastSignalAt: T0 + 360 * S, talk: talk("t1") }));
+  send(store, "k", agent("c", { canAsk: false, lastSignalAt: T0 + 660 * S }));
+  send(store, "k", agent("d", { lastSignalAt: T0 + 660 * S, talk: talk("t1") }));
   const c = store.get("k");
   assert.equal(askable(c.rows.get("a")), true);
   assert.equal(askable(c.rows.get("c")), false);
   const { host: h, log } = host();
-  const now = T0 + 361 * S;
+  const now = T0 + 661 * S;
   const el = agentsCard({ chatId: "k", chat: c, batch: c.batches[0], now }, h);
   const rows = el.find(".agents-row");
   // No sign of life: Ask first, then Wait and Stop.
   assert.deepEqual(rows[1].querySelector(".agents-side").find(".agents-btn").map((b) => b.textContent), ["Ask", "Wait", "Stop"]);
   rows[1].querySelector(".agents-btn.ask").fire("click");
-  assert.deepEqual(log.asked, [{ agentId: "b", title: "Transcribe b", line: "No signal for 6 min", look: "stalled" }]);
+  assert.deepEqual(log.asked, [{ agentId: "b", title: "Transcribe b", line: "No sign for 11 min, no command running", look: "stalled" }]);
   // At work: Ask is in the opened row, before Stop.
   rows[0].querySelector(".agents-row-head").fire("click");
   assert.deepEqual(el.querySelector(".agents-detail").find(".agents-btn").map((b) => b.textContent), ["Ask", "Stop this agent", "Close"]);
