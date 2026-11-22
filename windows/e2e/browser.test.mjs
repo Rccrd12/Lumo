@@ -9,7 +9,10 @@
 // screen), works beside a second tab of another chat at the same time, and
 // closes.
 // The pages come from a small server of the test's own on 127.0.0.1, never at
-// "/" (the driver names a webview showing "/" the island).
+// "/" (the driver names a webview showing "/" the island). 127.0.0.1 is this
+// PC: the first time each chat opens it, its own card asks, whatever the mode
+// (browser.rs ask_local), and the test clicks Allow; a page's own link there
+// goes only once the chat was allowed.
 
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -56,6 +59,11 @@ const PAGE = `<!doctype html>
 const SECOND = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Lumo e2e second</title></head>
 <body><h1>Second page</h1><a href="/page.html">Back to the first</a></body></html>`;
+
+/** Allow on the closed island's card, or on the full card. */
+const ANY_ALLOW = ".cp-approval .cp-action.allow, .allow-btn";
+/** Clicks this soon after a card shows are ignored (CLICK_GUARD_MS, 600). */
+const GUARD = 800;
 
 /** The values the page's Go button sent home, in order. */
 const clicked = [];
@@ -130,10 +138,23 @@ async function pageTab() {
   return tab;
 }
 
+/**
+ * browser_open of one of the test's pages, on 127.0.0.1: an address of this
+ * PC, so the chat's first one waits for its own card, and Allow is clicked.
+ */
+async function openHere(m, url, ms) {
+  const answer = ok(m, "browser_open", { url }, ms);
+  const allow = await app.d.visible(ANY_ALLOW, 20_000, "Allow on the card for an address of this PC");
+  step("the card for 127.0.0.1 is up: clicks Allow");
+  await sleep(GUARD);
+  await app.click(allow);
+  return answer;
+}
+
 /** Opens the first page in a new tab: its number. */
 async function openPage() {
   // The first tab starts the browser's own WebView2: slower than the rest.
-  const text = await ok(a, "browser_open", { url: base + "page.html" }, 55_000);
+  const text = await openHere(a, base + "page.html", 55_000);
   const n = Number(/^Tab (\d+):/.exec(text)?.[1]);
   assert.ok(n > 0, `browser_open names its tab: ${text}`);
   assert.match(text, /Lumo e2e page/, "the answer has the page's title");
@@ -254,7 +275,8 @@ flow(G, "Two tabs at once: another chat's tab works beside it, and each chat see
   b ??= await relay("e2e-browser-other");
   // Two relays, two calls in flight together: a new tab loads while the first is read.
   const t0 = Date.now();
-  const [opened, read] = await Promise.all([ok(b, "browser_open", { url: base + "second.html" }, 55_000), ok(a, "browser_read", { tab: n })]);
+  // Another chat: 127.0.0.1 asks again, its card allowed for that chat only.
+  const [opened, read] = await Promise.all([openHere(b, base + "second.html", 55_000), ok(a, "browser_read", { tab: n })]);
   step(`both answered within ${Date.now() - t0} ms`);
   const m = Number(/^Tab (\d+):/.exec(opened)?.[1]);
   assert.ok(m > 0 && m !== n, `a tab of its own: ${opened}`);

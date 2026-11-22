@@ -5,7 +5,7 @@
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
 import { computerPoint, describeComputerAction } from "../core/computer";
-import { BROWSER_TEXT, describeBrowserAction } from "../core/agent-browser";
+import { BROWSER_TEXT, describeBrowserAction, isLocalOpen } from "../core/agent-browser";
 import { currentStep } from "../core/computer-use";
 import { userToolTarget } from "../core/tools";
 import { clipUnits } from "../core/clip";
@@ -383,8 +383,10 @@ export function cleanPayload(raw: unknown): HookPayload | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const p = { ...(raw as Record<string, unknown>) };
   // Input that is not an object of fields (text, a list): what the agent runs
-  // is in it, so it stays on the card as it came, and it is cut, never allowed
-  // from here. Dropped, the card would show only the tool's name.
+  // is in it, so it stays on the card as it came, marked as cut (amber, never
+  // an "Allow for this session"). Dropped, the card would show only the
+  // tool's name. Allow still allows it, as any cut request (pipe.rs): only
+  // what the relay couldn't read (`lumo_input_unread`) is never allowed.
   const input = p.tool_input;
   if (input != null && (typeof input !== "object" || Array.isArray(input))) {
     p.tool_input = { arguments: typeof input === "string" ? input : JSON.stringify(input) };
@@ -594,7 +596,7 @@ const REASON_KEYS = new Set(["description", "Description", "justification", "exp
  * for Gemini Live's helper), never another chat's using the computer at
  * the same time; nothing without a plan, the target says the rest.
  */
-function approvalAbout(
+export function approvalAbout(
   tool: string, input: Record<string, unknown>, chat?: string,
 ): { reason?: string; kind?: { text: string; vars?: Record<string, string> } } {
   if (describeComputerAction(tool, input)) {
@@ -604,7 +606,7 @@ function approvalAbout(
     return why ? { reason: why } : {};
   }
   // An agent's browser tab: the line says it is not the user's browser.
-  if (describeBrowserAction(tool, input)) return { kind: { text: BROWSER_TEXT.apart } };
+  if (describeBrowserAction(tool, input)) return { kind: { text: isLocalOpen(tool, input) ? BROWSER_TEXT.local : BROWSER_TEXT.apart } };
   // An MCP tool's `description` is one of its arguments, shown whole below: the line says what kind of call it is.
   const reason = MCP_TOOL.test(tool) ? null : requestReason(input);
   if (reason) return { reason };

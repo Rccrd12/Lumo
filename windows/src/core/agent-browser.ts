@@ -39,7 +39,14 @@ export const BROWSER_TEXT = {
   close: N_("Close browser tab {tab}"),
   /** The line above, for every browser action: where it happens. */
   apart: N_("In a hidden tab of its own, apart from your browser: none of your accounts."),
+  /** The line above for an address of this PC or the local network (browser.rs ask_local): asked in every mode. */
+  local: N_("An address on this PC or your local network, not the internet: Lumo asks before an agent goes there."),
 };
+
+/** True for browser_open's own card for this PC or the local network (browser.rs ask_local). */
+export function isLocalOpen(tool: string, input: Record<string, unknown>): boolean {
+  return browserToolName(tool) === "browser_open" && input.local === true;
+}
 
 /**
  * A number the agent gave, as text; "?" for none. Only a JSON number, as
