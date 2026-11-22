@@ -23251,18 +23251,6 @@
    "id": "Claude Code belum masuk ke paket Claude Anda, atau info masuknya sudah kedaluwarsa.",
    "it": "Claude Code non ha fatto l'accesso al tuo piano Claude, oppure l'accesso è scaduto."
   },
-  "It isn't installed yet.": {
-   "zh-Hans": "尚未安装。",
-   "hi": "यह अभी इंस्टॉल नहीं है।",
-   "es": "Aún no está instalado.",
-   "ar": "لم يُثبَّت بعد.",
-   "fr": "Il n'est pas encore installé.",
-   "bn": "এটি এখনও ইনস্টল করা নেই।",
-   "pt-BR": "Ainda não está instalado.",
-   "ru": "Он ещё не установлен.",
-   "id": "Belum terpasang.",
-   "it": "Non è ancora installato."
-  },
   "Antigravity is closing and can no longer stop one agent alone.": {
    "zh-Hans": "Antigravity 正在关闭，无法再单独停止某个代理。",
    "hi": "Antigravity बंद हो रहा है और अब किसी एक एजेंट को अलग से नहीं रोक सकता।",
@@ -23274,6 +23262,18 @@
    "ru": "Antigravity закрывается и больше не может остановить одного агента отдельно.",
    "id": "Antigravity sedang ditutup dan tidak bisa lagi menghentikan satu agen saja.",
    "it": "Antigravity si sta chiudendo e non può più fermare un solo agente."
+  },
+  "It isn't installed yet.": {
+   "zh-Hans": "尚未安装。",
+   "hi": "यह अभी इंस्टॉल नहीं है।",
+   "es": "Aún no está instalado.",
+   "ar": "لم يُثبَّت بعد.",
+   "fr": "Il n'est pas encore installé.",
+   "bn": "এটি এখনও ইনস্টল করা নেই।",
+   "pt-BR": "Ainda não está instalado.",
+   "ru": "Он ещё не установлен.",
+   "id": "Belum terpasang.",
+   "it": "Non è ancora installato."
   }
  }
 }
