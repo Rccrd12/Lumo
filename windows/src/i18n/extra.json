@@ -5357,6 +5357,18 @@
    "id": "Maksimal",
    "it": "Massimo"
   },
+  "Minimal": {
+   "zh-Hans": "极低",
+   "hi": "न्यूनतम",
+   "es": "Mínimo",
+   "ar": "أدنى",
+   "fr": "Minimal",
+   "bn": "সর্বনিম্ন",
+   "pt-BR": "Mínimo",
+   "ru": "Минимальный",
+   "id": "Minimal",
+   "it": "Minimo"
+  },
   "Ask every time": {
    "zh-Hans": "每次都询问",
    "hi": "हर बार पूछें",
