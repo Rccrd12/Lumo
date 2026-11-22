@@ -276,3 +276,8 @@ test("only the owner's own pull requests from this repository go in the beta", (
   const prs = [pr(12, "Rccrd12"), pr(9, "dependabot[bot]"), pr(5, "rccrd12"), pr(7, "someone-else"), pr(3, "Rccrd12", true), { number: 2 }];
   assert.deepEqual(betaCandidates(prs, "Rccrd12").map((p) => p.number), [5, 12]);
 });
+
+test("a draft pull request stays out of the beta, and out of its notes", () => {
+  const pr = (number, isDraft) => ({ number, isDraft, isCrossRepository: false, author: { login: "Rccrd12" } });
+  assert.deepEqual(betaCandidates([pr(319, true), pr(334, false), pr(337, undefined)], "Rccrd12").map((p) => p.number), [334, 337]);
+});

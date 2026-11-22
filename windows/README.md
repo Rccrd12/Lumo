@@ -84,7 +84,8 @@ when the tests fail. Its version is the next patch with the build's number
 (`0.18.1-312`), so the release that follows is newer and comes as a plain
 update. Settings lists the pull requests in the beta, with **Install the
 beta**; on a beta, **Back to the release** reinstalls the latest release.
-Pull requests from forks never take part.
+Pull requests from forks never take part, nor drafts: a draft is not in
+the list, not even as left out, until it is marked ready for review.
 
 Under it, the **Changelog** lists what changed in every version, the installed
 one marked. It is the repository's `CHANGELOG.md`, built into the app, so it is

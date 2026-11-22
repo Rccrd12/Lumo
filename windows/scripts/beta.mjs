@@ -14,7 +14,8 @@
 //       Only pull requests the repository's owner opened from a branch of this
 //       repository take part: never one from a fork, nor one a bot or another
 //       collaborator opened (Dependabot's branches live in this repository
-//       too), nor one that changes nothing in the app (only its tests,
+//       too), nor a draft (work not ready to try, left out without a word in
+//       the notes), nor one that changes nothing in the app (only its tests,
 //       screenshots or notes). When nothing is
 //       left that the release does not have, the step says so (`changes`) and
 //       the workflow takes the beta down instead of publishing one.
@@ -179,12 +180,12 @@ function mergesCleanly(a, b) {
 
 /**
  * The pull requests that may go in the beta: opened by `owner` from a branch of
- * the repository itself, oldest first.
+ * the repository itself, ready (not a draft), oldest first.
  */
 export function betaCandidates(prs, owner) {
   const who = owner.toLowerCase();
   return prs
-    .filter((pr) => !pr.isCrossRepository && typeof pr.author?.login === "string" && pr.author.login.toLowerCase() === who)
+    .filter((pr) => !pr.isCrossRepository && pr.isDraft !== true && typeof pr.author?.login === "string" && pr.author.login.toLowerCase() === who)
     .sort((a, b) => a.number - b.number);
 }
 
@@ -195,13 +196,14 @@ function openPullRequests() {
   const out = execFileSync(
     "gh",
     ["pr", "list", "--repo", repo, "--base", "main", "--state", "open", "--limit", "100",
-      "--json", "number,title,updatedAt,headRefOid,isCrossRepository,author,statusCheckRollup"],
+      "--json", "number,title,updatedAt,headRefOid,isCrossRepository,isDraft,author,statusCheckRollup"],
     { encoding: "utf8" },
   );
   const prs = JSON.parse(out);
   const kept = betaCandidates(prs, owner);
   for (const pr of prs) {
-    if (!kept.includes(pr)) console.log(`#${pr.number} skipped (not opened by ${owner} from this repository)`);
+    if (kept.includes(pr)) continue;
+    console.log(`#${pr.number} skipped (${pr.isDraft === true ? "a draft" : `not opened by ${owner} from this repository`})`);
   }
   return kept;
 }
