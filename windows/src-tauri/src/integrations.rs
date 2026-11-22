@@ -249,7 +249,8 @@ async fn poll_stripe(app: AppHandle) {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let event = if !newest.is_empty() && is_new("stripe", &newest) {
+    // An empty list is seen too ("" kept): the very first payment then sounds.
+    let event = if is_new("stripe", &newest) && !newest.is_empty() {
         let label = payments[0]
             .get("description")
             .and_then(Value::as_str)
@@ -295,6 +296,7 @@ fn stripe_balance(json: &Value) -> (i64, String) {
 
 async fn poll_github(app: AppHandle) {
     let Some(token) = secrets::get("github-token") else { return };
+    let generation = GITHUB.generation.load(Ordering::SeqCst);
     let http = client();
 
     let user = http
@@ -329,7 +331,8 @@ async fn poll_github(app: AppHandle) {
         .header("User-Agent", "Lumo")
         .send()
         .await;
-    let stars: i64 = match repos {
+    // None when GitHub didn't give the list: the stars told before stay.
+    let stars: Option<i64> = match repos {
         Ok(r) if r.status().is_success() => r
             .json::<Value>()
             .await
@@ -339,12 +342,19 @@ async fn poll_github(app: AppHandle) {
                 list.iter()
                     .filter_map(|r| r.get("stargazers_count").and_then(Value::as_i64))
                     .sum()
-            })
-            .unwrap_or(0),
-        _ => 0,
+            }),
+        _ => None,
     };
 
-    GITHUB.cache.lock().unwrap().stats = Some((public + private, stars));
+    {
+        let mut cache = GITHUB.cache.lock().unwrap();
+        // The token changed while this was in flight: it answers for someone else.
+        if GITHUB.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        let stars = stars.or(cache.stats.map(|(_, stars)| stars)).unwrap_or(0);
+        cache.stats = Some((public + private, stars));
+    }
     emit_github(&app);
 }
 
@@ -567,9 +577,8 @@ pub fn github_token_changed(app: &AppHandle) {
         cache.pulse = None;
         cache.gone_prs.clear();
         cache.activity = None;
-        if !has_token {
-            cache.stats = None;
-        }
+        // The old account's numbers, which a failed stars request would keep.
+        cache.stats = None;
     }
     emit_github(app);
     GITHUB.pulse_wake.notify_one();
@@ -585,10 +594,13 @@ pub fn settings_saved(app: &AppHandle, active_integrations: &[String]) {
     if active_integrations.iter().any(|id| id == GITHUB_ID) {
         return;
     }
+    // A pulse still in flight would put back what is forgotten here.
+    GITHUB.generation.fetch_add(1, Ordering::SeqCst);
     let had_data = {
         let mut cache = GITHUB.cache.lock().unwrap();
         let had = cache.pulse.is_some() || cache.activity.is_some();
         cache.pulse = None;
+        cache.gone_prs.clear();
         cache.activity = None;
         had
     };
@@ -648,9 +660,11 @@ async fn poll_vercel(app: AppHandle) {
         })
         .unwrap_or_default();
 
+    // No deployment yet is seen too ("" kept): the very first one then sounds.
+    let newest = deployments.first().and_then(|d| d.get("id")).and_then(Value::as_str).unwrap_or("");
+    let fresh = is_new("vercel", newest);
     let event = deployments.first().and_then(|latest| {
-        let id = latest.get("id")?.as_str()?;
-        if !is_new("vercel", id) {
+        if !fresh {
             return None;
         }
         let success = latest.get("state")?.as_str()? == "READY";
@@ -953,6 +967,7 @@ async fn poll_n8n(app: AppHandle) {
             continue;
         }
         let Ok(json) = response.json::<Value>().await else { continue };
+        let json = n8n_execution(json);
         name = json
             .get("workflowData")
             .and_then(|w| w.get("name"))
@@ -971,6 +986,18 @@ async fn poll_n8n(app: AppHandle) {
         error: None,
         event: fresh.then_some(IntegrationEvent { success, label: name, detail }),
     });
+}
+
+/// The execution itself: `/rest` answers inside `{ "data": … }`, the public
+/// API without it (where `data` is the execution's own run data).
+fn n8n_execution(json: Value) -> Value {
+    if json.get("id").is_some() {
+        return json;
+    }
+    match json.get("data") {
+        Some(inner) if inner.get("id").is_some() => inner.clone(),
+        _ => json,
+    }
 }
 
 fn n8n_detail(json: &Value, success: bool) -> Option<String> {
@@ -1045,6 +1072,16 @@ fn fmt_value(v: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_n8n_execution_is_read_with_or_without_its_envelope() {
+        let execution = json!({ "id": "7", "workflowData": { "name": "Invoices" }, "data": { "resultData": { "lastNodeExecuted": "Send" } } });
+        // The public API: as it is, its run data kept.
+        assert_eq!(n8n_execution(execution.clone()), execution);
+        // /rest: inside { "data": … }.
+        assert_eq!(n8n_execution(json!({ "data": execution.clone() })), execution);
+        assert_eq!(n8n_execution(json!({ "data": [] })), json!({ "data": [] }));
+    }
 
     #[test]
     fn github_card_data_sends_only_what_is_known() {

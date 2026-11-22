@@ -613,9 +613,11 @@ class LiveSession {
   private finishAfterGoodbye() {
     if (this.ending) return;
     this.ending = true;
+    const call = this.call;
     const started = performance.now();
     const check = () => {
-      if (!this.active) return;
+      // Ended meanwhile, perhaps with a new call already on: that one is not this one to end.
+      if (!this.active || call !== this.call) return;
       if (this.speaker?.playing && performance.now() - started < 10_000) {
         setTimeout(check, 200);
         return;

@@ -1,12 +1,12 @@
-// Settings → Claude Code and the other CLIs: the hooks and status line in
-// Claude Code's settings.json (each change shown as a diff first), background
-// sessions, plan usage, the Claude API key and models, and the Antigravity,
-// Codex, Copilot and Cursor CLIs.
+// Settings → Claude Code and the other CLIs: the changes to Claude Code's
+// settings.json (each shown as a diff first, for its card in
+// sections/agent-cards.ts), background sessions, Codex's plan usage, the
+// Claude API key and models, and the Antigravity, Codex, Copilot and Cursor CLIs.
 
-import { Bridge, type HookPreview, type HookStatus, type ModelInfo } from "../../core/bridge";
+import { Bridge, type HookPreview, type ModelInfo } from "../../core/bridge";
 import { isHidden, providerDef, visibleProviders } from "../../core/providers";
 import { h, clear } from "../../views/dom";
-import { accentDot, cancelledByHand, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "../parts";
+import { accentDot, cancelledByHand, renderDiff, sectionHead, setting, statusDot, wideSetting } from "../parts";
 import { PLAN_AGENT, agentPlanOn } from "../../core/plan";
 import { parseBackgroundMode } from "../../core/background";
 import { N_, t } from "../../i18n/i18n";
@@ -26,7 +26,7 @@ interface Change {
   done: (backup: string) => string;
 }
 
-const HOOKS_CHANGE: Change = {
+export const HOOKS_CHANGE: Change = {
   preview: Bridge.hooksPreview,
   apply: Bridge.hooksApply,
   get installText() { return t("This is exactly what will change in your settings.json. Your own hooks are left untouched."); },
@@ -38,7 +38,7 @@ const HOOKS_CHANGE: Change = {
     : t("Done. Open a new Claude Code session to pick the hooks up."),
 };
 
-const STATUS_LINE_CHANGE: Change = {
+export const STATUS_LINE_CHANGE: Change = {
   preview: Bridge.statusLinePreview,
   apply: Bridge.statusLineApply,
   get installText() { return t("This is exactly what will change: only the status line. If you already have one it keeps working, Lumo's relay runs it for you."); },
@@ -55,7 +55,7 @@ const STATUS_LINE_CHANGE: Change = {
  * click, and only if settings.json still matches the diff that was shown.
  * `back` redraws the section; `applied` runs a moment after a successful write.
  */
-async function reviewChange(
+export async function reviewChange(
   body: HTMLElement,
   change: Change,
   install: boolean,
@@ -109,82 +109,6 @@ async function reviewChange(
   body.append(h("div", { class: "row" }, confirm, h("button", { text: t("Cancel"), onclick: back })));
 }
 
-// ── Claude Code section ───────────────────────────────────────────────────────
-
-export function claudeSection(status: HookStatus): HTMLElement {
-  const body = h("div", { style: "display:flex;flex-direction:column;gap:12px" });
-  const section = h(
-    "section",
-    {},
-    ...sectionHead("Claude Code", null, statusDot(status.installed)),
-    body,
-  );
-
-  const redraw = () => {
-    clear(body);
-    draw();
-  };
-  const rebuild = async () => {
-    const fresh = await Bridge.hooksStatus();
-    if (fresh) Object.assign(status, fresh);
-    redraw();
-    const head = section.querySelector("h2")!;
-    clear(head);
-    head.append(statusDot(status.installed), h("span", { text: "Claude Code" }));
-  };
-
-  function draw() {
-    body.append(
-      h("p", {
-        class: "section-intro",
-        text: status.installed
-          ? t("Lumo is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there.")
-          : t("Install the hooks to see your Claude Code sessions in the island and approve permissions without leaving what you are doing."),
-      }),
-      setting("settings.json", h("span", { class: "path", text: status.settingsPath })),
-      setting(h("span", { class: "with-dot" }, t("Relay"), statusDot(status.hookReady)), h("span", { class: "path", text: status.hookPath })),
-    );
-
-    if (status.installed && status.current === false) {
-      body.append(h("div", {
-        class: "notice warn",
-        text: t("This version of Lumo installs the hooks a little differently: Claude Code no longer waits for Lumo, except to ask for a permission. Reinstall them to get it."),
-      }));
-    }
-    if (!status.hookReady) {
-      body.append(h("div", {
-        class: "notice warn",
-        text: t("lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p lumo-hook`."),
-      }));
-    }
-
-    const actions = h("div", { class: "row end" });
-    const install = h("button", {
-      class: "primary",
-      text: status.installed ? t("Reinstall hooks…") : t("Install hooks…"),
-      onclick: () => void reviewChange(body, HOOKS_CHANGE, true, redraw, () => void rebuild()),
-    });
-    // Writing hook commands that point at a relay which isn't there would give
-    // every Claude Code session a broken hook and nothing to show for it.
-    if (!status.hookReady) {
-      install.disabled = true;
-      install.title = t("The relay isn't installed yet.");
-    }
-    actions.append(install);
-    if (status.installed) {
-      actions.append(h("button", {
-        class: "danger",
-        text: t("Uninstall hooks…"),
-        onclick: () => void reviewChange(body, HOOKS_CHANGE, false, redraw, () => void rebuild()),
-      }));
-    }
-    body.append(actions);
-  }
-
-  draw();
-  return section;
-}
-
 // ── Agents in the chat section ────────────────────────────────────────────────
 
 /** The agents an AI starts in the island's chat (views/agents-card.ts). */
@@ -236,105 +160,33 @@ export function backgroundSection(): HTMLElement {
 // ── Plan usage section ────────────────────────────────────────────────────────
 
 /**
- * The 5-hour and weekly limits in the island's header. They come from Claude
- * Code's status line, so the relay has to be the status line first: turning the
- * switch on without it starts the install, and the switch only stays on once
- * that has been confirmed. A status line the user had keeps working.
+ * Codex's weekly limit in the island's header. Claude Code's and Antigravity
+ * CLI's are in their own cards (sections/agent-cards.ts).
  */
-const PLAN_SETTINGS_TEXT = {
+export const PLAN_SETTINGS_TEXT = {
   get claude() { return t("Shows your Claude plan's 5-hour and weekly limits in the island's header, through a status line relay in ~/.claude/settings.json. A status line you already have keeps working. Pro and Max plans only."); },
-  get showClaude() { return t("Show in the island"); },
-  get claudeTitle() { return t("Claude plan"); },
   get codex() { return t("Shows your Codex plan's weekly limit in the island's header, asked from the Codex CLI; nothing is installed. Codex must be signed in with ChatGPT."); },
   get showCodex() { return t("Show Codex plan in the island"); },
   get antigravity() { return t("Shows your Antigravity CLI quotas (5-hour and weekly) in the island's header, asked from agy as its /usage does; nothing is installed. agy must be signed in with your Google account."); },
-  get showAntigravity() { return t("Show Antigravity CLI usage in the island"); },
 };
 
-export function planSection(status: HookStatus, connected: Record<string, boolean>): HTMLElement {
-  const body = h("div", { class: "setting-list" });
-  const section = h("section", {}, ...sectionHead(t("Plan usage")), body);
+/** Codex's or agy's switch: on by itself once the agent is added, until turned off here. */
+export function agentPlanToggle(kind: "codex" | "antigravity", connected: Record<string, boolean>): HTMLElement {
+  return toggle(agentPlanOn(kind, settings, connected[PLAN_AGENT[kind]] ?? false), (on) => {
+    if (kind === "codex") settings.showCodexPlanInNotch = on;
+    else settings.showAntigravityPlanInNotch = on;
+    const others = (settings.hiddenPlanPills ?? []).filter((k) => k !== kind);
+    settings.hiddenPlanPills = on ? others : [...others, kind];
+    void save();
+  });
+}
 
-  const redraw = () => {
-    clear(body);
-    draw();
-  };
-  const rebuild = async () => {
-    const fresh = await Bridge.hooksStatus();
-    if (fresh) Object.assign(status, fresh);
-    settings.planRelayInstalled = status.planRelayInstalled;
-    // Cancelled or failed: a switch that was waiting for the install falls back.
-    if (!status.planRelayInstalled) settings.showPlanInNotch = false;
-    redraw();
-  };
-
-  /** Codex's or agy's switch: on by itself once the agent is added, until turned off here. */
-  function agentPlanToggle(kind: "codex" | "antigravity"): HTMLElement {
-    return toggle(agentPlanOn(kind, settings, connected[PLAN_AGENT[kind]] ?? false), (on) => {
-      if (kind === "codex") settings.showCodexPlanInNotch = on;
-      else settings.showAntigravityPlanInNotch = on;
-      const others = (settings.hiddenPlanPills ?? []).filter((k) => k !== kind);
-      settings.hiddenPlanPills = on ? others : [...others, kind];
-      void save();
-    });
-  }
-
-  function draw() {
-    // The switch shows "on" while the install it asked for is being reviewed.
-    const sw = toggle(settings.showPlanInNotch, (on) => {
-      if (!on) {
-        settings.showPlanInNotch = false;
-        void save();
-      } else if (status.planRelayInstalled) {
-        settings.showPlanInNotch = true;
-        void save();
-      } else {
-        // Turned on before the relay is in: install it first; it stays on once confirmed.
-        void reviewChange(body, STATUS_LINE_CHANGE, true, () => void rebuild(), () => {
-          settings.planRelayInstalled = true;
-          settings.showPlanInNotch = true;
-          void save().then(rebuild);
-        });
-      }
-    });
-    body.append(
-      group(PLAN_SETTINGS_TEXT.claudeTitle),
-      setting(PLAN_SETTINGS_TEXT.showClaude, PLAN_SETTINGS_TEXT.claude, sw),
-      setting(h("span", { class: "with-dot" }, t("Relay"), statusDot(status.planRelayInstalled)),
-        status.planRelayInstalled ? t("installed") : t("not installed"),
-        status.planRelayInstalled
-          ? h("button", {
-              class: "danger",
-              text: t("Uninstall relay…"),
-              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, false, redraw, () => void rebuild()),
-            })
-          : h("button", {
-              class: "primary",
-              text: t("Install relay…"),
-              onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild()),
-            }),
-      ),
-      setting(t("Ask Anthropic"),
-        t("Lumo asks Anthropic for your plan's usage every 3 minutes while the island is open, as /usage does, so it shows outside the terminal too. Claude Code's sign-in is only read, never kept."),
-        toggle(settings.planUsageOnline, (on) => {
-          settings.planUsageOnline = on;
-          void save();
-        })),
+export function planSection(connected: Record<string, boolean>): HTMLElement {
+  return h("section", {}, ...sectionHead(t("Plan usage")),
+    h("div", { class: "setting-list" },
       // Codex: nothing to install, Lumo asks the Codex CLI when the pill shows.
-      group("Codex"),
-      setting(PLAN_SETTINGS_TEXT.showCodex, PLAN_SETTINGS_TEXT.codex,
-        agentPlanToggle("codex"),
-      ),
-      // Antigravity CLI: the same, Lumo asks agy when the pill shows.
-      group("Antigravity CLI"),
-      setting(PLAN_SETTINGS_TEXT.showAntigravity, PLAN_SETTINGS_TEXT.antigravity,
-        agentPlanToggle("antigravity"),
-      ),
-    );
-  }
-
-  draw();
-  return section;
+      setting(PLAN_SETTINGS_TEXT.showCodex, PLAN_SETTINGS_TEXT.codex, agentPlanToggle("codex", connected)),
+    ));
 }
 
 // ── Claude API section ────────────────────────────────────────────────────────

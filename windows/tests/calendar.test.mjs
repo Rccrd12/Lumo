@@ -212,3 +212,22 @@ test("a whole-day event ends at local midnight, also on the days the clocks chan
     else process.env.TZ = tz;
   }
 });
+
+test("daily or weekly rules with a day of the month or a position show their first time only", () => {
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "BEGIN:VEVENT", "UID:a", "DTSTART:20261001T090000Z", "RRULE:FREQ=DAILY;BYMONTHDAY=1", "SUMMARY:Firsts", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:b", "DTSTART:20261005T090000Z", "RRULE:FREQ=WEEKLY;BYDAY=MO,TU;BYSETPOS=1", "SUMMARY:Mondays", "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  const events = parseIcs(ics, Date.UTC(2026, 9, 1), Date.UTC(2026, 10, 15));
+  assert.deepEqual(events.filter((e) => e.title === "Firsts").map((e) => e.start), [Date.UTC(2026, 9, 1, 9)]);
+  assert.deepEqual(events.filter((e) => e.title === "Mondays").map((e) => e.start), [Date.UTC(2026, 9, 5, 9)]);
+});
+
+test("an escaped backslash before an n stays a backslash and an n", () => {
+  const ics = ["BEGIN:VCALENDAR", "BEGIN:VEVENT", "UID:p", "DTSTART:20261001T090000Z", "SUMMARY:Open C:\\\\new\\nnow", "LOCATION:Room 1\\, floor 2", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const [event] = parseIcs(ics, Date.UTC(2026, 8, 30), Date.UTC(2026, 9, 2));
+  assert.equal(event.title, "Open C:\\new now");
+  assert.equal(event.location, "Room 1, floor 2");
+});

@@ -70,11 +70,11 @@ export const USAGE_TEXT = {
   resets: (when: string) => t("Resets {when}", { when }),
   get title() { return t("Usage"); },
   get askAnthropic() {
-    const path = [t("Settings"), t("Agents"), t("Plan usage")].join(" → ");
+    const path = [t("Settings"), t("Agents"), "Claude Code"].join(" → ");
     return t("For the 5 hours always up to date, also from VS Code: {path} → Ask Anthropic.", { path });
   },
   get setup() {
-    const path = [t("Settings"), t("Agents"), t("Plan usage")].join(" → ");
+    const path = [t("Settings"), t("Agents"), "Claude Code"].join(" → ");
     return t("Plan usage: install the relay in {path}", { path });
   },
 };

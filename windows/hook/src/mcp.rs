@@ -215,7 +215,8 @@ impl Kit {
             parts.push(INSTRUCTIONS);
         }
         if self.mail {
-            parts.push(if self.mail_send { MAIL_READ_FIRST } else { MAIL_INSTRUCTIONS });
+            // MAIL_INSTRUCTIONS says nothing can be moved or marked: not with manage on.
+            parts.push(if self.mail_send || self.mail_manage { MAIL_READ_FIRST } else { MAIL_INSTRUCTIONS });
             if self.mail_send {
                 parts.push(MAIL_SEND_INSTRUCTIONS);
             }
@@ -481,15 +482,11 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
             _ => {}
         }
     }
-    let key_is = |key: &str, words: &[&str]| {
-        let key = key.to_ascii_lowercase();
-        words.iter().any(|w| key.contains(w))
-    };
     // A field that names the server ("ServerName", "server").
-    let servers: Vec<&str> = fields.iter().filter(|(k, _)| key_is(k, &["server"])).map(|(_, v)| v.trim()).collect();
-    // A field that names the tool ("ToolName", "tool", "name"), not the server.
-    let tools: Vec<&str> =
-        fields.iter().filter(|(k, _)| !key_is(k, &["server"]) && key_is(k, &["tool", "name"])).map(|(_, v)| v.trim()).collect();
+    let servers: Vec<&str> = fields.iter().filter(|(k, _)| names_server(k)).map(|(_, v)| v.trim()).collect();
+    // A field that names the tool ("ToolName", "tool", "name"); never one that
+    // only has the word in it ("toolSummary", "filename"), which the model writes.
+    let tools: Vec<&str> = fields.iter().filter(|(k, _)| names_tool(k)).map(|(_, v)| v.trim()).collect();
     let ours = |name: &str| {
         NAMES
             .iter()
@@ -508,6 +505,25 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
         [server] if server.eq_ignore_ascii_case(SERVER) => tools.iter().find_map(|t| ours(t).or_else(|| lumo_tool(t))),
         _ => None,
     }
+}
+
+/// A key spelled the way agents name a field: lower case, without `_` or `-`
+/// ("ServerName", "server_name" and "server-name" are all "servername").
+fn key_words(key: &str) -> String {
+    key.chars().filter(|c| !matches!(c, '_' | '-')).collect::<String>().to_ascii_lowercase()
+}
+
+/// A field of an MCP call's input that names the server: exactly "server" or
+/// "ServerName" (any case, `_` or `-` between), never one that only contains
+/// the word ("serverSummary", "observer").
+fn names_server(key: &str) -> bool {
+    matches!(key_words(key).as_str(), "server" | "servername")
+}
+
+/// A field that names the tool: exactly "tool", "ToolName" or "name" (any
+/// case, `_` or `-` between), never "toolSummary" or "filename".
+fn names_tool(key: &str) -> bool {
+    matches!(key_words(key).as_str(), "tool" | "toolname" | "name")
 }
 
 /// Whether an object under `key` in an MCP call's input describes the tool
@@ -587,8 +603,7 @@ fn user_tool_call_with(tool: &str, input: Option<&Value>, exists: &dyn Fn(&str) 
             fields.extend(inner.iter());
         }
     }
-    let servers: Vec<&str> =
-        fields.iter().filter(|(k, _)| k.to_ascii_lowercase().contains("server")).filter_map(|(_, v)| v.as_str()).map(str::trim).collect();
+    let servers: Vec<&str> = fields.iter().filter(|(k, _)| names_server(k)).filter_map(|(_, v)| v.as_str()).map(str::trim).collect();
     matches!(servers.as_slice(), [server] if server.eq_ignore_ascii_case(USER_SERVER))
 }
 
@@ -1112,6 +1127,20 @@ mod tests {
         assert_eq!(lumo_call("call_mcp_tool", Some(&named)), None, "the server field wins");
         let loose = json!({ "Arguments": "{\"x\":\"mcp__lumo__update_plan\"}", "ToolName": "run" });
         assert_eq!(lumo_call("call_mcp_tool", Some(&loose)), None);
+        // Only a field that is the tool's name names it: never the summary the
+        // model writes ("toolSummary"), nor a "filename", even with no server named.
+        let summary = json!({ "ToolName": "delete_repo", "toolSummary": "mcp_lumo_update_plan" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&summary)), None);
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&summary)));
+        let file = json!({ "ToolName": "delete_repo", "filename": "mcp_lumo_update_plan" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&file)), None);
+        let ours = json!({ "ServerName": "lumo", "ToolName": "delete_repo", "toolSummary": "update_plan" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&ours)), None, "the tool asked for is not Lumo's");
+        // The ways agents spell the fields still name them.
+        for (server, tool) in [("ServerName", "ToolName"), ("server_name", "tool_name"), ("serverName", "toolName"), ("Server", "Tool")] {
+            let call = json!({ server: "lumo", tool: "update_plan" });
+            assert_eq!(lumo_call("call_mcp_tool", Some(&call)), Some("update_plan"), "{server} {tool}");
+        }
     }
 
     #[test]
@@ -1151,6 +1180,14 @@ mod tests {
         // The tool described in an object of its own still is.
         let nested = json!({ "tool": { "server": "lumo_tools", "name": "pdfcraft" }, "arguments": {} });
         assert!(user_tool_call("call_mcp_tool", Some(&nested)));
+        // Only a field that is the server's name names it: never one that only
+        // has the word in it, which the model may write.
+        let summary = json!({ "ToolName": "delete_repo", "serverSummary": "lumo_tools" });
+        assert!(!user_tool_call("call_mcp_tool", Some(&summary)));
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&summary)));
+        let observer = json!({ "ToolName": "delete_repo", "observer": "lumo_tools" });
+        assert!(!user_tool_call("call_mcp_tool", Some(&observer)));
+        assert!(user_tool_call("call_mcp_tool", Some(&json!({ "server_name": "lumo_tools", "tool_name": "pdfcraft" }))));
     }
 
     #[test]

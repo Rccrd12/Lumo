@@ -609,3 +609,13 @@ test("a ~~~ fence is a code block too, closed only by the same mark", () => {
   assert.equal(card.open, false);
   assert.equal(card.body, "## A\n~~~\n```\n~~~\n## B\n$$x$$");
 });
+
+test("a code span closes on a run of its own length: a longer run inside is part of the code", async () => {
+  const { scan } = await import("../src/views/scan.ts");
+  const code = (text) => scan(text).filter((s) => s.kind === "code").map((s) => s.text);
+  assert.deepEqual(code("`a``b` and `x *y* z`"), ["a``b", "x *y* z"]);
+  assert.deepEqual(code("``a`b`` c"), ["a`b"]);
+  assert.deepEqual(code("`open only"), []);
+  const nodes = parseInline("`a``b` and `x *y* z`");
+  assert.ok(!nodes.some((n) => n.kind === "italic" || n.kind === "em"), "the * inside code is no emphasis");
+});

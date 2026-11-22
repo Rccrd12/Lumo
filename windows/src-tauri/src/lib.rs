@@ -26,6 +26,7 @@ mod chat_title;
 mod chat_usage;
 mod claude;
 mod claude_code;
+mod cli_setup;
 mod click_hold;
 mod clipboard;
 mod acp_chat;
@@ -486,6 +487,20 @@ fn open_session(session_id: Option<String>, path: Option<String>) -> bool {
 #[tauri::command]
 fn open_claude_desktop() -> bool {
     platform::open_claude_desktop()
+}
+
+/// Settings → Agents: whether Claude Code or the Antigravity CLI is
+/// installed, where, and which version.
+#[tauri::command]
+async fn cli_info(provider: String) -> Option<cli_setup::CliInfo> {
+    tauri::async_runtime::spawn_blocking(move || cli_setup::info(&provider)).await.ok().flatten()
+}
+
+/// The sign-in card and Settings → Agents: opens the CLI in a window of its
+/// own, where it asks the user to sign in.
+#[tauri::command]
+fn cli_sign_in(provider: String) -> Result<(), String> {
+    cli_setup::sign_in(&provider)
 }
 
 /// The file behind a live diff, if it may be handed to the editor: an existing
@@ -1530,6 +1545,8 @@ pub fn run() {
             open_in_vscode,
             open_session,
             open_claude_desktop,
+            cli_info,
+            cli_sign_in,
             open_file_in_vscode,
             quit_app,
             hooks_status,

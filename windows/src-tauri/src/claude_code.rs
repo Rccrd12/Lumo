@@ -880,6 +880,15 @@ fn activity_for(name: &str, input: &Value) -> Activity {
             h if h.is_empty() => Activity::new("web", ""),
             h => Activity::new("read", h),
         },
+        // Its plan, email, timer and listening tools: what they are, by name,
+        // as for the API providers (claude.rs tool_activity). The rest is the computer.
+        "mcp__lumo__update_plan" => Activity::new("plan", ""),
+        _ if name.strip_prefix("mcp__lumo__").is_some_and(|tool| {
+            tool.starts_with("mail_") || crate::island_tools::NAMES.contains(&tool) || tool == crate::island_tools::LISTEN_PULL_REQUEST
+        }) =>
+        {
+            Activity::new("tool", pretty_tool(&name["mcp__lumo__".len()..]))
+        }
         _ if name.starts_with("mcp__lumo__") => Activity::new("computer", ""),
         _ if name.to_lowercase().contains("screenshot") => Activity::new("screen", ""),
         _ => match pretty_tool(name) {
@@ -2332,6 +2341,26 @@ fn read_turn(
     }
 }
 
+/// Claude Code's own words when it is not signed in, or its sign-in ran out
+/// ("Not logged in · Please run /login", "OAuth token has expired…").
+fn is_signed_out(text: &str) -> bool {
+    let l = text.to_lowercase();
+    ["not logged in", "please run /login", "oauth token has expired", "token has been revoked", "not signed in"]
+        .iter()
+        .any(|w| l.contains(w))
+}
+
+/// A chat turn's error as the island shows it: a sign-in that is missing or
+/// ran out said in plain words, Claude Code's own after them (ERROR_DETAIL),
+/// with the card that opens Claude Code to sign in (chat::FIX_MARK).
+fn chat_error(error: String) -> String {
+    if error.contains(chat::FIX_MARK) || !is_signed_out(&error) {
+        return error;
+    }
+    let said = t("Claude Code isn't signed in to your Claude plan, or its sign-in has run out.");
+    chat::with_fix(format!("{said}\n{}{error}", chat::ERROR_DETAIL), chat::FIX_CLAUDE_SIGN_IN)
+}
+
 /// Why the CLI ended without a result, from what it wrote on stderr.
 fn ended_without_answer(stderr: &str, status: Option<std::process::ExitStatus>) -> String {
     let detail = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
@@ -2890,7 +2919,7 @@ pub async fn send(
     let exe = platform::claude_candidates()
         .into_iter()
         .next()
-        .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
+        .ok_or_else(|| chat::with_fix(t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."), chat::FIX_CLAUDE_INSTALL))?;
 
     // A command goes alone, as typed: anything in front of it and it is a question.
     let command = command_of(&query).map(str::to_string);
@@ -2983,7 +3012,7 @@ pub async fn send(
     // answer that says why, so the recap of what was done on the screen is
     // shown and saved under it (and the next turn knows it was done).
     let failed = |error: String, recap: Option<Value>| -> Result<ChatReply, String> {
-        let Some(recap) = recap else { return Err(error) };
+        let Some(recap) = recap else { return Err(chat_error(error)) };
         chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": chat::NO_ANSWER }), &plain, chat::NO_ANSWER);
         Ok(ChatReply { computer: Some(recap), ..ChatReply::no_answer(error, chat.cli_session()) })
     };
@@ -3175,6 +3204,18 @@ pub(crate) fn complete_in(work: &str, model: &str, prompt: &str, forget: bool, s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_sign_in_is_said_in_plain_words_with_the_card_that_puts_it_right() {
+        let error = chat_error("Not logged in · Please run /login".into());
+        let (said, fix) = error.rsplit_once(chat::FIX_MARK).unwrap();
+        assert_eq!(fix, chat::FIX_CLAUDE_SIGN_IN);
+        assert!(said.ends_with(&format!("{}Not logged in · Please run /login", chat::ERROR_DETAIL)), "Claude Code's own words stay, apart: {said}");
+        assert!(is_signed_out("OAuth token has expired. Please obtain a new token or refresh your existing token."));
+        // Anything else is left as it was, and a card is never added twice.
+        assert_eq!(chat_error("Claude Code stopped: overloaded".into()), "Claude Code stopped: overloaded");
+        assert_eq!(chat_error(error.clone()), error);
+    }
 
     /// A command that runs a minute unless it is ended.
     #[cfg(windows)]
@@ -3797,6 +3838,11 @@ mod tests {
         assert_eq!(a("mcp__lumo__screenshot", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__zoom", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__left_click", json!({ "coordinate": [1, 2] })), Activity::new("computer", ""));
+        // Its other tools are not the computer.
+        assert_eq!(a("mcp__lumo__mail_read", json!({ "id": "1" })), Activity::new("tool", "mail read"));
+        assert_eq!(a("mcp__lumo__set_timer", json!({ "seconds": 60 })), Activity::new("tool", "set timer"));
+        assert_eq!(a("mcp__lumo__listen_pull_request", json!({})), Activity::new("tool", "listen pull request"));
+        assert_eq!(a("mcp__lumo__update_plan", json!({ "plan": [] })), Activity::new("plan", ""));
         // Lumo's browser is a hidden tab, not the computer.
         assert_eq!(a("mcp__lumo__browser_open", json!({ "url": "https://www.example.com/a" })), Activity::new("read", "example.com"));
         assert_eq!(a("mcp__lumo__browser_click", json!({ "tab": 1, "ref": 3 })), Activity::new("web", ""));

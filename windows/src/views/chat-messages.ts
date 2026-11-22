@@ -27,6 +27,7 @@ import { takeListens } from "../core/listen";
 import { draftIn, isWorkshopChat, stripDraft } from "../core/tools";
 import { FORGE_STRINGS, draftChip } from "./forge";
 import { STRINGS } from "./chat-strings";
+import { fixCard } from "./chat-fix";
 
 let nextId = 1;
 
@@ -62,6 +63,8 @@ interface BubbleOptions {
   scope?: string;
   /** A click on one of the things that went with a question, in the list under it. */
   onOpenSent?: (message: ChatMessage, item: SentItem) => void;
+  /** Settings → Agents, for a card that sets up the chat's CLI there (views/chat-fix.ts). */
+  onOpenAgents?: () => void;
 }
 
 /** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
@@ -139,6 +142,11 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
   // own words for it apart and smaller when Lumo said it in plain words.
   if (message.role === "assistant" && message.failed) {
     const [said, words] = failedParts(message.content);
+    // Something Lumo can put right (signed out, not installed): a card that does, in its place.
+    if (message.fix) {
+      const card = fixCard(message.fix, words, { onRetry: opts.onRetry, openAgents: opts.onOpenAgents });
+      return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, card));
+    }
     const detail = words ? h("div", { class: "msg-warning-detail", text: words }) : null;
     return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: said }), detail));
   }
@@ -211,7 +219,9 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
     // The turn used the computer: how it went, under the answer (views/computer-recap.ts).
     const computer = message.computer ? computerRecapBox(message.computer, message.id) : null;
     const copies = message.copies?.length ? copiesBox(message.copies) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, bar, detail));
+    // What would have let the CLI do more (agy skipped commands): a card under the answer.
+    const fix = message.fix ? fixCard(message.fix, "", { openAgents: opts.onOpenAgents }) : null;
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, fix, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));

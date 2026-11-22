@@ -178,9 +178,9 @@ function activityDetail(
     onclick: () => open(profileUrl(login)),
   });
 
-  let picked: ContributionDay | null = null;
+  // A day clicked stays in the header; hovering another shows that one meanwhile.
+  let pinned: ContributionDay | null = null;
   const show = (day: ContributionDay | null) => {
-    picked = day;
     right.textContent = activityHeader(activity, stats, day);
   };
 
@@ -201,8 +201,11 @@ function activityDetail(
       }
       const cell = h("i", { class: "gh-cell", style: `background:${contributionColor(day.level)}` });
       cell.addEventListener("mouseenter", () => show(day));
-      cell.addEventListener("mouseleave", () => show(null));
-      cell.addEventListener("click", () => show(picked?.date === day.date ? null : day));
+      cell.addEventListener("mouseleave", () => show(pinned));
+      cell.addEventListener("click", () => {
+        pinned = pinned?.date === day.date ? null : day;
+        show(pinned ?? day);
+      });
       column.append(cell);
     }
     grid.append(column);

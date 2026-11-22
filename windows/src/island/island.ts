@@ -1488,7 +1488,8 @@ export class Island {
     const asked = State.pendingApproval?.questions?.[0];
     if (State.mode === "expanded" && State.view === "question" && asked) {
       h = questionsHeight(State.pendingApproval?.questions ?? [asked]);
-    } else if (State.mode === "expanded" && !State.pendingApproval?.email) {
+    } else if (State.mode === "expanded" && !(State.view === "approval" && State.pendingApproval?.email)) {
+      // Only the email card itself is sized above: with one waiting, the other views keep theirs.
       const planSteps = State.view === "approval" ? State.pendingApproval?.plan?.length ?? 0 : 0;
       // A plan asking to start: its steps take the place of the command and of what it is for.
       const extra = planSteps ? planAskExtra(planSteps) + (State.pendingApproval?.fromChat ? 0 : NEW_LOOK_SESSION_ALLOW_H)

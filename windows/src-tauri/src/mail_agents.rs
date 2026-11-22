@@ -624,11 +624,17 @@ fn search_command(host: &str, query: &str) -> (String, Option<String>) {
 
 /// The newest `count` UIDs of the open folder that match `query`.
 async fn search_here(imap: &mut Imap, host: &str, query: &str, count: usize) -> Result<Vec<u32>, String> {
+    // What matches can be most of a big mailbox: its UIDs may weigh more
+    // than MAX_READ, as in `newest`.
+    imap.read = 0;
+    imap.limit = MAX_SEARCH_READ;
     let units = match search_command(host, query) {
-        (command, None) => imap.run(&command).await?,
-        (command, Some(literal)) => imap.run_literal(&command, &literal).await?,
+        (command, None) => imap.run(&command).await,
+        (command, Some(literal)) => imap.run_literal(&command, &literal).await,
     };
-    let mut uids = search_uids(&units);
+    imap.limit = MAX_READ;
+    imap.read = 0;
+    let mut uids = search_uids(&units?);
     uids.sort_unstable();
     Ok(uids.iter().rev().take(count).copied().collect())
 }
@@ -764,7 +770,10 @@ pub(crate) fn date_key(date: &str) -> i64 {
 /// The files attached to email `uid` of the open folder.
 pub(crate) async fn structure(imap: &mut Imap, uid: u32) -> Result<Vec<Attached>, String> {
     let units = imap.run(&format!("UID FETCH {uid} (UID BODYSTRUCTURE)")).await?;
-    Ok(units.iter().find(|u| matches!(u.first(), Some(Part::Text(l)) if l.contains(" FETCH "))).map(|u| attached_files(u)).unwrap_or_default())
+    // The answer that holds it: one the server sends on its own first (a flag
+    // another client changed) is a FETCH too, with no files in it.
+    let holds = |u: &&Vec<Part>| matches!(u.first(), Some(Part::Text(l)) if l.contains(" FETCH ")) && u.iter().any(|p| matches!(p, Part::Text(t) if t.to_ascii_uppercase().contains("BODYSTRUCTURE")));
+    Ok(units.iter().find(holds).map(|u| attached_files(u)).unwrap_or_default())
 }
 
 /// One attached file of email `uid` of the open folder, its bytes decoded.
