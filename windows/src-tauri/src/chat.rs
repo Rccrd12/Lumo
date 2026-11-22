@@ -406,12 +406,14 @@ impl Chat {
     /// how many turns that is; None with nothing new since the last summary.
     pub fn to_compact(&self) -> Option<(usize, String)> {
         let c = self.inner.lock().unwrap();
-        let upto = c.plain.len();
+        // Whole questions and answers: a question left with no answer (it
+        // failed, or was stopped, in a chat opened again) is not summed up.
+        let upto = c.plain.len() & !1;
         if upto == 0 || c.compact.as_ref().is_some_and(|(at, _)| *at == upto) {
             return None;
         }
         let mut text = String::new();
-        for turn in compacted(&c.plain, &c.compact) {
+        for turn in compacted(&c.plain[..upto], &c.compact) {
             let who = if turn["role"] == "user" { "User" } else { "Assistant" };
             text.push_str(&format!("{who}: {}\n\n", turn["content"].as_str().unwrap_or("")));
         }
@@ -1892,6 +1894,22 @@ mod tests {
         let epoch = chat.epoch();
         assert!(chat.set_compact_since(epoch, upto, "about x and y".into()));
         assert!(chat.begin("ollama").history[0]["content"].as_str().unwrap().contains("about x and y"));
+    }
+
+    #[test]
+    fn a_chat_opened_again_with_an_unanswered_question_can_still_be_compacted() {
+        // Its last question failed, or was stopped before a word: saved without an answer.
+        let chat = Chat::default();
+        chat.restore(vec![("user".into(), "a".into()), ("assistant".into(), "b".into()), ("user".into(), "c".into())], None, None, None);
+        let epoch = chat.epoch();
+        let (upto, text) = chat.to_compact().expect("the question and its answer");
+        assert_eq!(upto, 2);
+        assert!(text.contains("User: a") && text.contains("Assistant: b") && !text.contains("User: c"), "{text}");
+        assert!(chat.set_compact_since(epoch, upto, "about a and b".into()), "kept, not 'the chat changed'");
+        assert!(chat.to_compact().is_none(), "nothing new since");
+        // Only the unanswered question: nothing to sum up.
+        chat.restore(vec![("user".into(), "a".into())], None, None, None);
+        assert!(chat.to_compact().is_none());
     }
 
     #[test]
