@@ -276,41 +276,24 @@
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
+/* One step a line, its disc before it (concepts/agenti-estetica): no thread
+   between them, the step under way lit in blue. */
 .agent-plan .plan-step {
   position: relative;
   flex: none;
   display: flex;
   align-items: flex-start;
-  gap: 9px;
-  padding: 6px 6px 6px 6px;
-  border-radius: 9px;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 10px;
   color: var(--ink-2);
   line-height: 1.35;
   transition: background 0.3s ease;
 }
 
-/* The thread from one step's marker to the next. */
-.agent-plan .plan-step:not(:last-child)::after {
-  content: "";
-  position: absolute;
-  left: 12.25px;
-  top: 22px;
-  bottom: -7px;
-  width: 1.5px;
-  border-radius: 1px;
-  background: var(--dim-4);
-  opacity: 0.45;
-  transition: background 0.4s ease, opacity 0.4s ease;
-}
-
-.agent-plan .plan-step.done:not(:last-child)::after {
-  background: var(--green);
-  opacity: 0.55;
-}
-
 .agent-plan .plan-step.active {
-  background: rgba(255, 255, 255, 0.055);
-  font-weight: 600;
+  background: rgba(59, 158, 255, 0.08);
+  font-weight: 500;
   color: var(--ink);
 }
 
@@ -337,35 +320,36 @@
   position: relative;
   z-index: 1;
   flex: none;
-  width: 14px;
-  height: 14px;
-  margin-top: 1px;
+  width: 18px;
+  height: 18px;
+  margin-top: -1.5px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 1.5px var(--dim-4);
-  background: var(--card);
-  color: #000;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: #4ade80;
   transition: box-shadow 0.3s ease, background 0.3s ease;
 }
 
-/* Under way: a ring and its dot, one drawing (views/plan-strip.ts planMarker). */
+/* Under way: a ring and its dot, one drawing (views/plan-strip.ts planMarker), in a tinted disc. */
 .agent-plan .plan-mark.active {
   box-shadow: none;
+  background: rgba(59, 158, 255, 0.14);
 }
 
 .agent-plan .plan-lit {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: 3px;
+  width: 12px;
+  height: 12px;
   overflow: visible;
 }
 
 .agent-plan .plan-lit-ring {
   fill: none;
-  stroke: var(--agent, var(--ink));
-  stroke-width: 1.5;
+  stroke: color-mix(in srgb, var(--agent, var(--ink)) 25%, transparent);
+  stroke-width: 2;
 }
 
 .agent-plan .plan-lit-dot {
@@ -375,8 +359,8 @@
 }
 
 .agent-plan .plan-mark.done {
-  box-shadow: inset 0 0 0 1.5px var(--green);
-  background: var(--green);
+  box-shadow: none;
+  background: rgba(34, 197, 94, 0.16);
 }
 
 .agent-plan .plan-mark.skipped i {
