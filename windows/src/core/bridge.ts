@@ -821,8 +821,8 @@ export interface ChatAgent {
   /** Its task, as the CLI described it. */
   title: string;
   state: ChatAgentState;
-  /** With "waiting": what it waits for. */
-  waitingFor?: "permission" | "rate_limit" | "queue";
+  /** With "waiting": what it waits for ("paused": its CLI holds it, nothing asked of the user). */
+  waitingFor?: "permission" | "rate_limit" | "queue" | "paused";
   /** Waiting for "queue": its place in line (a local model's agents run as many at once as its server's slots). */
   queue?: number;
   /** What it is doing now, worded as the typing line is (activityLabel). */
@@ -872,6 +872,8 @@ export interface ChatAgentTalk {
   repliedAt?: number;
   /** Why it did not reach the agent. */
   failed?: string;
+  /** The agent was stopped before it answered. */
+  stopped?: boolean;
 }
 
 /** The `chat-agent` event. */

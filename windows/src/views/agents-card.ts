@@ -54,6 +54,9 @@ export const AGENTS_CARD_TEXT = {
   ago: N_("{time} ago"),
   wait: N_("agents|Wait"),
   stop: N_("agents|Stop"),
+  stopAll: N_("agents|Stop all"),
+  answerStopped: N_("You stopped the answer: the agents in the background go on"),
+  stopThem: N_("Stop them too"),
   seeRequest: N_("See request"),
   ended: N_("{name} ended: {count} agents stopped halfway"),
   /** What Rust says of an agent whose CLI ended under it (chat_agents.rs end_open). */
@@ -78,6 +81,8 @@ export const AGENTS_CARD_TEXT = {
   waitingReply: N_("waiting for the reply… {time}"),
   notReached: N_("The message did not reach {name}"),
   noReply: N_("No reply came"),
+  stoppedFirst: N_("Stopped before it answered"),
+  paused: N_("Paused"),
   queued: N_("Waiting its turn · {place} in line"),
   usesComputer: N_("uses the computer"),
   waitingComputer: N_("Waiting for the computer · {place} of {total} · {time}"),
@@ -179,6 +184,8 @@ export interface AgentsCardInput {
   batch: AgentBatch;
   /** The agents a permission card waits on (core/chat-agents.ts permissionMatch). */
   permission?: ReadonlySet<string>;
+  /** The user stopped the chat's answer while these agents worked on: the live line says they go on. */
+  answerStopped?: boolean;
   now?: number;
 }
 
@@ -376,7 +383,21 @@ function drawCard(into: HTMLElement, el: HTMLElement, input: AgentsCardInput, gi
   } else {
     into.append(fullCard(entries, input, host, ui, now, redraw));
   }
-  if (!allOver) into.append(liveLine(entries, now, input.permission));
+  if (!allOver) {
+    const stoppable = stoppableOf(entries, input.chatId, now);
+    const stopThem = input.answerStopped && stoppable.length ? () => stopEach(stoppable, input.chatId, host, redraw) : null;
+    into.append(liveLine(entries, now, input.permission, stopThem));
+  }
+}
+
+/** The agents at work the user can still stop (no Stop under way on them). */
+function stoppableOf(entries: AgentEntry[], chatId: string, now: number): AgentEntry[] {
+  return entries.filter((e) => !isFinal(e.row.state) && e.row.canStop && !e.row.stopping && stopPending(chatId, e.row.id, now) == null);
+}
+
+/** Stop all, Stop them too: each agent as its own Stop does, Undo on each row. */
+function stopEach(entries: AgentEntry[], chatId: string, host: AgentsCardHost, redraw: () => void) {
+  for (const e of entries) stopLater(chatId, e.row.id, host, redraw);
 }
 
 /** The header and the rows. */
@@ -390,11 +411,15 @@ function fullCard(entries: AgentEntry[], input: AgentsCardInput, host: AgentsCar
     : t(AGENTS_CARD_TEXT.doneOf, { done: counts.done, total: counts.total });
   // Folded rows show again with the chevron; once all are over it folds the card into one line.
   const folded = !allOver && ui.collapsed;
+  // Two or more at work: Stop all, each with its Undo.
+  const stoppable = stoppableOf(entries, input.chatId, now);
+  const stopAll = stoppable.length >= 2 ? cardButton("stop", tc(AGENTS_CARD_TEXT.stopAll), () => stopEach(stoppable, input.chatId, host, redraw)) : null;
   const head = h("div", { class: "agents-head" },
     h("span", { class: "agents-title", text: t(AGENTS_CARD_TEXT.title) }),
     h("span", { class: "agents-status", text: status }),
     segments(looksOf(entries, now, input.permission)),
     h("span", { class: "agents-gap" }),
+    stopAll,
     h("span", { class: "agents-time", text: durationText(ended - started) }),
     chevron(folded, t(folded ? AGENTS_CARD_TEXT.show : AGENTS_CARD_TEXT.hide)));
   head.addEventListener("click", () => {
@@ -481,6 +506,7 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
       return r.error || t(r.state === "stopped" ? AGENTS_CARD_TEXT.stopped : AGENTS_CARD_TEXT.failed);
     case "waiting": {
       if (r.waitingFor === "queue") return t(AGENTS_CARD_TEXT.queued, { place: r.queue ?? 1 });
+      if (r.waitingFor === "paused") return t(AGENTS_CARD_TEXT.paused);
       const pc = computerOf(r.id);
       if (pc?.waits && r.state !== "waiting") {
         return t(AGENTS_CARD_TEXT.waitingComputer, { place: pc.place, total: pc.of, time: durationText(now - pc.since) });
@@ -726,6 +752,7 @@ function drawTalk(into: HTMLElement, x: TalkEntry, who: string, now: number) {
     h("span", { class: "agents-talk-text", text: x.message })));
   let answer: HTMLElement;
   if (x.reply) answer = h("span", { class: "agents-talk-text", text: x.reply });
+  else if (x.stopped) answer = h("span", { class: "agents-talk-text dim", text: t(AGENTS_CARD_TEXT.stoppedFirst) });
   else if (x.failed != null) answer = h("span", { class: "agents-talk-text failed", text: t(AGENTS_CARD_TEXT.notReached, { name: x.title }), title: x.failed });
   else if (x.stale) answer = h("span", { class: "agents-talk-text dim", text: t(AGENTS_CARD_TEXT.noReply) });
   else {
@@ -741,7 +768,7 @@ function drawTalk(into: HTMLElement, x: TalkEntry, who: string, now: number) {
  * sign came, so a number that stays small says they are alive (concept 1).
  * The dots take the colour of the worst case (concept 3).
  */
-function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<string>): HTMLElement {
+function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<string>, stopThem?: (() => void) | null): HTMLElement {
   const counts = countAgents(entries, now, permission);
   const worst = counts.stalled ? worstStall(entries, now) : null;
   let tone: string;
@@ -753,8 +780,15 @@ function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<s
   } else if (counts.waiting && !counts.working) {
     tone = "waiting";
     // Those waiting only in line for the computer have no card for the user.
-    const onUser = entries.some((e) => !isFinal(e.row.state) && (e.row.state === "waiting" || permission?.has(e.row.id)));
-    text = t(onUser ? AGENTS_CARD_TEXT.permission : AGENTS_CARD_TEXT.inLineComputer);
+    const waits = entries.filter((e) => !isFinal(e.row.state) && (e.row.state === "waiting" || permission?.has(e.row.id)));
+    const onUser = waits.length > 0;
+    // Paused by their CLI: nothing is asked of the user.
+    const paused = onUser && waits.every((e) => e.row.waitingFor === "paused" && !permission?.has(e.row.id));
+    text = t(paused ? AGENTS_CARD_TEXT.paused : onUser ? AGENTS_CARD_TEXT.permission : AGENTS_CARD_TEXT.inLineComputer);
+  } else if (stopThem) {
+    // The answer stopped, its agents in the background on.
+    tone = counts.waiting ? "waiting" : "working";
+    text = t(AGENTS_CARD_TEXT.answerStopped);
   } else {
     tone = counts.waiting ? "waiting" : "working";
     const last = Math.max(...entries.filter((e) => !isFinal(e.row.state)).map((e) => e.row.lastSignalAt || 0));
@@ -762,5 +796,6 @@ function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<s
   }
   return h("div", { class: `agents-live ${tone}` },
     h("span", { class: "agents-dots" }, h("i"), h("i"), h("i")),
-    h("span", { class: "agents-live-text", text }));
+    h("span", { class: "agents-live-text", text }),
+    stopThem && !worst ? cardButton("stop", tc(AGENTS_CARD_TEXT.stopThem), stopThem) : null);
 }

@@ -845,7 +845,26 @@ hours while a command or an agent it started runs in the background). When
 Claude Code answers by itself between two messages (a command it left running
 in the background ends, an agent it started reports), that answer joins its
 last one in the chat, is saved with it, and the closed island says so; a
-message sent meanwhile goes once it is written. A message
+message sent meanwhile goes once it is written.
+
+The agents Claude Code starts show on the chat's Agents card, under the
+answer that started them: each with its task as its title (never the step it
+is on) and what it does now, one an agent started under that agent, *Paused*
+while Claude Code holds it. **Stop** on the answer ends the answer only: Lumo
+tells Claude Code so when it starts (`perTaskStopAffordance` in its
+`initialize`), so the agents in the background go on, and their card says so
+with **Stop them too**. **Stop all** in the card's header stops every agent at
+work, each with its Undo, as its own **Stop** does. **Ask** passes an agent a
+message (Claude Code's SendMessage) only while Claude Code can take it: never
+on an agent it stopped, which it never takes up again. A message it refuses
+says so at once, and one whose agent was stopped before it answered says
+*Stopped before it answered*. A stopped agent's last line is its task said
+again, not a report: the card keeps only real reports. Editing a question (or
+Retry) while agents are at work would start Claude Code again and stop them:
+a bar above the field asks first, **Edit when they finish** (the edit waits
+there and goes once they finish) or **Edit now and stop them**.
+
+A message
 sent while Claude is still answering waits in the field and goes as soon as the
 answer ends. Install Claude Code and run `claude` once in a terminal to
 sign in before using it. Its models are those Claude Code itself lists for
@@ -921,7 +940,8 @@ and agy only waits for them, the chat's answer ends and you can write again,
 while agy goes on with them. What agy writes when their messages wake it joins
 the chat by itself, and your next message goes to the same agy. A message with
 another model, mode, folder or set of tools would need a new agy, which would
-end them: the island asks first (wait for them, or send now and stop them).
+end them: the island asks first (wait for them, or send now and stop them),
+as it does before an edited question.
 Once they are all done and agy is quiet, it ends.
 
 An agent that writes its own plan (Lumo's `update_plan` with its name in

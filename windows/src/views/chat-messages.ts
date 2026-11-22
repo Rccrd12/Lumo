@@ -786,6 +786,9 @@ export function activityLabel(activity: ChatActivity | null): string {
       return detail ? t(ACTIVITY_STRINGS.talking, { name: detail }) : t(ACTIVITY_STRINGS.message);
     case "plan":
       return t(ACTIVITY_STRINGS.plan);
+    // The step under way in its CLI's own words (Claude Code's task_progress).
+    case "step":
+      return detail || t(ACTIVITY_STRINGS.thinking);
     case "screen":
       return t(ACTIVITY_STRINGS.screen);
     case "computer": {

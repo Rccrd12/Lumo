@@ -22336,6 +22336,182 @@
    "ru": "Та же, что в чате",
    "id": "Sama dengan obrolan",
    "it": "Lo stesso della chat"
+  },
+  "Stopped before it answered": {
+   "zh-Hans": "回答前已停止",
+   "hi": "जवाब देने से पहले रोका गया",
+   "es": "Detenido antes de responder",
+   "ar": "أُوقف قبل أن يجيب",
+   "fr": "Arrêté avant de répondre",
+   "bn": "উত্তর দেওয়ার আগেই থামানো হয়েছে",
+   "pt-BR": "Parado antes de responder",
+   "ru": "Остановлен до ответа",
+   "id": "Dihentikan sebelum menjawab",
+   "it": "Fermato prima di rispondere"
+  },
+  "agents|Stop all": {
+   "zh-Hans": "全部停止",
+   "hi": "सभी रोकें",
+   "es": "Detener todos",
+   "ar": "أوقف الكل",
+   "fr": "Tout arrêter",
+   "bn": "সব থামান",
+   "pt-BR": "Parar todos",
+   "ru": "Остановить все",
+   "id": "Hentikan semua",
+   "it": "Ferma tutti"
+  },
+  "You stopped the answer: the agents in the background go on": {
+   "zh-Hans": "你已停止回答：后台的代理仍在继续",
+   "hi": "आपने जवाब रोक दिया: बैकग्राउंड के एजेंट काम जारी रखते हैं",
+   "es": "Detuviste la respuesta: los agentes en segundo plano siguen",
+   "ar": "أوقفت الإجابة: الوكلاء في الخلفية يواصلون العمل",
+   "fr": "Vous avez arrêté la réponse : les agents en arrière-plan continuent",
+   "bn": "আপনি উত্তর থামিয়েছেন: ব্যাকগ্রাউন্ডের এজেন্টরা কাজ চালিয়ে যাচ্ছে",
+   "pt-BR": "Você parou a resposta: os agentes em segundo plano continuam",
+   "ru": "Вы остановили ответ: фоновые агенты продолжают работу",
+   "id": "Anda menghentikan jawaban: agen di latar belakang tetap berjalan",
+   "it": "Hai fermato la risposta: gli agenti in sfondo continuano"
+  },
+  "Stop them too": {
+   "zh-Hans": "也停止它们",
+   "hi": "उन्हें भी रोकें",
+   "es": "Detenerlos también",
+   "ar": "أوقفهم أيضًا",
+   "fr": "Les arrêter aussi",
+   "bn": "ওদেরও থামান",
+   "pt-BR": "Parar eles também",
+   "ru": "Остановить и их",
+   "id": "Hentikan juga",
+   "it": "Ferma anche loro"
+  },
+  "Editing the question starts {name} again and stops the {count} agents still working.": {
+   "zh-Hans": {
+    "other": "修改问题会让 {name} 重新启动，并停止仍在工作的 {count} 个代理。"
+   },
+   "hi": {
+    "one": "सवाल बदलने से {name} फिर से शुरू होगा और अभी काम कर रहे {count} एजेंट को रोक देगा।",
+    "other": "सवाल बदलने से {name} फिर से शुरू होगा और अभी काम कर रहे {count} एजेंटों को रोक देगा।"
+   },
+   "es": {
+    "one": "Editar la pregunta reinicia {name} y detiene el agente que sigue trabajando.",
+    "other": "Editar la pregunta reinicia {name} y detiene los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "تعديل السؤال يعيد تشغيل {name}.",
+    "one": "تعديل السؤال يعيد تشغيل {name} ويوقف الوكيل الذي لا يزال يعمل.",
+    "two": "تعديل السؤال يعيد تشغيل {name} ويوقف الوكيلين اللذين لا يزالان يعملان.",
+    "few": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكلاء لا يزالون يعملون.",
+    "many": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكيلًا لا يزالون يعملون.",
+    "other": "تعديل السؤال يعيد تشغيل {name} ويوقف {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "Modifier la question redémarre {name} et arrête l'agent encore au travail.",
+    "other": "Modifier la question redémarre {name} et arrête les {count} agents encore au travail."
+   },
+   "bn": {
+    "one": "প্রশ্ন বদলালে {name} আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।",
+    "other": "প্রশ্ন বদলালে {name} আবার চালু হবে এবং এখনও কাজ করা {count}টি এজেন্ট থামিয়ে দেবে।"
+   },
+   "pt-BR": {
+    "one": "Editar a pergunta reinicia o {name} e para o agente que ainda está trabalhando.",
+    "other": "Editar a pergunta reinicia o {name} e para os {count} agentes que ainda estão trabalhando."
+   },
+   "ru": {
+    "one": "Изменение вопроса перезапустит {name} и остановит {count} работающего агента.",
+    "few": "Изменение вопроса перезапустит {name} и остановит {count} работающих агента.",
+    "many": "Изменение вопроса перезапустит {name} и остановит {count} работающих агентов.",
+    "other": "Изменение вопроса перезапустит {name} и остановит {count} работающих агента."
+   },
+   "id": {
+    "other": "Mengedit pertanyaan memulai ulang {name} dan menghentikan {count} agen yang masih bekerja."
+   },
+   "it": {
+    "one": "Modificare la domanda fa ripartire {name} e ferma l'agente ancora al lavoro.",
+    "other": "Modificare la domanda fa ripartire {name} e ferma i {count} agenti ancora al lavoro."
+   }
+  },
+  "Your edit goes when the {count} agents still working finish.": {
+   "zh-Hans": {
+    "other": "仍在工作的 {count} 个代理完成后，你的修改就会发送。"
+   },
+   "hi": {
+    "one": "अभी काम कर रहा {count} एजेंट पूरा होते ही आपका बदलाव जाएगा।",
+    "other": "अभी काम कर रहे {count} एजेंट पूरे होते ही आपका बदलाव जाएगा।"
+   },
+   "es": {
+    "one": "Tu edición se enviará cuando termine el agente que sigue trabajando.",
+    "other": "Tu edición se enviará cuando terminen los {count} agentes que siguen trabajando."
+   },
+   "ar": {
+    "zero": "سيُرسل تعديلك الآن.",
+    "one": "سيُرسل تعديلك عندما ينتهي الوكيل الذي لا يزال يعمل.",
+    "two": "سيُرسل تعديلك عندما ينتهي الوكيلان اللذان لا يزالان يعملان.",
+    "few": "سيُرسل تعديلك عندما ينتهي {count} وكلاء لا يزالون يعملون.",
+    "many": "سيُرسل تعديلك عندما ينتهي {count} وكيلًا لا يزالون يعملون.",
+    "other": "سيُرسل تعديلك عندما ينتهي {count} وكيل لا يزالون يعملون."
+   },
+   "fr": {
+    "one": "Votre modification partira quand l'agent encore au travail aura fini.",
+    "other": "Votre modification partira quand les {count} agents encore au travail auront fini."
+   },
+   "bn": {
+    "one": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার সম্পাদনা যাবে।",
+    "other": "এখনও কাজ করা {count}টি এজেন্ট শেষ হলে আপনার সম্পাদনা যাবে।"
+   },
+   "pt-BR": {
+    "one": "Sua edição vai quando o agente que ainda está trabalhando terminar.",
+    "other": "Sua edição vai quando os {count} agentes que ainda estão trabalhando terminarem."
+   },
+   "ru": {
+    "one": "Правка уйдёт, когда закончит {count} работающий агент.",
+    "few": "Правка уйдёт, когда закончат {count} работающих агента.",
+    "many": "Правка уйдёт, когда закончат {count} работающих агентов.",
+    "other": "Правка уйдёт, когда закончат {count} работающих агента."
+   },
+   "id": {
+    "other": "Suntingan Anda dikirim setelah {count} agen yang masih bekerja selesai."
+   },
+   "it": {
+    "one": "La modifica parte quando finisce l'agente ancora al lavoro.",
+    "other": "La modifica parte quando finiscono i {count} agenti ancora al lavoro."
+   }
+  },
+  "You can wait for them to finish, or edit it now.": {
+   "zh-Hans": "你可以等它们完成，或者现在就修改。",
+   "hi": "आप उनके पूरा होने तक रुक सकते हैं, या अभी बदल सकते हैं।",
+   "es": "Puedes esperar a que terminen o editarla ahora.",
+   "ar": "يمكنك انتظار انتهائهم أو تعديله الآن.",
+   "fr": "Vous pouvez attendre qu'ils finissent, ou la modifier maintenant.",
+   "bn": "আপনি ওদের শেষ হওয়া পর্যন্ত অপেক্ষা করতে পারেন, বা এখনই বদলাতে পারেন।",
+   "pt-BR": "Você pode esperar que terminem ou editar agora.",
+   "ru": "Можно дождаться, пока они закончат, или изменить сейчас.",
+   "id": "Anda bisa menunggu mereka selesai, atau mengeditnya sekarang.",
+   "it": "Puoi aspettare che finiscano, o modificarla subito."
+  },
+  "Edit when they finish": {
+   "zh-Hans": "等它们完成后修改",
+   "hi": "पूरा होने पर बदलें",
+   "es": "Editar cuando terminen",
+   "ar": "عدّل عند انتهائهم",
+   "fr": "Modifier quand ils ont fini",
+   "bn": "শেষ হলে বদলান",
+   "pt-BR": "Editar quando terminarem",
+   "ru": "Изменить, когда закончат",
+   "id": "Edit setelah selesai",
+   "it": "Modifica quando finiscono"
+  },
+  "Edit now and stop them": {
+   "zh-Hans": "现在修改并停止它们",
+   "hi": "अभी बदलें और उन्हें रोकें",
+   "es": "Editar ahora y detenerlos",
+   "ar": "عدّل الآن وأوقفهم",
+   "fr": "Modifier maintenant et les arrêter",
+   "bn": "এখনই বদলান এবং ওদের থামান",
+   "pt-BR": "Editar agora e parar eles",
+   "ru": "Изменить сейчас и остановить их",
+   "id": "Edit sekarang dan hentikan",
+   "it": "Modifica ora e fermali"
   }
  }
 }
