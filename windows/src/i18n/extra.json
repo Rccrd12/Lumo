@@ -22537,6 +22537,300 @@
    "id": "sejak {time}",
    "it": "da {time}"
   },
+  "Agents in the chat": {
+   "zh-Hans": "聊天中的代理",
+   "hi": "चैट में एजेंट",
+   "es": "Agentes en el chat",
+   "ar": "الوكلاء في المحادثة",
+   "fr": "Agents dans le chat",
+   "bn": "চ্যাটে এজেন্ট",
+   "pt-BR": "Agentes no chat",
+   "ru": "Агенты в чате",
+   "id": "Agen di obrolan",
+   "it": "Agenti nella chat"
+  },
+  "The agents an AI starts in the island's chat, each a row of its Agents card.": {
+   "zh-Hans": "AI 在岛屿聊天中启动的代理，每个都是其代理卡片中的一行。",
+   "hi": "AI द्वारा आइलैंड की चैट में शुरू किए गए एजेंट, हर एक उसके एजेंट कार्ड की एक पंक्ति।",
+   "es": "Los agentes que una IA inicia en el chat de la isla, cada uno una fila de su tarjeta de Agentes.",
+   "ar": "الوكلاء الذين يبدؤهم الذكاء الاصطناعي في محادثة الجزيرة، كلٌّ منهم صف في بطاقة الوكلاء.",
+   "fr": "Les agents qu'une IA lance dans le chat de l'île, chacun une ligne de sa carte Agents.",
+   "bn": "আইল্যান্ডের চ্যাটে কোনো AI যে এজেন্টগুলো শুরু করে, প্রতিটি তার এজেন্ট কার্ডের একটি সারি।",
+   "pt-BR": "Os agentes que uma IA inicia no chat da ilha, cada um uma linha do cartão Agentes.",
+   "ru": "Агенты, которых ИИ запускает в чате острова, каждый — строка карточки «Агенты».",
+   "id": "Agen yang dimulai AI di obrolan pulau, masing-masing satu baris kartu Agennya.",
+   "it": "Gli agenti che un'AI avvia nella chat dell'isola, ognuno una riga della sua scheda Agenti."
+  },
+  "Progress summaries": {
+   "zh-Hans": "进度摘要",
+   "hi": "प्रगति सारांश",
+   "es": "Resúmenes de progreso",
+   "ar": "ملخصات التقدم",
+   "fr": "Résumés d'avancement",
+   "bn": "অগ্রগতির সারাংশ",
+   "pt-BR": "Resumos de progresso",
+   "ru": "Сводки хода работы",
+   "id": "Ringkasan kemajuan",
+   "it": "Riepiloghi di avanzamento"
+  },
+  "Claude Code's agents say now and then what they are doing, on their row. It costs a few tokens of your plan. A chat already under way keeps how it started.": {
+   "zh-Hans": "Claude Code 的代理会不时在其行中说明正在做什么。这会消耗你套餐中的少量 token。已在进行的聊天保持开始时的设置。",
+   "hi": "Claude Code के एजेंट समय-समय पर अपनी पंक्ति में बताते हैं कि वे क्या कर रहे हैं। इसमें आपके प्लान के कुछ टोकन लगते हैं। पहले से चल रही चैट जैसे शुरू हुई थी वैसे ही रहती है।",
+   "es": "Los agentes de Claude Code dicen de vez en cuando qué están haciendo, en su fila. Cuesta algunos tokens de tu plan. Un chat ya en curso sigue como empezó.",
+   "ar": "يقول وكلاء Claude Code بين حين وآخر ما يفعلونه، في صفهم. يكلّف ذلك بعض الرموز من خطتك. المحادثة الجارية تبقى كما بدأت.",
+   "fr": "Les agents de Claude Code disent de temps en temps ce qu'ils font, sur leur ligne. Cela coûte quelques tokens de votre forfait. Un chat déjà en cours reste comme il a commencé.",
+   "bn": "Claude Code-এর এজেন্টরা মাঝে মাঝে তাদের সারিতে বলে তারা কী করছে। এতে আপনার প্ল্যানের কিছু টোকেন খরচ হয়। ইতিমধ্যে চলমান চ্যাট যেভাবে শুরু হয়েছিল সেভাবেই থাকে।",
+   "pt-BR": "Os agentes do Claude Code dizem de vez em quando o que estão fazendo, na sua linha. Custa alguns tokens do seu plano. Um chat já em andamento continua como começou.",
+   "ru": "Агенты Claude Code время от времени пишут в своей строке, чем заняты. Это стоит немного токенов вашего плана. Уже идущий чат остаётся таким, как начался.",
+   "id": "Agen Claude Code sesekali menyebutkan apa yang sedang mereka kerjakan, di barisnya. Ini memakai sedikit token paket Anda. Obrolan yang sudah berjalan tetap seperti saat dimulai.",
+   "it": "Gli agenti di Claude Code dicono ogni tanto cosa stanno facendo, sulla loro riga. Costa qualche token del tuo piano. Una chat già in corso resta com'è partita."
+  },
+  "Running {command} · for {time}": {
+   "zh-Hans": "正在运行 {command} · 已 {time}",
+   "hi": "{command} चला रहा है · {time} से",
+   "es": "Ejecuta {command} · desde hace {time}",
+   "ar": "يشغّل {command} · منذ {time}",
+   "fr": "Exécute {command} · depuis {time}",
+   "bn": "{command} চালাচ্ছে · {time} ধরে",
+   "pt-BR": "Executa {command} · há {time}",
+   "ru": "Выполняет {command} · уже {time}",
+   "id": "Menjalankan {command} · selama {time}",
+   "it": "Esegue {command} · da {time}"
+  },
+  "Writing its answer or a long file · for {time}": {
+   "zh-Hans": "正在写回答或长文件 · 已 {time}",
+   "hi": "जवाब या लंबी फ़ाइल लिख रहा है · {time} से",
+   "es": "Escribe la respuesta o un archivo largo · desde hace {time}",
+   "ar": "يكتب الإجابة أو ملفًا طويلًا · منذ {time}",
+   "fr": "Écrit la réponse ou un long fichier · depuis {time}",
+   "bn": "উত্তর বা বড় ফাইল লিখছে · {time} ধরে",
+   "pt-BR": "Escreve a resposta ou um arquivo longo · há {time}",
+   "ru": "Пишет ответ или длинный файл · уже {time}",
+   "id": "Menulis jawaban atau file panjang · selama {time}",
+   "it": "Scrive la risposta o un file lungo · da {time}"
+  },
+  "API overloaded: retrying in {time} (attempt {attempt} of {max})": {
+   "zh-Hans": "API 过载：{time} 后重试（第 {attempt} 次，共 {max} 次）",
+   "hi": "API पर बहुत भार: {time} में फिर कोशिश (प्रयास {attempt} / {max})",
+   "es": "API sobrecargada: reintenta en {time} (intento {attempt} de {max})",
+   "ar": "واجهة API مثقلة: إعادة المحاولة بعد {time} (المحاولة {attempt} من {max})",
+   "fr": "API surchargée : nouvel essai dans {time} (tentative {attempt} sur {max})",
+   "bn": "API-তে অতিরিক্ত চাপ: {time} পরে আবার চেষ্টা (চেষ্টা {attempt}/{max})",
+   "pt-BR": "API sobrecarregada: nova tentativa em {time} (tentativa {attempt} de {max})",
+   "ru": "API перегружен: повтор через {time} (попытка {attempt} из {max})",
+   "id": "API kelebihan beban: coba lagi dalam {time} (percobaan {attempt} dari {max})",
+   "it": "API sovraccarica: riprova tra {time} (tentativo {attempt} di {max})"
+  },
+  "Rate limit reached: retrying in {time} (attempt {attempt} of {max})": {
+   "zh-Hans": "已达请求上限：{time} 后重试（第 {attempt} 次，共 {max} 次）",
+   "hi": "अनुरोध सीमा पूरी: {time} में फिर कोशिश (प्रयास {attempt} / {max})",
+   "es": "Límite de solicitudes alcanzado: reintenta en {time} (intento {attempt} de {max})",
+   "ar": "بلغ حد الطلبات: إعادة المحاولة بعد {time} (المحاولة {attempt} من {max})",
+   "fr": "Limite de requêtes atteinte : nouvel essai dans {time} (tentative {attempt} sur {max})",
+   "bn": "অনুরোধের সীমা পূর্ণ: {time} পরে আবার চেষ্টা (চেষ্টা {attempt}/{max})",
+   "pt-BR": "Limite de solicitações atingido: nova tentativa em {time} (tentativa {attempt} de {max})",
+   "ru": "Достигнут лимит запросов: повтор через {time} (попытка {attempt} из {max})",
+   "id": "Batas permintaan tercapai: coba lagi dalam {time} (percobaan {attempt} dari {max})",
+   "it": "Limite di richieste raggiunto: riprova tra {time} (tentativo {attempt} di {max})"
+  },
+  "The request failed: retrying in {time} (attempt {attempt} of {max})": {
+   "zh-Hans": "请求失败：{time} 后重试（第 {attempt} 次，共 {max} 次）",
+   "hi": "अनुरोध विफल: {time} में फिर कोशिश (प्रयास {attempt} / {max})",
+   "es": "La solicitud falló: reintenta en {time} (intento {attempt} de {max})",
+   "ar": "فشل الطلب: إعادة المحاولة بعد {time} (المحاولة {attempt} من {max})",
+   "fr": "La requête a échoué : nouvel essai dans {time} (tentative {attempt} sur {max})",
+   "bn": "অনুরোধ ব্যর্থ: {time} পরে আবার চেষ্টা (চেষ্টা {attempt}/{max})",
+   "pt-BR": "A solicitação falhou: nova tentativa em {time} (tentativa {attempt} de {max})",
+   "ru": "Запрос не удался: повтор через {time} (попытка {attempt} из {max})",
+   "id": "Permintaan gagal: coba lagi dalam {time} (percobaan {attempt} dari {max})",
+   "it": "La richiesta non è riuscita: riprova tra {time} (tentativo {attempt} di {max})"
+  },
+  "Retrying the request (attempt {attempt} of {max})": {
+   "zh-Hans": "正在重试请求（第 {attempt} 次，共 {max} 次）",
+   "hi": "अनुरोध फिर से भेज रहा है (प्रयास {attempt} / {max})",
+   "es": "Reintentando la solicitud (intento {attempt} de {max})",
+   "ar": "يعيد محاولة الطلب (المحاولة {attempt} من {max})",
+   "fr": "Nouvel essai de la requête (tentative {attempt} sur {max})",
+   "bn": "অনুরোধ আবার চেষ্টা করছে (চেষ্টা {attempt}/{max})",
+   "pt-BR": "Tentando a solicitação de novo (tentativa {attempt} de {max})",
+   "ru": "Повторяет запрос (попытка {attempt} из {max})",
+   "id": "Mencoba lagi permintaan (percobaan {attempt} dari {max})",
+   "it": "Riprova la richiesta (tentativo {attempt} di {max})"
+  },
+  "Command running for {time}, past the {limit} min limit": {
+   "zh-Hans": "命令已运行 {time}，超过 {limit} 分钟的上限",
+   "hi": "कमांड {time} से चल रही है, {limit} मिनट की सीमा से ज़्यादा",
+   "es": "Comando desde hace {time}, más allá del límite de {limit} min",
+   "ar": "أمر يعمل منذ {time}، بعد حد {limit} دقائق",
+   "fr": "Commande depuis {time}, au-delà de la limite de {limit} min",
+   "bn": "কমান্ড {time} ধরে চলছে, {limit} মিনিটের সীমা পেরিয়ে",
+   "pt-BR": "Comando há {time}, além do limite de {limit} min",
+   "ru": "Команда идёт уже {time}, дольше лимита в {limit} мин",
+   "id": "Perintah berjalan {time}, melewati batas {limit} menit",
+   "it": "Comando da {time}, oltre il limite di {limit} min"
+  },
+  "No sign for {time}, no command running": {
+   "zh-Hans": "已 {time} 没有动静，也没有在运行的命令",
+   "hi": "{time} से कोई संकेत नहीं, कोई कमांड नहीं चल रही",
+   "es": "Sin señales desde hace {time}, ningún comando en marcha",
+   "ar": "لا إشارة منذ {time}، ولا أمر قيد التشغيل",
+   "fr": "Aucun signe depuis {time}, aucune commande en cours",
+   "bn": "{time} ধরে কোনো সাড়া নেই, কোনো কমান্ড চলছে না",
+   "pt-BR": "Sem sinal há {time}, nenhum comando em execução",
+   "ru": "Нет признаков уже {time}, ни одной команды",
+   "id": "Tanpa tanda selama {time}, tidak ada perintah berjalan",
+   "it": "Nessun segno da {time}, nessun comando"
+  },
+  "{agent} has not answered for {time}": {
+   "zh-Hans": "{agent} 已 {time} 没有响应",
+   "hi": "{agent} {time} से जवाब नहीं दे रहा",
+   "es": "{agent} no responde desde hace {time}",
+   "ar": "{agent} لا يستجيب منذ {time}",
+   "fr": "{agent} ne répond plus depuis {time}",
+   "bn": "{agent} {time} ধরে সাড়া দিচ্ছে না",
+   "pt-BR": "{agent} não responde há {time}",
+   "ru": "{agent} не отвечает уже {time}",
+   "id": "{agent} tidak menjawab selama {time}",
+   "it": "{agent} non risponde da {time}"
+  },
+  "{count} at work": {
+   "zh-Hans": {
+    "other": "{count} 个在工作"
+   },
+   "hi": {
+    "one": "{count} काम पर",
+    "other": "{count} काम पर"
+   },
+   "es": {
+    "one": "{count} trabajando",
+    "other": "{count} trabajando"
+   },
+   "ar": {
+    "zero": "لا أحد يعمل",
+    "one": "واحد يعمل",
+    "two": "اثنان يعملان",
+    "few": "{count} يعملون",
+    "many": "{count} يعملون",
+    "other": "{count} يعملون"
+   },
+   "fr": {
+    "one": "{count} au travail",
+    "other": "{count} au travail"
+   },
+   "bn": {
+    "one": "{count}টি কাজ করছে",
+    "other": "{count}টি কাজ করছে"
+   },
+   "pt-BR": {
+    "one": "{count} trabalhando",
+    "other": "{count} trabalhando"
+   },
+   "ru": {
+    "one": "{count} работает",
+    "few": "{count} работают",
+    "many": "{count} работают",
+    "other": "{count} работают"
+   },
+   "id": {
+    "other": "{count} bekerja"
+   },
+   "it": {
+    "one": "{count} al lavoro",
+    "other": "{count} al lavoro"
+   }
+  },
+  "{count} to check": {
+   "zh-Hans": {
+    "other": "{count} 个待检查"
+   },
+   "hi": {
+    "one": "{count} जाँचना है",
+    "other": "{count} जाँचने हैं"
+   },
+   "es": {
+    "one": "{count} por revisar",
+    "other": "{count} por revisar"
+   },
+   "ar": {
+    "zero": "لا شيء للتحقق",
+    "one": "واحد للتحقق",
+    "two": "اثنان للتحقق",
+    "few": "{count} للتحقق",
+    "many": "{count} للتحقق",
+    "other": "{count} للتحقق"
+   },
+   "fr": {
+    "one": "{count} à vérifier",
+    "other": "{count} à vérifier"
+   },
+   "bn": {
+    "one": "{count}টি দেখতে হবে",
+    "other": "{count}টি দেখতে হবে"
+   },
+   "pt-BR": {
+    "one": "{count} para verificar",
+    "other": "{count} para verificar"
+   },
+   "ru": {
+    "one": "{count} требует проверки",
+    "few": "{count} требуют проверки",
+    "many": "{count} требуют проверки",
+    "other": "{count} требуют проверки"
+   },
+   "id": {
+    "other": "{count} perlu dicek"
+   },
+   "it": {
+    "one": "{count} da controllare",
+    "other": "{count} da controllare"
+   }
+  },
+  "{count} agents to check": {
+   "zh-Hans": {
+    "other": "{count} 个代理待检查"
+   },
+   "hi": {
+    "one": "{count} एजेंट जाँचना है",
+    "other": "{count} एजेंट जाँचने हैं"
+   },
+   "es": {
+    "one": "{count} agente por revisar",
+    "other": "{count} agentes por revisar"
+   },
+   "ar": {
+    "zero": "لا وكلاء للتحقق",
+    "one": "وكيل واحد للتحقق",
+    "two": "وكيلان للتحقق",
+    "few": "{count} وكلاء للتحقق",
+    "many": "{count} وكيلًا للتحقق",
+    "other": "{count} وكيل للتحقق"
+   },
+   "fr": {
+    "one": "{count} agent à vérifier",
+    "other": "{count} agents à vérifier"
+   },
+   "bn": {
+    "one": "{count}টি এজেন্ট দেখতে হবে",
+    "other": "{count}টি এজেন্ট দেখতে হবে"
+   },
+   "pt-BR": {
+    "one": "{count} agente para verificar",
+    "other": "{count} agentes para verificar"
+   },
+   "ru": {
+    "one": "{count} агент требует проверки",
+    "few": "{count} агента требуют проверки",
+    "many": "{count} агентов требуют проверки",
+    "other": "{count} агента требуют проверки"
+   },
+   "id": {
+    "other": "{count} agen perlu dicek"
+   },
+   "it": {
+    "one": "{count} agente da controllare",
+    "other": "{count} agenti da controllare"
+   }
+  },
   "All connected": {
    "zh-Hans": "全部已连接",
    "hi": "सब जुड़ा हुआ है",

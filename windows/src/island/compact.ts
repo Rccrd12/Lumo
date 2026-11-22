@@ -23,6 +23,7 @@ import { State, aiSends, isSessionTask, type AgentTask } from "../core/state";
 import { COMPACT_SIZES } from "../core/layout";
 import { Live } from "../live/session";
 import { clear, h, svg } from "../views/dom";
+import { agentSegments } from "../views/agent-segments";
 import { ICONS } from "../views/icons";
 import { N_, language, t } from "../i18n/i18n";
 
@@ -357,10 +358,12 @@ export class CompactStrip {
           const line = h("span", { class: "cp-line", title: text },
             h("span", { class: "cp-text cp-lead", text: lead }),
             h("span", { class: agents?.stalled ? "cp-text cp-rest cp-stalled" : "cp-text cp-rest", text: text.slice(lead.length) }));
-          if (!agents || compact) return [dot, line];
+          if (!agents) return [dot, line];
           // Its agents, a segment each, as in the chat, then how many are done (concept: sotto-agenti, image 5).
-          return [dot, line, h("span", { class: "cp-agents" },
-            h("span", { class: "agents-segs" }, ...agents.looks.map((l) => h("i", { class: l }))),
+          // Short of room (two items), its words go and the segments stay (concepts/segnale-agenti, image 4).
+          const lead1 = compact ? h("span", { class: "cp-line", title: text }, h("span", { class: "cp-text cp-lead", text: lead })) : line;
+          return [dot, lead1, h("span", { class: "cp-agents" },
+            agentSegments(agents.looks),
             h("span", { class: "cp-time", text: `${agents.done}/${agents.total}` }))];
         }
         return [dot, h("span", { class: "cp-text", text, title: text })];

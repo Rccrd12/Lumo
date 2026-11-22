@@ -25,13 +25,14 @@
 // (its details or its picture), opening another folds it.
 
 import { h, svg, clear } from "./dom";
+import { agentSegments } from "./agent-segments";
 import { ICONS } from "./icons";
 import { MAX_SEGMENTS, planMarker, STRIP_TEXT } from "./plan-strip";
 import { planFinished, planProgress, type PlanStep } from "../core/agent-plan";
 import { isWatching, mountInline, toggleWatch, unwatchOthers, WATCH_TEXT, type InlineActions } from "./browser-watch";
-import type { ChatActivity } from "../core/bridge";
+import type { ChatActivity, ChatAgentRetry } from "../core/bridge";
 import {
-  AGENT_TEXT, agentStall, askable, browserOf, computerOf, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, snooze, talkWaits, worstStall,
+  AGENT_TEXT, agentStall, agentWriting, askable, browserOf, COMMAND_LIMIT_MIN, computerOf, batchEntries, countAgents, durationText, isFinal, lookOf, looksOf, runningCommand, snooze, talkWaits, toCheck,
   type AgentBatch, type AgentEntry, type AgentLook, type ChatAgents, type TalkEntry,
 } from "../core/chat-agents";
 import type { AskQuote } from "../core/chats";
@@ -104,6 +105,20 @@ export const AGENTS_CARD_TEXT = {
   undo: N_("agents|Undo"),
   /** Its CLI was asked to stop it and has not said it did yet. */
   halting: N_("Stopping it…"),
+  /** Why an agent is quiet (concepts/segnale-agenti): a command of its at work, its writing, its request tried again. */
+  runningCommand: N_("Running {command} · for {time}"),
+  writing: N_("Writing its answer or a long file · for {time}"),
+  retryOverloaded: N_("API overloaded: retrying in {time} (attempt {attempt} of {max})"),
+  retryRateLimit: N_("Rate limit reached: retrying in {time} (attempt {attempt} of {max})"),
+  retryFailed: N_("The request failed: retrying in {time} (attempt {attempt} of {max})"),
+  retryNow: N_("Retrying the request (attempt {attempt} of {max})"),
+  /** …and why it needs a look: its command past the limit, its silence with none, its CLI gone quiet. */
+  overlong: N_("Command running for {time}, past the {limit} min limit"),
+  silent: N_("No sign for {time}, no command running"),
+  lost: N_("{agent} has not answered for {time}"),
+  atWork: N_("{count} at work"),
+  toCheck: N_("{count} to check"),
+  agentsToCheck: N_("{count} agents to check"),
 };
 
 /**
@@ -238,7 +253,7 @@ export function agentsCard(input: AgentsCardInput, host: AgentsCardHost): HTMLEl
 
 /** One segment per agent, in its colour. */
 function segments(looks: string[]): HTMLElement {
-  return h("span", { class: "agents-segs" }, ...looks.map((l) => h("i", { class: l })));
+  return agentSegments(looks);
 }
 
 /** One line of the tree, at `level` (a row's own: to its starter, its tick, ending at it when it is the last). */
@@ -420,8 +435,9 @@ function fullCard(entries: AgentEntry[], input: AgentsCardInput, host: AgentsCar
   const allOver = counts.open === 0;
   const started = Math.min(...entries.map((e) => e.row.startedAt || now));
   const ended = allOver ? Math.max(...entries.map((e) => e.row.endedAt ?? e.row.lastSignalAt ?? now)) : now;
+  // Some need a look: how many work, and how many of them to check (concepts/segnale-agenti).
   const status = counts.stalled
-    ? `${t(AGENTS_CARD_TEXT.doneOf, { done: counts.done, total: counts.total })} · ${tn("{count} with no signal", AGENTS_CARD_TEXT.noSignalCount, counts.stalled)}`
+    ? `${tn("{count} at work", AGENTS_CARD_TEXT.atWork, counts.open)} · ${tn("{count} to check", AGENTS_CARD_TEXT.toCheck, counts.stalled)}`
     : t(AGENTS_CARD_TEXT.doneOf, { done: counts.done, total: counts.total });
   // Folded rows show again with the chevron; once all are over it folds the card into one line.
   const folded = !allOver && ui.collapsed;
@@ -535,12 +551,14 @@ export function treeGuides(depths: number[]): TreeGuides[] {
  * user for (in line for the rate limit or its turn, paused, stopped), dimmed
  * for one done without a report of its own.
  */
-export function shadeOf(e: AgentEntry, look: AgentLook, permission?: ReadonlySet<string>): "queued" | "paused" | "stopped" | "noreport" | null {
+export function shadeOf(e: AgentEntry, look: AgentLook, permission?: ReadonlySet<string>, now = Date.now()): "queued" | "paused" | "stopped" | "noreport" | "lost" | null {
   const r = e.row;
   if (look === "waiting" && !permission?.has(r.id) && !computerOf(r.id)?.waits) {
     if (r.waitingFor === "paused") return "paused";
-    if (r.waitingFor === "rate_limit" || r.waitingFor === "queue") return "queued";
+    if (r.waitingFor === "rate_limit" || r.waitingFor === "queue" || r.waitingFor === "retry") return "queued";
   }
+  // Its CLI no longer answers: in red, not amber.
+  if (look === "stalled" && agentStall(e, now)?.why === "lost") return "lost";
   if (r.state === "stopped") return "stopped";
   if (r.state === "done" && r.noReport) return "noreport";
   return null;
@@ -550,8 +568,8 @@ export function shadeOf(e: AgentEntry, look: AgentLook, permission?: ReadonlySet
 function segmentLooks(entries: AgentEntry[], now: number, permission?: ReadonlySet<string>): string[] {
   return entries.map((e) => {
     const look = lookOf(e, now, permission);
-    const shade = shadeOf(e, look, permission);
-    return shade && shade !== "noreport" ? "queued" : look;
+    const shade = shadeOf(e, look, permission, now);
+    return shade === "lost" ? "failed" : shade && shade !== "noreport" ? "queued" : look;
   });
 }
 
@@ -629,6 +647,7 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
       return t(AGENTS_CARD_TEXT.failed);
     case "waiting": {
       if (r.waitingFor === "queue") return t(AGENTS_CARD_TEXT.queued, { place: r.queue ?? 1 });
+      if (r.waitingFor === "retry" && r.retry) return retryLine(r.retry, now);
       if (r.waitingFor === "paused") return t(AGENTS_CARD_TEXT.paused);
       const pc = computerOf(r.id);
       if (pc?.waits && r.state !== "waiting") {
@@ -637,15 +656,44 @@ function rowLine(e: AgentEntry, look: AgentLook, host: AgentsCardHost, now: numb
       return t(r.waitingFor === "rate_limit" ? AGENTS_CARD_TEXT.rateLimit : AGENTS_CARD_TEXT.permission);
     }
     case "stalled": {
-      const time = durationText((agentStall(e, now)?.seconds ?? 0) * 1000);
+      const stall = agentStall(e, now);
+      const time = durationText((stall?.seconds ?? 0) * 1000);
+      if (stall?.why === "lost") return t(AGENTS_CARD_TEXT.lost, { agent: providerDef(r.source)?.name ?? r.source, time });
+      if (stall?.why === "overlong") return t(AGENTS_CARD_TEXT.overlong, { time, limit: COMMAND_LIMIT_MIN });
       const last = e.steps[0]?.now ?? r.now;
-      return last ? t(AGENTS_CARD_TEXT.noSignalStep, { time, step: host.label(last) }) : t(AGENTS_CARD_TEXT.noSignal, { time });
+      // A call of its waits for its result (not a command): which one, said.
+      if (r.inCall && last) return t(AGENTS_CARD_TEXT.noSignalStep, { time, step: host.label(last) });
+      return t(AGENTS_CARD_TEXT.silent, { time });
     }
-    default:
+    default: {
       // A starter whose agents work: how far along they are, more than its own waiting on them.
       if (kids && kids.done < kids.count) return t(AGENTS_CARD_TEXT.itsAgents, { done: kids.done, count: kids.count });
+      const quiet = quietLine(e, now);
+      if (quiet) return quiet;
       return r.now ? host.label(r.now) : r.summary || t(AGENTS_CARD_TEXT.working);
+    }
   }
+}
+
+/** A working agent's silence said for what it is: the command it waits on, or its writing (concepts/segnale-agenti). */
+function quietLine(e: AgentEntry, now: number): string | null {
+  const command = runningCommand(e);
+  // Its own command, worded by its CLI: said at once, with how long it has run.
+  if (command && e.row.running) return t(AGENTS_CARD_TEXT.runningCommand, { command: command.text, time: durationText(now - command.since) });
+  const writing = agentWriting(e, now);
+  return writing != null ? t(AGENTS_CARD_TEXT.writing, { time: durationText(writing * 1000) }) : null;
+}
+
+/** Its request tried again: why, in how long, which try. */
+function retryLine(r: ChatAgentRetry, now: number): string {
+  const vars = { attempt: r.attempt, max: r.max || r.attempt };
+  const left = r.at + r.delayMs - now;
+  if (left <= 0) return t(AGENTS_CARD_TEXT.retryNow, vars);
+  const time = durationText(left + 999);
+  const category = (r.category ?? "").toLowerCase();
+  if (r.status === 529 || category.includes("overload")) return t(AGENTS_CARD_TEXT.retryOverloaded, { ...vars, time });
+  if (r.status === 429 || category.includes("rate")) return t(AGENTS_CARD_TEXT.retryRateLimit, { ...vars, time });
+  return t(AGENTS_CARD_TEXT.retryFailed, { ...vars, time });
 }
 
 /** One agent: its marker, its task, what it does, and its time or what can be done about it. */
@@ -654,7 +702,7 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   // Its CLI was asked to stop it: until it says it did, the row says so and offers no Stop.
   const halting = !isFinal(r.state) && !!r.stopping;
   const look = lookOf(e, now, input.permission);
-  const shade = halting ? null : shadeOf(e, look, input.permission);
+  const shade = halting ? null : shadeOf(e, look, input.permission, now);
   const marker = look === "done"
     ? h("span", { class: "agents-mark done" }, svg(ICONS.check, 12, { stroke: 2.2 }))
     : h("span", { class: `agents-mark ${halting ? "stopping" : shade && shade !== "noreport" ? shade : look}` }, h("i"));
@@ -681,6 +729,9 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
   if (left != null) {
     // Stop clicked: Undo until it goes.
     side.append(cardButton("undo", tc(AGENTS_CARD_TEXT.undo), () => undoStop(input.chatId, r.id, redraw)));
+  } else if (look === "stalled" && shade === "lost") {
+    // Its CLI no longer answers: nothing to ask, nothing to wait for.
+    if (r.canStop && stop) side.append(cardButton("stop", tc(AGENTS_CARD_TEXT.stop), stop));
   } else if (look === "stalled") {
     if (ask) side.append(cardButton("ask", tc(AGENTS_CARD_TEXT.ask), ask));
     side.append(cardButton("wait", tc(AGENTS_CARD_TEXT.wait), () => {
@@ -706,7 +757,9 @@ function row(e: AgentEntry, input: AgentsCardInput, host: AgentsCardHost, ui: Ca
     if (r.endedAt) side.append(h("span", { class: "agents-time", text: durationText(r.endedAt - r.startedAt) }));
   } else {
     if (watch) side.append(watchButton());
-    side.append(h("span", { class: "agents-time", text: `${durationText(now - r.startedAt)} · ${t(AGENTS_CARD_TEXT.ago, { time: durationText(now - r.lastSignalAt) })}` }));
+    // Its line says already since when it is quiet, and why: only how long it has worked.
+    const quiet = look === "working" && quietLine(e, now) != null;
+    side.append(h("span", { class: "agents-time", text: quiet ? durationText(now - r.startedAt) : `${durationText(now - r.startedAt)} · ${t(AGENTS_CARD_TEXT.ago, { time: durationText(now - r.lastSignalAt) })}` }));
   }
   const open = ui.open.has(r.id);
   const talking = r.talk && talkWaits(r.talk)
@@ -912,14 +965,14 @@ function drawTalk(into: HTMLElement, x: TalkEntry, who: string, now: number) {
  */
 function liveLine(entries: AgentEntry[], now: number, permission?: ReadonlySet<string>, stopThem?: (() => void) | null): HTMLElement {
   const counts = countAgents(entries, now, permission);
-  const worst = counts.stalled ? worstStall(entries, now) : null;
+  const worst = counts.stalled ? toCheck(entries, now) : null;
   // Waiting on the user: in purple. In line or paused asks nothing of them.
   const asking = entries.some((e) => !isFinal(e.row.state) && lookOf(e, now, permission) === "waiting" && !shadeOf(e, "waiting", permission));
   let tone: string;
   let text: string;
   if (worst) {
     tone = "stalled";
-    text = tn("{count} agent has given no sign for {time}", AGENTS_CARD_TEXT.noSign, counts.stalled, { time: durationText(worst.seconds * 1000) });
+    text = tn("{count} agent to check", AGENTS_CARD_TEXT.agentsToCheck, worst.count);
     if (counts.working + counts.waiting > 0) text += ` · ${t(AGENTS_CARD_TEXT.others)}`;
   } else if (counts.waiting && !counts.working) {
     tone = "waiting";

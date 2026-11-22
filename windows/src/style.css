@@ -26,3 +26,4 @@
 @import "./styles/20-agent-browser.css"; /* The agents' browser: Watch and the browser view (views/browser-watch.ts). */
 @import "./styles/21-chat-agents.css"; /* The chat while its agents work: the browser by the dots, Ask, the signs under the card, held messages. */
 @import "./styles/22-chat-fix.css"; /* The cards that put a chat's CLI right: sign in, install, connect agy (views/chat-fix.ts). */
+@import "./styles/23-session-agents.css"; /* A terminal session's agents: the Agents card in its session card (views/views.ts). */

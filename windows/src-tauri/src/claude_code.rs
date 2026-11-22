@@ -48,7 +48,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, Chats, ModelInfo, Stop};
-use crate::chat_agents::{self, AgentRow, AgentState, AgentTalk, Agents, BackgroundCommand, PlanStep, StopAgent, Tell};
+use crate::chat_agents::{self, AgentRetry, AgentRow, AgentState, AgentTalk, Agents, BackgroundCommand, PlanStep, StopAgent, Tell};
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
@@ -954,6 +954,11 @@ struct Subagents {
     shells: HashMap<String, (String, String)>,
     /// The commands' tasks → their command (or Claude Code's description of it).
     commands: HashMap<String, String>,
+    /// The commands an agent waits on (in the foreground) → that agent.
+    foreground: HashMap<String, String>,
+    /// Claude Code said it is alive apart from its agents (`keep_alive`, an
+    /// Agent call's heartbeat): its rows say so, for the island's "not answering".
+    beats: bool,
 }
 
 /// A field's text, when there is some.
@@ -969,6 +974,48 @@ fn result_text(content: &Value) -> Option<&str> {
         Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str()).map(str::trim).find(|s| !s.is_empty()),
         _ => None,
     }
+}
+
+/// What Claude Code puts around an agent's report, never the report: the
+/// tools it used, its hand-back's frame, the agent's id and its usage, and
+/// the notice that the report went to the main conversation already.
+fn report_in(text: &str) -> Option<String> {
+    let mut text = text.to_string();
+    for (open, close) in [("<tools-used-before-summary>", "</tools-used-before-summary>"), ("&lt;tools-used-before-summary>", "&lt;/tools-used-before-summary>"), ("<usage>", "</usage>")] {
+        while let Some(at) = text.find(open) {
+            let end = text[at..].find(close).map_or(text.len(), |e| at + e + close.len());
+            text.replace_range(at..end, "");
+        }
+    }
+    if let Some(at) = text.find("The report follows:") {
+        text = text[at + "The report follows:".len()..].to_string();
+    }
+    if let Some(at) = text.find("\nagentId:") {
+        text.truncate(at);
+    }
+    let text = text.trim();
+    (!text.is_empty() && !is_delivered_notice(text) && !text.starts_with("agentId:")).then(|| text.to_string())
+}
+
+/// Claude Code's notice that an agent's report was given to the main
+/// conversation (in place of the report, on a background agent's end): no report.
+fn is_delivered_notice(text: &str) -> bool {
+    text.trim_start().starts_with("This agent's report was delivered")
+}
+
+/// The report of an agent whose Agent call `block` answered, in the line `v`:
+/// from Claude Code's own copy of the result (its parts, clean) when the line
+/// answers that call alone, else from the result as the model reads it.
+fn agent_report(v: &Value, block: &Value) -> Option<String> {
+    let alone = v["message"]["content"].as_array().is_some_and(|c| c.iter().filter(|b| b["type"] == "tool_result").count() == 1);
+    let parts = |content: &Value| -> Option<String> {
+        match content {
+            Value::String(s) => report_in(s),
+            Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str().or_else(|| p.as_str())).find_map(report_in),
+            _ => None,
+        }
+    };
+    alone.then(|| parts(&v["tool_use_result"]["content"])).flatten().or_else(|| parts(&block["content"]))
 }
 
 /// A task Claude Code started that is an agent, not a command it left
@@ -1029,7 +1076,53 @@ impl Subagents {
             Some("user") => self.agent_results(v),
             Some("stream_event") if !top_level(v) => self.writing(v),
             Some("control_response") => self.stop_answered(&v["response"]),
+            Some("tool_progress") => self.progress(v),
+            Some("keep_alive") => self.beat(),
             _ => {}
+        }
+    }
+
+    /// Claude Code is alive (its own beat, not its agents' news): the first
+    /// time, every row learns it beats. Their silence stays theirs.
+    fn beat(&mut self) {
+        if self.beats {
+            return;
+        }
+        self.beats = true;
+        let ids: Vec<String> = self.agents.ids().collect();
+        for id in ids {
+            if let Some(row) = self.agents.mark(&id) {
+                row.heartbeat = true;
+            }
+        }
+    }
+
+    /// A `tool_progress` of an Agent call: Claude Code's heartbeat while its
+    /// agent works in the foreground, or the agent's request tried again after
+    /// an API error (`subagent_retry`; the same line without it, the retry is over).
+    fn progress(&mut self, v: &Value) {
+        if v["heartbeat"] == true {
+            return self.beat();
+        }
+        let retry = &v["subagent_retry"];
+        let by_retry = text_of(retry, "agent_id").filter(|a| self.agents.get(a).is_some()).map(str::to_string);
+        let Some(id) = by_retry.or_else(|| text_of(v, "tool_use_id").and_then(|call| self.by_call.get(call)).cloned()) else { return };
+        if retry.is_object() {
+            let Some(row) = self.open_row(&id) else { return };
+            row.state = AgentState::Waiting;
+            row.waiting_for = Some("retry");
+            row.retry = Some(AgentRetry {
+                attempt: retry["attempt"].as_u64().unwrap_or(1),
+                max: retry["max_retries"].as_u64().unwrap_or(0),
+                delay_ms: retry["retry_delay_ms"].as_u64().unwrap_or(0),
+                at: chat_agents::now_ms(),
+                status: retry["error_status"].as_u64(),
+                category: text_of(retry, "error_category").map(str::to_string),
+            });
+        } else if self.agents.get(&id).is_some_and(|r| r.waiting_for == Some("retry")) {
+            if let Some(row) = self.open_row(&id) {
+                row.back_at_work();
+            }
         }
     }
 
@@ -1082,7 +1175,8 @@ impl Subagents {
                 }
                 continue;
             }
-            let text = result_text(&block["content"]).map(chat_agents::summary_of);
+            let text = if block["is_error"] == true { result_text(&block["content"]).map(str::to_string) } else { agent_report(v, block) };
+            let text = text.as_deref().map(chat_agents::summary_of);
             let Some(row) = self.open_row(&id) else { continue };
             if block["is_error"] == true {
                 row.end(AgentState::Failed, text);
@@ -1181,6 +1275,15 @@ impl Subagents {
         self.stopping.retain(|_, task| task != id);
         self.counted.remove(id);
         self.shells.retain(|_, (agent, _)| agent != id);
+        self.foreground.retain(|_, agent| agent != id);
+    }
+
+    /// The foreground command `task` ended or went to the background: its agent waits on it no more.
+    fn command_over(&mut self, task: &str) {
+        let Some(owner) = self.foreground.remove(task) else { return };
+        if let Some(row) = self.open_row(&owner).filter(|r| r.running.as_ref().is_some_and(|c| c.id == task)) {
+            row.running = None;
+        }
     }
 
     fn system(&mut self, v: &Value) {
@@ -1199,16 +1302,26 @@ impl Subagents {
             "task_started" => {
                 if !is_agent_task(v) {
                     // A command: its words, from the agent's Bash call that started it.
-                    if let Some(text) = text_of(v, "tool_use_id").and_then(|call| self.shells.remove(call)).map(|(_, command)| command).or_else(|| text_of(v, "description").map(str::to_string)) {
-                        self.commands.insert(id, text);
+                    let Some(text) = text_of(v, "tool_use_id").and_then(|call| self.shells.remove(call)).map(|(_, command)| command).or_else(|| text_of(v, "description").map(str::to_string)) else { return };
+                    // One its agent waits on: on its row while it runs.
+                    let owner = text_of(v, "parent_task_id").filter(|_| v["is_backgrounded"] == false).map(str::to_string);
+                    if let Some(row) = owner.as_deref().and_then(|o| self.open_row(o)) {
+                        row.running = Some(BackgroundCommand { id: id.clone(), text: short(&text), since: chat_agents::now_ms() });
+                        self.foreground.insert(id.clone(), owner.unwrap_or_default());
                     }
+                    self.commands.insert(id, text);
                     return;
                 }
                 let title = agent_title(v);
                 let can_ask = self.can_message;
                 // Started by another of the chat's agents: drawn under it.
                 let parent = text_of(v, "parent_task_id").filter(|p| *p != id && self.agents.get(p).is_some()).map(str::to_string);
+                let beats = self.beats;
                 let row = self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title));
+                row.heartbeat = beats;
+                if row.in_call.is_none() {
+                    row.in_call = Some(false);
+                }
                 if parent.is_some() {
                     row.parent = parent;
                 }
@@ -1253,7 +1366,10 @@ impl Subagents {
                         return;
                     }
                     let title = agent_title(v);
-                    self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title)).can_stop = true;
+                    let beats = self.beats;
+                    let row = self.agents.upsert(&id, || AgentRow::new(id.as_str(), PROVIDER, &title));
+                    row.can_stop = true;
+                    row.heartbeat = beats;
                 }
                 if let Some(call) = text_of(v, "tool_use_id") {
                     self.by_call.insert(call.to_string(), id.clone());
@@ -1267,6 +1383,10 @@ impl Subagents {
                 row.steps = row.steps.max(usage["tool_uses"].as_u64().unwrap_or(0)).max(counted);
                 if let Some(summary) = text_of(v, "summary") {
                     row.summary = Some(chat_agents::summary_of(summary));
+                }
+                // News of its work: its request went through.
+                if row.waiting_for == Some("retry") {
+                    row.back_at_work();
                 }
                 // Its `description` is the step under way ("Reading f1.txt"), never
                 // its task: the title stays. What the agent's own message said of
@@ -1285,6 +1405,13 @@ impl Subagents {
             }
             "task_updated" => {
                 let patch = &v["patch"];
+                // A command its agent waited on, moved to the background or ended: it waits no more.
+                if self.foreground.contains_key(&id) {
+                    if patch["is_backgrounded"] == true || patch["status"].as_str().and_then(final_state).is_some() {
+                        self.command_over(&id);
+                    }
+                    return;
+                }
                 let Some(row) = self.open_row(&id) else { return };
                 if let Some(step) = text_of(patch, "description").filter(|_| row.now.is_none()) {
                     row.now = Some(Activity::new("step", short(step)));
@@ -1315,13 +1442,18 @@ impl Subagents {
                 }
             }
             "task_notification" => {
+                if self.foreground.contains_key(&id) {
+                    return self.command_over(&id);
+                }
                 // Its last word comes after `task_updated` ended it: kept all the same.
                 let Some(row) = self.agents.touch(&id) else { return };
                 let state = v["status"].as_str().and_then(final_state);
                 // Its own report, or only its task said again: a stopped one's
                 // `summary` is its task (`summary_is_report` says, when given).
-                let report = v["summary_is_report"].as_bool().unwrap_or(state != Some(AgentState::Stopped));
-                let summary = text_of(v, "summary").map(chat_agents::summary_of);
+                // Claude Code's notice that the report went to the main conversation is none.
+                let notice = text_of(v, "summary").is_some_and(is_delivered_notice);
+                let report = v["summary_is_report"].as_bool().unwrap_or(state != Some(AgentState::Stopped)) && !notice;
+                let summary = text_of(v, "summary").filter(|_| !notice).map(chat_agents::summary_of);
                 if report {
                     if let Some(talk) = row.talk.as_mut() {
                         talk.answer(text_of(v, "summary").unwrap_or(""));
@@ -1338,7 +1470,8 @@ impl Subagents {
                 }
                 if let Some(state) = state {
                     let error = (state == AgentState::Failed).then(|| error_of(v).or(summary)).flatten();
-                    row.no_report = state == AgentState::Done && !report;
+                    // The notice after its report came in its Agent call's result: that report stands.
+                    row.no_report = state == AgentState::Done && !report && !(notice && row.summary.is_some());
                     row.end(state, error);
                     if row.state == AgentState::Stopped {
                         row.can_ask = false;
@@ -1379,7 +1512,9 @@ impl Subagents {
                 }
             }
             if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
-                tools.push((block["id"].as_str().unwrap_or("").to_string(), activity_for(block["name"].as_str().unwrap_or(""), &block["input"])));
+                // A server's tool (its web search) is answered in the same message: no result to wait for.
+                let call = if block["type"] == "tool_use" { block["id"].as_str().unwrap_or("") } else { "" };
+                tools.push((call.to_string(), activity_for(block["name"].as_str().unwrap_or(""), &block["input"])));
                 self.plan_call(&id, block);
                 // Claude Code may move any of them to the background (one that takes long).
                 if block["name"] == "Bash" {
@@ -1397,14 +1532,15 @@ impl Subagents {
             *n += tools.len() as u64;
             *n
         };
+        let in_call = self.calls.values().any(|a| *a == id);
         let Some(row) = self.open_row(&id) else { return };
         row.steps = row.steps.max(counted);
+        row.in_call = Some(in_call);
         if let Some((_, now)) = tools.pop() {
             row.now = Some(now);
             // A new call: whatever it waited for is over.
             if row.state == AgentState::Waiting {
-                row.state = AgentState::Working;
-                row.waiting_for = None;
+                row.back_at_work();
             }
         }
     }
@@ -1509,7 +1645,10 @@ impl Subagents {
             }
         }
         if let Some(id) = self.agent_of(v) {
-            self.open_row(&id);
+            let in_call = self.calls.values().any(|a| *a == id);
+            if let Some(row) = self.open_row(&id) {
+                row.in_call = Some(in_call);
+            }
         }
     }
 
@@ -2489,9 +2628,15 @@ fn user_line(text: &str) -> String {
 /// (`initialize`): an interrupt ends the turn but leaves the agents it
 /// started at work (`perTaskStopAffordance`: each is stopped on its own,
 /// `stop_task`), and their own text comes on the stream too
-/// (`forwardSubagentText`). Its answer names no stop request: ignored.
-fn initialize_line() -> String {
-    let request = json!({ "subtype": "initialize", "perTaskStopAffordance": true, "forwardSubagentText": true });
+/// (`forwardSubagentText`). With `summaries` (Settings → Agents → Progress
+/// summaries), each agent also says now and then what it is doing, a line
+/// `task_progress` brings as its `summary`. Its answer names no stop request:
+/// ignored.
+fn initialize_line(summaries: bool) -> String {
+    let mut request = json!({ "subtype": "initialize", "perTaskStopAffordance": true, "forwardSubagentText": true });
+    if summaries {
+        request["agentProgressSummaries"] = json!(true);
+    }
     format!("{}\n", json!({ "type": "control_request", "request_id": "lumo-init", "request": request }))
 }
 
@@ -2565,7 +2710,7 @@ fn live_for(
     let stdin = Arc::new(Mutex::new(child.stdin.take().ok_or("no stdin")?));
     // Before any message: Stop then ends the answer only, its agents going on.
     // A Claude Code that doesn't know the request ignores it.
-    let _ = write_stdin(&stdin, &initialize_line());
+    let _ = write_stdin(&stdin, &initialize_line(crate::settings::load().agent_progress_summaries));
     let stderr = read_stderr(&mut child);
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let feed: Feed = Arc::new(std::sync::Mutex::new(Some(tx)));
@@ -2811,7 +2956,7 @@ pub async fn send(
     let mail = crate::mail::ai_tools(app);
     // Lumo's browser for agents (browser.rs), as Settings → Security says.
     args = with_mcp(args, computer, browser, tools, true, mail);
-    let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
+    let mail_turn = (!mail.is_empty()).then(crate::mail::agent_turn);
     if computer {
         crate::computer::begin_turn(crate::computer::Who::of(PROVIDER), chat.id());
     }
@@ -2855,11 +3000,12 @@ pub async fn send(
     })
     .await
     .map_err(|e| e.to_string());
-    // What the turn did on the computer, for under its answer.
-    let recap = if computer { crate::computer::end_turn(app, chat.id(), matches!(&state, Ok(Ok(s)) if s.stopped)) } else { None };
-    if computer {
-        // Nobody of this chat waits for the computer any more.
-        crate::computer_turns::turn_end(app, chat.id());
+    // What the turn did on the computer, for under its answer. Agents it
+    // started still at work keep the computer and the email tools, with the
+    // same rules, until the last of them ends.
+    let recap = if computer { crate::computer::lend_turn(app, chat.id(), matches!(&state, Ok(Ok(s)) if s.stopped)) } else { None };
+    if let Some(mail_turn) = mail_turn {
+        let _ = chat_agents::keep_while_agents(chat.id(), mail_turn);
     }
     let plain = chat::plain_question(true, context.as_ref(), &query);
     // It failed after using the computer: the turn is kept as an empty
@@ -3972,6 +4118,103 @@ mod tests {
     }
 
     #[test]
+    fn the_command_an_agent_waits_on_is_on_its_row_while_it_runs() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[
+            AGENT_STARTED,
+            r#"{"type":"assistant","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_use","id":"toolu_X","name":"Bash","input":{"command":"python3 gen_wave1_logic.py"}}]}}"#,
+            r#"{"type":"system","subtype":"task_started","task_id":"bx","tool_use_id":"toolu_X","description":"Run the generator","task_type":"local_bash","is_backgrounded":false,"parent_task_id":"a1b2"}"#,
+        ]);
+        let row = sub.agents.get("a1b2").unwrap();
+        let running = row.running.as_ref().expect("the command it waits on");
+        assert_eq!((running.id.as_str(), running.text.as_str()), ("bx", "python3 gen_wave1_logic.py"));
+        assert_eq!(row.in_call, Some(true), "its Bash call waits for its result");
+        // The main conversation's own command, or one left in the background: on no row.
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_started","task_id":"by","description":"ls","task_type":"local_bash","is_backgrounded":false}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().running.as_ref().unwrap().id, "bx");
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_notification","task_id":"bx","status":"completed","summary":"exit 0"}"#]);
+        assert!(sub.agents.get("a1b2").unwrap().running.is_none());
+        assert!(!sub.agents.get("a1b2").unwrap().state.is_final(), "the command's end is not the agent's");
+        // Its result came: no call of its waits any more.
+        feed_agents(&mut sub, &[r#"{"type":"user","parent_tool_use_id":"toolu_A","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_X","content":"ok"}]}}"#]);
+        assert_eq!(sub.agents.get("a1b2").unwrap().in_call, Some(false));
+        // One moved to the background: waited on no more.
+        feed_agents(&mut sub, &[
+            r#"{"type":"system","subtype":"task_started","task_id":"bz","description":"npm test","task_type":"local_bash","is_backgrounded":false,"parent_task_id":"a1b2"}"#,
+            r#"{"type":"system","subtype":"task_updated","task_id":"bz","patch":{"is_backgrounded":true}}"#,
+        ]);
+        assert!(sub.agents.get("a1b2").unwrap().running.is_none());
+    }
+
+    #[test]
+    fn an_agents_request_tried_again_waits_in_grey_until_it_goes_through() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[
+            AGENT_STARTED,
+            r#"{"type":"tool_progress","tool_use_id":"toolu_A","tool_name":"Agent","parent_tool_use_id":null,"elapsed_time_seconds":0,"subagent_type":"general-purpose","subagent_retry":{"agent_id":"a1b2","attempt":3,"max_retries":10,"retry_delay_ms":30000,"error_status":529,"error_category":"overloaded"}}"#,
+        ]);
+        let row = sub.agents.get("a1b2").unwrap();
+        assert_eq!((row.state, row.waiting_for), (AgentState::Waiting, Some("retry")));
+        let retry = row.retry.as_ref().unwrap();
+        assert_eq!((retry.attempt, retry.max, retry.delay_ms, retry.status, retry.category.as_deref()), (3, 10, 30000, Some(529), Some("overloaded")));
+        // The same line without the retry: it went through.
+        feed_agents(&mut sub, &[r#"{"type":"tool_progress","tool_use_id":"toolu_A","tool_name":"Agent","parent_tool_use_id":null,"elapsed_time_seconds":0,"subagent_type":"general-purpose"}"#]);
+        let row = sub.agents.get("a1b2").unwrap();
+        assert_eq!((row.state, row.waiting_for), (AgentState::Working, None));
+        assert!(row.retry.is_none());
+    }
+
+    #[test]
+    fn claude_codes_beat_marks_its_rows_without_making_their_silence_news() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[AGENT_STARTED]);
+        sub.agents.changed();
+        let heard = sub.agents.get("a1b2").unwrap().last_signal_at;
+        assert!(!sub.agents.get("a1b2").unwrap().heartbeat);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        feed_agents(&mut sub, &[r#"{"type":"keep_alive"}"#]);
+        let rows = sub.agents.changed();
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].heartbeat);
+        assert_eq!(rows[0].last_signal_at, heard, "Claude Code's beat is no news of the agent");
+        // A foreground agent's heartbeat, and an agent started after: they beat too.
+        feed_agents(&mut sub, &[r#"{"type":"tool_progress","tool_use_id":"toolu_A-heartbeat-1","tool_name":"Agent","parent_tool_use_id":"toolu_A","elapsed_time_seconds":30,"heartbeat":true}"#]);
+        assert!(sub.agents.changed().is_empty(), "told once");
+        feed_agents(&mut sub, &[&AGENT_STARTED.replace("a1b2", "c3").replace("toolu_A", "toolu_C")]);
+        assert!(sub.agents.get("c3").unwrap().heartbeat);
+    }
+
+    #[test]
+    fn an_agents_report_is_its_own_words_never_claude_codes_frame_around_them() {
+        let framed = "<tools-used-before-summary>Read, Bash</tools-used-before-summary>\n  \n[Subagent hand-back] The agent finished. The report follows:\n  120 triplets in physics_wave1.jsonl, 3 dropped.\nagentId: a1b2 (use SendMessage to continue)\n<usage>total_tokens: 30000</usage>";
+        assert_eq!(report_in(framed).as_deref(), Some("120 triplets in physics_wave1.jsonl, 3 dropped."));
+        assert_eq!(report_in("This agent's report was delivered to you as a tool result."), None);
+        assert_eq!(report_in("<tools-used-before-summary>Read</tools-used-before-summary>"), None);
+        assert_eq!(report_in("Plain report."), Some("Plain report.".into()));
+        let foreground = AGENT_STARTED.replace(r#""is_backgrounded":true"#, r#""is_backgrounded":false"#);
+        let result = serde_json::json!({
+            "type": "user",
+            "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_A", "content": [{"type": "text", "text": framed}]}]},
+            "tool_use_result": {"status": "completed", "content": [{"type": "text", "text": "<tools-used-before-summary>Read, Bash</tools-used-before-summary>"}, {"type": "text", "text": "120 triplets in physics_wave1.jsonl, 3 dropped."}]},
+        }).to_string();
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[&foreground, &result]);
+        let row = sub.agents.get("a1b2").unwrap();
+        assert_eq!(row.state, AgentState::Done);
+        assert_eq!(row.summary.as_deref(), Some("120 triplets in physics_wave1.jsonl, 3 dropped."));
+        // Claude Code's notice after it: the report stands, it is no report missing.
+        feed_agents(&mut sub, &[r#"{"type":"system","subtype":"task_notification","task_id":"a1b2","status":"completed","summary":"This agent's report was delivered to you as a tool result."}"#]);
+        let row = sub.agents.get("a1b2").unwrap();
+        assert_eq!(row.summary.as_deref(), Some("120 triplets in physics_wave1.jsonl, 3 dropped."));
+        assert!(!row.no_report);
+        // A background agent's notice alone: no report, never the notice as one.
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[AGENT_STARTED, r#"{"type":"system","subtype":"task_notification","task_id":"a1b2","status":"completed","summary":"This agent's report was delivered to you as a message."}"#]);
+        let row = sub.agents.get("a1b2").unwrap();
+        assert!(row.no_report && row.summary.is_none());
+    }
+
+    #[test]
     fn an_agent_done_without_a_report_says_so_with_its_last_progress_not_its_task() {
         let mut sub = Subagents::default();
         feed_agents(&mut sub, &[
@@ -4129,11 +4372,15 @@ mod tests {
 
     #[test]
     fn a_chats_claude_code_is_told_to_leave_its_agents_at_work_when_stop_ends_the_answer() {
-        let v: Value = serde_json::from_str(initialize_line().trim()).unwrap();
+        let v: Value = serde_json::from_str(initialize_line(true).trim()).unwrap();
         assert_eq!(v["type"], "control_request");
         assert_eq!(v["request"]["subtype"], "initialize");
         assert_eq!(v["request"]["perTaskStopAffordance"], true);
         assert_eq!(v["request"]["forwardSubagentText"], true);
+        assert_eq!(v["request"]["agentProgressSummaries"], true, "on unless turned off in Settings");
+        let off: Value = serde_json::from_str(initialize_line(false).trim()).unwrap();
+        assert!(off["request"].get("agentProgressSummaries").is_none());
+        assert_eq!(off["request"]["perTaskStopAffordance"], true);
         let mut sub = Subagents::default();
         // Its answer stops nothing.
         feed_agents(&mut sub, &[AGENT_STARTED, r#"{"type":"control_response","response":{"subtype":"success","request_id":"lumo-init","response":{}}}"#]);

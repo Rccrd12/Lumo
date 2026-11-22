@@ -458,6 +458,9 @@ export interface Settings {
   homeActivities: boolean;
   /** Settings → Island → Google Calendar: each calendar of the account on (true) or off (false) for the island, by ID; one not here follows Google Calendar's own choice. */
   googleCalendars: Record<string, boolean>;
+  /** Settings → Agents → Progress summaries: the chat's Claude Code agents say
+   * now and then what they are doing (a few tokens more). On unless turned off. */
+  agentProgressSummaries: boolean;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
   /** Extended Thinking's level: "low", "medium" or "high". */
@@ -557,6 +560,7 @@ export const DEFAULT_SETTINGS: Settings = {
   islandEdgeLight: "full",
   homeActivities: true,
   googleCalendars: {},
+  agentProgressSummaries: true,
   liveModel: "gemini-3.8-live",
   liveThinking: "medium",
   liveVoice: "",
