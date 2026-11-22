@@ -16,6 +16,11 @@
 // rest of the answer stays plain text. When everything that arrived is
 // uncovered the frames stop (no work while the answer waits or is hidden),
 // and once the answer is complete it is drawn once more, plainly.
+//
+// The end of the text so far is not a cut while the answer is written: its
+// last word may still grow. When the answer pauses (Claude Code went back to
+// its tools after some text), its end is whole for now and is a cut too
+// (pause), so the last word shows while the tools run, not only at the end.
 
 import { blankFences, closingDollar, scan } from "./scan";
 
@@ -252,6 +257,16 @@ export function lastCut(cuts: number[], limit: number): number {
   return best;
 }
 
+/**
+ * `cuts` with the places the answer paused at (Ink.pause) that are still in
+ * `text`: what showed then stays shown, even if what follows sticks to it.
+ */
+export function withPauses(cuts: number[], pauses: number[], length: number): number[] {
+  const extra = pauses.filter((p) => p > 0 && p <= length && !cuts.includes(p));
+  if (!extra.length) return cuts;
+  return [...cuts, ...extra].sort((a, b) => a - b);
+}
+
 /** Ink needs a real page: frames, a tree walker, and motion the user did not turn off. */
 export function inkWorks(): boolean {
   if (typeof document === "undefined" || typeof document.createTreeWalker !== "function") return false;
@@ -284,6 +299,8 @@ export class Ink {
   private text = "";
   private complete = false;
   private cuts: number[] = [];
+  /** Where the answer paused, as Ink.pause found it: each is a cut. */
+  private pauses: number[] = [];
   private paced = 0;
   private drawn = -1;
   private edge = 0;
@@ -305,8 +322,21 @@ export class Ink {
     if (text === this.text && complete === this.complete) return;
     this.text = text;
     this.complete = complete;
-    this.cuts = cutPoints(text, complete);
+    this.pauses = this.pauses.filter((p) => p <= text.length);
+    this.cuts = withPauses(cutPoints(text, complete), this.pauses, text.length);
     if (this.paced > text.length) this.paced = text.length;
+    this.wake();
+  }
+
+  /**
+   * The answer stopped writing for now (it went back to its tools): what
+   * arrived is whole until more comes, so its last word is uncovered too.
+   */
+  pause() {
+    const at = this.text.length;
+    if (!at || this.pauses.includes(at)) return;
+    this.pauses.push(at);
+    this.cuts = withPauses(this.cuts, [at], at);
     this.wake();
   }
 

@@ -925,8 +925,10 @@ export function buildPrompt(
    * Shows `text`, the answer of `chat` so far, in `into`. `fresh`: its first
    * words, written from the start; otherwise an answer already under way
    * shows as far as it got at once, and only what comes next is written.
+   * `paused`: the answer went back to its tools after this text, which is
+   * whole for now: its last word shows too (Ink.pause).
    */
-  function writeAnswer(chat: string, into: HTMLElement, text: string, fresh: boolean, scope: string) {
+  function writeAnswer(chat: string, into: HTMLElement, text: string, fresh: boolean, scope: string, paused = false) {
     const workshop = isWorkshopChat(chat);
     if (!inkWorks()) {
       drawAnswer(into, text, workshop, scope);
@@ -937,11 +939,13 @@ export function buildPrompt(
       ink = new Ink((el, words) => drawAnswer(el, words, workshop, scope));
       inkChat = chat;
       ink.update(text);
+      if (paused) ink.pause();
       if (!fresh) ink.skip();
       ink.mount(into);
       return;
     }
     ink.update(text);
+    if (paused) ink.pause();
     if (ink.target !== into) ink.mount(into);
   }
   function dropInk() {
@@ -2994,7 +2998,11 @@ export function buildPrompt(
     // The seconds start again only when the words do (reasoning is Thinking… too).
     if (activityLabel(next) !== activityLabel(run.activity)) run.since = activitySince(next);
     run.activity = next;
-    if (again && run.text) run.dots = true;
+    if (again && run.text) {
+      run.dots = true;
+      // The text stopped for the tools: its last word shows now, not when the answer ends.
+      if (ink && inkChat === run.chatId) ink.pause();
+    }
     drawIslandActivity();
     tickSeconds();
     if (run.chatId !== State.chatId) return;
@@ -5060,7 +5068,7 @@ export function buildPrompt(
         if (run?.text) {
           live = h("div", { class: "reply" });
           log.append(h("div", { class: "chat-row" }, live));
-          writeAnswer(run.chatId, live, run.text, false, messageScope(State.chatId, place));
+          writeAnswer(run.chatId, live, run.text, false, messageScope(State.chatId, place), run.dots);
         }
         // The agents of the answer being written.
         if (run) log.append(...agentCardsFor(State.chatId, answers, true));

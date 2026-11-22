@@ -83,3 +83,18 @@ test("a $$ the chat reads as text never holds the rest of the answer", () => {
   // A $$ in a code block is code.
   assert.equal(drawn("```\n$$\n```\nE poi "), "```\n$$\n```\nE poi");
 });
+
+test("an answer that pauses for its tools shows its last word, and keeps it shown", async () => {
+  const { withPauses } = await import("../src/views/ink.ts");
+  // Claude Code wrote this, then went to run a command: "attiva." is whole.
+  const text = "Prima di andare avanti controllo perché la parte CUDA non si attiva.";
+  const paused = (t, pauses) => t.slice(0, lastCut(withPauses(cutPoints(t), pauses, t.length), t.length));
+  assert.equal(drawn(text), "Prima di andare avanti controllo perché la parte CUDA non si");
+  assert.equal(paused(text, [text.length]), text);
+  // The next text after the tools: the pause is a cut whatever comes after it.
+  assert.equal(paused(text + "\n\nOra ", [text.length]), text + "\n\nOra");
+  assert.equal(paused(text + "Ora", [text.length]), text);
+  // A pause beyond the text (the answer was written again) is left out.
+  assert.deepEqual(withPauses([3, 6], [10], 8), [3, 6]);
+  assert.deepEqual(withPauses([3, 9], [6, 9], 9), [3, 6, 9]);
+});
