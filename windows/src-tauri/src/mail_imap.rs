@@ -87,6 +87,9 @@ pub(crate) struct Imap {
     /// What may be read before `read` is reset: MAX_READ, more for a file attached.
     pub(crate) limit: usize,
     pub(crate) capabilities: Vec<String>,
+    /// The line being read: an IDLE that stops waiting in the middle of one
+    /// (woken, or its time up) finds the rest of it next time.
+    pending: Vec<u8>,
 }
 
 pub(crate) fn tls() -> Result<Arc<ClientConfig>, String> {
@@ -109,7 +112,7 @@ impl Imap {
             .connect(name, tcp)
             .await
             .map_err(|e| tf("No secure connection to {server}: {error}", &[("server", host), ("error", &e.to_string())]))?;
-        let mut imap = Imap { stream: BufReader::new(stream), tag: 0, read: 0, limit: MAX_READ, capabilities: Vec::new() };
+        let mut imap = Imap { stream: BufReader::new(stream), tag: 0, read: 0, limit: MAX_READ, capabilities: Vec::new(), pending: Vec::new() };
         // The greeting.
         let greeting = imap.read_unit().await?;
         match greeting.first() {
@@ -122,15 +125,16 @@ impl Imap {
     async fn read_unit(&mut self) -> Result<Vec<Part>, String> {
         let mut parts = Vec::new();
         loop {
-            let mut line = Vec::new();
             // A line never reads past what is left to read: a server that never
             // ends one cannot fill the memory before `count` stops it.
-            let room = self.limit.saturating_sub(self.read).saturating_add(1) as u64;
-            let n = (&mut self.stream).take(room).read_until(b'\n', &mut line).await.map_err(|e| e.to_string())?;
+            let room = self.limit.saturating_sub(self.read).saturating_sub(self.pending.len()).saturating_add(1) as u64;
+            let n = (&mut self.stream).take(room).read_until(b'\n', &mut self.pending).await.map_err(|e| e.to_string())?;
             if n == 0 {
+                self.pending.clear();
                 return Err(t("The mail server closed the connection."));
             }
-            self.count(n)?;
+            let line = std::mem::take(&mut self.pending);
+            self.count(line.len())?;
             let text = String::from_utf8_lossy(&line).trim_end_matches(['\r', '\n']).to_string();
             let literal = literal_size(&text);
             parts.push(Part::Text(text));
@@ -466,6 +470,11 @@ pub(crate) fn parse_fetch(unit: &[Part], host: &str) -> Option<Message> {
             Part::Literal(bytes) => body = bytes,
         }
     }
+    // A FETCH the server sent on its own (another client changed a flag):
+    // UID and FLAGS only, no email to show in place of the one known.
+    if header.is_empty() {
+        return None;
+    }
     let headers = parse_headers(header);
     let field = |name: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str()).unwrap_or("");
     let (from, address) = parse_from(&decode_words(field("From")));
@@ -536,6 +545,9 @@ mod tests {
         assert_eq!(m.preview, "Hey!");
         assert_eq!(m.link.as_deref(), Some("https://mail.google.com/mail/u/0/#search/rfc822msgid%3Aabc%40mail.gmail.com"));
         assert_eq!(uid_of(&m.id), Some(42));
+        // Another client marked it read meanwhile: the server says so on its own.
+        let flags = vec![Part::Text("* 3 FETCH (UID 42 FLAGS (\\Seen))".into())];
+        assert!(parse_fetch(&flags, "imap.gmail.com").is_none());
     }
 
     #[test]

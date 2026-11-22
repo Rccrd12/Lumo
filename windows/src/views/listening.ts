@@ -716,7 +716,11 @@ export function buildListeningPanel(opts: {
   for (const input of [targetInput, textInput, amountInput, taskInput]) {
     input.addEventListener("keydown", (e) => {
       if ((e as KeyboardEvent).key === "Enter") void start();
-      if ((e as KeyboardEvent).key === "Escape") showList();
+      if ((e as KeyboardEvent).key === "Escape") {
+        // Back to the list, and no further: the island would close on it too.
+        e.stopPropagation();
+        showList();
+      }
     });
   }
   activeTab.addEventListener("click", () => {

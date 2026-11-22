@@ -154,6 +154,8 @@ export class CompactStrip {
   private openTimer: number | null = null;
   /** The mouse is on the island (pointer). */
   private inside = false;
+  /** The email on show was held for the mouse (pointer), until it leaves. */
+  private holdingMail = false;
 
   private host: CompactHost;
 
@@ -176,8 +178,15 @@ export class CompactStrip {
     this.inside = inside;
     if (this.openTimer != null) window.clearTimeout(this.openTimer);
     this.openTimer = null;
+    if (!inside && this.holdingMail) {
+      // Let go even when something else came in front meanwhile: held, the
+      // email would wait for ever and come back after it.
+      this.holdingMail = false;
+      Feed.holdMail(Date.now() + 3000);
+    }
     if (this.shown?.kind !== "mail") return;
     if (inside) {
+      this.holdingMail = true;
       Feed.holdMail(Infinity);
       this.openTimer = window.setTimeout(() => {
         this.openTimer = null;

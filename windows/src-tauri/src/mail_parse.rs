@@ -426,7 +426,8 @@ fn repair(text: &str) -> String {
         }
     };
     for c in text.chars() {
-        if c.is_whitespace() {
+        // Not the no-break space: "à" read as Windows-1252 is "Ã" and one.
+        if c.is_whitespace() && c != '\u{A0}' {
             fix(&word, &mut out);
             word.clear();
             out.push(c);
@@ -448,6 +449,11 @@ fn cp1252(b: u8) -> char {
 fn to_cp1252(c: char) -> Option<u8> {
     let code = c as u32;
     if code < 0x80 || (0xA0..=0xFF).contains(&code) {
+        return Some(code as u8);
+    }
+    // The five bytes Windows-1252 leaves undefined, which decoders pass through
+    // as the control characters of the same number ("Á" is C3 81).
+    if matches!(code, 0x81 | 0x8D | 0x8F | 0x90 | 0x9D) {
         return Some(code as u8);
     }
     CP1252_HIGH.iter().position(|&h| h == c && !('\u{80}'..'\u{A0}').contains(&h)).map(|i| 0x80 + i as u8)
@@ -609,8 +615,15 @@ fn split_parts<'a>(body: &'a [u8], boundary: &str) -> Vec<&'a [u8]> {
     let marker = marker.as_bytes();
     let mut starts = Vec::new();
     let mut i = 0;
+    // A delimiter is a whole line: the marker, then "--" (the last one),
+    // spaces, or the line's end. "--b1-alt" or "--b1 text" is not "--b1".
+    let ends_line = |rest: &[u8]| match rest.first() {
+        None | Some(b'\r' | b'\n' | b' ' | b'\t') => true,
+        Some(b'-') => rest.get(1) == Some(&b'-') && rest[2..].iter().take_while(|b| **b != b'\n').all(|b| b.is_ascii_whitespace()),
+        _ => false,
+    };
     while i + marker.len() <= body.len() {
-        if &body[i..i + marker.len()] == marker && (i == 0 || body[i - 1] == b'\n') {
+        if &body[i..i + marker.len()] == marker && (i == 0 || body[i - 1] == b'\n') && ends_line(&body[i + marker.len()..]) {
             starts.push(i);
             i += marker.len();
         } else {
@@ -633,6 +646,10 @@ fn split_parts<'a>(body: &'a [u8], boundary: &str) -> Vec<&'a [u8]> {
 
 /// A part's headers and its content, split at the first blank line.
 fn split_head(part: &[u8]) -> (&[u8], &[u8]) {
+    // No headers at all (RFC 2046: it is then text/plain): the blank line comes first.
+    if let Some(content) = part.strip_prefix(b"\r\n").or_else(|| part.strip_prefix(b"\n")) {
+        return (&[], content);
+    }
     for (i, w) in part.windows(2).enumerate() {
         if w == b"\n\n" {
             return (&part[..i], &part[i + 2..]);
@@ -888,6 +905,29 @@ mod tests {
         // Base64 cut in the middle of a group.
         assert_eq!(base64(b"SGVsbG8gd29y"), b"Hello wor");
         assert_eq!(base64(b"SGVsbG8gd29yb"), b"Hello wor");
+    }
+
+    #[test]
+    fn parts_without_headers_or_with_lookalike_boundaries_keep_their_text() {
+        // A part with no headers at all is text/plain (RFC 2046).
+        assert_eq!(extract_text("multipart/mixed; boundary=\"b1\"", "", b"--b1\r\n\r\nHello world\r\n--b1--\r\n").trim(), "Hello world");
+        // An inner boundary that starts with the outer one.
+        let nested = b"--b1\r\nContent-Type: multipart/alternative; boundary=\"b1--alt\"\r\n\r\n--b1--alt\r\nContent-Type: text/plain\r\n\r\nHi\r\n--b1--alt--\r\n--b1--\r\n";
+        assert_eq!(extract_text("multipart/mixed; boundary=\"b1\"", "", nested).trim(), "Hi");
+        // A line of the text that starts with the boundary.
+        let line = b"--b1\r\nContent-Type: text/plain\r\n\r\nPrima\r\n--b1-extra\r\nDopo\r\n--b1--\r\n";
+        assert!(extract_text("multipart/mixed; boundary=\"b1\"", "", line).contains("Dopo"));
+    }
+
+    #[test]
+    fn utf8_read_as_windows_1252_is_put_back() {
+        // "à" is C3 A0: "Ã" and a no-break space.
+        assert_eq!(in_charset("citt\u{C3}\u{A0} bella".as_bytes(), "utf-8"), "città bella");
+        // "Á" is C3 81, a byte Windows-1252 leaves undefined.
+        assert_eq!(in_charset("S\u{C3}\u{81}BADO".as_bytes(), "utf-8"), "SÁBADO");
+        assert_eq!(in_charset("Caff\u{C3}\u{A8}".as_bytes(), "utf-8"), "Caffè");
+        // A real no-break space between words stays.
+        assert_eq!(in_charset("5\u{A0}€".as_bytes(), "utf-8"), "5\u{A0}€");
     }
 
     #[test]

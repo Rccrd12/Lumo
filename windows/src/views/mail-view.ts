@@ -492,17 +492,23 @@ export function buildMailView(actions: ViewActions): ViewHost {
     const automatic = (): HTMLElement => {
       // Turned off here: the email is drawn again with its images hidden.
       const off = h("button", { class: "mv-btn small ghost" }, t(MAIL_VIEW_TEXT.turnOff));
-      off.addEventListener("click", () => {
-        actions.blip();
-        State.settings = { ...State.settings, mailImagesAlways: false };
-        void Bridge.saveSettings(State.settings);
-        State.notify();
-      });
-      return h("div", { class: "mv-img-bar note" },
+      const node = h("div", { class: "mv-img-bar note" },
         svg(ICONS.shield, 13, { stroke: 1.8 }),
         h("span", { class: "mv-img-text", text: [t(MAIL_VIEW_TEXT.imagesAuto), ...notes()].join(" · ") }),
         h("span", { class: "mv-space" }),
         off);
+      off.addEventListener("click", () => {
+        actions.blip();
+        State.settings = { ...State.settings, mailImagesAlways: false };
+        void Bridge.saveSettings(State.settings);
+        // An email whose images were loaded here isn't drawn again (they
+        // stay): the bar stops saying they load by themselves all the same.
+        const note = blocked();
+        if (note) node.replaceWith(note);
+        else node.remove();
+        State.notify();
+      });
+      return node;
     };
     let bar: HTMLElement | null = null;
     if (images.length && !loaded()) {
