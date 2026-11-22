@@ -21783,7 +21783,7 @@
    "pt-BR": "Os agentes abrem os sites em abas ocultas só deles.",
    "ru": "Агенты открывают сайты в собственных скрытых вкладках.",
    "id": "Agen membuka situs di tab tersembunyi milik mereka sendiri.",
-   "it": "Gli agenti aprono i siti in schede nascoste tutte loro."
+   "it": "Gli agenti aprono i siti in schede nascoste riservate a loro."
   },
   "Open in a new browser tab": {
    "zh-Hans": "在新的浏览器标签页中打开",
@@ -23262,6 +23262,30 @@
    "ru": "Он ещё не установлен.",
    "id": "Belum terpasang.",
    "it": "Non è ancora installato."
+  },
+  "A window opened: sign in there, then press Retry.": {
+   "zh-Hans": "已打开一个窗口：在那里登录，然后点击“重试”。",
+   "hi": "एक विंडो खुली है: वहाँ साइन इन करें, फिर फिर से कोशिश करें दबाएँ।",
+   "es": "Se abrió una ventana: inicia sesión allí y luego pulsa Reintentar.",
+   "ar": "فُتحت نافذة: سجّل الدخول فيها، ثم اضغط إعادة المحاولة.",
+   "fr": "Une fenêtre s'est ouverte : connectez-vous là, puis appuyez sur Réessayer.",
+   "bn": "একটি উইন্ডো খুলেছে: সেখানে সাইন ইন করুন, তারপর আবার চেষ্টা করুন চাপুন।",
+   "pt-BR": "Uma janela foi aberta: entre nela e depois toque em Tentar novamente.",
+   "ru": "Открылось окно: войдите в нём, затем нажмите «Повторить».",
+   "id": "Sebuah jendela terbuka: masuk di sana, lalu tekan Coba lagi.",
+   "it": "Si è aperta una finestra: accedi lì, poi premi Riprova."
+  },
+  "A window opened: sign in there.": {
+   "zh-Hans": "已打开一个窗口：在那里登录。",
+   "hi": "एक विंडो खुली है: वहाँ साइन इन करें।",
+   "es": "Se abrió una ventana: inicia sesión allí.",
+   "ar": "فُتحت نافذة: سجّل الدخول فيها.",
+   "fr": "Une fenêtre s'est ouverte : connectez-vous là.",
+   "bn": "একটি উইন্ডো খুলেছে: সেখানে সাইন ইন করুন।",
+   "pt-BR": "Uma janela foi aberta: entre nela.",
+   "ru": "Открылось окно: войдите в нём.",
+   "id": "Sebuah jendela terbuka: masuk di sana.",
+   "it": "Si è aperta una finestra: accedi lì."
   }
  }
 }

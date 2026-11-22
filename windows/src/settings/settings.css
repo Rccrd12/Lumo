@@ -1331,6 +1331,11 @@ html.look-new:has(body.embedded)::-webkit-scrollbar-corner {
   color: #ff8d97;
 }
 
+/* The sign-in window opened: said in the row's own grey, not as an error. */
+.agent-card-error.ok:not(:empty) {
+  color: inherit;
+}
+
 .agent-details {
   border-top: 1px solid var(--hairline);
   padding-top: 10px;

@@ -36,7 +36,11 @@ export const FIX_TEXT = {
   hooksBody: N_("To ask you here, Lumo needs to connect to Antigravity CLI: it shows you the change before writing it, and from then on each command comes to the island as Allow / Deny."),
   hooksButton: N_("Connect in Settings…"),
   signInFailed: N_("It couldn't open: {error}"),
+  signInOpened: N_("A window opened: sign in there, then press Retry."),
 };
+
+/** How long a sign-in button waits after a click, so a second click doesn't open a second window. */
+export const SIGN_IN_HOLD_MS = 4000;
 
 /** A failed answer's text without what puts it right, and what does (none: just the text). */
 export function splitFix(text: string): [string, ChatFix | undefined] {
@@ -66,16 +70,29 @@ export function fixCard(fix: ChatFix, detail: string, actions: FixActions): HTML
     return btn;
   };
   const retry = actions.onRetry ? button(FIX_TEXT.retry, false, actions.onRetry) : null;
-  const said = h("div", { class: "chat-fix-note" });
+  const said = h("div", { class: "chat-fix-note", role: "status" });
   said.hidden = true;
-  const signIn = (provider: string, label: string) =>
-    button(label, true, () => {
+  const signIn = (provider: string, label: string) => {
+    const btn: HTMLButtonElement = button(label, true, () => {
+      // One window at a time: the button waits a moment, and says where to look.
+      btn.disabled = true;
       said.hidden = true;
-      Bridge.cliSignIn(provider).catch((err) => {
-        said.textContent = t(FIX_TEXT.signInFailed, { error: String(err).replace(/^Error:\s*/, "") });
-        said.hidden = false;
-      });
-    });
+      said.classList.remove("ok");
+      Bridge.cliSignIn(provider).then(
+        () => {
+          said.textContent = t(FIX_TEXT.signInOpened);
+          said.classList.add("ok");
+          said.hidden = false;
+        },
+        (err) => {
+          said.textContent = t(FIX_TEXT.signInFailed, { error: String(err).replace(/^Error:\s*/, "") });
+          said.hidden = false;
+        },
+      );
+      window.setTimeout(() => (btn.disabled = false), SIGN_IN_HOLD_MS);
+    }) as HTMLButtonElement;
+    return btn;
+  };
   const row = (...items: (HTMLElement | null)[]) => h("div", { class: "chat-fix-actions" }, ...items);
   switch (fix) {
     case "claude-sign-in":

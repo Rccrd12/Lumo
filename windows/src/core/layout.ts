@@ -234,16 +234,25 @@ const CHAT_CHROME_H = 156;
 const CHAT_LINE_H = 22;
 
 /**
+ * The lines a card that puts the chat's CLI right takes (views/chat-fix.ts:
+ * its title, two lines of words, its buttons or the install command, the
+ * room around it), on top of its message's own words.
+ */
+export const FIX_CARD_LINES = 6;
+
+/**
  * Roughly how many lines the last two messages take in the chat, at about
  * 7.3 px a letter across the island less 60 px: a table row counts a little
  * more than a line, a blank line half of one, each message one and a half
- * for the room around it and its buttons.
+ * for the room around it and its buttons, and a card that puts the CLI right
+ * (sign in, install, connect agy) FIX_CARD_LINES more.
  */
-export function chatTextLines(messages: readonly { content: string }[], islandW: number): number {
+export function chatTextLines(messages: readonly { content: string; fix?: string }[], islandW: number): number {
   const perLine = Math.max(20, Math.floor((islandW - 60) / 7.3));
   let lines = 0;
   for (const m of messages.slice(-2)) {
     lines += 1.5;
+    if (m.fix) lines += FIX_CARD_LINES;
     for (const line of m.content.replace(/\r\n/g, "\n").split("\n")) {
       const text = line.trim();
       if (!text) lines += 0.5;
@@ -260,7 +269,7 @@ export function chatTextLines(messages: readonly { content: string }[], islandW:
  * than chatPromptHeight for a long answer, up to CHAT_AUTO_MAX_H, so it is
  * not read through a slit; the island's own when they are short.
  */
-export function chatAutoHeight(messages: readonly { content: string }[], islandW: number): number {
+export function chatAutoHeight(messages: readonly { content: string; fix?: string }[], islandW: number): number {
   return Math.min(CHAT_AUTO_MAX_H, Math.round(CHAT_CHROME_H + chatTextLines(messages, islandW) * CHAT_LINE_H));
 }
 

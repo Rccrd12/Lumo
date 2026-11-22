@@ -58,6 +58,11 @@
   background: #ffffff;
 }
 
+.chat-fix-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .chat-fix-hint {
   font: 400 10.5px var(--font);
   color: var(--dim-3);
@@ -103,6 +108,10 @@
 .chat-fix-note {
   font: 400 11px/1.45 var(--font);
   color: var(--red-text);
+}
+
+.chat-fix-note.ok {
+  color: var(--dim);
 }
 
 .chat-fix-note[hidden] {
