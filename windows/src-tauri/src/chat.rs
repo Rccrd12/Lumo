@@ -601,7 +601,8 @@ impl Chat {
                 continue;
             }
             let mut turn = turn.clone();
-            for (_, own) in session.own.iter().filter(|(a, _)| *a == at) {
+            // Each joined the end: taken off from the last one back.
+            for (_, own) in session.own.iter().rev().filter(|(a, _)| *a == at) {
                 let text = turn["content"].as_str().map(|t| without_own(t, own));
                 if let Some(text) = text {
                     turn["content"] = Value::String(text);
@@ -1760,6 +1761,22 @@ mod tests {
         let saved = chat.cli_state();
         let turns = vec![("user".into(), "measure it".into()), ("assistant".into(), "started".into()), ("user".into(), "two".into()), ("assistant".into(), "2\n\nDone: 42 ms.".into())];
         chat.restore(turns, chat.cli_session(), saved, None);
+        assert_eq!(chat.cli_unseen("claude-code"), vec![q("two"), a("2")]);
+    }
+
+    #[test]
+    fn two_things_claude_code_wrote_by_itself_after_another_answer_are_both_left_out() {
+        let chat = Chat::default();
+        let q = |text: &str| json!({ "role": "user", "content": text });
+        let a = |text: &str| json!({ "role": "assistant", "content": text });
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "s");
+        chat.commit(&t, q("measure both"), a("started"), "measure both", "started");
+        let t = chat.begin("openai");
+        chat.commit(&t, q("two"), a("2"), "two", "2");
+        chat.add_own("claude-code", Some("s"), "First: 42 ms.");
+        chat.add_own("claude-code", Some("s"), "Second: 7 ms.");
+        assert_eq!(chat.begin("gemini").history[3]["content"], "2\n\nFirst: 42 ms.\n\nSecond: 7 ms.");
         assert_eq!(chat.cli_unseen("claude-code"), vec![q("two"), a("2")]);
     }
 

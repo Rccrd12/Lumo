@@ -43,6 +43,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -752,6 +753,9 @@ struct Run {
     calls: HashMap<String, Value>,
     /// The files each running call reads or changes: told once it ran.
     touching: HashMap<String, Vec<FileTouch>>,
+    /// The chat's folder, where a relative path is: an edited file not
+    /// there yet when its call names it is one created.
+    dir: Option<PathBuf>,
     /// Files used by calls that ran, not passed on yet (`take_files`).
     touched: Vec<FileTouch>,
     /// Cursor's to-dos: id, text and state.
@@ -825,6 +829,8 @@ impl Run {
                 if update["locations"].is_array() || update["rawInput"].is_object() || kind == "tool_call" {
                     let touches = touches_for(&call);
                     if !touches.is_empty() {
+                        let before = self.touching.remove(&id).unwrap_or_default();
+                        let touches = touches.into_iter().map(|t| self.as_first_named(t, &before)).collect();
                         self.touching.insert(id.clone(), touches);
                     }
                 }
@@ -926,6 +932,19 @@ impl Run {
 
     fn take_files(&mut self) -> Vec<FileTouch> {
         std::mem::take(&mut self.touched)
+    }
+
+    /// `touch` as it was when its call first named it (in `before`): only
+    /// then, before the call ran, is a file it writes not there yet.
+    fn as_first_named(&self, touch: FileTouch, before: &[FileTouch]) -> FileTouch {
+        if let Some(earlier) = before.iter().find(|b| b.path == touch.path) {
+            return earlier.clone();
+        }
+        let Some(dir) = self.dir.as_deref().filter(|_| touch.kind == "edited") else { return touch };
+        match in_dir(touch.clone(), dir) {
+            Some(whole) if !Path::new(whole.path.trim()).exists() => FileTouch { kind: "created", path: touch.path },
+            _ => touch,
+        }
     }
 }
 
@@ -1418,12 +1437,14 @@ fn live_turn(
         return Err(live.ended());
     }
 
-    let mut state = Run::default();
+    let mut state = Run { dir: Some(spec.dir.clone()), ..Run::default() };
     let mut cancelled: Option<Instant> = None;
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     let mut unsent = false;
     // Files the turn read or wrote, not told to the island yet.
     let mut noted: Vec<FileTouch> = Vec::new();
+    // Cards the user declined, counted with plan mode's refusals.
+    let declined = Arc::new(AtomicUsize::new(0));
     let ended = loop {
         if stop.is_stopped() && cancelled.is_none() {
             state.stopped = true;
@@ -1481,9 +1502,13 @@ fn live_turn(
                 } else {
                     let stdin = live.stdin.clone();
                     let remember = mode == "auto";
+                    let declined = declined.clone();
                     ask(
                         card(agent, params, &spec.dir, &state.calls, remember),
                         Box::new(move |allowed| {
+                            if !allowed {
+                                declined.fetch_add(1, Ordering::SeqCst);
+                            }
                             write_line(&stdin, &json!({ "id": rid, "result": permission_answer(&options, allowed, remember) }));
                         }),
                     );
@@ -1517,16 +1542,9 @@ fn live_turn(
                 live.offer.set_choices(&params["update"]["configOptions"]);
             }
         }
-        // Looked at as soon as they are noted, while a file the tool writes
-        // may not be there yet: one that wasn't is "created". After Stop too,
-        // told once the turn is over.
-        noted.extend(state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir)).map(|touch| {
-            if touch.kind == "edited" {
-                FileTouch::written(&touch.path).unwrap_or(touch)
-            } else {
-                touch
-            }
-        }));
+        // Created or edited as their call first named them (`Run::as_first_named`).
+        // After Stop too, told once the turn is over.
+        noted.extend(state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir)));
         if state.stopped {
             continue;
         }
@@ -1552,6 +1570,7 @@ fn live_turn(
     for touch in noted.into_iter().chain(state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir))) {
         on_file(&touch);
     }
+    state.denied += declined.load(Ordering::SeqCst);
     let session = Some(session).filter(|s| !s.is_empty());
     match ended {
         Ended::Completed => {
@@ -1878,6 +1897,24 @@ mod tests {
         feed(&mut run, json!({ "sessionUpdate": "tool_call_update", "toolCallId": "e2", "status": "failed" }));
         feed(&mut run, json!({ "sessionUpdate": "tool_call", "toolCallId": "d1", "kind": "delete", "status": "completed", "locations": [{ "path": "C:\\p\\old.rs" }] }));
         assert!(run.take_files().is_empty());
+    }
+
+    #[test]
+    fn a_file_an_edit_writes_for_the_first_time_is_told_created_after_it_ran() {
+        let dir = std::env::temp_dir().join(format!("lumo-acp-created-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("old.rs"), "fn main() {}").unwrap();
+        let mut run = Run { dir: Some(dir.clone()), ..Run::default() };
+        let new = dir.join("new.rs").to_string_lossy().to_string();
+        feed(&mut run, json!({ "sessionUpdate": "tool_call", "toolCallId": "e1", "kind": "edit", "status": "pending", "locations": [{ "path": new }] }));
+        feed(&mut run, json!({ "sessionUpdate": "tool_call", "toolCallId": "e2", "kind": "edit", "status": "pending", "locations": [{ "path": "old.rs" }] }));
+        // The CLI writes them, then says so, the locations given again.
+        std::fs::write(&new, "fn new() {}").unwrap();
+        feed(&mut run, json!({ "sessionUpdate": "tool_call_update", "toolCallId": "e1", "status": "completed", "locations": [{ "path": new }] }));
+        feed(&mut run, json!({ "sessionUpdate": "tool_call_update", "toolCallId": "e2", "status": "completed" }));
+        let files = run.take_files();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(files, vec![FileTouch { kind: "created", path: new }, FileTouch { kind: "edited", path: "old.rs".into() }]);
     }
 
     #[test]
