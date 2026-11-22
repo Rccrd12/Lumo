@@ -86,7 +86,7 @@ import { Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type
 import { activeModel, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
-import { chatModelOf, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
+import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import { cliOf, setChatCli } from "../core/chats";
 import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore, noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns, type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
@@ -635,7 +635,7 @@ export function buildPrompt(
     }
     seen(line.chatId);
     if (saved) openChat(saved);
-    else if (inFlight) openChat({ id: line.chatId, title: chatTitle(inFlight.history), updatedAt: Date.now(), provider: inFlight.provider, model: inFlight.model, session: inFlight.session, turns: [] });
+    else if (inFlight) openChat({ id: line.chatId, title: chatName(line.chatId, inFlight.history), updatedAt: Date.now(), provider: inFlight.provider, model: inFlight.model, session: inFlight.session, turns: [] });
     State.notify();
   }
 
@@ -2147,6 +2147,9 @@ export function buildPrompt(
     return loadChats().filter((c) => isWorkshopChat(c.id) === workshop);
   }
 
+  /** The chat being renamed in Past chats (its pencil), and what is typed so far. */
+  let renaming: { id: string; draft: string } | null = null;
+
   function drawHistory() {
     clear(historyList);
     const chats = slotChats();
@@ -2206,6 +2209,16 @@ export function buildPrompt(
         Sound.play("pop");
         drawHistory();
       });
+      if (c.id === renaming?.id) {
+        historyList.append(renameRow(c));
+        continue;
+      }
+      const rename = h("button", { class: "history-rename", title: tl(STRINGS.renameChat) }, svg(ICONS.pencil, 12, { stroke: 1.6 }));
+      rename.addEventListener("click", (e) => {
+        e.stopPropagation();
+        renaming = { id: c.id, draft: c.title };
+        drawHistory();
+      });
       const name = h("span", { class: "picker-model-name", text: c.title || "…" });
       // It heard something not seen yet: what, in its colour, and the waves.
       const heard = State.chatSlot === "chat" ? State.listenPending.find((p) => p.chatId === c.id) : undefined;
@@ -2217,11 +2230,104 @@ export function buildPrompt(
         under ? h("span", { class: "history-text" }, name, under) : name,
         heard ? h("span", { class: "history-heard" }, svg(ICONS.waves, 13, { stroke: 1.8 })) : null,
         h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
+        rename,
         remove,
       );
       row.addEventListener("click", () => openChat(c));
       historyList.append(row);
     }
+    if (renaming) {
+      const field = historyList.querySelector<HTMLInputElement>(".history-rename-input");
+      if (field && document.activeElement !== field) {
+        field.focus();
+        field.setSelectionRange(field.value.length, field.value.length);
+      }
+    }
+  }
+
+  /**
+   * A past chat's row while it is renamed: its name in a field. Enter (or a
+   * click away) keeps what is typed, and its AI never names it again; Esc,
+   * or a name left empty, keeps the one it had.
+   */
+  function renameRow(c: SavedChat): HTMLElement {
+    const field = h("input", {
+      type: "text",
+      class: "history-search history-rename-input",
+      maxlength: String(NAME_CHARS),
+      spellcheck: "false",
+      "aria-label": tl(STRINGS.renameChat),
+    }) as HTMLInputElement;
+    field.value = renaming?.draft ?? c.title;
+    let done = false;
+    const finish = (keep: boolean) => {
+      if (done) return;
+      done = true;
+      renaming = null;
+      const name = field.value.trim();
+      if (keep && name && name !== c.title && nameChat(c.id, name, "user")) {
+        Sound.play("pop");
+        drawIslandActivity();
+        State.notify();
+      }
+      drawHistory();
+    };
+    field.addEventListener("input", () => {
+      if (renaming?.id === c.id) renaming.draft = field.value;
+    });
+    field.addEventListener("click", (e) => e.stopPropagation());
+    field.addEventListener("keydown", (e) => {
+      const ke = e as KeyboardEvent;
+      e.stopPropagation(); // Escape here cancels the name, not the island
+      if (ke.key === "Enter" && !ke.isComposing) {
+        e.preventDefault();
+        finish(true);
+      } else if (ke.key === "Escape") {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    // A click elsewhere keeps the name; the field gone with a redraw does not.
+    field.addEventListener("blur", () => {
+      if (field.isConnected) finish(true);
+    });
+    return h("div", { class: "picker-model history-row history-renaming" },
+      field,
+      h("span", { class: "history-date", text: tl(STRINGS.renameKeys) }));
+  }
+
+  /** The chats being named by their AI now, and how often each was asked. */
+  const naming = new Set<string>();
+  const namingTries = new Map<string, number>();
+  /** A name that doesn't come after this many asks: the chat keeps its own. */
+  const NAMING_TRIES = 2;
+
+  /**
+   * Once an answer is in, the chat's own AI names the chat in a few words
+   * (Settings → Chat → Chat names, chat_title.rs), with the provider's
+   * lightest model or the chat's: unless it has a name already, from its AI
+   * or from the user. A name that doesn't come is said nowhere: the chat
+   * keeps the start of its first question.
+   */
+  function nameByAi(run: Run) {
+    const chatId = run.chatId;
+    if (State.settings.chatAiTitles === false || run.forgotten || naming.has(chatId) || chatNamedBy(chatId)) return;
+    const tries = namingTries.get(chatId) ?? 0;
+    if (tries >= NAMING_TRIES) return;
+    const exchanges = namingExchanges(run.history);
+    if (!exchanges) return;
+    naming.add(chatId);
+    namingTries.set(chatId, tries + 1);
+    void Bridge.chatTitle(run.provider, run.model, exchanges, State.settings.chatTitleModel !== "chat")
+      .then((title) => {
+        // Renamed by the user meanwhile, or deleted: that stands.
+        if (!title || run.forgotten || chatNamedBy(chatId)) return;
+        if (!nameChat(chatId, title, "ai")) return;
+        drawIslandActivity();
+        if (body.classList.contains("browsing") && renaming == null) drawHistory();
+        State.notify();
+      })
+      .finally(() => naming.delete(chatId));
   }
 
   /** The passage that matched, with the match lit (text nodes only, never markup). */
@@ -2553,7 +2659,7 @@ export function buildPrompt(
     void Bridge.chatRestore(State.chatId, turns, null);
     const parsed = latestDraft(State.chatHistory);
     if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
-    saveChat({ id: State.chatId, title: chatTitle(turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), session: null, turns });
+    saveChat({ id: State.chatId, title: chatName(State.chatId, turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), session: null, turns });
     renderedCount = -1;
     State.notify();
   }
@@ -2568,7 +2674,7 @@ export function buildPrompt(
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
-      title: chatTitle(turns),
+      title: chatName(run.chatId, turns),
       updatedAt: Date.now(),
       provider: run.provider,
       model: run.model,
@@ -2697,7 +2803,7 @@ export function buildPrompt(
 
   function noteFinishedChat(run: Run) {
     clearFinishedChat(run.chatId);
-    const title = chatTitle(run.history);
+    const title = chatName(run.chatId, run.history);
     const timer = setTimeout(() => {
       finishedChats.delete(run.chatId);
       drawIslandActivity();
@@ -2734,7 +2840,7 @@ export function buildPrompt(
         chatId: r.chatId,
         who,
         color,
-        title: chatTitle(r.history) || t("Chat"),
+        title: chatName(r.chatId, r.history) || t("Chat"),
         line: r.text === "" || r.dots ? runLabel(r) : t(COMPACT_TEXT.writing),
       };
     });
@@ -2744,7 +2850,7 @@ export function buildPrompt(
         chatId: State.chatId,
         who,
         color,
-        title: chatTitle(State.chatHistory) || t("Chat"),
+        title: chatName(State.chatId, State.chatHistory) || t("Chat"),
         line: compactingLabel,
       });
     }
@@ -3810,6 +3916,7 @@ export function buildPrompt(
         void peekExplorer(true);
       }
       remember(run);
+      if (recorded && !reply.stopped) nameByAi(run);
       askOpenRouter(true);
       // An answer from agy used some of its quota: asked again (at most once a minute).
       if (antigravityUsage()) refreshAntigravityPlanUsage();
@@ -3940,7 +4047,7 @@ export function buildPrompt(
       if (!joinOwnAnswer(history, content)) return;
       const turns = savedTurns(history);
       if (run) remember(run);
-      else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns: withAgents(agents, turns) });
+      else if (saved) saveChat({ ...saved, title: chatName(saved.id, turns), updatedAt: Date.now(), turns: withAgents(agents, turns) });
       if (onScreen) renderedCount = -1;
     } else {
       if (!saved) return;
@@ -4056,11 +4163,11 @@ export function buildPrompt(
   function chatNamed(chatId: string, chats: () => SavedChat[] = loadChats): string | null {
     // The chat on screen, even still empty (a watch started from the panel),
     // or the one the other slot put aside.
-    if (chatId === State.chatId) return chatTitle(State.chatHistory);
+    if (chatId === State.chatId) return chatName(chatId, State.chatHistory);
     const parked = State.parkedChat();
-    if (parked && chatId === parked.chatId) return chatTitle(parked.chatHistory);
+    if (parked && chatId === parked.chatId) return chatName(chatId, parked.chatHistory);
     const run = runs.get(chatId);
-    if (run) return chatTitle(run.history);
+    if (run) return chatName(chatId, run.history);
     const saved = chats().find((c) => c.id === chatId);
     return saved ? saved.title : null;
   }
@@ -4550,7 +4657,7 @@ export function buildPrompt(
           const inFlight = !saved ? runs.get(id) : undefined;
           const target = saved ?? (inFlight ? {
             id,
-            title: chatTitle(inFlight.history),
+            title: chatName(id, inFlight.history),
             updatedAt: Date.now(),
             provider: inFlight.provider,
             model: inFlight.model,

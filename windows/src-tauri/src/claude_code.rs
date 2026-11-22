@@ -2883,18 +2883,28 @@ pub(crate) fn helper_folder(folder: Option<&str>) -> Option<String> {
 /// folder of its own, none of the user's tools): the supervisor's review of a tool
 /// (tool_review.rs). The question goes on stdin, never the command line.
 pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
+    complete_in("tool-review", model, prompt, false, Arc::new(Stop::default()))
+}
+
+/// `complete`, in the folder `work` of its own under Lumo's local data; with
+/// `forget`, Claude Code keeps no session of it (a chat's name, chat_title.rs).
+/// `stop` ends it early.
+pub(crate) fn complete_in(work: &str, model: &str, prompt: &str, forget: bool, stop: Arc<Stop>) -> Result<String, String> {
     let exe = platform::claude_candidates()
         .into_iter()
         .next()
         .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
     let mut args: Vec<String> =
         ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "plan"].iter().map(|s| s.to_string()).collect();
+    if forget {
+        args.push("--no-session-persistence".into());
+    }
     if let Some(m) = safe_model(model) {
         args.push("--model".into());
         args.push(m.into());
     }
-    let dir = platform::local_dir().join("tool-review");
-    let state = run(exe, args, prompt.to_string(), dir, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_, _| {})?;
+    let dir = platform::local_dir().join(work);
+    let state = run(exe, args, prompt.to_string(), dir, "", stop, |_| {}, |_| {}, |_| {}, |_, _| {})?;
     match state.result {
         Some(Ok(text)) if !text.trim().is_empty() => Ok(text),
         Some(Ok(_)) => Ok(state.visible.trim().to_string()),

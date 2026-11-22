@@ -189,6 +189,13 @@ pub struct Settings {
     /// A local model's chat is compacted by itself before a question, once
     /// its context is over 80 % full (the ring's last numbers). On by default.
     pub chat_auto_compact: bool,
+    /// Settings → Chat → Chat names: once its first answer is in, the chat's
+    /// own provider names the chat in a few words (chat_title.rs). Off, a
+    /// chat's name is the start of its first question. On by default.
+    pub chat_ai_titles: bool,
+    /// The model that names the chats: "light", the provider's lightest
+    /// (chat_title.rs), or "chat", the chat's own.
+    pub chat_title_model: String,
     /// Whether an image line in the chat's answers (`![alt](https://…)`) is
     /// downloaded and shown at once (web_image.rs, with its checks). Off, the
     /// card shows only the site and a way to open it in the browser, and
@@ -384,6 +391,8 @@ impl Default for Settings {
             chat_browser: false,
             chat_web_search: false,
             chat_auto_compact: true,
+            chat_ai_titles: true,
+            chat_title_model: "light".into(),
             web_images: false,
             mail_images_always: false,
             ai_mail_access: "manage".into(),
@@ -793,6 +802,8 @@ mod tests {
   "chatBrowser": true,
   "chatWebSearch": true,
   "chatAutoCompact": false,
+  "chatAiTitles": false,
+  "chatTitleModel": "chat",
   "webImages": true,
   "mailImagesAlways": true,
   "aiMailAccess": "none",
@@ -1399,6 +1410,8 @@ mod tests {
                 "chatBrowser",
                 "chatWebSearch",
                 "chatAutoCompact",
+                "chatAiTitles",
+                "chatTitleModel",
                 "webImages",
                 "mailImagesAlways",
                 "aiMailAccess",

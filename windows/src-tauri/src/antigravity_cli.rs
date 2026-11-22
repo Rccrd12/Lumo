@@ -3808,11 +3808,17 @@ pub(crate) fn help(
 /// a fresh conversation in plan mode, in a folder of its own, so it reads and
 /// answers without running anything. Blocking.
 pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
+    complete_in("tool-review", model, prompt, Arc::new(Stop::default()))
+}
+
+/// `complete`, in the folder `work` of its own under Lumo's local data (a
+/// chat's name, chat_title.rs); `stop` ends it early.
+pub(crate) fn complete_in(work: &str, model: &str, prompt: &str, stop: Arc<Stop>) -> Result<String, String> {
     let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
-    let work = platform::local_dir().join("tool-review");
+    let work = platform::local_dir().join(work);
     let dir = work.to_string_lossy().to_string();
     let args = args_with_cards(model, "plan", None, &dir, &dir, &[], false);
-    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_| {}, &chat_agents::silent())?;
+    let state = run(exe, args, user_event(prompt), work, "", stop, |_| {}, |_| {}, |_| {}, |_| {}, &chat_agents::silent())?;
     match state.result {
         Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
         Some(Ok(text)) => Ok(text),
