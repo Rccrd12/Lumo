@@ -76,6 +76,14 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
   }
 }
 
+/** Claude Code or the Antigravity CLI as Settings → Agents shows it (cli_setup.rs). */
+export interface CliInfo {
+  installed: boolean;
+  path: string | null;
+  /** "2.1.3"; null when `--version` didn't say. */
+  version: string | null;
+}
+
 /** Settings → Pills → Email: the classic Outlook on this PC (outlook.rs). */
 /** One IMAP account of the Email pill as Settings lists it (mail.rs): never its password. */
 export interface MailAccount {
@@ -246,6 +254,12 @@ export const Bridge = {
 
   /** The Claude desktop app, for the Claude Desktop pill (Windows only). */
   openClaudeDesktop: () => call<boolean>("open_claude_desktop"),
+
+  /** Settings → Agents: whether Claude Code or agy is installed, where, which version. */
+  cliInfo: (provider: string) => call<CliInfo>("cli_info", { provider }),
+
+  /** Opens Claude Code or agy in a window of its own, where it asks the user to sign in. */
+  cliSignIn: (provider: string) => callOrThrow<void>("cli_sign_in", { provider }),
 
   /** The diff card's ↗: an existing file, in VS Code; never launched by its type. */
   openFileInVSCode: (path: string) => call<boolean>("open_file_in_vscode", { path }),
@@ -987,7 +1001,12 @@ export interface ChatReply {
   computer?: ComputerRecap;
   /** The answer came, but the CLI ended its turn with an error (antigravity_cli.rs): said under the answer. */
   warning?: ChatWarning;
+  /** What would have let the CLI do more (chat.rs `fix`): a card under the answer (views/chat-fix.ts). */
+  fix?: ChatFix;
 }
+
+/** What a card in the chat puts right (chat.rs FIX_*, views/chat-fix.ts). */
+export type ChatFix = "claude-sign-in" | "claude-install" | "agy-sign-in" | "agy-install" | "agy-hooks";
 
 /**
  * A problem under an answer (chat.rs ChatWarning): its kind ("malformed": the

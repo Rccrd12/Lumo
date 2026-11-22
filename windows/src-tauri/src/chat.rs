@@ -68,6 +68,11 @@ pub struct ChatReply {
     /// the answer, never in place of it (antigravity_cli.rs).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warning: Option<ChatWarning>,
+    /// Something the user can put right from the island for the next turns,
+    /// said under the answer as a card with its button (src/views/chat-fix.ts):
+    /// FIX_AGY_HOOKS, agy skipped a command it needed the user's OK for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix: Option<&'static str>,
 }
 
 /// A problem under an answer: what kind ("malformed": the model sent a tool
@@ -84,13 +89,35 @@ pub struct ChatWarning {
 /// (src/views/chat.ts `failedParts`). U+2063, never typed.
 pub const ERROR_DETAIL: char = '\u{2063}';
 
+/// After a failed answer's text, what the user can do to put it right: the
+/// island shows a card with its button in place of the error (src/views/chat-fix.ts
+/// `splitFix`) — sign in, install the CLI. U+2064, never typed; only the chat's
+/// own turns carry it.
+pub const FIX_MARK: char = '\u{2064}';
+/// Claude Code isn't signed in (or its sign-in expired): "Sign in" opens it in a window.
+pub const FIX_CLAUDE_SIGN_IN: &str = "claude-sign-in";
+/// Claude Code isn't on this computer.
+pub const FIX_CLAUDE_INSTALL: &str = "claude-install";
+/// Antigravity CLI isn't signed in to the user's Google account.
+pub const FIX_AGY_SIGN_IN: &str = "agy-sign-in";
+/// Antigravity CLI isn't on this computer.
+pub const FIX_AGY_INSTALL: &str = "agy-install";
+/// Antigravity CLI skipped a command it needed the user's OK for: without
+/// Lumo's hooks it cannot ask (ChatReply.fix, under the answer).
+pub const FIX_AGY_HOOKS: &str = "agy-hooks";
+
+/// `error` with what puts it right, for the island (FIX_MARK).
+pub fn with_fix(error: String, fix: &str) -> String {
+    format!("{error}{FIX_MARK}{fix}")
+}
+
 impl ChatReply {
     pub fn answer(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: false, turns: 0, kept: None, cli: None, computer: None, warning: None }
+        ChatReply { text, session, stopped: false, turns: 0, kept: None, cli: None, computer: None, warning: None, fix: None }
     }
 
     pub fn stopped(text: String, session: Option<String>) -> Self {
-        ChatReply { text, session, stopped: true, turns: 0, kept: None, cli: None, computer: None, warning: None }
+        ChatReply { text, session, stopped: true, turns: 0, kept: None, cli: None, computer: None, warning: None, fix: None }
     }
 
     /// The CLI answered with nothing: the island shows `why`, the

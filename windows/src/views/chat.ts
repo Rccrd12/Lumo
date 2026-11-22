@@ -117,6 +117,8 @@ import { planAskSteps } from "./plan-ask";
 import { planKey } from "../core/agent-plan";
 import { SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand } from "../core/slash";
 import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachRow, chatFileRow, fileDetail, saveSettings } from "./chat-attach";
+import { splitFix } from "./chat-fix";
+import { cliModelName } from "../core/model-names";
 import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, inWorkspace, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
@@ -217,6 +219,15 @@ export function buildPrompt(
   // Copies no past chat names any more (deleted before Lumo released them,
   // or gone past the history's end) leave the inbox once a day old.
   void Bridge.inboxTidy([...keptCopies(), ...fieldCopies()]);
+  /** Settings on its Agents page, where a chat's CLI is set up (views/chat-fix.ts). */
+  const openAgents = () => {
+    try {
+      window.localStorage.setItem("lumo.settings.page", "agents");
+    } catch {
+      // Settings open on the page they were on.
+    }
+    openSettings();
+  };
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
   // The log stays where it is read: sending a question and the answer being
@@ -1053,7 +1064,9 @@ export function buildPrompt(
     // Antigravity CLI: its model's effort, said as Claude Code's is (`gemini-4-argon · High`).
     const variant = p.id === AGY ? picker.variantOf(model) : null;
     const effort = variant ? variant.level : effortFor(p.id, State.settings.chatEffort);
-    const name = variant ? variant.base : model;
+    // Claude Code's and agy's models by their names ("Opus 5.5"), not their ids.
+    const id = variant ? variant.base : model;
+    const name = activeModel(State.settings) ? cliModelName(p.id, id, picker.labelOf(p.id, id)) : id;
     modelName.textContent = effort ? `${name} · ${effortLabel(effort)}` : name;
     // A long name is cut; the whole of it shows on hover.
     modelName.title = modelName.textContent;
@@ -3997,6 +4010,7 @@ export function buildPrompt(
           stopped: reply.stopped || undefined,
           kept: reply.kept,
           warning: reply.warning,
+          fix: reply.fix,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
@@ -4036,11 +4050,12 @@ export function buildPrompt(
       }
       outcome = "error";
       noticeAway(COMPACT_TEXT.failed, runSpeaker(run));
-      const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who });
+      // What puts it right, when Lumo can (signed out, not installed): a card in its place (views/chat-fix.ts).
+      const [problem, fix] = splitFix(String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who }));
       const [plainProblem] = failedParts(problem);
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
-      run.history.push({ id: newMessageId(), role: "assistant", content: problem, failed: true, at: Date.now() });
+      run.history.push({ id: newMessageId(), role: "assistant", content: problem, failed: true, fix, at: Date.now() });
       if (!away && !(State.mode === "expanded" && State.view === "prompt")) {
         State.noteMessage = plainProblem;
         State.view = "note";
@@ -4950,12 +4965,14 @@ export function buildPrompt(
           for (const line of heardLines.before[i]) log.append(heardRow(line));
           // A message's scope is its place among those kept with the chat, as the checklists count them.
           const scope = messageScope(State.chatId, m.failed ? -1 : place++);
-          const retries = asked != null && (i === lastAsked || (i === lastAsked + 1 && !m.failed));
+          // A failed answer with a card to put it right has its own Retry (views/chat-fix.ts).
+          const retries = asked != null && (i === lastAsked || (i === lastAsked + 1 && (!m.failed || !!m.fix)));
           const last = i === history.length - 1 && m.role === "assistant" && !run;
           const shown = editing == null && (unanswered ? i === lastAsked : last);
           lastBubble = bubble(m, {
             onEdit: startEdit, onRetry: retries && asked ? () => retry(asked) : undefined, shown,
             editing: i === at, dropped: at >= 0 && i > at, workshop, scope, onOpenSent: (msg, item) => void openSent(msg, item),
+            onOpenAgents: openAgents,
           });
           // The messages the CLI sent its agents meanwhile, before its answer.
           if (m.role === "assistant" && !m.failed) log.append(...talkBoxesFor(State.chatId, answer));

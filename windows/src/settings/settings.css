@@ -1292,3 +1292,61 @@ html.look-new:has(body.embedded)::-webkit-scrollbar-corner {
   border-top: 0;
   padding-top: 2px;
 }
+
+/* ── Settings → Agents: Claude Code's and Antigravity's cards ──────────────
+   (sections/agent-cards.ts) What works said in words beside the name, a
+   check on each row that does, the technical details folded at the end. */
+
+.agent-card-head .agent-card-state {
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+}
+
+.agent-card-check {
+  display: inline-flex;
+  color: #22c55e;
+}
+
+.agent-card-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.agent-card-command code {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.agent-card-error:not(:empty) {
+  display: block;
+  margin-top: 4px;
+  color: #ff8d97;
+}
+
+.agent-details {
+  border-top: 1px solid var(--hairline);
+  padding-top: 10px;
+}
+
+.agent-details > summary {
+  font: 400 12px var(--font);
+  color: var(--dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.agent-details > summary:hover {
+  color: var(--ink);
+}
+
+.agent-details[open] > summary {
+  margin-bottom: 12px;
+}

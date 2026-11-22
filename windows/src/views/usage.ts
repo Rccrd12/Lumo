@@ -113,7 +113,7 @@ export function keepPlanUsage(rateLimits: unknown) {
   setClaudePlanUsage(merged);
 }
 
-// ── From Anthropic (Settings → Agents → Plan usage → Ask Anthropic) ─────────
+// ── From Anthropic (Settings → Agents → Claude Code → Ask Anthropic) ────────
 
 /** How often the numbers are asked again while the island is open: Settings → General → Energy sets it. */
 const onlineEvery = () => byEffort(State.effort, 60_000, 3 * 60_000, 6 * 60_000);

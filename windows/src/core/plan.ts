@@ -311,7 +311,7 @@ export const PLAN_AGENT: Record<"codex" | "antigravity", string> = { codex: "age
 /**
  * Whether Codex's or agy's pill belongs in the header: its switch was turned
  * on, or the agent was added (its hooks are in) and the pill was not turned
- * off in Settings → Agents → Plan usage.
+ * off in Settings → Agents (Antigravity's card; Codex's under Plan usage).
  */
 export function agentPlanOn(
   kind: "codex" | "antigravity",
