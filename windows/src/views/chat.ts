@@ -181,6 +181,14 @@ const PLACE_SETTLE_MS = 160;
 /** And no later than this, however long the island takes to open. */
 const PLACE_MAX_MS = 2000;
 
+/** Where the chat was read, kept while its log is out of sight: whether it was at its end, or the place. */
+interface KeptPlace {
+  chatId: string;
+  slot: typeof State.chatSlot;
+  stuck: boolean;
+  place: ReadPlace | null;
+}
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
 /** `openSettings`: the island's Settings view (the window where there is no island, as in tests). */
@@ -257,9 +265,15 @@ export function buildPrompt(
   }
   log.addEventListener("scroll", () => {
     if (log.clientHeight === 0) return; // hidden behind a panel
-    // The island closing or opening moves the log, not the user: where it is
-    // read and whether it follows its end stay as they were.
-    if (readAt) return;
+    // The island closing or opening, or a panel leaving the log, moves the
+    // log, not the user: where it is read and whether it follows its end stay
+    // as they were, and the place goes back at once.
+    if (readAt) {
+      if (!wasOnScreen) return;
+      if (readAt.place && !readAt.stuck) putPlace(log, readAt.place);
+      else if (stuck) follow();
+      return;
+    }
     stuck = fromEnd() <= STUCK_PX;
     drawToEnd();
   }, { passive: true });
@@ -308,7 +322,7 @@ export function buildPrompt(
   // spring going past its size near the end clamped the log, which then held
   // to its end), and once more when the width is let go, in case the island
   // came back at another width.
-  let readAt: { chatId: string; slot: typeof State.chatSlot; stuck: boolean; place: ReadPlace | null } | null = null;
+  let readAt: KeptPlace | null = null;
   /** The width the log keeps while the island closes, is closed and opens; 0 when it follows the island. */
   let heldWidth = 0;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -359,7 +373,8 @@ export function buildPrompt(
     settleTimer = undefined;
     settleWatch?.disconnect();
     // Closed again while it was still opening: the place kept, and the width, stand.
-    if (!readAt) readAt = { chatId: State.chatId, slot: State.chatSlot, stuck, place: stuck ? null : readPlace(log) };
+    // Closed behind a panel: the place it had when the panel opened.
+    if (!readAt) readAt = coveredAt ? { ...coveredAt } : { chatId: State.chatId, slot: State.chatSlot, stuck, place: stuck ? null : readPlace(log) };
     holdWidth();
   }
   function putBackPlace() {
@@ -383,6 +398,35 @@ export function buildPrompt(
     if (onScreen) putBackPlace();
     else keepPlace();
   });
+  // A panel (the usage menu, the models, past chats, the files, Listening,
+  // the screen, the permissions) takes the log's place: hidden, it is laid
+  // out again when the panel goes, and the browser may then put it elsewhere
+  // (a card it had not drawn yet takes its real height above the place read,
+  // and the scroll that follows let go of the end). So the place read, or
+  // being at the end, is kept as the panel opens and put back as it closes,
+  // as for the island opening.
+  let coveredAt: KeptPlace | null = null;
+  const COVERING = ["picking", "browsing", "filing", "screening", "authorizing", "metering", "hearing"];
+  const covered = () => COVERING.some((c) => body.classList.contains(c));
+  /** Before a panel hides the log: where it is read. */
+  function coverLog() {
+    if (coveredAt || log.clientHeight <= 0) return;
+    // Still being put back after the island opened: that place is the one read.
+    coveredAt = readAt ? { ...readAt } : { chatId: State.chatId, slot: State.chatSlot, stuck, place: stuck ? null : readPlace(log) };
+  }
+  /** The panels all gone: the place back, frame by frame until the log holds its size. */
+  function uncoverLog() {
+    const at = coveredAt;
+    if (!at || covered()) return;
+    coveredAt = null;
+    // The island closed meanwhile: put back as it opens.
+    if (!wasOnScreen) {
+      if (!readAt?.place) readAt = at;
+      return;
+    }
+    readAt = at;
+    putBackPlace();
+  }
   // The user scrolling, or about to, takes over from it.
   for (const type of ["wheel", "pointerdown", "keydown", "touchstart"]) {
     log.addEventListener(type, () => {
@@ -684,6 +728,7 @@ export function buildPrompt(
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
+    if (picker.isOpen) coverLog();
     body.classList.toggle("picking", picker.isOpen);
     if (picker.isOpen) {
       closeFiles();
@@ -700,6 +745,7 @@ export function buildPrompt(
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
+    uncoverLog();
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
     // The usage menu holds the context and the limits: as much room as Listening.
@@ -992,6 +1038,7 @@ export function buildPrompt(
     closePermissions();
     closeListening();
     drawUsageMenu();
+    coverLog();
     body.classList.add("metering");
     usageEl.classList.add("open");
     panelChanged();
@@ -1528,6 +1575,7 @@ export function buildPrompt(
     closeListening();
     permView = "modes";
     drawPermissions();
+    coverLog();
     body.classList.add("authorizing");
     permBtn.classList.add("open");
     panelChanged();
@@ -1548,6 +1596,7 @@ export function buildPrompt(
     closePermissions();
     closeUsage();
     closeListening();
+    coverLog();
     body.classList.add("filing");
     filesBtn.classList.add("open");
     panelChanged();
@@ -1685,6 +1734,7 @@ export function buildPrompt(
     closeScreen();
     closePermissions();
     closeUsage();
+    coverLog();
     body.classList.add("hearing");
     listenBtn.classList.add("open");
     listening.opened();
@@ -1880,6 +1930,7 @@ export function buildPrompt(
     closePermissions();
     closeUsage();
     closeListening();
+    coverLog();
     body.classList.add("screening");
     screenBtn.classList.add("open");
     panelChanged();
@@ -2099,6 +2150,7 @@ export function buildPrompt(
     closeListening();
     if (body.classList.contains("screening")) closeScreen();
     screenTicket++;
+    coverLog();
     body.classList.add("screening");
     panelChanged();
     screenTitle.textContent = t(PREVIEW_STRINGS.title);
@@ -2798,6 +2850,7 @@ export function buildPrompt(
     closeListening();
     historySearch.value = "";
     drawHistory();
+    coverLog();
     body.classList.add("browsing");
     historyBtn.classList.add("open");
     panelChanged();
