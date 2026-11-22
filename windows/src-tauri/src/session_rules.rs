@@ -89,9 +89,19 @@ pub fn rule(payload: &Value) -> Option<String> {
     } else if let Some(path) = field(FILE_FIELDS) {
         format!("file\n{path}")
     } else if let Some(url) = field(&["url"]) {
-        // GET allowed is not DELETE allowed.
+        // GET allowed is not DELETE allowed, and a body or headers sent along
+        // make another request: only what merely describes it (the question
+        // asked of the page) may differ.
         let method = field(&["method"]).map(|m| m.trim().to_ascii_uppercase()).unwrap_or_else(|| "GET".into());
-        format!("url\n{method} {url}")
+        let rest: serde_json::Map<String, Value> = input
+            .as_object()
+            .map(|o| o.iter().filter(|(k, _)| !URL_SAME.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+        if rest.is_empty() {
+            format!("url\n{method} {url}")
+        } else {
+            format!("url\n{method} {url}\nwith\n{}", Value::Object(rest))
+        }
     } else {
         format!("input\n{input}")
     };
@@ -118,6 +128,10 @@ const BUILT_IN: &[&str] = &[
 /// Gemini CLI's, Antigravity's (`TargetFile`, its CLI's `Path`, its
 /// `view_file`'s `AbsolutePath`), OpenCode's (`filePath`).
 const FILE_FIELDS: &[&str] = &["file_path", "notebook_path", "path", "TargetFile", "Path", "AbsolutePath", "filePath"];
+
+/// A page request's fields that don't change what it sends: the address and
+/// method (in the rule on their own), the question asked of the page.
+const URL_SAME: &[&str] = &["url", "method", "prompt", "description", "timeout"];
 
 /// A command's fields that don't change what it does: the command itself and
 /// its folder (in the rule on their own), what describes it, how long to wait.
@@ -263,6 +277,12 @@ mod tests {
         // The same address with another method is another request.
         assert_eq!(r("WebFetch", json!({ "url": "https://a.dev", "prompt": "x" })), r("WebFetch", json!({ "url": "https://a.dev", "method": "get" })));
         assert_ne!(r("http", json!({ "url": "https://a.dev/1", "method": "GET" })), r("http", json!({ "url": "https://a.dev/1", "method": "DELETE" })));
+        // The same address with another body or other headers is another request too.
+        let post = |body: &str| r("http", json!({ "url": "https://a.dev/items", "method": "POST", "body": body }));
+        assert_ne!(post("{\"name\":\"a\"}"), post("{\"delete_all\":true}"));
+        assert_eq!(post("1"), post("1"));
+        assert_ne!(r("fetch", json!({ "url": "https://a.dev" })), r("fetch", json!({ "url": "https://a.dev", "headers": { "Authorization": "x" } })));
+        assert_eq!(r("WebFetch", json!({ "url": "https://a.dev", "prompt": "x" })), r("WebFetch", json!({ "url": "https://a.dev", "prompt": "y" })));
         // An MCP server's http tool: only the very same call.
         let get = r("mcp__x__http", json!({ "url": "https://a.dev/1", "method": "GET" }));
         assert_ne!(get, r("mcp__x__http", json!({ "url": "https://a.dev/1", "method": "DELETE" })));
