@@ -163,3 +163,15 @@ test("Unsloth Studio Lumo can't start keeps the error as before", async () => {
   await flush();
   assert.equal(block.querySelector(".notice.err").textContent, "Cannot reach http://127.0.0.1:8888. Is the server running?");
 });
+
+test("a Free memory that fails says why, after the list is asked again", async () => {
+  answers.local_loaded = [{ name: "qwen3:8b", size: 5 * 1024 ** 3, vram: 0 }];
+  answers.local_unload = () => Promise.reject("The server did not answer.");
+  const block = localModelsBlock("ollama");
+  await flush();
+  block.find("BUTTON")[0].fire("click");
+  for (let i = 0; i < 4; i++) await flush();
+  const notices = block.find("DIV").filter((d) => d.classList.contains("err"));
+  assert.deepEqual(notices.map((d) => d.textContent), ["The server did not answer."]);
+  delete answers.local_unload;
+});

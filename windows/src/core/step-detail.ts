@@ -94,7 +94,9 @@ export function openedRow(row: string, detail: StepDetail | null): { text: strin
   if (detail.text && !detail.code && detail.text.startsWith(row) && !detail.text.includes("\n")) {
     return { text: detail.text, detail: null };
   }
-  const tail = row.slice(row.lastIndexOf(" · ") + 3);
+  // The command after its verb ("Runs · ls -la"), or the whole row when it has no verb.
+  const sep = row.lastIndexOf(" · ");
+  const tail = sep < 0 ? row : row.slice(sep + 3);
   const cut = !!detail.code && tail.length > 0 && tail !== detail.code && detail.code.startsWith(tail);
   return { text: cut ? `${row}…` : row, detail };
 }

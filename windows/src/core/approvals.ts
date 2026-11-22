@@ -51,10 +51,16 @@ const GIT_QUIET_OPTIONS = new Set(["--no-pager", "-P", "--no-optional-locks", "-
 /** `git branch` arguments that only list. */
 const BRANCH_LISTING = new Set(["-a", "-r", "-v", "-vv", "--all", "--remotes", "--list", "--show-current"]);
 
+/** Where the system's own programs are: a command named by its path counts only from there. */
+const SYSTEM_DIR = /^(?:[a-z]:[\\/]windows[\\/](?:system32[\\/])?|\/(?:usr\/)?bin\/)[^\\/]+$/i;
+
 /** One command of a pipeline or a list: true when it only looks. */
 function looks(segment: string): boolean {
   const words = segment.trim().split(/\s+/).filter(Boolean);
   if (!words.length) return false;
+  // A program named by its path is whatever is there ("./evil/ls", "D:\Downloads\cat.exe"):
+  // only the system's own folders are known to hold the real one.
+  if (/[\\/]/.test(words[0]) && !SYSTEM_DIR.test(words[0])) return false;
   // "C:\Windows\System32\where.exe" or "/usr/bin/ls" → "where", "ls".
   const name = words[0].split(/[\\/]/).pop()!.toLowerCase().replace(/\.exe$/, "");
   if (name === "git") {

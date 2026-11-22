@@ -384,3 +384,9 @@ test("in an answer, an unfenced lumo-cards line with a list under it is the card
   assert.equal(plain.querySelector(".rc-cards"), null);
   assert.match(plain.textContent, /just one thing/);
 });
+
+test("an icon's colour may come before its character", () => {
+  assert.deepEqual(parseIcon("red A"), parseIcon("A red"));
+  assert.equal(parseIcon("red A").text, "A");
+  assert.equal(parseIcon("red"), null, "a colour alone is no icon");
+});

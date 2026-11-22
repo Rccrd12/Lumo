@@ -55,14 +55,7 @@ const ASKS_WINDOWS = new Set(["hooks_apply", "agent_hooks_apply", "status_line_a
 export function lendTauri() {
   const lent: typeof invoke = async (cmd, args, options) => {
     if (!ASKS_WINDOWS.has(cmd)) return invoke(cmd, args, options);
-    dialogs++;
-    dialogsChanged?.();
-    try {
-      return await invoke(cmd, args, options);
-    } finally {
-      dialogs--;
-      dialogsChanged?.();
-    }
+    return withDialog(() => invoke(cmd, args, options));
   };
   (window as unknown as { __LUMO_HOST__?: TauriHost }).__LUMO_HOST__ = { invoke: lent, listen };
 }
@@ -81,6 +74,14 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
     console.error(`[lumo] ${cmd} failed`, err);
     return null;
   }
+}
+
+/** Claude Code or the Antigravity CLI as Settings → Agents shows it (cli_setup.rs). */
+export interface CliInfo {
+  installed: boolean;
+  path: string | null;
+  /** "2.1.3"; null when `--version` didn't say. */
+  version: string | null;
 }
 
 /** Settings → Pills → Email: the classic Outlook on this PC (outlook.rs). */
@@ -157,6 +158,22 @@ export const isDialogOpen = () => dialogs > 0;
 let dialogsChanged: (() => void) | null = null;
 export function onDialogsChanged(fn: () => void) {
   dialogsChanged = fn;
+}
+
+/**
+ * Runs `ask`, which puts up one of those dialogs, and says so as it opens and
+ * as it closes: the island's leave countdown holds meanwhile and starts again
+ * once the dialog is gone, wherever the mouse went.
+ */
+async function withDialog<T>(ask: () => Promise<T>): Promise<T> {
+  dialogs++;
+  dialogsChanged?.();
+  try {
+    return await ask();
+  } finally {
+    dialogs--;
+    dialogsChanged?.();
+  }
 }
 
 /** What hold_clicks was last asked (null: not since the island took the keyboard). */
@@ -238,6 +255,12 @@ export const Bridge = {
   /** The Claude desktop app, for the Claude Desktop pill (Windows only). */
   openClaudeDesktop: () => call<boolean>("open_claude_desktop"),
 
+  /** Settings → Agents: whether Claude Code or agy is installed, where, which version. */
+  cliInfo: (provider: string) => call<CliInfo>("cli_info", { provider }),
+
+  /** Opens Claude Code or agy in a window of its own, where it asks the user to sign in. */
+  cliSignIn: (provider: string) => callOrThrow<void>("cli_sign_in", { provider }),
+
   /** The diff card's ↗: an existing file, in VS Code; never launched by its type. */
   openFileInVSCode: (path: string) => call<boolean>("open_file_in_vscode", { path }),
 
@@ -309,13 +332,7 @@ export const Bridge = {
     call<void>("approval_mail_send", { requestId, revised }),
   /** Attach on an email's card: the system's picker; each file picked, by name, size and path (mail.rs). */
   pickAttachments: async (): Promise<{ name: string; size: number; path: string }[]> => {
-    let picked: unknown;
-    dialogs++;
-    try {
-      picked = await call<unknown>("pick_attachments");
-    } finally {
-      dialogs--;
-    }
+    const picked = await withDialog(() => call<unknown>("pick_attachments"));
     if (!Array.isArray(picked)) return [];
     return picked
       .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
@@ -459,23 +476,9 @@ export const Bridge = {
     call<string | null>("chat_title", { provider, model, exchanges, light }),
   chatCompact: (chatId: string) => callOrThrow<(ChatCompact & { before: number; after: number }) | null>("chat_compact", { chatId }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
-  pickFile: async () => {
-    dialogs++;
-    try {
-      return await callOrThrow<DroppedFile | null>("pick_file");
-    } finally {
-      dialogs--;
-    }
-  },
+  pickFile: () => withDialog(() => callOrThrow<DroppedFile | null>("pick_file")),
   /** The system's folder picker, for the Listening panel: the path, or null. */
-  pickFolder: async () => {
-    dialogs++;
-    try {
-      return await call<string | null>("pick_folder");
-    } finally {
-      dialogs--;
-    }
-  },
+  pickFolder: () => withDialog(() => call<string | null>("pick_folder")),
   // The chat's screen button (screen.rs). Each runs on the user's click only.
   /** The displays, for the menu. Captures nothing. */
   screenDisplays: () => callOrThrow<ScreenDisplay[]>("screen_displays"),
@@ -1011,7 +1014,12 @@ export interface ChatReply {
   computer?: ComputerRecap;
   /** The answer came, but the CLI ended its turn with an error (antigravity_cli.rs): said under the answer. */
   warning?: ChatWarning;
+  /** What would have let the CLI do more (chat.rs `fix`): a card under the answer (views/chat-fix.ts). */
+  fix?: ChatFix;
 }
+
+/** What a card in the chat puts right (chat.rs FIX_*, views/chat-fix.ts). */
+export type ChatFix = "claude-sign-in" | "claude-install" | "agy-sign-in" | "agy-install" | "agy-hooks";
 
 /**
  * A problem under an answer (chat.rs ChatWarning): its kind ("malformed": the

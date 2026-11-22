@@ -274,6 +274,10 @@ test("a line on the rest of GitHub is read like one on this PC, its text in quot
     { source: "github.stars", target: "Rccrd12/Lumo", text: "", amount: 500, until: "stars", mode: "once", task: "", repo: "", number: 0 },
   ]);
   assert.deepEqual(takeListens("[[listen github.branch o/r@main deployed]]").unread, ["[[listen github.branch o/r@main deployed]]"]);
+  // A milestone past 9,999 stars is the number, not the task.
+  const big = takeListens("[[listen github.stars o/r stars 25000]]").listens[0];
+  assert.equal(big.amount, 25000);
+  assert.equal(big.task, "");
   assert.deepEqual(takeListens("[[unlisten github.branch o/r@main]]").stops, [{ source: "github.branch", repo: "", number: 0, target: "o/r@main" }]);
 });
 

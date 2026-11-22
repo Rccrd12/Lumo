@@ -185,6 +185,9 @@ pub async fn run(app: AppHandle) {
     tokio::time::sleep(Duration::from_secs(4)).await;
     let mut seen: Option<f64> = None;
     let mut cache: HashMap<String, (Message, f64)> = HashMap::new();
+    // What the cache was made with: an email kept is not looked at again, so
+    // once promotions are hidden, the ones it holds would stay.
+    let mut cached_hiding = false;
     let mut failures = 0u32;
     let mut was_on = false;
     let mut starter = Starter::new(launched);
@@ -239,6 +242,9 @@ pub async fn run(app: AppHandle) {
             }
         }
         let hide = crate::mail::hides_promotions(&app);
+        if hide != std::mem::replace(&mut cached_hiding, hide) {
+            cache.clear();
+        }
         let known: HashMap<String, (Message, f64)> = cache.clone();
         let looked = with_outlook(STEP, move |s| s.look(hide, known)).await;
         match looked {
@@ -438,6 +444,7 @@ pub async fn search(query: String, count: usize, folder: Option<String>) -> Resu
 }
 
 /// A file attached to an email: its name, type and size.
+#[derive(Clone)]
 pub struct File {
     pub name: String,
     pub mime: &'static str,
@@ -498,13 +505,16 @@ pub async fn save_attachment(id: String, which: Option<serde_json::Value>) -> Re
     let (name, bytes) = with_outlook(SLOW_STEP, move |s| {
         let app = s.running()?;
         let item = item_of(&app, &id)?;
-        let files = files_of(&item)?;
+        // mail_read numbers the files Outlook could give; one it couldn't
+        // leaves a gap, so each keeps its own place in Outlook's list.
+        let placed = placed_files(&item)?;
+        let files: Vec<File> = placed.iter().map(|(_, f)| f.clone()).collect();
         let n = pick(&files, which.as_ref())?;
-        let file = &files[n];
+        let (place, file) = &placed[n];
         if file.size > crate::mail::MAX_ATTACHMENT_BYTES {
             return Err(format!("{} is too big for Lumo to fetch.", file.name));
         }
-        let attachment = item.obj("Attachments")?.call("Item", vec![(n as i32 + 1).into()])?.dispatch()?;
+        let attachment = item.obj("Attachments")?.call("Item", vec![(*place).into()])?.dispatch()?;
         let temp = std::env::temp_dir().join(format!("lumo-outlook-{}-{}", std::process::id(), next_token()));
         attachment.call("SaveAsFile", vec![temp.to_string_lossy().as_ref().into()])?;
         let bytes = std::fs::read(&temp).map_err(|e| format!("Lumo couldn't read {}: {e}", file.name));
@@ -711,16 +721,25 @@ pub async fn revise(made: &mut Made, change: Revision) -> Result<(), String> {
         for path in &change.add {
             item.obj("Attachments")?.call("Add", vec![path.as_str().into()])?;
         }
-        let (to, cc) = people(item)?;
         let listed = files_of(item)?;
+        let total: usize = listed.iter().map(|f| f.size).sum();
+        if total as u64 > crate::smtp::MAX_ATTACHED_BYTES {
+            // The files just added come off again (they are the last ones):
+            // a Send after this error must not take what the card doesn't show.
+            let attachments = item.obj("Attachments")?;
+            for _ in &change.add {
+                let count = attachments.int("Count")?;
+                if count > 0 {
+                    attachments.call("Remove", vec![count.into()])?;
+                }
+            }
+            return Err(crate::mail::too_heavy());
+        }
+        let (to, cc) = people(item)?;
         let body: String = item.text("Body").chars().take(crate::smtp::MAX_BODY).collect();
         Ok((to, cc, item.text("Subject"), body, listed))
     })
     .await?;
-    let total: usize = files.iter().map(|f| f.size).sum();
-    if total as u64 > crate::smtp::MAX_ATTACHED_BYTES {
-        return Err(crate::mail::too_heavy());
-    }
     made.to = to;
     made.cc = cc;
     made.subject = subject;
@@ -1142,7 +1161,10 @@ impl Session {
                 }
                 kept += 1;
                 let id = book().lock().unwrap().id_for(&entry, &store);
-                let at = item.date("ReceivedTime").unwrap_or(0.0);
+                // A draft or a post moved here has no ReceivedTime (Outlook's
+                // "none", year 4501): taken as the newest, it would hide every
+                // email that comes after it.
+                let at = item.date("ReceivedTime").filter(|d| *d < NO_DATE).or_else(|| item.date("LastModificationTime")).unwrap_or(0.0);
                 let message = match cached {
                     // The id it had may be gone since (the Book starts again
                     // past MOST_IDS): it goes under the one it has now.
@@ -1406,6 +1428,7 @@ impl Role {
             "trash" | "deleted" => Some(Role::Trash),
             "spam" | "junk" => Some(Role::Junk),
             "archive" => Some(Role::Archive),
+            "outbox" => Some(Role::Outbox),
             _ => None,
         }
     }
@@ -1673,8 +1696,13 @@ fn people(item: &Disp) -> Result<(Vec<String>, Vec<String>), String> {
 }
 
 fn files_of(item: &Disp) -> Result<Vec<File>, String> {
+    Ok(placed_files(item)?.into_iter().map(|(_, f)| f).collect())
+}
+
+/// `files_of`, each with its place in Outlook's list (from 1).
+fn placed_files(item: &Disp) -> Result<Vec<(i32, File)>, String> {
     let list = item.obj("Attachments")?;
-    Ok((1..=list.int("Count")?).filter_map(|i| file_at(&list, i)).collect())
+    Ok((1..=list.int("Count")?).filter_map(|i| file_at(&list, i).map(|f| (i, f))).collect())
 }
 
 /// The attachment at `place` (from 1) of an email's Attachments, as the card

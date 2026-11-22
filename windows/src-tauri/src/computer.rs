@@ -1738,30 +1738,18 @@ pub fn parse_keys(text: &str) -> Result<Vec<Key>, String> {
     if text.is_empty() {
         return Err("Say which key to press.".into());
     }
-    // "ctrl++": a plus after a plus is the key itself.
-    let mut names: Vec<String> = Vec::new();
-    let mut rest = text;
-    while !rest.is_empty() {
-        match rest.find('+') {
-            Some(0) => {
-                names.push("+".into());
-                rest = &rest[1..];
-                rest = rest.strip_prefix('+').map(|r| if r.is_empty() { r } else { rest }).unwrap_or(rest);
-            }
-            Some(i) => {
-                names.push(rest[..i].trim().to_string());
-                rest = &rest[i + 1..];
-            }
-            None => {
-                names.push(rest.trim().to_string());
-                rest = "";
-            }
+    // A plus that joins no two keys is the key itself: "ctrl++", "ctrl + +",
+    // "ctrl+", "+" (the empty names it leaves, side by side, are one key).
+    let mut names: Vec<&str> = Vec::new();
+    for name in text.split('+').map(str::trim) {
+        let name = if name.is_empty() { "+" } else { name };
+        if !(name == "+" && names.last() == Some(&"+")) {
+            names.push(name);
         }
     }
     names
         .iter()
-        .filter(|n| !n.is_empty())
-        .map(|n| if n == "+" { Some(Key::Char('+')) } else { key_of(n) }.ok_or_else(|| format!("Unknown key: {n}.")))
+        .map(|n| if *n == "+" { Some(Key::Char('+')) } else { key_of(n) }.ok_or_else(|| format!("Unknown key: {n}.")))
         .collect()
 }
 
@@ -2482,6 +2470,10 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             while std::time::Instant::now() < until && !interrupted() {
                 std::thread::sleep(Duration::from_millis(100));
             }
+            // Cut by Stop or a pause: said as such (run's Err arms), never "done".
+            if interrupted() {
+                return Err("Stopped waiting.".into());
+            }
             Ok(json!({ "text": "Done waiting." }))
         }
         Action::Cursor => {
@@ -3192,6 +3184,10 @@ mod tests {
         assert_eq!(parse_keys("alt+F4").unwrap(), [Key::Vk(VK_MENU), Key::Vk(0x73)]);
         assert_eq!(parse_keys("super").unwrap(), [Key::Vk(VK_LWIN)]);
         assert_eq!(parse_keys("ctrl++").unwrap(), [Key::Vk(VK_CONTROL), Key::Char('+')]);
+        assert_eq!(parse_keys("ctrl + +").unwrap(), [Key::Vk(VK_CONTROL), Key::Char('+')]);
+        assert_eq!(parse_keys("ctrl+").unwrap(), [Key::Vk(VK_CONTROL), Key::Char('+')]);
+        assert_eq!(parse_keys("ctrl+shift++").unwrap(), [Key::Vk(VK_CONTROL), Key::Vk(VK_SHIFT), Key::Char('+')]);
+        assert_eq!(parse_keys("+").unwrap(), [Key::Char('+')]);
         assert_eq!(parse_keys("ctrl+plus").unwrap(), [Key::Vk(VK_CONTROL), Key::Char('+')]);
         assert_eq!(parse_keys("ctrl+/").unwrap(), [Key::Vk(VK_CONTROL), Key::Char('/')]);
         assert_eq!(parse_keys("7").unwrap(), [Key::Vk(b'7' as u16)]);

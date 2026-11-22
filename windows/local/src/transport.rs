@@ -190,9 +190,28 @@ pub fn whole_answer(bytes: &[u8]) -> Result<Answer, Failure> {
     Ok(Answer { text, calls, used: json.pointer("/usage/total_tokens").and_then(Value::as_u64), cut })
 }
 
+/// Tells each call of `calls` not told yet (from `told`) once its tool's name
+/// is whole: its arguments began, a call after it began, or the answer is
+/// `over`. A name may come in pieces ("set_", "timer"). The same tool twice
+/// in a row is told once.
+fn tell_calls(calls: &CallParts, over: bool, told: &mut usize, told_tool: &mut String, on: &mut dyn FnMut(Seen)) {
+    while let Some(call) = calls.calls.get(*told) {
+        let named = call["name"].as_str().unwrap_or("");
+        let began = !call["arguments"].as_str().unwrap_or("").is_empty() || *told + 1 < calls.calls.len();
+        if !(over || began) {
+            break;
+        }
+        *told += 1;
+        if !named.is_empty() && named != told_tool {
+            named.clone_into(told_tool);
+            on(Seen::Calling(named.to_string()));
+        }
+    }
+}
+
 /// Posts the request and reads the event stream. `on` gets the visible text at
 /// most 15 times a second and once more at the end, `Reasoning` once when the
-/// model reasons before any visible text, `Calling` as each tool call starts,
+/// model reasons before any visible text, `Calling` as each tool call starts (`tell_calls`),
 /// and `Chunk` for every piece of the stream that comes.
 pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Result<Answer, Failure> {
     let mut reply = to
@@ -216,8 +235,9 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let mut started = false;
     // Some of the answer's text showed: what comes next is the answer, not reasoning.
     let mut visible = false;
-    // The tools whose calls the model started, in order.
-    let mut calling: Vec<String> = Vec::new();
+    // The calls told so far (`Seen::Calling`), and the tool of the last one.
+    let mut told = 0;
+    let mut told_tool = String::new();
     let mut used = None;
     // The answer said it is over (`finish_reason`, `[DONE]`): what follows is
     // only waited for a moment, then the stream ends even if the connection
@@ -248,14 +268,6 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             started = true;
             on(Seen::Reasoning);
         }
-        if let Some(Event::Calls(pieces, _)) = &event {
-            for name in pieces.iter().filter_map(|p| p.pointer("/function/name").and_then(Value::as_str)).filter(|n| !n.is_empty()) {
-                if calling.last().map(String::as_str) != Some(name) {
-                    calling.push(name.to_string());
-                    on(Seen::Calling(name.to_string()));
-                }
-            }
-        }
         if matches!(event, Some(Event::Text(_) | Event::Reasoning | Event::Calls(..))) {
             flowing.store(true, Ordering::Relaxed);
         }
@@ -263,12 +275,14 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             Some(Event::Done) => done.store(true, Ordering::Relaxed),
             Some(Event::Text(delta)) => {
                 text.push_str(&delta);
-                // Reasoning written in the text (`<think>…`) is hidden: it is reasoning too.
+                // Reasoning written in the text (`<think>…`) is hidden: it is
+                // reasoning too. The start of a tag (`<`) is not known yet.
                 if !started && !visible {
-                    if progressive_filter(text).is_empty() {
+                    let seen = progressive_filter(text);
+                    if seen.is_empty() {
                         started = true;
                         on(Seen::Reasoning);
-                    } else {
+                    } else if !without_half_tag(&seen).is_empty() {
                         visible = true;
                     }
                 }
@@ -280,6 +294,7 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
                 text.push_str(&words);
                 calls.feed(&pieces);
                 call_bytes.store(calls.size(), Ordering::Relaxed);
+                tell_calls(&calls, false, &mut told, &mut told_tool, on);
             }
             Some(Event::Error(message)) => return Err(Failure::Server(message)),
         }
@@ -333,6 +348,7 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     }
     // A last line without its newline.
     take(String::from_utf8_lossy(&pending).trim_end(), &mut text, &mut on)?;
+    tell_calls(&calls, true, &mut told, &mut told_tool, &mut on);
     // Closed before the answer was over, with nothing in it: the server gave up.
     let over = finished.load(Ordering::Relaxed) || done.load(Ordering::Relaxed);
     if !over && text.trim().is_empty() && calls.calls.is_empty() {

@@ -1669,6 +1669,23 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 }
                 was_down = down;
 
+                // Whether the window takes the mouse, applied on every tick,
+                // the cursor still or not: the island folding away from under
+                // a still cursor (OK clicked on a card), or a held button let
+                // go where it was, must not leave the window catching the next
+                // click over what is under it.
+                let apply = |came_near: bool| {
+                    let dragging = down && in_panel && (!pressed_in_panel || came_near);
+                    let accept = (on_island || dragging) && !acting;
+                    if gate.ignoring.load(Ordering::Relaxed) == accept {
+                        gate.while_active(|| {
+                            gate.ignoring.store(!accept, Ordering::Relaxed);
+                            let _ = win.set_ignore_cursor_events(!accept);
+                        });
+                    }
+                };
+                apply(came_near);
+
                 if (x - last.0).abs() < 1.0 && (y - last.1).abs() < 1.0 && acting == was_acting {
                     continue;
                 }
@@ -1698,15 +1715,9 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 let moved = (x - pressed_at.0).hypot(y - pressed_at.1) > DRAG_START;
                 if down && pressed_in_panel && !came_near && moved && near {
                     came_near = platform::may_carry_file(pressed_thread);
-                }
-                let dragging = down && in_panel && (!pressed_in_panel || came_near);
-
-                let accept = (on_island || dragging) && !acting;
-                if gate.ignoring.load(Ordering::Relaxed) == accept {
-                    gate.while_active(|| {
-                        gate.ignoring.store(!accept, Ordering::Relaxed);
-                        let _ = win.set_ignore_cursor_events(!accept);
-                    });
+                    if came_near {
+                        apply(came_near);
+                    }
                 }
 
                 // Asked only near the island, where a hover could open it.

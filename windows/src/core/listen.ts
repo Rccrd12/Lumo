@@ -635,7 +635,7 @@ function readLocal(body: string): { source: LocalSource; target: string; text: s
   if (!(LOCAL_UNTILS[source] as readonly string[]).includes(until)) return null;
   if ((until === "contains" || until === "gone") && !text) return null;
   // `soon 15`: the minutes before, the percent…, for the events that take one.
-  const amount = amountOf(source, until) && /^\d{1,4}$/.test(words[1] ?? "") ? parseInt(words[1], 10) : 0;
+  const amount = amountOf(source, until) && /^\d{1,9}$/.test(words[1] ?? "") ? parseInt(words[1], 10) : 0;
   const more = words.slice(amount ? 2 : 1).join(" ");
   return { source, target: (m[2] ?? m[3]).trim(), text, amount, until, mode, task: task || more };
 }

@@ -286,9 +286,13 @@ function github(f: LumoFacts, full: boolean): Json {
       out.contributions = { pastYear: activity.total, last7Days: last7 };
     }
   }
-  if (f.listening.length) {
-    out.lumoIsWatching = f.listening.map((w) => ({
-      pr: `${w.repo}#${w.number}`, until: w.until, ...(w.task ? { then: cut(w.task, 200) } : {}),
+  // Only what Lumo listens to on GitHub: a folder or the calendar is no pull request.
+  const sourceOf = (w: ListenWatch) => w.source ?? "github.pr";
+  const onGitHub = f.listening.filter((w) => sourceOf(w).startsWith("github."));
+  if (onGitHub.length) {
+    out.lumoIsWatching = onGitHub.map((w) => ({
+      ...(sourceOf(w) === "github.pr" ? { pr: `${w.repo}#${w.number}` } : { source: w.source, target: w.target }),
+      until: w.until, ...(w.task ? { then: cut(w.task, 200) } : {}),
     }));
   }
   return out;

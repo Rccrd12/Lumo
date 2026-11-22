@@ -98,3 +98,26 @@ test("the picker of an email's Attach counts as the island's own, as the others 
   assert.deepEqual(await attach, [{ name: "a.pdf", size: 3, path: "C:\\a.pdf" }]);
   assert.equal(isDialogOpen(), false);
 });
+
+test("each picker tells the island as it opens and as it closes, so its leave countdown follows", async () => {
+  const { onDialogsChanged } = await import("../src/core/bridge.ts");
+  const told = [];
+  onDialogsChanged(() => told.push(isDialogOpen()));
+  try {
+    for (const [ask, cmd, answer] of [
+      [() => Bridge.pickFile(), "pick_file", null],
+      [() => Bridge.pickFolder(), "pick_folder", null],
+      [() => Bridge.pickAttachments(), "pick_attachments", []],
+    ]) {
+      told.length = 0;
+      const picking = ask();
+      await flush();
+      assert.deepEqual(told, [true], `${cmd} opening`);
+      picks.get(cmd)(answer);
+      await picking;
+      assert.deepEqual(told, [true, false], `${cmd} closing`);
+    }
+  } finally {
+    onDialogsChanged(() => {});
+  }
+});

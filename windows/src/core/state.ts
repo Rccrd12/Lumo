@@ -15,7 +15,7 @@ import type { AntigravityPlanUsage, CodexPlanUsage, PlanKind, PlanUsage } from "
 import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
-import type { SharedContext } from "./bridge";
+import type { ChatFix, SharedContext } from "./bridge";
 import type { EdgeLight } from "./layout";
 import type { BackgroundInfo } from "./background";
 import type { SentAgain, SentItem } from "./sent";
@@ -186,6 +186,8 @@ export interface ChatMessage {
   failed?: boolean;
   /** The answer came, but the CLI ended its turn with an error: said under it (ChatReply.warning). */
   warning?: AnswerWarning;
+  /** What puts the CLI right, as a card in its place (failed) or under it (views/chat-fix.ts): in memory only. */
+  fix?: ChatFix;
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
   /** What Rust's conversation holds for it, when not `content` (an agent that answered nothing, a question asked of an agent). */

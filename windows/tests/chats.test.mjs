@@ -235,3 +235,9 @@ test("a chat saved by a beta that folded the CLI's own answers under the agents 
   assert.deepEqual(chat.turns[1], { role: "assistant", content: "Launched.\n\nFirst result.\n\nAll done.", kept: "Launched.\n\nFirst result.\n\nAll done." });
   assert.deepEqual(chat.turns[2], { role: "user", content: "thanks" });
 });
+
+test("a long first question makes a title that never ends in half an emoji", () => {
+  const title = chatTitle([{ role: "user", content: `${"a".repeat(58)}😀 and more after it` }]);
+  assert.ok(title.endsWith("…"));
+  assert.ok(!/[\uD800-\uDBFF]…$/.test(title), JSON.stringify(title));
+});
