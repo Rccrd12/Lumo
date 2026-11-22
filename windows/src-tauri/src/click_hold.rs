@@ -25,8 +25,8 @@ use ::windows::Win32::Graphics::Gdi::ScreenToClient;
 use ::windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use ::windows::Win32::System::Threading::GetCurrentThreadId;
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, GetWindowRect, IsWindowVisible, PostThreadMessageW, SetWindowsHookExW,
-    UnhookWindowsHookEx, MSG, MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_QUIT,
+    CallNextHookEx, GetMessageW, GetWindowRect, IsWindowVisible, PeekMessageW, PostThreadMessageW, SetWindowsHookExW,
+    UnhookWindowsHookEx, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_QUIT,
 };
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
@@ -83,9 +83,13 @@ fn start(app: &AppHandle) {
             let _ = id_tx.send(0);
             return;
         };
+        // The thread's message queue, made before its id goes out, so the
+        // WM_QUIT of a stop that follows at once always has where to land
+        // (the hook's own call to user32 makes it already; this says so).
+        let mut msg = MSG::default();
+        let _ = PeekMessageW(&mut msg, None, 0, 0, PM_NOREMOVE);
         let _ = id_tx.send(GetCurrentThreadId());
         // A low-level hook runs on its thread's messages, until WM_QUIT.
-        let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
         let _ = UnhookWindowsHookEx(hhook);
     });
