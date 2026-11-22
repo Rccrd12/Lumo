@@ -687,7 +687,9 @@ fn seen_mut<'a>(s: &'a mut Store, w: &Watch) -> Option<&'a mut Seen> {
 /// was nothing yet: the next change is told against it.
 fn first_print(w: &Watch, print: String) {
     with_store(|s| {
-        if let Some(i) = current(s, w) {
+        // Written only when it changes: a look that finds what it found before
+        // leaves the file alone.
+        if let Some(i) = current(s, w).filter(|&i| s.watches[i].last_sha != print) {
             s.watches[i].last_sha = print;
             save(&s.watches);
         }
