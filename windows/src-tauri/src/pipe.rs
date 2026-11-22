@@ -75,6 +75,11 @@ tokio::task_local! {
     /// Allow / Deny, a web search, an email to send) puts that chat in
     /// "waiting for your permission" while it is up, not "no signal".
     pub static CHAT: String;
+    /// The chat's agent whose tool call is running (api_agents.rs, through
+    /// `call_for_chat`): a card of the island's chat raised during the call
+    /// names it (`agent_id`), so its row says it waits for the user and
+    /// offers See request (core/chat-agents.ts permissionMatch).
+    pub static AGENT: String;
 }
 
 /// Requests of the island chat's own Antigravity CLI run: the only ones Auto
@@ -530,6 +535,15 @@ fn pending_request(app: &AppHandle) -> (String, mpsc::Receiver<Reply>) {
     (id, rx)
 }
 
+/// A card of the island's chat raised by one of its agents (`agent`) names
+/// it, unless it names one already.
+fn name_agent(payload: &mut Value, agent: Option<&str>) {
+    let Some(agent) = agent.filter(|a| !a.is_empty()) else { return };
+    if payload.get("lumo_island") == Some(&json!(true)) && payload.get("agent_id").is_none() {
+        payload["agent_id"] = json!(agent);
+    }
+}
+
 /// Lumo's own Allow / Deny card, for a call of one of the user's tools
 /// (tools.rs): `payload` is shaped as a permission request, and the click
 /// comes back as `allow` or `deny`. None when the island couldn't show it.
@@ -548,6 +562,7 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
     log::line(format!("tool card id={id}"));
     // "" outside a chat's tool call: signal_waiting then says nothing.
     let chat = CHAT.try_with(String::clone).unwrap_or_default();
+    name_agent(&mut payload, AGENT.try_with(String::clone).ok().as_deref());
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
     let decision = with_card(
         // While Claude uses the computer, the hand gets its mouse back to
@@ -770,6 +785,25 @@ mod tests {
     use super::*;
 
     impl Relay for tokio::io::DuplexStream {}
+
+    /// A card an API or local model's agent raises names it; the chat's own,
+    /// one that names an agent already, and a terminal's do not change.
+    #[test]
+    fn a_card_raised_by_a_chats_agent_names_it() {
+        let mut card = json!({ "hook_event_name": "PermissionRequest", "lumo_island": true, "tool_name": "fetch_page" });
+        name_agent(&mut card, Some("agent-2"));
+        assert_eq!(card["agent_id"], "agent-2");
+        let mut own = json!({ "lumo_island": true });
+        name_agent(&mut own, None);
+        name_agent(&mut own, Some(""));
+        assert!(own.get("agent_id").is_none(), "the chat's own card names no agent");
+        let mut named = json!({ "lumo_island": true, "agent_id": "a1" });
+        name_agent(&mut named, Some("agent-2"));
+        assert_eq!(named["agent_id"], "a1");
+        let mut terminal = json!({ "hook_event_name": "PermissionRequest" });
+        name_agent(&mut terminal, Some("agent-2"));
+        assert!(terminal.get("agent_id").is_none());
+    }
 
     fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)

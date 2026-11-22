@@ -510,6 +510,8 @@ struct Launch<'a> {
     sandbox_high: bool,
     /// The model sees pictures, as far as its server says.
     sees: bool,
+    /// What the answer has left of api_agents.rs MAX_ANSWER_AGENTS.
+    budget: crate::api_agents::Budget,
 }
 
 /// One agent's whole turn: its task alone, the chat's tools (no more
@@ -741,7 +743,7 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
                     let chat_id = chat_id.clone();
                     Box::pin(async move { agent_turn(app, &chat_id, launch, task, sink).await })
                 });
-                let run = Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, at_once, turn));
+                let run = Box::pin(crate::api_agents::run(app, &chat, launch.server.id, &input, at_once, &launch.budget, turn));
                 return crate::chat_agents::alive_while(app, &chat, run).await;
             }
             run_tool(app, &chat, server, None, &name, input, asking, high, pictures.as_ref()).await
@@ -1006,6 +1008,7 @@ pub async fn send(
             asking,
             sandbox_high,
             sees: caps.vision != Some(false),
+            budget: Default::default(),
         };
         let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, asking, sandbox_high, server: server.id, context: context_size, hushed: false, launch: &launch, pictures: Pictures::default() };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;

@@ -256,7 +256,7 @@ async fn run_user_tools(
         if name == crate::api_agents::RUN {
             chat.events().activity(app, crate::claude_code::Activity::new("subtask", ""));
             let turn: crate::api_agents::Turn = Box::new(move |task, sink| Box::pin(agent_turn(app, chat.id(), launch, task, sink)));
-            let run = Box::pin(crate::api_agents::run(app, chat.id(), chat::ANTHROPIC, &b["input"], crate::api_agents::MAX_AGENTS, turn));
+            let run = Box::pin(crate::api_agents::run(app, chat.id(), chat::ANTHROPIC, &b["input"], crate::api_agents::MAX_AGENTS, &launch.budget, turn));
             let (text, failed) = crate::chat_agents::alive_while(app, chat.id(), run).await;
             results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
             continue;
@@ -278,6 +278,8 @@ struct Launch {
     tools: Vec<(String, String, Value)>,
     asking: crate::tools::Asking,
     sandbox_high: bool,
+    /// What the answer has left of api_agents.rs MAX_ANSWER_AGENTS.
+    budget: crate::api_agents::Budget,
 }
 
 /// One agent's whole turn: its task alone, the chat's tools (no more
@@ -481,6 +483,7 @@ pub async fn send(
         tools: crate::api_agents::sub_tools(&tools),
         asking,
         sandbox_high,
+        budget: Default::default(),
     };
     tools.push(crate::api_agents::tool());
     let browsing = if browser && mode != "plan" { crate::browser::note() } else { String::new() };

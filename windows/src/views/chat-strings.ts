@@ -114,7 +114,7 @@ export const HOLD_TEXT = {
 };
 
 /** The providers whose CLI an edited question starts again (chat_rewind closes it): their agents at work stop with it. */
-export const RESTART_ON_EDIT: ReadonlySet<string> = new Set(["claude-code", "antigravity-cli"]);
+export const RESTART_ON_EDIT: ReadonlySet<string> = new Set(["claude-code", "codex", "antigravity-cli"]);
 
 /** The commands' icons drawn filled (core/slash.ts); the others are strokes. */
 export const FILLED_ICONS = new Set(["plus", "gear", "timer", "stack"]);

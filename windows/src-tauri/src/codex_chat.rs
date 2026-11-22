@@ -324,6 +324,28 @@ fn agent_card(mut payload: Value, main: &str, agent: &str) -> Value {
     payload
 }
 
+/// Puts a card up in the island and calls back with the click (true: allowed).
+type Ask = Arc<dyn Fn(Value, Box<dyn FnOnce(bool) + Send>) + Send + Sync>;
+
+/// No card: every request declined at once (a Codex about to end, or one
+/// that has not answered a chat yet).
+fn declines() -> Ask {
+    Arc::new(|_, answer| answer(false))
+}
+
+/// The answer to a card's request: the click as Codex's decision.
+fn decision(rid: Value, allowed: bool) -> Value {
+    json!({ "id": rid, "result": { "decision": if allowed { "accept" } else { "decline" } } })
+}
+
+/// What a request of an agent's thread gets between two turns (`drain_lines`).
+enum Reply {
+    /// An answer at once.
+    Now(Value),
+    /// A card (the payload), its click the answer to the request (the id).
+    Card(Value, Value),
+}
+
 /// The answer to a request of Codex's server that is not a card's: an MCP
 /// server's question is declined, anything else Lumo does not do is an error.
 fn other_answer(method: &str) -> Value {
@@ -819,6 +841,12 @@ struct Live {
     tell: Tell,
     /// The chat its Stop of one agent comes from, and the number its stopper has there.
     stopper: Option<(String, u64)>,
+    /// How its agents' requests become cards between two turns, as during
+    /// the last one, and whether that turn only planned (they are declined).
+    ask: Ask,
+    plan_only: bool,
+    /// The paths of each file change its agents started, by item, for their cards.
+    files: HashMap<String, Vec<String>>,
 }
 
 impl Drop for Live {
@@ -826,7 +854,9 @@ impl Drop for Live {
         if let Some((chat, n)) = &self.stopper {
             chat_agents::forget_stopper_of(chat, *n);
         }
-        // What it wrote last may say an agent finished: read before the rest end with it.
+        // What it wrote last may say an agent finished: read before the rest
+        // end with it. Its agents end with it: what they ask now gets no card.
+        self.ask = declines();
         self.drain();
         if matches!(self.child.try_wait(), Ok(None)) {
             kill_tree(&mut self.child);
@@ -843,13 +873,24 @@ impl Live {
     /// Reads what the server wrote since the last turn, or since it was last
     /// read, without waiting. No turn of the chat is running: what it says is
     /// for its agents only (one finished, one is at work), and a request of an
-    /// agent's thread is answered as during a turn (`other_answer`), so it
-    /// never waits on Lumo. False once its output closed.
+    /// agent's thread is answered as during a turn: a permission is the
+    /// chat's card naming the agent (its click answers it, whenever it comes),
+    /// anything else an answer at once (`other_answer`), so it never waits on
+    /// Lumo. False once its output closed.
     fn drain(&mut self) -> bool {
         let main = self.thread.clone().unwrap_or_default();
         let stdin = self.stdin.clone();
-        drain_lines(&self.rx, &mut self.agents, &main, |answer| {
-            write_line(&stdin, &answer);
+        let ask = self.ask.clone();
+        drain_lines(&self.rx, &mut self.agents, &main, &mut self.files, self.plan_only, |reply| match reply {
+            Reply::Now(answer) => {
+                write_line(&stdin, &answer);
+            }
+            Reply::Card(payload, rid) => {
+                let stdin = stdin.clone();
+                ask(payload, Box::new(move |allowed| {
+                    write_line(&stdin, &decision(rid, allowed));
+                }));
+            }
         })
     }
 
@@ -888,6 +929,9 @@ impl Live {
             agents: Subagents::default(),
             tell: chat_agents::silent(),
             stopper: None,
+            ask: declines(),
+            plan_only: false,
+            files: HashMap::new(),
         };
         live.call("initialize", json!({ "clientInfo": { "name": "lumo", "title": "Lumo", "version": env!("CARGO_PKG_VERSION") } }))?;
         write_line(&live.stdin, &json!({ "method": "initialized" }));
@@ -1011,10 +1055,35 @@ fn is_other_thread(params: &Value, main: &str) -> bool {
     params["threadId"].as_str().is_some_and(|t| t != main)
 }
 
+/// The file changes an agent's thread starts, kept for its cards (`card`).
+fn note_agent_files(method: &str, params: &Value, files: &mut HashMap<String, Vec<String>>) {
+    if method == "item/started" && params["item"]["type"] == "fileChange" {
+        if let Some(id) = params["item"]["id"].as_str() {
+            // A long-lived server: the oldest changes have long had their card.
+            if files.len() >= MAX_AGENT_FILES {
+                files.clear();
+            }
+            files.insert(id.to_string(), change_paths(&params["item"]));
+        }
+    }
+}
+
+/// The file changes kept for the agents' cards, at most.
+const MAX_AGENT_FILES: usize = 256;
+
 /// `Live::drain`: the lines waiting in `rx` told to `agents` (`main` is the
-/// chat's thread), and `answer` given what each request of an agent's
-/// thread gets. False once the output closed.
-fn drain_lines(rx: &mpsc::Receiver<Vec<u8>>, agents: &mut Subagents, main: &str, mut answer: impl FnMut(Value)) -> bool {
+/// chat's thread), and `reply` given what each request of an agent's
+/// thread gets: a permission of an agent at work is a card naming it
+/// (declined at once when the last turn only planned), anything else an
+/// answer at once. False once the output closed.
+fn drain_lines(
+    rx: &mpsc::Receiver<Vec<u8>>,
+    agents: &mut Subagents,
+    main: &str,
+    files: &mut HashMap<String, Vec<String>>,
+    plan_only: bool,
+    mut reply: impl FnMut(Reply),
+) -> bool {
     loop {
         let line = match rx.try_recv() {
             Ok(line) => line,
@@ -1023,11 +1092,22 @@ fn drain_lines(rx: &mpsc::Receiver<Vec<u8>>, agents: &mut Subagents, main: &str,
         };
         let Ok(message) = serde_json::from_slice::<Value>(&line) else { continue };
         let method = message["method"].as_str().unwrap_or("");
-        agents.feed(main, method, &message["params"]);
-        if let Some(rid) = message.get("id").filter(|_| is_other_thread(&message["params"], main)) {
-            let mut reply = other_answer(method);
-            reply["id"] = rid.clone();
-            answer(reply);
+        let params = &message["params"];
+        agents.feed(main, method, params);
+        if !is_other_thread(params, main) {
+            continue;
+        }
+        note_agent_files(method, params, files);
+        let Some(rid) = message.get("id").cloned() else { continue };
+        let sub = params["threadId"].as_str().unwrap_or("");
+        match (card(method, params, files), agents.at_work(sub)) {
+            (Some(_), _) if plan_only => reply(Reply::Now(decision(rid, false))),
+            (Some(payload), Some(agent)) => reply(Reply::Card(agent_card(payload, main, &agent), rid)),
+            _ => {
+                let mut answer = other_answer(method);
+                answer["id"] = rid;
+                reply(Reply::Now(answer));
+            }
         }
     }
 }
@@ -1094,12 +1174,23 @@ fn reap_idle() {
 fn live_for(chat_id: &str, key: &str, exe: &Path, dir: &Path) -> Result<Live, String> {
     if let Some(mut live) = lives(|all| all.remove(chat_id)) {
         let alive = matches!(live.child.try_wait(), Ok(None));
+        let same = alive && live.key == key;
+        // Not the one to answer: its agents end with it, what they ask gets no card.
+        if !same {
+            live.ask = declines();
+        }
         // Lines left from the turn before (after an interrupt), or written
         // since the reaper last read, are not this turn's, but what they say
         // of its agents (one that ended meanwhile) is.
         let open = live.drain();
-        if alive && open && live.key == key {
+        if same && open {
             return Ok(live);
+        }
+        // Another model, effort or mode the user said to send all the same
+        // (WOULD_STOP): its agents still at work are stopped, not failed
+        // under it (Drop then finds none open).
+        if alive && open {
+            live.agents.agents.end_open(AgentState::Stopped, "");
         }
     }
     Live::start(exe, dir, key)
@@ -1109,8 +1200,16 @@ fn live_for(chat_id: &str, key: &str, exe: &Path, dir: &Path) -> Result<Live, St
 pub fn close(chat_id: &str) {
     // Ending it waits for taskkill: never on the caller's thread, which is
     // the window's for a new chat or an edited message.
-    if let Some(gone) = lives(|all| all.remove(chat_id)) {
-        std::thread::spawn(move || drop(gone));
+    if let Some(mut gone) = lives(|all| all.remove(chat_id)) {
+        std::thread::spawn(move || {
+            // The user ended it (a new chat, an edited question, the chat
+            // closed): its agents still at work are stopped, not failed under
+            // it. What it wrote last is read first: one may have finished.
+            gone.ask = declines();
+            gone.drain();
+            gone.agents.agents.end_open(AgentState::Stopped, "");
+            drop(gone)
+        });
     }
 }
 
@@ -1146,7 +1245,7 @@ fn live_turn(
     spec: TurnSpec,
     text: impl FnOnce(bool) -> String,
     stop: Arc<Stop>,
-    ask: impl Fn(Value, Box<dyn FnOnce(bool) + Send>),
+    ask: Ask,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
     mut on_file: impl FnMut(&FileTouch),
@@ -1182,6 +1281,9 @@ fn live_turn(
     (live.tell)(&mut live.agents.agents, false);
     let thread = live.thread.clone().unwrap_or_default();
     let plan_only = claude_code::permission_mode(&spec.mode) == "plan";
+    // Its agents' requests after this turn are cards as during it.
+    live.ask = ask.clone();
+    live.plan_only = plan_only;
     let question = if plan_only { format!("{PLAN_ONLY}{}", text(fresh)) } else { text(fresh) };
     let (approval, sandbox) = policy(&spec.mode);
     let mut params = json!({
@@ -1259,6 +1361,7 @@ fn live_turn(
         // Another thread's (a subagent's) news is not this answer's; its
         // request is the user's to answer, as the answer's own are.
         if let Some(sub) = params["threadId"].as_str().filter(|t| *t != thread) {
+            note_agent_files(method, params, &mut live.files);
             if method == "item/started" && params["item"]["type"] == "fileChange" {
                 if let Some(id) = params["item"]["id"].as_str() {
                     state.files.insert(id.to_string(), change_paths(&params["item"]));
@@ -1473,13 +1576,13 @@ pub async fn send(
             text,
             stop,
             // Codex's own card, in the island; only a click allows.
-            |payload, answer| {
+            Arc::new(move |payload, answer| {
                 let app = app3.clone();
                 tauri::async_runtime::spawn(async move {
                     let decision = crate::pipe::ask(&app, payload).await;
                     answer(decision.as_deref() == Some("allow"));
                 });
-            },
+            }),
             |text| events.delta(&app2, text),
             |activity| events.activity(&app2, activity),
             |file| events.file(&app2, file),
@@ -1550,7 +1653,7 @@ pub(crate) fn complete_in(work: &str, model: &str, prompt: &str, stop: Arc<Stop>
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, stop, |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
+    let result = live_turn(spec, move |_| prompt, stop, declines(), |_| {}, |_| {}, |_| {}, |_| {}, chat_agents::silent());
     close(&id);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {
@@ -1901,22 +2004,54 @@ mod tests {
         feed_agents(&mut sub, &[&format!(r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"s","tool":"spawnAgent","receiverThreadIds":["{SUB}"],"prompt":"Check the tests","agentsStates":{{}}}}}}}}"#)]);
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
         for line in [
-            // An agent's request is answered at once; a stale one of the chat's thread is not.
-            format!(r#"{{"id":7,"method":"item/commandExecution/requestApproval","params":{{"threadId":"{SUB}","itemId":"c1"}}}}"#),
+            // An agent's permission is the chat's card naming it; anything
+            // else it asks is answered at once; a stale request of the
+            // chat's thread is not.
+            format!(r#"{{"method":"item/started","params":{{"threadId":"{SUB}","item":{{"type":"fileChange","id":"f1","changes":[{{"path":"src/lib.rs"}}]}}}}}}"#),
+            format!(r#"{{"id":6,"method":"item/fileChange/requestApproval","params":{{"threadId":"{SUB}","itemId":"f1"}}}}"#),
+            format!(r#"{{"id":7,"method":"item/tool/call","params":{{"threadId":"{SUB}"}}}}"#),
             format!(r#"{{"id":8,"method":"item/commandExecution/requestApproval","params":{{"threadId":"{THREAD}","itemId":"c2"}}}}"#),
             "not json".to_string(),
             format!(r#"{{"method":"turn/completed","params":{{"threadId":"{SUB}","turn":{{"id":"t9","status":"completed","items":[]}}}}}}"#),
+            // Ended: its request is no card.
+            format!(r#"{{"id":9,"method":"item/commandExecution/requestApproval","params":{{"threadId":"{SUB}","itemId":"c3"}}}}"#),
         ] {
             tx.send(line.into_bytes()).unwrap();
         }
-        let mut answers = Vec::new();
-        assert!(drain_lines(&rx, &mut sub, THREAD, |a| answers.push(a)), "the server is still there");
+        let mut files = HashMap::new();
+        let (mut answers, mut cards) = (Vec::new(), Vec::new());
+        let open = drain_lines(&rx, &mut sub, THREAD, &mut files, false, |r| match r {
+            Reply::Now(a) => answers.push(a),
+            Reply::Card(payload, rid) => cards.push((payload, rid)),
+        });
+        assert!(open, "the server is still there");
         assert_eq!(sub.agents.get(SUB).unwrap().state, AgentState::Done, "finished between turns, not failed when the server goes");
-        assert_eq!(answers.len(), 1);
-        assert_eq!(answers[0]["id"], 7);
+        assert_eq!(cards.len(), 1, "the permission after the answer is a card, not an error");
+        let (payload, rid) = &cards[0];
+        assert_eq!(rid, &json!(6));
+        assert_eq!(payload["session_id"], THREAD, "the chat's card");
+        assert_eq!(payload["agent_id"], SUB, "naming the agent");
+        assert_eq!(payload["tool_name"], "Edit");
+        assert_eq!(payload["tool_input"]["file_path"], "src/lib.rs");
+        assert_eq!(decision(rid.clone(), true)["result"]["decision"], "accept");
+        let ids: Vec<&Value> = answers.iter().map(|a| &a["id"]).collect();
+        assert_eq!(ids, [&json!(7), &json!(9)]);
+        assert_eq!(answers[0]["error"]["code"], -32601);
+        assert!(answers[1]["error"].is_object(), "an agent that ended gets no card");
         // Its output closed: said so.
         drop(tx);
-        assert!(!drain_lines(&rx, &mut sub, THREAD, |_| {}));
+        assert!(!drain_lines(&rx, &mut sub, THREAD, &mut files, false, |_| {}));
+    }
+
+    #[test]
+    fn an_agents_permission_after_a_planning_turn_is_declined() {
+        let mut sub = Subagents::default();
+        feed_agents(&mut sub, &[&format!(r#"{{"method":"item/completed","params":{{"threadId":"{THREAD}","item":{{"type":"collabAgentToolCall","id":"s","tool":"spawnAgent","receiverThreadIds":["{SUB}"],"prompt":"Check the tests","agentsStates":{{}}}}}}}}"#)]);
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        tx.send(format!(r#"{{"id":4,"method":"item/commandExecution/requestApproval","params":{{"threadId":"{SUB}","itemId":"c1","command":"rm -rf build"}}}}"#).into_bytes()).unwrap();
+        let mut replies = Vec::new();
+        drain_lines(&rx, &mut sub, THREAD, &mut HashMap::new(), true, |r| replies.push(r));
+        assert!(matches!(&replies[..], [Reply::Now(a)] if a["id"] == 4 && a["result"]["decision"] == "decline"));
     }
 
     #[test]
