@@ -88,7 +88,7 @@ import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import { cliOf, setChatCli } from "../core/chats";
-import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore, noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns, type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry } from "../core/chat-agents";
+import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore, noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, sealAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns, type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
 import { browserTabsChanged, openBrowserView, setBrowserViewHost } from "./browser-watch";
 import { updateChatTurns, type AskQuote } from "../core/chats";
@@ -3200,7 +3200,11 @@ export function buildPrompt(
       label: activityLabel,
       // Stops that one agent alone; its CLI says how it ended (a `chat-agent` event).
       stop: (agentId) => {
-        void invoke("chat_stop_agent", { chatId, agentId }).catch((err) => {
+        const row = agentStore.get(chatId)?.rows.get(agentId)?.row;
+        // Ended by itself while its Stop waited for Undo: nothing to stop (its CLI would answer an error).
+        if (row && isFinal(row.state)) return;
+        // Its own provider's stopper: another provider may have answered the chat since.
+        void invoke("chat_stop_agent", { chatId, agentId, source: row?.source ?? null }).catch((err) => {
           compactNotice(String(err).replace(/^Error:\s*/, ""), "#f4505e");
           void Bridge.log(`[agents] stop ${agentId}: ${String(err)}`);
         });
@@ -3960,6 +3964,8 @@ export function buildPrompt(
       question = { id: newMessageId(), role: "user", content: query, at: Date.now() };
       // A new question: the note that the last answer was stopped under its agents goes.
       answerStopped.delete(chatId);
+      // Its answer's agents get a card of their own, even after an answer that failed.
+      sealAgents(agentStore, chatId);
       // What went with it shows on its bubble, and goes again on Edit.
       const went = screenContext || sent.length ? sentItems(screenContext ? shared : emptyScreen(), sent, fileDetail) : [];
       if (went.length) {

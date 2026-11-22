@@ -381,3 +381,92 @@ html.look-new .agents-row .agents-plan-chip {
 .agents-head .agents-btn {
   flex: none;
 }
+
+/* The tree: a thin line from a starter down to its last agent, a tick to each. */
+.agents-row.child {
+  position: relative;
+}
+
+.agents-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(12px + (var(--level, 1) - 1) * 22px + 6.5px);
+  width: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+.agents-guide.last {
+  bottom: auto;
+  height: 15px;
+}
+
+.agents-guide.own::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 0;
+  width: 10px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* In line (the rate limit, its turn) or paused: grey, nothing asked of the user. */
+.agents-mark.queued i {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px #7d828c;
+}
+
+.agents-mark.paused i {
+  background: #7d828c;
+  box-shadow: 0 0 0 2.5px rgba(125, 130, 140, 0.25);
+}
+
+.agents-row.waiting.queued .agents-row-head,
+.agents-row.waiting.paused .agents-row-head {
+  background: transparent;
+}
+
+.agents-row.waiting.queued .agents-row-head:hover,
+.agents-row.waiting.paused .agents-row-head:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.agents-row.queued .agents-line,
+.agents-row.paused .agents-line {
+  color: #8b9099;
+}
+
+/* Stopped: grey, not an error. */
+.agents-mark.stopped i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #6b7079;
+  box-shadow: none;
+}
+
+.agents-row.stopped .agents-line,
+.agents-row.stopped .agents-name {
+  color: var(--dim-3);
+}
+
+/* Done with no report of its own. */
+.agents-row.noreport .agents-line {
+  color: var(--dim-3);
+  font-style: italic;
+}
+
+.agents-segs i.queued {
+  background: #5d626b;
+}
+
+/* The commands an agent left running in the background, as the chat writes code. */
+.agents-command {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font: 400 10.5px var(--mono);
+  color: #c8cdd4;
+}

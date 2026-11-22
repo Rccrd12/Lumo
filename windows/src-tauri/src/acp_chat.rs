@@ -1705,7 +1705,7 @@ pub async fn send(
     };
 
     // The tasks the CLI hands to subagents, and the turn's sign of life.
-    let tell = chat_agents::teller(app, chat.id());
+    let tell = chat_agents::teller(app, chat.id(), agent.provider());
     let app2 = app.clone();
     let app3 = app.clone();
     let events = chat.events();

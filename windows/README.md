@@ -874,6 +874,20 @@ Retry) while agents are at work would start Claude Code again and stop them:
 a bar above the field asks first, **Edit when they finish** (the edit waits
 there and goes once they finish) or **Edit now and stop them**.
 
+The card is the same for every provider. An agent started by another sits in
+under it on a line from its starter, and the starter's line says how far its
+own agents are ("Its agents: 1 of 3 finished"); once a starter and all the
+agents under it ended, they fold under it ("2 agents finished") until its row
+is opened. An agent nothing is asked of you for is grey: one in line for the
+rate limit or its turn, a paused one, one stopped ("Stopped after 4 min"); one
+that ended with no report of its own says *Finished without a report*, with
+its last progress line. An opened row lists the commands the agent left
+running in the background (**In the background**, each with how long it has
+run), as Claude Code lists them. A new answer's agents get a card of their
+own, but an agent started by one of an earlier card's goes on that card. A
+saved chat keeps the tree. **Stop** goes to the provider that runs the agent,
+and asks nothing once the agent ended meanwhile.
+
 A message
 sent while Claude is still answering waits in the field and goes as soon as the
 answer ends. Install Claude Code and run `claude` once in a terminal to
@@ -984,7 +998,10 @@ click allows it. The shield picks Codex's own policies: **Ask every time** is
 Codex's "untrusted" (only commands that just read run without a card),
 **Auto** is its Agent preset (in its workspace sandbox, Codex decides what to
 ask), **Plan only** runs in its read-only sandbox and declines whatever it
-would ask, without a card. Codex never gets full access from Lumo. Lumo's
+would ask, without a card. Codex never gets full access from Lumo. The agents
+Codex spawns show on the Agents card, each under the one that spawned it, with
+its own plan (its `update_plan`); what one of them would ask is the same card
+over the chat, on its row, and runs only after a click. Lumo's
 timer and GitHub tools reach it as an MCP server of the chat's thread only;
 your Codex configuration is never touched.
 
