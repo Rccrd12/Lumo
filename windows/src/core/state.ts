@@ -743,9 +743,21 @@ class AppState {
     return () => this.listeners.delete(fn);
   }
 
-  /** Marks the UI dirty; the island re-renders on the next frame. */
+  /**
+   * Marks the UI dirty; the island re-renders on the next frame. Every
+   * listener hears it, even after one of them failed: the island's own comes
+   * after the views', and missing a change of mode it left the closed island
+   * as the open one had last measured it, wide and empty, until it was opened
+   * and closed again. A failure is still written to the console.
+   */
   notify() {
-    for (const fn of this.listeners) fn();
+    for (const fn of this.listeners) {
+      try {
+        fn();
+      } catch (err) {
+        console.error("[lumo] a State listener failed", err);
+      }
+    }
   }
 
   get focusTask(): AgentTask | null {
