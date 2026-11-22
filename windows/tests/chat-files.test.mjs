@@ -3,21 +3,31 @@
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { saveChat } from "../src/core/chats.ts";
+import { loadChats, saveChat } from "../src/core/chats.ts";
 import {
-  MAX_FILES, addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, fileName, filesByKind, removeChatFile, rewindChatFiles, withFile,
+  MAX_FILES, addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, fileName, filesByKind, removeChatFile, rewindChatFiles, withFile, withdrawAttached,
 } from "../src/core/chat-files.ts";
 
 const mem = new Map();
+/** Characters the storage holds, all keys together (a webview's is a few million). */
+let quota = Infinity;
 globalThis.localStorage = {
   getItem: (k) => (mem.has(k) ? mem.get(k) : null),
-  setItem: (k, v) => mem.set(k, String(v)),
+  setItem: (k, v) => {
+    let used = String(v).length;
+    for (const [key, value] of mem) if (key !== k) used += value.length;
+    if (used > quota) throw new Error("QuotaExceededError");
+    mem.set(k, String(v));
+  },
   removeItem: (k) => mem.delete(k),
 };
 
 const chat = (id) => ({ id, title: id, updatedAt: 1, provider: "claude-code", session: null, turns: [{ role: "user", content: id }] });
 
-beforeEach(() => mem.clear());
+beforeEach(() => {
+  mem.clear();
+  quota = Infinity;
+});
 
 test("a file is listed once, newest first, with everything that happened to it", () => {
   addChatFile("a", "read", String.raw`C:\Docs\report.pdf`, undefined, 1);
@@ -148,4 +158,55 @@ test("the notes of chats gone from the past chats go too", () => {
   noteSentCopies("a", [`${INBOX}\\new.png`]);
   assert.deepEqual(chatCopies("gone"), []);
   assert.deepEqual(keptCopies(), [`${INBOX}\\new.png`]);
+});
+
+test("files of the same name are told apart, but for an attachment and the file the AI used where it is", () => {
+  // README.md attached; the AI reads it where it is, then another README.md.
+  addChatFile("a", "attached", String.raw`C:\inbox\README.md`, "README.md", 1, 0);
+  addChatFile("a", "read", String.raw`C:\proj\README.md`, undefined, 2, 0);
+  const list = addChatFile("a", "read", String.raw`C:\proj\docs\README.md`, undefined, 3, 0);
+  assert.deepEqual(list.map((f) => [f.path, f.kinds]), [
+    [String.raw`C:\proj\docs\README.md`, ["read"]],
+    [String.raw`C:\proj\README.md`, ["attached", "read"]],
+  ]);
+  // Two files of the same name sent with one question are two files.
+  addChatFile("b", "attached", String.raw`C:\inbox\foto.png`, "foto.png", 1, 0);
+  assert.equal(addChatFile("b", "attached", String.raw`C:\inbox\foto (2).png`, "foto.png", 2, 0).length, 2);
+  // Sent again with a later question: the same file, one row.
+  assert.equal(addChatFile("b", "attached", String.raw`C:\inbox\foto (3).png`, "foto.png", 3, 2).length, 2);
+  // A file the AI made from nothing is not the one attached.
+  addChatFile("c", "attached", String.raw`C:\inbox\dati.csv`, "dati.csv", 1, 0);
+  const made = addChatFile("c", "created", String.raw`C:\proj\out\dati.csv`, undefined, 2, 0);
+  assert.deepEqual(made.map((f) => f.kinds), [["created"], ["attached"]]);
+});
+
+test("past the most a chat keeps, what the AI only read goes first: attachments and written files stay", () => {
+  addChatFile("a", "attached", String.raw`C:\inbox\brief.pdf`, "brief.pdf", 0, 0);
+  addChatFile("a", "created", String.raw`C:\Work\game.py`, undefined, 1, 0);
+  let list = [];
+  for (let i = 0; i < MAX_FILES + 5; i++) list = addChatFile("a", "read", `C:\\repo\\f${i}.ts`, undefined, 2 + i, 0);
+  assert.equal(list.length, MAX_FILES);
+  assert.ok(list.some((f) => f.name === "brief.pdf"), "the attachment of the first question");
+  assert.ok(list.some((f) => f.name === "game.py"), "the file it made");
+  assert.equal(list[0].name, `f${MAX_FILES + 4}.ts`, "the newest read");
+  assert.ok(!list.some((f) => f.name === "f0.ts"), "the oldest read went");
+});
+
+test("what goes with a question shows at once, and leaves if the question did not go", () => {
+  addChatFile("a", "attached", String.raw`C:\inbox\old.pdf`, "old.pdf", 1, 0);
+  addChatFile("a", "attached", String.raw`C:\inbox\new.pdf`, "new.pdf", 2, 2);
+  addChatFile("a", "read", String.raw`C:\inbox\new.pdf`, undefined, 3, 2);
+  addChatFile("a", "attached", String.raw`C:\inbox\only.pdf`, "only.pdf", 4, 2);
+  const left = withdrawAttached("a", [String.raw`C:\inbox\new.pdf`, String.raw`C:\inbox\only.pdf`, String.raw`C:\inbox\old.pdf`], 2);
+  assert.deepEqual(left.map((f) => [f.name, f.kinds]), [["new.pdf", ["read"]], ["old.pdf", ["attached"]]], "what the AI did stays, an earlier question's file too");
+  assert.deepEqual(chatFiles("a").map((f) => f.name), ["new.pdf", "old.pdf"], "kept in storage");
+});
+
+test("storage filled by the past chats: they make room, and the file is listed", () => {
+  for (const id of ["old", "a"]) saveChat({ ...chat(id), turns: [{ role: "user", content: id.repeat(2000) }] });
+  quota = [...mem.values()].reduce((n, v) => n + v.length, 0) + 10;
+  const list = addChatFile("a", "created", String.raw`C:\Work\out.txt`, undefined, 1);
+  assert.deepEqual(chatFiles("a").map((f) => f.name), ["out.txt"]);
+  assert.equal(list.length, 1);
+  assert.deepEqual(loadChats().map((c) => c.id), ["a"], "the oldest chat gave room, never this one");
 });

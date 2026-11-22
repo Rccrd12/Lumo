@@ -2566,6 +2566,13 @@ fn watch(rx: mpsc::Receiver<Vec<u8>>, between: &Between, mut own: impl FnMut(Run
             continue;
         }
         run.feed(&line);
+        // The files an agent at work in the background uses join the chat's
+        // list at once, as during a turn: kept for a turn Claude Code may
+        // never take, they went with the next message or the CLI ending.
+        let files = run.take_files();
+        if !files.is_empty() {
+            own(Run { touched: files, ..Run::default() });
+        }
         link.tell_while_open();
         if let Some(n) = run.tasks.take() {
             between.tasks.store(n, Ordering::SeqCst);
@@ -4094,6 +4101,25 @@ mod tests {
         );
         assert!(is_full_path(r"\\server\share\a.txt") && is_full_path("/home/me/a") && is_full_path("D:/x"));
         assert!(!is_full_path("a.txt") && !is_full_path(r"..\a.txt") && !is_full_path("C:"));
+    }
+
+    #[test]
+    fn the_files_an_agent_uses_between_two_turns_are_told_at_once_and_never_lost() {
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        let got = Arc::new(std::sync::Mutex::new(Vec::<Run>::new()));
+        let g = got.clone();
+        let link = AgentLink::new(chat_agents::silent());
+        let thread = std::thread::spawn(move || watch(rx, &Between::default(), move |run| g.lock().unwrap().push(run), &link));
+        // An agent at work in the background, after the turn that started it ended.
+        tx.send(br#"{"type":"assistant","parent_tool_use_id":"t1","message":{"content":[{"type":"tool_use","id":"w1","name":"Write","input":{"file_path":"C:\\lumo-nowhere\\out.csv"}}]}}"#.to_vec()).unwrap();
+        tx.send(br#"{"type":"user","parent_tool_use_id":"t1","message":{"content":[{"type":"tool_result","tool_use_id":"w1","content":"ok"}]},"tool_use_result":{"type":"create"}}"#.to_vec()).unwrap();
+        // The user writes before Claude Code takes a turn of its own.
+        tx.send(Vec::new()).unwrap();
+        thread.join().unwrap();
+        let mut runs = got.lock().unwrap();
+        assert_eq!(runs.len(), 1, "told while no turn runs");
+        assert_eq!(runs[0].take_files(), vec![FileTouch { kind: "created", path: r"C:\lumo-nowhere\out.csv".into() }]);
+        assert!(runs[0].result.is_none() && runs[0].shown.is_empty(), "files only: no answer of its own");
     }
 
     /// What a recording link was told: the rows sent, and how many signs of life.
