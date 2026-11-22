@@ -420,9 +420,16 @@ pub fn new_commit(what: &str, cursor: &str, sha: &str, message: &str) -> Look {
     fire(true, tf("New commit on {what}: {text}", &[("what", what), ("text", &text)]), sha.to_string())
 }
 
+/// The branch's newest commit is the one the watch is done with: listening
+/// every time, the one it fired on; waiting once for a failure, one that
+/// passed (`branch_checks` keeps it then). Its checks aren't asked again.
+fn seen_head(w: &Watch, sha: &str) -> bool {
+    !sha.is_empty() && w.last_sha == sha && (w.mode == "every" || w.until == "red")
+}
+
 /// The checks of a branch's newest commit (`age_ms`: how long it has been the newest, as listen.rs head_age).
 pub fn branch_checks(w: &Watch, sha: &str, checks: &Checks, age_ms: u64) -> Look {
-    if w.mode == "every" && w.last_sha == sha {
+    if seen_head(w, sha) {
         return Look::Hold(None);
     }
     let label = w.label();
@@ -849,6 +856,82 @@ fn graphql_answer(got: Answer) -> Answer {
 
 const DISCUSSIONS: &str = "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){discussions(first:20,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title createdAt answerChosenAt author{login} category{name} comments(last:1){nodes{createdAt author{login}}}}}}}";
 
+// ── Lists GitHub gives oldest first ──────────────────────────────────────────
+
+/// What GitHub puts on a page at most.
+const PAGE: usize = 100;
+/// The pages one look walks at most: a list longer than that is walked on
+/// over the next looks, from where this one stopped.
+const MOST_PAGES: u32 = 10;
+
+/// Where each such list's newest items are (`newest_pages`), by watch and
+/// list: the first page that wasn't full when last seen.
+static LAST_PAGES: std::sync::Mutex<std::collections::BTreeMap<String, u32>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// The items of a list GitHub gives oldest first, 100 a page (an issue's
+/// events, a pull request's reviews), from the page its newest items were on
+/// last time (`from`) to its end, MOST_PAGES at most; with the page to start
+/// from next time. Its newest items are on its last pages: reading only its
+/// first page, a list past 100 never showed what came next.
+async fn walk_pages<F, Fut>(from: u32, get: F) -> Result<(Vec<Value>, u32), Answer>
+where
+    F: Fn(u32) -> Fut,
+    Fut: std::future::Future<Output = Answer>,
+{
+    let mut items = Vec::new();
+    let mut page = from.max(1);
+    for _ in 0..MOST_PAGES {
+        let list = match get(page).await {
+            Answer::Found(v) => v.as_array().cloned().unwrap_or_default(),
+            other => return Err(other),
+        };
+        let full = list.len() >= PAGE;
+        items.extend(list);
+        if !full {
+            return Ok((items, page));
+        }
+        page += 1;
+    }
+    // Still full: the next look goes on from here.
+    Ok((items, page))
+}
+
+/// `path`'s items (a list GitHub gives oldest first) on the pages that hold
+/// its newest, for watch `w`, as one JSON list.
+async fn newest_pages(ask: &Asker, w: &Watch, path: &str) -> Answer {
+    let key = format!("{} {path}", w.id);
+    let from = LAST_PAGES.lock().unwrap_or_else(|e| e.into_inner()).get(&key).copied().unwrap_or(1);
+    match walk_pages(from, |page| ask.get(format!("{path}?per_page={PAGE}&page={page}"))).await {
+        Ok((items, next)) => {
+            LAST_PAGES.lock().unwrap_or_else(|e| e.into_inner()).insert(key, next);
+            Answer::Found(Value::Array(items))
+        }
+        Err(answer) => answer,
+    }
+}
+
+/// The workflow a watch names (`name`: its name, its file or the file's stem),
+/// by its id, as GitHub lists the repository's workflows; kept once found.
+static WORKFLOW_IDS: std::sync::Mutex<std::collections::BTreeMap<String, u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// The id of `repo`'s workflow named `name`: None when GitHub doesn't say, or
+/// none has that name (its runs are then looked for among all of them).
+async fn workflow_id(ask: &Asker, repo: &str, name: &str) -> Option<u64> {
+    let key = format!("{repo}\n{}", name.to_lowercase());
+    if let Some(id) = WORKFLOW_IDS.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+        return Some(*id);
+    }
+    let Answer::Found(list) = ask.get(format!("repos/{repo}/actions/workflows?per_page=100")).await else { return None };
+    let id = workflow_in(&list, name)?;
+    WORKFLOW_IDS.lock().unwrap_or_else(|e| e.into_inner()).insert(key, id);
+    Some(id)
+}
+
+/// The id of the workflow named `name` in GitHub's list of a repository's workflows.
+fn workflow_in(list: &Value, name: &str) -> Option<u64> {
+    list["workflows"].as_array()?.iter().find(|w| workflow_named(w, name))?["id"].as_u64()
+}
+
 /// `Look` from an answer, when the answer is all that is needed.
 macro_rules! found {
     ($answer:expr) => {
@@ -897,7 +980,8 @@ pub async fn look(ask: &Asker, w: &Watch, age: impl Fn(&str) -> u64) -> Look {
                     pr_comments(&what, &cursor, &on_issue, &on_code, me.as_deref())
                 }
                 _ => {
-                    let reviews = found!(ask.get(format!("{base}/reviews?per_page=100")).await);
+                    // Oldest first: past 100, the newest are on the last pages.
+                    let reviews = found!(newest_pages(ask, w, &format!("{base}/reviews")).await);
                     pr_reviews(&what, &cursor, &reviews, w.until == "changes", me.as_deref())
                 }
             }
@@ -911,7 +995,11 @@ pub async fn look(ask: &Asker, w: &Watch, age: impl Fn(&str) -> u64) -> Look {
                 }
                 (Some(n), "comment") => format!("repos/{repo}/issues/{n}/comments?since={cursor}&per_page=100"),
                 (None, "comment") => format!("repos/{repo}/issues/comments?sort=created&direction=desc&since={cursor}&per_page=50"),
-                (Some(n), _) => format!("repos/{repo}/issues/{n}/events?per_page=100"),
+                (Some(n), _) => {
+                    // One issue's events come oldest first: past 100, the newest are on the last pages.
+                    let list = found!(newest_pages(ask, w, &format!("repos/{repo}/issues/{n}/events")).await);
+                    return issues(w, &cursor, &list, me.as_deref());
+                }
                 (None, _) => format!("repos/{repo}/issues/events?per_page=50"),
             };
             let list = found!(ask.get(path).await);
@@ -927,7 +1015,7 @@ pub async fn look(ask: &Asker, w: &Watch, age: impl Fn(&str) -> u64) -> Look {
             if w.until == "commit" {
                 return new_commit(&w.label(), &w.last_sha, &sha, head["commit"]["message"].as_str().unwrap_or(""));
             }
-            if w.mode == "every" && w.last_sha == sha {
+            if seen_head(w, &sha) {
                 return Look::Hold(None);
             }
             let commit = format!("repos/{repo}/commits/{sha}");
@@ -949,7 +1037,11 @@ pub async fn look(ask: &Asker, w: &Watch, age: impl Fn(&str) -> u64) -> Look {
         }
         "github.workflow" => {
             let on_branch = branch(&w.target).map(|b| format!("&branch={}", encode(b))).unwrap_or_default();
-            let runs = found!(ask.get(format!("repos/{repo}/actions/runs?per_page=30{on_branch}")).await);
+            // A workflow named: its own runs, so a long one still ends in sight
+            // however many runs of the other workflows came after it.
+            let id = if w.text.is_empty() { None } else { workflow_id(ask, &repo, &w.text).await };
+            let runs_of = id.map(|id| format!("workflows/{id}/")).unwrap_or_default();
+            let runs = found!(ask.get(format!("repos/{repo}/actions/{runs_of}runs?per_page=30{on_branch}")).await);
             workflow_runs(w, &cursor, &runs)
         }
         "github.release" if w.until == "tag" => tags(w, &found!(ask.get(format!("repos/{repo}/tags?per_page={TAGS_KEPT}")).await)),
@@ -1331,5 +1423,101 @@ mod tests {
         ]}}}});
         assert_eq!(fired(discussions(&w, cursor, &data, Some("anna"))).1, "New answer in o/r: Ideas");
         assert_eq!(discussions(&w, cursor, &data, Some("marco")), Look::Hold(None));
+    }
+
+    /// A fake GitHub list given oldest first, 100 a page: page `n` of `all`.
+    fn page_of(all: &[Value], page: u32) -> Answer {
+        let start = (page as usize - 1) * PAGE;
+        Answer::Found(Value::Array(all.iter().skip(start).take(PAGE).cloned().collect()))
+    }
+
+    fn walk(all: &[Value], from: u32) -> (Vec<Value>, u32) {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        match rt.block_on(walk_pages(from, |page| {
+            let answer = page_of(all, page);
+            async move { answer }
+        })) {
+            Ok(walked) => walked,
+            Err(_) => panic!("the fake list always answers"),
+        }
+    }
+
+    #[test]
+    fn an_issue_past_100_events_is_told_from_its_last_page() {
+        // 136 old events (mentions, references), then today's close: GitHub
+        // gives one issue's events oldest first, so it is on page 2.
+        let mut all: Vec<Value> = (0..136).map(|i| json!({ "event": "mentioned", "created_at": format!("2025-10-{:02}T10:00:00Z", 1 + i % 28), "actor": { "login": "anna" } })).collect();
+        all.push(json!({ "event": "closed", "created_at": "2025-11-16T09:00:00Z", "actor": { "login": "anna" } }));
+        let mut w = watch("github.issue", "o/r#42", "closed");
+        w.mode = "once".into();
+        // Page 1 alone, as before: nothing to tell.
+        let first = match page_of(&all, 1) {
+            Answer::Found(v) => v,
+            _ => unreachable!(),
+        };
+        assert_eq!(issues(&w, &since(&w), &first, None), Look::Hold(None));
+        // Walked to its end: the close is told, and the next look starts on page 2.
+        let (items, next) = walk(&all, 1);
+        assert_eq!(items.len(), 137);
+        assert_eq!(next, 2);
+        assert_eq!(fired(issues(&w, &since(&w), &Value::Array(items), None)).1, "o/r#42 was closed");
+        // The next look reads only the last page.
+        let (items, next) = walk(&all, 2);
+        assert_eq!((items.len(), next), (37, 2));
+        // A page that just filled: the next look goes on to the one after it.
+        let full: Vec<Value> = (0..2 * PAGE).map(|_| json!({})).collect();
+        assert_eq!(walk(&full, 2).1, 3);
+        // A list longer than MOST_PAGES pages is walked on over the next looks.
+        let long: Vec<Value> = (0..PAGE * (MOST_PAGES as usize + 3)).map(|_| json!({})).collect();
+        let (items, next) = walk(&long, 1);
+        assert_eq!((items.len(), next), (PAGE * MOST_PAGES as usize, MOST_PAGES + 1));
+        assert_eq!(walk(&long, next).1, MOST_PAGES + 4);
+    }
+
+    #[test]
+    fn a_pull_request_past_100_reviews_is_told_its_newest() {
+        let mut all: Vec<Value> = (0..120).map(|_| json!({ "state": "COMMENTED", "submitted_at": "2025-11-01T10:00:00Z", "user": { "login": "bot" } })).collect();
+        all.push(json!({ "state": "CHANGES_REQUESTED", "submitted_at": "2025-11-16T09:00:00Z", "user": { "login": "anna" } }));
+        let cursor = "2025-11-15T19:00:00Z";
+        let first = match page_of(&all, 1) {
+            Answer::Found(v) => v,
+            _ => unreachable!(),
+        };
+        assert_eq!(pr_reviews("o/r#7", cursor, &first, true, None), Look::Hold(None));
+        let (items, _) = walk(&all, 1);
+        assert_eq!(fired(pr_reviews("o/r#7", cursor, &Value::Array(items), true, None)).1, "anna asked for changes on o/r#7");
+    }
+
+    #[test]
+    fn waiting_once_for_red_leaves_a_green_head_alone() {
+        let mut w = watch("github.branch", "o/r@main", "red");
+        w.mode = "once".into();
+        // The first look at a green head keeps it.
+        assert_eq!(branch_checks(&w, "s1", &Checks::Passed, 0), Look::Hold(Some("s1".into())));
+        // Kept: its checks are not asked again, and nothing is written again.
+        w.last_sha = "s1".into();
+        assert!(seen_head(&w, "s1"));
+        assert_eq!(branch_checks(&w, "s1", &Checks::Passed, 0), Look::Hold(None));
+        // A new commit that fails is told.
+        assert!(!seen_head(&w, "s2"));
+        assert!(matches!(branch_checks(&w, "s2", &Checks::Failed(vec!["build".into()]), 0), Look::Fire { met: true, .. }));
+        // Waiting once for green, nothing is kept: every look asks.
+        let mut green = watch("github.branch", "o/r@main", "green");
+        green.mode = "once".into();
+        green.last_sha = "s1".into();
+        assert!(!seen_head(&green, "s1"));
+    }
+
+    #[test]
+    fn a_named_workflow_is_found_by_its_name_or_its_file() {
+        let list = json!({ "workflows": [
+            { "id": 11, "name": "Windows CI", "path": ".github/workflows/windows-ci.yml" },
+            { "id": 12, "name": "Windows beta", "path": ".github/workflows/windows-beta.yml" },
+        ]});
+        assert_eq!(workflow_in(&list, "windows beta"), Some(12));
+        assert_eq!(workflow_in(&list, "windows-ci.yml"), Some(11));
+        assert_eq!(workflow_in(&list, "windows-ci"), Some(11));
+        assert_eq!(workflow_in(&list, "Release"), None);
+        assert_eq!(workflow_in(&json!({}), "Release"), None);
     }
 }
