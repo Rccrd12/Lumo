@@ -566,9 +566,15 @@ struct Original {
 fn address_list(raw: &str) -> Vec<String> {
     let mut pieces = Vec::new();
     let mut piece = String::new();
-    let (mut quoted, mut angle) = (false, false);
+    let (mut quoted, mut angle, mut escaped) = (false, false, false);
     for c in decode_words(raw).chars() {
+        // `\"` inside a quoted name is a quote of the name, not its end.
+        if std::mem::take(&mut escaped) {
+            piece.push(c);
+            continue;
+        }
         match c {
+            '\\' if quoted => escaped = true,
             '"' => quoted = !quoted,
             '<' => angle = true,
             '>' => angle = false,

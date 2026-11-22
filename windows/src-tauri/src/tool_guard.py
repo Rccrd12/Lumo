@@ -83,6 +83,9 @@ def _install():
     # What these take from their first path is read: a copy or a move of a
     # file outside the tool's folders into its work folder reads that file.
     takes_from = frozenset({"os.rename", "shutil.move", "shutil.copyfile", "shutil.copytree", "os.link", "os.symlink"})
+    # These leave their first path as it was: only the second one is written
+    # (a copy of the tool's own file into its work folder needs no "write").
+    copies = frozenset({"shutil.copyfile", "shutil.copytree"})
     # Looking through every object (the hook, its values) is not for a tool.
     introspection = frozenset({"gc.get_objects", "gc.get_referrers", "gc.get_referents"})
     handled = network | system | writes | reads | introspection | {"open", "sqlite3.connect", "object.__setattr__"}
@@ -103,16 +106,21 @@ def _install():
             if c is not object and all(c is not seen for seen, _ in classes):
                 classes.append((c, tuple(class_dict(c).items())))
     path_classes = tuple(classes)
+    # os.scandir's entries (shutil.copytree copies through them): a C type
+    # nothing can subclass or change, so its own `path` is the path it names.
+    dir_entry = os.DirEntry
+    dir_entry_path = vars(os.DirEntry)["path"].__get__
 
     def hook(
         event, args,
         _handled=handled, _allow=allow, _readable=readable, _writable=writable, _network=network,
-        _system=system, _writes=writes, _reads=reads, _takes_from=takes_from, _introspection=introspection,
+        _system=system, _writes=writes, _reads=reads, _takes_from=takes_from, _copies=copies, _introspection=introspection,
         _libraries=libraries, _write_flags=write_flags, _path_types=path_types, _ours=None,
         _full=full, _plain=plain, _sep=sep, _str=str, _bytes=bytes, _int=int, _bool=bool, _type=type,
         _isinstance=isinstance, _tuple=tuple, _decode=bytes.decode, _startswith=str.startswith,
         _endswith=str.endswith, _fspath=os.fspath, _Error=PermissionError, _O_WRONLY=os.O_WRONLY,
         _path_classes=path_classes, _class_dict=class_dict, _len=len, _get=type(vars(object)).get,
+        _dir_entry=dir_entry, _dir_entry_path=dir_entry_path,
     ):
         if event not in _handled:
             return
@@ -155,6 +163,9 @@ def _install():
                     refuse("to change how Python reads paths")
                 p = _fspath(path)
                 return p if _type(p) is _str else _plain(p)
+            if kind is _dir_entry:
+                p = _dir_entry_path(path)
+                return p if _type(p) is _str else _decode(p, "utf-8", "surrogateescape")
             if _isinstance(path, _int):
                 return None
             # Anything else that says it is a path (its own __fspath__) is not read.
@@ -211,7 +222,22 @@ def _install():
         elif event in _writes:
             if event in _takes_from and args:
                 may_read(args[0])
-            for path in args:
+            # What each one writes: a copy its destination; an archive made
+            # its base name, from root_dir (read); one unpacked its folder,
+            # from the archive (read). Their format ("zip") is no path.
+            if event in _copies:
+                written = args[1:2]
+            elif event == "shutil.make_archive":
+                if _len(args) > 2 and args[2] is not None:
+                    may_read(args[2])
+                written = args[:1]
+            elif event == "shutil.unpack_archive":
+                if args:
+                    may_read(args[0])
+                written = args[1:2]
+            else:
+                written = args
+            for path in written:
                 if _isinstance(path, (_str, _bytes)) or is_path_type(_type(path)):
                     may_write(path)
         elif event in _reads:

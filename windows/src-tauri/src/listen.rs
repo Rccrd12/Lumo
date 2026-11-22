@@ -259,6 +259,9 @@ struct Seen {
     asked: u64,
     /// The newest notification seen (Unix seconds).
     mark: i64,
+    /// The notifications seen in that second (app and text): one coming
+    /// later in the same second is still new.
+    at_mark: Vec<String>,
     /// A web page's looks running that got no answer (or an error), while the
     /// PC itself was online.
     fails: u32,
@@ -554,21 +557,55 @@ pub fn cancel(repo: &str, number: u64, until: Option<&str>) -> usize {
     })
 }
 
-/// Stops listening to a target on this PC, for every event.
+/// Every way a watch on `target` may have been kept for `source`, as adding
+/// one keeps it: a link to an issue or a branch is `owner/repo#12` or
+/// `owner/repo@main`, `~\Downloads` the full path, `:3000` the port. Empty
+/// for the sources whose target is a name, compared as it is: their target is
+/// the same whatever was given (the inbox, this PC), so a form would stop more
+/// than was asked.
+pub fn kept_forms(source: &str, target: &str, home: &std::path::Path) -> Vec<String> {
+    let untils: &[&str] = match source {
+        "fs" | "process" | "web" => listen_local::untils(source),
+        s if listen_github::is_source(s) => listen_github::untils(s),
+        _ => &[],
+    };
+    let mut out: Vec<String> = Vec::new();
+    for until in untils {
+        if let Ok(form) = listen_local::target(source, until, target, "x", home) {
+            if !out.contains(&form) {
+                out.push(form);
+            }
+        }
+    }
+    out
+}
+
+/// Stops listening to a target on this PC (or on the rest of GitHub), for every event.
 pub fn cancel_local(source: &str, target: &str) -> usize {
-    let source = source.trim().to_ascii_lowercase();
-    let target = target.trim().trim_end_matches(['\\', '/']).to_lowercase();
+    let home = platform::home_dir();
     with_store(|s| {
-        let before = s.watches.len();
-        s.watches.retain(|w| {
-            let named = w.target.trim_end_matches(['\\', '/']).to_lowercase();
-            !(w.source == source
-                && (named == target || listen_local::program_name(&target) == named || listen_local::canonical(&source, &target) == named))
-        });
-        s.forget_gone();
+        let n = cancel_in(s, source, target, &home);
         save(&s.watches);
-        before - s.watches.len()
+        n
     })
+}
+
+/// `cancel_local` on the watches of `s`; how many went.
+fn cancel_in(s: &mut Store, source: &str, target: &str, home: &std::path::Path) -> usize {
+    let source = source.trim().to_ascii_lowercase();
+    let bare = |t: &str| t.trim().trim_end_matches(['\\', '/']).to_lowercase();
+    let given = bare(target);
+    let forms: Vec<String> = kept_forms(&source, target.trim(), home).iter().map(|f| bare(f)).collect();
+    let program = (source == "process").then(|| listen_local::program_name(&given));
+    let named_as = listen_local::canonical(&source, &given);
+    let before = s.watches.len();
+    s.watches.retain(|w| {
+        let named = bare(&w.target);
+        let same = named == given || forms.contains(&named) || program.as_deref() == Some(named.as_str()) || named_as == named;
+        !(w.source == source && same)
+    });
+    s.forget_gone();
+    before - s.watches.len()
 }
 
 /// Stops one watch, by its id.
@@ -1092,6 +1129,18 @@ enum Read {
     Unknown,
 }
 
+/// A commit's statuses as `fetch` counts them. A token that may not read
+/// them (a fine-grained one without that permission) leaves them out; GitHub
+/// not answering is Err: nothing is said yet, rather than "passed" on the
+/// check runs alone while a status may be failing.
+fn statuses_of(answer: Answer) -> Result<Option<Value>, ()> {
+    match answer {
+        Answer::Found(v) => Ok(Some(v)),
+        Answer::Missing | Answer::Unauthorized => Ok(None),
+        Answer::Unknown => Err(()),
+    }
+}
+
 /// The pull request as it stands, with what `until` needs to know.
 async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
     let base = format!("repos/{}/pulls/{}", w.repo, w.number);
@@ -1109,10 +1158,7 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
             Answer::Unauthorized => return Read::Unauthorized,
             _ => return Read::Unknown,
         };
-        let status = match ask(via, token, format!("{commit}/status")).await {
-            Answer::Found(v) => Some(v),
-            _ => None,
-        };
+        let Ok(status) = statuses_of(ask(via, token, format!("{commit}/status")).await) else { return Read::Unknown };
         pr.checks = checks_of(runs.as_ref(), status.as_ref());
         if pr.checks == Checks::None {
             // No check listed: maybe Actions has runs whose jobs aren't there yet.
@@ -1532,6 +1578,32 @@ fn due(id: u64, now: u64, every_ms: u64) -> bool {
     })
 }
 
+/// The most notifications one look tells, one by one.
+const MAX_NOTIFICATIONS_TOLD: usize = 5;
+
+/// The notifications of `list` (the newest first) that came since the last
+/// look, the oldest first, from an app `target` names; with the newest second
+/// seen and what was seen in it, for the next look. `mark` and `at_mark` are
+/// what the last look kept: a notification in that same second that it did
+/// not see came after it.
+fn new_notifications<'a>(list: &'a [crate::notifications::Notification], mark: i64, at_mark: &[String], target: &str) -> (Vec<&'a crate::notifications::Notification>, i64, Vec<String>) {
+    let key = |n: &crate::notifications::Notification| format!("{}\u{1f}{}", n.app, n.text);
+    let fresh: Vec<_> = list
+        .iter()
+        .rev()
+        .filter(|n| n.at > mark || (n.at == mark && !at_mark.contains(&key(n))))
+        .filter(|n| listen_local::notification_matches(target, &n.app))
+        .collect();
+    let newest = list.iter().map(|n| n.at).max().unwrap_or(0).max(mark);
+    let mut seen: Vec<String> = if newest == mark { at_mark.to_vec() } else { Vec::new() };
+    for n in list.iter().filter(|n| n.at == newest) {
+        if !seen.contains(&key(n)) {
+            seen.push(key(n));
+        }
+    }
+    (fresh, newest, seen)
+}
+
 /// One look at Windows, for a watch on it.
 async fn windows(app: &AppHandle, w: &Watch, now: u64) {
     match w.until.as_str() {
@@ -1550,20 +1622,33 @@ async fn windows(app: &AppHandle, w: &Watch, now: u64) {
                 }
                 Err(_) => return,
             };
-            let newest = list.iter().map(|n| n.at).max().unwrap_or(0);
             // None: the first look, which only takes note of what is there.
-            let before = with_store(|s| {
+            let fresh = with_store(|s| {
                 let seen = seen_mut(s, w)?;
-                let before = seen.on.is_some().then_some(seen.mark);
+                let first = seen.on.is_none();
                 seen.on = Some(true);
-                seen.mark = seen.mark.max(newest);
-                before
+                let (fresh, mark, at_mark) = new_notifications(&list, seen.mark, &seen.at_mark, &w.target);
+                seen.mark = mark;
+                seen.at_mark = at_mark;
+                (!first).then_some(fresh)
             });
-            let Some(before) = before else { return };
-            let fresh: Vec<_> = list.iter().filter(|n| n.at > before && listen_local::notification_matches(&w.target, &n.app)).collect();
-            if let Some(n) = fresh.first() {
+            let Some(fresh) = fresh else { return };
+            // Each one, the oldest first; a burst past MAX_NOTIFICATIONS_TOLD ends with how many more came.
+            let told = fresh.len().min(MAX_NOTIFICATIONS_TOLD);
+            for (i, n) in fresh.iter().take(told).enumerate() {
                 let text = listen_local::excerpt(&n.text, 200);
-                fire(app, w, true, tf("{app}: {text}", &[("app", &n.app), ("text", &text)]), Some(""));
+                let mut summary = tf("{app}: {text}", &[("app", &n.app), ("text", &text)]);
+                if i + 1 == told && fresh.len() > told {
+                    let count = (fresh.len() - told).to_string();
+                    summary = tf("{summary} (and {count} more)", &[("summary", &summary), ("count", &count)]);
+                }
+                // Ended (heard once) or paused for firing too often: the rest is not told.
+                let fired = take(w, true, &summary, Some(""));
+                let stop = fired.as_ref().is_none_or(|(_, ended, too_often)| *ended || *too_often);
+                tell(app, fired, true, summary);
+                if stop {
+                    break;
+                }
             }
         }
         "usb" => {
@@ -2107,6 +2192,20 @@ mod tests {
     }
 
     #[test]
+    fn statuses_github_did_not_give_say_nothing_yet() {
+        let runs = json!({ "check_runs": [{ "name": "build", "status": "completed", "conclusion": "success" }] });
+        // The status request failed (no connection, a 5xx, the rate limit): not "passed" on the runs alone.
+        assert!(statuses_of(Answer::Unknown).is_err());
+        // A token that may not read the statuses: the check runs decide.
+        assert_eq!(statuses_of(Answer::Unauthorized), Ok(None));
+        assert_eq!(statuses_of(Answer::Missing), Ok(None));
+        assert_eq!(checks_of(Some(&runs), statuses_of(Answer::Missing).unwrap().as_ref()), Checks::Passed);
+        let failing = json!({ "statuses": [{ "context": "vercel", "state": "failure" }] });
+        let found = statuses_of(Answer::Found(failing)).unwrap();
+        assert_eq!(checks_of(Some(&runs), found.as_ref()), Checks::Failed(vec!["vercel".into()]));
+    }
+
+    #[test]
     fn a_queued_actions_run_without_jobs_is_not_no_checks() {
         let none = checks_of(Some(&json!({ "check_runs": [] })), Some(&json!({ "statuses": [] })));
         // Windows CI and E2E queued, GitHub has not created their jobs yet.
@@ -2200,6 +2299,46 @@ mod tests {
         assert!(same(&w, &again));
         assert!(!same(&w, &Watch { until: "created".into(), ..w.clone() }));
         assert!(!same(&w, &watch("checks")));
+    }
+
+    #[test]
+    fn unlisten_stops_a_watch_whatever_form_its_target_is_given_in() {
+        let on = |id, source: &str, until: &str, target: &str| Watch { id, source: source.into(), until: until.into(), target: target.into(), repo: String::new(), number: 0, ..watch("checks") };
+        let mut s = store(vec![
+            on(1, "github.issue", "comment", "octocat/hello#42"),
+            on(2, "github.branch", "commit", "octocat/hello@main"),
+            on(3, "fs", "download", "C:\\Users\\me\\Downloads"),
+            on(4, "process", "port_open", "3000"),
+            on(5, "email", "new", "inbox"),
+        ]);
+        let home = std::path::PathBuf::from("C:\\Users\\me");
+        // A link, or another way of writing it, as an AI gives it.
+        assert_eq!(cancel_in(&mut s, "github.issue", "https://github.com/octocat/hello/issues/42", &home), 1);
+        assert_eq!(cancel_in(&mut s, "github.branch", "https://github.com/octocat/hello/tree/main", &home), 1);
+        assert_eq!(cancel_in(&mut s, "fs", "~\\Downloads\\", &home), 1);
+        assert_eq!(cancel_in(&mut s, "process", ":3000", &home), 1);
+        // A source whose target is the same whatever is given stops only what is named.
+        assert_eq!(cancel_in(&mut s, "email", "from the boss", &home), 0);
+        assert_eq!(s.watches.iter().map(|w| w.id).collect::<Vec<_>>(), vec![5]);
+        assert_eq!(cancel_in(&mut s, "email", "Inbox", &home), 1);
+    }
+
+    #[test]
+    fn every_notification_since_the_last_look_is_told_once() {
+        let n = |app: &str, text: &str, at| crate::notifications::Notification { app: app.into(), text: text.into(), at };
+        // The newest first, as notifications.rs reads them.
+        let first = vec![n("Discord", "hi", 1005)];
+        let (fresh, mark, at_mark) = new_notifications(&first, 0, &[], "slack");
+        assert!(fresh.is_empty());
+        assert_eq!(mark, 1005);
+        // Slack in the same second as Discord, after that look; then two more in the next 15 s.
+        let later = vec![n("Slack", "three", 1012), n("Slack", "two", 1010), n("Slack", "one", 1005), n("Discord", "hi", 1005)];
+        let (fresh, mark, at_mark) = new_notifications(&later, mark, &at_mark, "slack");
+        assert_eq!(fresh.iter().map(|n| n.text.as_str()).collect::<Vec<_>>(), vec!["one", "two", "three"]);
+        assert_eq!(mark, 1012);
+        // Nothing new: nothing told again.
+        let (fresh, _, _) = new_notifications(&later, mark, &at_mark, "slack");
+        assert!(fresh.is_empty());
     }
 
     #[test]

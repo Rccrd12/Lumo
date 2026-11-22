@@ -203,12 +203,15 @@ happened; do what you meant to only if it is what you waited for.",
     Ok((line, format!("Once your answer ends, Lumo asks the user to start listening to {what}: it listens only if they say Listen. {after} Say in a few words that Lumo will listen once they confirm, and end your answer.")))
 }
 
-/// `[[unlisten fs "C:\…"]]`: the target as listen.rs keeps it, whatever the event.
+/// `[[unlisten fs "C:\…"]]`: a target listen.rs can tell, whatever the event.
 fn local_unlisten(source: &str, input: &Value) -> Result<(String, String), String> {
     let given = input["target"].as_str().unwrap_or("");
     let home = crate::platform::home_dir();
-    let target = if matches!(source, "fs" | "process" | "web") {
-        ["changed", "port_open", "started"].iter().find_map(|until| crate::listen_local::target(source, until, given, "x", &home).ok())
+    // As given (a link to an issue, `~\Downloads`, `:3000`): listen.rs
+    // cancel_local stops whatever it may have been kept as.
+    let target = if matches!(source, "fs" | "process" | "web") || crate::listen_github::is_source(source) {
+        let given = given.trim().trim_matches('"').trim();
+        (!crate::listen::kept_forms(source, given, &home).is_empty() && !given.contains(['"', '[', ']'])).then(|| given.to_string())
     } else {
         // As kept: the services and agents by their names in a watch.
         let named = crate::listen_local::canonical(source, given);
@@ -230,6 +233,11 @@ fn pull_request_of(target: &str) -> Option<(String, u64)> {
     let text = text.split_once("://").map_or(text, |(_, rest)| rest);
     let text = text.strip_prefix("www.").unwrap_or(text);
     let text = text.strip_prefix("github.com/").unwrap_or(text);
+    // A link to a comment or a view of it (`…/pull/12#issuecomment-1`, `…/pull/12?w=1`): the pull request.
+    let text = match text.find(['#', '?']) {
+        Some(at) if text[..at].contains("/pull") => &text[..at],
+        _ => text,
+    };
     let (repo, number) = if let Some((repo, number)) = text.split_once('#') {
         (repo.trim().to_string(), number.trim())
     } else {
@@ -406,6 +414,9 @@ mod tests {
         );
         assert_eq!(ok(UNLISTEN, json!({ "repo": "octocat/hello", "number": 42 })), "[[unlisten octocat/hello#42]]");
         assert_eq!(ok(UNLISTEN, json!({ "target": "octocat/hello/pull/42" })), "[[unlisten octocat/hello#42]]");
+        // A link to one of its comments, or with a query.
+        assert_eq!(ok(UNLISTEN, json!({ "target": "https://github.com/octocat/hello/pull/42#issuecomment-1" })), "[[unlisten octocat/hello#42]]");
+        assert_eq!(ok(UNLISTEN, json!({ "target": "https://github.com/octocat/hello/pull/42/files?w=1" })), "[[unlisten octocat/hello#42]]");
     }
 
     #[test]
@@ -423,6 +434,12 @@ mod tests {
         );
         assert_eq!(ok(UNLISTEN, json!({ "source": "web", "target": "https://example.com/p" })), "[[unlisten web \"https://example.com/p\"]]");
         assert_eq!(ok(UNLISTEN, json!({ "source": "process", "target": "3000" })), "[[unlisten process \"3000\"]]");
+        // As given: listen.rs stops it whatever it was kept as (octocat/hello#42).
+        assert_eq!(
+            ok(UNLISTEN, json!({ "source": "github.issue", "target": "https://github.com/octocat/hello/issues/42" })),
+            "[[unlisten github.issue \"https://github.com/octocat/hello/issues/42\"]]"
+        );
+        assert!(line(UNLISTEN, &json!({ "source": "github.issue", "target": "not a repository" })).is_err());
         assert!(line(LISTEN, &json!({ "source": "fs", "target": "Downloads", "event": "created" })).is_err());
         assert!(line(LISTEN, &json!({ "source": "web", "target": "https://example.com", "event": "contains" })).is_err());
         assert!(line(LISTEN, &json!({ "source": "fs", "target": "C:\\x", "event": "merged" })).is_err());

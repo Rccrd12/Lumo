@@ -159,12 +159,15 @@ export function localModelsBlock(id: ModelServerId, studio?: UnslothMemory): HTM
   free.addEventListener("click", async () => {
     free.disabled = true;
     clear(memoryStatus);
+    // Said after the list is asked again, which starts by clearing it.
+    let failed: unknown = null;
     try {
       await Bridge.localUnload(id);
     } catch (err) {
-      memoryStatus.append(h("div", { class: "notice err", text: errorText(err) }));
+      failed = err ?? "";
     }
     await refresh();
+    if (failed !== null) memoryStatus.append(h("div", { class: "notice err", text: errorText(failed) }));
   });
   startNow?.addEventListener("click", async () => {
     startNow.disabled = true;

@@ -462,7 +462,8 @@ function resendCard(): HTMLElement {
       : undefined;
   const rows = h("div", { class: "int-rows" });
   emails.slice(0, 3).forEach((e, i) => {
-    const delivered = e.lastEvent === "delivered";
+    // Opened or clicked came after delivered: as green as it.
+    const delivered = e.lastEvent === "delivered" || e.lastEvent === "opened" || e.lastEvent === "clicked";
     const accent = delivered ? "#22C55E" : "#F4505E";
     const to = Array.isArray(e.to) ? String(e.to[0] ?? "?") : "?";
     const short = to.split("@")[0];
