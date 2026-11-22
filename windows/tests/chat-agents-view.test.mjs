@@ -309,3 +309,57 @@ test("an edited question takes the agents of the answers it drops with it", asyn
   assert.deepEqual($(".chat-log").find(".agents-name").map((e) => e.textContent), ["Transcribe n1"]);
   await answer({ text: "Better.", turns: 4 });
 });
+
+test("an agent started by another sits in under it, and an agent's own plan shows on its row", async () => {
+  const answer = await ask("review the repo");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("coord", { title: "Coordinator" }) });
+  emit("chat-agent", { chat, agent: agent("solo", { title: "Solo" }) });
+  emit("chat-agent", { chat, agent: agent("b1", { title: "Batch 1", parent: "coord", plan: [
+    { text: "Read the files", status: "done" },
+    { text: "Write the notes", status: "active" },
+    { text: "Check them", status: "pending" },
+  ] }) });
+  emit("chat-agent", { chat, agent: agent("b2", { title: "Batch 2", parent: "coord" }) });
+  view.sync();
+
+  // Each agent right under the one that started it, set in by how deep it is.
+  const list = $(".chat-log").find(".agents-row");
+  assert.deepEqual(list.map((r) => r.querySelector(".agents-name").textContent), ["Coordinator", "Batch 1", "Batch 2", "Solo"]);
+  assert.deepEqual(list.map((r) => r.className.includes("child")), [false, true, true, false]);
+  assert.equal(list[1].style["--depth"], "1");
+
+  // The plan's chip on its row: a segment per step, how many are done.
+  const chip = list[1].querySelector(".agents-plan-chip");
+  assert.deepEqual(chip.querySelector(".plan-chip-segs").children.map((s) => s.className), ["done", "active", "pending"]);
+  assert.equal(chip.querySelector(".plan-chip-count").textContent, "1/3");
+  assert.equal(list[2].querySelector(".agents-plan-chip"), null, "no plan, no chip");
+
+  // Opened, its steps as the chat's plan lists them.
+  list[1].querySelector(".agents-row-head").fire("click");
+  view.sync();
+  const opened = $(".chat-log").find(".agents-row")[1];
+  assert.deepEqual(opened.find(".plan-text").map((s) => s.textContent), ["Read the files", "Write the notes", "Check them"]);
+  await answer({ text: "Started.", turns: 2 });
+});
+
+test("an agent its CLI was asked to stop says so until the CLI confirms, and offers no Stop meanwhile", async () => {
+  const answer = await ask("start two writers");
+  const chat = State.chatId;
+  emit("chat-agent", { chat, agent: agent("w1", { title: "Writer", canStop: true, stopping: true }) });
+  view.sync();
+  let row = $(".chat-log").find(".agents-row")[0];
+  assert.ok(row.className.includes("stopping"));
+  assert.equal(row.querySelector(".agents-line").textContent, "Stopping it…");
+  row.querySelector(".agents-row-head").fire("click");
+  view.sync();
+  assert.ok($(".agents-detail"), "opened");
+  assert.equal($(".agents-detail").querySelector(".agents-btn.stop"), null, "asked already");
+  // Not confirmed in time: at work again, Stop offered again.
+  emit("chat-agent", { chat, agent: agent("w1", { title: "Writer", canStop: true }) });
+  view.sync();
+  row = $(".chat-log").find(".agents-row")[0];
+  assert.ok(!row.className.includes("stopping"));
+  assert.ok($(".agents-detail").querySelector(".agents-btn.stop"));
+  await answer({ text: "Started.", turns: 2 });
+});
