@@ -660,19 +660,25 @@ async fn wait_for_reply(id: &str, rx: &mut mpsc::Receiver<Reply>, wait: Duration
         }
     }
 
-    match tokio::time::timeout(wait, rx.recv()).await {
-        Ok(Some(Reply::Decision(d))) => {
-            log::line(format!("hook id={id} answered {}", loggable(&d)));
-            Ok(d)
-        }
-        Ok(Some(Reply::Decline)) => {
-            log::line(format!("hook id={id} released without a decision"));
-            Err(Unanswered::Released)
-        }
-        Ok(None) => Err(Unanswered::Released),
-        _ => {
-            log::line(format!("hook id={id} timed out — terminal takes over"));
-            Err(Unanswered::TimedOut)
+    let deadline = tokio::time::Instant::now() + wait;
+    loop {
+        match tokio::time::timeout_at(deadline, rx.recv()).await {
+            Ok(Some(Reply::Decision(d))) => {
+                log::line(format!("hook id={id} answered {}", loggable(&d)));
+                return Ok(d);
+            }
+            // The card acknowledged again (the island saw the same request
+            // twice): still up, still waiting for the click.
+            Ok(Some(Reply::Ack)) => {}
+            Ok(Some(Reply::Decline)) => {
+                log::line(format!("hook id={id} released without a decision"));
+                return Err(Unanswered::Released);
+            }
+            Ok(None) => return Err(Unanswered::Released),
+            Err(_) => {
+                log::line(format!("hook id={id} timed out — terminal takes over"));
+                return Err(Unanswered::TimedOut);
+            }
         }
     }
 }
@@ -885,6 +891,15 @@ mod tests {
             tx.send(Reply::Ack).await.unwrap();
             tx.send(Reply::Decision("allow".into())).await.unwrap();
             assert_eq!(wait_for_reply("t4", &mut rx, Duration::from_millis(50)).await, Ok("allow".to_string()));
+            // Acknowledged twice, then clicked: the click is the answer.
+            tx.send(Reply::Ack).await.unwrap();
+            tx.send(Reply::Ack).await.unwrap();
+            tx.send(Reply::Decision("deny".into())).await.unwrap();
+            assert_eq!(wait_for_reply("t5", &mut rx, Duration::from_millis(50)).await, Ok("deny".to_string()));
+            // Acks alone never stretch the wait past its end.
+            tx.send(Reply::Ack).await.unwrap();
+            tx.send(Reply::Ack).await.unwrap();
+            assert_eq!(wait_for_reply("t6", &mut rx, Duration::from_millis(50)).await, Err(Unanswered::TimedOut));
             assert_eq!(Unanswered::TimedOut.word(), "timeout");
             assert_eq!(Unanswered::NotShown.word(), "busy");
             assert_eq!(Unanswered::Released.word(), "released");

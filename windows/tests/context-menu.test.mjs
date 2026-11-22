@@ -24,3 +24,13 @@ test("the text actions are only those that apply", () => {
   assert.deepEqual(textActions({ editable: false, selected: true, hasText: false }), ["copy"]);
   assert.deepEqual(textActions({ editable: false, selected: false, hasText: false }), []);
 });
+
+test("the menu never starts or ends with a separator, nor shows two in a row", async () => {
+  const { menuEntries } = await import("../src/views/context-menu.ts");
+  const item = (label) => ({ kind: "item", label, run() {} });
+  const sep = { kind: "sep" };
+  const kinds = (entries) => menuEntries(entries).map((e) => e.kind);
+  assert.deepEqual(kinds([item("a"), sep, sep]), ["item"]);
+  assert.deepEqual(kinds([sep, sep, item("a"), sep, sep, item("b"), sep]), ["item", "sep", "item"]);
+  assert.deepEqual(kinds([sep, sep]), []);
+});

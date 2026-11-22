@@ -89,7 +89,7 @@ const SYMBOLS: Record<string, string> = {
   vartriangleright: "⊳", vDash: "⊨", Vdash: "⊩", Vvdash: "⊪", smile: "⌣", frown: "⌢",
   between: "≬", pitchfork: "⋔", shortmid: "∣", shortparallel: "∥", varpropto: "∝",
   backepsilon: "϶", notni: "∌", nni: "∌", multimap: "⊸", eqqcolon: "≕", coloneq: "≔",
-  Coloneqq: "⩴", eqcolon: "≕", lesseqslant: "⩽", nleqslant: "⪇", ngeqslant: "⪈", nleqq: "≰",
+  Coloneqq: "⩴", eqcolon: "≕", lesseqslant: "⩽", nleqslant: "⩽\u0338", ngeqslant: "⩾\u0338", nleqq: "≰",
   ngeqq: "≱", gtreqslant: "⪖", nmodels: "⊭", sqsubsetneq: "⋤",
   // Arrows
   Lleftarrow: "⇚", Rrightarrow: "⇛", Lsh: "↰", Rsh: "↱", curvearrowleft: "↶",
@@ -616,7 +616,8 @@ class Parser {
     while (this.s[this.i] === " ") this.i++;
     if (this.s[this.i] !== "{") return { t: "group", c: [] };
     const words = this.raw();
-    const parts: Node[] = words.split(/\$([^$]*)\$/).map((part, k) =>
+    // An escaped \$ is a dollar sign, never the edge of a formula.
+    const parts: Node[] = words.split(/(?<!\\)\$((?:\\\$|[^$])*?)(?<!\\)\$/).map((part, k) =>
       k % 2 ? { t: "group", c: new Parser(part).parseAll() } : { t: "sym", v: part.replace(/\\([{}$%&#_ ])/g, "$1"), upright: true },
     );
     const body: Node = parts.length === 1 ? parts[0] : { t: "group", c: parts };

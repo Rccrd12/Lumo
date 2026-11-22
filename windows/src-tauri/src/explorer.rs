@@ -131,7 +131,8 @@ pub fn size_text(bytes: u64) -> String {
     }
     let mut value = bytes as f64 / 1024.0;
     let mut unit = 0;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
+    // As shown, to one decimal: 1023.95 KB would read "1024.0 KB", so it is 1.0 MB.
+    while (value * 10.0).round() >= 10240.0 && unit < UNITS.len() - 1 {
         value /= 1024.0;
         unit += 1;
     }
@@ -698,6 +699,9 @@ mod tests {
         assert_eq!(size_text(1536), "1.5 KB");
         assert_eq!(size_text(34 * 1024 * 1024 + 512 * 1024), "34.5 MB");
         assert_eq!(size_text(3 * 1024 * 1024 * 1024), "3.0 GB");
+        assert_eq!(size_text(1024 * 1024 - 1), "1.0 MB", "never 1024.0 KB");
+        assert_eq!(size_text(1024 * 1024 * 1024 - 1), "1.0 GB");
+        assert_eq!(size_text(1023 * 1024), "1023.0 KB");
         assert_eq!(stamp(0, 0), "1970-01-01 00:00");
         assert_eq!(stamp(1_791_450_300, 0), "2026-10-08 09:05");
         assert_eq!(stamp(1_791_450_300, 2 * 3600), "2026-10-08 11:05");

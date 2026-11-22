@@ -4,6 +4,7 @@
 // without a webview.
 
 import { cleanChecklists, type ChatChecklists } from "./checklists";
+import { clipUnits } from "./clip";
 import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
 import type { SentItem } from "./sent";
 
@@ -345,7 +346,7 @@ export function savedWarning(w: unknown): AnswerWarning | undefined {
 export function chatTitle(turns: SavedTurn[]): string {
   const first = turns.find((t) => t.role === "user")?.content ?? "";
   const line = first.replace(/\s+/g, " ").trim();
-  return line.length > TITLE_CHARS ? `${line.slice(0, TITLE_CHARS - 1)}…` : line;
+  return line.length > TITLE_CHARS ? `${clipUnits(line, TITLE_CHARS - 1)}…` : line;
 }
 
 /** Who named a chat: its AI, or the user. */

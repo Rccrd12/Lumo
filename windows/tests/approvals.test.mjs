@@ -27,6 +27,17 @@ test("shell commands that only look are simple", () => {
   assert.ok(isSimpleRequest("view_file", { AbsolutePath: "/a" }));
 });
 
+test("a command named by its path looks only from the system's own folders", () => {
+  for (const c of ["/usr/bin/ls -la", "/bin/cat a.txt", "C:/Windows/System32/whoami.exe", "c:\\windows\\system32\\findstr.exe x y"]) {
+    assert.ok(isLookingCommand(c), c);
+  }
+  // Whatever program sits there: "ls" by its name only.
+  for (const c of [
+    "./evil/ls -la", "C:\\tmp\\cat.exe x", ".\\ls.exe", "D:\\Downloads\\git.exe status", "~/bin/echo hi",
+    "C:\\Windows\\Temp\\dir.exe", "/tmp/ls", "/usr/bin/../../tmp/ls", "git status && ./ls",
+  ]) assert.equal(isLookingCommand(c), false, c);
+});
+
 test("the closed island takes only what its two lines show whole", () => {
   // It shows two lines of the command: Allow there must never allow a third.
   assert.equal(isSimpleRequest("Bash", { command: "ls\npwd\ngit status\ncat C:/Users/me/.ssh/id_rsa" }), false);

@@ -1013,15 +1013,18 @@ export function notablePoints(plot: Plot, values: Record<string, number>, view: 
   /** The sign changes of `v` over the samples, as crossings of `g`. */
   const signChanges = (v: number[], g: (x: number) => number): number[] => {
     const out: number[] = [];
+    // On the first sample: the view starts on a zero (x^2 - 4 over -2..2).
+    if (v[0] === 0) out.push(xs[0]);
     for (let i = 1; i <= n; i++) {
       const a = v[i - 1];
       const b = v[i];
-      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
       if (b === 0) {
-        // On a sample: once, not again from the next one.
+        // On a sample: once, not again from the next one; also right after
+        // where the curve is not defined (sqrt(x) at 0).
         if (a !== 0) out.push(xs[i]);
         continue;
       }
+      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
       if (a === 0 || Math.sign(a) === Math.sign(b)) continue;
       const x = crossing(g, xs[i - 1], a, xs[i]);
       if (x !== null && Math.abs(g(x)) <= near) out.push(x);

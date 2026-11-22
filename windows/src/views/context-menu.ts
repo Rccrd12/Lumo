@@ -30,6 +30,17 @@ export type MenuEntry =
 /** Keeps a little room from the window's edges. */
 const EDGE = 6;
 
+/** The entries as the menu shows them: no separator first, last or twice in a row. */
+export function menuEntries(entries: MenuEntry[]): MenuEntry[] {
+  const kept: MenuEntry[] = [];
+  for (const e of entries) {
+    if (e.kind === "sep" && (kept.length === 0 || kept[kept.length - 1].kind === "sep")) continue;
+    kept.push(e);
+  }
+  while (kept.length && kept[kept.length - 1].kind === "sep") kept.pop();
+  return kept;
+}
+
 export class ContextMenu {
   readonly el = h("div", { class: "ctx-menu", role: "menu" });
   private entries: MenuEntry[] = [];
@@ -73,7 +84,7 @@ export class ContextMenu {
   /** Opens at (x, y), page pixels, inside `bounds` (the window by default). */
   open(x: number, y: number, entries: MenuEntry[], bounds?: { x: number; y: number; w: number; h: number }) {
     // No separator first, last or twice.
-    this.entries = entries.filter((e, i, all) => e.kind !== "sep" || (i > 0 && i < all.length - 1 && all[i - 1].kind !== "sep"));
+    this.entries = menuEntries(entries);
     if (!this.entries.length) return this.close();
     this.active = -1;
     this.el.replaceChildren(...this.entries.map((e, i) => this.draw(e, i)));

@@ -51,7 +51,18 @@ impl Relay {
     pub fn command(&self, shell: Shell, args: &str) -> String {
         let exe = match shell {
             // Git Bash reads backslashes as escapes: forward slashes, quoted.
-            Shell::Sh => format!("\"{}\"", self.exe.replace('\\', "/")),
+            // In double quotes bash still expands `$` and backticks (a user
+            // named Jo$hn): such a path goes in single quotes, where only `'`
+            // is special (`'\''`). Others keep the double quotes hooks
+            // already installed have, so they stay current.
+            Shell::Sh => {
+                let exe = self.exe.replace('\\', "/");
+                if exe.contains(['$', '`', '"']) {
+                    format!("'{}'", exe.replace('\'', r"'\''"))
+                } else {
+                    format!("\"{exe}\"")
+                }
+            }
             // A quoted string alone is an expression in PowerShell: `&` runs it.
             // Inside single quotes only `'` is special, and it doubles.
             Shell::PowerShell => format!("& '{}'", self.exe.replace('\'', "''")),
@@ -1113,6 +1124,13 @@ mod tests {
         );
         // A plain path is left bare, so cmd and PowerShell both run it.
         assert_eq!(w.command(Shell::Cmd, "--agent cursor"), format!("{WIN} --agent cursor"));
+
+        // `$` or a backtick in the path: single quotes, or bash would expand it.
+        let dollar = relay(r"C:\Users\Jo$hn\AppData\Local\com.rccrd12.lumo\bin\lumo-hook.exe");
+        assert_eq!(dollar.command(Shell::Sh, "Stop"), "'C:/Users/Jo$hn/AppData/Local/com.rccrd12.lumo/bin/lumo-hook.exe' Stop");
+        let both = relay(r"C:\Users\O'`x`\lumo-hook.exe");
+        assert_eq!(both.command(Shell::Sh, "Stop"), r"'C:/Users/O'\''`x`/lumo-hook.exe' Stop");
+        assert!(crate::hooks::is_relay_command(&dollar.command(Shell::Sh, "Stop")));
 
         let spaced = relay(WIN_SPACE);
         assert_eq!(spaced.command(Shell::Cmd, "x"), format!("\"{WIN_SPACE}\" x"));

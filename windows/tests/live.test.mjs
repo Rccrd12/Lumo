@@ -616,3 +616,30 @@ test("a long call is saved whole, though the call view keeps its last lines", ()
   tr.clear();
   assert.deepEqual(tr.turns(), []);
 });
+
+test("the goodbye of a call that has ended never hangs up the next one", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ended = [];
+  const realEnd = Live.end;
+  Live.end = () => ended.push(Live.call);
+  try {
+    Live.phase = "listening";
+    Live.ending = false;
+    Live.speaker = null;
+    Live.finishAfterGoodbye();
+    // The user hangs up and starts a new call before Gemini's goodbye ends.
+    Live.call++;
+    Live.ending = false;
+    t.mock.timers.tick(1000);
+    assert.deepEqual(ended, [], "the new call goes on");
+
+    // Its own goodbye still ends it.
+    Live.finishAfterGoodbye();
+    t.mock.timers.tick(1000);
+    assert.deepEqual(ended, [Live.call]);
+  } finally {
+    Live.end = realEnd;
+    Live.phase = "off";
+    Live.ending = false;
+  }
+});

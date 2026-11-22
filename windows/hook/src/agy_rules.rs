@@ -32,7 +32,7 @@ pub enum Verdict {
 pub struct Parsed {
     /// Each part of the command line (split on && || ; | & and new lines), as words.
     pub segments: Vec<Vec<String>>,
-    /// The line runs another command through $(…) or backticks.
+    /// The line runs another command through $(…), backticks, <(…) or >(…).
     pub has_substitution: bool,
 }
 
@@ -170,6 +170,9 @@ pub fn parse(line: &str) -> Option<Parsed> {
     let mut in_word = false;
     let mut substitution = false;
     let mut quote: Option<char> = None;
+    // The last character was a `>` or `<` the shell reads as a redirection:
+    // not one in quotes, nor one after a backslash (`echo ">"&rm x` runs rm).
+    let mut redirect = false;
     let mut i = 0;
 
     fn end_word(words: &mut Vec<String>, word: &mut String, in_word: &mut bool) {
@@ -189,6 +192,7 @@ pub fn parse(line: &str) -> Option<Parsed> {
     while i < chars.len() {
         let c = chars[i];
         let next = chars.get(i + 1).copied();
+        let after_redirect = std::mem::take(&mut redirect);
         if let Some(q) = quote {
             if c == q {
                 quote = None;
@@ -219,7 +223,7 @@ pub fn parse(line: &str) -> Option<Parsed> {
             ' ' | '\t' => end_word(&mut words, &mut word, &mut in_word),
             '\n' | '\r' | ';' => end_segment(&mut segments, &mut words, &mut word, &mut in_word),
             // A redirection (2>&1, >&2, &>file), not a separator.
-            '&' if (in_word && (word.ends_with('>') || word.ends_with('<'))) || next == Some('>') => {
+            '&' if (in_word && after_redirect) || next == Some('>') => {
                 word.push(c);
                 in_word = true;
             }
@@ -235,12 +239,14 @@ pub fn parse(line: &str) -> Option<Parsed> {
                 word.push(c);
                 in_word = true;
             }
-            '$' if next == Some('(') => {
+            // $(…), and process substitution <(…) and >(…): a command inside.
+            '$' | '<' | '>' if next == Some('(') => {
                 substitution = true;
                 word.push(c);
                 in_word = true;
             }
             _ => {
+                redirect = matches!(c, '>' | '<');
                 word.push(c);
                 in_word = true;
             }
@@ -338,15 +344,15 @@ fn percent_decode(s: &str) -> Option<String> {
 }
 
 /// A path with `/` separators, no `.` or `..` parts, no doubled or trailing slash, the way
-/// a standard path reads. A Windows path (drive letter, backslashes) is
-/// compared without case, as Windows does.
+/// a standard path reads. A Windows path (drive letter, backslashes, a network
+/// share `//server/share`) is compared without case, as Windows does.
 fn standard_path(path: &str) -> (String, bool) {
-    let windows = path.contains('\\') || {
+    let slashed = path.replace('\\', "/");
+    let unc = slashed.starts_with("//");
+    let windows = unc || path.contains('\\') || {
         let b = path.as_bytes();
         b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':'
     };
-    let slashed = path.replace('\\', "/");
-    let unc = slashed.starts_with("//");
     let absolute = slashed.starts_with('/');
     let mut parts: Vec<&str> = Vec::new();
     for part in slashed.split('/') {
@@ -427,6 +433,17 @@ mod tests {
         assert!(parse("echo $(whoami)").unwrap().has_substitution);
         assert!(parse("echo \"`whoami`\"").unwrap().has_substitution);
         assert!(!parse("echo '$(whoami)'").unwrap().has_substitution);
+        // Process substitution runs a command too; in quotes it is text.
+        assert!(parse("diff <(rm -rf ~) b").unwrap().has_substitution);
+        assert!(parse("cat >(rm x)").unwrap().has_substitution);
+        assert!(!parse(r#"echo '<(x)' ">(y)""#).unwrap().has_substitution);
+        // A `>` or `<` in quotes or after a backslash is text: the `&` after it
+        // ends the part. Unquoted, it is a redirection (`>&2`, `<&3`).
+        assert_eq!(words(r#"echo ">"&rm -rf x"#), w(&[&["echo", ">"], &["rm", "-rf", "x"]]));
+        assert_eq!(words("echo '<'&rm x"), w(&[&["echo", "<"], &["rm", "x"]]));
+        assert_eq!(words(r"echo \>&rm x"), w(&[&["echo", ">"], &["rm", "x"]]));
+        assert_eq!(words("echo hi >&2"), w(&[&["echo", "hi", ">&2"]]));
+        assert_eq!(words("cat <&3"), w(&[&["cat", "<&3"]]));
     }
 
     #[test]
@@ -468,6 +485,9 @@ mod tests {
         assert_eq!(r.verdict("ls `whoami`"), Verdict::Unknown);
         assert_eq!(r.verdict("ls 'open"), Verdict::Unknown);
         assert_eq!(r.verdict(""), Verdict::Unknown);
+        // A command run through process substitution is hidden too.
+        assert_eq!(r.verdict("ls <(rm -rf ~)"), Verdict::Unknown);
+        assert_eq!(r.verdict("ls >(rm x)"), Verdict::Unknown);
         assert_eq!(r.verdict(" ; "), Verdict::Unknown);
         // Empty rules match nothing.
         assert_eq!(AgyRules::new(&[""], &[]).verdict("anything"), Verdict::Unknown);
@@ -520,6 +540,18 @@ mod tests {
     }
 
     #[test]
+    fn a_quoted_redirection_sign_never_hides_the_next_command() {
+        let r = rules();
+        // The deny rule sees `rm -rf`: the `&` after a quoted `>` runs it.
+        assert_eq!(r.verdict(r#"ls ">"&rm -rf x"#), Verdict::Denied);
+        assert_eq!(r.verdict("ls '>'&rm -rf x"), Verdict::Denied);
+        assert_eq!(r.verdict(r"ls \>&rm -rf x"), Verdict::Denied);
+        assert_eq!(r.verdict(r#"ls ">"&npm install"#), Verdict::Unknown);
+        // A real redirection stays one word.
+        assert_eq!(r.verdict("ls >&2"), Verdict::Allowed);
+    }
+
+    #[test]
     fn windows_folders_match_a_windows_working_directory() {
         assert_eq!(file_uri_path("file:///c%3A/Users/me/My%20App").as_deref(), Some("c:/Users/me/My App"));
         assert_eq!(file_uri_path("file:///C:/work/app").as_deref(), Some("C:/work/app"));
@@ -531,6 +563,9 @@ mod tests {
         assert!(!folder_contains("c:/", r"C:\Users\me"));
         assert!(!folder_contains("C:", r"C:\Users\me"));
         assert!(folder_contains("//server/share/app", r"\\server\share\app\x"));
+        // A network share is Windows': its case doesn't matter either.
+        assert!(folder_contains(&file_uri_path("file://Server/Share/app").unwrap(), r"\\Server\Share\app\x"));
+        assert!(folder_contains("//server/share/app", "//Server/Share/App/x"));
         // Linux paths keep their case.
         assert!(!folder_contains("/home/me/App", "/home/me/app"));
     }

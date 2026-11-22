@@ -59,6 +59,8 @@ const MAX_TEXT: usize = 100;
 const EXCERPT: usize = 140;
 /// How many tags are kept as seen.
 const TAGS_KEPT: usize = 30;
+/// The tags seen on a repository that had none (no tag is named with nothing).
+const NO_TAGS: &str = "\n";
 
 pub fn is_source(source: &str) -> bool {
     SOURCES.contains(&source)
@@ -155,6 +157,11 @@ fn branch_of(text: &str) -> Option<(String, String)> {
 /// `owner/repo#12` or a link to the issue.
 fn issue_of(text: &str) -> Option<(String, u64)> {
     let text = bare(text);
+    // A link to a comment or a view of it (`…/issues/12#issuecomment-1`): the issue.
+    let text = match text.find(['#', '?']) {
+        Some(at) if text[..at].matches('/').count() >= 2 => &text[..at],
+        _ => text,
+    };
     let (repo, number) = if let Some((repo, number)) = text.split_once('#') {
         (repo.trim().to_string(), number.trim().to_string())
     } else {
@@ -522,7 +529,9 @@ pub fn releases(w: &Watch, cursor: &str, list: &Value) -> Look {
 /// The tags (`GET /repos/{repo}/tags`): the names seen are the cursor, one a line.
 pub fn tags(w: &Watch, list: &Value) -> Look {
     let names: Vec<&str> = list.as_array().into_iter().flatten().filter_map(|t| t["name"].as_str()).take(TAGS_KEPT).collect();
-    let print = names.join("\n");
+    // A repository with no tag yet is kept as NO_TAGS, not as nothing: else
+    // its first tag would be taken for the first look again, and never told.
+    let print = if names.is_empty() { NO_TAGS.to_string() } else { names.join("\n") };
     if w.last_sha.is_empty() {
         return Look::Hold(Some(print));
     }
@@ -613,10 +622,17 @@ pub fn notifications(w: &Watch, cursor: &str, list: &Value) -> Look {
     fire_newest(items)
 }
 
-/// A repository's security alerts (Dependabot, code scanning, secret scanning), newest first.
-pub fn alerts(w: &Watch, cursor: &str, kind: &str, list: &Value) -> Look {
+/// A repository's security alerts of one kind, newest first (the watch itself
+/// gathers every kind with `alert_items`).
+#[cfg(test)]
+fn alerts(w: &Watch, cursor: &str, kind: &str, list: &Value) -> Look {
+    fire_newest(alert_items(w, cursor, kind, list))
+}
+
+/// The alerts of one kind created since `cursor`: when, and what is told.
+fn alert_items(w: &Watch, cursor: &str, kind: &str, list: &Value) -> Vec<(String, String)> {
     let repo = repo(&w.target);
-    let items = list
+    list
         .as_array()
         .into_iter()
         .flatten()
@@ -636,8 +652,7 @@ pub fn alerts(w: &Watch, cursor: &str, kind: &str, list: &Value) -> Look {
             };
             (cursor_at(&a["created_at"]), tf(key, &[("repo", repo), ("title", &excerpt(title))]))
         })
-        .collect();
-    fire_newest(items)
+        .collect()
 }
 
 /// The discussions (GraphQL, the most recently updated first).
@@ -972,7 +987,10 @@ pub async fn look(ask: &Asker, w: &Watch, age: impl Fn(&str) -> u64) -> Look {
                 _ => &[("dependabot", "dependabot/alerts"), ("code_scanning", "code-scanning/alerts")],
             };
             let critical = if w.until == "critical" { "&severity=critical" } else { "" };
-            let mut found_any = None;
+            // Every kind's new alerts together, then the newest: one kind told
+            // first would move the cursor past an older alert of the other.
+            let mut items = Vec::new();
+            let mut found_any = false;
             for (kind, path) in kinds {
                 let got = match ask.get(format!("repos/{repo}/{path}?{open}{critical}")).await {
                     Answer::Found(v) => v,
@@ -982,13 +1000,10 @@ pub async fn look(ask: &Asker, w: &Watch, age: impl Fn(&str) -> u64) -> Look {
                     Answer::Unauthorized => return Look::Unauthorized,
                     Answer::Unknown => return Look::Unknown,
                 };
-                let look = alerts(w, &cursor, kind, &got);
-                if let Look::Fire { .. } = look {
-                    return look;
-                }
-                found_any = Some(look);
+                found_any = true;
+                items.extend(alert_items(w, &cursor, kind, &got));
             }
-            found_any.unwrap_or(Look::Missing)
+            if found_any { fire_newest(items) } else { Look::Missing }
         }
         "github.discussion" => {
             let (owner, name) = repo.split_once('/').unwrap_or((&repo, ""));
@@ -1103,6 +1118,8 @@ mod tests {
         assert_eq!(target("github.workflow", "finished", "Rccrd12/Lumo", "Windows beta"), Ok("Rccrd12/Lumo".into()));
         assert_eq!(target("github.workflow", "finished", "Rccrd12/Lumo@main", ""), Ok("Rccrd12/Lumo@main".into()));
         assert_eq!(target("github.issue", "comment", "https://github.com/o/r/issues/12", ""), Ok("o/r#12".into()));
+        assert_eq!(target("github.issue", "comment", "https://github.com/o/r/issues/12#issuecomment-9", ""), Ok("o/r#12".into()));
+        assert_eq!(target("github.issue", "comment", "o/r#12", ""), Ok("o/r#12".into()));
         assert_eq!(target("github.issue", "opened", "o/r.git", "bug"), Ok("o/r".into()));
         assert!(target("github.issue", "opened", "o/r#12", "").is_err());
         assert_eq!(target("github.notifications", "any", "", ""), Ok("all".into()));
@@ -1222,6 +1239,13 @@ mod tests {
         assert_eq!(fired(tags(&w, &tag_list)), (true, "New tag v2 in o/r".into(), Some("v2\nv1".into())));
         w.last_sha = "v2\nv1".into();
         assert_eq!(tags(&w, &tag_list), Look::Hold(None));
+        // A repository with no tag yet: its first one is told.
+        w.last_sha = String::new();
+        let none = tags(&w, &json!([]));
+        assert_eq!(none, Look::Hold(Some(NO_TAGS.into())));
+        w.last_sha = NO_TAGS.into();
+        assert_eq!(tags(&w, &json!([])), Look::Hold(None));
+        assert_eq!(fired(tags(&w, &json!([{ "name": "v0.1.0" }]))), (true, "New tag v0.1.0 in o/r".into(), Some("v0.1.0".into())));
 
         let mut w = watch("github.stars", "o/r", "star");
         assert_eq!(counts(&w, &json!({ "stargazers_count": 10 })), Look::Hold(Some("10".into())));
@@ -1283,6 +1307,12 @@ mod tests {
         let w = watch("github.security", "o/r", "dependabot");
         let list = json!([{ "created_at": "2025-11-15T19:03:00Z", "security_advisory": { "summary": "tar is unsafe" } }]);
         assert_eq!(fired(alerts(&w, cursor, "dependabot", &list)).1, "Dependabot alert in o/r: tar is unsafe");
+        // Both kinds at once: the older code scanning alert is counted, not left behind the newer cursor.
+        let any = watch("github.security", "o/r", "dependabot");
+        let scanning = json!([{ "created_at": "2025-11-15T19:01:00Z", "rule": { "description": "SQL injection" } }]);
+        let mut both = alert_items(&any, cursor, "dependabot", &list);
+        both.extend(alert_items(&any, cursor, "code_scanning", &scanning));
+        assert_eq!(fired(fire_newest(both)), (true, "Dependabot alert in o/r: tar is unsafe (and 1 more)".into(), Some("2025-11-15T19:03:00Z".into())));
 
         let mut w = watch("github.deploy", "o/r", "failed");
         w.text = "production".into();
