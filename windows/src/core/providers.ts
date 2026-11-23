@@ -175,7 +175,7 @@ export function parseSandboxLevel(v: unknown): SandboxLevel {
 export interface LocalCaps {
   vision: boolean | null;
   tools: boolean | null;
-  /** The reasoning levels it takes ("off", "on", "low", "medium", "high"). */
+  /** The reasoning levels it takes ("off", "on", "minimal", "low", "medium", "high", "xhigh", "max"). */
   reasoning: string[];
   /** Tokens: the longest context it was made for, and the one it is loaded with (0: not said). */
   maxContext: number;

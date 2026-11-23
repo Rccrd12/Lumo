@@ -233,7 +233,8 @@ pub struct Caps {
     /// It calls tools (the island's and the user's).
     pub tools: Option<bool>,
     /// It reasons: the levels it takes, from Lumo's names ("off", "on",
-    /// "low", "medium", "high"); empty when it doesn't, or nobody says.
+    /// "minimal", "low", "medium", "high", "xhigh", "max"); empty when it
+    /// doesn't, or nobody says.
     pub reasoning: Vec<String>,
     /// The longest context it was made for, in tokens (0: not said).
     pub max_context: u64,
@@ -250,7 +251,7 @@ const CAPS_FRESH: Duration = Duration::from_secs(20);
 static CAPS: Mutex<Option<HashMap<String, (std::time::Instant, Caps)>>> = Mutex::new(None);
 
 /// The levels Lumo offers, in order; anything else a server names is left out.
-const LEVELS: &[&str] = &["off", "on", "low", "medium", "high"];
+const LEVELS: &[&str] = &["off", "on", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 /// What `server` says `model` can do. Asked at most every few seconds per
 /// model; a server that doesn't answer gives the empty Caps (nothing known).
@@ -628,9 +629,12 @@ fn parse_unsloth_caps(model: &str, models: &Value, status: Option<&Value>) -> Ca
         let named: Vec<&str> = s["reasoning_effort_levels"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
         let efforts: Vec<String> = LEVELS[2..].iter().filter(|l| named.contains(l)).map(|l| l.to_string()).collect();
         let always = s["reasoning_always_on"].as_bool() == Some(true);
+        // A template whose levels start with "none" (or "off") can also not think.
+        let can_stop = named.iter().any(|l| matches!(*l, "none" | "off"));
         caps.reasoning = match s["reasoning_style"].as_str() {
             _ if always => Vec::new(),
             Some("reasoning_effort") if efforts.is_empty() => ["low", "medium", "high"].map(String::from).to_vec(),
+            Some("reasoning_effort") if can_stop => std::iter::once("off".to_string()).chain(efforts).collect(),
             Some("reasoning_effort") => efforts,
             Some("enable_thinking_effort") if !efforts.is_empty() => std::iter::once("off".to_string()).chain(efforts).collect(),
             _ => ["off", "on"].map(String::from).to_vec(),
@@ -765,7 +769,8 @@ fn parse_lmstudio_caps(model: &str, body: &Value) -> Caps {
 
 /// What the chat sends as `reasoning_effort` (Ollama and LM Studio both take
 /// it on their OpenAI-compatible API) for the level picked, when the model
-/// takes that level: "off" is "none", "on" is "medium".
+/// takes that level: "off" is "none", "on" is "medium", the others go by
+/// their own name.
 pub fn reasoning_effort(caps: &Caps, picked: &str) -> Option<&'static str> {
     if !caps.reasoning.iter().any(|l| l == picked) {
         return None;
@@ -773,8 +778,11 @@ pub fn reasoning_effort(caps: &Caps, picked: &str) -> Option<&'static str> {
     match picked {
         "off" => Some("none"),
         "on" | "medium" => Some("medium"),
+        "minimal" => Some("minimal"),
         "low" => Some("low"),
         "high" => Some("high"),
+        "xhigh" => Some("xhigh"),
+        "max" => Some("max"),
         _ => None,
     }
 }
@@ -1215,7 +1223,15 @@ mod tests {
         assert_eq!(reasoning_effort(&on_off, ""), None);
         let levels = Caps { reasoning: vec!["low".into(), "medium".into(), "high".into()], ..Caps::default() };
         assert_eq!(reasoning_effort(&levels, "low"), Some("low"));
+        assert_eq!(reasoning_effort(&levels, "max"), None, "a level the model doesn't take");
         assert_eq!(reasoning_effort(&Caps::default(), "low"), None);
+        // Every level of a template that has them all (Unsloth Studio's reasoning_effort).
+        let all: Vec<String> = LEVELS.iter().filter(|l| **l != "on").map(|l| l.to_string()).collect();
+        let extended = Caps { reasoning: all, ..Caps::default() };
+        let sent: Vec<_> = ["off", "minimal", "low", "medium", "high", "xhigh", "max"].iter().map(|l| reasoning_effort(&extended, l)).collect();
+        assert_eq!(sent, [Some("none"), Some("minimal"), Some("low"), Some("medium"), Some("high"), Some("xhigh"), Some("max")]);
+        assert_eq!(reasoning_effort(&extended, "on"), None);
+        assert_eq!(reasoning_effort(&extended, "ultra"), None);
     }
 
     #[test]
@@ -1311,7 +1327,23 @@ mod tests {
         assert_eq!(parse_unsloth_caps("gone", &json!({}), None), Caps::default());
         // Efforts, as the template offers them.
         let effort = json!({ "active_model": "unsloth/gemma-4-26b-GGUF", "supports_reasoning": true, "reasoning_style": "enable_thinking_effort", "reasoning_effort_levels": ["low", "high", "max"] });
-        assert_eq!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&effort)).reasoning, vec!["off", "low", "high"]);
+        assert_eq!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&effort)).reasoning, vec!["off", "low", "high", "max"]);
+        // reasoning_effort with every level (Inkling 2 Mini): "none" is Off, first.
+        let level = |levels: Value| json!({ "active_model": "unsloth/gemma-4-26b-GGUF", "supports_reasoning": true, "reasoning_style": "reasoning_effort", "reasoning_effort_levels": levels });
+        let inkling = level(json!(["none", "minimal", "low", "medium", "high", "xhigh", "max"]));
+        assert_eq!(
+            parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&inkling)).reasoning,
+            vec!["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        );
+        // "off" said as such, in any order: Lumo's order.
+        let off = level(json!(["max", "low", "off"]));
+        assert_eq!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&off)).reasoning, vec!["off", "low", "max"]);
+        // Without "none" it always thinks: no Off.
+        let thinks = level(json!(["low", "medium", "high", "xhigh"]));
+        assert_eq!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&thinks)).reasoning, vec!["low", "medium", "high", "xhigh"]);
+        // Nothing named: low, medium, high.
+        let unnamed = level(json!([]));
+        assert_eq!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&unnamed)).reasoning, vec!["low", "medium", "high"]);
         let always = json!({ "active_model": "unsloth/gemma-4-26b-GGUF", "supports_reasoning": true, "reasoning_always_on": true });
         assert!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&always)).reasoning.is_empty());
         assert_eq!(unsloth_loaded(&models), vec!["unsloth/gemma-4-26b-GGUF"]);

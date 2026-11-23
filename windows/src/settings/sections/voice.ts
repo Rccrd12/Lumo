@@ -16,8 +16,9 @@ import { rerender, save, select, settings, toggle } from "../store";
 // ── Voice: Gemini Live ────────────────────────────────────────────────────────
 
 const THINKING_NAMES: Record<string, string> = { low: N_("Low"), medium: N_("Medium"), high: N_("High") };
-/** Claude Code's effort levels, as the chat's picker names them. */
+/** The effort levels (Claude Code's, a local model's), as the chat's picker names them. */
 const EFFORT_NAMES: Record<string, string> = {
+  off: N_("Off"), on: N_("On"), minimal: N_("Minimal"),
   low: N_("Low"), medium: N_("Medium"), high: N_("High"), xhigh: N_("Extra high"), max: N_("Max"),
 };
 

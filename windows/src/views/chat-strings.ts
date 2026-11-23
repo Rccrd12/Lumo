@@ -150,6 +150,7 @@ const EFFORT_NAMES: Record<string, string> = {
   // A local model that thinks or doesn't (local_models.rs).
   off: N_("Off"),
   on: N_("On"),
+  minimal: N_("Minimal"),
   low: N_("Low"),
   medium: N_("Medium"),
   high: N_("High"),
