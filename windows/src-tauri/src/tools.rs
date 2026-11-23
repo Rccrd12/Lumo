@@ -1493,13 +1493,14 @@ async fn call_in_chat(
 ) -> (String, bool, Option<String>) {
     // Lumo's browser: what changes a page waits for the user's click with
     // Ask for approval; Approve for me and Run automatically go on, as for
-    // the CLIs on Auto (browser.rs). Off in Settings since the turn began: nothing opens.
+    // the CLIs on Auto (browser.rs), but this PC or the local network, which
+    // asks in every mode (browser.rs ask_local). Off in Settings since the turn began: nothing opens.
     if crate::browser::NAMES.contains(&id) {
         if !tauri::async_runtime::spawn_blocking(crate::browser::enabled).await.unwrap_or(false) {
             return (not_offered(id), true, None);
         }
         let asks = if asking == Asking::Always { crate::computer::Asks::Card } else { crate::computer::Asks::Free };
-        if let Err(e) = crate::browser::ask(app, asks, None, id, &input).await {
+        if let Err(e) = crate::browser::ask(app, asks, None, chat_id, id, &input).await {
             return (e, true, None);
         }
         let answer = crate::browser::call(app, chat_id, agent, id, &input).await;

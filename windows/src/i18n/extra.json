@@ -21917,6 +21917,18 @@
    "id": "Di tab tersembunyi miliknya sendiri, terpisah dari browser Anda: tanpa akun Anda.",
    "it": "In una scheda nascosta tutta sua, separata dal tuo browser: nessuno dei tuoi account."
   },
+  "An address on this PC or your local network, not the internet: Lumo asks before an agent goes there.": {
+   "zh-Hans": "这台电脑或你的本地网络上的地址，不是互联网：智能体前往之前，Lumo 会先询问。",
+   "hi": "इस PC या आपके स्थानीय नेटवर्क का पता, इंटरनेट नहीं: किसी एजेंट के वहाँ जाने से पहले Lumo पूछता है।",
+   "es": "Una dirección de este PC o de tu red local, no de internet: Lumo pregunta antes de que un agente vaya allí.",
+   "ar": "عنوان على هذا الحاسوب أو على شبكتك المحلية، وليس على الإنترنت: يسأل Lumo قبل أن يذهب إليه أي وكيل.",
+   "fr": "Une adresse de ce PC ou de votre réseau local, pas d'internet : Lumo demande avant qu'un agent y aille.",
+   "bn": "এই পিসি বা আপনার স্থানীয় নেটওয়ার্কের ঠিকানা, ইন্টারনেট নয়: কোনো এজেন্ট সেখানে যাওয়ার আগে Lumo জিজ্ঞাসা করে।",
+   "pt-BR": "Um endereço deste PC ou da sua rede local, não da internet: o Lumo pergunta antes de um agente ir até lá.",
+   "ru": "Адрес на этом ПК или в вашей локальной сети, не в интернете: Lumo спрашивает, прежде чем агент туда перейдёт.",
+   "id": "Alamat di PC ini atau jaringan lokal Anda, bukan internet: Lumo bertanya sebelum agen pergi ke sana.",
+   "it": "Un indirizzo di questo PC o della tua rete locale, non di internet: Lumo chiede prima che un agente ci vada."
+  },
   "agents|Hide": {
    "zh-Hans": "隐藏",
    "hi": "छिपाएँ",

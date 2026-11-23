@@ -11,7 +11,7 @@ import { installFakeDom } from "./fakedom.mjs";
 installFakeDom();
 const { applyAgent, applyBrowserTabs, browserChats, browserOf, newAgentStore } = await import("../src/core/chat-agents.ts");
 const { agentsCard, fillAgentsCard, mainBrowser } = await import("../src/views/agents-card.ts");
-const { describeBrowserAction, isBrowserTool } = await import("../src/core/agent-browser.ts");
+const { BROWSER_TEXT, describeBrowserAction, isBrowserTool, isLocalOpen } = await import("../src/core/agent-browser.ts");
 const { isComputerTool } = await import("../src/core/computer.ts");
 
 const T0 = 1_700_000_000_000;
@@ -164,6 +164,17 @@ test("the permission card says what a browser action does and where", () => {
   assert.equal(describeBrowserAction("mcp__lumo__left_click", {}), null);
   assert.equal(isBrowserTool("mcp__lumo__browser_type"), true);
   assert.equal(isComputerTool("mcp__lumo__browser_type"), false, "the computer's card and its hold on clicks are not for a tab");
+});
+
+test("an address of this PC or the local network has a card that says so", async () => {
+  const { approvalAbout } = await import("../src/island/hooks.ts");
+  const local = { url: "http://192.168.1.1/admin", local: true };
+  assert.equal(isLocalOpen("mcp__lumo__browser_open", local), true);
+  assert.equal(isLocalOpen("mcp__lumo__browser_open", { url: "http://192.168.1.1/admin" }), false, "only Lumo's own card for it (browser.rs ask_local)");
+  assert.equal(isLocalOpen("mcp__lumo__browser_click", local), false);
+  assert.equal(describeBrowserAction("mcp__lumo__browser_open", local), "Open in a new browser tab · http://192.168.1.1/admin", "the address, whole");
+  assert.deepEqual(approvalAbout("mcp__lumo__browser_open", local), { kind: { text: BROWSER_TEXT.local } });
+  assert.deepEqual(approvalAbout("mcp__lumo__browser_open", { url: "https://example.com/" }), { kind: { text: BROWSER_TEXT.apart } });
 });
 
 test("in the chat: the tabs come as an event, and Watch asks Rust", async () => {
