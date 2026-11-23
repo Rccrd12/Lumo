@@ -96,7 +96,7 @@ import type { AgentsPeek } from "../core/compact";
 import { PICTURE_NAME, comingBack, joinScreen, leaveScreen, restored, sentAgain, sentItems, type SentItem } from "../core/sent";
 import type { ChatPermissions } from "../core/chats";
 import { messageScope, nextMessage } from "../core/checklists";
-import { addChatFile, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, type ChatFile } from "../core/chat-files";
+import { addChatFile, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import { PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, itemPreview, keepShots, afterSent, autoShare, folderPicks, foldersByThemselves, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short, screenWaits, shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type PickEntry, type PendingScreen, type PreviewBlock, type ScreenItem } from "../core/screen";
@@ -1687,6 +1687,13 @@ export function buildPrompt(
         h("div", { class: "files-empty-title", text: t(STRINGS.noChatFiles) }),
         h("div", { class: "files-empty-hint", text: t(STRINGS.chatFilesHint) })));
     }
+  }
+
+  /** A question that did not go: its files leave the chat's list (they go again with the next one). */
+  function unsend(run: Run, sent: readonly { path: string }[]) {
+    if (sent.length === 0) return;
+    withdrawAttached(run.chatId, sent.map((f) => f.path), run.turn);
+    if (State.chatId === run.chatId) drawChatFiles();
   }
 
   /** Its ×: out of the chat's list and context; the AI is told with the next question. */
@@ -4042,6 +4049,11 @@ export function buildPrompt(
     }
     // Found in Past chats while it is answered, to come back to it.
     remember(run);
+    // What went with it is in the chat's files at once, not only once answered.
+    if (sent.length) {
+      for (const f of sent) addChatFile(run.chatId, "attached", f.path, f.name, Date.now(), run.turn);
+      if (State.chatId === run.chatId) drawChatFiles();
+    }
     State.stateOverride = "thinking";
     drawIslandActivity();
     // Thinking… counts its seconds from now, on the chat and the closed island.
@@ -4067,6 +4079,8 @@ export function buildPrompt(
       if (recorded && ticked) checklistsTold(run.chatId, ticked.told);
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
       const content = await lumoLines(run.chatId, reply.text);
+      // Nothing of it was kept: what went with it leaves the chat's files until it goes again.
+      if (!recorded) unsend(run, sent);
       if (recorded) {
         for (const f of sent) addChatFile(run.chatId, "attached", f.path, f.name, Date.now(), question.turn ?? run.turn);
         run.history.push({
@@ -4105,6 +4119,7 @@ export function buildPrompt(
       if (!reply.stopped) noticeAway(reply.warning ? COMPACT_TEXT.answeredWithProblem : COMPACT_TEXT.answered, reply.warning ? { ...runSpeaker(run), color: WARNING_COLOR } : runSpeaker(run));
     } catch (err) {
       giveBack(true);
+      unsend(run, sent);
       // It would have ended the agents the chat's CLI left at work: the
       // question leaves the chat, and the bar above the field asks what to do.
       const inTheWay = agentsInTheWay(err);

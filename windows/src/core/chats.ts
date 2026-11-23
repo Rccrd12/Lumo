@@ -332,6 +332,34 @@ function store(list: SavedChat[]): SavedChat[] {
 }
 
 /**
+ * Lumo's other saved data (a chat's files, core/chat-files.ts) did not fit:
+ * the chats give room as they would to themselves, the oldest recap's
+ * pictures first, then the oldest chat, never chat `keep`. False when there
+ * is nothing left to give or it could not be written.
+ */
+export function makeRoom(keep?: string): boolean {
+  const s = storage();
+  if (!s) return false;
+  const list = loadChats();
+  const pictured = picturedRecaps(list);
+  let less: SavedChat[];
+  if (pictured > 0) {
+    less = boundPictures(list, pictured - 1, Infinity);
+  } else {
+    let oldest = list.length - 1;
+    while (oldest >= 0 && list[oldest].id === keep) oldest--;
+    if (oldest < 0 || list.length <= 1) return false;
+    less = list.filter((_, i) => i !== oldest);
+  }
+  try {
+    s.setItem(KEY, JSON.stringify(less));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The problem said under an answer: its kind and the CLI's words (Rust's
  * ChatWarning), said in the island's language when shown; or, saved by the
  * 0.22.2 betas, the words already written.

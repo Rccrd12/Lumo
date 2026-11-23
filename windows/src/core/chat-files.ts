@@ -9,7 +9,7 @@
 // (core/chats.ts), and dropped with the chat. Pure helpers, so they can be
 // tested without a webview.
 
-import { loadChats } from "./chats";
+import { loadChats, makeRoom } from "./chats";
 
 export type ChatFileKind = "attached" | "read" | "edited" | "created";
 
@@ -90,11 +90,20 @@ function loadAll(): Record<string, ChatFile[]> {
   }
 }
 
-function store(all: Record<string, ChatFile[]>) {
-  try {
-    storage()?.setItem(KEY, JSON.stringify(all));
-  } catch {
-    // Storage full or unavailable: the list is a convenience, the chat goes on.
+function store(all: Record<string, ChatFile[]>, keep?: string) {
+  const s = storage();
+  if (!s) return;
+  const text = JSON.stringify(all);
+  for (;;) {
+    try {
+      s.setItem(KEY, text);
+      return;
+    } catch {
+      // Full: the past chats filled it. They make room, as they would for
+      // themselves (a recap's pictures, then the oldest chat, never `keep`),
+      // rather than the file being left out without a word.
+    }
+    if (!makeRoom(keep)) return;
   }
 }
 
@@ -109,14 +118,46 @@ export function samePath(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
+/** Only attached: Lumo's copy in the inbox, not yet seen used by the AI. */
+function onlyAttached(f: ChatFile): boolean {
+  return f.kinds.length === 1 && f.kinds[0] === "attached";
+}
+
 /**
  * The same file: the same path, or an attachment and a file of the same name
- * (an attachment is the inbox's copy of a file the AI may read where it is).
+ * (an attachment is the inbox's copy of a file the AI may read where it is,
+ * and the same file attached again later is one row). Never two files the AI
+ * used in two places, two files sent with the same question, or an
+ * attachment and a file the AI made from nothing: those are files of their own.
  */
 function sameFile(a: ChatFile, b: ChatFile): boolean {
   if (samePath(a.path, b.path)) return true;
-  const attached = a.kinds.includes("attached") || b.kinds.includes("attached");
-  return attached && a.name.toLowerCase() === b.name.toLowerCase();
+  if (a.name.toLowerCase() !== b.name.toLowerCase()) return false;
+  const copy = onlyAttached(a) ? a : onlyAttached(b) ? b : null;
+  if (!copy) return false;
+  const other = copy === a ? b : a;
+  if (onlyAttached(other)) {
+    const [x, y] = [copy.turns?.attached, other.turns?.attached];
+    return x == null || y == null || x !== y;
+  }
+  return !other.kinds.includes("created");
+}
+
+/**
+ * `list` within MAX_FILES: the files the AI only read go first, the oldest
+ * first, so that what was attached or written stays longest.
+ */
+function capped(list: ChatFile[]): ChatFile[] {
+  let over = list.length - MAX_FILES;
+  if (over <= 0) return list;
+  const out = [...list];
+  for (let i = out.length - 1; i >= 0 && over > 0; i--) {
+    if (out[i].kinds.every((k) => k === "read")) {
+      out.splice(i, 1);
+      over--;
+    }
+  }
+  return out.slice(0, MAX_FILES);
 }
 
 /**
@@ -125,14 +166,13 @@ function sameFile(a: ChatFile, b: ChatFile): boolean {
  */
 export function withFile(list: readonly ChatFile[], file: ChatFile): ChatFile[] {
   const before = list.find((f) => sameFile(f, file));
-  if (!before) return [file, ...list].slice(0, MAX_FILES);
+  if (!before) return capped([file, ...list]);
   const kinds = sorted([...before.kinds, ...file.kinds]);
-  const onlyCopy = (f: ChatFile) => f.kinds.length === 1 && f.kinds[0] === "attached";
-  const path = onlyCopy(file) && !onlyCopy(before) ? before.path : file.path;
+  const path = onlyAttached(file) && !onlyAttached(before) ? before.path : file.path;
   const name = path === before.path ? before.name : file.name;
   const turns = joinTurns(before.turns, file.turns);
   const joined: ChatFile = { path, name, kinds, at: Math.max(file.at, before.at), ...(turns ? { turns } : {}) };
-  return [joined, ...list.filter((f) => f !== before)].slice(0, MAX_FILES);
+  return capped([joined, ...list.filter((f) => f !== before)]);
 }
 
 /** What the AI did to it, the most telling only (a file it edited was read first); null when nothing. */
@@ -164,7 +204,7 @@ export function addChatFile(
   const file: ChatFile = { path, name, kinds: [kind], at };
   if (turn != null && turn >= 0) file.turns = { [kind]: turn };
   all[id] = withFile(all[id] ?? [], file);
-  store(all);
+  store(all, id);
   return all[id];
 }
 
@@ -195,9 +235,30 @@ export function rewindChatFiles(id: string, keep: number): ChatFile[] {
 export function removeChatFile(id: string, file: Pick<ChatFile, "path" | "name">): ChatFile[] {
   const all = loadAll();
   if (!(id in all)) return [];
-  const gone: ChatFile = { path: file.path, name: file.name, kinds: ["attached"], at: 0 };
-  all[id] = chatFiles(id, all).filter((f) => !sameFile(f, gone));
+  all[id] = chatFiles(id, all).filter((f) => !samePath(f.path, file.path));
   store(all);
+  return all[id];
+}
+
+/**
+ * A question that did not go after all (stopped before anything was written,
+ * failed, held back): its files leave the chat's list until they go again,
+ * and stay what the AI did with them.
+ */
+export function withdrawAttached(id: string, paths: readonly string[], turn?: number): ChatFile[] {
+  const all = loadAll();
+  if (!(id in all) || paths.length === 0) return all[id] ?? [];
+  all[id] = chatFiles(id, all).flatMap((f) => {
+    const sent = paths.some((p) => samePath(p, f.path));
+    if (!sent || !f.kinds.includes("attached")) return [f];
+    if (turn != null && f.turns?.attached != null && f.turns.attached !== turn) return [f];
+    const kinds = f.kinds.filter((k) => k !== "attached");
+    if (kinds.length === 0) return [];
+    const { attached: _, ...turns } = f.turns ?? {};
+    const { turns: __, ...rest } = f;
+    return [Object.keys(turns).length ? { ...rest, kinds, turns } : { ...rest, kinds }];
+  });
+  store(all, id);
   return all[id];
 }
 
