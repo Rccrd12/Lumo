@@ -214,6 +214,11 @@ export class CompactStrip {
     this.host.changed();
   }
 
+  /** Whether the last sync put it on screen: the island checks it against its mode each frame. */
+  get onScreen(): boolean {
+    return this.visible;
+  }
+
   /** The size the closed island takes for what it shows, or null for the plain one. */
   get size(): { w: number; h: number } | null {
     return this.fit;

@@ -293,10 +293,11 @@ export class Island {
       State.notify();
     });
     State.subscribe(() => {
-      this.fsm.held = State.liveActive || State.computerActive;
-      this.fsm.holdChanged();
+      // Redrawn first, whatever the countdown below does.
       this.dirty = true;
       this.ensureRunning();
+      this.fsm.held = State.liveActive || State.computerActive;
+      this.fsm.holdChanged();
     });
   }
 
@@ -1452,6 +1453,14 @@ export class Island {
     return State.computerActive && State.mode === "compact" && !State.pendingApproval;
   }
 
+  /**
+   * The closed island says what is going on next to Lumo. Standing upright on
+   * a side there is no room for it, nor in the short pill of computer use.
+   */
+  private get compactOn(): boolean {
+    return State.mode === "compact" && !isUpright(this.dock) && !this.onlyLumo;
+  }
+
   private targetSize(): { w: number; h: number; r: number } {
     if (this.onlyLumo) {
       const { w, h } = computerCompact(this.dock, this.computerPill.width);
@@ -2041,9 +2050,19 @@ export class Island {
     this.dockEase.tick(nowMs);
     this.applyGeometry();
 
+    // The closed island shows what it was measured for: a change it did not
+    // hear of (its strip still hidden as on the open island, the island
+    // already as wide as what the strip says) is caught up on here.
+    if (this.compact.onScreen !== this.compactOn) this.dirty = true;
     if (this.dirty) {
       this.dirty = false;
-      this.syncDom();
+      // A view that fails to draw must not stop the frames: the island would
+      // stay as it is, open or closed, whatever happens next.
+      try {
+        this.syncDom();
+      } catch (err) {
+        console.error("[lumo] the island failed to draw", err);
+      }
     }
 
     this.updateBotTargets();
@@ -2277,7 +2296,13 @@ export class Island {
       view.el.classList.toggle("on", on);
       // Settings leaving for another tab note it too: back with the gear,
       // the page is told to show what changed meanwhile (settings-frame.ts).
-      if (on || (wasOn && name === "settings")) view.sync();
+      if (!on && !(wasOn && name === "settings")) continue;
+      // One view failing never keeps the others, and the closed island below, from being drawn.
+      try {
+        view.sync();
+      } catch (err) {
+        console.error(`[lumo] the ${name} view failed to draw`, err);
+      }
     }
 
     // The chat is the only view with a text field, so it is the only time the
@@ -2322,7 +2347,7 @@ export class Island {
 
     // What the closed island says next to Lumo. Standing upright on a side
     // there is no room for it. A change of what it shows resizes the island.
-    const compactOn = State.mode === "compact" && !isUpright(this.dock) && !this.onlyLumo;
+    const compactOn = this.compactOn;
     const resized = this.compact.sync(compactOn);
     // Saving energy, a leaf at the right end, opposite Lumo; an email or a
     // request filling the closed island has the corner to itself. Asked after
