@@ -1212,57 +1212,196 @@ function drawGrid(g: CanvasRenderingContext2D, view: View, width: number, H: num
   }
 }
 
-/** One cell of a region's shading, in CSS pixels: fine enough for its edge, cheap enough to redraw under a drag. */
+/** One cell of a region's grid, in CSS pixels: fine enough for its edge, cheap enough to redraw under a drag. */
 const REGION_CELL = 3;
-
-/** Each canvas's shaded regions as last drawn, by what they were drawn for. */
-const regionLayers = new WeakMap<HTMLCanvasElement, { id: string; layers: HTMLCanvasElement[] }>();
+/** How strong the line along a region's edge is, over its tint. */
+const REGION_EDGE_ALPHA = 0.8;
 
 /**
- * The regions, tinted in their colours: each worked out on a grid of
- * REGION_CELL pixels into a small image of its own, which the chart draws
- * stretched and smoothed, so its edge stays soft. Worked out again only when
- * the view, the sliders or the size change, not as the pointer moves.
+ * How far inside `region` the point in `scope` is: at least 0 where
+ * inRegion holds and below it where it doesn't, and between, along a
+ * condition's side, a number that crosses 0 where the side is (each
+ * comparison's two sides apart, the least of them). An edge is found
+ * where it changes sign, a little in from the corner where it is nearer 0.
  */
-function drawRegions(g: CanvasRenderingContext2D, canvas: HTMLCanvasElement, plot: Plot, values: Record<string, number>, view: View, width: number, H: number) {
-  if (!plot.regions.length) return;
-  const cols = Math.max(1, Math.ceil(width / REGION_CELL));
-  const rows = Math.max(1, Math.ceil(H / REGION_CELL));
-  const id = `${view.x}|${view.y}|${cols}x${rows}|${plot.inputs.map((i) => values[i.name]).join(",")}`;
-  let kept = regionLayers.get(canvas);
-  if (kept?.id !== id) {
-    const scope = scopeOf(plot, values);
-    const layers = plot.regions.map((region, r) => {
-      const layer = document.createElement("canvas");
-      layer.width = cols;
-      layer.height = rows;
-      const lg = layer.getContext("2d");
-      if (!lg) return layer;
-      const image = lg.createImageData(cols, rows);
-      const hex = CURVE_COLORS[r % CURVE_COLORS.length];
-      const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-      for (let j = 0; j < rows; j++) {
-        scope.y = view.y[1] - ((j + 0.5) / rows) * (view.y[1] - view.y[0]);
-        for (let i = 0; i < cols; i++) {
-          scope.x = view.x[0] + ((i + 0.5) / cols) * (view.x[1] - view.x[0]);
-          if (!inRegion(region, scope)) continue;
-          const at = (j * cols + i) * 4;
-          image.data[at] = rgb[0];
-          image.data[at + 1] = rgb[1];
-          image.data[at + 2] = rgb[2];
-          image.data[at + 3] = 255;
+export function regionDepth(region: Region, scope: Record<string, number>): number {
+  let depth = Infinity;
+  for (const c of region.conditions) {
+    let a = safe(c.parts[0], scope);
+    for (let i = 0; i < c.ops.length; i++) {
+      const b = safe(c.parts[i + 1], scope);
+      const holds = c.ops[i] === "le" ? a <= b : a >= b;
+      const d = c.ops[i] === "le" ? b - a : a - b;
+      // ∞ ≤ ∞ holds with no gap to measure; NaN never does.
+      const link = holds ? (d >= 0 ? d : 0) : d < 0 ? d : -Infinity;
+      if (link < depth) depth = link;
+      a = b;
+    }
+  }
+  return depth;
+}
+
+/** A region's outline over a chart: its shading as polygons, and its edge as segments, in CSS pixels. */
+export interface RegionShape {
+  /** Each polygon its corners in turn, [x0, y0, x1, y1…], all wound the same way. */
+  fill: number[][];
+  /** Each piece of the edge, [x0, y0, x1, y1]. */
+  edge: number[][];
+}
+
+/**
+ * Where `region` is over a `width` × `H` chart showing `view`, worked out
+ * on a grid of about `cell` pixels (marching squares): a cell with all its
+ * corners inside is shaded whole (a row's run of them as one rectangle),
+ * one with some is cut along a line between the points of its sides where
+ * the depth crosses 0, so the edge is a smooth line, not the grid's steps.
+ * A cell inside at two opposite corners only is one piece or two as its
+ * middle is in or out.
+ */
+export function regionShape(region: Region, scope: Record<string, number>, view: View, width: number, H: number, cell = REGION_CELL): RegionShape {
+  const cols = Math.max(1, Math.ceil(width / cell));
+  const rows = Math.max(1, Math.ceil(H / cell));
+  const cw = width / cols;
+  const ch = H / rows;
+  const local = { ...scope };
+  // The corners' depths, row by row from the top.
+  const depth = new Float64Array((cols + 1) * (rows + 1));
+  for (let j = 0; j <= rows; j++) {
+    local.y = view.y[1] - (j / rows) * (view.y[1] - view.y[0]);
+    for (let i = 0; i <= cols; i++) {
+      local.x = view.x[0] + (i / cols) * (view.x[1] - view.x[0]);
+      depth[j * (cols + 1) + i] = regionDepth(region, local);
+    }
+  }
+  const fill: number[][] = [];
+  const edge: number[][] = [];
+  // Where the edge crosses the side from corner a to corner b (a left of or
+  // above b, so the two cells sharing the side find the same point).
+  const cross = (da: number, db: number, ax: number, ay: number, bx: number, by: number): [number, number] => {
+    let t = Number.isFinite(da) && Number.isFinite(db) ? da / (da - db) : 0.5;
+    if (!(t >= 0 && t <= 1)) t = 0.5;
+    return [ax + (bx - ax) * t, ay + (by - ay) * t];
+  };
+  for (let j = 0; j < rows; j++) {
+    const top = j * ch;
+    const bottom = (j + 1) * ch;
+    let run = -1;
+    const flush = (i: number) => {
+      if (run < 0) return;
+      fill.push([run * cw, top, i * cw, top, i * cw, bottom, run * cw, bottom]);
+      run = -1;
+    };
+    for (let i = 0; i < cols; i++) {
+      const tl = depth[j * (cols + 1) + i];
+      const tr = depth[j * (cols + 1) + i + 1];
+      const bl = depth[(j + 1) * (cols + 1) + i];
+      const br = depth[(j + 1) * (cols + 1) + i + 1];
+      const inside = [tl >= 0, tr >= 0, br >= 0, bl >= 0];
+      const count = inside.filter(Boolean).length;
+      if (count === 4) {
+        if (run < 0) run = i;
+        continue;
+      }
+      flush(i);
+      if (count === 0) continue;
+      const left = i * cw;
+      const right = (i + 1) * cw;
+      // The cell's corners clockwise from the top left, and the crossing on
+      // the side after each.
+      const corners: [number, number][] = [[left, top], [right, top], [right, bottom], [left, bottom]];
+      const sides = [
+        () => cross(tl, tr, left, top, right, top),
+        () => cross(tr, br, right, top, right, bottom),
+        () => cross(bl, br, left, bottom, right, bottom),
+        () => cross(tl, bl, left, top, left, bottom),
+      ];
+      // Each piece: points in turn, each marked whether it is on the edge.
+      const pieces: { x: number; y: number; onEdge: boolean }[][] = [];
+      const saddle = count === 2 && inside[0] === inside[2];
+      const middle = (tl + tr + br + bl) / 4;
+      if (saddle && !(middle >= 0)) {
+        // Two corners apart: a corner each, cut off on its own.
+        for (let k = 0; k < 4; k++) {
+          if (!inside[k]) continue;
+          const before = sides[(k + 3) % 4]();
+          const after = sides[k]();
+          pieces.push([
+            { x: before[0], y: before[1], onEdge: true },
+            { x: corners[k][0], y: corners[k][1], onEdge: false },
+            { x: after[0], y: after[1], onEdge: true },
+          ]);
+        }
+      } else {
+        const piece: { x: number; y: number; onEdge: boolean }[] = [];
+        for (let k = 0; k < 4; k++) {
+          if (inside[k]) piece.push({ x: corners[k][0], y: corners[k][1], onEdge: false });
+          if (inside[k] !== inside[(k + 1) % 4]) {
+            const [x, y] = sides[k]();
+            piece.push({ x, y, onEdge: true });
+          }
+        }
+        pieces.push(piece);
+      }
+      for (const piece of pieces) {
+        fill.push(piece.flatMap((p) => [p.x, p.y]));
+        // The edge: each two points on it one after the other.
+        for (let k = 0; k < piece.length; k++) {
+          const p = piece[k];
+          const q = piece[(k + 1) % piece.length];
+          if (p.onEdge && q.onEdge) edge.push([p.x, p.y, q.x, q.y]);
         }
       }
-      lg.putImageData(image, 0, 0);
-      return layer;
+    }
+    flush(cols);
+  }
+  return { fill, edge };
+}
+
+/** Each canvas's regions as last worked out, by what they were worked out for. */
+const regionPaths = new WeakMap<HTMLCanvasElement, { id: string; paths: { fill: Path2D; edge: Path2D }[] }>();
+
+/**
+ * The regions, tinted in their colours, each with a thin line of its colour
+ * along its edge. Worked out again only when the view, the sliders or the
+ * size change, not as the pointer moves.
+ */
+function drawRegions(g: CanvasRenderingContext2D, canvas: HTMLCanvasElement, plot: Plot, values: Record<string, number>, view: View, width: number, H: number) {
+  if (!plot.regions.length || typeof Path2D === "undefined") return;
+  const id = `${view.x}|${view.y}|${width}x${H}|${plot.inputs.map((i) => values[i.name]).join(",")}`;
+  let kept = regionPaths.get(canvas);
+  if (kept?.id !== id) {
+    const scope = scopeOf(plot, values);
+    const paths = plot.regions.map((region) => {
+      const shape = regionShape(region, scope, view, width, H);
+      const fill = new Path2D();
+      for (const poly of shape.fill) {
+        fill.moveTo(poly[0], poly[1]);
+        for (let k = 2; k < poly.length; k += 2) fill.lineTo(poly[k], poly[k + 1]);
+        fill.closePath();
+      }
+      const edge = new Path2D();
+      for (const [x0, y0, x1, y1] of shape.edge) {
+        edge.moveTo(x0, y0);
+        edge.lineTo(x1, y1);
+      }
+      return { fill, edge };
     });
-    kept = { id, layers };
-    regionLayers.set(canvas, kept);
+    kept = { id, paths };
+    regionPaths.set(canvas, kept);
   }
   g.save();
-  g.globalAlpha = 0.22;
-  g.imageSmoothingEnabled = true;
-  for (const layer of kept.layers) g.drawImage(layer, 0, 0, cols * REGION_CELL, rows * REGION_CELL);
+  g.lineWidth = 1.25;
+  g.lineCap = "round";
+  kept.paths.forEach(({ fill, edge }, r) => {
+    const color = CURVE_COLORS[r % CURVE_COLORS.length];
+    // All of a region in one fill, so the cells meet with no seam.
+    g.globalAlpha = 0.22;
+    g.fillStyle = color;
+    g.fill(fill);
+    g.globalAlpha = REGION_EDGE_ALPHA;
+    g.strokeStyle = color;
+    g.stroke(edge);
+  });
   g.restore();
 }
 
