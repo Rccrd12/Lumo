@@ -13,6 +13,7 @@ import { N_, t } from "../../i18n/i18n";
 import { errorText, setting, statusDot } from "../parts";
 import { save, settings, toggle } from "../store";
 import { reviewAgentHooks } from "../agents";
+import { SIGN_IN_HOLD_MS } from "../../views/chat-fix";
 import { HOOKS_CHANGE, PLAN_SETTINGS_TEXT, STATUS_LINE_CHANGE, agentPlanToggle, reviewChange } from "./claude";
 
 export const CARD_TEXT = {
@@ -57,6 +58,8 @@ export const CARD_TEXT = {
   outdated: N_("This version of Lumo installs the hooks a little differently: Claude Code no longer waits for Lumo, except to ask for a permission. Reinstall them to get it."),
   noRelay: N_("lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p lumo-hook`."),
   cantOpen: N_("It couldn't open: {error}"),
+  signInOpened: N_("A window opened: sign in there."),
+  connected: N_("Connected"),
 };
 
 /** Rust's chat providers (claude_code.rs, antigravity_cli.rs PROVIDER). */
@@ -78,7 +81,7 @@ function cardHead(title: string, state: "ok" | "step" | "missing"): HTMLElement 
 
 /** The check beside a row that works. */
 function check(): HTMLElement {
-  return h("span", { class: "agent-card-check", "aria-label": "✓" }, svg(ICONS.check, 15, { stroke: 2.4 }));
+  return h("span", { class: "agent-card-check", role: "img", "aria-label": t(CARD_TEXT.connected), title: t(CARD_TEXT.connected) }, svg(ICONS.check, 15, { stroke: 2.4 }));
 }
 
 /** The installed row: its version, or how to install it. */
@@ -102,12 +105,22 @@ function installedRow(info: CliInfo | null | undefined, command: string): HTMLEl
 
 /** The sign-in row: a button that opens the CLI's own sign-in, which Lumo never sees. */
 function signInRow(provider: string, hint: string, installed: boolean): HTMLElement {
-  const said = h("span", { class: "agent-card-error" });
+  const said = h("span", { class: "agent-card-error", role: "status" });
   const open = h("button", { text: t(CARD_TEXT.openSignIn) });
   open.disabled = !installed;
   open.addEventListener("click", () => {
+    // One window at a time: the button waits a moment, and says where to look.
     said.textContent = "";
-    Bridge.cliSignIn(provider).catch((err) => (said.textContent = t(CARD_TEXT.cantOpen, { error: errorText(err) })));
+    said.classList.remove("ok");
+    open.disabled = true;
+    Bridge.cliSignIn(provider).then(
+      () => {
+        said.textContent = t(CARD_TEXT.signInOpened);
+        said.classList.add("ok");
+      },
+      (err) => (said.textContent = t(CARD_TEXT.cantOpen, { error: errorText(err) })),
+    );
+    window.setTimeout(() => (open.disabled = !installed), SIGN_IN_HOLD_MS);
   });
   return setting(t(CARD_TEXT.signIn), h("span", {}, t(hint), said), open);
 }

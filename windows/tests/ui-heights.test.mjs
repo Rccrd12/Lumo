@@ -17,6 +17,14 @@ test("a short chat keeps the island's own height, a long answer grows it up to t
   assert.ok(chatAutoHeight(mid, 1000) <= chatAutoHeight(mid, 640));
 });
 
+test("a card that puts the CLI right (sign in, install, connect agy) counts in the chat's height", () => {
+  const plain = [{ content: "Run the tests" }, { content: "Not logged in · Please run /login" }];
+  const signIn = [plain[0], { ...plain[1], fix: "claude-sign-in" }];
+  // The card is taller than the CLI's one line under it: the question above stays in sight.
+  assert.ok(chatAutoHeight(signIn, 640) >= chatAutoHeight(plain, 640) + 6 * 22);
+  assert.ok(chatAutoHeight(signIn, 640) <= CHAT_AUTO_MAX_H);
+});
+
 test("the finished card grows a line at a time, up to three", () => {
   assert.equal(finishedCardHeight("Done.", 640), 160);
   assert.equal(finishedCardHeight("x".repeat(120), 640), 181);
