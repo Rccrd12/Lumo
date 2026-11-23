@@ -23263,6 +23263,18 @@
    "id": "Claude Code belum masuk ke paket Claude Anda, atau info masuknya sudah kedaluwarsa.",
    "it": "Claude Code non ha fatto l'accesso al tuo piano Claude, oppure l'accesso è scaduto."
   },
+  "Antigravity is closing and can no longer stop one agent alone.": {
+   "zh-Hans": "Antigravity 正在关闭，无法再单独停止某个代理。",
+   "hi": "Antigravity बंद हो रहा है और अब किसी एक एजेंट को अलग से नहीं रोक सकता।",
+   "es": "Antigravity se está cerrando y ya no puede detener un agente por separado.",
+   "ar": "يُغلَق Antigravity ولم يعد بإمكانه إيقاف وكيل واحد بمفرده.",
+   "fr": "Antigravity se ferme et ne peut plus arrêter un agent seul.",
+   "bn": "Antigravity বন্ধ হচ্ছে, আর একটি এজেন্টকে আলাদাভাবে থামাতে পারবে না।",
+   "pt-BR": "O Antigravity está fechando e não pode mais parar um agente sozinho.",
+   "ru": "Antigravity закрывается и больше не может остановить одного агента отдельно.",
+   "id": "Antigravity sedang ditutup dan tidak bisa lagi menghentikan satu agen saja.",
+   "it": "Antigravity si sta chiudendo e non può più fermare un solo agente."
+  },
   "It isn't installed yet.": {
    "zh-Hans": "尚未安装。",
    "hi": "यह अभी इंस्टॉल नहीं है।",

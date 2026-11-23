@@ -1471,7 +1471,9 @@ pub async fn call_for_chat(
 ) -> (String, bool, Option<String>) {
     crate::chat_agents::signal(app, chat_id);
     // Boxed: the call is a large future, and the chat's answer holds this one.
-    let call = Box::pin(crate::pipe::CHAT.scope(chat_id.to_string(), call_in_chat(app, chat_id, provider, agent, id, input, asking, sandbox_high)));
+    let call = crate::pipe::CHAT.scope(chat_id.to_string(), call_in_chat(app, chat_id, provider, agent, id, input, asking, sandbox_high));
+    // One of the chat's agents calling: the cards it raises name it.
+    let call = Box::pin(crate::pipe::AGENT.scope(agent.unwrap_or_default().to_string(), call));
     let answer = crate::chat_agents::alive_while(app, chat_id, call).await;
     crate::chat_agents::signal(app, chat_id);
     answer

@@ -2873,8 +2873,9 @@ struct Agy {
     rx: mpsc::Receiver<Vec<u8>>,
     /// The first 64 KB of its stderr, once it closed.
     err_text: mpsc::Receiver<String>,
-    /// The agents the island asked to stop, not passed on yet.
-    stop_requests: Arc<Mutex<Vec<String>>>,
+    /// The agents the island asked to stop, not passed on yet; None once its
+    /// input closed: nothing can be passed on, and the island is told so.
+    stop_requests: Arc<Mutex<Option<Vec<String>>>>,
     _stopper: Option<StopperGuard>,
     /// The island chat it answers ("" for none).
     chat: String,
@@ -2905,6 +2906,7 @@ impl Agy {
         if self.stdin.take().is_some() {
             self.closed_at = Some(Instant::now());
         }
+        *self.stop_requests.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     /// Writes `line` on its input; false when it is closed or gone.
@@ -2988,15 +2990,19 @@ fn start_agy(exe: &Path, args: &[String], dir: &Path, chat_id: &str, key: String
         }
         let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
-    let stop_requests: Arc<Mutex<Vec<String>>> = Arc::default();
+    let stop_requests = Arc::new(Mutex::new(stdin.is_some().then(Vec::new)));
     let stopper = (!chat_id.is_empty()).then(|| {
         let q = stop_requests.clone();
         let id = chat_agents::register_stopper(
             chat_id,
             PROVIDER,
-            Box::new(move |agent_id: &str| {
-                q.lock().unwrap_or_else(|e| e.into_inner()).push(agent_id.to_string());
-                Ok(())
+            Box::new(move |agent_id: &str| match q.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+                Some(requests) => {
+                    requests.push(agent_id.to_string());
+                    Ok(())
+                }
+                // Its input closed: agy can't be asked any more; it is ending, and its agents with it.
+                None => Err(t("Antigravity is closing and can no longer stop one agent alone.")),
             }),
         );
         StopperGuard { chat: chat_id.to_string(), id }
@@ -3050,7 +3056,7 @@ fn drive(agy: &mut Agy, state: &mut Run, stop: &Stop, may_linger: bool, sink: &m
             return Ended::Stopped;
         }
         // The agents the island asked to stop: agy is asked to, while it can be told.
-        let requested: Vec<String> = std::mem::take(&mut *agy.stop_requests.lock().unwrap_or_else(|e| e.into_inner()));
+        let requested: Vec<String> = agy.stop_requests.lock().unwrap_or_else(|e| e.into_inner()).as_mut().map(std::mem::take).unwrap_or_default();
         if !requested.is_empty() && agy.stdin.is_some() {
             let mut changed = false;
             for agent_id in requested {
@@ -3567,15 +3573,18 @@ pub async fn models() -> Result<Vec<ModelInfo>, String> {
 
 /// Subagents kept per chat across turns (along with its conversation id), so
 /// Ask in a later turn can reach an earlier subagent and follow its transcript.
-static CHAT_SUBAGENTS: Mutex<Option<HashMap<String, (String, Subagents)>>> = Mutex::new(None);
+/// With when they were kept: past MAX_CHAT_SUBAGENTS chats, the oldest go first.
+static CHAT_SUBAGENTS: Mutex<Option<HashMap<String, KeptSubagents>>> = Mutex::new(None);
+/// A chat's subagents kept: its conversation, them, and when they were kept.
+type KeptSubagents = (String, Subagents, Instant);
 const MAX_CHAT_SUBAGENTS: usize = 64;
 
 fn take_chat_subagents(chat_id: &str, conversation: Option<&str>) -> Option<Subagents> {
     let conv = conversation?;
     let mut all = CHAT_SUBAGENTS.lock().unwrap_or_else(|e| e.into_inner());
     let map = all.as_mut()?;
-    if map.get(chat_id).is_some_and(|(c, _)| c == conv) {
-        map.remove(chat_id).map(|(_, s)| s)
+    if map.get(chat_id).is_some_and(|(c, _, _)| c == conv) {
+        map.remove(chat_id).map(|(_, s, _)| s)
     } else {
         None
     }
@@ -3588,11 +3597,11 @@ fn save_chat_subagents(chat_id: &str, conversation: &str, subagents: Subagents) 
     let mut all = CHAT_SUBAGENTS.lock().unwrap_or_else(|e| e.into_inner());
     let map = all.get_or_insert_with(HashMap::new);
     if map.len() >= MAX_CHAT_SUBAGENTS && !map.contains_key(chat_id) {
-        if let Some(oldest) = map.keys().next().cloned() {
+        if let Some(oldest) = map.iter().min_by_key(|(_, (_, _, kept))| *kept).map(|(id, _)| id.clone()) {
             map.remove(&oldest);
         }
     }
-    map.insert(chat_id.to_string(), (conversation.to_string(), subagents));
+    map.insert(chat_id.to_string(), (conversation.to_string(), subagents, Instant::now()));
 }
 
 /// Replaces internal `agy-...` row ids in an Ask prompt with the real

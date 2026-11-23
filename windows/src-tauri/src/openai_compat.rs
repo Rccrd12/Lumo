@@ -372,7 +372,7 @@ pub async fn send(
     let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false, browser)).await.unwrap_or_default();
     let mut tools = crate::tools::tools_for_mode(all, mode);
     // Agents of its own, with the chat's tools but none that start more (api_agents.rs).
-    let launch = Launch { p, model: model.to_string(), effort: effort.to_string(), key: key.clone(), tools: crate::api_agents::sub_tools(&tools), asking, sandbox_high };
+    let launch = Launch { p, model: model.to_string(), effort: effort.to_string(), key: key.clone(), tools: crate::api_agents::sub_tools(&tools), asking, sandbox_high, budget: Default::default() };
     tools.push(crate::api_agents::tool());
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
@@ -517,7 +517,7 @@ pub async fn send(
                     chat.events().activity(app, crate::claude_code::Activity::new("subtask", ""));
                     let launch = &launch;
                     let turn: crate::api_agents::Turn = Box::new(move |task, sink| Box::pin(agent_turn(app, chat.id(), launch, task, sink)));
-                    let run = Box::pin(crate::api_agents::run(app, chat.id(), p.id, &input, crate::api_agents::MAX_AGENTS, turn));
+                    let run = Box::pin(crate::api_agents::run(app, chat.id(), p.id, &input, crate::api_agents::MAX_AGENTS, &launch.budget, turn));
                     let (text, _) = crate::chat_agents::alive_while(app, chat.id(), run).await;
                     turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
                     continue;
@@ -626,6 +626,8 @@ struct Launch {
     tools: Vec<(String, String, Value)>,
     asking: crate::tools::Asking,
     sandbox_high: bool,
+    /// What the answer has left of api_agents.rs MAX_ANSWER_AGENTS.
+    budget: crate::api_agents::Budget,
 }
 
 /// How long an agent waits each time it meets the rate limit, before it fails.

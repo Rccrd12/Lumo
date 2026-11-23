@@ -1034,13 +1034,23 @@ impl Tasks {
     }
 
     /// The turn is over: the tasks still open ended with it (stopped, with
-    /// Stop; failed, with the turn's `error`).
+    /// Stop; failed, with the turn's `error`; finished otherwise, but "without
+    /// a report" when the CLI never said how one ended nor what it found:
+    /// not a green tick the CLI never gave).
     fn turn_ended(&mut self, stopped: bool, error: Option<&str>) {
         if self.agents.open() > 0 {
             match (stopped, error) {
                 (true, _) => self.agents.end_open(AgentState::Stopped, ""),
                 (false, Some(error)) => self.agents.end_open(AgentState::Failed, error),
-                (false, None) => self.agents.end_open(AgentState::Done, ""),
+                (false, None) => {
+                    let open: Vec<String> = self.agents.ids().filter(|id| self.agents.get(id).is_some_and(|r| !r.state.is_final())).collect();
+                    self.agents.end_open(AgentState::Done, "");
+                    for id in open {
+                        if let Some(row) = self.agents.touch(&id).filter(|r| r.summary.is_none()) {
+                            row.no_report = true;
+                        }
+                    }
+                }
             }
         }
         self.by_call.clear();
@@ -2181,8 +2191,16 @@ mod tests {
         let t4 = tasks.agents.get("t4").unwrap();
         assert_eq!((t4.state, t4.error.as_deref()), (AgentState::Failed, Some("Rate limited")));
         tasks.task(CURSOR, &json!({ "taskId": "t5", "name": "Docs" }));
+        tasks.task(CURSOR, &json!({ "taskId": "t6", "name": "Notes", "summary": "Three notes added" }));
         tasks.turn_ended(false, None);
-        assert_eq!(tasks.agents.get("t5").unwrap().state, AgentState::Done);
+        // The CLI never said how they ended: finished, but without a report
+        // when it never said what one found either.
+        let t5 = tasks.agents.get("t5").unwrap();
+        assert_eq!((t5.state, t5.no_report), (AgentState::Done, true));
+        let t6 = tasks.agents.get("t6").unwrap();
+        assert_eq!((t6.state, t6.no_report), (AgentState::Done, false));
+        // One that said its own end keeps it.
+        assert!(!tasks.agents.get("t1").unwrap().no_report);
 
         // The next server numbers its tasks from 1 again: another id all the same.
         let mut next = Tasks::default();

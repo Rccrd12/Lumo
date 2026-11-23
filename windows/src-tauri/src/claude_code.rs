@@ -2710,7 +2710,12 @@ fn live_for(
         if alive && live.key == key && live.session.as_deref() == session {
             return Ok(live);
         }
-        // Another model, mode or session: this one goes (Drop ends it).
+        // Another model, mode or session: this one goes (Drop ends it). Lumo
+        // ends it, on the user's word (WOULD_STOP, an edited question): its
+        // agents still at work are stopped, not failed under it.
+        if alive {
+            live.link.ended_as(AgentState::Stopped);
+        }
     }
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let mut child = spawn(exe, &live_args(args.to_vec()), dir, chat_id)?;
