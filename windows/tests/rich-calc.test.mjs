@@ -487,6 +487,52 @@ test("a chart may shade regions, alone or with curves, on axes of one scale", ()
   assert.equal(parsePlot("", "y: x\n" + Array.from({ length: 4 }, () => "region: y <= x").join("\n")), null);
 });
 
+test("a region's edge is a smooth line through its grid, not the grid's steps", () => {
+  const { parseRegion, inRegion, regionDepth, regionShape } = calcModule;
+  const known = new Set(["x", "y"]);
+  // Its depth is at least 0 exactly where the region holds.
+  const d = parseRegion("x^2/9 + y^2/4 <= 1 and 2x + 3y <= 6; y >= 1/x", known);
+  for (let x = -4; x <= 4; x += 0.37)
+    for (let y = -3; y <= 3; y += 0.41) assert.equal(regionDepth(d, { x, y }) >= 0, inRegion(d, { x, y }), `${x}, ${y}`);
+  assert.equal(regionDepth(d, { x: 0, y: 1 }) < 0, true, "1/0 is no number: outside");
+
+  // A circle of radius 2 on a 200 × 200 chart of -2.5..2.5: 40 pixels a unit.
+  const circle = parseRegion("x^2 + y^2 <= 4", known);
+  const view = { x: [-2.5, 2.5], y: [-2.5, 2.5] };
+  const shape = regionShape(circle, {}, view, 200, 200, 3);
+  // Every piece of its edge on the circle, well inside a cell of it.
+  assert.ok(shape.edge.length > 100);
+  for (const [x0, y0, x1, y1] of shape.edge)
+    for (const [px, py] of [[x0, y0], [x1, y1]]) assert.ok(Math.abs(Math.hypot(px - 100, py - 100) - 80) < 0.5, `${px}, ${py}`);
+  // The edge closes on itself: each end met by another piece.
+  const ends = new Map();
+  for (const [x0, y0, x1, y1] of shape.edge)
+    for (const k of [`${x0},${y0}`, `${x1},${y1}`]) ends.set(k, (ends.get(k) ?? 0) + 1);
+  assert.ok([...ends.values()].every((n) => n === 2));
+  // Its shading as large as the circle, with no gap or overlap between cells.
+  const area = shape.fill.reduce((sum, poly) => {
+    let a = 0;
+    for (let k = 0; k < poly.length; k += 2) {
+      const n = (k + 2) % poly.length;
+      a += poly[k] * poly[n + 1] - poly[n] * poly[k + 1];
+    }
+    return sum + a / 2;
+  }, 0);
+  assert.ok(Math.abs(area - Math.PI * 80 * 80) / (Math.PI * 80 * 80) < 0.002, `${area}`);
+  // All wound the same way (clockwise on the screen), so one fill shows no seam.
+  assert.ok(shape.fill.every((poly) => {
+    let a = 0;
+    for (let k = 0; k < poly.length; k += 2) a += poly[k] * poly[(k + 3) % poly.length] - poly[(k + 2) % poly.length] * poly[k + 1];
+    return a > 0;
+  }));
+
+  // All of the chart: one rectangle a row, no edge; none of it: nothing.
+  const all = regionShape(parseRegion("y <= 10", known), {}, view, 200, 200, 4);
+  assert.equal(all.fill.length, 50);
+  assert.equal(all.edge.length, 0);
+  assert.deepEqual(regionShape(parseRegion("y >= 10", known), {}, view, 200, 200), { fill: [], edge: [] });
+});
+
 test("the notable points: zeros, highs and lows, crossings, and no zero at a pole", () => {
   const { notablePoints } = calcModule;
   const kinds = (body, view) => {
