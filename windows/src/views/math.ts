@@ -135,9 +135,10 @@ const ACCENTS: Record<string, string> = {
   check: "ˇ", breve: "˘", bar: "¯", mathring: "˚",
 };
 const WIDE_ACCENTS: Record<string, string> = {
-  widehat: "\u0302", widetilde: "˜", widecheck: "ˇ", overrightarrow: "→", overleftarrow: "←",
+  widehat: "\u0302", widetilde: "\u0303", widecheck: "\u030c", overrightarrow: "→", overleftarrow: "←",
   overleftrightarrow: "↔", Overrightarrow: "⇒", overgroup: "⏠", overlinesegment: "↔",
 };
+const WIDE_DRAWN: Record<string, string> = { "\u0303": "mx-widetilde", "\u030c": "mx-widecheck" };
 const UNDER_ACCENTS: Record<string, string> = {
   underrightarrow: "→", underleftarrow: "←", underleftrightarrow: "↔", undergroup: "⏡", utilde: "˜",
 };
@@ -309,6 +310,13 @@ class Parser {
         this.i++;
         const arg = this.atom();
         const last = out.pop() ?? null;
+        // x^{\prime}, f^{\prime\prime}: the primes as x' and f'' set them,
+        // close to the letter, not raised once more as a superscript.
+        if (c === "^" && last?.t !== "sup" && isPrimes(arg)) {
+          if (last) out.push(last);
+          out.push(...primes(arg!));
+          continue;
+        }
         const node = last && last.t === "sup" && (c === "^" ? !last.sup : !last.sub) ? last : { t: "sup" as const, base: last, sup: null, sub: null };
         if (c === "^") node.sup = arg;
         else node.sub = arg;
@@ -825,6 +833,10 @@ function isBigOperator(node: Node | null): boolean {
 
 /** The marks of the accents, as MathML draws them over a letter. */
 function accent(node: Extract<Node, { t: "accent" }>): Element {
+  // \widetilde and \widecheck: the math font stretches only the hat, so
+  // style.css draws these two as wide as what they cover.
+  const wide = node.stretchy && !node.under ? WIDE_DRAWN[node.mark] : undefined;
+  if (wide) return m("mrow", { class: wide }, draw(node.body));
   const mark = m("mo", { stretchy: node.stretchy ? "true" : "false", class: node.mark === "→" && !node.stretchy ? "mx-vec" : "mx-accent" }, node.mark);
   if (node.under) return m("munder", { accentunder: "true" }, draw(node.body), mark);
   return m("mover", { accent: "true", class: node.mark === "→" ? "mx-vecover" : "" }, draw(node.body), mark);
@@ -892,8 +904,10 @@ function draw(node: Node): Element {
     case "accent":
       return accent(node);
     case "over":
-      if (node.under) return m("munder", { accentunder: "true" }, draw(node.body), m("mo", { stretchy: "true" }, "_"));
-      return m("mover", { accent: "true" }, draw(node.body), m("mo", { stretchy: "true" }, "‾"));
+      // \overline and \underline: a rule as long as what it covers, drawn by
+      // style.css above (below) it, clear of its scripts and fractions: the
+      // font's ‾ does not stretch, and sat short and low, through an e^z.
+      return m("mrow", { class: node.under ? "mx-underline" : "mx-overline" }, draw(node.body));
     case "style": {
       if (node.style === "text") {
         const was = inText;
@@ -1068,6 +1082,17 @@ function drawAll(input: Node[]): Element {
     prev = n;
   }
   return row;
+}
+
+/** Only primes: \prime, ' or a group of them. */
+function isPrimes(node: Node | null): boolean {
+  if (!node) return false;
+  if (node.t === "sym") return node.v === "′";
+  return node.t === "group" && node.c.length > 0 && node.c.every(isPrimes);
+}
+
+function primes(node: Node): Node[] {
+  return node.t === "group" ? node.c.flatMap(primes) : [node];
 }
 
 /** TeX as a math element: inline in the text, or a centred line of its own. */

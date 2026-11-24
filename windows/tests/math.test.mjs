@@ -231,3 +231,46 @@ test("\\nleqslant and \\ngeqslant are the slanted signs struck through, not \\ln
   assert.equal(mathText("a \\ngeqslant b").replace(/\s/g, ""), "a⩾\u0338b");
   assert.notEqual(mathText("\\nleqslant"), mathText("\\lneq"));
 });
+
+test("\\overline and \\underline: a rule over all they cover, clear of its scripts", () => {
+  // The case that came in: the conjugate of e^z drew a short bar through the z.
+  const conj = renderMath("\\overline{e^z} = e^{\\bar z}");
+  const over = conj.find(".mx-overline");
+  assert.equal(over.length, 1);
+  assert.equal(over[0].find("msup").length, 1);
+  // No font glyph that does not stretch.
+  assert.ok(!conj.textContent.includes("‾"));
+  assert.equal(mathText("\\overline{e^z}"), "ez");
+  assert.equal(renderMath("\\overline{\\frac{a}{b}}").find(".mx-overline")[0].find("mfrac").length, 1);
+  assert.equal(renderMath("\\overline{\\overline{z}}").find(".mx-overline").length, 2);
+  const under = renderMath("\\underline{a+b}");
+  assert.equal(under.find(".mx-underline").length, 1);
+  assert.ok(!under.textContent.includes("_"));
+  // \bar on one letter stays the accent it was.
+  assert.equal(renderMath("\\bar z").find("mover").length, 1);
+});
+
+test("\\widetilde and \\widecheck span what they cover; \\widehat keeps the font's", () => {
+  assert.equal(renderMath("\\widetilde{f(x)}").find(".mx-widetilde").length, 1);
+  assert.equal(renderMath("\\widecheck{AB}").find(".mx-widecheck").length, 1);
+  assert.equal(mathText("\\widetilde{xyz}"), "xyz");
+  const hat = renderMath("\\widehat{ABC}");
+  assert.equal(hat.find("mover").length, 1);
+  assert.ok(hat.textContent.includes("̂"));
+  // \tilde on one letter stays the accent it was.
+  assert.equal(renderMath("\\tilde f").find("mover").length, 1);
+});
+
+test("x^{\\prime} sets its primes as x' does, not raised once more", () => {
+  for (const tex of ["x^{\\prime}", "x^\\prime", "f^{\\prime\\prime}(x)"]) {
+    const f = renderMath(tex);
+    assert.equal(f.find("msup").length, 0, tex);
+    assert.ok(f.find(".mx-prime").length >= 1, tex);
+  }
+  assert.equal(renderMath("f^{\\prime\\prime}").find(".mx-prime").length, 2);
+  assert.equal(mathText("x^{\\prime}"), mathText("x'"));
+  // A prime with more in its superscript is still a superscript.
+  assert.equal(renderMath("x^{\\prime 2}").find("msup").length, 1);
+  assert.equal(renderMath("x'^2").find("msup").length, 1);
+  assert.equal(renderMath("x_1^{\\prime}").find("msubsup").length, 1);
+});
