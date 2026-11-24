@@ -288,7 +288,11 @@ pub fn undo() -> Result<Applied, String> {
         }
     }
     let mut removed = 0;
-    for f in made.iter().rev() {
+    // The deepest first: a folder made inside another one it made (listed in
+    // any order) empties its parent before the parent goes.
+    let mut made = made;
+    made.sort_by_key(|f| std::cmp::Reverse(Path::new(f).components().count()));
+    for f in &made {
         // remove_dir only removes an empty folder.
         if std::fs::remove_dir(f).is_ok() {
             removed += 1;
@@ -384,6 +388,15 @@ mod tests {
         assert!(downloads.join("a.pdf").exists() && downloads.join("b.jpg").exists());
         assert!(!docs.exists());
         assert!(undo().is_err());
+
+        // A folder listed before the folder it goes in: both go on undo.
+        let outer = downloads.join("X");
+        let plan = plan_in(&[], &[show(&outer.join("Y")), show(&outer)], &home).unwrap();
+        assert_eq!(plan.new_folders.len(), 2);
+        assert_eq!(apply(plan.id).unwrap().new_folders, 2);
+        assert!(outer.join("Y").is_dir());
+        assert_eq!(undo().unwrap().new_folders, 2);
+        assert!(!outer.exists(), "no empty folder left behind");
 
         assert!(plan_in(&[], &[], &home).is_err());
 

@@ -71,6 +71,8 @@ const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
 /// How often a running turn looks at the Stop button.
 const STOP_POLL: Duration = Duration::from_millis(100);
+/// Whose a tool step in `Run::pending` is: the chat's own answer's.
+const MAIN: &str = "";
 /// Ceilings for what we read back: one event line, and the whole run.
 const MAX_LINE: usize = 4 * 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
@@ -2251,8 +2253,10 @@ struct Run {
     activity: Option<Activity>,
     /// `activity` changed and the island was not told yet (`take_activity`).
     activity_changed: bool,
-    /// Tool steps still running, oldest first: step index and what each is doing.
-    pending: Vec<(u64, Activity)>,
+    /// Tool steps still running, oldest first: whose step it is (`MAIN`, or
+    /// the subagent's conversation: each counts its steps from 0), its index,
+    /// and what it is doing.
+    pending: Vec<(String, u64, Activity)>,
     /// The last lines agy wrote on stderr: why an answer came back empty.
     stderr_tail: String,
     /// The plans agy gave Lumo's update_plan tool, not yet passed on (`take_plan`).
@@ -2382,9 +2386,11 @@ impl Run {
         self.last_main = Some(Instant::now());
     }
 
-    /// Writing: a step of its own still going.
+    /// Writing: a step of its own still going. Not a subagent's (in
+    /// `pending` too): one cut off before its DONE would keep the chat
+    /// writing until the end of the turn.
     fn writing(&self) -> bool {
-        !self.open_steps.is_empty() || !self.pending.is_empty()
+        !self.open_steps.is_empty()
     }
 
     /// Not writing, and quiet for QUIET_ANSWER.
@@ -2472,13 +2478,13 @@ impl Run {
                 self.subagents.spawn_failed(index, error_text(&v["error"]).or_else(|| error_text(&v["subagent_info"]["error"])));
             }
             if done {
-                self.finished_tool(index);
+                self.finished_tool(MAIN, index);
                 // Started, not finished: they work on.
                 if self.subagents.spawns_open() {
                     self.set_activity(Activity::new("agents", ""));
                 }
             } else {
-                self.started_tool(index, Activity::new("subtask", ""));
+                self.started_tool(MAIN, index, Activity::new("subtask", ""));
             }
             self.main_step(index, done);
             return false;
@@ -2486,10 +2492,12 @@ impl Run {
         // A subagent at work: its own steps are its row's, not the answer's.
         if v.get("subagent_info").is_some_and(|s| !s.is_null()) {
             self.subagents.step(index, done, v);
+            // Its step N is not the answer's step N.
+            let whose = format!("subagent:{}", v["subagent_info"]["conversation_id"].as_str().unwrap_or_default());
             if done {
-                self.finished_tool(index);
+                self.finished_tool(&whose, index);
             } else {
-                self.started_tool(index, Activity::new("subtask", ""));
+                self.started_tool(&whose, index, Activity::new("subtask", ""));
             }
             return false;
         }
@@ -2546,7 +2554,7 @@ impl Run {
                             self.touched.push(touch);
                         }
                     }
-                    self.finished_tool(index);
+                    self.finished_tool(MAIN, index);
                 } else {
                     if is_plan_tool(name) {
                         self.saw_plan(&info["parameters"]);
@@ -2570,7 +2578,7 @@ impl Run {
                             self.touching.push((index, touch));
                         }
                     }
-                    self.started_tool(index, activity_for(name, &info["parameters"]));
+                    self.started_tool(MAIN, index, activity_for(name, &info["parameters"]));
                 }
                 false
             }
@@ -2601,18 +2609,18 @@ impl Run {
     }
 
     /// A tool step began (or says more about itself): remembered until it is done.
-    fn started_tool(&mut self, index: u64, activity: Activity) {
-        match self.pending.iter_mut().find(|(i, _)| *i == index) {
-            Some(entry) => entry.1 = activity.clone(),
-            None => self.pending.push((index, activity.clone())),
+    fn started_tool(&mut self, whose: &str, index: u64, activity: Activity) {
+        match self.pending.iter_mut().find(|(w, i, _)| w == whose && *i == index) {
+            Some(entry) => entry.2 = activity.clone(),
+            None => self.pending.push((whose.to_string(), index, activity.clone())),
         }
         self.set_activity(activity);
     }
 
     /// A tool step is done: the one still running shows, or agy thinks again.
-    fn finished_tool(&mut self, index: u64) {
-        self.pending.retain(|(i, _)| *i != index);
-        let next = self.pending.last().map(|(_, a)| a.clone()).unwrap_or_else(Activity::thinking);
+    fn finished_tool(&mut self, whose: &str, index: u64) {
+        self.pending.retain(|(w, i, _)| !(w == whose && *i == index));
+        let next = self.pending.last().map(|(_, _, a)| a.clone()).unwrap_or_else(Activity::thinking);
         self.set_activity(next);
     }
 
@@ -4673,6 +4681,22 @@ mod tests {
         );
         assert_eq!(run.denied, 1, "the command was soft-denied");
         assert_eq!(run.pending.len(), 1);
+    }
+
+    #[test]
+    fn a_subagents_steps_neither_keep_the_chat_writing_nor_end_its_own() {
+        let mut run = Run::default();
+        // A subagent's step that never gets its DONE (the subagent was cut off).
+        run.feed(br#"{"event":"step_update","step_index":7,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"x"}}"#);
+        assert!(run.open_steps.is_empty() && !run.writing());
+        // The chat's own command 5 and the subagent's step 5: its DONE ends its own only.
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"run_command","parameters":{"CommandLine":"ls"}}}"#);
+        assert!(run.writing());
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"x"}}"#);
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"DONE","step_type":"tool","subagent_info":{"conversation_id":"x"}}"#);
+        assert!(run.pending.iter().any(|(w, i, a)| w == MAIN && *i == 5 && *a == Activity::new("command", "")), "{:?}", run.pending);
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"DONE","step_type":"tool","tool_info":{"name":"run_command"}}"#);
+        assert!(!run.writing());
     }
 
     #[test]

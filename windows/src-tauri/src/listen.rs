@@ -1143,6 +1143,35 @@ fn statuses_of(answer: Answer) -> Result<Option<Value>, ()> {
     }
 }
 
+/// Items GitHub gives on one page of a list, at most.
+const PAGE: usize = 100;
+/// Pages read at most: a pull request with more reviews than that is judged on the first ones.
+const MOST_PAGES: u32 = 30;
+
+/// Every item of a list GitHub gives a page at a time (`page` asks for page
+/// 1, 2…), oldest first, as one array: a pull request's last review can be
+/// past the first hundred. A page that is not Found is the answer.
+async fn every_page<F, A>(mut page: F) -> Answer
+where
+    F: FnMut(u32) -> A,
+    A: std::future::Future<Output = Answer>,
+{
+    let mut all = Vec::new();
+    for n in 1..=MOST_PAGES {
+        let items = match page(n).await {
+            Answer::Found(Value::Array(items)) => items,
+            Answer::Found(_) => return Answer::Unknown,
+            other => return other,
+        };
+        let full = items.len() >= PAGE;
+        all.extend(items);
+        if !full {
+            break;
+        }
+    }
+    Answer::Found(Value::Array(all))
+}
+
 /// The pull request as it stands, with what `until` needs to know.
 async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
     let base = format!("repos/{}/pulls/{}", w.repo, w.number);
@@ -1175,7 +1204,7 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
         }
     }
     if pr.open && w.until == "approved" {
-        match ask(via, token, format!("{base}/reviews?per_page=100")).await {
+        match every_page(|page| ask(via, token, format!("{base}/reviews?per_page={PAGE}&page={page}"))).await {
             Answer::Found(v) => pr.review = review_of(Some(&v)),
             Answer::Unauthorized => return Read::Unauthorized,
             _ => return Read::Unknown,
@@ -2164,6 +2193,35 @@ mod tests {
         assert_eq!(review_of(Some(&json!([]))), Review::None);
         let pr = PrState { review: Review::Approved, ..open(Checks::Pending) };
         assert_eq!(judge(&watch("approved"), &pr, 0).map(|j| j.0), Some(true));
+    }
+
+    #[test]
+    fn reviews_past_the_first_hundred_are_read() {
+        // bob asks for changes, 110 comments follow, then bob approves: review 112 is on page 2.
+        let mut reviews = vec![json!({ "user": { "login": "bob" }, "state": "CHANGES_REQUESTED" })];
+        reviews.extend((0..110).map(|i| json!({ "user": { "login": format!("c{i}") }, "state": "COMMENTED" })));
+        reviews.push(json!({ "user": { "login": "bob" }, "state": "APPROVED" }));
+        let asked = std::cell::RefCell::new(Vec::new());
+        let page = |n: u32| {
+            asked.borrow_mut().push(n);
+            let from = (n as usize - 1) * PAGE;
+            let items: Vec<Value> = reviews.iter().skip(from).take(PAGE).cloned().collect();
+            std::future::ready(Answer::Found(Value::Array(items)))
+        };
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let Answer::Found(all) = rt.block_on(every_page(page)) else { panic!("every page is found") };
+        assert_eq!(all.as_array().map(Vec::len), Some(112));
+        assert_eq!(review_of(Some(&all)), Review::Approved);
+        assert_eq!(*asked.borrow(), vec![1, 2]);
+        // Only the first page, as before: the request for changes would stand.
+        assert_eq!(review_of(Some(&Value::Array(reviews[..PAGE].to_vec()))), Review::ChangesRequested);
+        // A page GitHub doesn't give is the answer, not half a list.
+        let failing = |n: u32| std::future::ready(if n == 1 { Answer::Found(Value::Array(reviews[..PAGE].to_vec())) } else { Answer::Unknown });
+        assert!(matches!(rt.block_on(every_page(failing)), Answer::Unknown));
+        // A page that is full every time stops after MOST_PAGES.
+        let endless = |_: u32| std::future::ready(Answer::Found(Value::Array(reviews[..PAGE].to_vec())));
+        let Answer::Found(capped) = rt.block_on(every_page(endless)) else { panic!("found") };
+        assert_eq!(capped.as_array().map(Vec::len), Some(PAGE * MOST_PAGES as usize));
     }
 
     #[test]

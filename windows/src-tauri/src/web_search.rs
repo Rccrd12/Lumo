@@ -949,8 +949,25 @@ fn sentences(line: &str) -> Vec<String> {
     out
 }
 
+/// Chinese, Japanese and Korean letters: written without spaces between words.
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32, 0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF)
+}
+
+/// The words BM25 counts. A run of CJK letters is a whole sentence, not a
+/// word: it is cut into every pair of letters next to each other, so
+/// "東京 天気" finds "東京の天気は晴れです".
 fn words(text: &str) -> Vec<String> {
-    text.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() >= 2).map(str::to_string).collect()
+    let mut out = Vec::new();
+    for w in text.to_lowercase().split(|c: char| !c.is_alphanumeric()) {
+        let letters: Vec<char> = w.chars().collect();
+        if letters.iter().any(|&c| is_cjk(c)) {
+            out.extend(letters.windows(2).map(|pair| pair.iter().collect::<String>()));
+        } else if letters.len() >= 2 {
+            out.push(w.to_string());
+        }
+    }
+    out
 }
 
 /// BM25 of each passage for the question.
@@ -1218,6 +1235,16 @@ mod tests {
         best.sort();
         assert_eq!(best, vec![1, 3]);
         assert!(!order.contains(&2), "nothing in common: left out");
+        // Chinese and Japanese have no spaces between words: still found.
+        let tokyo: Vec<(usize, String)> = vec![
+            (0, "東京の天気は晴れです。".into()),
+            (0, "大阪の名物はたこ焼きです。".into()),
+            (1, "明日の東京は雨の予報。".into()),
+        ];
+        let order = rt.block_on(rank("東京 天気", &tokyo, "openai"));
+        assert_eq!(order.first(), Some(&0), "{order:?}");
+        assert!(!order.contains(&1), "{order:?}");
+        assert_eq!(words("Rust 東京"), ["rust", "東京"]);
         let hits = vec![
             Hit { title: "Recipes".into(), url: "https://a.com/".into(), snippet: String::new(), date: String::new() },
             Hit { title: "Pork".into(), url: "https://b.com/".into(), snippet: String::new(), date: String::new() },

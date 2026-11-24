@@ -266,7 +266,8 @@ pub fn target(source: &str, until: &str, target: &str, text: &str, home: &Path) 
             if name.is_empty() {
                 return Err("Give the webhook a name, like deploys.".into());
             }
-            Ok(name.chars().take(40).collect())
+            // Cut first, then drop a '-' the cut left at the end, so the name read back from the store gives itself again.
+            Ok(name.chars().take(40).collect::<String>().trim_end_matches('-').to_string())
         }
         "tool" => {
             if target.len() > 48 || !target.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
@@ -854,6 +855,11 @@ mod tests {
         assert!(target("agent", "finished", "skynet", "", home).is_err());
         assert_eq!(target("webhook", "called", "My Deploys!", "", home).unwrap(), "my-deploys");
         assert_eq!(target("webhook", "called", "", "", home).unwrap(), "webhook");
+        // A name cut at 40 characters just after a '-' doesn't end with it, so it is kept again after a restart.
+        let long = format!("{}-b", "a".repeat(39));
+        let kept = target("webhook", "called", &long, "", home).unwrap();
+        assert_eq!(kept, "a".repeat(39));
+        assert_eq!(target("webhook", "called", &kept, "", home).unwrap(), kept);
         assert_eq!(target("tool", "changed", "prices_check", "", home).unwrap(), "prices_check");
         assert!(target("tool", "contains", "prices_check", "", home).is_err());
         assert!(target("tool", "changed", "../x", "", home).is_err());

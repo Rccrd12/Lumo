@@ -308,6 +308,24 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             }
         }
         let answer = match answer {
+            // LM Studio's engine failed this request ("terminated", "fetch
+            // failed"): the same request after a moment, three times, then
+            // whole for this turn. Nothing to do with the stream: not remembered.
+            // Before the pictures: it comes as a 400 too, and says nothing
+            // about whether the model sees.
+            Err(e) if e.is_engine() && engine_retries < ENGINE_RETRIES => {
+                engine_retries += 1;
+                next = Some(Doing::Retrying { attempt: engine_retries, of: ENGINE_RETRIES });
+                fixes.push("asked again");
+                tokio::time::sleep(rules.pause).await;
+                continue;
+            }
+            Err(e) if e.is_engine() && !whole => {
+                whole = true;
+                fixes.push("answered whole");
+                continue;
+            }
+            Err(e) if e.is_engine() => return Err(e),
             // A model that doesn't see refuses the browser's screenshots: once
             // more with words in their place, and none sent from now on. Not
             // once it took them: a refusal then is about something else.
@@ -324,22 +342,6 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 fixes.push("without pictures");
                 continue;
             }
-            // LM Studio's engine failed this request ("terminated", "fetch
-            // failed"): the same request after a moment, three times, then
-            // whole for this turn. Nothing to do with the stream: not remembered.
-            Err(e) if e.is_engine() && engine_retries < ENGINE_RETRIES => {
-                engine_retries += 1;
-                next = Some(Doing::Retrying { attempt: engine_retries, of: ENGINE_RETRIES });
-                fixes.push("asked again");
-                tokio::time::sleep(rules.pause).await;
-                continue;
-            }
-            Err(e) if e.is_engine() && !whole => {
-                whole = true;
-                fixes.push("answered whole");
-                continue;
-            }
-            Err(e) if e.is_engine() => return Err(e),
             // A refusal may be the server failing to read what the model
             // wrote (a tool call it couldn't parse): the same request once more.
             Err(Failure::Status(400 | 422, _)) if !asked_again => {
