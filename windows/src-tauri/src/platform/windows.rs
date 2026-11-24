@@ -191,24 +191,51 @@ pub fn open_url(url: &str) {
         .spawn();
 }
 
+/// `path` with Windows' own separators: File Explorer reads `C:/a/b.txt` as
+/// no path at all and opens its usual folder (Documents) instead.
+fn windows_path(path: &str) -> String {
+    path.replace('/', "\\")
+}
+
 /// File Explorer on a folder. Quoted raw, as open_file: unquoted, a comma in
 /// its path is read as Explorer's separator and opens another place.
 pub fn reveal_folder(path: &str) {
     if path.contains('"') {
         return;
     }
+    let path = windows_path(path);
+    let path = path.as_str();
     // No separator before the closing quote, but a drive's own (`C:\`).
     let path = if path.len() > 3 { path.trim_end_matches(['\\', '/']) } else { path };
     let _ = Command::new("explorer").raw_arg(format!("\"{path}\"")).spawn();
 }
 
-/// A file opened by its type, in the app File Explorer would open it with.
-/// Quoted raw, so a comma in its name is not read as Explorer's separator.
+/// A file opened by its type, in the app registered for it (ShellExecute's
+/// "open"). A type no app is registered for gets Windows' Open with window:
+/// handed to File Explorer instead, such a file (a `.jsonl`) opened a folder
+/// that had nothing to do with it.
 pub fn open_file(path: &str) {
     if path.contains('"') {
         return;
     }
-    let _ = Command::new("explorer").raw_arg(format!("\"{path}\"")).spawn();
+    let path = windows_path(path);
+    let file: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    let verb: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: both strings end with a zero and outlive the call.
+    let code = unsafe {
+        ::windows::Win32::UI::Shell::ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            ::windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+        )
+    };
+    // Above 32 is success; anything else (no app for the type) asks which app.
+    if code.0 as isize <= 32 {
+        open_with(&path);
+    }
 }
 
 /// Windows' "Open with" window for a file: the user picks the app. Quoted
@@ -217,6 +244,7 @@ pub fn open_with(path: &str) {
     if path.contains('"') {
         return;
     }
+    let path = windows_path(path);
     let _ = Command::new("rundll32.exe").raw_arg(format!("shell32.dll,OpenAs_RunDLL \"{path}\"")).spawn();
 }
 
@@ -227,6 +255,7 @@ pub fn reveal_file(path: &str) {
     if path.contains('"') {
         return;
     }
+    let path = windows_path(path);
     let _ = Command::new("explorer").raw_arg(format!("/select,\"{path}\"")).spawn();
 }
 

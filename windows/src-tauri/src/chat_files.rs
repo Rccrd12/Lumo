@@ -201,7 +201,8 @@ fn find_one(name: &str, known: &[String], dirs: &[std::path::PathBuf]) -> Option
     }
     let found = |p: &Path| -> Option<FoundFile> {
         let meta = std::fs::metadata(p).ok()?;
-        Some(FoundFile { path: p.to_string_lossy().to_string(), folder: meta.is_dir() })
+        // Windows' own separators: the path is shown, copied and opened as it is.
+        Some(FoundFile { path: p.to_string_lossy().replace('/', "\\"), folder: meta.is_dir() })
     };
     if on_drive(n) {
         let p = Path::new(n);
@@ -210,9 +211,9 @@ fn find_one(name: &str, known: &[String], dirs: &[std::path::PathBuf]) -> Option
         }
         return None;
     }
-    // A known file of that name, the newest first.
+    // A known file of that name, the newest first (the island lists them so).
     let lower = n.replace('/', "\\").to_lowercase();
-    for path in known.iter().rev().filter(|p| on_drive(p.trim()) && allowed(p)) {
+    for path in known.iter().filter(|p| on_drive(p.trim()) && allowed(p)) {
         let k = key(path);
         if k.ends_with(&format!("\\{lower}")) {
             if let Some(f) = found(Path::new(path.trim())) {
@@ -220,12 +221,17 @@ fn find_one(name: &str, known: &[String], dirs: &[std::path::PathBuf]) -> Option
             }
         }
     }
-    let inbox = crate::files::inbox_dir();
-    for dir in std::iter::once(&inbox).chain(dirs.iter()) {
+    // Beside the chat's own files first: a file of the same name in the inbox
+    // may be another chat's attachment.
+    for dir in dirs {
         let p = dir.join(n);
-        if p.exists() && (crate::files::in_inbox(&p) || near(&p, dirs)) {
+        if p.exists() && near(&p, dirs) {
             return found(&p);
         }
+    }
+    let p = crate::files::inbox_dir().join(n);
+    if p.exists() && crate::files::in_inbox(&p) {
+        return found(&p);
     }
     None
 }
@@ -416,13 +422,16 @@ mod tests {
             ],
             known,
         );
-        assert_eq!(found[0], Some(FoundFile { path: tex_path, folder: false }));
+        assert_eq!(found[0], Some(FoundFile { path: tex_path.replace('/', "\\"), folder: false }));
         assert!(found[1].as_ref().is_some_and(|f| f.path.ends_with("Fisica2.pdf")), "beside a known file");
         assert!(found[2].as_ref().is_some_and(|f| f.path.ends_with("dipolo.png")), "one folder down");
         assert!(found[3].as_ref().is_some_and(|f| f.folder), "the folder itself");
         assert_eq!(found[4], None, "a folder the chat never used, beside the one above");
         assert_eq!(found[5], None);
         assert_eq!(found[6], None, "not there");
+        // Written with forward slashes, it comes back with Windows' own.
+        let slashed = chat_file_find(vec![notes.join("Fisica2.pdf").to_string_lossy().replace('\\', "/")], vec![tex.to_string_lossy().to_string()]);
+        assert!(slashed[0].as_ref().is_some_and(|f| !f.path.contains('/') && f.path.ends_with(r"Dispense\Fisica2.pdf")), "{slashed:?}");
         // What was found may be opened from now on.
         assert!(allowed(&found[1].as_ref().unwrap().path));
         let _ = std::fs::remove_dir_all(&root);
