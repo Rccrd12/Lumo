@@ -1241,9 +1241,9 @@ mod tests {
             (0, "大阪の名物はたこ焼きです。".into()),
             (1, "明日の東京は雨の予報。".into()),
         ];
-        let order = rt.block_on(rank("東京 天気", &tokyo, "openai"));
-        assert_eq!(order.first(), Some(&0), "{order:?}");
-        assert!(!order.contains(&1), "{order:?}");
+        let tokyo_order = rt.block_on(rank("東京 天気", &tokyo, "openai"));
+        assert_eq!(tokyo_order.first(), Some(&0), "{tokyo_order:?}");
+        assert!(!tokyo_order.contains(&1), "{tokyo_order:?}");
         assert_eq!(words("Rust 東京"), ["rust", "東京"]);
         let hits = vec![
             Hit { title: "Recipes".into(), url: "https://a.com/".into(), snippet: String::new(), date: String::new() },
