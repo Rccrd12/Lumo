@@ -56,9 +56,16 @@ fn said(text: &str, words: &[&str]) -> bool {
 }
 
 /// Whether the clause that `before` ends with (from the last , . ; : ! ? or
-/// line break, or the last "but") has a negation in it.
+/// line break, or the last "but") has a negation in it. A dot with a letter
+/// or digit right after it is part of a name (`main.rs`), not a clause's end.
 fn negated(before: &str) -> bool {
-    let clause = before.rsplit([',', '.', ';', ':', '!', '?', '\n']).next().unwrap_or_default();
+    let bytes = before.as_bytes();
+    let start = before
+        .char_indices()
+        .rev()
+        .find(|&(i, c)| matches!(c, ',' | '.' | ';' | ':' | '!' | '?' | '\n') && !(c == '.' && bytes.get(i + 1).is_some_and(u8::is_ascii_alphanumeric)))
+        .map_or(0, |(i, c)| i + c.len_utf8());
+    let clause = &before[start..];
     let words: Vec<&str> = clause.split(|c: char| !(c.is_alphanumeric() || c == '\'' || c == '’')).filter(|w| !w.is_empty()).collect();
     let clause = words.rsplit(|w| BUT.contains(w)).next().unwrap_or_default();
     clause.iter().any(|w| NEGATIONS.contains(w) || w.ends_with("n't") || w.ends_with("n’t"))
@@ -278,6 +285,10 @@ mod tests {
         assert!(!asks_change("Don't change anything, just tell me what it does."));
         assert!(!asks_change("Riassumi il file senza cambiare il resto"));
         assert!(!asks_change("Do not edit it: read it"));
+        // The dot of a file name doesn't end the clause of its negation.
+        assert!(!asks_change("Don't touch main.rs or change anything"));
+        assert!(!asks_change("Do not edit README.md or add anything"));
+        assert!(!asks_change("Non toccare main.rs e non modificare niente"));
         assert!(!claims_change("Ecco cosa fa ogni file. Come richiesto non ho modificato nulla. Se vuoi che sistemi questi bug, dimmelo."));
         assert!(!claims_change("Nessun file è stato modificato."));
         assert!(!claims_change("I haven't changed anything, and I didn't save it either."));

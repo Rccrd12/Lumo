@@ -624,7 +624,18 @@ fn font_names(doc: &Doc, resources: Option<&Dict>, fonts: &mut HashMap<u32, Font
         }
         let d = doc.get(*n).dict();
         let wide = d.and_then(|d| d.get(b"Subtype".as_slice())).is_some_and(|s| s.is_name(b"Type0"));
-        let unicode = d.and_then(|d| d.get(b"ToUnicode".as_slice())).and_then(|t| doc.stream_of(t)).map(|cmap| parse_cmap(&cmap)).unwrap_or_default();
+        let unicode = d
+            .and_then(|d| d.get(b"ToUnicode".as_slice()))
+            .and_then(|t| doc.stream_of(t))
+            .map(|cmap| {
+                // Each entry is charged to the document's budget, as the memory it
+                // takes: fonts that all name the same small CMap don't each get
+                // a million entries for free.
+                let map = parse_cmap(&cmap, doc.left.get() / CMAP_ENTRY_BYTES);
+                doc.left.set(doc.left.get().saturating_sub(map.len() * CMAP_ENTRY_BYTES));
+                map
+            })
+            .unwrap_or_default();
         fonts.insert(*n, Font { wide, unicode });
     }
     names
@@ -642,11 +653,14 @@ fn utf16(bytes: &[u8]) -> String {
 /// At most this many entries are read from one ToUnicode CMap, all its
 /// ranges together (two-byte codes are 65,536 at most).
 const MAX_CMAP_ENTRIES: usize = 1 << 20;
+/// About what one entry of a parsed CMap takes in memory, charged to `MAX_DOC`.
+const CMAP_ENTRY_BYTES: usize = 64;
 
-/// A ToUnicode CMap's `bfchar` and `bfrange` entries, `MAX_CMAP_ENTRIES` at most.
-fn parse_cmap(cmap: &[u8]) -> HashMap<u32, String> {
+/// A ToUnicode CMap's `bfchar` and `bfrange` entries, `MAX_CMAP_ENTRIES` at
+/// most, and at most `most`.
+fn parse_cmap(cmap: &[u8], most: usize) -> HashMap<u32, String> {
     let mut map = HashMap::new();
-    let mut left = MAX_CMAP_ENTRIES;
+    let mut left = MAX_CMAP_ENTRIES.min(most);
     let mut lx = Lexer::new(cmap, 0);
     let mut operands: Vec<Obj> = Vec::new();
     while let Some(tok) = lx.next() {
@@ -1186,7 +1200,7 @@ mod tests {
 
     #[test]
     fn a_cmap_reads_its_chars_and_ranges() {
-        let map = parse_cmap(b"1 beginbfchar <03> <0041> endbfchar 1 beginbfrange <10> <12> <0061> <20> <21> [<0058> <0059>] endbfrange");
+        let map = parse_cmap(b"1 beginbfchar <03> <0041> endbfchar 1 beginbfrange <10> <12> <0061> <20> <21> [<0058> <0059>] endbfrange", MAX_CMAP_ENTRIES);
         assert_eq!(map.get(&3).map(String::as_str), Some("A"));
         assert_eq!(map.get(&0x12).map(String::as_str), Some("c"));
         assert_eq!(map.get(&0x21).map(String::as_str), Some("Y"));
@@ -1200,8 +1214,30 @@ mod tests {
             many.extend_from_slice(format!("<{high:04X}0000> <{high:04X}FFFF> <0041> ").as_bytes());
         }
         many.extend_from_slice(b"endbfrange");
-        let map = parse_cmap(&many);
+        let map = parse_cmap(&many, MAX_CMAP_ENTRIES);
         assert_eq!(map.len(), MAX_CMAP_ENTRIES);
         assert_eq!(map.get(&0).map(String::as_str), Some("A"));
+        assert_eq!(parse_cmap(&many, 10).len(), 10);
+    }
+
+    #[test]
+    fn fonts_that_share_one_cmap_stay_within_the_documents_budget() {
+        // A 500-byte CMap of a million entries, named by eight fonts: eight million once.
+        let mut cmap = b"beginbfrange ".to_vec();
+        for high in 0..16u32 {
+            cmap.extend_from_slice(format!("<{high:04X}0000> <{high:04X}FFFF> <0041> ").as_bytes());
+        }
+        cmap.extend_from_slice(b"endbfrange");
+        let fonts: Vec<u32> = (10..18).collect();
+        let names: String = fonts.iter().map(|n| format!("/F{n} {n} 0 R ")).collect();
+        let mut objects = vec![(4, format!("<< /Font << {names}>> >>").into_bytes()), (9, stream("", &cmap))];
+        objects.extend(fonts.iter().map(|n| (*n, b"<< /Type /Font /Subtype /Type0 /ToUnicode 9 0 R >>".to_vec())));
+        let doc = Doc::read(&pdf(&objects));
+        let mut read = HashMap::new();
+        let named = font_names(&doc, doc.get(4).dict(), &mut read);
+        assert_eq!(named.len(), fonts.len());
+        let entries: usize = read.values().map(|f| f.unicode.len()).sum();
+        assert!(entries > 0 && entries <= MAX_DOC / CMAP_ENTRY_BYTES, "{entries}");
+        assert!(doc.left.get() < MAX_DOC / 2, "the entries were charged");
     }
 }

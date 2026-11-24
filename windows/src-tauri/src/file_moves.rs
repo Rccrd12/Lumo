@@ -146,6 +146,8 @@ pub fn plan_in(asks: &[Ask], folders: &[String], home: &Path) -> Result<Plan, St
     let will_be_dir = |p: &Path| p.is_dir() || new_folders.iter().any(|f| f == p);
     let mut moves: Vec<Step> = Vec::new();
     let mut taken: Vec<PathBuf> = Vec::new();
+    // What an earlier move takes away: nothing more can be moved from it, or into it.
+    let mut gone: Vec<PathBuf> = Vec::new();
     for ask in asks {
         let (Some(from), Some(to)) = (path_of(&ask.from), path_of(&ask.to)) else {
             skipped.push(format!("{} → {}: paths must be absolute.", ask.from, ask.to));
@@ -177,6 +179,11 @@ pub fn plan_in(asks: &[Ask], folders: &[String], home: &Path) -> Result<Plan, St
             skipped.push(format!("{}: something already has that name there, and nothing is overwritten.", show(&dest)));
             continue;
         }
+        if gone.iter().any(|g| from.starts_with(g) || dest.starts_with(g)) {
+            skipped.push(format!("{}: an earlier move in this plan already takes it or its folder away.", show(&from)));
+            continue;
+        }
+        gone.push(from.clone());
         taken.push(dest.clone());
         moves.push(Step { from: show(&from), to: show(&dest) });
     }
@@ -288,7 +295,11 @@ pub fn undo() -> Result<Applied, String> {
         }
     }
     let mut removed = 0;
-    for f in made.iter().rev() {
+    // The deepest first: a folder made inside another one it made (listed in
+    // any order) empties its parent before the parent goes.
+    let mut made = made;
+    made.sort_by_key(|f| std::cmp::Reverse(Path::new(f).components().count()));
+    for f in &made {
         // remove_dir only removes an empty folder.
         if std::fs::remove_dir(f).is_ok() {
             removed += 1;
@@ -384,6 +395,25 @@ mod tests {
         assert!(downloads.join("a.pdf").exists() && downloads.join("b.jpg").exists());
         assert!(!docs.exists());
         assert!(undo().is_err());
+
+        // A folder listed before the folder it goes in: both go on undo.
+        let outer = downloads.join("X");
+        let plan = plan_in(&[], &[show(&outer.join("Y")), show(&outer)], &home).unwrap();
+        assert_eq!(plan.new_folders.len(), 2);
+        assert_eq!(apply(plan.id).unwrap().new_folders, 2);
+        assert!(outer.join("Y").is_dir());
+        assert_eq!(undo().unwrap().new_folders, 2);
+        assert!(!outer.exists(), "no empty folder left behind");
+
+        // Only moves that can be done: the same file twice, or into a folder moved away.
+        std::fs::write(downloads.join("c.txt"), b"c").unwrap();
+        let plan = plan_in(&[ask(&downloads.join("c.txt"), &downloads.join("d.txt")), ask(&downloads.join("c.txt"), &downloads.join("e.txt"))], &[], &home).unwrap();
+        assert_eq!((plan.moves.len(), plan.skipped.len()), (1, 1), "{:?}", plan.skipped);
+        let plan = plan_in(&[ask(&downloads.join("Old"), &downloads.join("Older")), ask(&downloads.join("c.txt"), &downloads.join("Old"))], &[], &home).unwrap();
+        assert_eq!((plan.moves.len(), plan.skipped.len()), (1, 1), "{:?}", plan.skipped);
+        let done = apply(plan.id).unwrap();
+        assert!(done.failed.is_empty(), "{:?}", done.failed);
+        assert_eq!(undo().unwrap().moved, 1);
 
         assert!(plan_in(&[], &[], &home).is_err());
 
