@@ -70,6 +70,11 @@ export const STRINGS = {
   cancel: N_("Cancel"),
   effort: N_("Effort"),
   effortAuto: N_("Auto"),
+  // Antigravity CLI's Orchestrator: the model that plans and the one that carries the plan out.
+  planner: N_("Planner"),
+  executor: N_("Executor"),
+  previousModel: N_("Previous model"),
+  nextModel: N_("Next model"),
   recommended: N_("Recommended"),
   autoHint: N_("Auto: Claude Code picks the effort its model is made for."),
   permissions: N_("Permissions"),

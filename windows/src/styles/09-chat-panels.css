@@ -352,6 +352,61 @@
   color: var(--ink-2);
 }
 
+/* Antigravity CLI's Orchestrator: a row for the planner and one for the
+   executor, each its role, ‹ model ›, and its own effort slider. */
+.picker-efforts.orchestrator {
+  gap: 6px;
+}
+
+.orch-row {
+  gap: 8px;
+}
+
+.orch-role {
+  flex: 0 0 62px;
+  font: 400 12px var(--font);
+  color: #8b929e;
+}
+
+.orch-model {
+  flex: 0 0 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font: 400 12px var(--font);
+  color: var(--ink-2);
+}
+
+.orch-step {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  font: 400 13px/1 var(--font);
+  color: #c8cdd4;
+  cursor: default;
+}
+
+.orch-step:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.orch-step:disabled {
+  opacity: 0.35;
+}
+
+.orch-row .effort-track {
+  min-width: 80px;
+}
+
+.orch-row .effort-value {
+  min-width: 44px;
+}
+
 .effort-auto {
   display: inline-flex;
   align-items: center;
@@ -855,6 +910,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Orchestrator's row: who plans and who executes, after its name. */
+.picker-model-name:has(+ .picker-model-sub) {
+  flex: 0 0 auto;
+}
+
+.picker-model-sub {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #8b929e;
+}
+
+.picker-model.on .picker-model-sub {
+  color: color-mix(in srgb, var(--accent) 60%, #8b929e);
 }
 
 /* "More models": the older versions (Claude Code's) open under it. */
