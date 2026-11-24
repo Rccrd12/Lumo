@@ -3104,8 +3104,12 @@ fn drive(agy: &mut Agy, state: &mut Run, stop: &Stop, may_linger: bool, sink: &m
         // held meanwhile (`serve_plan`).
         if last_look.elapsed() >= TRANSCRIPT_POLL {
             last_look = Instant::now();
-            if state.subagents.read_transcripts().0 {
+            let (changed, read) = state.subagents.read_transcripts();
+            // A transcript that grew, the answer's own too: agy is at work.
+            if changed || read {
                 tell(&mut state.subagents.agents, true);
+            }
+            if changed {
                 for file in state.take_files() {
                     (sink.file)(&file);
                 }

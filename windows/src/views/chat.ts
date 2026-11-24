@@ -3155,13 +3155,13 @@ export function buildPrompt(
     let text = "";
     let tone = "";
     if (run && turnWaiting(run.chatId)) {
-      text = ` · ${t(STALL_TEXT.waiting)}`;
+      text = t(STALL_TEXT.waiting);
       tone = "waiting";
     } else if (run) {
       const lastSignalAt = Math.max(agentStore.get(run.chatId)?.lastSignalAt ?? 0, run.since);
       const stall = stallOf({ kind: "turn", provider: run.provider, activity: run.activity, lastSignalAt });
       if (stall) {
-        text = ` · ${t(STALL_TEXT.noSignal, { time: durationText(stall.seconds * 1000) })}`;
+        text = t(STALL_TEXT.noSignal, { time: durationText(stall.seconds * 1000) });
         tone = "stalled";
       }
     }
