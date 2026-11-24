@@ -101,6 +101,11 @@
   display: none;
 }
 
+/* Done: the words stay still. */
+.live-doing.done .typing-label {
+  animation: none;
+}
+
 .live-start {
   padding: 0 4px;
 }

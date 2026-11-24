@@ -260,6 +260,10 @@
     animation: none;
     opacity: 1;
   }
+
+  .typing-label {
+    animation: none;
+  }
 }
 
 /* The closed island: a chat whose agents work after its answer, a segment
