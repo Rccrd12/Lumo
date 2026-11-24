@@ -181,12 +181,35 @@ fn usual_address(id: &str) -> Option<String> {
             std::env::var("OLLAMA_HOST")
                 .ok()
                 .filter(|v| !v.trim().is_empty())
+                .map(|v| with_ollama_port(&v))
                 .unwrap_or_else(|| "http://127.0.0.1:11434".into()),
         ),
         "lmstudio" => Some("http://127.0.0.1:1234".into()),
         // Unsloth Studio says which port it took; 8888 most often, else 8000 (connect tries both).
         "unsloth" => Some("http://127.0.0.1:8888".into()),
         _ => None,
+    }
+}
+
+/// OLLAMA_HOST as the Ollama CLI reads it: a host without a port
+/// (`0.0.0.0`, `http://myhost`, `[::1]`) means Ollama's port, 11434, not 80.
+fn with_ollama_port(v: &str) -> String {
+    let v = v.trim();
+    let (scheme, rest) = match v.split_once("://") {
+        Some((s, r)) => (format!("{s}://"), r),
+        None => ("http://".to_string(), v),
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (auth, tail) = rest.split_at(end);
+    let host = auth.rsplit('@').next().unwrap_or(auth);
+    let has_port = match host.rfind(']') {
+        Some(i) => host[i + 1..].starts_with(':'),
+        None => host.contains(':'),
+    };
+    if has_port {
+        v.to_string()
+    } else {
+        format!("{scheme}{auth}:11434{tail}")
     }
 }
 
@@ -1246,6 +1269,22 @@ mod tests {
         assert!(server(&s, "openai").is_none());
         assert_eq!(usual_address("lmstudio").as_deref(), Some("http://127.0.0.1:1234"));
         assert_eq!(usual_address("custom"), None);
+    }
+
+    #[test]
+    fn ollama_host_without_a_port_means_ollamas_port() {
+        assert_eq!(with_ollama_port("0.0.0.0"), "http://0.0.0.0:11434");
+        assert_eq!(with_ollama_port("http://0.0.0.0"), "http://0.0.0.0:11434");
+        assert_eq!(with_ollama_port(" 127.0.0.1 "), "http://127.0.0.1:11434");
+        assert_eq!(with_ollama_port("[::1]"), "http://[::1]:11434");
+        assert_eq!(with_ollama_port("https://ollama.lan/api"), "https://ollama.lan:11434/api");
+        // A port given stays.
+        assert_eq!(with_ollama_port("0.0.0.0:11434"), "0.0.0.0:11434");
+        assert_eq!(with_ollama_port("http://myhost:5000"), "http://myhost:5000");
+        assert_eq!(with_ollama_port("[::1]:7000"), "[::1]:7000");
+        // And what Connect then tries is that port, on this machine.
+        let url = net::normalise_server_url(&with_ollama_port("0.0.0.0")).unwrap();
+        assert_eq!(url.port_or_known_default(), Some(11434));
     }
 
     #[test]

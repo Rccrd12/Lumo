@@ -607,6 +607,25 @@ fn lm_studio_s_engine_failing_is_asked_again_and_never_costs_the_tools() {
 }
 
 #[test]
+fn lm_studio_s_engine_failing_keeps_the_pictures() {
+    let terminated = || Reply::Json(400, json!({ "error": "terminated" }).to_string());
+    // The browser's screenshots: asked again with them, and sent on after.
+    let mut island = Island::default();
+    let mut body = question("Guarda la pagina", &["browser_screenshot"]);
+    let replies = vec![calls("c1", "browser_screenshot", "{\"tab\":1}"), terminated(), answer("Vedo la pagina.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("engine-shots", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["asked again"]);
+    assert_eq!(requests[2]["messages"][4]["content"][2]["image_url"]["url"], "data:image/png;base64,SHOT1");
+    // The user's own picture: still there when asked again.
+    let mut island = Island::default();
+    let user = json!({ "role": "user", "content": [{ "type": "text", "text": "Cos'è?" }, { "type": "image_url", "image_url": { "url": "data:image/png;base64,AA" } }] });
+    let mut body = request(user, &[]);
+    let (outcome, requests) = turn(vec![terminated(), answer("Un gatto.")], &mut body, &rules("engine-images", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["asked again"]);
+    assert_eq!(requests[1]["messages"][1]["content"][1]["image_url"]["url"], "data:image/png;base64,AA");
+}
+
+#[test]
 fn each_request_has_its_own_retries_when_the_engine_fails() {
     // Three failures before the tool call, three before the answer: streamed throughout.
     let mut island = Island::default();

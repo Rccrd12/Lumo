@@ -565,12 +565,22 @@ pub fn tools_set_command(app: AppHandle, id: String, command: String) -> Result<
 
 /// An id no other tool has, from the name.
 fn free_id(name: &str) -> String {
-    let base = slug(name);
     let root = tools_dir();
-    if !root.join(&base).exists() {
-        return base;
+    first_free(&slug(name), |id| root.join(id).exists())
+}
+
+/// `base`, or `base_2`, `base_3`… the first one not `taken`. The base is
+/// shortened so the number fits in `MAX_ID`: a longer id is not one
+/// `valid_id` takes, and the tool saved under it would never be listed.
+fn first_free(base: &str, taken: impl Fn(&str) -> bool) -> String {
+    if !taken(base) {
+        return base.to_string();
     }
-    (2..1000).map(|n| format!("{base}_{n}")).find(|id| !root.join(id).exists()).unwrap_or_else(|| format!("{base}_{}", now_ms()))
+    let with = |tail: String| {
+        let keep: String = base.chars().take(MAX_ID - tail.len() - 1).collect();
+        format!("{}_{tail}", keep.trim_end_matches('_'))
+    };
+    (2..1000).map(|n| with(n.to_string())).find(|id| !taken(id)).unwrap_or_else(|| with(now_ms().to_string()))
 }
 
 /// Saves a draft as a tool, on: a new one, or the one it `replaces` (whose
@@ -2014,6 +2024,22 @@ mod tests {
         assert!(slug(&"a".repeat(200)).len() <= MAX_ID);
         assert!(valid_id(&slug("Ciao Mondo 2")));
         assert!(!valid_id("../x") && !valid_id("A") && !valid_id(""));
+    }
+
+    #[test]
+    fn a_second_tool_with_a_long_name_gets_an_id_that_is_listed() {
+        let base = slug("Convert every PDF in my downloads folder into text");
+        assert_eq!(base.len(), MAX_ID);
+        assert_eq!(first_free(&base, |_| false), base);
+        let second = first_free(&base, |id| id == base);
+        assert!(valid_id(&second) && second != base, "{second}");
+        assert_eq!(second, "convert_every_pdf_in_my_downloads_folder_into_2");
+        let third = first_free(&base, |id| id == base || id == second);
+        assert!(valid_id(&third) && third.ends_with("_3"), "{third}");
+        // Every number taken: the time it was saved, still short enough.
+        let late = first_free(&base, |id| id.rsplit('_').next().is_none_or(|n| n.len() < 13));
+        assert!(valid_id(&late), "{late}");
+        assert_eq!(first_free("short", |id| id == "short"), "short_2");
     }
 
     #[test]

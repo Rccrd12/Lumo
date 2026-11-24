@@ -353,9 +353,9 @@ function sameShape(a: Element, b: Element): boolean {
   return true;
 }
 
-/** Writes the words of `from` (its texts and tooltips) into `to`, of the same shape. */
+/** Writes the words of `from` (its texts, tooltips and inline values such as a plan's fill) into `to`, of the same shape. */
 function copyWords(to: Element, from: Element) {
-  for (const attr of ["title", "aria-label"]) {
+  for (const attr of ["title", "aria-label", "style"]) {
     const v = from.getAttribute(attr);
     if (v == null) to.removeAttribute(attr);
     else if (to.getAttribute(attr) !== v) to.setAttribute(attr, v);
@@ -511,7 +511,8 @@ export function folded(list: [AgentEntry, number][], open: ReadonlySet<string>):
     let end = i + 1;
     while (end < list.length && list[end][1] > depth) end++;
     const under = list.slice(i + 1, end);
-    if (under.length && !open.has(e.row.id) && isFinal(e.row.state) && under.every(([u]) => isFinal(u.row.state))) i = end - 1;
+    // An agent opened inside the branch keeps it unfolded, so its row and its details show.
+    if (under.length && !open.has(e.row.id) && !under.some(([u]) => open.has(u.row.id)) && isFinal(e.row.state) && under.every(([u]) => isFinal(u.row.state))) i = end - 1;
   }
   return out;
 }

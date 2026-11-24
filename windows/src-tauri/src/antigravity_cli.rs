@@ -71,6 +71,8 @@ const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
 /// How often a running turn looks at the Stop button.
 const STOP_POLL: Duration = Duration::from_millis(100);
+/// Whose a tool step in `Run::pending` is: the chat's own answer's.
+const MAIN: &str = "";
 /// Ceilings for what we read back: one event line, and the whole run.
 const MAX_LINE: usize = 4 * 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
@@ -2251,8 +2253,10 @@ struct Run {
     activity: Option<Activity>,
     /// `activity` changed and the island was not told yet (`take_activity`).
     activity_changed: bool,
-    /// Tool steps still running, oldest first: step index and what each is doing.
-    pending: Vec<(u64, Activity)>,
+    /// Tool steps still running, oldest first: whose step it is (`MAIN`, or
+    /// the subagent's conversation: each counts its steps from 0), its index,
+    /// and what it is doing.
+    pending: Vec<(String, u64, Activity)>,
     /// The last lines agy wrote on stderr: why an answer came back empty.
     stderr_tail: String,
     /// The plans agy gave Lumo's update_plan tool, not yet passed on (`take_plan`).
@@ -2382,9 +2386,11 @@ impl Run {
         self.last_main = Some(Instant::now());
     }
 
-    /// Writing: a step of its own still going.
+    /// Writing: a step of its own still going. Not a subagent's (in
+    /// `pending` too): one cut off before its DONE would keep the chat
+    /// writing until the end of the turn.
     fn writing(&self) -> bool {
-        !self.open_steps.is_empty() || !self.pending.is_empty()
+        !self.open_steps.is_empty()
     }
 
     /// Not writing, and quiet for QUIET_ANSWER.
@@ -2472,13 +2478,13 @@ impl Run {
                 self.subagents.spawn_failed(index, error_text(&v["error"]).or_else(|| error_text(&v["subagent_info"]["error"])));
             }
             if done {
-                self.finished_tool(index);
+                self.finished_tool(MAIN, index);
                 // Started, not finished: they work on.
                 if self.subagents.spawns_open() {
                     self.set_activity(Activity::new("agents", ""));
                 }
             } else {
-                self.started_tool(index, Activity::new("subtask", ""));
+                self.started_tool(MAIN, index, Activity::new("subtask", ""));
             }
             self.main_step(index, done);
             return false;
@@ -2486,10 +2492,12 @@ impl Run {
         // A subagent at work: its own steps are its row's, not the answer's.
         if v.get("subagent_info").is_some_and(|s| !s.is_null()) {
             self.subagents.step(index, done, v);
+            // Its step N is not the answer's step N.
+            let whose = format!("subagent:{}", v["subagent_info"]["conversation_id"].as_str().unwrap_or_default());
             if done {
-                self.finished_tool(index);
+                self.finished_tool(&whose, index);
             } else {
-                self.started_tool(index, Activity::new("subtask", ""));
+                self.started_tool(&whose, index, Activity::new("subtask", ""));
             }
             return false;
         }
@@ -2546,7 +2554,7 @@ impl Run {
                             self.touched.push(touch);
                         }
                     }
-                    self.finished_tool(index);
+                    self.finished_tool(MAIN, index);
                 } else {
                     if is_plan_tool(name) {
                         self.saw_plan(&info["parameters"]);
@@ -2570,7 +2578,7 @@ impl Run {
                             self.touching.push((index, touch));
                         }
                     }
-                    self.started_tool(index, activity_for(name, &info["parameters"]));
+                    self.started_tool(MAIN, index, activity_for(name, &info["parameters"]));
                 }
                 false
             }
@@ -2601,18 +2609,18 @@ impl Run {
     }
 
     /// A tool step began (or says more about itself): remembered until it is done.
-    fn started_tool(&mut self, index: u64, activity: Activity) {
-        match self.pending.iter_mut().find(|(i, _)| *i == index) {
-            Some(entry) => entry.1 = activity.clone(),
-            None => self.pending.push((index, activity.clone())),
+    fn started_tool(&mut self, whose: &str, index: u64, activity: Activity) {
+        match self.pending.iter_mut().find(|(w, i, _)| w == whose && *i == index) {
+            Some(entry) => entry.2 = activity.clone(),
+            None => self.pending.push((whose.to_string(), index, activity.clone())),
         }
         self.set_activity(activity);
     }
 
     /// A tool step is done: the one still running shows, or agy thinks again.
-    fn finished_tool(&mut self, index: u64) {
-        self.pending.retain(|(i, _)| *i != index);
-        let next = self.pending.last().map(|(_, a)| a.clone()).unwrap_or_else(Activity::thinking);
+    fn finished_tool(&mut self, whose: &str, index: u64) {
+        self.pending.retain(|(w, i, _)| !(w == whose && *i == index));
+        let next = self.pending.last().map(|(_, _, a)| a.clone()).unwrap_or_else(Activity::thinking);
         self.set_activity(next);
     }
 
@@ -3169,8 +3177,13 @@ fn run(
 ) -> Result<Run, String> {
     let agy = start_agy(&exe, &args, &dir, chat_id, String::new())?;
     let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
-    agy_turn(agy, input, Run::default(), &stop, false, &mut sink, tell, None)
+    // A run of its own (a command): no conversation to keep subagents for.
+    agy_turn(agy, input, Run::default(), &stop, false, &mut sink, tell, None).map_err(|(e, _)| e)
 }
+
+/// A turn that failed: why, and the subagents it had, kept for the next
+/// turn of the same conversation (Ask on their rows still reaches them).
+type TurnFailed = (String, Box<Subagents>);
 
 /// One turn of agy (`agy`: started for it, or one still at work for the
 /// chat): `input` goes on its input, its output is read (`drive`) into a run
@@ -3180,7 +3193,7 @@ fn run(
 /// the message up (nothing of the chat's own conversation comes in
 /// NOT_TAKEN), it ends and `again` starts a new one for it.
 #[allow(clippy::too_many_arguments)]
-fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger: bool, sink: &mut Sink, tell: &Tell, again: Option<&dyn Fn() -> Result<Agy, String>>) -> Result<Run, String> {
+fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger: bool, sink: &mut Sink, tell: &Tell, again: Option<&dyn Fn() -> Result<Agy, String>>) -> Result<Run, TurnFailed> {
     let mut ended = Ended::Left;
     if agy.write(&input) {
         let sent = Instant::now();
@@ -3194,9 +3207,13 @@ fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger
         kill_tree(&mut agy.child);
         state.subagents.run_ended(AgentState::Failed);
         tell(&mut state.subagents.agents, false);
-        let Some(again) = again else { return Err(t("Antigravity CLI didn't answer.")) };
+        let Some(again) = again else { return Err((t("Antigravity CLI didn't answer."), Box::new(std::mem::take(&mut state.subagents)))) };
         crate::log::line("antigravity: agy at work with its subagents did not take the message; a new one answers it");
-        return agy_turn(again()?, input, Run { subagents: std::mem::take(&mut state.subagents), ..Run::default() }, stop, may_linger, sink, tell, None);
+        let agy = match again() {
+            Ok(agy) => agy,
+            Err(e) => return Err((e, Box::new(std::mem::take(&mut state.subagents)))),
+        };
+        return agy_turn(agy, input, Run { subagents: std::mem::take(&mut state.subagents), ..Run::default() }, stop, may_linger, sink, tell, None);
     }
     if ended == Ended::Stopped {
         agy.close_input();
@@ -3216,7 +3233,9 @@ fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger
         state.agy = Some(Box::new(agy));
         return Ok(state);
     }
-    finish(agy, &mut state, sink, tell)?;
+    if let Err(e) = finish(agy, &mut state, sink, tell) {
+        return Err((e, Box::new(std::mem::take(&mut state.subagents))));
+    }
     Ok(state)
 }
 
@@ -3689,7 +3708,7 @@ pub async fn send(
     let tell = chat_agents::teller(app, chat.id(), PROVIDER);
     let tell2 = tell.clone();
     let conversation2 = conversation.clone();
-    let state = tauri::async_runtime::spawn_blocking(move || -> Result<Run, String> {
+    let state = tauri::async_runtime::spawn_blocking(move || -> Result<Run, (String, Option<Box<Subagents>>)> {
         let conversation = conversation2;
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
@@ -3699,9 +3718,17 @@ pub async fn send(
         let mut plan_sent = String::new();
         // agy still going with its subagents answers it, else a new one.
         let start = || start_agy(&exe, &args, &work, &chat_id, key.clone());
-        let (agy, seeded, reused) = match take_lingering(&chat_id, &key, conversation.as_deref(), &stop)? {
+        // A turn that can't start hands the kept subagents back.
+        let lingering = match take_lingering(&chat_id, &key, conversation.as_deref(), &stop) {
+            Ok(lingering) => lingering,
+            Err(e) => return Err((e, seeded_subagents.map(Box::new))),
+        };
+        let (agy, seeded, reused) = match lingering {
             Some((agy, subagents)) => (agy, Some(subagents), true),
-            None => (start()?, seeded_subagents, false),
+            None => match start() {
+                Ok(agy) => (agy, seeded_subagents, false),
+                Err(e) => return Err((e, seeded_subagents.map(Box::new))),
+            },
         };
         // Ask on a row names it by its row: agy knows it by its conversation.
         let input = user_event(&rewrite_ask_ids(&text, seeded.as_ref()));
@@ -3722,10 +3749,10 @@ pub async fn send(
         };
         let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
         let state = Run { subagents: seeded.unwrap_or_default(), ..Run::default() };
-        agy_turn(agy, input, state, &stop, true, &mut sink, &tell2, reused.then_some(&start as &dyn Fn() -> Result<Agy, String>))
+        agy_turn(agy, input, state, &stop, true, &mut sink, &tell2, reused.then_some(&start as &dyn Fn() -> Result<Agy, String>)).map_err(|(e, subagents)| (e, Some(subagents)))
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| (e.to_string(), None))
     .and_then(|r| r);
     // What the turn did on the computer, for under its answer (as Claude
     // Code's). Subagents still at work keep the computer, the email tools
@@ -3746,7 +3773,13 @@ pub async fn send(
     };
     let mut state = match state {
         Ok(state) => state,
-        Err(e) => return failed(e, recap),
+        Err((e, subagents)) => {
+            // The conversation stays the chat's: its subagents stay with it.
+            if let (Some(conversation), Some(subagents)) = (&conversation, subagents) {
+                save_chat_subagents(chat.id(), conversation, *subagents);
+            }
+            return failed(e, recap);
+        }
     };
 
     // About how full the conversation is, for the chat's usage menu: agy does
@@ -3780,6 +3813,13 @@ pub async fn send(
         state.subagents.run_ended(AgentState::Failed);
         tell(&mut state.subagents.agents, false);
         with_agents(chat.id(), false);
+    }
+    // Stopped before agy named the conversation: the one it resumed is still
+    // the chat's, and keeps its subagents for the next turn.
+    if state.conversation.is_none() {
+        if let Some(conversation) = &conversation {
+            save_chat_subagents(chat.id(), conversation, std::mem::take(&mut state.subagents));
+        }
     }
     if state.stopped {
         let shown = state.shown.trim().to_string();
@@ -4673,6 +4713,22 @@ mod tests {
         );
         assert_eq!(run.denied, 1, "the command was soft-denied");
         assert_eq!(run.pending.len(), 1);
+    }
+
+    #[test]
+    fn a_subagents_steps_neither_keep_the_chat_writing_nor_end_its_own() {
+        let mut run = Run::default();
+        // A subagent's step that never gets its DONE (the subagent was cut off).
+        run.feed(br#"{"event":"step_update","step_index":7,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"x"}}"#);
+        assert!(run.open_steps.is_empty() && !run.writing());
+        // The chat's own command 5 and the subagent's step 5: its DONE ends its own only.
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"run_command","parameters":{"CommandLine":"ls"}}}"#);
+        assert!(run.writing());
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"ACTIVE","step_type":"tool","subagent_info":{"conversation_id":"x"}}"#);
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"DONE","step_type":"tool","subagent_info":{"conversation_id":"x"}}"#);
+        assert!(run.pending.iter().any(|(w, i, a)| w == MAIN && *i == 5 && *a == Activity::new("command", "")), "{:?}", run.pending);
+        run.feed(br#"{"event":"step_update","step_index":5,"state":"DONE","step_type":"tool","tool_info":{"name":"run_command"}}"#);
+        assert!(!run.writing());
     }
 
     #[test]
@@ -5586,6 +5642,29 @@ mod tests {
         let _ = finish(*agy, &mut own, &mut sink, &chat_agents::silent());
         let row = own.subagents.agents.get(&own.subagents.spawns[0].row).unwrap();
         assert_eq!((row.state, row.ended_by), (AgentState::Failed, Some("cli")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_turn_that_fails_hands_its_subagents_back_for_the_next_turn() {
+        // agy starts a writer, then ends without a result.
+        let uri = "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub/.system_generated/logs/transcript.jsonl";
+        let dir = std::env::temp_dir().join(format!("lumo-fake-agy-{}", chat_agents::run_mark()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stream = dir.join("stream.jsonl");
+        std::fs::write(&stream, done_with(SPAWN_A, uri) + "\n").unwrap();
+        let args = ["/c".to_string(), "type".to_string(), stream.to_string_lossy().to_string()];
+        let agy = start_agy(std::path::Path::new("cmd"), &args, &dir, "", "k".into()).unwrap();
+        let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|_: &str| {}, |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let Err((_, subagents)) = agy_turn(agy, user_event("go"), Run::default(), &Stop::default(), true, &mut sink, &chat_agents::silent(), None) else {
+            panic!("no result: the turn fails");
+        };
+        assert_eq!(subagents.spawns.len(), 1, "the writer is handed back");
+        // Kept under the conversation, the next turn of it finds them.
+        let chat = "chat-failed-turn";
+        save_chat_subagents(chat, "main-1", *subagents);
+        assert_eq!(take_chat_subagents(chat, Some("main-1")).map(|s| s.spawns.len()), Some(1));
         let _ = std::fs::remove_dir_all(dir);
     }
 

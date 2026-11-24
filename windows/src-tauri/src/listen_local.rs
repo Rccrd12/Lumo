@@ -206,7 +206,9 @@ pub fn target(source: &str, until: &str, target: &str, text: &str, home: &Path) 
             if !absolute(&path) {
                 return Err("Give the file or folder as a full path, like C:\\Users\\name\\Downloads.".into());
             }
-            Ok(path.trim_end_matches(['\\', '/']).to_string() + if path.len() == 3 { "\\" } else { "" })
+            // A drive's root keeps its '\' ("C:" alone is the drive's current folder), however many it was given with.
+            let trimmed = path.trim_end_matches(['\\', '/']);
+            Ok(trimmed.to_string() + if trimmed.len() == 2 { "\\" } else { "" })
         }
         "process" if until.starts_with("port_") => {
             port_of(target).map(|p| p.to_string()).ok_or_else(|| "Give the port as a number, like 3000.".into())
@@ -266,7 +268,8 @@ pub fn target(source: &str, until: &str, target: &str, text: &str, home: &Path) 
             if name.is_empty() {
                 return Err("Give the webhook a name, like deploys.".into());
             }
-            Ok(name.chars().take(40).collect())
+            // Cut first, then drop a '-' the cut left at the end, so the name read back from the store gives itself again.
+            Ok(name.chars().take(40).collect::<String>().trim_end_matches('-').to_string())
         }
         "tool" => {
             if target.len() > 48 || !target.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
@@ -701,6 +704,12 @@ mod tests {
         assert_eq!(target("fs", "created", "C:\\Users\\me\\Downloads\\", "", home).unwrap(), "C:\\Users\\me\\Downloads");
         assert_eq!(target("fs", "download", "~/Downloads", "", home).unwrap(), home.join("Downloads").to_string_lossy());
         assert_eq!(target("fs", "changed", "D:\\", "", home).unwrap(), "D:\\");
+        // However many slashes end a drive's root, it is kept as itself, and reads back the same.
+        for root in ["C://", "C:\\\\", "C:/", "C:\\"] {
+            let kept = target("fs", "changed", root, "", home).unwrap();
+            assert_eq!(kept, "C:\\", "{root}");
+            assert_eq!(target("fs", "changed", &kept, "", home).unwrap(), kept);
+        }
         assert!(target("fs", "created", "Downloads", "", home).is_err());
         assert!(target("fs", "started", "C:\\x", "", home).is_err());
         assert_eq!(target("process", "exited", "Code", "", home).unwrap(), "code.exe");
@@ -854,6 +863,11 @@ mod tests {
         assert!(target("agent", "finished", "skynet", "", home).is_err());
         assert_eq!(target("webhook", "called", "My Deploys!", "", home).unwrap(), "my-deploys");
         assert_eq!(target("webhook", "called", "", "", home).unwrap(), "webhook");
+        // A name cut at 40 characters just after a '-' doesn't end with it, so it is kept again after a restart.
+        let long = format!("{}-b", "a".repeat(39));
+        let kept = target("webhook", "called", &long, "", home).unwrap();
+        assert_eq!(kept, "a".repeat(39));
+        assert_eq!(target("webhook", "called", &kept, "", home).unwrap(), kept);
         assert_eq!(target("tool", "changed", "prices_check", "", home).unwrap(), "prices_check");
         assert!(target("tool", "contains", "prices_check", "", home).is_err());
         assert!(target("tool", "changed", "../x", "", home).is_err());

@@ -117,6 +117,28 @@ test("ranges written several ways, short ends included", () => {
   }
 });
 
+test("a year followed by a dot, months to months, and a month's short end", () => {
+  // Bug 23: "1947. " was read as a list's number, and the year went with it.
+  const years = parseTimeline("", "1947. Transistor\n1958. Integrated circuit\n1971. Intel 4004", NOW);
+  assert.deepEqual(years.items.map((i) => [i.from.year, i.label]), [[1947, "Transistor"], [1958, "Integrated circuit"], [1971, "Intel 4004"]]);
+  assert.deepEqual(parseTimeline("", "1. 1947 Transistor\n2. 1958 Integrated circuit", NOW).items.map((i) => i.from.year), [1947, 1958]);
+  // Bug 24: "2026-11..2026-12" was cut at the month and the line dropped.
+  // Bug 25: the short end of a month, "2026-01–03", was the year 3.
+  const cases = {
+    "2026-11..2026-12 A": ["2026-11-01", "2026-12-01"],
+    "1971-11..1972-02 A": ["1971-11-01", "1972-02-01"],
+    "2026-01–03 A": ["2026-01-01", "2026-03-01"],
+    "2026-11–12 A": ["2026-11-01", "2026-12-01"],
+  };
+  for (const [line, [from, to]] of Object.entries(cases)) {
+    const tl = parseTimeline("", `${line}\n2027-01-05 B`, NOW);
+    assert.ok(tl, line);
+    const a = tl.items.find((i) => i.label === "A");
+    assert.deepEqual([a.from.unit, a.to.unit], ["month", "month"], line);
+    assert.deepEqual([iso(a.from), iso(a.to)], [from, to], line);
+  }
+});
+
 test("a day without its year is the nearest to today, then to the date before it", () => {
   // Across New Year: 20/12 is this December, 10/1 the January after it.
   const tl = parseTimeline("", "20/12–31/12 Revise\n1/1–10/1 Practice\n12/1 Exam", NOW);

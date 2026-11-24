@@ -254,6 +254,15 @@ test("the workshop is a chat of its own: the AI's draft shows beside it, Try and
   assert.equal(sent("tools_save")[0].draft.replaces, null, "a new tool");
   assert.equal(chat.el.querySelector(".forge-status").textContent, "Saved");
 
+  // Bug 31: deleted in the Tools tab, the tool is saved no more, and Save is offered again.
+  emit("tools-changed", []);
+  chat.sync();
+  assert.equal(chat.el.querySelector(".forge-status").textContent, "Draft");
+  assert.equal(button(chat.el, "Save tool").disabled, false);
+  emit("tools-changed", [{ ...TOOL }]);
+  chat.sync();
+  assert.equal(chat.el.querySelector(".forge-status").textContent, "Saved");
+
   // Back to the chat: its question is there again, and the workshop waits.
   State.useSlot("chat");
   chat.sync();
@@ -273,6 +282,8 @@ test("Change with Lumo opens the workshop on the tool, and Save updates it", asy
   // No workshop chat on the tool yet (the one before saved a tool of the same id).
   localStorage.removeItem("lumo.forge.saved.v1");
   answers.tools_files = [["bench.py", "print(1)\n"]];
+  // Change with Lumo is on a tool of the Tools tab's list.
+  State.tools = [{ ...TOOL }];
   State.forgeAsk = { edit: TOOL };
   State.useSlot("forge");
   chat.sync();
@@ -314,4 +325,15 @@ test("Change with Lumo opens the workshop on the tool, and Save updates it", asy
   chat.sync();
   assert.equal(State.chatId, forgeId);
   assert.equal(State.chatHistory.length, 4, "its whole conversation, not a new one");
+});
+
+test("a workshop chat saved again is the newest link: it is not the one dropped past sixty", async () => {
+  // Bug 128: saved again, its link kept its old place and went first, so the next Save made a second tool.
+  const { linkSaved, savedLink } = await import("../src/views/forge.ts");
+  localStorage.removeItem("lumo.forge.saved.v1");
+  for (let i = 0; i < 60; i++) linkSaved(`forge:c${i}`, `tool${i}`, `k${i}`);
+  linkSaved("forge:c0", "tool0", "k0-v2");
+  linkSaved("forge:new", "toolN", "kN");
+  assert.deepEqual(savedLink("forge:c0"), { tool: "tool0", key: "k0-v2" });
+  assert.equal(savedLink("forge:c1"), null, "the oldest other one goes");
 });

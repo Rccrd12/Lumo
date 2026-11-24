@@ -30,7 +30,14 @@ class FakeElement {
     this.dataset = {};
     this.scrollTop = 0;
     this.scrollHeight = 0;
-    this.style = { setProperty: (k, v) => (this.style[k] = v) };
+    // Inline values live in the `style` attribute too, as in a browser.
+    this.style = {
+      setProperty: (k, v) => {
+        this.style[k] = v;
+        const props = Object.entries(this.style).filter(([n, x]) => typeof x !== "function");
+        this.attributes.set("style", props.map(([n, x]) => `${n}: ${x};`).join(" "));
+      },
+    };
     const el = this;
     this.classList = {
       add: (c) => (el.className = [...new Set([...el.className.split(" ").filter(Boolean), c])].join(" ")),
@@ -69,12 +76,22 @@ class FakeElement {
   }
   setAttribute(k, v) {
     this.attributes.set(k, String(v));
+    if (k === "style") this.readStyle(String(v));
+  }
+  /** Sets the inline values to those `css` writes (`--k: 1; --depth: 2;`), as a browser does. */
+  readStyle(css) {
+    for (const k of Object.keys(this.style)) if (k !== "setProperty") delete this.style[k];
+    for (const part of css.split(";")) {
+      const at = part.indexOf(":");
+      if (at > 0) this.style[part.slice(0, at).trim()] = part.slice(at + 1).trim();
+    }
   }
   getAttribute(k) {
     return this.attributes.get(k) ?? null;
   }
   removeAttribute(k) {
     this.attributes.delete(k);
+    if (k === "style") this.readStyle("");
   }
   addEventListener(type, fn) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]);
