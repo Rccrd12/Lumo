@@ -104,6 +104,10 @@ Subagents work in the background: once you started them, tell the user in a sent
 /// "default": no `--model`, whatever the user picked in agy itself.
 const DEFAULT_MODEL: &str = "default";
 
+/// The detail of the step that leaves plan mode (`exit_plan_mode`), where
+/// Orchestrator's planner hands the plan to its executor.
+const PLAN_EXIT: &str = "exit";
+
 fn not_installed() -> String {
     tf(
         "Antigravity CLI isn't installed. Install it with {command}, sign in once with `agy` in a terminal, then try again.",
@@ -206,7 +210,16 @@ fn args_with_cards(
         a.push("--add-dir".into());
         a.push(dir.to_string());
     }
-    if let Some(m) = safe_model(model) {
+    if let Some((planner, executor)) = orchestration(model) {
+        let labels = LABELS.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+        let (row, settings) = orchestrator_run(planner, executor, &labels);
+        a.push("--model".into());
+        a.push(row);
+        if let Some(settings) = settings {
+            a.push("--settings".into());
+            a.push(settings);
+        }
+    } else if let Some(m) = safe_model(model) {
         a.push("--model".into());
         a.push(m.to_string());
     }
@@ -352,6 +365,10 @@ fn activity_for(name: &str, params: &Value) -> Activity {
         }
         let file = path();
         return if is_screenshot(&file) { Activity::new("screen", "") } else { Activity::new("read", file) };
+    }
+    if name == "exit_plan_mode" {
+        // Orchestrator's planner hands over to its executor here (Phases).
+        return Activity::new("plan", PLAN_EXIT);
     }
     if has(&["plan", "todo"]) {
         return Activity::new("plan", "");
@@ -3530,7 +3547,7 @@ fn parse_models(text: &str) -> Vec<String> {
         let id = ["(current)", "(default)", "(selected)", "*"]
             .iter()
             .fold(id, |s, mark| s.strip_suffix(mark).unwrap_or(s).trim_end());
-        if let Some(m) = safe_model(id).filter(|m| m.chars().any(|c| c.is_ascii_digit())) {
+        if let Some(m) = safe_model(id).filter(|m| m.chars().any(|c| c.is_ascii_digit()) || is_orchestrator_row(m)) {
             if !out.iter().any(|o| o == m) && out.len() < MAX_MODELS {
                 out.push(m.to_string());
             }
@@ -3557,7 +3574,46 @@ fn parse_models(text: &str) -> Vec<String> {
     out
 }
 
+/// The names `agy models` gives its models beside their ids, in a table
+/// (`gemini-4-neon-high   Gemini 4 Neon (High)`) or as JSON (`name`, `label`):
+/// what agy's settings take for Orchestrator's planner and executor.
+fn parse_labels(text: &str) -> Vec<(String, String)> {
+    let clean = |label: &str| {
+        let label = label.trim();
+        (!label.is_empty() && label.len() <= 80 && label.chars().all(|c| !c.is_control() && c != '"' && c != '\\')).then(|| label.to_string())
+    };
+    let mut out = Vec::new();
+    if let Ok(v) = serde_json::from_str::<Value>(text.trim()) {
+        let list = v.as_array().or_else(|| v.get("models").and_then(Value::as_array));
+        for item in list.into_iter().flatten() {
+            let id = ["id", "slug", "model"].iter().find_map(|k| item.get(*k).and_then(Value::as_str)).and_then(safe_model);
+            let label = ["label", "name", "display_name"].iter().find_map(|k| item.get(*k).and_then(Value::as_str)).and_then(clean);
+            if let (Some(id), Some(label)) = (id, label) {
+                out.push((id.to_string(), label));
+            }
+        }
+        return out;
+    }
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(split) = line.find(|c: char| c.is_whitespace()) else { continue };
+        let (id, rest) = line.split_at(split);
+        if let (Some(id), Some(label)) = (safe_model(id), clean(rest)) {
+            out.push((id.to_string(), label));
+        }
+    }
+    out
+}
+
+/// The names of agy's models by their ids, from the last `agy models`.
+static LABELS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+fn label_of(id: &str) -> Option<String> {
+    LABELS.lock().unwrap_or_else(|e| e.into_inner()).as_ref()?.get(id).cloned()
+}
+
 /// Runs `agy models`, for at most MODELS_TIMEOUT. Nothing on any failure.
+/// The names it gives its models are kept (LABELS).
 fn list_models(exe: PathBuf) -> Vec<String> {
     let mut cmd = Command::new(&exe);
     cmd.arg("models").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
@@ -3575,7 +3631,105 @@ fn list_models(exe: PathBuf) -> Vec<String> {
             }
         }
     }
-    parse_models(&reader.text_after_exit())
+    let text = reader.text_after_exit();
+    let labels = parse_labels(&text);
+    if !labels.is_empty() {
+        *LABELS.lock().unwrap_or_else(|e| e.into_inner()) = Some(labels.into_iter().collect());
+    }
+    parse_models(&text)
+}
+
+// ── Orchestrator ──────────────────────────────────────────────────────────────
+
+/// One of agy's Orchestrator rows (`gemini-pro-orchestrator-neon`): one per
+/// planner, the executor never in it, and no digit (the single model it once
+/// was, `gemini-pro-orchestrator-g1-pro`, is a model of its own).
+fn is_orchestrator_row(id: &str) -> bool {
+    id.split('-').any(|w| w == "orchestrator") && !id.chars().any(|c| c.is_ascii_digit())
+}
+
+/// The picker's Orchestrator pick, `orchestrator:<planner>:<executor>` (the
+/// ids of `agy models`, src/core/orchestrator.ts): its two ids, each checked.
+fn orchestration(model: &str) -> Option<(&str, &str)> {
+    let rest = model.trim().strip_prefix("orchestrator:")?;
+    let (planner, executor) = rest.split_once(':')?;
+    Some((safe_model(planner)?, safe_model(executor).filter(|e| !e.contains(':'))?))
+}
+
+/// What runs an Orchestrator pick: agy's Orchestrator row for its planner
+/// (`Orchestrator (Neon)` for `Gemini 4 Neon (High)`), else its first, and
+/// the settings for this run only (`--settings`, never saved) naming the
+/// planner and the executor as agy's own settings do. No settings when a name
+/// is unknown: agy's own choice then.
+fn orchestrator_run(planner: &str, executor: &str, labels: &HashMap<String, String>) -> (String, Option<String>) {
+    let mut rows: Vec<(&String, &String)> = labels.iter().filter(|(id, _)| is_orchestrator_row(id)).collect();
+    rows.sort();
+    let planner_name = labels.get(planner);
+    let family = |label: &str| label.split('(').next().unwrap_or("").trim().rsplit(' ').next().unwrap_or("").to_string();
+    let row = planner_name
+        .and_then(|p| {
+            let word = family(p);
+            rows.iter().find(|(_, label)| label.split(['(', ')']).nth(1).is_some_and(|w| w.trim() == word))
+        })
+        .or(rows.first())
+        .map(|(id, _)| id.to_string())
+        .unwrap_or_else(|| "gemini-pro-orchestrator".to_string());
+    let settings = match (planner_name, labels.get(executor)) {
+        (Some(p), Some(e)) => Some(json!({ "orchestrator": { "planner": p, "executor": e } }).to_string()),
+        _ => None,
+    };
+    (row, settings)
+}
+
+/// The names of `model`'s planner and executor, asked of agy when they are
+/// not known yet (Lumo started since the picker last listed them). Blocks.
+fn orchestrator_labels(model: &str) {
+    let Some((planner, executor)) = orchestration(model) else { return };
+    if label_of(planner).is_some() && label_of(executor).is_some() {
+        return;
+    }
+    if let Some(exe) = platform::agy_candidates().into_iter().next() {
+        list_models(exe);
+    }
+}
+
+/// How the island says who is at work during an Orchestrator turn: the
+/// planner until agy leaves plan mode, the executor after; any other step as it is.
+struct Phases {
+    planner: String,
+    executor: String,
+    executing: bool,
+}
+
+impl Phases {
+    fn of(model: &str) -> Option<Phases> {
+        let (planner, executor) = orchestration(model)?;
+        Some(Phases { planner: role_name(planner), executor: role_name(executor), executing: false })
+    }
+
+    fn map(&mut self, activity: &Activity) -> Activity {
+        if activity.kind == "plan" && activity.detail == PLAN_EXIT {
+            self.executing = true;
+        }
+        if activity.kind != "thinking" {
+            return activity.clone();
+        }
+        let line = if self.executing {
+            tf("{model} is executing…", &[("model", &self.executor)])
+        } else {
+            tf("{model} is planning…", &[("model", &self.planner)])
+        };
+        Activity::new("step", line)
+    }
+}
+
+/// A planner's or executor's name beside the other's: Gemini 4's by their own
+/// ("Neon"), the others without whose they are ("Sonnet 5.5"), no effort.
+fn role_name(id: &str) -> String {
+    let name = label_of(id).unwrap_or_else(|| id.to_string());
+    let name = name.split('(').next().unwrap_or("").trim();
+    let name = name.strip_prefix("Gemini 4 ").or_else(|| name.strip_prefix("Claude ")).unwrap_or(name);
+    if name.is_empty() { id.to_string() } else { name.to_string() }
 }
 
 /// The models for the picker: "Default" (agy's own choice), then what
@@ -3683,7 +3837,11 @@ pub async fn send(
     // This chat's folder of the inbox, or all of it with "Other chats' files" on.
     let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
     let work = claude_code::work_dir();
+    let picked = model.to_string();
+    let _ = tauri::async_runtime::spawn_blocking(move || orchestrator_labels(&picked)).await;
     let args = args(model, mode, conversation.as_deref(), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
+    // Orchestrator: who is at work, the planner or the executor, said on the island.
+    let mut phases = Phases::of(model);
     // Lumo's plan tool, its email tools while the Email pill is on and Security
     // lets the AI read it (only during this turn), and the user's tools that are on (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
@@ -3741,7 +3899,10 @@ pub async fn send(
                 }
             }
         };
-        let mut on_activity = |activity: &Activity| events.activity(&app2, activity);
+        let mut on_activity = |activity: &Activity| match phases.as_mut() {
+            Some(phases) => events.activity(&app2, phases.map(activity)),
+            None => events.activity(&app2, activity),
+        };
         let mut on_file = |file: &FileTouch| events.file(&app2, file);
         let mut on_plan = |plan: &Value| {
             by_tool.set(true);
@@ -3988,6 +4149,8 @@ async fn command(
             return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen this conversation yet."), chat.cli_session()));
         };
         let inbox = crate::files::cli_inbox(chat.id(), crate::settings::load().chat_other_files);
+        let picked = model.to_string();
+        let _ = tauri::async_runtime::spawn_blocking(move || orchestrator_labels(&picked)).await;
         let mut args = args(model, mode, Some(conversation.as_str()), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
         args.retain(|a| a != "--disable-slash-commands");
         let events = chat.events();
@@ -4060,6 +4223,7 @@ pub(crate) fn help(
     let work = claude_code::work_dir();
     // No chat's: the inbox only with "Other chats' files" on.
     let inbox = if crate::settings::load().chat_other_files { crate::files::inbox_dir().to_string_lossy().to_string() } else { String::new() };
+    orchestrator_labels(model);
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &folders);
     crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled(), false, false);
     let _mail = crate::mail::agent_turn();
@@ -4744,6 +4908,85 @@ mod tests {
         assert!(empty_answer(1, &tail).contains("quota exceeded"), "the real reason, not a guess");
         assert!(empty_answer(1, "").contains("permission"));
         assert_eq!(empty_answer(0, ""), "Antigravity CLI gave no answer.");
+    }
+
+    /// `agy models` as agy 1.5.16 prints it (cut).
+    const AGY_1_5_16: &str = "gemini-4-neon-high             Gemini 4 Neon (High)
+gemini-4-neon-low              Gemini 4 Neon (Low)
+gemini-4-carbon-medium         Gemini 4 Carbon (Medium)
+gemini-4-hydrogen-high         Gemini 4 Hydrogen (High)
+gemini-4-hydrogen-low          Gemini 4 Hydrogen (Low)
+gemini-pro-orchestrator-neon   Orchestrator (Neon)
+gemini-pro-orchestrator        Orchestrator (Carbon)
+gemini-pro-orchestrator-argon  Orchestrator (Argon)
+claude-sonnet-5-5-medium       Claude Sonnet 5.5 (Medium)
+";
+
+    #[test]
+    fn orchestrator_rows_are_listed_with_no_digit_in_their_names() {
+        let listed = parse_models(AGY_1_5_16);
+        for row in ["gemini-pro-orchestrator-neon", "gemini-pro-orchestrator", "gemini-pro-orchestrator-argon"] {
+            assert!(listed.iter().any(|m| m == row), "{row} in {listed:?}");
+        }
+        assert!(!parse_models("Models:\nUse --model to pick one\n").iter().any(|m| m.contains("orchestrator")));
+    }
+
+    #[test]
+    fn the_names_agy_gives_its_models_are_read_beside_their_ids() {
+        let labels: HashMap<String, String> = parse_labels(AGY_1_5_16).into_iter().collect();
+        assert_eq!(labels["gemini-4-carbon-medium"], "Gemini 4 Carbon (Medium)");
+        assert_eq!(labels["gemini-pro-orchestrator"], "Orchestrator (Carbon)");
+        assert_eq!(labels["claude-sonnet-5-5-medium"], "Claude Sonnet 5.5 (Medium)");
+        let json: HashMap<String, String> = parse_labels(r#"[{"id":"gemini-4-neon-high","name":"Gemini 4 Neon (High)"},{"id":"x-1","name":"bad \"quote"}]"#).into_iter().collect();
+        assert_eq!(json.len(), 1, "a name that would break the settings is left out: {json:?}");
+        assert!(parse_labels("gemini-3-pro\n").is_empty(), "no name, nothing");
+    }
+
+    #[test]
+    fn an_orchestrator_pick_runs_its_planners_row_with_both_models_for_this_run_only() {
+        let labels: HashMap<String, String> = parse_labels(AGY_1_5_16).into_iter().collect();
+        let (row, settings) = orchestrator_run("gemini-4-carbon-medium", "gemini-4-hydrogen-low", &labels);
+        assert_eq!(row, "gemini-pro-orchestrator", "Carbon plans: Orchestrator (Carbon)");
+        let settings: Value = serde_json::from_str(&settings.unwrap()).unwrap();
+        assert_eq!(settings, json!({ "orchestrator": { "planner": "Gemini 4 Carbon (Medium)", "executor": "Gemini 4 Hydrogen (Low)" } }));
+        let (row, _) = orchestrator_run("gemini-4-neon-low", "claude-sonnet-5-5-medium", &labels);
+        assert_eq!(row, "gemini-pro-orchestrator-neon");
+        // A planner with no row of its own: one of agy's rows, the settings say which plans.
+        let (row, settings) = orchestrator_run("gemini-4-hydrogen-high", "gemini-4-hydrogen-low", &labels);
+        assert!(is_orchestrator_row(&row));
+        assert!(settings.unwrap().contains("Gemini 4 Hydrogen (High)"));
+        // Names not known: agy's own planner and executor.
+        let (row, settings) = orchestrator_run("gemini-4-neon-high", "gemini-4-hydrogen-high", &HashMap::new());
+        assert_eq!((row.as_str(), settings), ("gemini-pro-orchestrator", None));
+    }
+
+    #[test]
+    fn an_orchestrator_pick_is_two_checked_ids() {
+        assert_eq!(orchestration("orchestrator:gemini-4-neon-high:gemini-4-hydrogen-high"), Some(("gemini-4-neon-high", "gemini-4-hydrogen-high")));
+        assert_eq!(orchestration("orchestrator:gemini-4-neon-high"), None);
+        assert_eq!(orchestration("orchestrator:--evil:gemini-4-hydrogen-high"), None);
+        assert_eq!(orchestration("orchestrator:a-1:b-1:c-1"), None);
+        assert_eq!(orchestration("gemini-4-neon-high"), None);
+        // Its args: the row and the settings, never the pick itself.
+        *LABELS.lock().unwrap() = Some(parse_labels(AGY_1_5_16).into_iter().collect());
+        let a = args("orchestrator:gemini-4-neon-high:claude-sonnet-5-5-medium", "", None, "/w", "", &[]);
+        assert!(a.windows(2).any(|w| w == ["--model", "gemini-pro-orchestrator-neon"]), "{a:?}");
+        let at = a.iter().position(|x| x == "--settings").expect("--settings");
+        assert!(a[at + 1].contains("Claude Sonnet 5.5 (Medium)"));
+        assert!(!a.iter().any(|x| x.starts_with("orchestrator:")));
+    }
+
+    #[test]
+    fn an_orchestrator_turn_says_who_plans_then_who_executes() {
+        *LABELS.lock().unwrap() = Some(parse_labels(AGY_1_5_16).into_iter().collect());
+        let mut phases = Phases::of("orchestrator:gemini-4-neon-high:claude-sonnet-5-5-medium").unwrap();
+        assert_eq!(phases.map(&Activity::thinking()), Activity::new("step", "Neon is planning…"));
+        let read = Activity::new("read", "main.rs");
+        assert_eq!(phases.map(&read), read, "a step of its own stays as it is");
+        let exit = activity_for("exit_plan_mode", &json!({ "plan": "1. Write it" }));
+        assert_eq!(phases.map(&exit), exit);
+        assert_eq!(phases.map(&Activity::thinking()), Activity::new("step", "Sonnet 5.5 is executing…"));
+        assert!(Phases::of("gemini-4-neon-high").is_none());
     }
 
     #[test]

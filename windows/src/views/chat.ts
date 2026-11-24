@@ -118,6 +118,7 @@ import { planKey } from "../core/agent-plan";
 import { SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand } from "../core/slash";
 import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachRow, chatFileRow, fileDetail, saveSettings } from "./chat-attach";
 import { splitFix } from "./chat-fix";
+import { orchestratorName, parseOrchestrator } from "../core/orchestrator";
 import { cliModelName } from "../core/model-names";
 import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, inWorkspace, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
@@ -1118,7 +1119,9 @@ export function buildPrompt(
     // Claude Code's and agy's models by their names ("Opus 5.5"), not their ids.
     const id = variant ? variant.base : model;
     const name = activeModel(State.settings) ? cliModelName(p.id, id, picker.labelOf(p.id, id)) : id;
-    modelName.textContent = effort ? `${name} · ${effortLabel(effort)}` : name;
+    // Antigravity CLI's Orchestrator: who plans and who executes ("Orchestrator · Neon → Hydrogen").
+    const orchestration = p.id === AGY ? parseOrchestrator(model) : null;
+    modelName.textContent = orchestration ? orchestratorName(orchestration) : effort ? `${name} · ${effortLabel(effort)}` : name;
     // A long name is cut; the whole of it shows on hover.
     modelName.title = modelName.textContent;
     modelBtn.classList.toggle("open", picker.isOpen);

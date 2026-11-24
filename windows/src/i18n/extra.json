@@ -23322,6 +23322,78 @@
    "ru": "Открылось окно: войдите в нём.",
    "id": "Sebuah jendela terbuka: masuk di sana.",
    "it": "Si è aperta una finestra: accedi lì."
+  },
+  "Planner": {
+   "zh-Hans": "规划",
+   "hi": "योजनाकार",
+   "es": "Planificador",
+   "ar": "المخطِّط",
+   "fr": "Planificateur",
+   "bn": "পরিকল্পক",
+   "pt-BR": "Planejador",
+   "ru": "Планировщик",
+   "id": "Perencana",
+   "it": "Planner"
+  },
+  "Executor": {
+   "zh-Hans": "执行",
+   "hi": "निष्पादक",
+   "es": "Ejecutor",
+   "ar": "المنفِّذ",
+   "fr": "Exécutant",
+   "bn": "নির্বাহক",
+   "pt-BR": "Executor",
+   "ru": "Исполнитель",
+   "id": "Pelaksana",
+   "it": "Esecutore"
+  },
+  "Previous model": {
+   "zh-Hans": "上一个模型",
+   "hi": "पिछला मॉडल",
+   "es": "Modelo anterior",
+   "ar": "النموذج السابق",
+   "fr": "Modèle précédent",
+   "bn": "আগের মডেল",
+   "pt-BR": "Modelo anterior",
+   "ru": "Предыдущая модель",
+   "id": "Model sebelumnya",
+   "it": "Modello precedente"
+  },
+  "Next model": {
+   "zh-Hans": "下一个模型",
+   "hi": "अगला मॉडल",
+   "es": "Modelo siguiente",
+   "ar": "النموذج التالي",
+   "fr": "Modèle suivant",
+   "bn": "পরের মডেল",
+   "pt-BR": "Próximo modelo",
+   "ru": "Следующая модель",
+   "id": "Model berikutnya",
+   "it": "Modello successivo"
+  },
+  "{model} is planning…": {
+   "zh-Hans": "{model} 正在规划…",
+   "hi": "{model} योजना बना रहा है…",
+   "es": "{model} está planificando…",
+   "ar": "{model} يخطط…",
+   "fr": "{model} planifie…",
+   "bn": "{model} পরিকল্পনা করছে…",
+   "pt-BR": "{model} está planejando…",
+   "ru": "{model} планирует…",
+   "id": "{model} sedang merencanakan…",
+   "it": "{model} pianifica…"
+  },
+  "{model} is executing…": {
+   "zh-Hans": "{model} 正在执行…",
+   "hi": "{model} निष्पादित कर रहा है…",
+   "es": "{model} está ejecutando…",
+   "ar": "{model} ينفّذ…",
+   "fr": "{model} exécute…",
+   "bn": "{model} কার্যকর করছে…",
+   "pt-BR": "{model} está executando…",
+   "ru": "{model} выполняет…",
+   "id": "{model} sedang menjalankan…",
+   "it": "{model} esegue…"
   }
  }
 }

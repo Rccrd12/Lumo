@@ -352,6 +352,83 @@
   color: var(--ink-2);
 }
 
+/* Antigravity CLI's Orchestrator: a row for the planner and one for the
+   executor, each its role, ‹ model ›, and its own effort slider. Smaller
+   than Claude Code's one row, so the two leave the model list its room. */
+.picker-efforts.orchestrator {
+  gap: 3px;
+}
+
+.orch-row {
+  gap: 6px;
+}
+
+.orch-role {
+  flex: 0 0 54px;
+  font: 400 11px var(--font);
+  color: #8b929e;
+}
+
+.orch-model {
+  flex: 0 0 66px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font: 400 11.5px var(--font);
+  color: var(--ink-2);
+}
+
+.orch-step {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  font: 400 11px/1 var(--font);
+  color: #c8cdd4;
+  cursor: default;
+}
+
+.orch-step:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.orch-step:disabled {
+  opacity: 0.35;
+}
+
+.orch-row .effort-track {
+  --edge: 8px;
+  flex: 0 1 150px;
+  min-width: 70px;
+  height: 16px;
+  border-radius: 6px;
+}
+
+.orch-row .effort-fill {
+  border-radius: 6px;
+}
+
+.orch-row .effort-knob {
+  top: -1px;
+  bottom: -1px;
+  left: calc(var(--edge) + var(--at) * (100% - 2 * var(--edge)) - 5px);
+  width: 10px;
+  border-radius: 4px;
+}
+
+.orch-row .effort-ticks i {
+  height: 6px;
+}
+
+.orch-row .effort-value {
+  min-width: 36px;
+  font-size: 11px;
+}
+
 .effort-auto {
   display: inline-flex;
   align-items: center;
@@ -855,6 +932,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Orchestrator's row: who plans and who executes, after its name. */
+.picker-model-name:has(+ .picker-model-sub) {
+  flex: 0 0 auto;
+}
+
+.picker-model-sub {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #8b929e;
+}
+
+.picker-model.on .picker-model-sub {
+  color: color-mix(in srgb, var(--accent) 60%, #8b929e);
 }
 
 /* "More models": the older versions (Claude Code's) open under it. */

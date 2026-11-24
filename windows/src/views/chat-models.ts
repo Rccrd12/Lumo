@@ -7,6 +7,7 @@ import { Bridge, onEvent, type LocalLoad, type ModelInfo, type UnslothStudio, UN
 import { activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, isApiProvider, localCapsOf, pickModel, providerDef, setLocalCaps, anyProviderReady, visibleProviders, withModel, type ProviderDef } from "../core/providers";
 import { groupByEffort, groupOf, levelOf, splitEffort, variantFor } from "../core/effort-groups";
 import { cliModelName } from "../core/model-names";
+import { isOrchestratorRow, offersOrchestrator, orchestratorListed, orchestratorModel, orchestratorRoles, parseOrchestrator, defaultOrchestrator, roleName, stepRole, withRoleLevel, type Orchestration } from "../core/orchestrator";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { t, tl } from "../i18n/i18n";
@@ -87,11 +88,78 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
 
   function drawEfforts() {
     clear(efforts);
+    efforts.classList.remove("orchestrator");
     const p = providerDef(State.settings.chatProvider);
+    if (p.id === AGY && drawOrchestrator(p)) return;
     const spec = effortSpec(p);
-    const levels = spec.levels;
-    efforts.hidden = levels.length === 0;
+    efforts.hidden = spec.levels.length === 0;
     if (efforts.hidden) return;
+    const s = slider(p, spec);
+    // One short row, so the model list keeps its room: the slider, the level
+    // it is on, and Auto at the end.
+    efforts.append(h("div", { class: "effort-row" }, s.track, s.value, spec.auto ? s.auto : null));
+    s.show();
+    fitEfforts();
+  }
+
+  /**
+   * Antigravity CLI's Orchestrator in use: a row for its planner and one for
+   * its executor, each with ‹ › to change the model (only those agy lets take
+   * that role) and its own effort slider. False when it is not in use.
+   */
+  function drawOrchestrator(p: ProviderDef): boolean {
+    const o = parseOrchestrator(activeModel(State.settings));
+    const ids = (cache.get(AGY) ?? []).map((m) => m.id);
+    const groups = groupByEffort(ids);
+    if (!o || !offersOrchestrator(ids, groups)) return false;
+    lastOrchestration = o;
+    const roles = orchestratorRoles(groups);
+    const save = (next: Orchestration) => {
+      State.settings = withModel(State.settings, p.id, orchestratorModel(next));
+      saveSettings();
+      Sound.play("blip");
+      const listed = cache.get(AGY);
+      if (listed) drawModels(p, listed);
+      else drawEfforts();
+      onChange();
+    };
+    const row = (role: keyof Orchestration, label: string, count: number) => {
+      const g = groupOf(groups, o[role]);
+      const spec = {
+        levels: g?.levels ?? [],
+        current: () => levelOf(groups, parseOrchestrator(activeModel(State.settings))?.[role] ?? ""),
+        set: (e: string) => {
+          const now = parseOrchestrator(activeModel(State.settings));
+          if (now) State.settings = withModel(State.settings, p.id, orchestratorModel(withRoleLevel(groups, now, role, e)));
+        },
+        auto: false,
+      };
+      const arrow = (step: number, icon: string, hint: string) => {
+        const b = h("button", { class: "orch-step", title: t(hint), "aria-label": t(hint), text: icon, disabled: count < 2 });
+        // From the pick as it is now: its sliders may have moved since this was drawn.
+        b.addEventListener("click", () => save(stepRole(groups, parseOrchestrator(activeModel(State.settings)) ?? o, role, step)));
+        return b;
+      };
+      const name = h("span", { class: "orch-model", text: roleName(o[role]), title: o[role] });
+      const s = spec.levels.length > 1 ? slider(p, spec) : null;
+      efforts.append(
+        h("div", { class: "effort-row orch-row" },
+          h("span", { class: "orch-role", text: t(label) }),
+          arrow(-1, "‹", STRINGS.previousModel), name, arrow(1, "›", STRINGS.nextModel),
+          s ? s.track : null, s ? s.value : null),
+      );
+      s?.show();
+    };
+    efforts.hidden = false;
+    efforts.classList.add("orchestrator");
+    row("planner", STRINGS.planner, roles.planners.length);
+    row("executor", STRINGS.executor, roles.executors.length);
+    return true;
+  }
+
+  /** An effort slider for `spec`: its track, the level it is on, and Auto (shown only where `spec.auto`). */
+  function slider(p: ProviderDef, spec: ReturnType<typeof effortSpec>) {
+    const levels = spec.levels;
     const last = levels.length - 1;
 
     const auto = h(
@@ -148,7 +216,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     const fracAt = (clientX: number) => {
       const r = track.getBoundingClientRect();
       // The knob's centre stays inside the track by half its width.
-      const inset = 11;
+      const inset = parseFloat(getComputedStyle(track).getPropertyValue("--edge")) || 11;
       return r.width > 2 * inset ? (clientX - r.left - inset) / (r.width - 2 * inset) : 0;
     };
     track.addEventListener("pointerdown", (e) => {
@@ -196,11 +264,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       pick(levels[to]);
     });
 
-    // One short row, so the model list keeps its room: the slider, the level
-    // it is on, and Auto at the end.
-    efforts.append(h("div", { class: "effort-row" }, track, value, spec.auto ? auto : null));
-    show();
-    fitEfforts();
+    return { track, value, auto, show };
   }
 
   /**
@@ -228,6 +292,8 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
    * null until then, each time the picker opens: open when the chat is on one.
    */
   let olderOpen: boolean | null = null;
+  /** The Orchestrator pick last in use, so a click on its row brings it back. */
+  let lastOrchestration: Orchestration | null = null;
 
   function drawChips() {
     clear(chips);
@@ -328,12 +394,23 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     const current = activeModel(State.settings);
     // Antigravity CLI: a model's variants by effort on one row, the slider below.
     const groups = p.id === AGY ? groupByEffort(listed.map((m) => m.id)) : null;
-    const models: ModelInfo[] = groups
+    let models: ModelInfo[] = groups
       ? groups.map((g) => {
           const alone = g.levels.length === 0 ? listed.find((m) => m.id === g.ids.get("")) : undefined;
           return alone ?? { id: [...g.ids.values()].includes(current) ? current : variantFor(g, levelOf(groups, current)), label: g.name };
         })
       : listed;
+    // Antigravity CLI's Orchestrator: its rows (one per planner) are one, where
+    // the first of them is, with the planner and the executor under the list.
+    if (groups && p.id === AGY) {
+      const ids = listed.map((m) => m.id);
+      const at = models.findIndex((m) => isOrchestratorRow(m.id));
+      models = models.filter((m) => !isOrchestratorRow(m.id));
+      const pick = parseOrchestrator(current) ?? lastOrchestration ?? defaultOrchestrator(groups);
+      if (at >= 0 && pick && offersOrchestrator(ids, groups)) {
+        models.splice(at, 0, { id: orchestratorModel(pick), label: "Orchestrator" });
+      }
+    }
     /**
      * The model a click on a row picks. A group's: the variant at the level in
      * use when it is clicked (the slider may have moved since the list was drawn).
@@ -346,11 +423,13 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     };
     const rowFor = (m: ModelInfo): HTMLElement => {
       const on = m.id === current;
+      const orch = p.id === AGY ? parseOrchestrator(m.id) : null;
       const row = h(
         "button",
-        { class: on ? "picker-model on" : "picker-model", style: `--accent:${p.accent}`, title: m.id },
+        { class: on ? "picker-model on" : "picker-model", style: `--accent:${p.accent}`, title: orch ? `${orch.planner} → ${orch.executor}` : m.id },
         // agy lists its models by id: by their names here, the id on hover.
         h("span", { class: "picker-model-name", text: p.id === AGY ? cliModelName(p.id, m.label) : m.label }),
+        orch ? h("span", { class: "picker-model-sub", text: `${roleName(orch.planner)} → ${roleName(orch.executor)}` }) : null,
         on && p.urlField ? h("span", { class: "picker-model-caps" }) : null,
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
@@ -360,6 +439,12 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
         saveSettings();
         onPicked();
         Sound.play("blip");
+        // Orchestrator stays open: its planner and executor are set under the list.
+        if (orch) {
+          drawModels(p, listed);
+          onChange();
+          return;
+        }
         close();
         refreshCaps();
       });
@@ -388,9 +473,10 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       if (opened) for (const m of older) list.append(rowFor(m));
     }
     drawCaps();
+    // The sliders first: Orchestrator's two rows take room from the list.
+    if (groups) drawEfforts();
     list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
     if (holds(p)) void drawLoaded(p, models.map((m) => m.id));
-    if (groups) drawEfforts();
   }
 
   /** Ollama and LM Studio load and eject models; a custom server doesn't say. */
@@ -490,7 +576,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       const models = await Bridge.chatModels(p.id).finally(() => starting?.());
       if (ticket !== request) return;
       if (!p.urlField) cache.set(p.id, models);
-      const keep = pickModel(p, models.map((m) => m.id), activeModel(State.settings));
+      const keep = pickModel(p, offered(p.id, models), activeModel(State.settings));
       if (keep && keep !== activeModel(State.settings)) {
         State.settings = withModel(State.settings, p.id, keep);
         saveSettings();
@@ -562,8 +648,17 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       models = listed;
       cache.set(p.id, models);
     }
-    const keep = pickModel(p, models.map((m) => m.id), model);
+    const keep = pickModel(p, offered(p.id, models, model), model);
     return keep && keep !== model ? keep : null;
+  }
+
+  /**
+   * The ids `models` offers, with the Orchestrator pick in use (`model`) when
+   * agy's list still allows it: it is no id of the list's own.
+   */
+  function offered(id: string, models: ModelInfo[], model = activeModel(State.settings)): string[] {
+    const ids = models.map((m) => m.id);
+    return id === AGY && orchestratorListed(ids, groupByEffort(ids), model) ? [...ids, model] : ids;
   }
 
   return {
@@ -573,6 +668,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     refreshCaps,
     replacementFor,
     variantOf(model: string) {
+      if (parseOrchestrator(model)) return null;
       // Before the list is asked (the CLI is started only by the picker), its name says it.
       const listed = cache.get(AGY);
       if (!listed) return splitEffort(model);
