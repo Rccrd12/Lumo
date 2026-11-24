@@ -1415,6 +1415,17 @@ enum Ended {
 /// of life) and of the tasks the CLI hands to subagents. The session is
 /// returned with the run.
 #[allow(clippy::too_many_arguments)]
+/// The answer so far to the island, when some of it is not there yet (and the
+/// turn was not stopped). The throttle holds text back between two lines: a
+/// pause, or a card that waits for a click, sends it at once.
+fn flush_text(unsent: &mut bool, last_emit: &mut Instant, state: &Run, on_text: &mut impl FnMut(&str)) {
+    if *unsent && !state.stopped {
+        *unsent = false;
+        *last_emit = Instant::now();
+        on_text(&state.shown());
+    }
+}
+
 fn live_turn(
     spec: TurnSpec,
     text: impl FnOnce(bool) -> String,
@@ -1473,7 +1484,11 @@ fn live_turn(
         }
         let line = match live.rx.recv_timeout(STOP_POLL) {
             Ok(line) => line,
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Quiet now: the text held back by the throttle goes out.
+                flush_text(&mut unsent, &mut last_emit, &state, &mut on_text);
+                continue;
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => break Ended::Closed,
         };
         let Ok(message) = serde_json::from_slice::<Value>(&line) else { continue };
@@ -1510,6 +1525,8 @@ fn live_turn(
         // A request of the CLI's: a card, or an answer of Lumo's at once.
         if let Some(rid) = message.get("id").cloned() {
             if method == "session/request_permission" && !other_session {
+                // The card waits with the agent's last words on screen (what it says it will run).
+                flush_text(&mut unsent, &mut last_emit, &state, &mut on_text);
                 let options = params["options"].clone();
                 if plan_only {
                     state.denied += 1;
@@ -1564,10 +1581,8 @@ fn live_turn(
             continue;
         }
         let activity = state.take_activity();
-        if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) {
-            unsent = false;
-            last_emit = Instant::now();
-            on_text(&state.shown());
+        if activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL {
+            flush_text(&mut unsent, &mut last_emit, &state, &mut on_text);
         }
         if let Some(activity) = activity {
             on_activity(&activity);
@@ -2136,6 +2151,29 @@ mod tests {
         cursor_workspace(&dir, true, "", false);
         assert_eq!(std::fs::read(dir.join(".cursor").join("mcp.json")).unwrap(), utf16, "the user's servers stay");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Text the throttle held back (it came under DELTA_INTERVAL after the
+    /// last) goes out when the turn pauses or a card waits, never after Stop.
+    #[test]
+    fn the_last_words_are_on_screen_while_a_card_waits() {
+        let mut state = Run::default();
+        let mut shown = String::new();
+        let mut last_emit = Instant::now();
+        let mut unsent = state.text("Cleaning up. ");
+        unsent |= state.text("I will now run rm -rf build");
+        flush_text(&mut unsent, &mut last_emit, &state, &mut |t: &str| shown = t.to_string());
+        assert_eq!(shown, "Cleaning up. I will now run rm -rf build");
+        assert!(!unsent);
+        // Nothing new: nothing sent again.
+        shown.clear();
+        flush_text(&mut unsent, &mut last_emit, &state, &mut |t: &str| shown = t.to_string());
+        assert_eq!(shown, "");
+        // Stopped: the answer stays as it was.
+        unsent = state.text(" now");
+        state.stopped = true;
+        flush_text(&mut unsent, &mut last_emit, &state, &mut |t: &str| shown = t.to_string());
+        assert_eq!(shown, "");
     }
 
     #[test]
