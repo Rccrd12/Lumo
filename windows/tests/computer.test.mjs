@@ -18,6 +18,8 @@ test("only Lumo's own tools are described", () => {
   assert.equal(describeComputerAction("mcp_lumo_left_click", { coordinate: [3, 4] }), "Click · 3, 4");
   assert.equal(describeComputerAction("lumo/type", { text: "hi" }), "Type · hi");
   assert.equal(describeComputerAction("mcp__lumo2__type", { text: "hi" }), null);
+  // Another server whose name ends in lumo is not Lumo.
+  for (const tool of ["mcp__evil_lumo__left_click", "mcp__x-lumo__type", "work_lumo/type"]) assert.equal(isComputerTool(tool), false, tool);
 });
 
 test("clicks say where, and the keys held", () => {
@@ -27,6 +29,8 @@ test("clicks say where, and the keys held", () => {
   assert.equal(say("left_click_drag", { start_coordinate: [10, 10], coordinate: [200, 50] }), "Drag · 10, 10 → 200, 50");
   assert.equal(say("scroll", { scroll_direction: "down", scroll_amount: 5, coordinate: [300, 400] }), "Scroll down · 300, 400 ×5");
   assert.equal(say("mouse_move", { coordinate: [5, 6] }), "Move the mouse · 5, 6");
+  // A scroll with a key held says so, as a click does: Ctrl and the wheel zoom.
+  assert.equal(say("scroll", { scroll_direction: "up", scroll_amount: 3, coordinate: [10, 20], text: "ctrl" }), "Scroll up · 10, 20 ×3 (ctrl)");
 });
 
 test("typed text is shown whole, with its Enters and Tabs, and keys", () => {

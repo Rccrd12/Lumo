@@ -6,7 +6,7 @@
 //   node scripts/beta.mjs merge <state.json>
 //       main, then every open pull request of this repository merged into it
 //       one at a time, oldest first. Only those whose own Windows CI passed on
-//       their latest commit (or that it does not run on) go in, and only that
+//       their latest commit go in, and only that
 //       very commit (one pushed in between waits for its checks): one whose
 //       checks fail or are still running is left out this time, with why. One
 //       that does not merge is left out and the state says what it conflicts
@@ -78,12 +78,13 @@ export function betaVersion(base, run, released = true) {
 
 /**
  * Whether a pull request's latest commit passed Windows CI, from GitHub's
- * statusCheckRollup: "pass" (passed, or the CI does not run on it), "fail",
- * or "pending".
+ * statusCheckRollup: "pass", "fail", or "pending". Only pull requests that
+ * change the app are asked (merge, changesApp), and Windows CI runs on every
+ * one of them: no run of it yet means it is not queued yet, so "pending".
  */
 export function ciState(rollup) {
   const runs = (Array.isArray(rollup) ? rollup : []).filter((c) => c && c.workflowName === CI_WORKFLOW);
-  if (runs.length === 0) return "pass";
+  if (runs.length === 0) return "pending";
   if (runs.some((c) => c.status !== "COMPLETED")) return "pending";
   const ok = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
   return runs.every((c) => ok.has(c.conclusion)) ? "pass" : "fail";

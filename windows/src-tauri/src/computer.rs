@@ -2136,11 +2136,10 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     };
     // One agent at a time (computer_turns.rs): a call that skipped the line
     // while others wait for their turn is told to wait too. The call is over
-    // (`call_done`) however it ends.
-    if !crate::computer_turns::call_start() {
+    // (the guard `call_start` returns) however it ends.
+    let Some(_done) = crate::computer_turns::call_start() else {
         return refuse(BUSY_TEXT);
-    }
-    let _done = CallDone;
+    };
     // Another agent's turn: Lumo asks, or refuses, itself.
     let ask = match &other {
         Some(o) if !only_looks(&tool) => match asks_now(app, o) {
@@ -2213,15 +2212,6 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     match view_now {
         Some(view) if grid => on_grid(answer, view),
         _ => answer,
-    }
-}
-
-/// A call that went past the line (`computer_turns::call_start`): over when dropped.
-struct CallDone;
-
-impl Drop for CallDone {
-    fn drop(&mut self) {
-        crate::computer_turns::call_done();
     }
 }
 

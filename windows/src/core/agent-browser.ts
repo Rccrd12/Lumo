@@ -17,7 +17,9 @@ const NAMES = new Set([
  * them `mcp__lumo__browser_<name>`. Null for any other tool.
  */
 export function browserToolName(tool: string): string | null {
-  const m = /(?:^|[_/.:-])lumo[_/.:-]+([a-z_]+)$/i.exec(tool);
+  // Only the server named `lumo`, with nothing in front but the agent's own
+  // `mcp` (as lumo_tool in hook/src/mcp.rs): "mcp__work_lumo__…" is another server's.
+  const m = /^(?:mcp[_/.:-]+)?lumo[_/.:-]+([a-z_]+)$/i.exec(tool);
   const name = m?.[1].toLowerCase() ?? "";
   return NAMES.has(name) ? name : null;
 }

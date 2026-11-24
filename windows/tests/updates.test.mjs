@@ -216,9 +216,10 @@ const { BETA_MARK, betaCandidates, betaVersion, ciState, cleanTitle, renderNotes
 test("only a pull request whose Windows CI passed goes in", () => {
   const run = (status, conclusion, workflowName = "Windows CI") => ({ __typename: "CheckRun", name: "test", workflowName, status, conclusion });
   assert.equal(ciState([run("COMPLETED", "SUCCESS")]), "pass");
-  assert.equal(ciState([]), "pass", "no Windows CI on it: nothing of the app changed");
-  assert.equal(ciState(null), "pass");
-  assert.equal(ciState([run("COMPLETED", "SUCCESS", "Windows beta"), run("COMPLETED", "FAILURE", "Other")]), "pass");
+  // Bug report #126: a commit Windows CI hasn't been queued for yet waits.
+  assert.equal(ciState([]), "pending", "no Windows CI on it yet: it isn't queued yet");
+  assert.equal(ciState(null), "pending");
+  assert.equal(ciState([run("COMPLETED", "SUCCESS", "Windows beta"), run("COMPLETED", "FAILURE", "Other")]), "pending");
   assert.equal(ciState([run("COMPLETED", "FAILURE")]), "fail");
   assert.equal(ciState([run("COMPLETED", "CANCELLED")]), "fail");
   assert.equal(ciState([run("IN_PROGRESS", "")]), "pending");

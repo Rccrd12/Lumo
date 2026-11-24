@@ -72,7 +72,9 @@ pub fn names_in_title(title: &str, app: &str) -> Vec<String> {
     if out.is_empty() {
         let app = app.to_ascii_lowercase();
         if let Some((_, exts)) = APP_EXTS.iter().find(|(a, _)| app.starts_with(a)) {
-            if let Some(stem) = parts.first().filter(|s| s.chars().count() <= 120) {
+            // A path in the title: only its last part, as file_name_in keeps.
+            let stem = parts.first().map(|s| s.rsplit(['\\', '/']).next().unwrap_or(s).trim());
+            if let Some(stem) = stem.filter(|s| !s.is_empty() && !s.contains(':') && *s != ".." && s.chars().count() <= 120) {
                 // "Documento1" is a new, unsaved document: nothing to find.
                 if !is_untitled(stem) {
                     for ext in exts.iter() {
@@ -282,6 +284,18 @@ mod tests {
         assert!(names_in_title("Documento1 - Word", "WINWORD").is_empty());
         assert!(names_in_title("YouTube - Google Chrome", "chrome").is_empty());
         assert_eq!(names_in_title(r"C:\Users\me\Desktop\notes.txt - Notepad", "notepad"), ["notes.txt"]);
+    }
+
+    #[test]
+    fn a_path_in_a_title_without_an_extension_gives_only_its_name() {
+        // Bug report #115: the stem left the Recent folder.
+        assert_eq!(names_in_title(r"*C:\Users\me\new 1 - Notepad++", "notepad++"), ["new 1.txt", "new 1.md"]);
+        assert_eq!(names_in_title(r"..\..\secret - Notepad++", "notepad++"), ["secret.txt", "secret.md"]);
+        assert!(names_in_title(r"C: - Notepad++", "notepad++").is_empty());
+        assert!(names_in_title(r"..\.. - Notepad++", "notepad++").is_empty());
+        for name in names_in_title(r"*D:\x\..\y - Notepad++", "notepad++") {
+            assert!(!name.contains(['\\', '/', ':']), "{name}");
+        }
     }
 
     #[test]

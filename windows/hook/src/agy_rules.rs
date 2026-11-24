@@ -194,8 +194,15 @@ pub fn parse(line: &str) -> Option<Parsed> {
         let next = chars.get(i + 1).copied();
         let after_redirect = std::mem::take(&mut redirect);
         if let Some(q) = quote {
-            if c == q {
+            // 'a' is bash's ANSI-C quoting $'…': it ends at a ' a backslash
+            // doesn't escape, and the escapes are kept as written, so a word
+            // with one never equals a rule's.
+            if c == q || (q == 'a' && c == '\'') {
                 quote = None;
+            } else if let Some(n) = next.filter(|_| q == 'a' && c == '\\') {
+                word.push(c);
+                word.push(n);
+                i += 1;
             } else if q == '"' && c == '\\' && next.is_some_and(|n| "\"\\$`".contains(n)) {
                 word.push(next.unwrap());
                 i += 1;
@@ -209,6 +216,12 @@ pub fn parse(line: &str) -> Option<Parsed> {
             continue;
         }
         match c {
+            // Bash's ANSI-C quoting $'…', where \' does not end it.
+            '$' if next == Some('\'') => {
+                quote = Some('a');
+                in_word = true;
+                i += 1;
+            }
             '\'' | '"' => {
                 quote = Some(c);
                 in_word = true;
@@ -489,6 +502,11 @@ mod tests {
         assert_eq!(r.verdict("ls <(rm -rf ~)"), Verdict::Unknown);
         assert_eq!(r.verdict("ls >(rm x)"), Verdict::Unknown);
         assert_eq!(r.verdict(" ; "), Verdict::Unknown);
+        // Bash's $'…' quoting: \' doesn't end it, so the ; after it ends the part
+        // and the rm is a command of its own.
+        assert_eq!(words(r"git status $'\'';rm -rf x"), w(&[&["git", "status", r"\'"], &["rm", "-rf", "x"]]));
+        assert_eq!(r.verdict(r"git status $'\'';rm -rf x;echo \'"), Verdict::Denied);
+        assert_eq!(r.verdict(r"git status $'\'';npm install;echo \'"), Verdict::Unknown);
         // Empty rules match nothing.
         assert_eq!(AgyRules::new(&[""], &[]).verdict("anything"), Verdict::Unknown);
     }

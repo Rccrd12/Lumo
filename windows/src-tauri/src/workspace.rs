@@ -214,6 +214,22 @@ fn plain_name(s: &str) -> bool {
         && !short
 }
 
+/// `name` as copy_in gives it in the folder: one `inside` accepts, so the
+/// copy can be read and changed. `Report~2023.docx` is `Report-2023.docx`
+/// (a `~` and a digit read as a short name), `proj.` is `proj`.
+fn reachable_name(name: &str) -> String {
+    if plain_name(name) {
+        return name.to_string();
+    }
+    let name = name.replace('~', "-");
+    let name = name.trim_end_matches(['.', ' ']);
+    if plain_name(name) {
+        name.to_string()
+    } else {
+        format!("_{name}")
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 struct Entry {
     /// In the folder, with forward slashes.
@@ -334,9 +350,17 @@ impl Workspace {
         let given = Path::new(path);
         let rel: PathBuf = if given.is_absolute() || given.has_root() {
             let own = given.strip_prefix(&self.dir).ok().or_else(|| {
-                let lower = path.replace('/', "\\").to_lowercase();
+                // The folder written another way (case, / for \\): where it ends in
+                // `path` itself, which lowercasing may make longer or shorter, and
+                // only at a separator (`chat10` is not inside `chat1`).
                 let dir = self.dir.to_string_lossy().replace('/', "\\").to_lowercase();
-                lower.strip_prefix(&dir).and_then(|_| path.get(dir.len()..)).map(Path::new)
+                let dir = dir.trim_end_matches('\\');
+                (1..=path.len())
+                    .filter(|&i| path.is_char_boundary(i))
+                    .find(|&i| path[..i].replace('/', "\\").to_lowercase() == dir)
+                    .map(|i| &path[i..])
+                    .filter(|rest| rest.is_empty() || rest.starts_with(['\\', '/']))
+                    .map(Path::new)
             });
             match own {
                 Some(rel) => rel.components().filter(|c| !matches!(c, Component::RootDir)).collect(),
@@ -426,7 +450,7 @@ impl Workspace {
         if let Some(top) = entries.iter().find_map(copied) {
             return Ok((format!("Already copied: {top} (your changes to it are kept)."), Vec::new()));
         }
-        let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "copy".into());
+        let name = from.file_name().map(|n| reachable_name(&n.to_string_lossy())).unwrap_or_else(|| "copy".into());
         let mut top = PathBuf::from(&name);
         let mut fresh = false;
         for n in 2..1000 {
@@ -455,6 +479,11 @@ impl Workspace {
                     let path = item.path();
                     let Ok(kind) = item.file_type() else { continue };
                     let item_name = item.file_name().to_string_lossy().to_string();
+                    let item_name = if SKIP_DIRS.contains(&item_name.as_str()) { item_name } else { reachable_name(&item_name) };
+                    // Two names that become one (`a~1`, `a-1`): the second isn't copied over the first.
+                    if files.iter().any(|(_, r)| *r == rel.join(&item_name)) || stack.iter().any(|(_, r)| *r == rel.join(&item_name)) {
+                        continue;
+                    }
                     if kind.is_symlink() || crate::live::is_sensitive(&path) {
                         continue;
                     }
@@ -949,6 +978,31 @@ mod tests {
     }
 
     #[test]
+    fn a_copied_name_that_reads_as_a_short_name_can_still_be_reached() {
+        // Bug report #116: copied as it was, then refused by every other tool.
+        let base = temp("short-names");
+        let computer = base.join("computer");
+        std::fs::create_dir_all(computer.join("v~2")).unwrap();
+        std::fs::write(computer.join("Report~2023.docx"), "report").unwrap();
+        std::fs::write(computer.join("v~2/file~1.txt"), "uno").unwrap();
+        let ws = Workspace::new(base.join("ws"));
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        let report = computer.join("Report~2023.docx").to_string_lossy().to_string();
+        let said = ws.run(COPY, &json!({ "path": report })).unwrap().0;
+        assert!(said.contains("Report-2023.docx"), "{said}");
+        assert!(ws.run(READ, &json!({ "path": "Report-2023.docx" })).unwrap().0.contains("1| report"));
+        let folder = computer.join("v~2").to_string_lossy().to_string();
+        assert!(ws.run(COPY, &json!({ "path": folder })).unwrap().0.contains("v-2"));
+        assert!(ws.run(READ, &json!({ "path": "v-2/file-1.txt" })).unwrap().0.contains("1| uno"));
+        assert!(ws.run(EDIT, &json!({ "path": "v-2/file-1.txt", "old": "uno", "new": "due" })).is_ok());
+        // Still never a short name of the folder's own.
+        assert!(ws.inside("REPORT~1.DOC").is_err());
+        assert_eq!(reachable_name("proj."), "proj");
+        assert_eq!(reachable_name("notes.txt"), "notes.txt");
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
     fn no_path_leaves_the_folder() {
         let base = temp("escape");
         let ws = Workspace::new(base.join("ws"));
@@ -961,6 +1015,15 @@ mod tests {
             assert!(ws.run(WRITE, &json!({ "path": bad, "content": "x" })).is_err(), "{bad}");
         }
         assert!(ws.run(DELETE, &json!({ "path": "" })).is_err());
+        // A sibling whose name starts with the folder's is not inside it,
+        // written as it is or another way (case, slashes).
+        let sibling = format!("{}0", ws.dir.to_string_lossy());
+        for p in [format!("{sibling}/notes.txt"), format!("{}/notes.txt", sibling.to_uppercase().replace('\\', "/"))] {
+            assert!(ws.inside(&p).is_err(), "{p}");
+        }
+        // The folder's own path in other case still is.
+        let upper = ws.dir.join("b.txt").to_string_lossy().to_uppercase();
+        assert_eq!(ws.inside(&upper).map(|(_, rel)| rel).ok(), Some(PathBuf::from("B.TXT")));
         // Its own full path is inside.
         let own = ws.dir.join("a.txt").to_string_lossy().to_string();
         assert!(ws.run(WRITE, &json!({ "path": own, "content": "ok" })).is_ok());
