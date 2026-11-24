@@ -254,6 +254,15 @@ test("the workshop is a chat of its own: the AI's draft shows beside it, Try and
   assert.equal(sent("tools_save")[0].draft.replaces, null, "a new tool");
   assert.equal(chat.el.querySelector(".forge-status").textContent, "Saved");
 
+  // Bug 31: deleted in the Tools tab, the tool is saved no more, and Save is offered again.
+  emit("tools-changed", []);
+  chat.sync();
+  assert.equal(chat.el.querySelector(".forge-status").textContent, "Draft");
+  assert.equal(button(chat.el, "Save tool").disabled, false);
+  emit("tools-changed", [{ ...TOOL }]);
+  chat.sync();
+  assert.equal(chat.el.querySelector(".forge-status").textContent, "Saved");
+
   // Back to the chat: its question is there again, and the workshop waits.
   State.useSlot("chat");
   chat.sync();
@@ -273,6 +282,8 @@ test("Change with Lumo opens the workshop on the tool, and Save updates it", asy
   // No workshop chat on the tool yet (the one before saved a tool of the same id).
   localStorage.removeItem("lumo.forge.saved.v1");
   answers.tools_files = [["bench.py", "print(1)\n"]];
+  // Change with Lumo is on a tool of the Tools tab's list.
+  State.tools = [{ ...TOOL }];
   State.forgeAsk = { edit: TOOL };
   State.useSlot("forge");
   chat.sync();

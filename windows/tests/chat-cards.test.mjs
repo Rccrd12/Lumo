@@ -237,6 +237,14 @@ test("a callout written with no quote in the user's question stays as written", 
   assert.equal(plainQuestion("  **[!NOTE]** x"), "  \u2060**[!NOTE]** x");
 });
 
+test("a question's ~~~ block holding a ``` line closes on its own ~~~", () => {
+  // Bug 39: only backtick fences were followed, so the lines after the ~~~ block were left unmarked.
+  assert.deepEqual(plainQuestion("~~~\n```\n~~~\n- [ ] buy milk\n![a](https://example.com/x.png)").split("\n"),
+    ["~~~\u2060", "```", "~~~", "- \u2060[ ] buy milk", "\u2060![a](https://example.com/x.png)"]);
+  // And a ~~~ line inside a ``` block closes nothing.
+  assert.deepEqual(plainQuestion("```\n~~~\n```\n- [ ] a").split("\n"), ["```\u2060", "~~~", "```", "- \u2060[ ] a"]);
+});
+
 test("a question's code block closes only on a bare fence as long as its own", () => {
   // The ``` inside the ````md block is code: the task item after it stays as written.
   assert.equal(plainQuestion("````md\n```\n- [ ] a\n````\n- [ ] b"), "````\u2060md\n```\n- [ ] a\n````\n- \u2060[ ] b");

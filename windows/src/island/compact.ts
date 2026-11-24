@@ -146,6 +146,8 @@ export class CompactStrip {
   private visible = false;
   /** When the request on show came up, against clicks meant for something else. */
   private approvalAt = 0;
+  /** The request it came up for: drawn again (its place in the queue changed), it keeps its time. */
+  private approvalFor = "";
   /** The upload's bar and percentage, moved each frame without a redraw. */
   private uploadFill: HTMLElement | null = null;
   private uploadPct: HTMLElement | null = null;
@@ -309,10 +311,11 @@ export class CompactStrip {
   private draw(now: number) {
     const s = this.shown;
     const key = s == null ? "" : s.kind === "mail" ? `mail|${s.mail.id}|${this.extraMail}`
-      : s.kind === "approval" ? `approval|${s.approval.requestId}|${s.approval.command}`
+      : s.kind === "approval" ? `approval|${s.approval.requestId}|${s.approval.who}|${s.approval.color}|${s.approval.command}`
       : `items|${s.items.map((i) => itemKey(i, now)).join("|")}`;
     if (key === this.key) return;
     this.key = key;
+    if (s?.kind !== "approval") this.approvalFor = "";
     clear(this.el);
     this.uploadFill = null;
     this.uploadPct = null;
@@ -485,7 +488,10 @@ export class CompactStrip {
    * one of them answers; a click anywhere else opens the full card.
    */
   private approvalCard(a: ApprovalPeek): HTMLElement {
-    this.approvalAt = performance.now();
+    if (this.approvalFor !== a.requestId) {
+      this.approvalFor = a.requestId;
+      this.approvalAt = performance.now();
+    }
     const decide = (d: "allow" | "deny") => (e: Event) => {
       e.stopPropagation();
       if (performance.now() - this.approvalAt < CLICK_GUARD_MS) return;

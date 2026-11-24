@@ -214,10 +214,16 @@ export class IslandStateMachine {
     this.schedulePetitHide();
   }
 
-  /** Alert or explicit request: open straight to expanded. */
+  /**
+   * Alert or explicit request: open straight to expanded. Already open with the
+   * mouse elsewhere, the countdown starts again (no transition would start it),
+   * so the island still folds once the grace given with it runs out.
+   */
   forceHome() {
+    const wasHome = this.state === "home";
     this.cancelTimers();
     this.transition("home");
+    if (wasHome && !this.mouseInside) this.scheduleHomeCollapse();
   }
 
   /// Explicit close (OK button, Escape, an alert being answered).

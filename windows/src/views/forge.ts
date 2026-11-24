@@ -224,7 +224,8 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
 
   function status(d: ToolDraft): Status {
     const link = savedLink(chatId);
-    if (!link) return "draft";
+    // A tool deleted since (in the Tools tab) is saved no more: the draft can be saved again.
+    if (!link || !State.tools.some((x) => x.id === link.tool)) return "draft";
     return link.key === draftKey(d) ? "saved" : "changed";
   }
 
@@ -263,6 +264,9 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
     try {
       const info = await Bridge.toolsSave(outgoing(d));
       linkSaved(savedFrom, info.id, draftKey(d));
+      // The list knows it at once, before Rust's tools-changed comes.
+      State.tools = [...State.tools.filter((x) => x.id !== info.id), info];
+      State.notify();
       Sound.play("proud");
     } catch (err) {
       saveError = String(err).replace(/^Error:\s*/, "");
@@ -472,7 +476,7 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
   // Tools saved elsewhere (or deleted): Saved may no longer hold.
   State.subscribe(() => {
     const link = savedLink(chatId);
-    if (link && State.tools.length && !State.tools.some((x) => x.id === link.tool)) drawn = "";
+    if (link && !State.tools.some((x) => x.id === link.tool)) drawn = "";
   });
 
   return { head, el, guide, help, sync };

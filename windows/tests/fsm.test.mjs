@@ -387,6 +387,29 @@ test("an alert opened with the mouse elsewhere stays to be read, even set to clo
   assert.equal(fsm.homeCollapseSpan, null);
 });
 
+test("an alert or a shortcut on an island already open with the mouse elsewhere still folds after its grace", () => {
+  // Bug 17: forceHome cleared the countdown and, the island being open already, nothing started it again.
+  fsm.homeToPetitDelay = 0.6;
+  fsm.forceHome();
+  fsm.mouseLeft();
+  seconds(0.3);
+  assert.equal(fsm.state, "home");
+  // Island.alert, then the shortcut's holdOpen.
+  fsm.holdOpen(8, false);
+  fsm.forceHome();
+  fsm.holdOpen(12);
+  assert.notEqual(fsm.homeCollapseDueAt, null, "a countdown runs");
+  seconds(11);
+  assert.equal(fsm.state, "home", "kept for the grace");
+  seconds(1);
+  assert.equal(fsm.state, "petit", "folded once the grace is over");
+  // With the mouse on the island, an alert starts no countdown.
+  fsm.forceHome();
+  fsm.mouseEntered();
+  fsm.forceHome();
+  assert.equal(fsm.homeCollapseDueAt, null);
+});
+
 test("an alert being read: the mouse coming and leaving closes it as usual", () => {
   fsm.homeToPetitDelay = 0.6;
   fsm.holdOpen(8, false);

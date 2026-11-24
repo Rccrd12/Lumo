@@ -610,6 +610,17 @@ test("a ~~~ fence is a code block too, closed only by the same mark", () => {
   assert.equal(card.body, "## A\n~~~\n```\n~~~\n## B\n$$x$$");
 });
 
+test("a backslash written twice escapes nothing: the formula after it stays, and none is made", async () => {
+  // Bug 32: the second backslash escaped the $ (formula lost) or opened a \( formula.
+  const { scan } = await import("../src/views/scan.ts");
+  const math = (text) => scan(text).filter((s) => s.kind === "math").map((s) => s.tex);
+  assert.deepEqual(math("cost \\\\$x+y$ end"), ["x+y"]);
+  assert.deepEqual(math("C:\\\\(a\\) b"), []);
+  // One backslash still escapes, as before.
+  assert.deepEqual(math("cost \\$x+y$ end"), []);
+  assert.deepEqual(math("\\(a\\) b"), ["a"]);
+});
+
 test("a code span closes on a run of its own length: a longer run inside is part of the code", async () => {
   const { scan } = await import("../src/views/scan.ts");
   const code = (text) => scan(text).filter((s) => s.kind === "code").map((s) => s.text);

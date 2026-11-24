@@ -752,16 +752,32 @@ export function searchChats(chats: SavedChat[], query: string): ChatHit[] {
     if (!words.every((w) => all.includes(w))) continue;
     // The passage: the first text holding the first word.
     const text = texts.find((t) => fold(t).includes(words[0])) ?? texts[0];
-    // An accented letter folds to its one base letter: a position in the
-    // folded text is the same position in the composed one.
+    // Folding changes lengths (a Korean syllable becomes two or three letters,
+    // a mark with no composed letter goes): each character is folded on its
+    // own, and each folded position remembers the composed character it came from.
     const composed = text.normalize("NFC");
-    const index = Math.max(0, fold(composed).indexOf(words[0]));
+    let folded = "";
+    const from: number[] = [];
+    const to: number[] = [];
+    for (let i = 0; i < composed.length; ) {
+      const ch = String.fromCodePoint(composed.codePointAt(i) ?? 0);
+      const f = fold(ch);
+      for (let k = 0; k < f.length; k++) {
+        from.push(i);
+        to.push(i + ch.length);
+      }
+      folded += f;
+      i += ch.length;
+    }
+    const found = folded.indexOf(words[0]);
+    const index = found < 0 ? 0 : from[found];
+    const matchEnd = found < 0 ? 0 : to[found + words[0].length - 1];
     const start = Math.max(0, index - SNIPPET_BEFORE);
-    const end = Math.min(composed.length, index + words[0].length + SNIPPET_AFTER);
+    const end = Math.min(composed.length, matchEnd + SNIPPET_AFTER);
     const head = start > 0 ? "…" : "";
     const snippet = `${head}${composed.slice(start, end)}${end < composed.length ? "…" : ""}`;
-    const from = head.length + (index - start);
-    hits.push({ chat, snippet, match: [from, Math.min(snippet.length, from + words[0].length)] });
+    const at = head.length + (index - start);
+    hits.push({ chat, snippet, match: [at, Math.min(snippet.length, at + (matchEnd - index))] });
   }
   return hits;
 }

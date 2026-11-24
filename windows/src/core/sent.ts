@@ -213,6 +213,8 @@ export function keptItems(items: readonly SentItem[]): SentItem[] {
   return items.map((i) => {
     const out: SentItem = { ...i };
     if (out.text != null && out.text.length > MAX_KEPT_TEXT) delete out.text;
+    // A selection's key is its whole text: past the limit it goes with it.
+    if (out.kind === "selection" && out.key.length > MAX_KEPT_TEXT) out.key = "";
     if (out.thumb != null && out.thumb.length > MAX_THUMB) delete out.thumb;
     return out;
   });

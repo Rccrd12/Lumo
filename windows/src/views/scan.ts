@@ -49,6 +49,12 @@ export function scan(text: string, multiline = true): Span[] {
     }
     if (c === "\\") {
       const next = text[i + 1];
+      // "\\": a backslash written twice escapes nothing after it (as closingDollar
+      // reads it), and stays as written: "C:\\(a\\)" opens no formula.
+      if (next === "\\") {
+        i += 2;
+        continue;
+      }
       // \( … \) and \[ … \]: always a formula.
       if (next === "(" || next === "[") {
         const close = next === "(" ? "\\)" : "\\]";

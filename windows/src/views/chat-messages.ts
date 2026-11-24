@@ -467,21 +467,22 @@ const NOT_A_CARD = "\u2060";
  * invisible mark goes before what the cards look for, outside code blocks.
  */
 export function plainQuestion(text: string): string {
-  // The backticks of the code block the line is in, 0 outside one: only a bare
-  // fence at least as long closes it (as views/markdown.ts reads it), so a
-  // ```js inside a ````markdown block does not.
-  let fence = 0;
+  // The fence of the code block the line is in, "" outside one: only a bare
+  // fence of the same mark (``` or ~~~), at least as long, closes it (as
+  // views/markdown.ts reads it), so a ```js inside a ````markdown block, or a
+  // ``` inside a ~~~ block, does not.
+  let fence = "";
   return text
     .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((line) => {
-      const mark = /^([ \t]*)(`{3,})(.*)$/.exec(line);
+      const mark = /^([ \t]*)(`{3,}|~{3,})(.*)$/.exec(line);
       if (mark && !fence) {
-        fence = mark[2].length;
+        fence = mark[2];
         return `${mark[1]}${mark[2]}${NOT_A_CARD}${mark[3]}`;
       }
-      if (mark && mark[2].length >= fence && !mark[3].trim()) {
-        fence = 0;
+      if (mark && mark[2][0] === fence[0] && mark[2].length >= fence.length && !mark[3].trim()) {
+        fence = "";
         return line;
       }
       if (fence) return line;

@@ -72,6 +72,8 @@ test("a finished branch folds under its starter, until its row is opened, and sa
   const list = nested(batchEntries(c, c.batches[0]));
   assert.deepEqual(folded(list, new Set()).map(([e]) => e.row.id), ["coord", "open", "w1", "w2"]);
   assert.deepEqual(folded(list, new Set(["coord"])).map(([e]) => e.row.id), ["coord", "k1", "k2", "open", "w1", "w2"]);
+  // Bug 26: an agent opened inside a finished branch (one at a time, so its starter closed) keeps the branch in sight.
+  assert.deepEqual(folded(list, new Set(["k1"])).map(([e]) => e.row.id), ["coord", "k1", "k2", "open", "w1", "w2"]);
 
   const el = card(store, "c");
   assert.deepEqual(texts(el, ".agents-name"), ["coord", "open", "w1", "w2"]);
