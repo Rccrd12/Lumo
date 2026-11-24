@@ -40,10 +40,16 @@ const FIND_ACTING = /\s-(delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)(\s|$
 
 /** Options that make a looking command write a file or run a program. */
 const ACTING_OPTIONS: Record<string, RegExp> = {
-  rg: /^--pre(=|$)/,
-  tree: /^-o$/,
-  date: /^(-s|--set)(=|$)/,
+  // A preprocessor, or the program that names the host.
+  rg: /^--(pre|hostname-bin)(=|$)/,
+  // -o writes the listing to a file, -R (with -H) one into every folder; in a group too ("-ao").
+  tree: /^-[^-]*[oR]/,
+  // -o/-O and --log-file (or a start of it) copy what is shown into a file.
+  less: /^(-[^-]*o|--lo)/i,
 };
+
+/** `date`'s arguments that only show it: a format, UTC, ISO and RFC forms, cmd's /t. Anything else may set it. */
+const DATE_SHOWS = /^(\+.*|\/t|-[uR]+|--utc|--universal|-I\w*|--iso-8601(=\w+)?|--rfc-(3339|email)(=\w+)?)$/i;
 
 /** git's options before the subcommand that change nothing ("-C <dir>" is read on its own). */
 const GIT_QUIET_OPTIONS = new Set(["--no-pager", "-P", "--no-optional-locks", "--literal-pathspecs"]);
@@ -108,6 +114,8 @@ function looks(segment: string): boolean {
   if (name === "find" && FIND_ACTING.test(` ${words.slice(1).join(" ")}`)) return false;
   // "hostname new" renames the computer.
   if (name === "hostname") return words.length === 1;
+  // "date -s…", "date --se=…", cmd's "date 01-01-2020": only the forms that show it look.
+  if (name === "date") return words.slice(1).every((w) => DATE_SHOWS.test(w));
   const acting = ACTING_OPTIONS[name];
   return !acting || !words.slice(1).some((w) => acting.test(w));
 }

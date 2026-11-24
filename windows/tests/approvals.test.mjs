@@ -200,3 +200,14 @@ test("git grep's pager is caught bundled or abbreviated", () => {
   }
   for (const c of ["git grep -i foo", "git grep --or x", "git grep --only-matching x", "git grep -n TODO"]) assert.ok(isLookingCommand(c), c);
 });
+
+test("tree, rg, less and date options that write, run or set are caught", () => {
+  for (const c of [
+    "tree -ao out.txt", "tree -R -H . -L 1", "rg --hostname-bin=/tmp/x foo", "less -o copy.txt src.txt",
+    "less -ocopy.txt", "echo secret | less -O copy.txt", "cat a | less --log-file=copy.txt", "less --log=c.txt a",
+    "date -s2020-01-01", "date -us 2020-01-01", "date --se=2020-01-01", "date 01-01-2020",
+  ]) assert.equal(isLookingCommand(c), false, c);
+  for (const c of ["tree -a", "tree -L 2", "rg -n foo", "less README.md", "less -N a.txt", "date", "date +%F", "date -u", "date /t", "date -I"]) {
+    assert.ok(isLookingCommand(c), c);
+  }
+});

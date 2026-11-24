@@ -407,7 +407,9 @@ pub fn find(query: &str, within: Option<&str>) -> Result<Vec<Found>, String> {
             Some(dir) if dir.is_dir() && (is_sensitive(&dir) || dir.canonicalize().is_ok_and(|real| is_sensitive(&plain(&real)))) => {
                 return Ok(Vec::new())
             }
-            Some(dir) if dir.is_dir() => vec![dir],
+            // The walk starts from the real long-name path, so a short name
+            // (`APPDAT~1`) or a `..` can't hide a folder of keys from the checks below.
+            Some(dir) if dir.is_dir() => vec![dir.canonicalize().map(|r| plain(&r)).unwrap_or(dir)],
             _ => return Err(missing(raw)),
         },
         None => search_roots(explorer::peek().ok().flatten().map(|f| PathBuf::from(f.path))),
@@ -1396,6 +1398,21 @@ mod tests {
         let gone = dir.join("no such folder");
         assert!(find("fattura", Some(&gone.to_string_lossy())).is_err());
         assert!(find("fattura", Some("relative/folder")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A folder named by a way around (`..`, a short name) is walked as its real
+    /// path, so the folders of keys inside it are still never found.
+    #[test]
+    fn find_walks_the_real_folder_behind_a_way_around() {
+        let dir = std::env::temp_dir().join(format!("lumo-live-around-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("AppData/Roaming/Other")).unwrap();
+        std::fs::create_dir_all(dir.join("AppData/Roaming/Microsoft/Protect/S-1-5")).unwrap();
+        std::fs::write(dir.join("AppData/Roaming/Microsoft/Protect/S-1-5/masterkey"), b"x").unwrap();
+        let around = dir.join("AppData/Roaming/Other/../Microsoft");
+        let found = find("masterkey", Some(&around.to_string_lossy())).unwrap();
+        assert!(found.is_empty(), "{found:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

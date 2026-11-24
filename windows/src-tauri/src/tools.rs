@@ -2155,6 +2155,11 @@ mod tests {
             format!("import os\nos.chdir('{outside}')\nprint('ESCAPED', os.listdir())\n"),
             // A link whose relative target looks inside from the current folder.
             format!("import os\nos.chdir('{w}/a')\nos.symlink('../secret/s.txt', '{w}/link')\nprint('ESCAPED', open('{w}/link').read())\n"),
+            // A database by a file: URI, or by a pathlib path, outside the work folder.
+            format!("import sqlite3\nsqlite3.connect('file:{outside}/x.db', uri=True)\nprint('ESCAPED')\n"),
+            format!("import sqlite3, pathlib\nsqlite3.connect(pathlib.Path('{outside}/x.db'))\nprint('ESCAPED')\n"),
+            // A library by a stream's name, without "system".
+            format!("open('{w}/evil.dll::$DATA', 'wb').close()\nprint('ESCAPED')\n"),
         ];
         for (n, script) in scripts.iter().enumerate() {
             let path = tool.join(format!("t{n}.py"));
@@ -2166,6 +2171,8 @@ mod tests {
                 .env("LUMO_TOOL_ALLOW", "")
                 .env("LUMO_TOOL_DIR", &tool)
                 .env("LUMO_TOOL_WORK", &work)
+                // As a tool may move there: a file: URI is then "inside" read as a path.
+                .current_dir(&work)
                 .output()
                 .unwrap();
             let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));

@@ -566,6 +566,13 @@ async fn ask_local(app: &AppHandle, chat: &str, agent: Option<&str>, url: &Url) 
     if local_allowed(chat, url) || !local_address(url).await {
         return Ok(());
     }
+    ask_local_card(app, chat, agent, url).await
+}
+
+/// The local host's own card, once a lookup found `url` local: never looked
+/// up again before it, so a second answer of the DNS (a short TTL, a slow
+/// server) can't skip it.
+async fn ask_local_card(app: &AppHandle, chat: &str, agent: Option<&str>, url: &Url) -> Result<(), String> {
     let mut card = json!({
         "hook_event_name": "PermissionRequest",
         "lumo_island": true,
@@ -987,7 +994,7 @@ pub async fn ask(app: &AppHandle, asks: Asks, agent: Option<&str>, chat: &str, t
     if asks != Asks::LookOnly {
         if let Some(url) = open_url(tool, input) {
             if !local_allowed(chat, &url) && local_address(&url).await {
-                return ask_local(app, chat, agent, &url).await;
+                return ask_local_card(app, chat, agent, &url).await;
             }
         }
     }

@@ -121,6 +121,7 @@ def _install():
         _endswith=str.endswith, _fspath=os.fspath, _Error=PermissionError, _O_WRONLY=os.O_WRONLY,
         _path_classes=path_classes, _class_dict=class_dict, _len=len, _get=type(vars(object)).get,
         _dir_entry=dir_entry, _dir_entry_path=dir_entry_path, _windows=windows, _rpartition=str.rpartition,
+        _partition=str.partition, _rstrip=str.rstrip, _lower=str.lower,
     ):
         if event not in _handled:
             return
@@ -195,8 +196,13 @@ def _install():
             if "write" not in _allow and not inside(p, _writable):
                 refuse("to change files")
             if "system" not in _allow:
+                # The file's own name as Windows reads it: before a stream
+                # (`evil.dll::$DATA`), without trailing dots and spaces (`evil.dll.`).
+                name = _rpartition(p, _sep)[2]
+                name = _partition(name, ":")[0]
+                name = _rstrip(name, ". ")
                 for ending in _libraries:
-                    if _endswith(p, ending):
+                    if _endswith(name, ending):
                         refuse("to write programs or libraries")
 
         def link_target(target, link):
@@ -262,7 +268,13 @@ def _install():
             if not _isinstance(path, _int):
                 may_read(path)
         elif event == "sqlite3.connect":
-            if args and _isinstance(args[0], (_str, _bytes)) and text(args[0]) != ":memory:":
+            # Any kind of path (a pathlib one too), as for open.
+            name = text(args[0]) if args else None
+            if name is not None and name != ":memory:":
+                # A file: URI (with uri=True) names its file its own way
+                # (`file:C:/x.db?mode=ro`, %-escapes): only with read and write.
+                if _lower(name[:5]) == "file:" and not ("read" in _allow and "write" in _allow):
+                    refuse("to open databases by a file: URI")
                 may_write(args[0])
         elif event in _introspection:
             if "system" not in _allow:
