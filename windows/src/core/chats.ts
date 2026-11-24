@@ -376,10 +376,11 @@ export function savedWarning(w: unknown): AnswerWarning | undefined {
   return typeof o.line === "string" && typeof o.detail === "string" ? { line: o.line, detail: o.detail } : undefined;
 }
 
-/** The first question, on one line and shortened. */
+/** The first question, on one line and shortened (what went with it, when nothing was written). */
 export function chatTitle(turns: SavedTurn[]): string {
-  const first = turns.find((t) => t.role === "user")?.content ?? "";
-  const line = first.replace(/\s+/g, " ").trim();
+  const first = turns.find((t) => t.role === "user");
+  // Only attachments were sent: their names.
+  const line = (first?.content ?? "").replace(/\s+/g, " ").trim() || (first?.sent ?? []).map((s) => s.label).join(", ");
   return line.length > TITLE_CHARS ? `${clipUnits(line, TITLE_CHARS - 1)}…` : line;
 }
 

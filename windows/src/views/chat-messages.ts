@@ -166,7 +166,15 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
   if (message.role === "user") {
     const onEdit = opts.onEdit;
     const edit = onEdit ? msgAction("msg-edit", STRINGS.edit, svg(ICONS.pencil, 12, { stroke: 1.8 }), () => onEdit(message)) : null;
-    bar.append(...[when, retry, edit, copy].filter((x): x is HTMLElement => x != null));
+    // Only attachments sent, nothing written: nothing to copy, and no bubble.
+    const bare = !message.content.trim() && !!message.sent?.length && !message.ask;
+    bar.append(...[when, retry, edit, bare ? null : copy].filter((x): x is HTMLElement => x != null));
+    if (bare && message.sent) {
+      // What went is the message: its list, always open, where the bubble would be.
+      const list = sentList(message, message.sent, opts.onOpenSent);
+      list.classList.add("sent-alone");
+      return h("div", { class: `chat-row user${state}` }, list, bar);
+    }
     const sent = sentBubble(message.content);
     // Asked of an agent: that agent on top of the question, as WhatsApp's quoted Reply.
     if (message.ask) sent.insertBefore(askQuote(message.ask), sent.firstChild);
