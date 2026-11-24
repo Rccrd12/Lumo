@@ -353,40 +353,41 @@
 }
 
 /* Antigravity CLI's Orchestrator: a row for the planner and one for the
-   executor, each its role, ‹ model ›, and its own effort slider. */
+   executor, each its role, ‹ model ›, and its own effort slider. Smaller
+   than Claude Code's one row, so the two leave the model list its room. */
 .picker-efforts.orchestrator {
-  gap: 6px;
+  gap: 3px;
 }
 
 .orch-row {
-  gap: 8px;
+  gap: 6px;
 }
 
 .orch-role {
-  flex: 0 0 62px;
-  font: 400 12px var(--font);
+  flex: 0 0 54px;
+  font: 400 11px var(--font);
   color: #8b929e;
 }
 
 .orch-model {
-  flex: 0 0 84px;
+  flex: 0 0 66px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
-  font: 400 12px var(--font);
+  font: 400 11.5px var(--font);
   color: var(--ink-2);
 }
 
 .orch-step {
   flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   padding: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
-  font: 400 13px/1 var(--font);
+  font: 400 11px/1 var(--font);
   color: #c8cdd4;
   cursor: default;
 }
@@ -400,11 +401,32 @@
 }
 
 .orch-row .effort-track {
-  min-width: 80px;
+  --edge: 8px;
+  flex: 0 1 150px;
+  min-width: 70px;
+  height: 16px;
+  border-radius: 6px;
+}
+
+.orch-row .effort-fill {
+  border-radius: 6px;
+}
+
+.orch-row .effort-knob {
+  top: -1px;
+  bottom: -1px;
+  left: calc(var(--edge) + var(--at) * (100% - 2 * var(--edge)) - 5px);
+  width: 10px;
+  border-radius: 4px;
+}
+
+.orch-row .effort-ticks i {
+  height: 6px;
 }
 
 .orch-row .effort-value {
-  min-width: 44px;
+  min-width: 36px;
+  font-size: 11px;
 }
 
 .effort-auto {

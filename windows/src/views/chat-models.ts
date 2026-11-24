@@ -216,7 +216,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     const fracAt = (clientX: number) => {
       const r = track.getBoundingClientRect();
       // The knob's centre stays inside the track by half its width.
-      const inset = 11;
+      const inset = parseFloat(getComputedStyle(track).getPropertyValue("--edge")) || 11;
       return r.width > 2 * inset ? (clientX - r.left - inset) / (r.width - 2 * inset) : 0;
     };
     track.addEventListener("pointerdown", (e) => {
