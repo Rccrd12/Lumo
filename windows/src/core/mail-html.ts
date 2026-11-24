@@ -63,10 +63,12 @@ export function httpsImage(url: string): string | null {
  * background-image in its style. null when it has none (or one of data:).
  */
 export function backgroundUrl(attr: string | null, style: string): string | null {
+  // A tracker's address is never downloaded, as a background no more than as a picture.
+  const ok = (u: string | null) => (u && !trackingPixel(u, null, null, "") ? u : null);
   const own = attr?.trim();
-  if (own) return httpsImage(own);
+  if (own) return ok(httpsImage(own));
   const m = /(?:^|;)\s*background(?:-image)?\s*:[^;]*?url\(\s*(['"]?)([^'")\s]+)\1\s*\)/i.exec(style);
-  return m ? httpsImage(m[2]) : null;
+  return m ? ok(httpsImage(m[2])) : null;
 }
 
 /** Whether a link of the email opens in the browser on a click: http and https only. */

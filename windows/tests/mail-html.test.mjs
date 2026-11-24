@@ -178,6 +178,10 @@ test("an email's background waits for Load images: its attribute, or the url() o
   assert.equal(backgroundUrl(null, "color:#fff; background: #123 url(\"http://img.example/b.jpg\") no-repeat"), "https://img.example/b.jpg");
   assert.equal(backgroundUrl(null, "background:url(//cdn.example/c.png)"), "https://cdn.example/c.png");
   assert.equal(backgroundUrl(null, "background-color:#fff"), null);
+  // Bug 118: a tracker's address as a background is never downloaded either.
+  const tracker = "https://x.us1.list-manage.com/track/open.php?u=1&id=2";
+  assert.equal(backgroundUrl(tracker, ""), null);
+  assert.equal(backgroundUrl(null, `background-image:url(${tracker})`), null);
   assert.equal(backgroundUrl(null, "background-image:url(data:image/png;base64,AA)"), null);
   assert.equal(backgroundUrl(null, "border-image:url(https://img.example/x.png)"), null);
   assert.equal(backgroundUrl("data:image/png;base64,AA", ""), null);

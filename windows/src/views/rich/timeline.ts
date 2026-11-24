@@ -91,7 +91,8 @@ export interface Timeline {
 // ── Reading ───────────────────────────────────────────────────────────────────
 
 const ISO_DAY = /^(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/;
-const ISO_MONTH = /^(\d{4})-(\d{1,2})(?![\d/.])/;
+// Not before a digit, a slash or a lone dot; ".." after it starts a range (2026-11..2026-12).
+const ISO_MONTH = /^(\d{4})-(\d{1,2})(?![\d/]|\.(?!\.))/;
 const SLASHED = /^(\d{1,2})[/.](\d{1,2})(?:[/.](\d{4}|\d{2}))?(?![\d/])/;
 /** A year, with its era if it has one: 1947, -500, 500 BC, 500 a.C., 1066 AD. */
 const YEAR = /^(-?\d{1,6})(?:\s?(B\.?\s?C\.?(?:E\.?)?|a\.?\s?C\.?|av\.\s?J\.?-?C\.?|v\.\s?Chr\.?|A\.?D\.?|C\.?E\.?|d\.\s?C\.?))?(?![\d\p{L}])/iu;
@@ -99,8 +100,8 @@ const YEAR = /^(-?\d{1,6})(?:\s?(B\.?\s?C\.?(?:E\.?)?|a\.?\s?C\.?|av\.\s?J\.?-?C
 const RANGE = /^(?:\s*(?:–|—|\.\.\.?|…|→|->|\bto\b)\s*|\s+-\s+|-(?=\d))/;
 /** The deadline mark, before or after the date. */
 const MILESTONE = /^[◆♦⬥◇]\s*/;
-/** A list marker before a line. */
-const MARKER = /^(?:[-*+•]|\d+[.)])\s+(?=\S)/;
+/** A list marker before a line: a numbered one has one or two digits, so "1947. Transistor" keeps its year. */
+const MARKER = /^(?:[-*+•]|\d{1,2}[.)])\s+(?=\S)/;
 /** Between a name and its detail. */
 const DETAIL = /\s+[—–-]\s+|:\s+/;
 
@@ -162,9 +163,11 @@ export function parseTimeline(title: string, body: string, now: Date = new Date(
     } else {
       from = settle(l.from, order, near);
       // "2026-11-08..16": the short end is a day of its start's month.
+      // "2026-01–03": the short end is a month of its start's year.
       // "1939-45": the short end is a year of its start's century.
       if (l.to && from) {
         if (l.to.short && from.unit === "day") to = dayOf(from, l.to.year);
+        else if (l.to.short && from.unit === "month" && l.to.year >= 1 && l.to.year <= 12) to = when("month", from.year, l.to.year - 1, 1);
         else if (l.to.short && from.unit === "year" && from.year >= 100) to = when("year", centuryOf(from.year, l.to.year), 0, 1);
         else to = settle(l.to, order, from.start);
       }

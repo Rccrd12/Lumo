@@ -88,6 +88,11 @@ test("the chat keeps them small, and reads back only what it can use", () => {
   assert.deepEqual(keptItems(big)[0].text, undefined);
   assert.deepEqual(keptItems(big)[0].thumb, undefined);
   assert.equal(big[0].text.length, MAX_KEPT_TEXT + 1, "what is on screen keeps it");
+  // Bug 18: a selection's key is its whole text, so it is not kept past the limit either.
+  const long = "y".repeat(50_000);
+  const kept = keptItems([{ kind: "selection", label: "Selected text", detail: "", title: "", key: long, text: long }]);
+  assert.ok(JSON.stringify(kept).length < 1000, "the long selection is not saved");
+  assert.equal(keptItems([{ kind: "selection", label: "Selected text", detail: "", title: "", key: "short", text: "short" }])[0].key, "short");
   assert.equal(readSent(undefined), undefined);
   assert.equal(readSent([]), undefined);
   assert.deepEqual(readSent([{ kind: "nope", label: "x" }, { kind: "file", label: "a.pdf", path: "C:\\a.pdf", thumb: "javascript:alert(1)" }, 3]),
@@ -246,6 +251,23 @@ test("an edit given up takes back out only what it put back", async () => {
   assert.equal(strip().hidden, true);
   await ask("next");
   assert.equal(sent("chat_send").at(-1).screen.selection.text, "typed meanwhile");
+});
+
+test("an edit given up leaves what was already waiting, even the same thing it put back", async () => {
+  // Bug 129: the edit took back out everything it had brought, also what the user had attached before.
+  await twoQuestions();
+  State.incomingShare = { kind: "selection", selection: { text: "second", app: "", title: "" } };
+  view.sync();
+  assert.deepEqual(waiting(), ["Selected text"]);
+  rows()[2].find(".msg-edit")[0].fire("click");
+  await flush();
+  view.sync();
+  assert.deepEqual(waiting(), ["Selected text"], "the same text once");
+  view.el.find(".chip-remove")[0].fire("click");
+  view.sync();
+  assert.deepEqual(waiting(), ["Selected text"], "still waiting");
+  await ask("next");
+  assert.equal(sent("chat_send").at(-1).screen.selection.text, "second");
 });
 
 test("Retry sends the question again with what went with it", async () => {

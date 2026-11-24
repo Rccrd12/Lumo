@@ -1271,7 +1271,8 @@ export function buildPrompt(
         State.promptContext = { kind: "file", name: f.name, path: f.path };
       }
     }
-    editBack = { screen: again.screen, more, dropped: State.droppedFile !== before.was || before.sent !== State.droppedFile?.sent ? { ...before, now: State.droppedFile } : null };
+    // Only what it adds: what was already waiting stays if the edit is given up.
+    editBack = { screen: leaveScreen(again.screen, screen), more, dropped: State.droppedFile !== before.was || before.sent !== State.droppedFile?.sent ? { ...before, now: State.droppedFile } : null };
     screen = joinScreen(screen, again.screen);
     // A screenshot kept with the chat shows its small picture until its own is read.
     for (const shot of again.screen.shots) {

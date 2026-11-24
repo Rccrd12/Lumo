@@ -223,9 +223,11 @@ export function loadChats(): SavedChat[] {
  * the conversation holds (`kept`). It shows as the answer's text again.
  */
 function unfoldUpdates(chat: SavedChat): SavedChat {
-  if (!chat.turns.some((turn) => "updates" in turn)) return chat;
+  // A turn that is not an object (storage holds anything) is passed over, never thrown on.
+  const hasUpdates = (turn: unknown) => !!turn && typeof turn === "object" && "updates" in turn;
+  if (!chat.turns.some(hasUpdates)) return chat;
   const turns = chat.turns.map((turn) => {
-    if (!("updates" in turn)) return turn;
+    if (!hasUpdates(turn)) return turn;
     const { updates, ...rest } = turn as SavedTurn & { updates?: unknown };
     const folded = Array.isArray(updates) && updates.length > 0 && rest.role === "assistant" && typeof rest.kept === "string";
     return folded ? { ...rest, content: rest.kept! } : rest;

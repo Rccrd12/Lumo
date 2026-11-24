@@ -415,6 +415,23 @@ test("as each second goes only the card's words change: its buttons stay under t
   assert.ok(el.find(".agents-row")[0].className.includes("done"));
 });
 
+test("a plan of more than ten steps: its bar fills as the count grows, though only words change", () => {
+  // Bug 14: the bar's fill is an inline value; the card kept the old one when nothing else changed shape.
+  const store = newAgentStore();
+  const plan = (done) => Array.from({ length: 12 }, (_, i) => ({ text: `Step ${i + 1}`, status: i < done ? "done" : i === done ? "active" : "pending" }));
+  send(store, "card6", agent("p", { plan: plan(2) }));
+  const c = store.get("card6");
+  const { host: h } = host();
+  const input = { chatId: "card6", chat: c, batch: c.batches[0], now: T0 + 10 * S };
+  const el = agentsCard(input, h);
+  const fill = el.querySelector(".plan-chip-segs").querySelector(".fill");
+  assert.equal(fill.style["--k"], String(2 / 12));
+  send(store, "card6", agent("p", { plan: plan(9) }));
+  fillAgentsCard(el, { ...input, now: T0 + 11 * S }, h);
+  assert.equal(el.querySelector(".plan-chip-count").textContent, "9/12");
+  assert.equal(el.querySelector(".plan-chip-segs").querySelector(".fill").style["--k"], String(9 / 12));
+});
+
 test("a row opens on its summary, its last steps and its numbers, with Stop this agent and Close", () => {
   const store = newAgentStore();
   send(store, "card2", agent("a", { now: { kind: "read", detail: "pag-036.png" }, lastSignalAt: T0 + 30 * S }));
