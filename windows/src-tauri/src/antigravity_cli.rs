@@ -316,8 +316,8 @@ fn activity_for(name: &str, params: &Value) -> Activity {
     }
     if n == "send_message" {
         return match field(&["Recipient", "recipient", "to"]).as_str() {
-            // A conversation's id (a subagent reporting to its parent): no name for the user.
             "" | "main" | "coordinator" => Activity::new("talk", ""),
+            // A conversation's id: no name for the user (to its parent, transcript_line says "the coordinator").
             to if safe_session(to).is_some() => Activity::new("talk", ""),
             to => Activity::new("talk", short(to)),
         };
@@ -1208,6 +1208,10 @@ fn transcript_line(row: &mut AgentRow, reading: &mut Reading, files: &mut Vec<Fi
         }
         if name == "send_message" {
             let to = ["Recipient", "recipient", "to"].iter().filter_map(|k| args[*k].as_str()).map(str::trim).find(|s| !s.is_empty()).unwrap_or("");
+            // To the agent that started it: "Talking to the coordinator", never its id.
+            if to_parent(to) {
+                row.now = Some(Activity::new("report", ""));
+            }
             if let Some(text) = args["Message"].as_str().or_else(|| args["message"].as_str()).map(str::trim).filter(|t| !t.is_empty() && to_parent(to)) {
                 heard.reported = true;
                 reading.report = Some(text.to_string());
@@ -4379,12 +4383,24 @@ mod tests {
     }
 
     #[test]
-    fn a_subagent_reporting_to_its_parent_by_id_shows_no_id() {
-        let to_parent = json!({"Recipient": "52500962-219b-4002-bdb2-47bc3d4412fc", "Message": "shard_008 done"});
+    fn a_subagent_reporting_to_its_parent_by_id_talks_to_the_coordinator() {
+        let parent = "52500962-219b-4002-bdb2-47bc3d4412fc";
+        let to_parent = json!({"Recipient": parent, "Message": "shard_008 done"});
         let a = activity_for("send_message", &to_parent);
-        assert_eq!((a.kind, a.detail.as_str()), ("talk", ""));
+        assert_eq!((a.kind, a.detail.as_str()), ("talk", ""), "an id is never shown");
         let named = activity_for("send_message", &json!({"Recipient": "reviewer", "Message": "look"}));
         assert_eq!((named.kind, named.detail.as_str()), ("talk", "reviewer"));
+        // On the subagent's row: "Talking to the coordinator".
+        let mut row = AgentRow::new("r", PROVIDER, "Shard 008 Author");
+        let (mut reading, mut files) = (Reading::default(), Vec::new());
+        let is_parent = |to: &str| to == parent;
+        let line = json!({"type": "PLANNER_RESPONSE", "source": "MODEL", "tool_calls": [{"name": "send_message", "args": to_parent.clone()}]});
+        assert!(transcript_line(&mut row, &mut reading, &mut files, &line, &is_parent).reported);
+        assert_eq!(row.now.as_ref().map(|a| (a.kind, a.detail.as_str())), Some(("report", "")));
+        // To one of its own subagents: an order, by name.
+        let line = json!({"type": "PLANNER_RESPONSE", "source": "MODEL", "tool_calls": [{"name": "send_message", "args": {"Recipient": "helper", "Message": "go"}}]});
+        transcript_line(&mut row, &mut reading, &mut files, &line, &is_parent);
+        assert_eq!(row.now.as_ref().map(|a| (a.kind, a.detail.as_str())), Some(("talk", "helper")));
     }
 
     #[test]
