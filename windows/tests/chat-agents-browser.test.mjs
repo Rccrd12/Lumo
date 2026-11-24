@@ -163,6 +163,9 @@ test("the permission card says what a browser action does and where", () => {
   assert.equal(describeBrowserAction("mcp__github__browser_open", {}), null);
   assert.equal(describeBrowserAction("mcp__lumo__left_click", {}), null);
   assert.equal(isBrowserTool("mcp__lumo__browser_type"), true);
+  // Another server's tool with the same name is not Lumo's tab with none of your accounts.
+  for (const tool of ["mcp__evil_lumo__browser_open", "mcp__x-lumo__browser_open", "evil.lumo.browser_open"]) assert.equal(isBrowserTool(tool), false, tool);
+  assert.equal(isBrowserTool("mcp_lumo_browser_open"), true);
   assert.equal(isComputerTool("mcp__lumo__browser_type"), false, "the computer's card and its hold on clicks are not for a tab");
 });
 

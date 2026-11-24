@@ -120,7 +120,7 @@ def _install():
         _isinstance=isinstance, _tuple=tuple, _decode=bytes.decode, _startswith=str.startswith,
         _endswith=str.endswith, _fspath=os.fspath, _Error=PermissionError, _O_WRONLY=os.O_WRONLY,
         _path_classes=path_classes, _class_dict=class_dict, _len=len, _get=type(vars(object)).get,
-        _dir_entry=dir_entry, _dir_entry_path=dir_entry_path,
+        _dir_entry=dir_entry, _dir_entry_path=dir_entry_path, _windows=windows, _rpartition=str.rpartition,
     ):
         if event not in _handled:
             return
@@ -199,6 +199,17 @@ def _install():
                     if _endswith(p, ending):
                         refuse("to write programs or libraries")
 
+        def link_target(target, link):
+            # A link's relative target is read from the link's own folder, not
+            # from the current one: `W/a/../x` checked is `W/x`, but W/link → ../x is
+            # outside. The target as the link will reach it.
+            t, at = text(target), where(link)
+            if t is None or at is None:
+                return target
+            if _startswith(t, "/") or _startswith(t, "\\") or (_windows and t[1:2] == ":"):
+                return t
+            return _plain(_full(_rpartition(at, _sep)[0] + _sep + t))
+
         if event == "open":
             path, mode, flags = (_tuple(args) + (None, None, None))[:3]
             if _type(mode) is _str:
@@ -220,6 +231,8 @@ def _install():
             if "system" not in _allow:
                 refuse("to run programs or change system settings")
         elif event in _writes:
+            if event == "os.symlink" and _len(args) > 1:
+                args = (link_target(args[0], args[1]),) + _tuple(args)[1:]
             if event in _takes_from and args:
                 may_read(args[0])
             # What each one writes: a copy its destination; an archive made
@@ -241,8 +254,13 @@ def _install():
                 if _isinstance(path, (_str, _bytes)) or is_path_type(_type(path)):
                     may_write(path)
         elif event in _reads:
-            if args and args[0] is not None and not _isinstance(args[0], _int):
-                may_read(args[0])
+            # No path (os.listdir(), os.scandir()) is the current folder, which
+            # os.chdir can make any folder.
+            path = args[0] if args else None
+            if path is None:
+                path = "."
+            if not _isinstance(path, _int):
+                may_read(path)
         elif event == "sqlite3.connect":
             if args and _isinstance(args[0], (_str, _bytes)) and text(args[0]) != ":memory:":
                 may_write(args[0])
@@ -251,8 +269,9 @@ def _install():
                 refuse("to look through Python's memory")
         elif event == "object.__setattr__":
             # The hook's own values and code (pathlib's classes are checked above).
+            # Its helpers too: a path counts as inside whatever their defaults say.
             target = args[0] if args else None
-            if target is _ours:
+            if target is _ours or target is _plain or target is _full:
                 refuse("to change Lumo's guard")
 
     # The hook knows itself, to refuse a change to its values or its code.

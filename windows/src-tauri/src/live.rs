@@ -185,7 +185,8 @@ pub fn full_path(raw: &str) -> Option<PathBuf> {
     } else {
         PathBuf::from(raw)
     };
-    path.is_absolute().then_some(path)
+    // `~///server/share`: the home folder gives way to a network path joined to it.
+    (path.is_absolute() && !is_network(&path.to_string_lossy())).then_some(path)
 }
 
 fn extension(path: &Path) -> String {
@@ -1252,6 +1253,10 @@ mod tests {
             assert!(missing(p).contains("network"), "{p}");
         }
         assert!(!is_network(r"C:\x") && !is_network("/home/me") && !is_network("~/x"));
+        // Nor one joined to the home folder, which gives way to it.
+        for p in ["~///attacker.example/share/x", r"~\\\attacker.example\share"] {
+            assert!(full_path(p).is_none(), "{p}");
+        }
     }
 
     #[test]

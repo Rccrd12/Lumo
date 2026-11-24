@@ -54,10 +54,27 @@ const BRANCH_LISTING = new Set(["-a", "-r", "-v", "-vv", "--all", "--remotes", "
 /** Where the system's own programs are: a command named by its path counts only from there. */
 const SYSTEM_DIR = /^(?:[a-z]:[\\/]windows[\\/](?:system32[\\/])?|\/(?:usr\/)?bin\/)[^\\/]+$/i;
 
+/** A word as the program receives it: quotes and escapes (`\\`, cmd's `^`) taken out. */
+function unquoted(word: string): string {
+  return word.replace(/\\(.)/g, "$1").replace(/['"^]/g, "");
+}
+
+/** A `git grep` option that opens the matches in a program (`-O`, `--open-files-in-pager`). */
+function opensPager(word: string): boolean {
+  if (/^-[^-]*O/.test(word)) return true;
+  const long = word.split("=")[0];
+  return long.length >= 4 && long.startsWith("--op") && "--open-files-in-pager".startsWith(long);
+}
+
 /** One command of a pipeline or a list: true when it only looks. */
 function looks(segment: string): boolean {
-  const words = segment.trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return false;
+  const raw = segment.trim().split(/\s+/).filter(Boolean);
+  if (!raw.length) return false;
+  // The program sees its arguments without their quotes and escapes:
+  // `find . '-delete'` and `git log --out"put"=x` act as their plain forms do,
+  // so the checks below read them as the program will. The program's own name
+  // stays as written (a quoted one is simply not one of the names below).
+  const words = [raw[0], ...raw.slice(1).map(unquoted)];
   // A program named by its path is whatever is there ("./evil/ls", "D:\Downloads\cat.exe"):
   // only the system's own folders are known to hold the real one.
   if (/[\\/]/.test(words[0]) && !SYSTEM_DIR.test(words[0])) return false;
@@ -82,7 +99,9 @@ function looks(segment: string): boolean {
     // "git reflog expire" and "git reflog delete" rewrite the reflog.
     if (sub === "reflog" && rest.some((w) => w === "expire" || w === "delete")) return false;
     // "git grep -O<program>" opens the matches in that program.
-    if (sub === "grep" && rest.some((w) => /^(-O|--open-files-in-pager)/.test(w))) return false;
+    // git takes it bundled after other short options ("-iOvim") and any
+    // unambiguous start of the long one ("--open=vim", "--op=vim").
+    if (sub === "grep" && rest.some(opensPager)) return false;
     return GIT_LOOKING.has(sub) && !words.some((w) => /^--output(=|$)/.test(w));
   }
   if (!LOOKING.has(name)) return false;
@@ -100,6 +119,9 @@ export function isLookingCommand(command: string): boolean {
   // Writing to a file, running something inside (a PowerShell script block or
   // subexpression too), or a background job: not simple.
   if (/[>`{}()]|\$\(|<\(|(^|[^&])&($|[^&])/.test(text)) return false;
+  // A variable, or bash's `$'…'` and `$"…"` quoting, can hold anything,
+  // an acting option too ("find . $'\\055delete'"): what it becomes can't be read here.
+  if (/\$[A-Za-z_'"]/.test(text)) return false;
   // A lone carriage return ends a command too, in PowerShell and in cmd.
   return text.split(/\|\||&&|\r\n?|[|;\n]/).every(looks);
 }

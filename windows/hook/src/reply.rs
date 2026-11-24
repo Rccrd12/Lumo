@@ -152,7 +152,9 @@ pub fn reads_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -
         .filter(|path| !path.trim().is_empty())
         .any(|path| {
             let p = norm_path(path);
-            if p.split('/').any(|part| part == "..") || holds_secrets(&p) {
+            // A %-escape too, before agy's own folder is trusted: an encoded `..`
+            // (`.gemini/antigravity/..%2f..%2fwindows`) climbs out of it once decoded.
+            if p.split('/').any(|part| part == "..") || holds_secrets(&p) || p.contains('%') {
                 return true;
             }
             if agy_own(&p) {
@@ -160,7 +162,7 @@ pub fn reads_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -
             }
             // The home folder or a variable the tool may expand: it can't be
             // placed for sure, as for a write.
-            if p.starts_with(['~', '$']) || p.contains('%') {
+            if p.starts_with(['~', '$']) {
                 return true;
             }
             // A network path (`\\server\share`, `\\?\UNC\…`, `\\.\…`) is
@@ -249,7 +251,7 @@ pub fn writes_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) 
             }
             // Not relative to the workspace once expanded: `~/…`, `$HOME/…`,
             // `${env:…}`, `%USERPROFILE%\…` (and `%3A`, a `file://` address's colon).
-            if p.starts_with(['~', '$']) || p.contains('%') {
+            if p.starts_with(['~', '$']) {
                 return true;
             }
             // A relative path is the workspace's own.
@@ -772,7 +774,15 @@ mod tests {
             assert!(r("list_dir", json!({ "DirectoryPath": path })), "{path}");
         }
         // The home folder or a variable: not the workspace's, for a read too.
-        for path in ["~\\Documents\\tax.pdf", "%USERPROFILE%\\x.txt", "$HOME/x", "file:///C:/ws/%2e%2e/x"] {
+        for path in [
+            "~\\Documents\\tax.pdf",
+            "%USERPROFILE%\\x.txt",
+            "$HOME/x",
+            "file:///C:/ws/%2e%2e/x",
+            // An encoded `..` inside agy's own folder still climbs out of it.
+            "file:///C:/Users/me/.gemini/antigravity/..%2f..%2f..%2fWindows%2fwin.ini",
+            "~/.gemini/antigravity/%2e%2e/%2e%2e/.ssh/id_ed25519",
+        ] {
             assert!(r("view_file", json!({ "AbsolutePath": path })), "{path}");
         }
         assert!(!r("write_to_file", json!({"TargetFile": "C:\\x.txt"})), "not a read");

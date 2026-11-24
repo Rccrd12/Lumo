@@ -182,3 +182,21 @@ test("a lone carriage return ends a command: what comes after it is looked at to
   assert.equal(isLookingCommand("Get-ChildItem\r\nGet-Location"), true);
   assert.equal(isLookingCommand("Get-ChildItem\rGet-Location"), true);
 });
+
+test("an acting option still acts with quotes, escapes or a variable around it", () => {
+  for (const c of [
+    "find . '-delete'", "find . -de'le'te", 'find . "-fprint" out', "find . -del\\ete",
+    "git log '--output=x'", 'git log --out"put"=x', "git reflog 'expire' --all", "date '-s' 2020-01-01",
+    "rg '--pre' ./run x", "find . $'\\055delete'", "find . $ACT", "git log ${X}",
+  ]) assert.equal(isLookingCommand(c), false, c);
+  // Quotes around what is only looked for change nothing.
+  for (const c of ["grep 'a b' notes.txt", 'rg "TODO" src', "find . -name '*.ts'"]) assert.ok(isLookingCommand(c), c);
+});
+
+test("git grep's pager is caught bundled or abbreviated", () => {
+  for (const c of ["git grep --open=calc.exe foo", "git grep --op=vim x", "git grep -iOcalc.exe foo", "git grep -nO vim x"]) {
+    assert.equal(isLookingCommand(c), false, c);
+    assert.equal(isSimpleRequest("Bash", { command: c }), false, c);
+  }
+  for (const c of ["git grep -i foo", "git grep --or x", "git grep --only-matching x", "git grep -n TODO"]) assert.ok(isLookingCommand(c), c);
+});
