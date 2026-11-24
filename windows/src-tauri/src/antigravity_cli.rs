@@ -3177,8 +3177,13 @@ fn run(
 ) -> Result<Run, String> {
     let agy = start_agy(&exe, &args, &dir, chat_id, String::new())?;
     let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
-    agy_turn(agy, input, Run::default(), &stop, false, &mut sink, tell, None)
+    // A run of its own (a command): no conversation to keep subagents for.
+    agy_turn(agy, input, Run::default(), &stop, false, &mut sink, tell, None).map_err(|(e, _)| e)
 }
+
+/// A turn that failed: why, and the subagents it had, kept for the next
+/// turn of the same conversation (Ask on their rows still reaches them).
+type TurnFailed = (String, Box<Subagents>);
 
 /// One turn of agy (`agy`: started for it, or one still at work for the
 /// chat): `input` goes on its input, its output is read (`drive`) into a run
@@ -3188,7 +3193,7 @@ fn run(
 /// the message up (nothing of the chat's own conversation comes in
 /// NOT_TAKEN), it ends and `again` starts a new one for it.
 #[allow(clippy::too_many_arguments)]
-fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger: bool, sink: &mut Sink, tell: &Tell, again: Option<&dyn Fn() -> Result<Agy, String>>) -> Result<Run, String> {
+fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger: bool, sink: &mut Sink, tell: &Tell, again: Option<&dyn Fn() -> Result<Agy, String>>) -> Result<Run, TurnFailed> {
     let mut ended = Ended::Left;
     if agy.write(&input) {
         let sent = Instant::now();
@@ -3202,9 +3207,13 @@ fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger
         kill_tree(&mut agy.child);
         state.subagents.run_ended(AgentState::Failed);
         tell(&mut state.subagents.agents, false);
-        let Some(again) = again else { return Err(t("Antigravity CLI didn't answer.")) };
+        let Some(again) = again else { return Err((t("Antigravity CLI didn't answer."), Box::new(std::mem::take(&mut state.subagents)))) };
         crate::log::line("antigravity: agy at work with its subagents did not take the message; a new one answers it");
-        return agy_turn(again()?, input, Run { subagents: std::mem::take(&mut state.subagents), ..Run::default() }, stop, may_linger, sink, tell, None);
+        let agy = match again() {
+            Ok(agy) => agy,
+            Err(e) => return Err((e, Box::new(std::mem::take(&mut state.subagents)))),
+        };
+        return agy_turn(agy, input, Run { subagents: std::mem::take(&mut state.subagents), ..Run::default() }, stop, may_linger, sink, tell, None);
     }
     if ended == Ended::Stopped {
         agy.close_input();
@@ -3224,7 +3233,9 @@ fn agy_turn(mut agy: Agy, input: String, mut state: Run, stop: &Stop, may_linger
         state.agy = Some(Box::new(agy));
         return Ok(state);
     }
-    finish(agy, &mut state, sink, tell)?;
+    if let Err(e) = finish(agy, &mut state, sink, tell) {
+        return Err((e, Box::new(std::mem::take(&mut state.subagents))));
+    }
     Ok(state)
 }
 
@@ -3697,7 +3708,7 @@ pub async fn send(
     let tell = chat_agents::teller(app, chat.id(), PROVIDER);
     let tell2 = tell.clone();
     let conversation2 = conversation.clone();
-    let state = tauri::async_runtime::spawn_blocking(move || -> Result<Run, String> {
+    let state = tauri::async_runtime::spawn_blocking(move || -> Result<Run, (String, Option<Box<Subagents>>)> {
         let conversation = conversation2;
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
@@ -3707,9 +3718,17 @@ pub async fn send(
         let mut plan_sent = String::new();
         // agy still going with its subagents answers it, else a new one.
         let start = || start_agy(&exe, &args, &work, &chat_id, key.clone());
-        let (agy, seeded, reused) = match take_lingering(&chat_id, &key, conversation.as_deref(), &stop)? {
+        // A turn that can't start hands the kept subagents back.
+        let lingering = match take_lingering(&chat_id, &key, conversation.as_deref(), &stop) {
+            Ok(lingering) => lingering,
+            Err(e) => return Err((e, seeded_subagents.map(Box::new))),
+        };
+        let (agy, seeded, reused) = match lingering {
             Some((agy, subagents)) => (agy, Some(subagents), true),
-            None => (start()?, seeded_subagents, false),
+            None => match start() {
+                Ok(agy) => (agy, seeded_subagents, false),
+                Err(e) => return Err((e, seeded_subagents.map(Box::new))),
+            },
         };
         // Ask on a row names it by its row: agy knows it by its conversation.
         let input = user_event(&rewrite_ask_ids(&text, seeded.as_ref()));
@@ -3730,10 +3749,10 @@ pub async fn send(
         };
         let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
         let state = Run { subagents: seeded.unwrap_or_default(), ..Run::default() };
-        agy_turn(agy, input, state, &stop, true, &mut sink, &tell2, reused.then_some(&start as &dyn Fn() -> Result<Agy, String>))
+        agy_turn(agy, input, state, &stop, true, &mut sink, &tell2, reused.then_some(&start as &dyn Fn() -> Result<Agy, String>)).map_err(|(e, subagents)| (e, Some(subagents)))
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| (e.to_string(), None))
     .and_then(|r| r);
     // What the turn did on the computer, for under its answer (as Claude
     // Code's). Subagents still at work keep the computer, the email tools
@@ -3754,7 +3773,13 @@ pub async fn send(
     };
     let mut state = match state {
         Ok(state) => state,
-        Err(e) => return failed(e, recap),
+        Err((e, subagents)) => {
+            // The conversation stays the chat's: its subagents stay with it.
+            if let (Some(conversation), Some(subagents)) = (&conversation, subagents) {
+                save_chat_subagents(chat.id(), conversation, *subagents);
+            }
+            return failed(e, recap);
+        }
     };
 
     // About how full the conversation is, for the chat's usage menu: agy does
@@ -3788,6 +3813,13 @@ pub async fn send(
         state.subagents.run_ended(AgentState::Failed);
         tell(&mut state.subagents.agents, false);
         with_agents(chat.id(), false);
+    }
+    // Stopped before agy named the conversation: the one it resumed is still
+    // the chat's, and keeps its subagents for the next turn.
+    if state.conversation.is_none() {
+        if let Some(conversation) = &conversation {
+            save_chat_subagents(chat.id(), conversation, std::mem::take(&mut state.subagents));
+        }
     }
     if state.stopped {
         let shown = state.shown.trim().to_string();
@@ -5610,6 +5642,29 @@ mod tests {
         let _ = finish(*agy, &mut own, &mut sink, &chat_agents::silent());
         let row = own.subagents.agents.get(&own.subagents.spawns[0].row).unwrap();
         assert_eq!((row.state, row.ended_by), (AgentState::Failed, Some("cli")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_turn_that_fails_hands_its_subagents_back_for_the_next_turn() {
+        // agy starts a writer, then ends without a result.
+        let uri = "file:///C:/Users/me/.gemini/antigravity-cli/brain/sub/.system_generated/logs/transcript.jsonl";
+        let dir = std::env::temp_dir().join(format!("lumo-fake-agy-{}", chat_agents::run_mark()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stream = dir.join("stream.jsonl");
+        std::fs::write(&stream, done_with(SPAWN_A, uri) + "\n").unwrap();
+        let args = ["/c".to_string(), "type".to_string(), stream.to_string_lossy().to_string()];
+        let agy = start_agy(std::path::Path::new("cmd"), &args, &dir, "", "k".into()).unwrap();
+        let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|_: &str| {}, |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let Err((_, subagents)) = agy_turn(agy, user_event("go"), Run::default(), &Stop::default(), true, &mut sink, &chat_agents::silent(), None) else {
+            panic!("no result: the turn fails");
+        };
+        assert_eq!(subagents.spawns.len(), 1, "the writer is handed back");
+        // Kept under the conversation, the next turn of it finds them.
+        let chat = "chat-failed-turn";
+        save_chat_subagents(chat, "main-1", *subagents);
+        assert_eq!(take_chat_subagents(chat, Some("main-1")).map(|s| s.spawns.len()), Some(1));
         let _ = std::fs::remove_dir_all(dir);
     }
 

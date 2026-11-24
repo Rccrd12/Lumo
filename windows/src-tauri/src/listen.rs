@@ -448,10 +448,13 @@ pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str
     Ok(push(watch, replace))
 }
 
-/// Whether two watches listen to the same thing for the same event.
+/// Whether two watches listen to the same thing for the same event. The
+/// text is part of it: a workflow, a label, an environment, the words a page
+/// is watched for (a watch on workflow CI is not one on Release).
 fn same(a: &Watch, b: &Watch) -> bool {
     a.source == b.source
         && a.until == b.until
+        && a.text.eq_ignore_ascii_case(&b.text)
         && if a.github() { a.repo.eq_ignore_ascii_case(&b.repo) && a.number == b.number } else { a.target.eq_ignore_ascii_case(&b.target) }
 }
 
@@ -2359,6 +2362,16 @@ mod tests {
         assert!(same(&w, &again));
         assert!(!same(&w, &Watch { until: "created".into(), ..w.clone() }));
         assert!(!same(&w, &watch("checks")));
+    }
+
+    #[test]
+    fn watches_that_wait_for_different_text_are_both_kept() {
+        let ci = Watch { source: "github.workflow".into(), until: "failed".into(), target: "o/r".into(), repo: String::new(), number: 0, text: "CI".into(), ..watch("checks") };
+        let release = Watch { id: 2, text: "Release".into(), ..ci.clone() };
+        assert!(!same(&ci, &release));
+        assert!(same(&ci, &Watch { id: 3, text: "ci".into(), ..ci.clone() }), "the same watch again replaces it");
+        let page = Watch { source: "web".into(), until: "contains".into(), target: "https://example.com".into(), repo: String::new(), number: 0, text: "In stock".into(), ..watch("checks") };
+        assert!(!same(&page, &Watch { text: "Sold out".into(), ..page.clone() }));
     }
 
     #[test]
