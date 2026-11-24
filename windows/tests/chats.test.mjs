@@ -47,6 +47,11 @@ test("unreadable storage reads as no chats", () => {
   assert.deepEqual(loadChats(), []);
   mem.set("lumo.chats.v1", JSON.stringify([{ nope: 1 }, chat("ok")]));
   assert.deepEqual(loadChats().map((c) => c.id), ["ok"]);
+  // Bug 127: a turn that is no object (null, a number) never takes the whole history with it.
+  mem.set("lumo.chats.v1", JSON.stringify([{ ...chat("bad"), turns: [null, 3] }, chat("good")]));
+  assert.ok(loadChats().some((c) => c.id === "good"));
+  saveChat(chat("new"));
+  assert.ok(loadChats().some((c) => c.id === "good"), "saving keeps it");
 });
 
 test("the title is the first question on one line, shortened", () => {

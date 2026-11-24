@@ -326,3 +326,14 @@ test("Change with Lumo opens the workshop on the tool, and Save updates it", asy
   assert.equal(State.chatId, forgeId);
   assert.equal(State.chatHistory.length, 4, "its whole conversation, not a new one");
 });
+
+test("a workshop chat saved again is the newest link: it is not the one dropped past sixty", async () => {
+  // Bug 128: saved again, its link kept its old place and went first, so the next Save made a second tool.
+  const { linkSaved, savedLink } = await import("../src/views/forge.ts");
+  localStorage.removeItem("lumo.forge.saved.v1");
+  for (let i = 0; i < 60; i++) linkSaved(`forge:c${i}`, `tool${i}`, `k${i}`);
+  linkSaved("forge:c0", "tool0", "k0-v2");
+  linkSaved("forge:new", "toolN", "kN");
+  assert.deepEqual(savedLink("forge:c0"), { tool: "tool0", key: "k0-v2" });
+  assert.equal(savedLink("forge:c1"), null, "the oldest other one goes");
+});

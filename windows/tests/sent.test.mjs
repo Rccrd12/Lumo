@@ -253,6 +253,23 @@ test("an edit given up takes back out only what it put back", async () => {
   assert.equal(sent("chat_send").at(-1).screen.selection.text, "typed meanwhile");
 });
 
+test("an edit given up leaves what was already waiting, even the same thing it put back", async () => {
+  // Bug 129: the edit took back out everything it had brought, also what the user had attached before.
+  await twoQuestions();
+  State.incomingShare = { kind: "selection", selection: { text: "second", app: "", title: "" } };
+  view.sync();
+  assert.deepEqual(waiting(), ["Selected text"]);
+  rows()[2].find(".msg-edit")[0].fire("click");
+  await flush();
+  view.sync();
+  assert.deepEqual(waiting(), ["Selected text"], "the same text once");
+  view.el.find(".chip-remove")[0].fire("click");
+  view.sync();
+  assert.deepEqual(waiting(), ["Selected text"], "still waiting");
+  await ask("next");
+  assert.equal(sent("chat_send").at(-1).screen.selection.text, "second");
+});
+
 test("Retry sends the question again with what went with it", async () => {
   await twoQuestions();
   rows()[3].find(".msg-retry")[0].fire("click");

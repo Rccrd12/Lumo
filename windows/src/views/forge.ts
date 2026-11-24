@@ -109,6 +109,8 @@ export function savedLink(chatId: string): SavedLink | null {
 /** Remembers that `chatId` saved (or opened on) `tool`, as `key`. */
 export function linkSaved(chatId: string, tool: string, key: string) {
   const all = links();
+  // Saved again, it is the newest: at the end, the last to go.
+  delete all[chatId];
   all[chatId] = { tool, key };
   // Only the newest few: a link is a convenience.
   const kept = Object.fromEntries(Object.entries(all).slice(-60));
