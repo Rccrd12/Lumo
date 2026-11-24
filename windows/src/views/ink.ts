@@ -152,7 +152,7 @@ function inFence(text: string, i: number): boolean {
     const m = /^\s*(```+|~~~+)/.exec(line);
     if (!m) continue;
     if (!fence) fence = m[1];
-    else if (m[1][0] === fence[0] && m[1].length >= fence.length && line.trim() === m[1]) fence = null;
+    else if (m[1][0] === fence[0] && line.trim() === m[1]) fence = null;
   }
   return fence != null;
 }

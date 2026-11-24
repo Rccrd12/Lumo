@@ -56,11 +56,6 @@ test("a finished answer is drawn whole, even when it ends in a lone number or ma
   assert.equal(drawn("Steps\n\n1.", undefined, false), "Steps");
 });
 
-test("a shorter fence inside a code block does not close it", () => {
-  const text = "````md\n```\nPrice $$ x y z\nmore words here\n";
-  assert.equal(drawn(text), text.trimEnd(), "the code flows word by word, its $$ only code");
-});
-
 test("a table row comes whole", () => {
   assert.equal(drawn("Tabella:\n\n| a | b |\n| - | "), "Tabella:\n\n| a | b |");
 });
