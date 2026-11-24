@@ -593,9 +593,14 @@ export class CompactStrip {
 export function replyQuestion(m: MailPeek): string {
   const send = aiSends(State.settings.aiMailAccess) && isCliProvider(State.settings.chatProvider) && !!m.address;
   if (!send) return t(MAIL_TEXT.askReply);
-  // The inbox's emails come as "server:uid" (mail.rs): mail_reply takes "inbox:uid".
+  // The inbox's emails come as "server:uid" (mail.rs), or "account/server:uid" for
+  // a second account: mail_reply takes "inbox:uid", or "account:inbox:uid" for
+  // that account. An account it can't be named by gets a new email instead.
   const uid = m.id.split(":").pop() ?? "";
-  return /^\d+$/.test(uid) ? t(MAIL_TEXT.askReplyInThread, { id: `inbox:${uid}` }) : t(MAIL_TEXT.askSend, { address: m.address });
+  const slash = m.id.indexOf("/");
+  const account = slash < 0 ? "" : m.id.slice(0, slash);
+  const id = account === "" || account === "imap:1" ? `inbox:${uid}` : account.includes("@") ? `${account}:inbox:${uid}` : "";
+  return /^\d+$/.test(uid) && id ? t(MAIL_TEXT.askReplyInThread, { id }) : t(MAIL_TEXT.askSend, { address: m.address });
 }
 
 /** The chat summarizes the email, or replies to it (the pill's card, the closed island). */

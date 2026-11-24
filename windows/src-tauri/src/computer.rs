@@ -2136,11 +2136,10 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     };
     // One agent at a time (computer_turns.rs): a call that skipped the line
     // while others wait for their turn is told to wait too. The call is over
-    // (`call_done`) however it ends.
-    if !crate::computer_turns::call_start() {
+    // (the guard `call_start` returns) however it ends.
+    let Some(_done) = crate::computer_turns::call_start() else {
         return refuse(BUSY_TEXT);
-    }
-    let _done = CallDone;
+    };
     // Another agent's turn: Lumo asks, or refuses, itself.
     let ask = match &other {
         Some(o) if !only_looks(&tool) => match asks_now(app, o) {
@@ -2213,15 +2212,6 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     match view_now {
         Some(view) if grid => on_grid(answer, view),
         _ => answer,
-    }
-}
-
-/// A call that went past the line (`computer_turns::call_start`): over when dropped.
-struct CallDone;
-
-impl Drop for CallDone {
-    fn drop(&mut self) {
-        crate::computer_turns::call_done();
     }
 }
 
@@ -2559,6 +2549,23 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             Ok(json!({ "text": if off { format!("[{x}, {y}] — outside this screen.") } else { format!("[{x}, {y}]") } }))
         }
     }
+}
+
+/// `units` (UTF-16) cut into runs of at most `most`, never between the two
+/// halves of a character past U+FFFF (an emoji): each run is whole characters.
+fn whole_runs(units: &[u16], most: usize) -> Vec<&[u16]> {
+    let mut runs = Vec::new();
+    let mut rest = units;
+    while !rest.is_empty() {
+        let mut n = rest.len().min(most);
+        if n < rest.len() && n > 1 && (0xD800..0xDC00).contains(&rest[n - 1]) {
+            n -= 1;
+        }
+        let (run, tail) = rest.split_at(n);
+        runs.push(run);
+        rest = tail;
+    }
+    runs
 }
 
 mod imp {
@@ -3160,7 +3167,7 @@ mod imp {
         let mut typed = 0usize;
         let mut pending: Vec<u16> = Vec::new();
         let flush = |pending: &mut Vec<u16>, typed: &mut usize| -> Result<(), String> {
-            for chunk in pending.chunks(BATCH) {
+            for chunk in whole_runs(pending, BATCH) {
                 if stop() {
                     return Err(format!("Stopped after {typed} characters."));
                 }
@@ -3211,6 +3218,25 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typing_never_cuts_an_emoji_in_two() {
+        let units: Vec<u16> = format!("{}😀", "a".repeat(23)).encode_utf16().collect();
+        assert_eq!(units.len(), 25);
+        let runs = whole_runs(&units, 24);
+        assert_eq!(runs.iter().map(|r| r.len()).collect::<Vec<_>>(), [23, 2]);
+        for run in &runs {
+            let text = String::from_utf16(run).expect("whole characters");
+            assert!(!text.contains('\u{FFFD}'));
+        }
+        let typed: usize = runs.iter().map(|r| String::from_utf16_lossy(r).chars().count()).sum();
+        assert_eq!(typed, 24);
+        // Short text, or a cut that falls between two characters, as before.
+        assert_eq!(whole_runs(&units[..10], 24), [&units[..10]]);
+        let plain: Vec<u16> = "a".repeat(50).encode_utf16().collect();
+        assert_eq!(whole_runs(&plain, 24).iter().map(|r| r.len()).collect::<Vec<_>>(), [24, 24, 2]);
+        assert!(whole_runs(&[], 24).is_empty());
+    }
 
     #[test]
     fn screenshots_are_sent_at_a_size_every_model_reads_whole() {

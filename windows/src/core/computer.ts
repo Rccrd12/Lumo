@@ -19,7 +19,9 @@ const NAMES = new Set([
  * (`mcp_lumo_<name>`, `lumo/<name>`). Null for any other tool.
  */
 export function computerToolName(tool: string): string | null {
-  const m = /(?:^|[_/.:-])lumo[_/.:-]+([a-z_]+)$/i.exec(tool);
+  // Only the server named `lumo`, with nothing in front but the agent's own
+  // `mcp` (as lumo_tool in hook/src/mcp.rs): "mcp__work_lumo__…" is another server's.
+  const m = /^(?:mcp[_/.:-]+)?lumo[_/.:-]+([a-z_]+)$/i.exec(tool);
   const name = m?.[1].toLowerCase() ?? "";
   return NAMES.has(name) ? name : null;
 }
@@ -189,7 +191,7 @@ export function describeComputerAction(tool: string, input: Record<string, unkno
     case "scroll": {
       const dir = typeof input.scroll_direction === "string" ? input.scroll_direction : "";
       const amount = typeof input.scroll_amount === "number" ? ` ×${input.scroll_amount}` : "";
-      return line(SCROLLS[dir] ?? SCROLLS.down, `${at}${amount}`);
+      return line(SCROLLS[dir] ?? SCROLLS.down, `${at}${amount}${held}`);
     }
     case "type": {
       // All of it, as it will be typed: each line break is an Enter (a

@@ -27,6 +27,16 @@ test("an event Lumo cannot watch, or no pull request, is taken out and said", ()
   assert.deepEqual(got.unread, ["[[listen o/r#3 deployed: x]]", "[[listen o#3 merged]]", "[[listen o/r merged]]"]);
 });
 
+test("code blocks side by side stay two, and only a block of markers goes", () => {
+  const two = "```js\nconst a = 1;\n```\n\n```\nnpm test\n```";
+  assert.equal(takeListens(two).text, two);
+  assert.equal(takeListens("Ok.\n```\n```\nDone.").text, "Ok.\n```\n```\nDone.", "a block the answer wrote, even empty, is its own");
+  const got = takeListens("PR opened.\n```\n[[listen o/r#3 ready: merge it]]\n```\n```\nnpm test\n```");
+  assert.equal(got.text, "PR opened.\n```\nnpm test\n```");
+  assert.equal(got.listens.length, 1);
+  assert.equal(takeListens("Hi\n```\n[[listen o/r#3 ready: merge it]]").text, "Hi", "an unclosed block of markers goes too");
+});
+
 test("a marker only named in a sentence stays as written and is not said", () => {
   for (const said of [
     "I `[[listen]]` chiedono conferma.",

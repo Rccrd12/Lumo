@@ -48,6 +48,14 @@ test("a list marker comes with its word, a code block flows from its first word"
   assert.equal(drawn("```sh\necho $HOME e poi "), "```sh\necho $HOME e poi");
 });
 
+test("a finished answer is drawn whole, even when it ends in a lone number or marker", () => {
+  assert.equal(drawn("5.", undefined, true), "5.");
+  assert.equal(drawn("The answer is:\n\n42.", undefined, true), "The answer is:\n\n42.");
+  assert.equal(drawn("Steps\n-", undefined, true), "Steps\n-");
+  // Still coming in, a lone marker waits for its words.
+  assert.equal(drawn("Steps\n\n1.", undefined, false), "Steps");
+});
+
 test("a table row comes whole", () => {
   assert.equal(drawn("Tabella:\n\n| a | b |\n| - | "), "Tabella:\n\n| a | b |");
 });

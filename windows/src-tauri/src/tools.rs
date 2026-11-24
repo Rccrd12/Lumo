@@ -259,12 +259,16 @@ fn valid_id(id: &str) -> bool {
 
 /// A file name of the tool's own folder: no folders, nothing hidden, no `..`.
 fn valid_file_name(name: &str) -> bool {
-    let reserved = ["con", "prn", "aux", "nul", "com1", "lpt1"];
+    let reserved = [
+        "con", "prn", "aux", "nul", "conin$", "conout$", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+        "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
     !name.is_empty()
         && name.len() <= 80
         && !name.starts_with('.')
         && !name.ends_with(['.', ' '])
-        && name != MANIFEST
+        // NTFS ignores case: `TOOL.JSON` is the manifest too.
+        && !name.eq_ignore_ascii_case(MANIFEST)
         && !name.chars().any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control())
         && !reserved.contains(&name.split('.').next().unwrap_or("").to_ascii_lowercase().as_str())
 }
@@ -429,6 +433,8 @@ fn runs_anything(path: &Path) -> bool {
         "cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "rundll32", "regsvr32", "msiexec", "bash", "sh", "wsl",
         "python", "pythonw", "py", "pyw", "node", "deno", "bun", "ruby", "perl", "php", "java", "javaw", "conhost", "explorer",
         "schtasks", "reg", "certutil", "bitsadmin", "curl", "wget", "msbuild", "installutil", "forfiles", "ftp", "sc",
+        "zsh", "fish", "dash", "ksh", "csh", "tcsh", "nu", "lua", "luajit", "rscript", "r", "tclsh", "wish", "pypy", "julia",
+        "dotnet", "awk", "gawk", "env", "xargs", "busybox", "npx", "npm", "pnpm", "yarn", "uvx", "pipx",
     ];
     let real = crate::file_moves::real_path(path);
     let stem = |p: &Path| p.file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
@@ -437,7 +443,13 @@ fn runs_anything(path: &Path) -> bool {
         let p = p.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
         p.starts_with(&format!("{}\\", windows.trim_end_matches('\\')))
     };
-    let host = |p: &Path| matches!(extension(p).as_str(), "exe" | "com") && HOSTS.contains(&stem(p).as_str());
+    // `python3.12.exe` is `python`, and `npx.cmd` runs `npx` as surely as `npx.exe`.
+    let host = |p: &Path| {
+        let stem = stem(p);
+        matches!(extension(p).as_str(), "exe" | "com" | "bat" | "cmd")
+            && (HOSTS.contains(&stem.as_str())
+                || HOSTS.contains(&stem.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-')))
+    };
     host(path) || host(&real) || in_windows(path) || in_windows(&real)
 }
 
@@ -553,12 +565,22 @@ pub fn tools_set_command(app: AppHandle, id: String, command: String) -> Result<
 
 /// An id no other tool has, from the name.
 fn free_id(name: &str) -> String {
-    let base = slug(name);
     let root = tools_dir();
-    if !root.join(&base).exists() {
-        return base;
+    first_free(&slug(name), |id| root.join(id).exists())
+}
+
+/// `base`, or `base_2`, `base_3`… the first one not `taken`. The base is
+/// shortened so the number fits in `MAX_ID`: a longer id is not one
+/// `valid_id` takes, and the tool saved under it would never be listed.
+fn first_free(base: &str, taken: impl Fn(&str) -> bool) -> String {
+    if !taken(base) {
+        return base.to_string();
     }
-    (2..1000).map(|n| format!("{base}_{n}")).find(|id| !root.join(id).exists()).unwrap_or_else(|| format!("{base}_{}", now_ms()))
+    let with = |tail: String| {
+        let keep: String = base.chars().take(MAX_ID - tail.len() - 1).collect();
+        format!("{}_{tail}", keep.trim_end_matches('_'))
+    };
+    (2..1000).map(|n| with(n.to_string())).find(|id| !taken(id)).unwrap_or_else(|| with(now_ms().to_string()))
 }
 
 /// Saves a draft as a tool, on: a new one, or the one it `replaces` (whose
@@ -680,12 +702,22 @@ pub fn set_review(id: &str, review: Review) -> Result<ToolInfo, String> {
 
 /// A tool to review: its tool.json as the supervisor reads it, its files (name,
 /// what it holds), and the fingerprint of all that.
+/// What the review is given for a file of the tool it couldn't read: over
+/// `MAX_FILE_BYTES`, or not text.
+pub const NOT_READ: &str = "(this file is too big or not text: its code can't be read)";
+
 pub type ForReview = (Manifest, Vec<(String, String)>, String);
 
 /// The tool `id`, as the supervisor reviews it (`ForReview`).
 pub fn for_review(id: &str) -> Option<ForReview> {
     let (dir, m) = find(id)?;
     let mut files = read_files(id);
+    // A file too big or not text is still the tool's: the review says it wasn't read.
+    for name in own_files(&dir) {
+        if !files.iter().any(|(n, _)| *n == name) {
+            files.push((name, NOT_READ.into()));
+        }
+    }
     let entry = Path::new(&m.entry);
     if entry.is_absolute() {
         let text = std::fs::read(entry).ok().filter(|b| b.len() <= MAX_FILE_BYTES).and_then(|b| String::from_utf8(b).ok());
@@ -1925,6 +1957,38 @@ mod tests {
     }
 
     #[test]
+    fn a_versioned_interpreter_or_a_launcher_wrapper_is_a_host_too() {
+        // Bug report #112: the version in the name hid the interpreter.
+        assert!(runs_anything(Path::new(r"C:\Users\x\AppData\Local\Microsoft\WindowsApps\python3.exe")));
+        assert!(runs_anything(Path::new(r"C:\Users\x\AppData\Local\Microsoft\WindowsApps\python3.12.exe")));
+        assert!(runs_anything(Path::new(r"D:\bin\zsh.exe")));
+        assert!(runs_anything(Path::new(r"D:\bin\lua5.4.exe")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\R\bin\Rscript.exe")));
+        // Bug report #113: a .cmd wrapper, or a launcher that runs its arguments.
+        assert!(runs_anything(Path::new(r"C:\Program Files\nodejs\npx.cmd")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\nodejs\npm.cmd")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\Git\usr\bin\env.exe")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\Git\usr\bin\xargs.exe")));
+        assert!(runs_anything(Path::new(r"D:\bin\busybox.exe")));
+        // A program with digits in its name is still the user's own.
+        assert!(!runs_anything(Path::new(r"C:\Users\me\bin\convert2.exe")));
+        assert!(!runs_anything(Path::new(r"C:\Users\me\bin\ffmpeg.exe")));
+    }
+
+    #[test]
+    fn a_draft_file_is_never_the_manifest_or_a_device() {
+        // Bug report #111: NTFS ignores case, and every COM/LPT port is a device.
+        assert!(!valid_file_name("TOOL.JSON"));
+        assert!(!valid_file_name("Tool.json"));
+        for name in ["com2.py", "com9", "lpt3", "lpt9.txt", "conin$", "CONOUT$"] {
+            assert!(!valid_file_name(name), "{name}");
+        }
+        assert!(valid_file_name("tool.py"));
+        assert!(valid_file_name("compute.py"));
+        assert!(valid_file_name("com10.py"));
+    }
+
+    #[test]
     fn the_api_providers_get_the_email_tools_security_lets_the_ai_have() {
         let names = |mail: &str| mail_api_tools(mail).into_iter().map(|t| t.0).collect::<Vec<_>>();
         assert!(names("").is_empty());
@@ -1960,6 +2024,22 @@ mod tests {
         assert!(slug(&"a".repeat(200)).len() <= MAX_ID);
         assert!(valid_id(&slug("Ciao Mondo 2")));
         assert!(!valid_id("../x") && !valid_id("A") && !valid_id(""));
+    }
+
+    #[test]
+    fn a_second_tool_with_a_long_name_gets_an_id_that_is_listed() {
+        let base = slug("Convert every PDF in my downloads folder into text");
+        assert_eq!(base.len(), MAX_ID);
+        assert_eq!(first_free(&base, |_| false), base);
+        let second = first_free(&base, |id| id == base);
+        assert!(valid_id(&second) && second != base, "{second}");
+        assert_eq!(second, "convert_every_pdf_in_my_downloads_folder_into_2");
+        let third = first_free(&base, |id| id == base || id == second);
+        assert!(valid_id(&third) && third.ends_with("_3"), "{third}");
+        // Every number taken: the time it was saved, still short enough.
+        let late = first_free(&base, |id| id.rsplit('_').next().is_none_or(|n| n.len() < 13));
+        assert!(valid_id(&late), "{late}");
+        assert_eq!(first_free("short", |id| id == "short"), "short_2");
     }
 
     #[test]
@@ -2127,6 +2207,59 @@ mod tests {
         assert!(unguarded(Path::new("t.py"), &[]).is_empty());
         assert_eq!(unguarded(Path::new("t.ps1"), &["read".into()]), ["network", "write", "system"]);
         assert!(unguarded(Path::new("t.bat"), &PERMISSIONS.iter().map(|p| p.to_string()).collect::<Vec<_>>()).is_empty(), "declared all: nothing left to hold");
+    }
+
+    /// The guard's own ways out, closed: changing its helpers' defaults
+    /// (found in a refusal's traceback), listing the current folder after
+    /// moving it, and a link whose relative target is read from another folder.
+    /// Runs where a Python is installed; nothing to run otherwise.
+    #[test]
+    fn the_python_guard_holds_against_its_own_ways_out() {
+        let found = |p: &&str| Command::new(p).arg("--version").output().is_ok_and(|o| o.status.success());
+        let Some(python) = ["python", "python3"].into_iter().find(found) else { return };
+        let base = std::env::temp_dir().join(format!("lumo-guard-test-{}", std::process::id()));
+        let (tool, work, secret) = (base.join("tool"), base.join("work"), base.join("secret"));
+        for dir in [&tool, &work.join("a"), &secret] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        std::fs::write(secret.join("s.txt"), "SECRET").unwrap();
+        std::fs::write(base.join("guard.py"), GUARD).unwrap();
+        let outside = secret.to_string_lossy().replace('\\', "/");
+        let w = work.to_string_lossy().replace('\\', "/");
+        let scripts = [
+            // The defaults of the guard's helpers, from the refusal's traceback.
+            format!(
+                "try:\n    open('{outside}/s.txt')\nexcept PermissionError as e:\n    tb = e.__traceback__\n    while tb.tb_frame.f_code.co_name != 'hook': tb = tb.tb_next\n    plain = tb.tb_frame.f_locals['_plain']\n    d = list(plain.__defaults__)\n    d[0] = lambda p, a, b: '{w}'\n    plain.__defaults__ = tuple(d)\nprint('ESCAPED', open('{outside}/s.txt').read())\n"
+            ),
+            // A listing of the current folder, moved outside.
+            format!("import os\nos.chdir('{outside}')\nprint('ESCAPED', os.listdir())\n"),
+            // A link whose relative target looks inside from the current folder.
+            format!("import os\nos.chdir('{w}/a')\nos.symlink('../secret/s.txt', '{w}/link')\nprint('ESCAPED', open('{w}/link').read())\n"),
+            // A database by a file: URI, or by a pathlib path, outside the work folder.
+            format!("import sqlite3\nsqlite3.connect('file:{outside}/x.db', uri=True)\nprint('ESCAPED')\n"),
+            format!("import sqlite3, pathlib\nsqlite3.connect(pathlib.Path('{outside}/x.db'))\nprint('ESCAPED')\n"),
+            // A library by a stream's name, without "system".
+            format!("open('{w}/evil.dll::$DATA', 'wb').close()\nprint('ESCAPED')\n"),
+        ];
+        for (n, script) in scripts.iter().enumerate() {
+            let path = tool.join(format!("t{n}.py"));
+            std::fs::write(&path, script).unwrap();
+            let out = Command::new(python)
+                .arg("-I")
+                .arg(base.join("guard.py"))
+                .arg(&path)
+                .env("LUMO_TOOL_ALLOW", "")
+                .env("LUMO_TOOL_DIR", &tool)
+                .env("LUMO_TOOL_WORK", &work)
+                // As a tool may move there: a file: URI is then "inside" read as a path.
+                .current_dir(&work)
+                .output()
+                .unwrap();
+            let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+            assert!(!stdout.contains("ESCAPED"), "script {n} got out: {stdout}");
+            assert!(stderr.contains("Lumo: this tool didn't say"), "script {n}: {stderr}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

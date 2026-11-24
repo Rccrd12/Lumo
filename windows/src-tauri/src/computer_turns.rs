@@ -57,6 +57,14 @@ struct Waiter {
     asked: u64,
 }
 
+/// The holder a call was counted for (`Turns::call_start`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallOf {
+    chat: String,
+    agent: String,
+    since: u64,
+}
+
 /// What a caller is told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ask {
@@ -190,18 +198,24 @@ impl Turns {
         }
     }
 
-    /// A call of the holder starts (computer.rs serve): it is using it.
-    pub fn call_start(&mut self, now: u64) {
-        if let Some(h) = self.holder.as_mut() {
-            h.calls += 1;
-            h.active = now;
-        }
+    /// A call of the holder starts (computer.rs serve): it is using it. The
+    /// holder it counts for, to be given back to `call_done`.
+    pub fn call_start(&mut self, now: u64) -> Option<CallOf> {
+        let h = self.holder.as_mut()?;
+        h.calls += 1;
+        h.active = now;
+        Some(CallOf { chat: h.chat.clone(), agent: h.agent.clone(), since: h.since })
     }
 
-    pub fn call_done(&mut self, now: u64) {
-        if let Some(h) = self.holder.as_mut() {
-            h.calls = h.calls.saturating_sub(1);
-            h.active = now;
+    /// The call `of` ended. Only the holder that started it counts it: one
+    /// whose turn ended while it ran never takes from the next holder's
+    /// running call, which would leave the computer to a third mid-call.
+    pub fn call_done(&mut self, now: u64, of: Option<&CallOf>) {
+        if let (Some(h), Some(of)) = (self.holder.as_mut(), of) {
+            if h.chat == of.chat && h.agent == of.agent && h.since == of.since {
+                h.calls = h.calls.saturating_sub(1);
+                h.active = now;
+            }
         }
     }
 
@@ -359,20 +373,25 @@ pub fn clear<R: Runtime>(app: &AppHandle<R>) {
     with(app, |t| ((), t.clear()));
 }
 
-/// A call that passed the gate starts: the holder is using the computer.
-/// False when the line is busy and nobody holds it (the call skipped the gate).
-pub fn call_start() -> bool {
+/// A call that passed the gate starts: the holder is using the computer
+/// until the returned guard is dropped, however the call ends. None when the
+/// line is busy and nobody holds it (the call skipped the gate).
+pub fn call_start() -> Option<Call> {
     let mut turns = TURNS.lock().unwrap_or_else(|e| e.into_inner());
     if turns.holder.is_none() && !turns.waiting.is_empty() {
-        return false;
+        return None;
     }
-    turns.call_start(now_ms());
-    true
+    Some(Call(turns.call_start(now_ms())))
 }
 
-pub fn call_done() {
-    TURNS.lock().unwrap_or_else(|e| e.into_inner()).call_done(now_ms());
-    CHANGED.notify_waiters();
+/// A call that went past the line (`call_start`): over when dropped.
+pub struct Call(Option<CallOf>);
+
+impl Drop for Call {
+    fn drop(&mut self) {
+        TURNS.lock().unwrap_or_else(|e| e.into_inner()).call_done(now_ms(), self.0.as_ref());
+        CHANGED.notify_waiters();
+    }
 }
 
 /// A card came or went: a holder waiting on the user keeps its turn.
@@ -419,9 +438,9 @@ mod tests {
         t.ask("c", "a2", 0);
         t.ask("c", "a3", 0);
         // Using it: it keeps it, however long a call takes.
-        t.call_start(1_000);
+        let call = t.call_start(1_000);
         assert!(!t.pass_if_due(60_000, false));
-        t.call_done(60_000);
+        t.call_done(60_000, call.as_ref());
         assert!(!t.pass_if_due(70_000, false), "not yet unused long enough");
         // A card waits for the user's click: it keeps it.
         assert!(!t.pass_if_due(90_000, true));
@@ -448,11 +467,40 @@ mod tests {
         assert!(!t.pass_if_due(25_001, false));
         assert_eq!(t.ask("c", "a1", 25_002), Ask::Wait { place: 1, of: 1 });
         // The allowed call arrives and ends: then, unused, it passes.
-        t.call_start(26_000);
-        t.call_done(27_000);
+        let call = t.call_start(26_000);
+        t.call_done(27_000, call.as_ref());
         assert!(!t.pass_if_due(40_000, false));
         assert!(t.pass_if_due(47_000, false));
         assert_eq!(t.ask("c", "a1", 47_001), Ask::Go);
+    }
+
+    #[test]
+    fn a_call_of_a_turn_that_ended_never_counts_against_the_next_holder() {
+        // Bug report #125: A's late call_done took B's running call away,
+        // and C got the computer in the middle of it.
+        let mut t = Turns::default();
+        assert_eq!(t.ask("a", MAIN, 0), Ask::Go);
+        let a_call = t.call_start(0);
+        assert!(t.turn_end("a"), "A's turn ends while its call runs");
+        assert_eq!(t.ask("b", MAIN, 1), Ask::Go);
+        let b_call = t.call_start(1);
+        t.call_done(2, a_call.as_ref());
+        assert_eq!(t.ask("c", MAIN, 3), Ask::Wait { place: 1, of: 1 });
+        assert!(!t.pass_if_due(60_000, false), "B's call still runs: B keeps the computer");
+        t.call_done(60_000, b_call.as_ref());
+        assert!(t.pass_if_due(80_000, false));
+        // The same agent holding it again later is a new holder too.
+        let mut t = Turns::default();
+        t.ask("a", MAIN, 0);
+        let old = t.call_start(0);
+        t.turn_end("a");
+        t.ask("a", MAIN, 5);
+        let new = t.call_start(5);
+        t.ask("c", MAIN, 6);
+        t.call_done(7, old.as_ref());
+        assert!(!t.pass_if_due(60_000, false));
+        t.call_done(60_000, new.as_ref());
+        assert!(t.pass_if_due(80_000, false));
     }
 
     #[test]

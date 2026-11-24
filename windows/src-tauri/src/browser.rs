@@ -433,6 +433,14 @@ fn normalize(raw: &str) -> Result<Url, String> {
 /// (host as the address names it, lower case, no trailing dot), while Lumo runs.
 static LOCAL_OK: Mutex<Option<std::collections::HashMap<String, std::collections::HashSet<String>>>> = Mutex::new(None);
 
+/// The hosts a lookup found public (none of their addresses private), and
+/// when: a page may go to one on its own (a link, a redirect) without asking
+/// again for a while. A name not looked up yet is looked up first.
+static PUBLIC: Mutex<Option<std::collections::HashMap<String, Instant>>> = Mutex::new(None);
+
+/// How long a lookup that found a host public holds.
+const PUBLIC_FOR: Duration = Duration::from_secs(300);
+
 /// How long a host's name may take to resolve before it counts as public.
 const RESOLVE_WAIT: Duration = Duration::from_secs(3);
 
@@ -486,10 +494,20 @@ async fn local_address(url: &Url) -> bool {
         return true;
     }
     let target = format!("{}:{}", host_key(url), url.port_or_known_default().unwrap_or(443));
-    match tokio::time::timeout(RESOLVE_WAIT, tokio::net::lookup_host(target)).await {
+    let local = match tokio::time::timeout(RESOLVE_WAIT, tokio::net::lookup_host(target)).await {
         Ok(Ok(addrs)) => addrs.into_iter().any(|a| private_ip(a.ip())),
         _ => false,
+    };
+    if !local {
+        PUBLIC.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(host_key(url), Instant::now());
     }
+    local
+}
+
+/// A lookup found `url`'s host public a short while ago.
+fn known_public(url: &Url) -> bool {
+    let all = PUBLIC.lock().unwrap_or_else(|e| e.into_inner());
+    all.as_ref().and_then(|m| m.get(&host_key(url))).is_some_and(|at| at.elapsed() < PUBLIC_FOR)
 }
 
 /// The user allowed chat `chat` to open `url`'s host.
@@ -505,12 +523,39 @@ fn allow_local(chat: &str, url: &Url) {
 
 /// Whether a page in tab `label` may go to `url` on its own (a link, a
 /// redirect, a form): a public site, or a local host its chat was allowed.
-fn page_may_go(label: &str, url: &Url) -> bool {
-    if !local_by_name(url) {
-        return true;
-    }
+#[derive(Debug, PartialEq)]
+enum Go {
+    Yes,
+    No,
+    /// A name not looked up yet: it may point home (`localtest.me`,
+    /// `192-168-1-1.sslip.io`). It goes once a lookup finds it public (look_then_go).
+    Look,
+}
+
+fn page_may_go(label: &str, url: &Url) -> Go {
     let chat = with_tabs(|t| t.open.iter().find(|tab| tab.label == label).map(|tab| tab.chat.clone()));
-    chat.is_some_and(|chat| local_allowed(&chat, url))
+    let allowed = chat.is_some_and(|chat| local_allowed(&chat, url));
+    if local_by_name(url) {
+        return if allowed { Go::Yes } else { Go::No };
+    }
+    if allowed || known_public(url) || url.host_str().is_none() {
+        Go::Yes
+    } else {
+        Go::Look
+    }
+}
+
+/// Looks `url`'s host up and, when it is public, takes tab `label` there.
+/// A name that points home stays refused: browser_open asks for it.
+fn look_then_go(app: &AppHandle, label: &str, url: Url) {
+    let (app, label) = (app.clone(), label.to_string());
+    tauri::async_runtime::spawn(async move {
+        if !local_address(&url).await {
+            if let Some(win) = app.get_webview_window(&label) {
+                let _ = win.navigate(url);
+            }
+        }
+    });
 }
 
 /// Before browser_open goes to `url` for chat `chat`: a host on this PC or
@@ -521,6 +566,13 @@ async fn ask_local(app: &AppHandle, chat: &str, agent: Option<&str>, url: &Url) 
     if local_allowed(chat, url) || !local_address(url).await {
         return Ok(());
     }
+    ask_local_card(app, chat, agent, url).await
+}
+
+/// The local host's own card, once a lookup found `url` local: never looked
+/// up again before it, so a second answer of the DNS (a short TTL, a slow
+/// server) can't skip it.
+async fn ask_local_card(app: &AppHandle, chat: &str, agent: Option<&str>, url: &Url) -> Result<(), String> {
     let mut card = json!({
         "hook_event_name": "PermissionRequest",
         "lumo_island": true,
@@ -942,7 +994,7 @@ pub async fn ask(app: &AppHandle, asks: Asks, agent: Option<&str>, chat: &str, t
     if asks != Asks::LookOnly {
         if let Some(url) = open_url(tool, input) {
             if !local_allowed(chat, &url) && local_address(&url).await {
-                return ask_local(app, chat, agent, &url).await;
+                return ask_local_card(app, chat, agent, &url).await;
             }
         }
     }
@@ -1275,18 +1327,29 @@ fn create(app: &AppHandle, label: &str) -> Result<WebviewWindow, String> {
         // the user allowed that host in the tab's chat (`page_may_go`).
         .on_navigation({
             let label = label.to_string();
-            move |url| allowed(url) && page_may_go(&label, url)
+            let app = app.clone();
+            move |url| {
+                if !allowed(url) {
+                    return false;
+                }
+                match page_may_go(&label, url) {
+                    Go::Yes => true,
+                    Go::No => false,
+                    Go::Look => {
+                        look_then_go(&app, &label, url.clone());
+                        false
+                    }
+                }
+            }
         })
         // A pop-up opens in the same tab instead, when it may.
         .on_new_window(move |url, _| {
-            if allowed(&url) && page_may_go(&tab_label, &url) && url.as_str() != "about:blank" {
-                let app = handle.clone();
-                let label = tab_label.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Some(win) = app.get_webview_window(&label) {
-                        let _ = win.navigate(url);
-                    }
-                });
+            if allowed(&url) && url.as_str() != "about:blank" {
+                match page_may_go(&tab_label, &url) {
+                    Go::No => {}
+                    // Looked up first when it needs it; on_navigation lets it through then.
+                    Go::Yes | Go::Look => look_then_go(&handle, &tab_label, url),
+                }
             }
             tauri::webview::NewWindowResponse::Deny
         })
@@ -2216,10 +2279,17 @@ mod tests {
         // A page in a tab of the chat: the allowed host, and the internet; nothing else local.
         with_tabs(|t| t.open.push(tab(90, chat, MAIN, Instant::now())));
         let label = format!("{LABEL}90");
-        assert!(page_may_go(&label, &router));
-        assert!(page_may_go(&label, &url("https://example.com/")));
-        assert!(!page_may_go(&label, &url("http://10.0.0.1/")), "a link or a redirect to another local host");
-        assert!(!page_may_go("agent-browser-unknown", &router), "a tab Lumo doesn't know goes nowhere local");
+        assert_eq!(page_may_go(&label, &router), Go::Yes);
+        assert_eq!(page_may_go(&label, &url("http://10.0.0.1/")), Go::No, "a link or a redirect to another local host");
+        assert_eq!(page_may_go("agent-browser-unknown", &router), Go::No, "a tab Lumo doesn't know goes nowhere local");
+        // A public name goes once a lookup found it public: until then it may
+        // point home (`localtest.me` resolves to 127.0.0.1).
+        let site = url("https://public-test.example/");
+        assert_eq!(page_may_go(&label, &url("http://localtest.me:8080/")), Go::Look);
+        assert_eq!(page_may_go(&label, &site), Go::Look);
+        PUBLIC.lock().unwrap().get_or_insert_with(Default::default).insert(host_key(&site), Instant::now());
+        assert_eq!(page_may_go(&label, &site), Go::Yes);
+        assert_eq!(page_may_go(&label, &url("about:blank")), Go::Yes);
         forget(&label);
     }
 

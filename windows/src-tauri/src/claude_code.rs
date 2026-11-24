@@ -2513,25 +2513,22 @@ impl Live {
         if let Some(tx) = self.feed.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             let _ = tx.send(Vec::new());
         }
-        let mut interrupted: Option<Instant> = None;
-        let waiting = Instant::now();
-        while !idle.is_finished() {
-            // Ended for the user's Stop: its agents stopped, not failed
-            // (marked first, so the thread reading it finds none open).
-            if stop.is_stopped() && interrupted.is_none() {
-                interrupted = Some(Instant::now());
-                if write_stdin(&self.stdin, &interrupt_line(0)).is_err() {
-                    self.link.ended_as(AgentState::Stopped);
-                    kill_tree(&mut self.child);
+        let (stdin, link, child) = (&self.stdin, &self.link, &mut self.child);
+        wait_given_back(
+            &idle,
+            stop,
+            &self.feed,
+            INTERRUPT_GRACE,
+            || write_stdin(stdin, &interrupt_line(0)).is_ok(),
+            || {
+                // Ended for the user's Stop: its agents stopped, not failed
+                // (marked first, so the thread reading it finds none open).
+                link.ended_as(AgentState::Stopped);
+                if matches!(child.try_wait(), Ok(None)) {
+                    kill_tree(child);
                 }
-            }
-            if interrupted.is_some_and(|at| at.elapsed() > INTERRUPT_GRACE) {
-                self.link.ended_as(AgentState::Stopped);
-                kill_tree(&mut self.child);
-            }
-            // Mostly it gives it back at once: looked at often only at first.
-            std::thread::sleep(if waiting.elapsed() < STOP_POLL { Duration::from_millis(5) } else { STOP_POLL });
-        }
+            },
+        );
         self.rx = idle.join().ok();
         !stop.is_stopped()
     }
@@ -2540,6 +2537,40 @@ impl Live {
     fn done(&mut self) -> bool {
         let busy = self.between.busy.load(Ordering::SeqCst) || self.between.tasks.load(Ordering::SeqCst) > 0 || self.link.open() > 0;
         !matches!(self.child.try_wait(), Ok(None)) || self.used.elapsed() > if busy { LIVE_BUSY } else { LIVE_IDLE }
+    }
+}
+
+/// Waits for `idle` (`watch`) to give the output back. Stop meanwhile
+/// interrupts the turn, and `end`s the CLI once, if it can't be interrupted
+/// or once `grace` has passed. The output is let go of then: a process the CLI
+/// left behind may hold it open for ever, and `idle` would never end (nor the
+/// wait, which ended the CLI's PID, maybe someone else's by then, again and again).
+fn wait_given_back<T>(
+    idle: &std::thread::JoinHandle<T>,
+    stop: &Stop,
+    feed: &Feed,
+    grace: Duration,
+    mut interrupt: impl FnMut() -> bool,
+    mut end: impl FnMut(),
+) {
+    let mut interrupted: Option<Instant> = None;
+    let mut ended = false;
+    let waiting = Instant::now();
+    while !idle.is_finished() {
+        if stop.is_stopped() && interrupted.is_none() {
+            interrupted = Some(Instant::now());
+            ended = !interrupt();
+        } else if !ended && interrupted.is_some_and(|at| at.elapsed() > grace) {
+            ended = true;
+        } else {
+            // Mostly it gives it back at once: looked at often only at first.
+            std::thread::sleep(if waiting.elapsed() < STOP_POLL { Duration::from_millis(5) } else { STOP_POLL });
+            continue;
+        }
+        if ended {
+            end();
+            feed.lock().unwrap_or_else(|e| e.into_inner()).take();
+        }
     }
 }
 
@@ -3227,6 +3258,39 @@ mod tests {
         // Anything else is left as it was, and a card is never added twice.
         assert_eq!(chat_error("Claude Code stopped: overloaded".into()), "Claude Code stopped: overloaded");
         assert_eq!(chat_error(error.clone()), error);
+    }
+
+    /// Stop between two turns, when a process Claude Code left behind holds
+    /// its output open: the CLI is ended once, and the wait still ends.
+    #[test]
+    fn stop_ends_the_wait_even_when_a_process_left_behind_holds_the_output() {
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        let feed: Feed = Arc::new(std::sync::Mutex::new(Some(tx)));
+        // Like `watch` on an output no line comes on any more: it waits for it to close.
+        let idle = std::thread::spawn(move || {
+            while rx.recv().is_ok() {}
+            rx
+        });
+        let stop = Stop::default();
+        stop.stop();
+        let ends = std::cell::Cell::new(0);
+        let started = Instant::now();
+        wait_given_back(&idle, &stop, &feed, Duration::from_millis(200), || true, || ends.set(ends.get() + 1));
+        assert!(started.elapsed() < Duration::from_secs(5), "the wait ended after its grace");
+        assert_eq!(ends.get(), 1, "the CLI is ended once, not every poll");
+        assert!(idle.join().is_ok());
+        assert!(feed.lock().unwrap().is_none(), "the output was let go of");
+
+        // Not interrupted (its input closed): ended at once, and only then.
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        let feed: Feed = Arc::new(std::sync::Mutex::new(Some(tx)));
+        let idle = std::thread::spawn(move || {
+            while rx.recv().is_ok() {}
+            rx
+        });
+        let ends = std::cell::Cell::new(0);
+        wait_given_back(&idle, &stop, &feed, Duration::from_secs(60), || false, || ends.set(ends.get() + 1));
+        assert_eq!(ends.get(), 1);
     }
 
     /// A command that runs a minute unless it is ended.

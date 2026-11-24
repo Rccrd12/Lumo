@@ -234,8 +234,9 @@ fn pull_request_of(target: &str) -> Option<(String, u64)> {
     let text = text.strip_prefix("www.").unwrap_or(text);
     let text = text.strip_prefix("github.com/").unwrap_or(text);
     // A link to a comment or a view of it (`…/pull/12#issuecomment-1`, `…/pull/12?w=1`): the pull request.
+    // `pull` as the third part of the path, not a repository named pull-something.
     let text = match text.find(['#', '?']) {
-        Some(at) if text[..at].contains("/pull") => &text[..at],
+        Some(at) if text[..at].split('/').nth(2).is_some_and(|p| p == "pull" || p == "pulls") => &text[..at],
         _ => text,
     };
     let (repo, number) = if let Some((repo, number)) = text.split_once('#') {
@@ -417,6 +418,11 @@ mod tests {
         // A link to one of its comments, or with a query.
         assert_eq!(ok(UNLISTEN, json!({ "target": "https://github.com/octocat/hello/pull/42#issuecomment-1" })), "[[unlisten octocat/hello#42]]");
         assert_eq!(ok(UNLISTEN, json!({ "target": "https://github.com/octocat/hello/pull/42/files?w=1" })), "[[unlisten octocat/hello#42]]");
+        // A repository whose name starts with "pull".
+        assert_eq!(ok(UNLISTEN, json!({ "target": "acme/pull-reminders#12" })), "[[unlisten acme/pull-reminders#12]]");
+        assert_eq!(pull_request_of("x/pull#4"), Some(("x/pull".to_string(), 4)));
+        assert_eq!(pull_request_of("acme/pullman#3"), Some(("acme/pullman".to_string(), 3)));
+        assert_eq!(pull_request_of("https://github.com/acme/pullman/pull/3#discussion_r1"), Some(("acme/pullman".to_string(), 3)));
     }
 
     #[test]

@@ -650,16 +650,12 @@ fn fill(item: &Disp, account: Option<Account>, draft: &Draft, subject: &str, tex
     if to.len() + cc.len() > crate::smtp::MAX_RECIPIENTS {
         return Err(format!("At most {} people, to and cc together.", crate::smtp::MAX_RECIPIENTS));
     }
-    let listed = files_of(item)?;
-    let total: usize = listed.iter().map(|f| f.size).sum();
+    let placed = placed_files(item)?;
+    let total: usize = placed.iter().map(|(_, f)| f.size).sum();
     if total as u64 > crate::smtp::MAX_ATTACHED_BYTES {
         return Err(crate::mail::too_heavy());
     }
-    let files = listed
-        .iter()
-        .enumerate()
-        .map(|(i, f)| json!({ "name": f.name, "size": f.size, "path": i.checked_sub(own).and_then(|j| paths.get(j)).cloned().unwrap_or_default() }))
-        .collect();
+    let files = card_files(&placed, own, paths);
     let body: String = item.text("Body").chars().take(crate::smtp::MAX_BODY).collect();
     let from = account.map(|a| a.address).unwrap_or_default();
     let subject = item.text("Subject");
@@ -1695,6 +1691,19 @@ fn people(item: &Disp) -> Result<(Vec<String>, Vec<String>), String> {
     Ok((to, cc))
 }
 
+/// The files on a draft's card: each with the path it came from, found by
+/// its place in Outlook's list (from 1), past the email's `own` files. One of
+/// those Outlook can't give is left out of `placed`, never shifting the paths.
+fn card_files(placed: &[(i32, File)], own: usize, paths: &[String]) -> Vec<serde_json::Value> {
+    placed
+        .iter()
+        .map(|(place, f)| {
+            let path = (*place as usize).checked_sub(1 + own).and_then(|j| paths.get(j)).cloned().unwrap_or_default();
+            json!({ "name": f.name, "size": f.size, "path": path })
+        })
+        .collect()
+}
+
 fn files_of(item: &Disp) -> Result<Vec<File>, String> {
     Ok(placed_files(item)?.into_iter().map(|(_, f)| f).collect())
 }
@@ -1954,6 +1963,21 @@ mod tests {
         // the email must not go with it, so nothing is taken out and it says which.
         assert_eq!(places_to_remove(&[f("a.pdf", 10)], &[off("a.pdf", 11)]), Err(vec!["a.pdf".to_string()]));
         assert_eq!(places_to_remove(&[None, f("b.png", 20)], &[off("a.pdf", 10), off("b.png", 20)]), Err(vec!["a.pdf".to_string()]));
+    }
+
+    #[test]
+    fn a_file_outlook_cant_give_never_shifts_the_paths_on_the_card() {
+        // Bug report #130: the email's own second file can't be given, the user attached two.
+        let file = |name: &str| File { name: name.into(), mime: "application/octet-stream", size: 1 };
+        let placed = [(1, file("own.pdf")), (3, file("mine1.txt")), (4, file("mine2.txt"))];
+        let paths = [r"C:\me\mine1.txt".to_string(), r"C:\me\mine2.txt".to_string()];
+        let files = card_files(&placed, 2, &paths);
+        assert_eq!(files[0]["path"], "");
+        assert_eq!(files[1]["path"], r"C:\me\mine1.txt");
+        assert_eq!(files[2]["path"], r"C:\me\mine2.txt");
+        // Everything given: the same as before.
+        let placed = [(1, file("own.pdf")), (2, file("mine1.txt"))];
+        assert_eq!(card_files(&placed, 1, &paths[..1])[1]["path"], r"C:\me\mine1.txt");
     }
 
     #[test]
