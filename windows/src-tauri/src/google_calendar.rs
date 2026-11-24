@@ -358,13 +358,18 @@ fn api_url(path: &str, query: &[(String, String)]) -> Result<Url, String> {
         || path
             .strip_prefix("/calendars/")
             .and_then(|rest| rest.strip_suffix("/events"))
-            .is_some_and(|id| !id.is_empty() && !id.contains(['/', '?', '#', '\\']) && !id.contains(".."));
+            .is_some_and(|id| {
+                // `%2e%2e` is `..` to the parser as surely as `..`.
+                let dots = id.to_ascii_lowercase().replace("%2e", ".");
+                !id.is_empty() && !id.contains(['/', '?', '#', '\\']) && !dots.contains("..") && dots != "."
+            });
     let refused = || "not a Calendar API path".to_string();
     if !allowed {
         return Err(refused());
     }
     let mut url = Url::parse(&format!("{API_BASE}{path}")).map_err(|_| refused())?;
-    if url.host_str() != Some("www.googleapis.com") || !url.path().starts_with("/calendar/v3/") {
+    // The address is the one checked above, with nothing the parser took away.
+    if url.host_str() != Some("www.googleapis.com") || url.path() != format!("/calendar/v3{path}") {
         return Err(refused());
     }
     if !query.is_empty() {
@@ -756,6 +761,11 @@ mod tests {
             ".evil.example/calendars/x/events",
             "/calendars/x?y/events",
             "",
+            // Bug report #121: dot segments written percent-encoded.
+            "/calendars/%2e%2e/events",
+            "/calendars/%2E%2E/events",
+            "/calendars/%2e/events",
+            "/calendars/.%2e/events",
         ] {
             assert!(api_url(bad, &[]).is_err(), "{bad}");
         }

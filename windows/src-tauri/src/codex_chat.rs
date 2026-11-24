@@ -1362,13 +1362,9 @@ fn live_turn(
         // request is the user's to answer, as the answer's own are.
         if let Some(sub) = params["threadId"].as_str().filter(|t| *t != thread) {
             note_agent_files(method, params, &mut live.files);
-            if method == "item/started" && params["item"]["type"] == "fileChange" {
-                if let Some(id) = params["item"]["id"].as_str() {
-                    state.files.insert(id.to_string(), change_paths(&params["item"]));
-                }
-            }
             if let Some(rid) = message.get("id").cloned() {
-                match (card(method, params, &state.files), live.agents.at_work(sub)) {
+                // live.files: a change it started between turns is only there.
+                match (card(method, params, &live.files), live.agents.at_work(sub)) {
                     (Some(_), _) if plan_only => {
                         write_line(&live.stdin, &json!({ "id": rid, "result": { "decision": "decline" } }));
                     }
@@ -1822,6 +1818,14 @@ mod tests {
         let edit = card("item/fileChange/requestApproval", &json!({ "threadId": THREAD, "itemId": "p1" }), &files).unwrap();
         assert_eq!(edit["tool_name"], "Edit");
         assert_eq!(edit["tool_input"]["file_path"], "C:\\a.rs, C:\\b.rs");
+        // Bug report #123: an agent's change started between turns is kept in
+        // the server's map (live.files), which its card is built from.
+        let mut live_files = HashMap::new();
+        let started = json!({ "threadId": "agent-1", "item": { "id": "a7", "type": "fileChange", "changes": [{ "path": "C:\\ws\\main.rs" }] } });
+        note_agent_files("item/started", &started, &mut live_files);
+        let agent_edit = card("item/fileChange/requestApproval", &json!({ "threadId": "agent-1", "itemId": "a7", "grantRoot": "C:\\ws" }), &live_files).unwrap();
+        assert_eq!(agent_edit["tool_input"]["file_path"], change_paths(&started["item"]).join(", "));
+        assert_ne!(agent_edit["tool_input"]["file_path"], "C:\\ws");
         // Anything else is no card: declined, or not Lumo's to do.
         assert!(card("item/permissions/requestApproval", &json!({}), &HashMap::new()).is_none());
         assert_eq!(other_answer("mcpServer/elicitation/request")["result"]["action"], "decline");
