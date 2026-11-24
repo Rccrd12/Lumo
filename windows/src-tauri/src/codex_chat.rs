@@ -273,14 +273,78 @@ fn in_dir(mut touch: FileTouch, dir: &Path) -> Option<FileTouch> {
     claude_code::is_full_path(&touch.path).then_some(touch)
 }
 
-/// The command a card shows: what Codex parsed it into (`touch made.txt`),
-/// not the shell it wraps it in (`bash -lc '…'`, `powershell.exe -Command …`).
+/// The command a card shows: the one that will run, without the shell Codex
+/// wraps it in (`bash -lc '…'`, `powershell.exe -Command …`). Codex's parse of
+/// it (`commandActions`) is shown only when it is that same command: a summary
+/// can leave parts out (`cat list.txt` for `cat list.txt | xargs rm -rf`), and
+/// Allow allows the whole command.
 fn card_command(params: &Value) -> String {
     let parsed: Vec<&str> = params["commandActions"]
         .as_array()
         .map(|a| a.iter().filter_map(|x| x["command"].as_str()).filter(|c| !c.trim().is_empty()).collect())
         .unwrap_or_default();
-    if parsed.is_empty() { params["command"].as_str().unwrap_or("").to_string() } else { parsed.join(" && ") }
+    let parsed = parsed.join(" && ");
+    let full = params["command"].as_str().unwrap_or("").trim();
+    if full.is_empty() {
+        return parsed;
+    }
+    let inner = unwrap_shell(full);
+    let shown = inner.as_deref().unwrap_or(full);
+    let same = |a: &str, b: &str| a.split_whitespace().eq(b.split_whitespace());
+    if !parsed.is_empty() && same(&parsed, shown) { parsed } else { shown.to_string() }
+}
+
+/// The command inside a shell's `-c`: `bash -lc 'ls | wc -l'` → `ls | wc -l`,
+/// `"powershell.exe" -Command 'Remove-Item x'` → `Remove-Item x`, `cmd /c dir`
+/// → `dir`. None when the line is not that shape (it is then shown whole).
+fn unwrap_shell(line: &str) -> Option<String> {
+    let (program, mut rest) = match line.strip_prefix('"') {
+        Some(quoted) => quoted.split_once('"')?,
+        None => line.split_once(char::is_whitespace)?,
+    };
+    let name = program.rsplit(['/', '\\']).next()?.to_ascii_lowercase();
+    let name = name.strip_suffix(".exe").unwrap_or(&name);
+    let posix = matches!(name, "bash" | "sh" | "zsh");
+    let powershell = matches!(name, "powershell" | "pwsh");
+    if !(posix || powershell || name == "cmd") {
+        return None;
+    }
+    // Options up to the one that takes the command.
+    loop {
+        rest = rest.trim_start();
+        let (word, after) = rest.split_once(char::is_whitespace)?;
+        let lower = word.to_ascii_lowercase();
+        let takes_command = if posix {
+            lower.starts_with('-') && !lower.starts_with("--") && lower.contains('c')
+        } else if powershell {
+            lower == "-command" || lower == "-c"
+        } else {
+            lower == "/c"
+        };
+        rest = after;
+        if takes_command {
+            break;
+        }
+        if !(lower.starts_with('-') || (name == "cmd" && lower.starts_with('/'))) {
+            return None;
+        }
+    }
+    let rest = rest.trim();
+    // One quoted argument (bash writes a ' inside it as '\''), or the rest as it is.
+    let inner = match rest.chars().next() {
+        Some(q @ ('\'' | '"')) if rest.len() >= 2 && rest.ends_with(q) => {
+            let body = &rest[1..rest.len() - 1];
+            let body = if q == '\'' { body.replace("'\\''", "") } else { body.replace("\\\"", "") };
+            // A quote that ends it early ('a' 'b'): more than one argument.
+            if body.contains(q) {
+                return None;
+            }
+            let body = &rest[1..rest.len() - 1];
+            if q == '\'' { body.replace("'\\''", "'") } else { body.replace("\\\"", "\"") }
+        }
+        _ => rest.to_string(),
+    };
+    (!inner.trim().is_empty()).then_some(inner)
 }
 
 /// The island's card for a request of Codex's server, shaped as a Codex
@@ -1809,6 +1873,16 @@ mod tests {
         assert_eq!(c["tool_name"], "Bash");
         assert_eq!(c["tool_input"]["command"], "Remove-Item x.txt");
         assert_eq!(c["tool_input"]["justification"], "Clean up");
+        // Codex's summary of a command that leaves a part out: the command that runs.
+        let piped = json!({
+            "threadId": THREAD, "itemId": "c9",
+            "command": "/bin/bash -lc 'cat list.txt | xargs rm -rf'",
+            "commandActions": [{ "type": "read", "name": "list.txt", "command": "cat list.txt" }],
+        });
+        assert_eq!(card("item/commandExecution/requestApproval", &piped, &HashMap::new()).unwrap()["tool_input"]["command"], "cat list.txt | xargs rm -rf");
+        // A shell it can't unwrap is shown whole, never the summary alone.
+        let odd = json!({ "threadId": THREAD, "itemId": "c8", "command": "node -e \"x()\" && rm -rf y", "commandActions": [{ "type": "unknown", "command": "node -e x()" }] });
+        assert_eq!(card("item/commandExecution/requestApproval", &odd, &HashMap::new()).unwrap()["tool_input"]["command"], "node -e \"x()\" && rm -rf y");
         // Without Codex's parse, its command as it is.
         let bare = json!({ "threadId": THREAD, "itemId": "c", "command": "git push" });
         assert_eq!(card("item/commandExecution/requestApproval", &bare, &HashMap::new()).unwrap()["tool_input"]["command"], "git push");

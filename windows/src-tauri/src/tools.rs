@@ -2183,6 +2183,59 @@ mod tests {
         assert!(unguarded(Path::new("t.bat"), &PERMISSIONS.iter().map(|p| p.to_string()).collect::<Vec<_>>()).is_empty(), "declared all: nothing left to hold");
     }
 
+    /// The guard's own ways out, closed: changing its helpers' defaults
+    /// (found in a refusal's traceback), listing the current folder after
+    /// moving it, and a link whose relative target is read from another folder.
+    /// Runs where a Python is installed; nothing to run otherwise.
+    #[test]
+    fn the_python_guard_holds_against_its_own_ways_out() {
+        let found = |p: &&str| Command::new(p).arg("--version").output().is_ok_and(|o| o.status.success());
+        let Some(python) = ["python", "python3"].into_iter().find(found) else { return };
+        let base = std::env::temp_dir().join(format!("lumo-guard-test-{}", std::process::id()));
+        let (tool, work, secret) = (base.join("tool"), base.join("work"), base.join("secret"));
+        for dir in [&tool, &work.join("a"), &secret] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        std::fs::write(secret.join("s.txt"), "SECRET").unwrap();
+        std::fs::write(base.join("guard.py"), GUARD).unwrap();
+        let outside = secret.to_string_lossy().replace('\\', "/");
+        let w = work.to_string_lossy().replace('\\', "/");
+        let scripts = [
+            // The defaults of the guard's helpers, from the refusal's traceback.
+            format!(
+                "try:\n    open('{outside}/s.txt')\nexcept PermissionError as e:\n    tb = e.__traceback__\n    while tb.tb_frame.f_code.co_name != 'hook': tb = tb.tb_next\n    plain = tb.tb_frame.f_locals['_plain']\n    d = list(plain.__defaults__)\n    d[0] = lambda p, a, b: '{w}'\n    plain.__defaults__ = tuple(d)\nprint('ESCAPED', open('{outside}/s.txt').read())\n"
+            ),
+            // A listing of the current folder, moved outside.
+            format!("import os\nos.chdir('{outside}')\nprint('ESCAPED', os.listdir())\n"),
+            // A link whose relative target looks inside from the current folder.
+            format!("import os\nos.chdir('{w}/a')\nos.symlink('../secret/s.txt', '{w}/link')\nprint('ESCAPED', open('{w}/link').read())\n"),
+            // A database by a file: URI, or by a pathlib path, outside the work folder.
+            format!("import sqlite3\nsqlite3.connect('file:{outside}/x.db', uri=True)\nprint('ESCAPED')\n"),
+            format!("import sqlite3, pathlib\nsqlite3.connect(pathlib.Path('{outside}/x.db'))\nprint('ESCAPED')\n"),
+            // A library by a stream's name, without "system".
+            format!("open('{w}/evil.dll::$DATA', 'wb').close()\nprint('ESCAPED')\n"),
+        ];
+        for (n, script) in scripts.iter().enumerate() {
+            let path = tool.join(format!("t{n}.py"));
+            std::fs::write(&path, script).unwrap();
+            let out = Command::new(python)
+                .arg("-I")
+                .arg(base.join("guard.py"))
+                .arg(&path)
+                .env("LUMO_TOOL_ALLOW", "")
+                .env("LUMO_TOOL_DIR", &tool)
+                .env("LUMO_TOOL_WORK", &work)
+                // As a tool may move there: a file: URI is then "inside" read as a path.
+                .current_dir(&work)
+                .output()
+                .unwrap();
+            let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+            assert!(!stdout.contains("ESCAPED"), "script {n} got out: {stdout}");
+            assert!(stderr.contains("Lumo: this tool didn't say"), "script {n}: {stderr}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn node_runs_with_its_permissions_to_what_the_tool_declared() {
         let (dir, work) = (Path::new("C:/t"), Path::new("C:/w"));
