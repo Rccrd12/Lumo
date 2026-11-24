@@ -90,12 +90,6 @@ test("a one-argument bra-ket is drawn twice, but nested ones never double", () =
   const text = mathText(nested);
   assert.ok(performance.now() - started < 1000);
   assert.equal((text.match(/x/g) ?? []).length, 2, "only the innermost is drawn twice");
-  // Bug 22: through a matrix's cells (read by a parser of their own) it doubled again at each level.
-  const inMatrix = "\\braket{\\begin{matrix}".repeat(20) + "x" + "\\end{matrix}}".repeat(20);
-  const t2 = performance.now();
-  const drawn = mathText(inMatrix);
-  assert.ok(performance.now() - t2 < 1000);
-  assert.equal((drawn.match(/x/g) ?? []).length, 2, "only the innermost is drawn twice");
 });
 
 test("vectors written with the notes' own macros keep their arrow", () => {

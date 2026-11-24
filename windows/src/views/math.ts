@@ -286,12 +286,8 @@ function splitTop(body: string, at: "row" | "cell"): string[] {
 
 class Parser {
   private i = 0;
-  /**
-   * How many one-argument \braket{a} drew their argument twice. Shared by
-   * every parser, as a matrix's cells and other bodies are read by a parser of
-   * their own: only differences are compared, so it never needs a reset.
-   */
-  private static doubled = 0;
+  /** How many one-argument \braket{a} drew their argument twice. */
+  private doubled = 0;
   private s: string;
   /** How many \left are open: only then does \right end what is being read. */
   private fences = 0;
@@ -537,14 +533,14 @@ class Parser {
         // \braket{a} is ⟨a|a⟩: the same node drawn twice. Nested, that
         // doubles at each level (thirty levels, a billion elements), so only
         // the innermost is drawn twice and the ones around it end in "…".
-        const before = Parser.doubled;
+        const before = this.doubled;
         const a = arg();
         let b: Node;
         if (this.s[this.i] === "{") b = arg();
-        else if (Parser.doubled > before) b = { t: "sym", v: "…", upright: true };
+        else if (this.doubled > before) b = { t: "sym", v: "…", upright: true };
         else {
           b = a;
-          Parser.doubled++;
+          this.doubled++;
         }
         return this.fenced("⟨", { t: "group", c: [a, { t: "sym", v: "|", upright: true }, b] }, "⟩");
       }

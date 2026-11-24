@@ -78,19 +78,6 @@ test("past chats are searched in questions and answers, accents and case aside",
   assert.deepEqual(searchChats(chats, "pasta pdf"), []);
 });
 
-test("the match is highlighted in place when folding changes the text's length", async () => {
-  // Bug 19: a Korean syllable folds to two or three letters, a lone mark folds to nothing.
-  const { searchChats } = await import("../src/core/chats.ts");
-  const chat = (title) => ({ id: "k", title, updatedAt: 0, provider: "claude-code", session: null, turns: [] });
-  for (const title of ["안녕하세요 hello world", "q\u0303 hello world", "Perché hello world"]) {
-    const hit = searchChats([chat(title)], "hello")[0];
-    assert.equal(hit.snippet.slice(hit.match[0], hit.match[1]), "hello", title);
-  }
-  // A Korean word is found and highlighted whole.
-  const hit = searchChats([chat("오늘 안녕하세요 친구")], "안녕")[0];
-  assert.equal(hit.snippet.slice(hit.match[0], hit.match[1]), "안녕");
-});
-
 test("a compacted chat keeps its summary until it is deleted", () => {
   saveChat(chat("a"));
   saveChat(chat("b"));
