@@ -64,8 +64,19 @@ impl Relay {
                 }
             }
             // A quoted string alone is an expression in PowerShell: `&` runs it.
-            // Inside single quotes only `'` is special, and it doubles.
-            Shell::PowerShell => format!("& '{}'", self.exe.replace('\'', "''")),
+            // Inside single quotes only a quote is special, and it doubles. PowerShell
+            // takes the typographic ones (‘ ’ ‚ ‛) as quotes too: `O’Brien`.
+            Shell::PowerShell => {
+                let quoted: String = self
+                    .exe
+                    .chars()
+                    .flat_map(|c| {
+                        let twice = matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}');
+                        std::iter::repeat_n(c, if twice { 2 } else { 1 })
+                    })
+                    .collect();
+                format!("& '{quoted}'")
+            }
             // cmd /C keeps the quotes of a lone quoted program name; a plain path
             // goes unquoted so it also works if the agent turns out to use
             // PowerShell. A Windows path cannot contain `"`.
@@ -1138,6 +1149,11 @@ mod tests {
             spaced.command(Shell::PowerShell, "x"),
             r"& 'C:\Users\Jane O''Neil\AppData\Local\com.rccrd12.lumo\bin\lumo-hook.exe' x"
         );
+        // Bug report #119: PowerShell ends a single-quoted string at ’ too.
+        let curly = relay("C:\\Users\\O\u{2019}Brien\\lumo-hook.exe");
+        assert_eq!(curly.command(Shell::PowerShell, "x"), "& 'C:\\Users\\O\u{2019}\u{2019}Brien\\lumo-hook.exe' x");
+        let all = relay("C:\\a\u{2018}b\u{201A}c\u{201B}d.exe");
+        assert_eq!(all.command(Shell::PowerShell, "x"), "& 'C:\\a\u{2018}\u{2018}b\u{201A}\u{201A}c\u{201B}\u{201B}d.exe' x");
     }
 
     #[test]

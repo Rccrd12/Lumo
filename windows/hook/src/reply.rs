@@ -152,7 +152,9 @@ pub fn reads_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -
         .filter(|path| !path.trim().is_empty())
         .any(|path| {
             let p = norm_path(path);
-            if p.split('/').any(|part| part == "..") || holds_secrets(&p) {
+            // A %-escape too, before agy's own folder is trusted: an encoded `..`
+            // (`.gemini/antigravity/..%2f..%2fwindows`) climbs out of it once decoded.
+            if p.split('/').any(|part| part == "..") || holds_secrets(&p) || p.contains('%') {
                 return true;
             }
             if agy_own(&p) {
@@ -160,7 +162,7 @@ pub fn reads_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -
             }
             // The home folder or a variable the tool may expand: it can't be
             // placed for sure, as for a write.
-            if p.starts_with(['~', '$']) || p.contains('%') {
+            if p.starts_with(['~', '$']) {
                 return true;
             }
             // A network path (`\\server\share`, `\\?\UNC\…`, `\\.\…`) is
@@ -261,10 +263,14 @@ pub fn writes_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) 
 /// A path to compare: forward slashes, lower case (Windows), no `file://`, no trailing slash.
 fn norm_path(path: &str) -> String {
     let p = path.trim();
-    // `file:///C:/x` is C:/x; `file://server/x` names a server: //server/x.
-    let p = match p.strip_prefix("file:///") {
-        Some(rest) => rest.to_string(),
-        None => p.strip_prefix("file://").map(|rest| format!("//{rest}")).unwrap_or_else(|| p.to_string()),
+    // `file:///C:/x` is C:/x; `file://server/x` names a server: //server/x;
+    // `file:/C:/x` is C:/x too. The scheme in any case (`FILE:///`).
+    let p = match p.get(..5).filter(|s| s.eq_ignore_ascii_case("file:")).map(|_| &p[5..]) {
+        Some(rest) => match rest.strip_prefix("///") {
+            Some(path) => path.to_string(),
+            None => rest.strip_prefix("//").map(|server| format!("//{server}")).unwrap_or_else(|| rest.to_string()),
+        },
+        None => p.to_string(),
     };
     let p = p.replace('\\', "/").to_lowercase();
     let p = if p.as_bytes().get(2) == Some(&b':') && p.starts_with('/') { p[1..].to_string() } else { p };
@@ -772,14 +778,26 @@ mod tests {
             assert!(r("list_dir", json!({ "DirectoryPath": path })), "{path}");
         }
         // The home folder or a variable: not the workspace's, for a read too.
-        for path in ["~\\Documents\\tax.pdf", "%USERPROFILE%\\x.txt", "$HOME/x", "file:///C:/ws/%2e%2e/x"] {
+        for path in [
+            "~\\Documents\\tax.pdf",
+            "%USERPROFILE%\\x.txt",
+            "$HOME/x",
+            "file:///C:/ws/%2e%2e/x",
+            // The scheme in capitals, or with one slash: still a full path outside.
+            "FILE:///C:/Windows/win.ini",
+            "File:///C:/Users/me/doc.txt",
+            "file:/C:/Windows/win.ini",
+            // An encoded `..` inside agy's own folder still climbs out of it.
+            "file:///C:/Users/me/.gemini/antigravity/..%2f..%2f..%2fWindows%2fwin.ini",
+            "~/.gemini/antigravity/%2e%2e/%2e%2e/.ssh/id_ed25519",
+        ] {
             assert!(r("view_file", json!({ "AbsolutePath": path })), "{path}");
         }
         assert!(!r("write_to_file", json!({"TargetFile": "C:\\x.txt"})), "not a read");
         assert!(reads_outside("view_file", Some(&json!({"AbsolutePath": "/x/a"})), &[]), "no workspace known");
         assert!(writes_outside("write_to_file", Some(&json!({"TargetFile": "/x/a"})), &[]), "no workspace known");
         // The home folder or a variable the tool may expand: not the workspace's.
-        for path in ["~\\Desktop\\x.txt", "~/x", "%USERPROFILE%\\x.txt", "$HOME/x", "${env:USERPROFILE}\\x", "$env:APPDATA\\x", "file:///C%3A/Users/Public/x"] {
+        for path in ["~\\Desktop\\x.txt", "~/x", "%USERPROFILE%\\x.txt", "$HOME/x", "${env:USERPROFILE}\\x", "$env:APPDATA\\x", "file:///C%3A/Users/Public/x", "FILE:///C:/Windows/x.txt", "file:/C:/x.txt"] {
             assert!(w("write_to_file", json!({ "TargetFile": path })), "{path}");
         }
         assert!(!island_card("", None));
