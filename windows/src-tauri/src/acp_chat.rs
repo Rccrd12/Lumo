@@ -1408,13 +1408,6 @@ enum Ended {
     Stopped,
 }
 
-/// One turn of the chat through its own CLI (started, or started again, as
-/// needed), blocking. `text(fresh)` is the question: `fresh` when the session
-/// is new and has not seen the chat's turns. `ask` puts a card up and calls
-/// back with the click (true: allowed). `tell` hears of every line (a sign
-/// of life) and of the tasks the CLI hands to subagents. The session is
-/// returned with the run.
-#[allow(clippy::too_many_arguments)]
 /// The answer so far to the island, when some of it is not there yet (and the
 /// turn was not stopped). The throttle holds text back between two lines: a
 /// pause, or a card that waits for a click, sends it at once.
@@ -1426,6 +1419,13 @@ fn flush_text(unsent: &mut bool, last_emit: &mut Instant, state: &Run, on_text: 
     }
 }
 
+/// One turn of the chat through its own CLI (started, or started again, as
+/// needed), blocking. `text(fresh)` is the question: `fresh` when the session
+/// is new and has not seen the chat's turns. `ask` puts a card up and calls
+/// back with the click (true: allowed). `tell` hears of every line (a sign
+/// of life) and of the tasks the CLI hands to subagents. The session is
+/// returned with the run.
+#[allow(clippy::too_many_arguments)]
 fn live_turn(
     spec: TurnSpec,
     text: impl FnOnce(bool) -> String,
