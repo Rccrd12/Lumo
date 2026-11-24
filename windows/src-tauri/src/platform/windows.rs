@@ -211,6 +211,15 @@ pub fn open_file(path: &str) {
     let _ = Command::new("explorer").raw_arg(format!("\"{path}\"")).spawn();
 }
 
+/// Windows' "Open with" window for a file: the user picks the app. Quoted
+/// raw, as open_file.
+pub fn open_with(path: &str) {
+    if path.contains('"') {
+        return;
+    }
+    let _ = Command::new("rundll32.exe").raw_arg(format!("shell32.dll,OpenAs_RunDLL \"{path}\"")).spawn();
+}
+
 /// File Explorer on the folder that holds `path`, with the file selected.
 /// `/select,` must reach Explorer with the path quoted right after it, as one
 /// piece: written raw (a Windows path cannot hold a quote).

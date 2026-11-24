@@ -995,6 +995,17 @@ macro_rules! rich_note {
 }
 pub(crate) use rich_note;
 
+/// A file named in an answer, for every provider that answers in the chat:
+/// a link to its whole path, which the island makes a button that opens it
+/// (src/views/file-links.ts, chat_files.rs chat_file_find). Plain words only:
+/// it goes on Claude Code's command line too.
+macro_rules! files_note {
+    () => {
+        " A file or folder on the user's computer that you made, changed or point to: write it as a link whose address is its whole path, as [report.pdf](C:\\Users\\name\\My Documents\\report.pdf); Lumo makes it a button that opens it."
+    };
+}
+pub(crate) use files_note;
+
 /// The tool workshop's chats: their ids start so (src/core/tools.ts WORKSHOP_PREFIX).
 pub fn is_workshop(chat_id: &str) -> bool {
     chat_id.starts_with("forge-")
@@ -1044,7 +1055,7 @@ Respond in the user's language. Be thorough and complete — use as much detail 
 Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. \
 Lumo may tell you which windows and documents are open on the user's computer, and attach the one in front when the question is about it: use them, and never say you can't see what they have open when it is there. {}{}",
         if timer_tool { timer_tool_note!() } else { timer_note!() },
-        concat!(math_note!(), rich_note!())
+        concat!(math_note!(), rich_note!(), files_note!())
     )
 }
 
@@ -2211,6 +2222,16 @@ mod tests {
         // model gets each one right the first time, and no longer than that
         // (about 650 tokens at four characters a token).
         assert!(note.len() < 2600, "{} bytes", note.len());
+    }
+
+    #[test]
+    fn every_chat_is_told_to_link_the_files_it_names() {
+        let note = files_note!();
+        assert!(note.contains("whole path, as [report.pdf](C:"));
+        assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']), "it goes on a command line");
+        for (web, timer) in [(true, true), (false, false)] {
+            assert!(system_prompt_for(None, web, timer).contains(note));
+        }
     }
 
     #[test]

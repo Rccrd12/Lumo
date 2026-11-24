@@ -101,7 +101,8 @@ Lumo shows the user your plan on its Plan island: whenever the user gives you a 
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
-    crate::chat::rich_note!()
+    crate::chat::rich_note!(),
+    crate::chat::files_note!()
 );
 
 /// In front of a question asked in Plan only.

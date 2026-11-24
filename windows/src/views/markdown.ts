@@ -432,15 +432,20 @@ export type Inline =
   | { kind: "math"; tex: string; display: boolean }
   | { kind: "strong"; children: Inline[] }
   | { kind: "em"; children: Inline[] }
-  /** `url` is null when the target is not a web address: the text stays, the link goes. */
-  | { kind: "link"; url: string | null; children: Inline[] };
+  /**
+   * `url` is null when the target is not a web address: the text stays, the
+   * link goes. `file`: the target names a file or folder of the computer
+   * instead, which the chat may make a button (views/file-links.ts).
+   */
+  | { kind: "link"; url: string | null; file?: string; children: Inline[] };
 
 /**
  * `code`, **bold**, __bold__, *italic*, _italic_ and [text](url), whichever
- * comes first; the url's parentheses are kept when they pair up. No lookbehind: one regex literal an engine rejects would take
+ * comes first; the url's parentheses are kept when they pair up, and a
+ * drive's path (`C:\…`) may hold spaces. No lookbehind: one regex literal an engine rejects would take
  * the whole island down with it.
  */
-const INLINE = /`([^`\n]+)`|\*\*((?:[^*\s]|\*[^*\s][^*]*?\*)(?:(?:[^*]|\*[^*\s][^*]*?\*)*?(?:[^*\s]|\*[^*\s][^*]*?\*))?)\*\*|__([^_\s](?:[^_]*?[^_\s])?)__(?!\w)|\*([^*\s](?:[^*]*?[^*\s])?)\*|_([^_\s](?:[^_]*?[^_\s])?)_(?!\w)|\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+|[^)\s]+)\)/g;
+const INLINE = /`([^`\n]+)`|\*\*((?:[^*\s]|\*[^*\s][^*]*?\*)(?:(?:[^*]|\*[^*\s][^*]*?\*)*?(?:[^*\s]|\*[^*\s][^*]*?\*))?)\*\*|__([^_\s](?:[^_]*?[^_\s])?)__(?!\w)|\*([^*\s](?:[^*]*?[^*\s])?)\*|_([^_\s](?:[^_]*?[^_\s])?)_(?!\w)|\[([^\]\n]+)\]\(([A-Za-z]:[\\/][^()\n]+|(?:[^()\s]|\([^()\s]*\))+|[^)\s]+)\)/g;
 
 const isWordChar = (c: string | undefined) => c != null && /\w/.test(c);
 
@@ -452,6 +457,27 @@ export function safeWebUrl(raw: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The file or folder a link's target names, when it is not a web address: a
+ * drive's path (`C:\…`, `file:///C:/…`) or a name or short path with no
+ * scheme. Never another computer's place (`\\server`, `//server`).
+ */
+export function localTarget(raw: string): string | null {
+  let target = raw.trim();
+  if (/^file:\/\/\/[A-Za-z]:[\\/]/i.test(target)) {
+    try {
+      target = decodeURIComponent(target.slice(8));
+    } catch {
+      return null;
+    }
+  }
+  if (/^[\\/]{2}/.test(target) || target.startsWith("#")) return null;
+  if (/^[A-Za-z]:[\\/]/.test(target)) return target;
+  // A scheme (https:, mailto:, javascript:…) or a place from the root: not a file of the chat.
+  if (/^[A-Za-z][\w+.-]*:/.test(target) || /^[\\/]/.test(target)) return null;
+  return /[^\s]/.test(target) ? target : null;
 }
 
 /** Emphasis and links: what is left once code, formulas and escapes are set aside (scan.ts). */
@@ -553,7 +579,12 @@ function parseMasked(text: string, spans: Span[], source: string): Inline[] {
     }
     pushText(text.slice(at, m.index));
     at = m.index + m[0].length;
-    if (m[5] != null) out.push({ kind: "link", url: safeWebUrl(unprotect(unmask(m[6]), spans, source)), children: parseMasked(m[5], spans, source) });
+    if (m[5] != null) {
+      const target = unprotect(unmask(m[6]), spans, source);
+      const url = safeWebUrl(target);
+      const file = url ? null : localTarget(target);
+      out.push({ kind: "link", url, ...(file ? { file } : {}), children: parseMasked(m[5], spans, source) });
+    }
     else if (m[1] != null || m[2] != null) out.push({ kind: "strong", children: parseMasked(m[1] ?? m[2], spans, source) });
     else out.push({ kind: "em", children: parseMasked(m[3] ?? m[4], spans, source) });
   }
@@ -581,6 +612,13 @@ function appendInline(into: HTMLElement, nodes: Inline[]) {
         break;
       }
       case "link": {
+        // A file or folder: plain text until the chat finds it (views/file-links.ts).
+        if (!node.url && node.file) {
+          const span = h("span", { class: "md-file", "data-file": node.file });
+          appendInline(span, node.children);
+          into.append(span);
+          break;
+        }
         if (!node.url) {
           appendInline(into, node.children);
           break;

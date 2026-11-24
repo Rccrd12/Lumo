@@ -7,6 +7,7 @@ import { cleanChecklists, type ChatChecklists } from "./checklists";
 import { clipUnits } from "./clip";
 import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
 import type { SentItem } from "./sent";
+import { readReplyFiles, type ReplyFile } from "./file-names";
 
 export interface SavedTurn {
   role: "user" | "assistant";
@@ -27,6 +28,8 @@ export interface SavedTurn {
   talks?: SavedTalk[];
   /** A question's: the agent it was asked of (Ask, the quote above the field). */
   ask?: AskQuote;
+  /** An answer's: the files of the computer it made or changed (ChatMessage.files). */
+  files?: ReplyFile[];
 }
 
 /** A question asked of one agent: who, and what it was doing then (the quote over the question). */
@@ -119,7 +122,7 @@ export function cleanRecap(raw: unknown): ComputerRecap | undefined {
  */
 export function toSavedTurn(m: {
   role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap;
-  warning?: AnswerWarning; ask?: AskQuote;
+  warning?: AnswerWarning; ask?: AskQuote; files?: ReplyFile[];
 }): SavedTurn {
   return {
     role: m.role,
@@ -129,14 +132,16 @@ export function toSavedTurn(m: {
     ...(m.role === "assistant" && m.computer ? { computer: m.computer } : {}),
     ...(m.warning ? { warning: m.warning } : {}),
     ...(m.ask ? { ask: m.ask } : {}),
+    ...(m.role === "assistant" && m.files?.length ? { files: m.files } : {}),
   };
 }
 
 /** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */
 export function fromSavedTurn(turn: SavedTurn): {
-  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote;
+  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote; files?: ReplyFile[];
 } {
   const computer = turn.role === "assistant" ? cleanRecap(turn.computer) : undefined;
+  const files = turn.role === "assistant" ? readReplyFiles(turn.files) : undefined;
   const warning = savedWarning(turn.warning);
   const ask = askQuoteOf(turn.ask);
   return {
@@ -145,6 +150,7 @@ export function fromSavedTurn(turn: SavedTurn): {
     ...(computer ? { computer } : {}),
     ...(warning ? { warning } : {}),
     ...(ask ? { ask } : {}),
+    ...(files ? { files } : {}),
   };
 }
 

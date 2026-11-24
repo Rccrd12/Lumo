@@ -28,6 +28,8 @@ import { draftIn, isWorkshopChat, stripDraft } from "../core/tools";
 import { FORGE_STRINGS, draftChip } from "./forge";
 import { STRINGS } from "./chat-strings";
 import { fixCard } from "./chat-fix";
+import type { ReplyFile } from "../core/file-names";
+import { linkFiles, replyFilesBox } from "./file-links";
 
 let nextId = 1;
 
@@ -219,9 +221,11 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
     // The turn used the computer: how it went, under the answer (views/computer-recap.ts).
     const computer = message.computer ? computerRecapBox(message.computer, message.id) : null;
     const copies = message.copies?.length ? copiesBox(message.copies) : null;
+    // The files of the computer it made or changed: cards to open (views/file-links.ts).
+    const files = message.files?.length ? replyFilesBox(message.files) : null;
     // What would have let the CLI do more (agy skipped commands): a card under the answer.
     const fix = message.fix ? fixCard(message.fix, "", { openAgents: opts.onOpenAgents }) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, fix, bar, detail));
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, files, fix, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
@@ -722,6 +726,8 @@ export interface Run {
   forgotten?: boolean;
   /** The copies the answer changed or made in the chat's folder (workspace.rs). */
   copies?: Map<string, boolean>;
+  /** The files of the computer the answer changed or made, outside that folder (ChatMessage.files). */
+  touched?: ReplyFile[];
   /** Settles once the answer is over (answered, stopped or failed). */
   done: Promise<void>;
 }
@@ -921,6 +927,8 @@ export function drawReply(reply: HTMLElement, content: string, workshop: boolean
   } else {
     renderAnswer(reply, content, { scope, streaming, send: streaming ? undefined : sendFromCard });
   }
+  // Written out: the files it names become buttons (views/file-links.ts).
+  if (!streaming) void linkFiles(reply);
 }
 
 /**

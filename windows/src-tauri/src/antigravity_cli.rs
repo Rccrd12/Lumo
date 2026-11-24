@@ -98,7 +98,8 @@ Subagents work in the background: once you started them, tell the user in a sent
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
-    crate::chat::rich_note!()
+    crate::chat::rich_note!(),
+    crate::chat::files_note!()
 );
 
 /// "default": no `--model`, whatever the user picked in agy itself.
