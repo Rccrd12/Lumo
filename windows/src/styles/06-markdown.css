@@ -71,6 +71,43 @@ math.mx-display {
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
+/* Wider than the chat: the side where the formula goes on fades out, so a
+   cut formula never reads as a whole one. Only while it can scroll (the
+   timeline is inactive otherwise), and with no script. */
+@property --md-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --md-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes md-math-fade {
+  from {
+    --md-fade-start: 0px;
+    --md-fade-end: 28px;
+  }
+  8%,
+  92% {
+    --md-fade-start: 28px;
+    --md-fade-end: 28px;
+  }
+  to {
+    --md-fade-start: 28px;
+    --md-fade-end: 0px;
+  }
+}
+
+.md-math-scroll {
+  animation: md-math-fade linear both;
+  animation-timeline: scroll(self inline);
+  mask-image: linear-gradient(to right, transparent, #000 var(--md-fade-start), #000 calc(100% - var(--md-fade-end)), transparent);
+}
+
 .md-math .md-copy {
   position: absolute;
   top: 50%;
@@ -120,6 +157,43 @@ math.mx .mx-noted {
 math.mx .mx-root-index {
   font-size: 0.6em;
   margin-right: -0.42em;
+}
+
+/* \overline and \underline (views/math.ts): a rule as long as what it
+   covers, TeX's thickness, with room between it and the letters. */
+math.mx .mx-overline,
+math.mx .mx-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-size: 100% 0.05em;
+}
+
+math.mx .mx-overline {
+  padding-top: 0.2em;
+  background-position: left 0.04em;
+}
+
+math.mx .mx-underline {
+  padding-bottom: 0.2em;
+  background-position: left bottom 0.04em;
+}
+
+/* \widetilde and \widecheck (views/math.ts): the mark as wide as what it
+   covers; the math font stretches only \widehat's. */
+math.mx .mx-widetilde,
+math.mx .mx-widecheck {
+  padding-top: 0.32em;
+  background-repeat: no-repeat;
+  background-position: center 0.02em;
+  background-size: calc(100% - 0.1em) 0.26em;
+}
+
+math.mx .mx-widetilde {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M2 16 C20 2 35 2 50 10 S80 18 98 4' fill='none' stroke='%23eceef1' stroke-width='1.3' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+}
+
+math.mx .mx-widecheck {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M2 2 L50 17 L98 2' fill='none' stroke='%23eceef1' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
 }
 
 /* \overbrace and \underbrace (views/math.ts): the brace in pieces, as wide
