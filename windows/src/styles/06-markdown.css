@@ -397,16 +397,29 @@ math.mx .mx-cancel.mx-sout {
   animation-delay: 0.3s;
 }
 
-/* What the answer is doing, next to the dots: Thinking…, Reading report.pdf… */
+/* What the answer is doing, next to the dots: Thinking…, Reading report.pdf…
+   A light crosses it from left to right in 2 s, then waits 1 s (concept:
+   frasi-stato-onda, A). The words are the background's grey, clipped to the text. */
 .typing-label {
   align-self: center;
   min-width: 0;
   margin-left: 6px;
-  font: 400 10.5px var(--font);
-  color: var(--dim-3);
+  font: 400 11.5px var(--font);
+  color: transparent;
+  background: linear-gradient(90deg, var(--dim-3) 0%, var(--dim-3) 42%, #e8eaee 50%, var(--dim-3) 58%, var(--dim-3) 100%);
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  animation: typing-label-wave 3s linear infinite;
+}
+
+@keyframes typing-label-wave {
+  0% { background-position: 100% 0; }
+  66.667%, 100% { background-position: 0 0; }
 }
 
 /* A wave: each dot in turn rises 3 px and lights up (concept: puntini-attesa, A). */
