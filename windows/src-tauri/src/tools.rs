@@ -259,12 +259,16 @@ fn valid_id(id: &str) -> bool {
 
 /// A file name of the tool's own folder: no folders, nothing hidden, no `..`.
 fn valid_file_name(name: &str) -> bool {
-    let reserved = ["con", "prn", "aux", "nul", "com1", "lpt1"];
+    let reserved = [
+        "con", "prn", "aux", "nul", "conin$", "conout$", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+        "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
     !name.is_empty()
         && name.len() <= 80
         && !name.starts_with('.')
         && !name.ends_with(['.', ' '])
-        && name != MANIFEST
+        // NTFS ignores case: `TOOL.JSON` is the manifest too.
+        && !name.eq_ignore_ascii_case(MANIFEST)
         && !name.chars().any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control())
         && !reserved.contains(&name.split('.').next().unwrap_or("").to_ascii_lowercase().as_str())
 }
@@ -429,6 +433,8 @@ fn runs_anything(path: &Path) -> bool {
         "cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "rundll32", "regsvr32", "msiexec", "bash", "sh", "wsl",
         "python", "pythonw", "py", "pyw", "node", "deno", "bun", "ruby", "perl", "php", "java", "javaw", "conhost", "explorer",
         "schtasks", "reg", "certutil", "bitsadmin", "curl", "wget", "msbuild", "installutil", "forfiles", "ftp", "sc",
+        "zsh", "fish", "dash", "ksh", "csh", "tcsh", "nu", "lua", "luajit", "rscript", "r", "tclsh", "wish", "pypy", "julia",
+        "dotnet", "awk", "gawk", "env", "xargs", "busybox", "npx", "npm", "pnpm", "yarn", "uvx", "pipx",
     ];
     let real = crate::file_moves::real_path(path);
     let stem = |p: &Path| p.file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
@@ -437,7 +443,13 @@ fn runs_anything(path: &Path) -> bool {
         let p = p.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
         p.starts_with(&format!("{}\\", windows.trim_end_matches('\\')))
     };
-    let host = |p: &Path| matches!(extension(p).as_str(), "exe" | "com") && HOSTS.contains(&stem(p).as_str());
+    // `python3.12.exe` is `python`, and `npx.cmd` runs `npx` as surely as `npx.exe`.
+    let host = |p: &Path| {
+        let stem = stem(p);
+        matches!(extension(p).as_str(), "exe" | "com" | "bat" | "cmd")
+            && (HOSTS.contains(&stem.as_str())
+                || HOSTS.contains(&stem.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-')))
+    };
     host(path) || host(&real) || in_windows(path) || in_windows(&real)
 }
 
@@ -680,12 +692,22 @@ pub fn set_review(id: &str, review: Review) -> Result<ToolInfo, String> {
 
 /// A tool to review: its tool.json as the supervisor reads it, its files (name,
 /// what it holds), and the fingerprint of all that.
+/// What the review is given for a file of the tool it couldn't read: over
+/// `MAX_FILE_BYTES`, or not text.
+pub const NOT_READ: &str = "(this file is too big or not text: its code can't be read)";
+
 pub type ForReview = (Manifest, Vec<(String, String)>, String);
 
 /// The tool `id`, as the supervisor reviews it (`ForReview`).
 pub fn for_review(id: &str) -> Option<ForReview> {
     let (dir, m) = find(id)?;
     let mut files = read_files(id);
+    // A file too big or not text is still the tool's: the review says it wasn't read.
+    for name in own_files(&dir) {
+        if !files.iter().any(|(n, _)| *n == name) {
+            files.push((name, NOT_READ.into()));
+        }
+    }
     let entry = Path::new(&m.entry);
     if entry.is_absolute() {
         let text = std::fs::read(entry).ok().filter(|b| b.len() <= MAX_FILE_BYTES).and_then(|b| String::from_utf8(b).ok());
@@ -1922,6 +1944,38 @@ mod tests {
         assert!(!runs_anything(Path::new(r"C:\Users\me\scripts\sh.py")));
         assert!(!runs_anything(Path::new(r"C:\Users\me\bin\convert.exe")));
         assert!(!runs_anything(Path::new(r"C:\Users\me\scripts\backup.bat")));
+    }
+
+    #[test]
+    fn a_versioned_interpreter_or_a_launcher_wrapper_is_a_host_too() {
+        // Bug report #112: the version in the name hid the interpreter.
+        assert!(runs_anything(Path::new(r"C:\Users\x\AppData\Local\Microsoft\WindowsApps\python3.exe")));
+        assert!(runs_anything(Path::new(r"C:\Users\x\AppData\Local\Microsoft\WindowsApps\python3.12.exe")));
+        assert!(runs_anything(Path::new(r"D:\bin\zsh.exe")));
+        assert!(runs_anything(Path::new(r"D:\bin\lua5.4.exe")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\R\bin\Rscript.exe")));
+        // Bug report #113: a .cmd wrapper, or a launcher that runs its arguments.
+        assert!(runs_anything(Path::new(r"C:\Program Files\nodejs\npx.cmd")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\nodejs\npm.cmd")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\Git\usr\bin\env.exe")));
+        assert!(runs_anything(Path::new(r"C:\Program Files\Git\usr\bin\xargs.exe")));
+        assert!(runs_anything(Path::new(r"D:\bin\busybox.exe")));
+        // A program with digits in its name is still the user's own.
+        assert!(!runs_anything(Path::new(r"C:\Users\me\bin\convert2.exe")));
+        assert!(!runs_anything(Path::new(r"C:\Users\me\bin\ffmpeg.exe")));
+    }
+
+    #[test]
+    fn a_draft_file_is_never_the_manifest_or_a_device() {
+        // Bug report #111: NTFS ignores case, and every COM/LPT port is a device.
+        assert!(!valid_file_name("TOOL.JSON"));
+        assert!(!valid_file_name("Tool.json"));
+        for name in ["com2.py", "com9", "lpt3", "lpt9.txt", "conin$", "CONOUT$"] {
+            assert!(!valid_file_name(name), "{name}");
+        }
+        assert!(valid_file_name("tool.py"));
+        assert!(valid_file_name("compute.py"));
+        assert!(valid_file_name("com10.py"));
     }
 
     #[test]

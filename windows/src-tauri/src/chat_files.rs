@@ -37,6 +37,9 @@ const RUNS: &[&str] = &[
     "xlsb", "ppt", "pot", "pps", "mdb", "mde", "accdb", "accde", "accdr", "ade", "adp", "one", "onepkg", "mht", "mhtml",
     // Themes, which fetch from a network share (and hand it the Windows login).
     "theme", "themepack", "deskthemepack",
+    // Updates that install, Python zip apps and bytecode the launcher runs,
+    // Office add-ins that install, Excel web queries and SYLK (DDE).
+    "msu", "pyz", "pyzw", "pyc", "pyo", "vsto", "iqy", "slk",
 ];
 
 #[derive(Default)]
@@ -201,7 +204,9 @@ mod tests {
     fn programs_and_scripts_are_never_opened_by_their_type() {
         for p in [r"C:\x\setup.exe", r"C:\x\run.BAT", r"C:\x\a.ps1", r"C:\x\game.py", r"C:\x\link.lnk", r"C:\x\noext", r"C:\x\evil.cmd. ", "/home/x/a.sh",
             r"C:\x\box.wsb", r"C:\x\old.xls", r"C:\x\old.doc", r"C:\x\db.accde", r"C:\x\notes.one", r"C:\x\a.theme", r"C:\x\a.cab",
-            r"C:\x\a.searchConnector-ms", r"C:\x\page.mht", r"C:\x\a.txt:x.exe"] {
+            r"C:\x\a.searchConnector-ms", r"C:\x\page.mht", r"C:\x\a.txt:x.exe",
+            // Bug report #117.
+            r"C:\x\update.msu", r"C:\x\tool.pyz", r"C:\x\tool.pyzw", r"C:\x\x.pyc", r"C:\x\addin.vsto", r"C:\x\q.iqy", r"C:\x\a.SLK"] {
             assert!(runs(p), "{p}");
         }
         for p in [r"C:\x\report.pdf", r"C:\x\notes.md", r"C:\x\photo.JPG", r"C:\x\data.json", r"C:\x\page.html"] {
