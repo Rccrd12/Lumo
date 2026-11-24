@@ -1,6 +1,7 @@
 // App state: what the island shows and remembers.
 
 import type { ComputerRecap, ComputerState } from "./computer-use";
+import type { ReplyFile } from "./file-names";
 import { pausedPlanWaits } from "./computer-plan";
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
@@ -201,6 +202,8 @@ export interface ChatMessage {
   copies?: { chat: string; path: string; made?: boolean }[];
   /** The commands a local model ran in its terminal while answering (terminal.rs), shown above the answer; saved with the chat. */
   commands?: import("./terminal").RanCommand[];
+  /** The files of the computer the answer made or changed (`chat-file` events), as cards under it (views/file-links.ts); saved with the chat. */
+  files?: ReplyFile[];
   /** The answer's turn used the computer: its plan as it ended, shown under it (computer.rs, saved with the chat). */
   computer?: ComputerRecap;
   /** A question: what went with it (core/sent.ts), shown on its bubble; saved with the chat. */

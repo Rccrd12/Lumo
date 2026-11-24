@@ -1,0 +1,286 @@
+/* The files of an answer (views/file-links.ts, concepts/file-cliccabili-in-chat):
+   the names in its text as small buttons, and under it a card for each file
+   it made or changed, or one line that opens into their list. The cards are
+   the attachments' rows (.attach-row, .attach-tile), the colours the chat's
+   files' (.chat-file-created, .chat-file-edited). */
+
+/* In the text: the file's icon and name, in the links' blue. */
+.file-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 6px 0 4px;
+  margin: 0 1px;
+  border-radius: 6px;
+  background: rgba(96, 165, 250, 0.12);
+  color: #8cc0fb;
+  cursor: pointer;
+  outline: none;
+  vertical-align: baseline;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.file-link svg {
+  flex: none;
+  align-self: center;
+  opacity: 0.9;
+}
+
+.file-link-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-link:hover,
+.file-link:focus-visible {
+  background: rgba(96, 165, 250, 0.22);
+  color: #b5d6fd;
+}
+
+.file-link.missing {
+  background: rgba(255, 255, 255, 0.05);
+  color: #7d838d;
+  text-decoration: line-through;
+  cursor: default;
+}
+
+/* Under the answer. */
+.reply-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 380px;
+  margin: 10px 0 2px;
+}
+
+.reply-file {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 16px;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 50px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.reply-file .attach-tile {
+  width: 38px;
+  height: 38px;
+}
+
+.reply-file .attach-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reply-file:hover,
+.reply-files-head:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.reply-file:focus-visible,
+.reply-files-head:focus-visible {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.reply-file-open {
+  display: grid;
+  place-items: center;
+  color: #6b7079;
+}
+
+.reply-file.missing,
+.reply-files-row.missing {
+  cursor: default;
+}
+
+.reply-file.missing .attach-tile,
+.reply-file.missing .attach-name,
+.reply-files-row.missing .attach-tile,
+.reply-files-row.missing .reply-files-name {
+  opacity: 0.45;
+}
+
+.reply-file.missing .reply-file-open {
+  visibility: hidden;
+}
+
+/* Many files: one line, their kinds' tiles stacked, that opens into the list. */
+.reply-files.many {
+  gap: 0;
+  max-width: 460px;
+}
+
+.reply-files-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 16px;
+  align-items: center;
+  column-gap: 12px;
+  padding: 8px 10px 8px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.reply-files.open .reply-files-head {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.reply-files-stack {
+  display: flex;
+}
+
+.reply-files-stack .attach-tile {
+  width: 30px;
+  height: 30px;
+  margin-left: -10px;
+  border: 2px solid #0b0b0d;
+  background: color-mix(in srgb, var(--tile) 22%, #111);
+}
+
+.reply-files-stack .attach-tile:first-child {
+  margin-left: 0;
+}
+
+.reply-files-chev {
+  display: grid;
+  place-items: center;
+  color: #6b7079;
+  transition: transform 0.15s ease-out;
+}
+
+.reply-files.open .reply-files-chev {
+  transform: rotate(90deg);
+}
+
+.reply-files-list {
+  display: none;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.reply-files.open .reply-files-list {
+  display: flex;
+}
+
+.reply-files-chips {
+  display: flex;
+  gap: 6px;
+  padding: 2px 2px 6px;
+}
+
+.reply-files-chip {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  font: 500 11px var(--font);
+  color: #8b929e;
+  cursor: pointer;
+}
+
+.reply-files-chip.on {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6e8eb;
+}
+
+.reply-files-chip b {
+  margin-left: 4px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+/* About eight rows, then they scroll. */
+.reply-files-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 248px;
+  overflow-y: auto;
+}
+
+.reply-files-row {
+  flex: none;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  height: 30px;
+  padding: 0 8px 0 4px;
+  border-radius: 7px;
+  cursor: pointer;
+  outline: none;
+}
+
+.reply-files-row:hover,
+.reply-files-row:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.reply-files-row .attach-tile {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.reply-files-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 12px var(--font);
+  color: var(--ink-2);
+}
+
+.reply-files-folder {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 10.5px var(--font);
+  color: #6f7682;
+}
+
+.reply-files-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 6px 4px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font: 500 11px var(--font);
+  color: #8b929e;
+}
+
+.reply-files-folder-btn {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: #8cc0fb;
+  cursor: pointer;
+}
+
+.reply-files-folder-btn:hover {
+  color: #b5d6fd;
+}

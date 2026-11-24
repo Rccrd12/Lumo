@@ -97,6 +97,8 @@ import type { AgentsPeek } from "../core/compact";
 import { PICTURE_NAME, comingBack, joinScreen, leaveScreen, restored, sentAgain, sentItems, type SentItem } from "../core/sent";
 import type { ChatPermissions } from "../core/chats";
 import { messageScope, nextMessage } from "../core/checklists";
+import { withReplyFile } from "../core/file-names";
+import { setFileLinkHost } from "./file-links";
 import { addChatFile, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
@@ -1730,6 +1732,15 @@ export function buildPrompt(
     if (done === "missing") lostChatFile(file);
   }
 
+  // The files an answer names or made, as buttons and cards (views/file-links.ts).
+  setFileLinkHost({
+    known: () => chatFiles(State.chatId).map((f) => f.path),
+    showChatFiles: () => {
+      openFiles();
+      showFilesTab("chat");
+    },
+  });
+
   async function revealChatFile(file: ChatFile) {
     const done = await Bridge.chatFileReveal(file.path);
     if (done === "missing") lostChatFile(file);
@@ -3072,6 +3083,9 @@ export function buildPrompt(
     if (run && kind !== "read" && inWorkspace(path)) {
       const copies = (run.copies ??= new Map());
       copies.set(path, copies.get(path) ?? kind === "created");
+    } else if (run && kind !== "read") {
+      // A file of the computer: a card under the answer (views/file-links.ts).
+      run.touched = withReplyFile(run.touched ?? [], path, kind);
     }
     if (chat === State.chatId) drawChatFiles();
   });
@@ -4111,11 +4125,13 @@ export function buildPrompt(
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
           commands: run.commands?.length ? run.commands : undefined,
+          files: run.touched?.length ? run.touched : undefined,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
           computer: recap,
         });
         run.copies = undefined;
         run.commands = undefined;
+        run.touched = undefined;
       } else {
         giveBack(false);
       }

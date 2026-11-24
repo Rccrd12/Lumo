@@ -77,7 +77,8 @@ Lumo shows the user your plan on its Plan island. So whenever the user gives you
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
-    crate::chat::rich_note!()
+    crate::chat::rich_note!(),
+    crate::chat::files_note!()
 );
 
 /// Added instead when the chat may use the computer (Settings → Chat → Let
@@ -93,7 +94,8 @@ Lumo shows the user your plan on its Plan island. When the job uses the computer
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
     crate::chat::math_note!(),
-    crate::chat::rich_note!()
+    crate::chat::rich_note!(),
+    crate::chat::files_note!()
 );
 
 /// Lumo's computer use tools that only look, and its plan tool, which the
