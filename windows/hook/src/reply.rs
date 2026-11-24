@@ -251,7 +251,7 @@ pub fn writes_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) 
             }
             // Not relative to the workspace once expanded: `~/…`, `$HOME/…`,
             // `${env:…}`, `%USERPROFILE%\…` (and `%3A`, a `file://` address's colon).
-            if p.starts_with(['~', '$']) {
+            if p.starts_with(['~', '$']) || p.contains('%') {
                 return true;
             }
             // A relative path is the workspace's own.
