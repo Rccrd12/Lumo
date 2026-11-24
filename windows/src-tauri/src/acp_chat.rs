@@ -316,10 +316,15 @@ fn cursor_workspace(work: &Path, tools: bool, mail: &str, browser: bool) -> Valu
     }
     let edit = |file: &str, change: &dyn Fn(&mut Value)| {
         let path = dir.join(file);
-        let mut config = match std::fs::read_to_string(&path).ok().as_deref().map(serde_json::from_str::<Value>) {
-            Some(Ok(v)) if v.is_object() => v,
-            Some(_) => return,
-            None => json!({}),
+        // Only a file that isn't there starts empty: one Lumo can't read
+        // (UTF-16 from PowerShell, no access) is the user's and left alone.
+        let mut config = match std::fs::read_to_string(&path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
+            Err(_) => return,
+            Ok(text) => match serde_json::from_str::<Value>(&text) {
+                Ok(v) if v.is_object() => v,
+                _ => return,
+            },
         };
         let before = config.clone();
         change(&mut config);
@@ -2125,6 +2130,11 @@ mod tests {
         std::fs::write(dir.join(".cursor").join("mcp.json"), "{ not json").unwrap();
         cursor_workspace(&dir, true, "", false);
         assert_eq!(std::fs::read_to_string(dir.join(".cursor").join("mcp.json")).unwrap(), "{ not json");
+        // So is one that isn't UTF-8: UTF-16 with its BOM, as PowerShell's `>` writes it.
+        let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain(r#"{"mcpServers":{"mine":{"command":"x"}}}"#.encode_utf16().flat_map(u16::to_le_bytes)).collect();
+        std::fs::write(dir.join(".cursor").join("mcp.json"), &utf16).unwrap();
+        cursor_workspace(&dir, true, "", false);
+        assert_eq!(std::fs::read(dir.join(".cursor").join("mcp.json")).unwrap(), utf16, "the user's servers stay");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

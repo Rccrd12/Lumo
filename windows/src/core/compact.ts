@@ -550,7 +550,7 @@ export function parseDuration(raw: string): number | null {
     const [a, b, c] = [clock[1], clock[2], clock[3]].map((x) => (x == null ? null : parseInt(x, 10)));
     return c == null ? ((a ?? 0) * 60 + (b ?? 0)) * 1000 : ((a ?? 0) * 3600 + (b ?? 0) * 60 + c) * 1000;
   }
-  const re = /(\d+(?:\.\d+)?)(hours?|hrs|hr|h|ore|ora|minutes?|minuti|mins|min|m|seconds?|secondi|secs|sec|s)?/g;
+  const re = /(\d+(?:\.\d+)?)(hours?|hrs|hr|h|ore|ora|minutes?|minuti|mins|min|m|secondi|seconds?|secs|sec|s)?/g;
   let total = 0;
   let matched = "";
   let unitless: number | null = null;
