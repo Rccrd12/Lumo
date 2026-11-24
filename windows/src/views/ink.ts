@@ -105,7 +105,8 @@ export function cutPoints(text: string, complete = false): number[] {
     if (i === n ? !complete : !(/\S/.test(text[i - 1]) && /\s/.test(text[i]))) continue;
     if (inside > 0) continue;
     const lineStart = text.lastIndexOf("\n", i - 1) + 1;
-    if (MARKER.test(text.slice(lineStart, i))) continue;
+    // The end of a finished answer is a cut even after a lone marker ("5.", "-").
+    if (!(i === n && complete) && MARKER.test(text.slice(lineStart, i))) continue;
     cuts.push(i);
   }
   return cuts;

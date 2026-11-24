@@ -169,9 +169,14 @@ export class Ticker {
   private recent: Entry[] = [];
   /** True once Claude has finished: the final message holds still. */
   private still = false;
+  /** The task whose steps the rows hold: one ticker serves every pill. */
+  private taskId: string | null = null;
+
+  private readonly onTap?: (tap: TickerTap) => void;
 
   /** `onTap` receives the step of a clicked row. */
-  constructor(private readonly onTap?: (tap: TickerTap) => void) {
+  constructor(onTap?: (tap: TickerTap) => void) {
+    this.onTap = onTap;
     this.el = h("div", { class: "ticker" });
     this.build();
     // The room only changes when the island does: nothing runs in between.
@@ -253,9 +258,11 @@ export class Ticker {
       if (this.startMs == null) this.rest();
     }
 
-    // First render, or the session restarted (steps were cleared): drop
-    // straight into place rather than scroll.
-    if (this.displayIndex < 0 || newest < this.displayIndex) {
+    // First render, the session restarted (steps were cleared), or another
+    // task is shown now: drop straight into place rather than scroll.
+    const id = task?.id ?? null;
+    if (this.displayIndex < 0 || newest < this.displayIndex || id !== this.taskId) {
+      this.taskId = id;
       this.displayIndex = newest;
       this.layout(entries);
       return;

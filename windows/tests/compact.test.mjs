@@ -111,6 +111,10 @@ test("timers read what people say", () => {
   assert.equal(parseDuration("2 min"), 120_000);
   assert.equal(parseDuration("0:45"), 45_000);
   assert.equal(parseDuration("1:00:05"), 3_605_000);
+  // Italian, as said: "secondi" is not read as "second" and a stray "i".
+  assert.equal(parseDuration("5secondi"), 5_000);
+  assert.equal(parseDuration("5 secondi"), 5_000);
+  assert.equal(parseDuration("2 minuti"), 120_000);
   assert.equal(parseDuration("soon"), null);
   assert.equal(parseDuration(""), null);
   assert.equal(timerLeft(65_000), "1:05");

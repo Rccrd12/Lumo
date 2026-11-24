@@ -688,8 +688,6 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
   let out = forLumo(text, take);
   // The line's own row, and a code block that only held it.
   out = out.replace(/^[ \t]*(?:\u0000[ \t]*)+(?:\n|$)/gm, "").replaceAll(GONE, "");
-  // (Not a block closing right before another opens: "```" then "```lumo-file x".)
-  out = out.replace(/```[A-Za-z]*[ \t]*\n?\s*```(?![\w-])[ \t]*\n?/g, "");
   out = out.replace(/`{0,3}\[\[(?:(?!\]\]).)*$/, "");
   return { text: out.replace(/\n{3,}/g, "\n\n").trim(), listens, stops, unread };
 }
@@ -714,7 +712,12 @@ function forLumo(text: string, take: (part: string) => string): string {
       while (end < lines.length && !lines[end].trimStart().startsWith(fence[1])) end++;
       const block = lines.slice(i, Math.min(end + 1, lines.length));
       const inner = lines.slice(i + 1, end).join("\n").trim();
-      out.push(inner && ONLY_MARKERS.test(inner) ? take(block.join("\n")) : block.join("\n"));
+      if (inner && ONLY_MARKERS.test(inner)) {
+        // A block left with nothing but taken lines goes, fences and all
+        // (only this block: two code blocks side by side stay two).
+        const taken = take(block.join("\n"));
+        out.push(taken.split("\n").slice(1, end - i).every((l) => /^[ \t\u0000]*$/.test(l)) ? GONE : taken);
+      } else out.push(block.join("\n"));
       i = end;
       continue;
     }
