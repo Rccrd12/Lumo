@@ -247,6 +247,9 @@
 .typing-stall {
   align-self: center;
   flex: none;
+  /* On the same line as the words before it (.typing-label). */
+  position: relative;
+  top: -1px;
   font: 400 10.5px var(--font);
   white-space: nowrap;
 }

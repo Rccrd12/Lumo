@@ -489,6 +489,9 @@ math.mx .mx-cancel.mx-sout {
   overflow: hidden;
   text-overflow: ellipsis;
   animation: typing-label-wave 3s linear infinite;
+  /* Centred on the dots by its letters, not its line box, which sat them 1 px low. */
+  position: relative;
+  top: -1px;
 }
 
 @keyframes typing-label-wave {
