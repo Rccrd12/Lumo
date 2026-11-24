@@ -561,7 +561,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate:
         key: format!("{}\u{0}{}", l.server.id, l.model),
         query: &task.task,
         workspace: l.workspace,
-        changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
+        changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE, crate::terminal::RUN],
         max_rounds: crate::api_agents::MAX_AGENT_ROUNDS,
         pause: Duration::from_secs(1),
         text_only: None,
@@ -618,6 +618,8 @@ fn tool_activity(name: &str, input: &Value) -> Activity {
         crate::browser::activity(input)
     } else if crate::workspace::NAMES.contains(&name) {
         crate::workspace::activity(name, input)
+    } else if crate::terminal::NAMES.contains(&name) {
+        crate::terminal::activity(input)
     } else if crate::github_tools::NAMES.contains(&name) {
         crate::github_tools::activity(name, input)
     } else {
@@ -864,7 +866,17 @@ pub async fn send(
     let all = if caps.tools == Some(false) {
         Vec::new()
     } else {
-        let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, true, browser)).await.unwrap_or_default();
+        let sandbox_high = sandbox != "low";
+        let all = tauri::async_runtime::spawn_blocking(move || {
+            let mut all = crate::tools::chat_tools(mail, web, true, browser);
+            // Commands in its folder, in the Windows sandbox, when the user let it (terminal.rs).
+            if crate::terminal::offered(sandbox_high) {
+                all.push(crate::terminal::api_tool());
+            }
+            all
+        })
+        .await
+        .unwrap_or_default();
         let mut all = tools_for_mode(all, mode);
         // Agents of its own, one at a time (api_agents.rs).
         all.push(crate::api_agents::tool());
@@ -887,6 +899,7 @@ pub async fn send(
     let asking = crate::tools::Asking::for_local(mode);
     let sandbox_high = sandbox != "low";
     let workspace = tools.iter().any(|(id, _, _)| id == crate::workspace::COPY);
+    let terminal = tools.iter().any(|(id, _, _)| id == crate::terminal::RUN);
     let today = profile::today();
     let mail_on = !crate::mail::ai_tools(app).is_empty();
     // What the model is told, for the tools it has loaded (and none, when the
@@ -901,6 +914,7 @@ pub async fn send(
             web: web && tools,
             timer: tools,
             workspace: workspace && tools,
+            terminal: terminal && tools,
             groups: &groups,
             catalog: &catalog,
             mail: if mode == "plan" && !mail.is_empty() { "mail" } else { mail },
@@ -1012,7 +1026,7 @@ pub async fn send(
             key: format!("{}\u{0}{model}", server.id),
             query: &query,
             workspace,
-            changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
+            changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE, crate::terminal::RUN],
             max_rounds: MAX_TOOL_ROUNDS,
             pause: Duration::from_secs(1),
             text_only: (text_only != user).then_some(text_only),

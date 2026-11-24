@@ -19,7 +19,8 @@ import { ageLabel } from "../core/plan";
 import { SCREEN_STRINGS } from "../core/screen";
 import { COMPUTER_TEXT } from "../core/computer";
 import { currentStep } from "../core/computer-use";
-import { computerRecapBox } from "./computer-recap";
+import { computerRecapBox, recapDuration } from "./computer-recap";
+import { commandEnd, type RanCommand } from "../core/terminal";
 import { N_, dayMonth, language, t, tl } from "../i18n/i18n";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, speakerName, takeTimers } from "../core/compact";
@@ -221,7 +222,9 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
     const copies = message.copies?.length ? copiesBox(message.copies) : null;
     // What would have let the CLI do more (agy skipped commands): a card under the answer.
     const fix = message.fix ? fixCard(message.fix, "", { openAgents: opts.onOpenAgents }) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, computer, copies, fix, bar, detail));
+    // The commands its local model ran in its terminal, above what it says of them.
+    const commands = message.commands?.length ? commandsBox(message.commands) : null;
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, commands, reply, computer, copies, fix, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
@@ -517,6 +520,76 @@ const COPY_STRINGS = {
   unchanged: N_("The copy is the same as the original."),
 };
 
+/** What a command's line says (terminal.rs, core/terminal.ts). */
+const COMMAND_TEXT = {
+  denied: N_("Access denied"),
+  stopped: N_("Stopped after {time}"),
+  failed: N_("Exit code {code}"),
+  failedNoCode: N_("Failed"),
+  internet: N_("With the internet"),
+  output: N_("What it printed"),
+};
+
+/** A command's time on its line: tenths of a second under 10 s. */
+function commandTime(ms: number): string {
+  if (ms >= 10_000) return recapDuration(ms);
+  const seconds = new Intl.NumberFormat(language(), { maximumFractionDigits: 1 }).format(Math.max(0, ms) / 1000);
+  return t("{seconds} s", { seconds });
+}
+
+/** The commands whose output was folded away by a click: they stay so while the chat is drawn again. */
+const foldedCommands = new WeakSet<RanCommand>();
+
+/**
+ * The commands an answer's local model ran (terminal.rs): each on a line, the
+ * command, how it ended and in how long, and what it printed below, folded
+ * away with a click on the line.
+ */
+function commandsBox(commands: RanCommand[]): HTMLElement {
+  const box = h("div", { class: "reply-commands" });
+  for (const c of commands) {
+    const end = commandEnd(c);
+    const state = end === "ok" ? `✓ ${commandTime(c.ms)}`
+      : end === "denied" ? `✕ ${t(COMMAND_TEXT.denied)}`
+        : end === "stopped" ? t(COMMAND_TEXT.stopped, { time: recapDuration(c.ms) })
+          : `✕ ${c.code != null ? t(COMMAND_TEXT.failed, { code: c.code }) : t(COMMAND_TEXT.failedNoCode)}`;
+    const output = c.output.trim();
+    const out = output ? h("pre", { class: "reply-command-out", text: output, title: t(COMMAND_TEXT.output) }) : null;
+    const head = h("div", { class: "reply-command-head" },
+      h("span", { class: "reply-command-icon" }, svg(ICONS.terminal, 12, { stroke: 2 })),
+      h("span", { class: "reply-command-line", text: c.command, title: c.command }),
+      ...(c.internet ? [h("span", { class: "reply-command-net", title: t(COMMAND_TEXT.internet) }, svg(ICONS.globe, 11, { stroke: 2 }))] : []),
+      h("span", { class: `reply-command-state ${end}`, text: state }),
+      ...(out ? [h("span", { class: "reply-command-fold" }, svg(ICONS.chevronDown, 10, { stroke: 2.4 }))] : []));
+    const item = h("div", { class: "reply-command" }, head, ...(out ? [out] : []));
+    if (out) {
+      const show = (open: boolean) => {
+        out.hidden = !open;
+        item.classList.toggle("open", open);
+        head.setAttribute("aria-expanded", String(open));
+      };
+      show(!foldedCommands.has(c));
+      head.setAttribute("role", "button");
+      head.setAttribute("tabindex", "0");
+      const toggle = () => {
+        const open = out.hidden;
+        if (open) foldedCommands.delete(c);
+        else foldedCommands.add(c);
+        show(open);
+      };
+      head.addEventListener("click", toggle);
+      head.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle();
+        }
+      });
+    }
+    box.append(item);
+  }
+  return box;
+}
+
 /** A path in a chat's folder of copies (workspace.rs). */
 export function inWorkspace(path: string): boolean {
   return /[\\/]com\.rccrd12\.lumo[\\/]workspaces[\\/]/i.test(path);
@@ -722,6 +795,8 @@ export interface Run {
   forgotten?: boolean;
   /** The copies the answer changed or made in the chat's folder (workspace.rs). */
   copies?: Map<string, boolean>;
+  /** The commands the answer's local model ran in its terminal (terminal.rs), in order. */
+  commands?: import("../core/terminal").RanCommand[];
   /** Settles once the answer is over (answered, stopped or failed). */
   done: Promise<void>;
 }

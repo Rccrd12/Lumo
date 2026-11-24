@@ -773,6 +773,32 @@ original** puts the copy back, only with that click. Network paths are never
 copied, and the record of what came from where is kept beside the folder,
 where the model can't change it. The folder goes with the chat.
 
+**A terminal in that folder**: with **Settings… → Security → Let local models
+use a terminal** (off by default, Windows only), a local model can run commands
+(`workspace_run`, with `cmd.exe`) in its chat's folder of copies: write a
+Python script there and run it on a copied CSV, convert a file, check what a
+program prints. Each command runs in the same Windows sandbox as your tools
+(an AppContainer and a job of its own, `terminal.rs`): it reads and writes that
+folder only, plus a temporary folder emptied before each command; Python and
+Node, when installed, are opened to it to read and run, and everything else
+(your files, Lumo's data, the other chats' folders) stays closed. It has none
+of Lumo's keys or tokens, can't hold more than 4 GB nor start more than 64
+programs at once, and is stopped, with everything it started, after
+**Longest a command may take** (30 s, 2 minutes, the default, or 10 minutes).
+It has no internet; with **Internet in commands** on **Ask every time** (the
+default), a command that needs it (`pip install --target .libs …`, where
+`.libs` is on `PYTHONPATH`) says so and its card asks, in amber, for that
+command only; on **Never** it runs without. The card says who asks, the command
+and where it runs; **Ask for approval** and **Approve for me** ask for every
+command, **Run automatically** only for one that wants the internet, and
+**Allow for this chat** lets the chat's next commands run without a card
+until Lumo closes (never one that wants the internet). The terminal is offered
+only with **Sandbox High** and never on **Plan only**. Above the answer, each
+command shows how it ended (✓ and its time, the exit code, Access denied when
+the sandbox refused something, stopped at its limit) and the end of what it
+printed, saved with the chat; the files it made or changed join the chat's
+files and the copies under the answer, to open or write over the original.
+
 Under a connected Ollama or LM Studio, Settings shows the model it holds in
 memory now (name and size) and **Free memory** unloads it with one click
 (Ollama's `keep_alive: 0`, LM Studio's unload). **Download a model** takes a
@@ -832,6 +858,10 @@ With **Settings → Security → Let agents browse the web** (off by default), t
 island chat's AI (whichever provider) and its agents open the sites they choose in hidden
 tabs inside Lumo, in a separate InPrivate profile: those sites, and everything
 their pages load, see your IP address (see [Agents browse the web](#agents-browse-the-web)).
+With **Settings → Security → Let local models use a terminal** (off by
+default), a command that asks for the internet reaches it only after a click
+on its card, for that command only; **Internet in commands → Never** keeps
+every command off it.
 
 ### Chat with your Claude plan (Claude Code)
 

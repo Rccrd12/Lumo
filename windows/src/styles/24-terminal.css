@@ -1,0 +1,140 @@
+/* A local model's terminal (src-tauri/src/terminal.rs): on its card, where and
+   how a command runs (views/views.ts terminalChips); above an answer, the
+   commands it ran and what they printed (views/chat-messages.ts commandsBox). */
+
+.terminal-slot[hidden] {
+  display: none;
+}
+
+.terminal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -4px;
+}
+
+.terminal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font: 400 11px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.terminal-chip svg {
+  flex: none;
+}
+
+.terminal-chip.warn {
+  background: rgba(245, 165, 36, 0.14);
+  color: var(--amber);
+}
+
+/* ── Above an answer: its commands ─────────────────────────────────────────── */
+
+.reply-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 10px;
+}
+
+.reply-command {
+  direction: ltr;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #0d0e12;
+  overflow: hidden;
+}
+
+.reply-command-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font: 400 11.5px var(--mono);
+  color: #c8cdd4;
+}
+
+.reply-command-head[role="button"] {
+  cursor: pointer;
+}
+
+.reply-command-icon,
+.reply-command-net,
+.reply-command-fold {
+  display: flex;
+  flex: none;
+  color: var(--dim-3);
+}
+
+.reply-command-net {
+  color: var(--amber);
+}
+
+.reply-command-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reply-command-line::before {
+  content: "› ";
+  color: var(--dim-3);
+}
+
+.reply-command-state {
+  flex: none;
+  font: 400 10.5px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.reply-command-state.ok {
+  color: var(--green);
+}
+
+.reply-command-state.failed,
+.reply-command-state.denied {
+  color: var(--red-text);
+}
+
+.reply-command-state.stopped {
+  color: var(--amber);
+}
+
+.reply-command-fold svg {
+  transition: transform 0.15s ease;
+}
+
+.reply-command.open .reply-command-fold svg {
+  transform: rotate(180deg);
+}
+
+.reply-command-out {
+  max-height: 180px;
+  margin: 0;
+  padding: 8px 10px 9px;
+  overflow: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font: 400 11px var(--mono);
+  color: #aab0b9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reply-command-out[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reply-command-fold svg {
+    transition: none;
+  }
+}

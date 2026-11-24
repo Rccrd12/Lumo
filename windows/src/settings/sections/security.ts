@@ -78,6 +78,21 @@ const BROWSER_SETTINGS = {
   get hint() { return t("Agents open websites in hidden tabs of their own."); },
 };
 
+/** A local model's terminal (terminal.rs): commands in its chat's folder, in the Windows sandbox. */
+const TERMINAL_SETTINGS = {
+  get label() { return t("Let local models use a terminal"); },
+  get hint() { return t("Commands in the Windows sandbox, in the chat's folder only."); },
+  get network() { return t("Internet in commands"); },
+  get networkHint() { return t("A command that wants the internet asks on its card."); },
+  get ask() { return t("Ask every time"); },
+  get never() { return t("Never"); },
+  get timeout() { return t("Longest a command may take"); },
+  get timeoutHint() { return t("Then Lumo stops it, with whatever it started."); },
+};
+
+/** The times a command may take (terminal.rs TIMEOUTS), in seconds. */
+const TERMINAL_TIMEOUTS = [30, 120, 600];
+
 /**
  * Settings → Security: what the chat's agents may do on their own (the
  * permissions, computer use, the agents' browser, web search), what goes with every message,
@@ -141,6 +156,29 @@ export function securitySection(): HTMLElement {
     note.hidden = !(settings.chatComputerUse && !cli);
   };
   showNote();
+  // The terminal's own rows, only while it is on.
+  const terminalNetwork = setting(TERMINAL_SETTINGS.network, TERMINAL_SETTINGS.networkHint,
+    select([["ask", TERMINAL_SETTINGS.ask], ["never", TERMINAL_SETTINGS.never]], settings.localTerminalNetwork === "never" ? "never" : "ask", (v) => {
+      settings.localTerminalNetwork = v === "never" ? "never" : "ask";
+      void save();
+    }),
+  );
+  const timeout = TERMINAL_TIMEOUTS.includes(settings.localTerminalTimeout) ? settings.localTerminalTimeout : 120;
+  const terminalTimeout = setting(TERMINAL_SETTINGS.timeout, TERMINAL_SETTINGS.timeoutHint,
+    select(TERMINAL_TIMEOUTS.map((s): [string, string] => [String(s), s < 60 ? t("{seconds} s", { seconds: s }) : t("{minutes} min", { minutes: s / 60 })]), String(timeout), (v) => {
+      settings.localTerminalTimeout = Number(v);
+      void save();
+    }),
+  );
+  for (const row of [terminalNetwork, terminalTimeout]) {
+    row.classList.add("setting-under");
+    row.querySelector("select")?.classList.add("security-select");
+  }
+  const showTerminal = () => {
+    terminalNetwork.hidden = !settings.localTerminal;
+    terminalTimeout.hidden = !settings.localTerminal;
+  };
+  showTerminal();
   return h(
     "section",
     {},
@@ -161,6 +199,15 @@ export function securitySection(): HTMLElement {
         void save();
       }),
     ),
+    setting(TERMINAL_SETTINGS.label, TERMINAL_SETTINGS.hint,
+      toggle(settings.localTerminal === true, (on) => {
+        settings.localTerminal = on;
+        showTerminal();
+        void save();
+      }),
+    ),
+    terminalNetwork,
+    terminalTimeout,
     setting(WEB_SETTINGS.label, SECURITY.webHint,
       toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
     ),
