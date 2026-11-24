@@ -3873,7 +3873,7 @@ pub async fn send(
             }
         };
         let mut on_activity = |activity: &Activity| match phases.as_mut() {
-            Some(phases) => events.activity(&app2, &phases.map(activity)),
+            Some(phases) => events.activity(&app2, phases.map(activity)),
             None => events.activity(&app2, activity),
         };
         let mut on_file = |file: &FileTouch| events.file(&app2, file);
