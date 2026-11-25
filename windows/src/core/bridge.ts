@@ -560,6 +560,16 @@ export const Bridge = {
   /** The copy written over its original, after a click. */
   workspacePutBack: (chat: string, path: string) => callOrThrow<void>("workspace_put_back", { chat, path }),
   workspaceDelete: (chat: string) => call<void>("workspace_delete", { chat }),
+  /**
+   * The files and folders an answer named, among the chat's `known` files,
+   * the inbox and beside them (chat_files.rs chat_file_find): each one's path
+   * and whether it is a folder, or null. What is found may be opened.
+   */
+  chatFileFind: (names: string[], known: string[]) => call<(FoundFile | null)[]>("chat_file_find", { names, known }),
+  /** Windows' Open with on a chat's file: "opened", "shown" (one that runs), "missing" or "refused". */
+  chatFileOpenWith: (path: string) => call<string>("chat_file_open_with", { path }),
+  /** A chat's file on the clipboard as File Explorer copies one: "copied", "failed", "missing" or "refused". */
+  chatFileCopy: (path: string) => call<string>("chat_file_copy", { path }),
   /** File Explorer on a chat's file, selected: "shown", "missing" or "refused". */
   chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),
   /** A chat's picture as a data URL, for its preview; null for any other file. */
@@ -801,6 +811,12 @@ export interface IntegrationUpdate {
 export type ChatContext =
   | { kind: "file"; name: string; path: string }
   | { kind: "window"; appName: string; title: string; url?: string };
+
+/** A file or folder an answer named, found (chat_files.rs FoundFile). */
+export interface FoundFile {
+  path: string;
+  folder: boolean;
+}
 
 /** A file an answer read, edited or created (`chat-file`, claude_code.rs FileTouch). */
 export interface ChatFileEvent {
