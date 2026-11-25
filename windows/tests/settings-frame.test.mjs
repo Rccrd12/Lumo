@@ -37,7 +37,7 @@ test("a field of Settings being written in holds the island open, as the chat's 
   const field = (tagName, type, value = "") => ({ tagName, type, value });
   // A key half pasted, a name typed: the mouse slipping off doesn't fold it.
   assert.equal(fieldHold(field("INPUT", "password", "sk-ant-")), "keep");
-  assert.equal(fieldHold(field("INPUT", "text", "Riccardo")), "keep");
+  assert.equal(fieldHold(field("INPUT", "text", "Anna")), "keep");
   assert.equal(fieldHold(field("TEXTAREA", "textarea", "a note")), "keep");
   // The cursor in an empty field, a list opened: a while.
   assert.equal(fieldHold(field("INPUT", "url")), "linger");

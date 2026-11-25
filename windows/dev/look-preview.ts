@@ -205,7 +205,7 @@ function shopHtml(it: boolean): string {
   return `<table width="600" cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;color:#1f2a44;background:#fff">
 <tr><td style="padding:22px 28px">${img("logo", 180, 40)}</td></tr>
 <tr><td>${img("hero", 600, 170)}</td></tr>
-<tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.5">${tr("Hi Riccardo,<br>your parcel left our warehouse in Bologna and arrives on <b>Friday 14 November</b>.", "Ciao Riccardo,<br>il tuo pacco è partito dal nostro magazzino di Bologna e arriverà <b>venerdì 14 novembre</b>.")}</td></tr>
+<tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.5">${tr("Hi Anna,<br>your parcel left our warehouse in Bologna and arrives on <b>Friday 14 November</b>.", "Ciao Anna,<br>il tuo pacco è partito dal nostro magazzino di Bologna e arriverà <b>venerdì 14 novembre</b>.")}</td></tr>
 <tr><td style="padding:14px 28px"><a href="https://libreria-aurora.example/ordini/48213/traccia?utm_source=email&utm_campaign=shipped" style="display:inline-block;background:#e8743b;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 26px;border-radius:8px">${tr("Track your parcel", "Segui la spedizione")}</a></td></tr>
 <tr><td style="padding:14px 28px"><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e6e8ee;border-radius:10px"><tr>
 <td width="96" style="padding:14px">${img("book", 80, 116, "border-radius:4px")}</td>
@@ -224,7 +224,7 @@ function newsHtml(it: boolean): string {
 <tr><td style="padding:22px 28px"><img src="http://img.libreria-aurora.example/logo.png" width="180" height="40" alt="" style="display:block"></td></tr>
 <tr><td background="https://img.libreria-aurora.example/banner.png" style="background-image:url('https://img.libreria-aurora.example/banner.png');background-size:cover;height:170px;padding:0 40px;color:#fff">
 <div style="font-size:28px;font-weight:700">${tr("New in November", "Novità di novembre")}</div><div style="font-size:15px;color:#c9d3ea;margin-top:6px">${tr("Ten books our booksellers picked", "Dieci libri scelti dai nostri librai")}</div></td></tr>
-<tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.5">${tr("Hi Riccardo,<br>this month we suggest a classic that never goes out of style.", "Ciao Riccardo,<br>questo mese ti consigliamo un classico che non passa mai di moda.")} <a href="#libro" style="color:#3b4f7d">${tr("See it", "Guardalo")}</a></td></tr>
+<tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.5">${tr("Hi Anna,<br>this month we suggest a classic that never goes out of style.", "Ciao Anna,<br>questo mese ti consigliamo un classico che non passa mai di moda.")} <a href="#libro" style="color:#3b4f7d">${tr("See it", "Guardalo")}</a></td></tr>
 <tr><td style="padding:14px 28px"><a name="libro"></a><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e6e8ee;border-radius:10px"><tr>
 <td width="96" style="padding:14px"><img src="https://img.libreria-aurora.example/book.png" width="80" height="116" alt="" style="display:block;border-radius:4px"></td>
 <td style="padding:14px 14px 14px 0;font-size:14px;line-height:1.5"><b>Il nome della rosa</b><br><span style="color:#6b7385">Umberto Eco</span></td>

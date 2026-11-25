@@ -304,7 +304,6 @@ fn short(description: &str) -> String {
 /// `workspace`: those core tools; `groups`: the groups it has tools of now;
 /// `catalog`: the tools it can load; `mail`: what the email tools may do.
 pub struct Prompt<'a> {
-    pub first_name: Option<&'a str>,
     /// Today's date, as `today` writes it.
     pub today: &'a str,
     pub tools: bool,
@@ -418,10 +417,8 @@ Q3: 1100, 1280
 Use them without being asked; if the user asks what you can show, describe them in plain words, never by these names."#;
 
 pub fn system_prompt(p: &Prompt) -> String {
-    let who = match p.first_name {
-        Some(name) => format!("You are Lumo, {name}'s assistant at the top of their screen."),
-        None => "You are Lumo, an assistant at the top of the user's screen.".to_string(),
-    };
+    // The same for everyone: nothing about the user goes to the model.
+    let who = "You are Lumo, an assistant at the top of the user's screen.";
     let mut out = format!(
         "{who} Answer in the user's language, with light Markdown (short paragraphs, lists, **bold**, `code`, fenced code); no tables or big headings, the window is small. \
 Lumo may give you the windows and documents open on the user's computer: use them. Write math as $…$ or $$…$$."
@@ -504,7 +501,6 @@ mod tests {
     #[test]
     fn a_local_model_is_told_the_rich_blocks_too() {
         let p = system_prompt(&Prompt {
-            first_name: None,
             today: "",
             tools: false,
             web: false,

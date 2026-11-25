@@ -818,9 +818,9 @@ edge. Nothing shows half-written: inline code, links and bold text come whole,
 and a formula waits until it is complete, then the edge sweeps across it; a
 code block flows like the text. The ink stays at most about a third of a
 second behind the model, stops working as soon as it has caught up, and is off
-when Windows is set to show fewer animations. Lumo greets
-you by your first name when your account has one (the Windows display name; a
-bare login name is not used).
+when Windows is set to show fewer animations. Lumo's
+instructions to the AI are the same for everyone: they never carry your name or
+anything else about your Windows account.
 
 **Commands**: type `/` as the first character in the chat box and a menu of
 commands opens above it, filtered as you type (arrows move, Enter runs, Tab

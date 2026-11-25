@@ -1032,18 +1032,11 @@ pub fn system_prompt_in(chat: &Chat, web_search: bool, timer_tool: bool) -> Stri
     }
 }
 
-/// Lumo's instructions. Greets the user by their first name when the account
-/// has one worth using (identity.rs), and only claims web search where the
-/// provider runs it (Claude).
+/// Lumo's instructions. They are the same for everyone: nothing about the
+/// user (no name from the Windows account) goes to the provider. Web search
+/// is only claimed where the provider runs it (Claude).
 pub fn system_prompt(web_search: bool, timer_tool: bool) -> String {
-    system_prompt_for(crate::identity::first_name(), web_search, timer_tool)
-}
-
-fn system_prompt_for(first_name: Option<&str>, web_search: bool, timer_tool: bool) -> String {
-    let opening = match first_name {
-        Some(name) => format!("You are Lumo, {name}'s personal AI assistant living at the top of their screen."),
-        None => "You are Lumo, a personal AI assistant living at the top of the user's screen.".to_string(),
-    };
+    let opening = "You are Lumo, a personal AI assistant living at the top of the user's screen.";
     let abilities = if web_search {
         "You have web search access and can help with absolutely anything — research, coding, finding places, recommendations, tasks, questions."
     } else {
@@ -2141,17 +2134,17 @@ mod tests {
     }
 
     #[test]
-    fn the_prompt_greets_by_first_name_and_claims_web_search_only_for_claude() {
-        let p = system_prompt_for(Some("Ada"), true, true);
-        assert!(p.starts_with("You are Lumo, Ada's personal AI assistant living at the top of their screen."));
+    fn the_prompt_names_no_one_and_claims_web_search_only_for_claude() {
+        let p = system_prompt(true, true);
+        assert!(p.starts_with("You are Lumo, a personal AI assistant living at the top of the user's screen."));
         assert!(p.contains("web search access"));
         assert!(p.contains("light Markdown"));
-        let p = system_prompt_for(None, false, false);
+        let p = system_prompt(false, false);
         assert!(p.starts_with("You are Lumo, a personal AI assistant living at the top of the user's screen."));
         assert!(!p.contains("web search"));
         assert!(p.contains("no web access"));
         // The timer: Lumo's tool where the provider has it, the line otherwise.
-        assert!(system_prompt_for(None, false, true).contains("set_timer tool"));
+        assert!(system_prompt(false, true).contains("set_timer tool"));
         assert!(!p.contains("set_timer") && p.contains("[[timer 10m"));
     }
 
@@ -2161,7 +2154,7 @@ mod tests {
         // openai_compat.rs, through system_prompt_in), whatever the timer and
         // web search; the CLIs' and local models' are checked in their files.
         for (web, timer) in [(true, true), (false, false), (true, false), (false, true)] {
-            let p = system_prompt_for(None, web, timer);
+            let p = system_prompt(web, timer);
             assert!(p.contains(rich_note!()), "{web} {timer}");
             assert!(p.contains(math_note!()));
             assert!(p.contains("Avoid tables and big headings: the chat window is small."));
@@ -2230,7 +2223,7 @@ mod tests {
         assert!(note.contains("whole path, as [report.pdf](C:"));
         assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']), "it goes on a command line");
         for (web, timer) in [(true, true), (false, false)] {
-            assert!(system_prompt_for(None, web, timer).contains(note));
+            assert!(system_prompt(web, timer).contains(note));
         }
     }
 
