@@ -125,6 +125,11 @@ test("no sign of life is said past each provider's threshold", () => {
   assert.equal(stalled(turn("claude-code", "command"), CLI_STALL_S), null);
   assert.ok(stalled(turn("codex", "subtask"), CLI_TOOL_STALL_S));
   assert.deepEqual([CLI_STALL_S, CLI_TOOL_STALL_S], [120, 300]);
+  // Antigravity CLI says nothing while its model writes a step (Orchestrator's
+  // executor at work, "Hydrogen is executing…"): two minutes of it is no stall.
+  assert.equal(stalled(turn("antigravity-cli", "step"), CLI_STALL_S), null);
+  assert.equal(stalled(turn("antigravity-cli"), CLI_TOOL_STALL_S - 1), null);
+  assert.ok(stalled(turn("antigravity-cli", "step"), CLI_TOOL_STALL_S));
   // Waiting for the user is never stuck; nothing heard yet is not either.
   assert.equal(stalled({ ...turn("anthropic"), waiting: true }, 600), null);
   assert.equal(stallOf({ kind: "agent", lastSignalAt: 0 }, T0), null);

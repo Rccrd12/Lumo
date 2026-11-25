@@ -46,6 +46,14 @@ export const LOCAL_START_STALL_S = 90;
 export const CLI_STALL_S = 120;
 /** A CLI running a command, a sub-task or a tool: slow ones are common. */
 export const CLI_TOOL_STALL_S = 300;
+/**
+ * CLIs that say nothing while their model writes a step: Antigravity CLI
+ * streams only the text of its answers, never its thinking nor a tool call
+ * being written. A long file, or Orchestrator's executor writing its next
+ * change, is minutes of tokens with no word, so its silence counts as a
+ * tool's (CLI_TOOL_STALL_S), not a CLI's thinking.
+ */
+const CLI_QUIET_WRITERS = new Set(["antigravity-cli"]);
 
 /** The steps kept per agent, newest first, for its open row. */
 export const MAX_AGENT_STEPS = 5;
@@ -333,7 +341,7 @@ export function stallAfter(l: Liveness): number {
     return AGENT_STALL_S;
   }
   const kind = l.activity?.kind ?? "";
-  if (isCliProvider(l.provider)) return CLI_LONG.has(kind) ? CLI_TOOL_STALL_S : CLI_STALL_S;
+  if (isCliProvider(l.provider)) return CLI_LONG.has(kind) || CLI_QUIET_WRITERS.has(l.provider) ? CLI_TOOL_STALL_S : CLI_STALL_S;
   if (isApiProvider(l.provider)) return CLOUD_STALL_S;
   // The model servers: Ollama, LM Studio, Unsloth Studio, a custom one.
   return LOCAL_STARTING.has(kind) ? LOCAL_START_STALL_S : LOCAL_STREAM_STALL_S;
