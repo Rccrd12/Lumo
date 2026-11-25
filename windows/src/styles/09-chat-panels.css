@@ -818,6 +818,8 @@
   font-size: 10px;
   color: #5c6370;
   font-variant-numeric: tabular-nums;
+  /* Its letters' own height, so it lines up with the pencil and the bin, not higher. */
+  text-box: trim-both cap alphabetic;
 }
 
 /* Past chats under their day (chat.ts drawHistory, core/chat-dates.ts). */
