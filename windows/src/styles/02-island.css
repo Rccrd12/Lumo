@@ -29,13 +29,14 @@
   transform-origin: 100% 50%;
 }
 
-.dock-bottom #wake-strip {
+/* The wake strip is on the edge the island went into (island.ts hideEdge). */
+.hide-bottom #wake-strip {
   top: auto;
   bottom: 0;
 }
 
-.dock-left #wake-strip,
-.dock-right #wake-strip {
+.hide-left #wake-strip,
+.hide-right #wake-strip {
   top: 50%;
   left: 0;
   transform: translateY(-50%);
@@ -43,7 +44,7 @@
   height: 288px;
 }
 
-.dock-right #wake-strip {
+.hide-right #wake-strip {
   left: auto;
   right: 0;
 }

@@ -297,21 +297,72 @@ fn frame(area: (i32, i32, u32, u32), scale: f64, p: Placement, collapsed: bool) 
         let strip = if p.strip.is_finite() && p.strip > 0.0 { p.strip } else { STRIP_W };
         let long = (strip * z * scale).round().max(1.0);
         let thin = (STRIP_H * z * scale).round().max(1.0);
-        // The strip is the piece of the edge right where the island was, as
-        // long as the closed island: moved along its edge or floating, the
-        // island hides into the edge above (or below, beside) itself.
-        let (dx, dy) = shift(area, scale, p);
-        let k = scale * z;
+        // The strip is the piece of the edge the island went into
+        // (`hide_edge`), right where it was and as long as the closed island:
+        // moved along its edge, or floating, the edge nearest to it.
+        let (cx, cy) = if float_of(p) > 0.0 {
+            let (l, t, r, b) = floating_rect(area, scale, p);
+            ((l + r) / 2.0, (t + b) / 2.0)
+        } else {
+            let (dx, dy) = shift(area, scale, p);
+            let k = scale * z;
+            (x + pw / 2.0 + dx * k, y + ph / 2.0 + dy * k)
+        };
         let along = |centre: f64, start: f64, size: f64| (centre - long / 2.0).round().clamp(start, (start + size - long).max(start));
-        let (sx, sy, sw, sh) = match p.dock {
-            Dock::Top => (along(x + pw / 2.0 + dx * k, ax, aw), ay, long, thin),
-            Dock::Bottom => (along(x + pw / 2.0 + dx * k, ax, aw), ay + ah - thin, long, thin),
-            Dock::Left => (x, along(y + ph / 2.0 + dy * k, ay, ah), thin, long),
-            Dock::Right => (ax + aw - thin, along(y + ph / 2.0 + dy * k, ay, ah), thin, long),
+        let (sx, sy, sw, sh) = match hide_edge(area, scale, p) {
+            Dock::Top => (along(cx, ax, aw), ay, long, thin),
+            Dock::Bottom => (along(cx, ax, aw), ay + ah - thin, long, thin),
+            Dock::Left => (ax, along(cy, ay, ah), thin, long),
+            Dock::Right => (ax + aw - thin, along(cy, ay, ah), thin, long),
         };
         return (sx as i32, sy as i32, sw as u32, sh as u32);
     }
+    // Floating, the window reaches the edge the island hides into, so the
+    // page can close it all the way there (src/island/edge-close.ts); the
+    // island is drawn where it floats in it (`shift`).
+    if float_of(p) > 0.0 {
+        let (r, b) = (x + pw, y + ph);
+        let (x, y, r, b) = match hide_edge(area, scale, p) {
+            Dock::Top => (x, ay, r, b),
+            Dock::Bottom => (x, y, r, ay + ah),
+            Dock::Left => (ax, y, r, b),
+            Dock::Right => (x, y, ax + aw, b),
+        };
+        return (x as i32, y as i32, (r - x) as u32, (b - y) as u32);
+    }
     (x as i32, y as i32, pw as u32, ph as u32)
+}
+
+/// The closed island floating off its edge, as a physical rectangle (left,
+/// top, right, bottom): where the page draws it (`shift`), its gap away from
+/// the ends of the display.
+fn floating_rect(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> (f64, f64, f64, f64) {
+    let (ax, ay, aw, ah) = (area.0 as f64, area.1 as f64, area.2 as f64, area.3 as f64);
+    let k = scale * clamp_zoom(p.zoom);
+    let strip = if p.strip.is_finite() && p.strip > 0.0 { p.strip } else { STRIP_W };
+    let (w, h) = (strip * k, NOTCH_PILL.1 * k);
+    let gap = finite(p.gap).max(0.0) * k;
+    let lift = float_of(p) * scale;
+    let mid = ax + aw / 2.0 + finite(p.offset) * scale;
+    let cx = if aw > w + 2.0 * gap { mid.clamp(ax + gap + w / 2.0, ax + aw - gap - w / 2.0) } else { ax + aw / 2.0 };
+    let top = match p.dock {
+        Dock::Bottom => ay + ah - lift - gap - h,
+        _ => ay + lift + gap,
+    };
+    (cx - w / 2.0, top, cx + w / 2.0, top + h)
+}
+
+/// The edge the hidden island goes into: the one nearest to the closed
+/// island, wherever it is (src/island/edge-close.ts closes it into it).
+/// Docked, nothing is nearer than its own edge; floating, the nearest of the
+/// four, its own on a tie.
+pub fn hide_edge(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> Dock {
+    if float_of(p) <= 0.0 {
+        return p.dock;
+    }
+    let island = floating_rect(area, scale, p);
+    let nearest = nearest_edge(area, island);
+    if gap_to(area, island, p.dock) <= gap_to(area, island, nearest) { p.dock } else { nearest }
 }
 
 fn float_of(p: Placement) -> f64 {
@@ -399,15 +450,20 @@ fn landing(area: (i32, i32, u32, u32), scale: f64, zoom: f64, island: (f64, f64,
 /// (left, top, right, bottom): where a dropped island goes. An island still
 /// touching its edge stays on it, however it was grabbed.
 fn nearest_edge(area: (i32, i32, u32, u32), island: (f64, f64, f64, f64)) -> Dock {
+    let gaps = [Dock::Top, Dock::Bottom, Dock::Left, Dock::Right].map(|d| (gap_to(area, island, d), d));
+    gaps.iter().fold(gaps[0], |best, g| if g.0 < best.0 { *g } else { best }).1
+}
+
+/// How far the island, a physical rectangle (left, top, right, bottom), is from `edge` of the area.
+fn gap_to(area: (i32, i32, u32, u32), island: (f64, f64, f64, f64), edge: Dock) -> f64 {
     let (ax, ay, aw, ah) = (area.0 as f64, area.1 as f64, area.2 as f64, area.3 as f64);
     let (l, t, r, b) = island;
-    let gaps = [
-        (t - ay, Dock::Top),
-        (ay + ah - b, Dock::Bottom),
-        (l - ax, Dock::Left),
-        (ax + aw - r, Dock::Right),
-    ];
-    gaps.iter().fold(gaps[0], |best, g| if g.0 < best.0 { *g } else { best }).1
+    match edge {
+        Dock::Top => t - ay,
+        Dock::Bottom => ay + ah - b,
+        Dock::Left => l - ax,
+        Dock::Right => ax + aw - r,
+    }
 }
 
 /// Where along `dock` an island whose centre is at the physical point `centre`
@@ -832,6 +888,8 @@ pub fn resize(
         if grown != room_for {
             room_for = grown;
             let (x, y, w, h) = frame(area, scale, room_for, false);
+            // A floating window reaching a side grows on one side only: where the island is drawn moves.
+            let _ = app.emit_to(WINDOW_LABEL, "island-shift", shift_payload(area, scale, room_for));
             let _ = win.set_size(PhysicalSize::new(w, h));
             let _ = win.set_position(PhysicalPosition::new(x, y));
         }
@@ -853,6 +911,8 @@ struct DockPayload {
     float: f64,
     shift_x: f64,
     shift_y: f64,
+    /// The edge it hides into there (`hide_edge`).
+    edge: Dock,
     /// When the window starts its spring (ms since 1970): the page starts
     /// the island's at the same moment (dock-ease.ts).
     start_at: f64,
@@ -862,12 +922,19 @@ struct DockPayload {
 /// of it first, so the window and the island start together.
 const DOCK_LEAD: Duration = Duration::from_millis(50);
 
-/// Where the island is drawn in its window (see `shift`), for the page.
+/// Where the island is drawn in its window (see `shift`), and the edge it
+/// hides into (`hide_edge`), for the page.
 #[derive(Serialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 pub struct ShiftPayload {
     pub x: f64,
     pub y: f64,
+    pub edge: Dock,
+}
+
+fn shift_payload(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> ShiftPayload {
+    let (x, y) = shift(area, scale, p);
+    ShiftPayload { x, y, edge: hide_edge(area, scale, p) }
 }
 
 /// One axis of a damped spring, for the window's bounce into place.
@@ -998,7 +1065,7 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
     let _ = app.emit_to(
         WINDOW_LABEL,
         "island-dock",
-        DockPayload { dock: p.dock, offset: p.offset, float: p.float, shift_x: moved.0, shift_y: moved.1, start_at },
+        DockPayload { dock: p.dock, offset: p.offset, float: p.float, shift_x: moved.0, shift_y: moved.1, edge: hide_edge(area, scale, p), start_at },
     );
 
     // The window springs from where it is to its place, never jumping: the
@@ -1063,10 +1130,9 @@ const NOTCH_PILL: (f64, f64) = (288.0, 32.0);
 
 /// Where the island is drawn in its window now, for the page's first draw.
 pub fn current_shift(app: &AppHandle, pref: &str, placement: Placement) -> ShiftPayload {
-    let (x, y) = target_monitor(app, pref)
-        .map(|m| shift(area_of(&m), m.scale_factor(), placement))
-        .unwrap_or((0.0, 0.0));
-    ShiftPayload { x, y }
+    target_monitor(app, pref)
+        .map(|m| shift_payload(area_of(&m), m.scale_factor(), placement))
+        .unwrap_or(ShiftPayload { x: 0.0, y: 0.0, edge: placement.dock })
 }
 
 /// Places and sizes the window. `collapsed` picks the wake strip instead of the panel.
@@ -1080,8 +1146,7 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     GAP_BITS.store(placement.gap.to_bits(), Ordering::Relaxed);
     let area = area_of(&m);
     let (x, y, pw, ph) = frame(area, scale, placement, collapsed);
-    let (sx, sy) = shift(area, scale, placement);
-    let _ = app.emit_to(WINDOW_LABEL, "island-shift", ShiftPayload { x: sx, y: sy });
+    let _ = app.emit_to(WINDOW_LABEL, "island-shift", shift_payload(area, scale, placement));
 
     let _ = win.set_size(PhysicalSize::new(pw, ph));
     let _ = win.set_position(PhysicalPosition::new(x, y));
@@ -1365,27 +1430,57 @@ mod placement_tests {
     #[test]
     fn a_floating_island_stays_where_it_was_left() {
         let float = |offset, float| Placement { offset, float, ..HOME };
-        // High enough: the window moves with it and the island is drawn as usual.
-        assert_eq!(frame(FHD, 1.0, float(0.0, 200.0), false), (600, 200, 720, 480));
-        assert_eq!(shift(FHD, 1.0, float(0.0, 200.0)), (0.0, 0.0));
+        // The window reaches up to the top, the edge it hides into, and the
+        // island is drawn as low in it as it floats.
+        assert_eq!(frame(FHD, 1.0, float(0.0, 200.0), false), (600, 0, 720, 680));
+        assert_eq!(shift(FHD, 1.0, float(0.0, 200.0)), (0.0, 200.0));
         // Low down the window stops at the bottom of the display, and the island
         // is drawn lower in it.
         assert_eq!(frame(FHD, 1.0, float(0.0, 700.0), false).1, 600);
         assert_eq!(shift(FHD, 1.0, float(0.0, 700.0)), (0.0, 100.0));
         // Near a corner, it is drawn off the window's middle.
         assert_eq!(shift(FHD, 1.0, float(-900.0, 200.0)), (-300.0, 0.0));
-        // Growing up from the bottom edge.
+        // Growing up from the bottom edge, the window down to it.
         let up = Placement { dock: Dock::Bottom, float: 300.0, ..HOME };
-        assert_eq!(frame(FHD, 1.0, up, false), (600, 300, 720, 480));
-        assert_eq!(shift(FHD, 1.0, up), (0.0, 0.0));
-        // Hidden, it slips into its edge like a docked island.
+        assert_eq!(frame(FHD, 1.0, up, false), (600, 300, 720, 780));
+        assert_eq!(shift(FHD, 1.0, up), (0.0, -300.0));
+        // Hidden, it slips into the edge nearest to it, right where it was.
         assert_eq!(frame(FHD, 1.0, float(0.0, 200.0), true), (816, 0, 288, 6));
         // Moved to a side of its edge, the strip is the piece of edge above it.
         assert_eq!(frame(FHD, 1.0, Placement { offset: 500.0, ..HOME }, true), (1316, 0, 288, 6));
-        // Up against a corner, it stays on the display.
-        assert_eq!(frame(FHD, 1.0, float(-900.0, 200.0), true), (0, 0, 288, 6));
+        // Up against a side, it goes into that side, beside itself.
+        assert_eq!(frame(FHD, 1.0, float(-900.0, 200.0), true), (0, 82, 6, 288));
         // Docked on a side, there is nothing to float.
         assert_eq!(frame(FHD, 1.0, Placement { dock: Dock::Left, float: 300.0, ..HOME }, false), (0, 300, 720, 480));
+    }
+
+    #[test]
+    fn a_hidden_island_goes_into_the_edge_nearest_to_it() {
+        let float = |offset, float| Placement { offset, float, ..HOME };
+        // Docked, into its own edge, even in a corner.
+        assert_eq!(hide_edge(FHD, 1.0, HOME), Dock::Top);
+        assert_eq!(hide_edge(FHD, 1.0, Placement { dock: Dock::Left, offset: -CORNER, ..HOME }), Dock::Left);
+        assert_eq!(hide_edge(FHD, 1.0, Placement { dock: Dock::Bottom, offset: CORNER, ..HOME }), Dock::Bottom);
+        // Floating, the nearest of the four.
+        assert_eq!(hide_edge(FHD, 1.0, float(0.0, 200.0)), Dock::Top);
+        assert_eq!(hide_edge(FHD, 1.0, float(-700.0, 200.0)), Dock::Left);
+        assert_eq!(hide_edge(FHD, 1.0, float(700.0, 300.0)), Dock::Right);
+        assert_eq!(hide_edge(FHD, 1.0, Placement { dock: Dock::Bottom, float: 100.0, ..HOME }), Dock::Bottom);
+        // As near its own edge as a side: its own.
+        assert_eq!(hide_edge(FHD, 1.0, float(-756.0, 50.0)), Dock::Top);
+        // The window reaches that side, the island drawn where it floats; the
+        // strip stands upright on it, beside the island.
+        let left = float(-700.0, 200.0);
+        assert_eq!(frame(FHD, 1.0, left, false), (0, 200, 720, 480));
+        assert_eq!(shift(FHD, 1.0, left), (-100.0, 0.0));
+        assert_eq!(frame(FHD, 1.0, left, true), (0, 82, 6, 288));
+        let right = float(700.0, 300.0);
+        assert_eq!(frame(FHD, 1.0, right, false), (1200, 300, 720, 480));
+        assert_eq!(frame(FHD, 1.0, right, true), (1914, 182, 6, 288));
+        // At 150 % with the island zoomed, the same in physical pixels.
+        let big = Placement { zoom: 1.5, ..float(0.0, 200.0) };
+        assert_eq!(frame(FHD, 1.5, big, true), (636, 0, 648, 14));
+        assert_eq!(frame(FHD, 1.5, big, false).1, 0);
     }
 
     #[test]
