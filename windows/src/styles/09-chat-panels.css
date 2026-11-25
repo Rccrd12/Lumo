@@ -775,10 +775,80 @@
   padding: 0 1px;
 }
 
+/* Past chats: a chat at work, waiting for the user, failed or answered and
+   not read (chat.ts drawHistory, core/chat-marks.ts): a dot after its name,
+   with a soft halo that breathes while it works or waits. */
+.history-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.history-name .picker-model-name {
+  flex: 0 1 auto;
+}
+
+.history-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--dot);
+}
+
+.history-dot.working,
+.history-dot.waiting {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot) 22%, transparent);
+  animation: history-dot-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes history-dot-breathe {
+  50% { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--dot) 12%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-dot.working,
+  .history-dot.waiting { animation: none; }
+}
+
 .history-date {
   flex: 0 0 auto;
   font-size: 10px;
   color: #5c6370;
+  font-variant-numeric: tabular-nums;
+  /* Its letters' own height, so it lines up with the pencil and the bin, not higher. */
+  text-box: trim-both cap alphabetic;
+}
+
+/* Past chats under their day (chat.ts drawHistory, core/chat-dates.ts). */
+.history-group {
+  flex: none;
+  padding: 10px 8px 3px;
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5c6370;
+}
+
+.history-group:first-child {
+  padding-top: 2px;
+}
+
+/* How long ago sits at the right; the pencil and the bin come in its place
+   under the mouse (or the keyboard), and it moves to their left. */
+.history-row:not(:hover):not(:focus-within) .history-rename,
+.history-row:not(:hover):not(:focus-within) .history-delete {
+  display: none;
+}
+
+/* The search's magnifying glass, inside the field on its left. */
+.history-search.history-find {
+  padding-left: 27px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7079' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 10px center;
 }
 
 .history-delete,
