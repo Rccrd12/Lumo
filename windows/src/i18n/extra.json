@@ -23926,6 +23926,30 @@
    "ru": "Новый ответ",
    "id": "Jawaban baru",
    "it": "Risposta nuova"
+  },
+  "This week": {
+   "zh-Hans": "本周",
+   "hi": "इस हफ़्ते",
+   "es": "Esta semana",
+   "ar": "هذا الأسبوع",
+   "fr": "Cette semaine",
+   "bn": "এই সপ্তাহে",
+   "pt-BR": "Esta semana",
+   "ru": "На этой неделе",
+   "id": "Minggu ini",
+   "it": "Questa settimana"
+  },
+  "Earlier": {
+   "zh-Hans": "更早",
+   "hi": "पहले",
+   "es": "Antes",
+   "ar": "أقدم",
+   "fr": "Plus tôt",
+   "bn": "আগে",
+   "pt-BR": "Antes",
+   "ru": "Ранее",
+   "id": "Sebelumnya",
+   "it": "Prima"
   }
  }
 }

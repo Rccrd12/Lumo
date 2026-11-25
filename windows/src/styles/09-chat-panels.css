@@ -817,6 +817,36 @@
   flex: 0 0 auto;
   font-size: 10px;
   color: #5c6370;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Past chats under their day (chat.ts drawHistory, core/chat-dates.ts). */
+.history-group {
+  flex: none;
+  padding: 10px 8px 3px;
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5c6370;
+}
+
+.history-group:first-child {
+  padding-top: 2px;
+}
+
+/* How long ago sits at the right; the pencil and the bin come in its place
+   under the mouse (or the keyboard), and it moves to their left. */
+.history-row:not(:hover):not(:focus-within) .history-rename,
+.history-row:not(:hover):not(:focus-within) .history-delete {
+  display: none;
+}
+
+/* The search's magnifying glass, inside the field on its left. */
+.history-search.history-find {
+  padding-left: 27px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7079' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 10px center;
 }
 
 .history-delete,

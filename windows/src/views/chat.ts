@@ -93,6 +93,7 @@ import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
 import { browserTabsChanged, openBrowserView, setBrowserViewHost } from "./browser-watch";
 import { updateChatTurns, type AskQuote } from "../core/chats";
+import { GROUP_WORDS, chatGroup, chatWhen, type ChatGroup } from "../core/chat-dates";
 import { DOT_COLORS, chatDot, clearMark, loadMarks, markChat, needsUser, pruneMarks, type ChatDot, type ChatMarks } from "../core/chat-marks";
 import type { AgentsPeek } from "../core/compact";
 import { PICTURE_NAME, comingBack, joinScreen, leaveScreen, restored, sentAgain, sentItems, type SentItem } from "../core/sent";
@@ -770,7 +771,7 @@ export function buildPrompt(
   // A search over every past chat, questions and answers alike.
   const historySearch = h("input", {
     type: "search",
-    class: "history-search",
+    class: "history-search history-find",
     placeholder: tl(STRINGS.searchChats),
     spellcheck: "false",
     "aria-label": tl(STRINGS.searchChats),
@@ -2346,7 +2347,14 @@ export function buildPrompt(
       return;
     }
     const dots = chatDots();
+    // Without a search, the chats go under their day (Today, Yesterday, This week, Earlier).
+    const now = Date.now();
+    let group: ChatGroup | null = null;
     for (const { chat: c, snippet } of rows) {
+      if (!query && chatGroup(c.updatedAt, now) !== group) {
+        group = chatGroup(c.updatedAt, now);
+        historyList.append(h("div", { class: "history-group", text: t(GROUP_WORDS[group]) }));
+      }
       const remove = h("button", { class: "history-delete", title: tl(STRINGS.deleteChat) }, svg(ICONS.trash, 12, { stroke: 1.6 }));
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2420,7 +2428,8 @@ export function buildPrompt(
         { class: c.id === State.chatId ? "picker-model history-row on" : "picker-model history-row", title: c.title },
         under ? h("span", { class: "history-text" }, nameLine, under) : nameLine,
         heard ? h("span", { class: "history-heard" }, svg(ICONS.waves, 13, { stroke: 1.8 })) : null,
-        h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
+        // How long ago, at the right; the pencil and the bin take its place under the mouse, and it moves to their left.
+        h("span", { class: "history-date", text: chatWhen(c.updatedAt, now), title: new Date(c.updatedAt).toLocaleString(language()) }),
         rename,
         remove,
       );
