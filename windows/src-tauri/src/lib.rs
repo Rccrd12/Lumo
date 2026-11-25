@@ -47,7 +47,6 @@ mod github_tools;
 mod google_calendar;
 mod hooks;
 mod i18n;
-mod identity;
 mod integrations;
 mod island;
 mod island_tools;

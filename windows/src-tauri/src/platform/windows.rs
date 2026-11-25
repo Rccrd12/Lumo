@@ -527,66 +527,6 @@ unsafe fn token_sid(process: HANDLE) -> Option<String> {
     }
 }
 
-// The display name only feeds Lumo's greeting (identity.rs). The calls are
-// declared here by hand, with their documented C signatures, so they need no
-// extra `windows` crate features.
-#[link(name = "secur32")]
-extern "system" {
-    fn GetUserNameExW(name_format: i32, name_buffer: *mut u16, size: *mut u32) -> u8;
-}
-
-#[link(name = "netapi32")]
-extern "system" {
-    fn NetUserGetInfo(server: *const u16, user: *const u16, level: u32, buffer: *mut *mut u8) -> u32;
-    fn NetApiBufferFree(buffer: *mut core::ffi::c_void) -> u32;
-}
-
-/// EXTENDED_NAME_FORMAT::NameDisplay.
-const NAME_DISPLAY: i32 = 3;
-
-/// The account's display name ("Ada Lovelace"): the directory's for a domain
-/// or Entra account, else the local account's "Full name", else nothing.
-pub fn user_full_name() -> Option<String> {
-    directory_display_name().or_else(local_full_name).filter(|n| !n.trim().is_empty())
-}
-
-fn directory_display_name() -> Option<String> {
-    let mut buf = [0u16; 256];
-    let mut size = buf.len() as u32;
-    // On success `size` is the length copied, without the terminating null.
-    let ok = unsafe { GetUserNameExW(NAME_DISPLAY, buf.as_mut_ptr(), &mut size) } != 0;
-    if !ok || size as usize > buf.len() {
-        return None;
-    }
-    String::from_utf16(&buf[..size as usize]).ok()
-}
-
-fn local_full_name() -> Option<String> {
-    let user = std::env::var("USERNAME").ok().filter(|u| !u.is_empty())?;
-    let wide: Vec<u16> = user.encode_utf16().chain(std::iter::once(0)).collect();
-    let mut info: *mut u8 = std::ptr::null_mut();
-    // Level 10 is USER_INFO_10 { name, comment, usr_comment, full_name }, four
-    // wide-string pointers; any user may read it about themselves.
-    let status = unsafe { NetUserGetInfo(std::ptr::null(), wide.as_ptr(), 10, &mut info) };
-    if status != 0 || info.is_null() {
-        return None;
-    }
-    unsafe {
-        let full = *(info as *const *const u16).add(3);
-        let text = if full.is_null() {
-            None
-        } else {
-            let mut len = 0usize;
-            while len < 256 && *full.add(len) != 0 {
-                len += 1;
-            }
-            String::from_utf16(std::slice::from_raw_parts(full, len)).ok()
-        };
-        NetApiBufferFree(info.cast());
-        text
-    }
-}
-
 // ── Installation ──────────────────────────────────────────────────────────────
 
 /// True when Windows Installer has a product installed with this upgrade code

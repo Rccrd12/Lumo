@@ -26,12 +26,12 @@ fn turn(replies: Vec<Reply>, body: &mut Value, rules: &Rules, island: &mut Islan
 fn a_plain_answer_streams_in() {
     let mut island = Island::default();
     let mut body = question("Ciao", &[]);
-    let (outcome, requests) = turn(vec![answer("Ciao Riccardo.")], &mut body, &rules("plain", "Ciao"), &mut island);
+    let (outcome, requests) = turn(vec![answer("Ciao Anna.")], &mut body, &rules("plain", "Ciao"), &mut island);
     let outcome = outcome.unwrap();
-    assert_eq!((outcome.text.as_str(), outcome.end, outcome.used, outcome.rounds), ("Ciao Riccardo.", End::Answer, Some(50), 0));
+    assert_eq!((outcome.text.as_str(), outcome.end, outcome.used, outcome.rounds), ("Ciao Anna.", End::Answer, Some(50), 0));
     assert!(!outcome.whole && outcome.fixes.is_empty());
     assert_eq!(island.doing[0], Doing::Prompt);
-    assert_eq!(island.shown.last().unwrap(), "Ciao Riccardo.");
+    assert_eq!(island.shown.last().unwrap(), "Ciao Anna.");
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0]["stream"], true);
     assert_eq!(requests[0]["messages"][1]["content"], "Ciao");
