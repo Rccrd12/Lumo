@@ -239,8 +239,12 @@
   border-radius: 7px;
   background: #6366f1;
   color: #fff;
-  font: 600 9px/14px var(--font);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 9px/1 var(--font);
+  /* The digits' own height, so they sit in the middle of the circle, not high in it. */
+  text-box: trim-both cap alphabetic;
   pointer-events: none;
 }
 
@@ -337,8 +341,12 @@
   border-radius: 7px;
   background: #7dd3fc;
   color: #04121b;
-  font: 600 9px/14px var(--font);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 9px/1 var(--font);
+  /* The digits' own height, so they sit in the middle of the circle, not high in it. */
+  text-box: trim-both cap alphabetic;
   pointer-events: none;
 }
 
