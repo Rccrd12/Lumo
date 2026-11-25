@@ -7,6 +7,8 @@ import { cleanChecklists, type ChatChecklists } from "./checklists";
 import { clipUnits } from "./clip";
 import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
 import type { SentItem } from "./sent";
+import { cleanCommands, type RanCommand } from "./terminal";
+import { readReplyFiles, type ReplyFile } from "./file-names";
 
 export interface SavedTurn {
   role: "user" | "assistant";
@@ -21,12 +23,16 @@ export interface SavedTurn {
   computer?: ComputerRecap;
   /** The problem said under an answer (ChatMessage.warning). */
   warning?: AnswerWarning;
+  /** An answer's: the commands its local model ran in its terminal (ChatMessage.commands, core/terminal.ts). */
+  commands?: RanCommand[];
   /** An answer's: the agents it started that ended, in short (core/chat-agents.ts savedAgents). */
   agents?: SavedAgent[];
   /** An answer's: the messages its CLI sent its agents, and their answers ("Talking to …"). */
   talks?: SavedTalk[];
   /** A question's: the agent it was asked of (Ask, the quote above the field). */
   ask?: AskQuote;
+  /** An answer's: the files of the computer it made or changed (ChatMessage.files). */
+  files?: ReplyFile[];
 }
 
 /** A question asked of one agent: who, and what it was doing then (the quote over the question). */
@@ -119,7 +125,7 @@ export function cleanRecap(raw: unknown): ComputerRecap | undefined {
  */
 export function toSavedTurn(m: {
   role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap;
-  warning?: AnswerWarning; ask?: AskQuote;
+  warning?: AnswerWarning; ask?: AskQuote; commands?: RanCommand[]; files?: ReplyFile[];
 }): SavedTurn {
   return {
     role: m.role,
@@ -127,24 +133,30 @@ export function toSavedTurn(m: {
     ...(m.at != null ? { at: m.at } : {}),
     ...(m.kept ? { kept: m.kept } : {}),
     ...(m.role === "assistant" && m.computer ? { computer: m.computer } : {}),
+    ...(m.role === "assistant" && m.commands?.length ? { commands: m.commands } : {}),
     ...(m.warning ? { warning: m.warning } : {}),
     ...(m.ask ? { ask: m.ask } : {}),
+    ...(m.role === "assistant" && m.files?.length ? { files: m.files } : {}),
   };
 }
 
 /** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */
 export function fromSavedTurn(turn: SavedTurn): {
-  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote;
+  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote; commands?: RanCommand[]; files?: ReplyFile[];
 } {
   const computer = turn.role === "assistant" ? cleanRecap(turn.computer) : undefined;
+  const commands = turn.role === "assistant" ? cleanCommands(turn.commands) : undefined;
+  const files = turn.role === "assistant" ? readReplyFiles(turn.files) : undefined;
   const warning = savedWarning(turn.warning);
   const ask = askQuoteOf(turn.ask);
   return {
     at: typeof turn.at === "number" ? turn.at : undefined,
     kept: typeof turn.kept === "string" ? turn.kept : undefined,
     ...(computer ? { computer } : {}),
+    ...(commands ? { commands } : {}),
     ...(warning ? { warning } : {}),
     ...(ask ? { ask } : {}),
+    ...(files ? { files } : {}),
   };
 }
 
@@ -376,10 +388,11 @@ export function savedWarning(w: unknown): AnswerWarning | undefined {
   return typeof o.line === "string" && typeof o.detail === "string" ? { line: o.line, detail: o.detail } : undefined;
 }
 
-/** The first question, on one line and shortened. */
+/** The first question, on one line and shortened (what went with it, when nothing was written). */
 export function chatTitle(turns: SavedTurn[]): string {
-  const first = turns.find((t) => t.role === "user")?.content ?? "";
-  const line = first.replace(/\s+/g, " ").trim();
+  const first = turns.find((t) => t.role === "user");
+  // Only attachments were sent: their names.
+  const line = (first?.content ?? "").replace(/\s+/g, " ").trim() || (first?.sent ?? []).map((s) => s.label).join(", ");
   return line.length > TITLE_CHARS ? `${clipUnits(line, TITLE_CHARS - 1)}…` : line;
 }
 

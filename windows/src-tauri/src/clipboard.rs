@@ -37,15 +37,41 @@ pub fn text() -> Option<String> {
     imp::text().map(|t| t.chars().take(MAX_TEXT).collect::<String>()).filter(|t| !t.is_empty())
 }
 
+/// Puts `paths` on the clipboard as File Explorer copies files (CF_HDROP),
+/// to paste in a folder or in another app. Whether it went.
+pub fn put_paths(paths: &[PathBuf]) -> bool {
+    !paths.is_empty() && imp::put_paths(&drop_files(paths))
+}
+
+/// A DROPFILES block: its 20-byte header (the list starts at byte 20, wide
+/// characters), then each path in UTF-16 ending with a zero, and one zero more.
+fn drop_files(paths: &[PathBuf]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&20u32.to_le_bytes());
+    out.extend_from_slice(&[0u8; 12]);
+    out.extend_from_slice(&1u32.to_le_bytes());
+    for p in paths {
+        for unit in p.to_string_lossy().encode_utf16().chain(std::iter::once(0)) {
+            out.extend_from_slice(&unit.to_le_bytes());
+        }
+    }
+    out.extend_from_slice(&[0, 0]);
+    out
+}
+
 mod imp {
     use super::*;
 
     use std::os::windows::ffi::OsStringExt;
     use std::time::{Duration, Instant};
 
-    use ::windows::Win32::Foundation::HGLOBAL;
-    use ::windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard};
-    use ::windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+    use ::windows::core::w;
+    use ::windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
+    use ::windows::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard, SetClipboardData,
+    };
+    use ::windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE};
+    use ::windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, DestroyWindow, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE};
     use ::windows::Win32::System::Ole::{CF_HDROP, CF_UNICODETEXT};
     use ::windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
 
@@ -91,6 +117,48 @@ mod imp {
         out
     }
 
+    /// `block` (a DROPFILES, drop_files) as the clipboard's only content. The
+    /// clipboard needs a window to own what is put on it: one no one sees,
+    /// gone once it is put (the content stays).
+    pub fn put_paths(block: &[u8]) -> bool {
+        unsafe {
+            let Ok(owner) = CreateWindowExW(
+                WINDOW_EX_STYLE(0), w!("STATIC"), w!(""), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, None, None,
+            ) else {
+                return false;
+            };
+            let deadline = Instant::now() + Duration::from_millis(300);
+            let mut opened = false;
+            while !opened && Instant::now() < deadline {
+                opened = OpenClipboard(Some(owner)).is_ok();
+                if !opened {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+            let mut put = false;
+            if opened {
+                let _ = EmptyClipboard();
+                if let Ok(memory) = GlobalAlloc(GMEM_MOVEABLE, block.len()) {
+                    let ptr = GlobalLock(memory);
+                    if ptr.is_null() {
+                        let _ = GlobalFree(Some(memory));
+                    } else {
+                        std::ptr::copy_nonoverlapping(block.as_ptr(), ptr as *mut u8, block.len());
+                        let _ = GlobalUnlock(memory);
+                        // On success the clipboard owns the memory; otherwise it is still ours.
+                        put = SetClipboardData(CF_HDROP.0 as u32, Some(HANDLE(memory.0))).is_ok();
+                        if !put {
+                            let _ = GlobalFree(Some(memory));
+                        }
+                    }
+                }
+                let _ = CloseClipboard();
+            }
+            let _ = DestroyWindow(owner);
+            put
+        }
+    }
+
     /// The paths of CF_HDROP, front to back; empty when there is none or
     /// another app holds the clipboard past a short wait.
     pub fn copied_paths() -> Vec<PathBuf> {
@@ -124,6 +192,17 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_copied_file_is_a_dropfiles_block_of_wide_paths() {
+        let block = drop_files(&[PathBuf::from(r"C:\a.png"), PathBuf::from("b")]);
+        assert_eq!(&block[..4], &20u32.to_le_bytes(), "the list starts after the header");
+        assert_eq!(&block[16..20], &1u32.to_le_bytes(), "wide characters");
+        let units: Vec<u16> = block[20..].chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        let mut want: Vec<u16> = r"C:\a.png".encode_utf16().collect();
+        want.extend([0, b'b' as u16, 0, 0]);
+        assert_eq!(units, want);
+    }
 
     #[test]
     fn the_first_regular_file_is_the_one_pasted() {

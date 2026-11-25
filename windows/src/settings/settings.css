@@ -1355,3 +1355,8 @@ html.look-new:has(body.embedded)::-webkit-scrollbar-corner {
 .agent-details[open] > summary {
   margin-bottom: 12px;
 }
+
+/* A setting that belongs to the one above it (Security → the terminal's internet and time). */
+.setting.setting-under {
+  padding-left: 18px;
+}

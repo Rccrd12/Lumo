@@ -186,6 +186,16 @@ pub struct Settings {
     /// have none of their own: DuckDuckGo, else Mojeek or Wikipedia, and the
     /// pages read from this computer. Off until the user turns it on.
     pub chat_web_search: bool,
+    /// Settings → Security → "Let local models use a terminal": a local
+    /// model's chat may run commands in its folder of copies, in the Windows
+    /// sandbox (terminal.rs). Off until the user turns it on.
+    pub local_terminal: bool,
+    /// Whether one of those commands may ask for the internet on its card:
+    /// "ask", or "never". Anything else reads as "ask".
+    pub local_terminal_network: String,
+    /// The most a command may take, in seconds: 30, 120 or 600 (anything
+    /// else reads as 120, terminal.rs timeout_of).
+    pub local_terminal_timeout: u64,
     /// A local model's chat is compacted by itself before a question, once
     /// its context is over 80 % full (the ring's last numbers). On by default.
     pub chat_auto_compact: bool,
@@ -395,6 +405,9 @@ impl Default for Settings {
             chat_computer_use: false,
             chat_browser: false,
             chat_web_search: false,
+            local_terminal: false,
+            local_terminal_network: "ask".into(),
+            local_terminal_timeout: 120,
             chat_auto_compact: true,
             chat_ai_titles: true,
             chat_title_model: "light".into(),
@@ -807,6 +820,9 @@ mod tests {
   "chatComputerUse": true,
   "chatBrowser": true,
   "chatWebSearch": true,
+  "localTerminal": true,
+  "localTerminalNetwork": "never",
+  "localTerminalTimeout": 600,
   "chatAutoCompact": false,
   "chatAiTitles": false,
   "chatTitleModel": "chat",
@@ -1423,6 +1439,9 @@ mod tests {
                 "chatComputerUse",
                 "chatBrowser",
                 "chatWebSearch",
+                "localTerminal",
+                "localTerminalNetwork",
+                "localTerminalTimeout",
                 "chatAutoCompact",
                 "chatAiTitles",
                 "chatTitleModel",

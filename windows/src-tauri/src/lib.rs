@@ -91,6 +91,7 @@ mod share;
 mod shortcuts;
 mod smtp;
 mod system_control;
+mod terminal;
 mod tool_review;
 mod tools;
 mod tray;
@@ -1676,6 +1677,9 @@ pub fn run() {
             chat_files::chat_file_reveal,
             chat_files::chat_file_preview,
             chat_files::chat_files_present,
+            chat_files::chat_file_find,
+            chat_files::chat_file_open_with,
+            chat_files::chat_file_copy,
             paste_file,
             paste_copied_file,
             clipboard_text,

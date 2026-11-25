@@ -1,6 +1,7 @@
 // App state: what the island shows and remembers.
 
 import type { ComputerRecap, ComputerState } from "./computer-use";
+import type { ReplyFile } from "./file-names";
 import { pausedPlanWaits } from "./computer-plan";
 import type { ListenWatch } from "./listen";
 import type { HeardLine } from "./heard";
@@ -141,6 +142,8 @@ export interface ApprovalInfo {
   computerAt?: [number, number];
   /** The island chat that asks (lumo-hook's `lumo_chat`, its LUMO_CHAT_ID): a computer use card says the step of that chat's plan only. */
   chat?: string;
+  /** A local model's command (terminal.rs): who asks, and how it will run, shown on the card. */
+  terminal?: import("./terminal").TerminalAsk;
 }
 
 /**
@@ -197,6 +200,10 @@ export interface ChatMessage {
   /** The files a local model changed or made in its folder of copies while
    * answering (workspace.rs), listed under the answer to open or put back. */
   copies?: { chat: string; path: string; made?: boolean }[];
+  /** The commands a local model ran in its terminal while answering (terminal.rs), shown above the answer; saved with the chat. */
+  commands?: import("./terminal").RanCommand[];
+  /** The files of the computer the answer made or changed (`chat-file` events), as cards under it (views/file-links.ts); saved with the chat. */
+  files?: ReplyFile[];
   /** The answer's turn used the computer: its plan as it ended, shown under it (computer.rs, saved with the chat). */
   computer?: ComputerRecap;
   /** A question: what went with it (core/sent.ts), shown on its bubble; saved with the chat. */
@@ -393,6 +400,12 @@ export interface Settings {
   chatBrowser: boolean;
   /** Lumo's own web search for the providers without one (web_search.rs). Off until turned on. */
   chatWebSearch: boolean;
+  /** Settings → Security: a local model may run commands in its chat's folder, in the Windows sandbox (terminal.rs). Off by default. */
+  localTerminal: boolean;
+  /** Whether one of those commands may ask for the internet on its card: "ask" or "never". */
+  localTerminalNetwork: "ask" | "never";
+  /** The most a command may take, in seconds: 30, 120 or 600. */
+  localTerminalTimeout: number;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
   chatAutoCompact: boolean;
   /** Once its first answer is in, the chat's own provider names the chat (chat_title.rs). Off: the start of the first question. */
@@ -534,6 +547,9 @@ export const DEFAULT_SETTINGS: Settings = {
   chatComputerUse: false,
   chatBrowser: false,
   chatWebSearch: false,
+  localTerminal: false,
+  localTerminalNetwork: "ask",
+  localTerminalTimeout: 120,
   chatAutoCompact: true,
   chatAiTitles: true,
   chatTitleModel: "light",

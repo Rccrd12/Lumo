@@ -58,6 +58,9 @@ test("the title is the first question on one line, shortened", () => {
   assert.equal(chatTitle([{ role: "assistant", content: "hi" }, { role: "user", content: "  what\nis   this?" }]), "what is this?");
   assert.equal(chatTitle([{ role: "user", content: "x".repeat(100) }]).length, 60);
   assert.equal(chatTitle([]), "");
+  // Only attachments sent: their names.
+  const sent = [{ kind: "file", label: "cat.png" }, { kind: "shot", label: "Screen 1" }];
+  assert.equal(chatTitle([{ role: "user", content: "", sent }]), "cat.png, Screen 1");
 });
 
 test("past chats are searched in questions and answers, accents and case aside", async () => {

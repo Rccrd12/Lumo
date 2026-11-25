@@ -167,6 +167,7 @@ Quit. The look of 0.17, with the ring of light and the tabs, is gone since
 | `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
 | The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab, folder and selected text on its own, even two of the same screen; what comes from the computer (screenshots, windows, tabs, folders, selected text) sits in a **Computer** folder, with how many it holds on its right, that a click opens — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
 | **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code (its subagents too), Codex or Antigravity CLI (its subagents too, from their transcripts) read, edited or created while answering, in a folder for each: **Attached**, **Read by the AI**, **Edited by the AI**, **Created by the AI** (a file attached and then read is in both; only the folders with something in them show, with how many on their right). Each row has the folder the file is in, and a × (or **Remove from the chat's context** in its right click) that takes it out of the chat: the AI is told with your next question to leave it alone, and a fresh Claude Code session isn't given it again. Editing a message takes out the files of the messages after it, and what the AI read or wrote for them. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
+| **The files of an answer**, in it and under it | A file or folder an answer names, by its name, its path, in inline code or as a link to its path (every provider is told to write one so), becomes a small blue button with its icon once Lumo finds it among the chat's files, the inbox and the folders beside them; anything else stays text, and a place on another computer is never looked at. Under the answer, a card for each file it made or changed (a picture shows small), up to three; more are one line, **15 files from the AI · 4 created · 11 edited**, that opens into their list with **All**, **Created** and **Edited** and **Open the folder**. A click opens the file on the computer (a folder in File Explorer; a program or a script is only shown there, never run); a right click: **Open**, **Open file location**, **Open with…**, **Copy file** (to paste in a folder or another app), **Copy path**, **Show in the chat's files**. A file gone since says No longer found |
 | A chat's name, in **Past chats** | Once the first answer is in, **the chat's own AI names the chat** in a few words, in the language you wrote in (after the second answer when the first question was a word or two, "hi"). Only the chat's provider is asked, which has already read it: with its lightest model (Haiku for Claude and Claude Code, Flash for Gemini and Antigravity CLI, a mini or nano for OpenAI and Codex, the lightest Copilot CLI or Cursor CLI offers), the chat's own for OpenRouter and for a local model (the one already loaded, so nothing leaves the PC). It gets the first two questions and the start of their answers, no files and no tools. A name that doesn't come (no network, no key, no quota, the server off, too slow) changes nothing: the chat keeps the start of its first question, and Lumo asks once more after the next answer. The **pencil** beside the bin renames a chat in its row: `Enter` (or a click away) keeps it, `Esc` cancels, and its AI never renames it again. **Settings → Chat → Chat names** turns it off, or names with the chat's own model. Chats named before keep their names |
 | On a question in the chat | **What went with it**, as small icons in a capsule on its bubble's top right corner: one for each kind (a file, a picture with its own small picture, a screenshot, a window, a web page, a folder, selected text), in the attachments' colours, with how many beside it. A click lists them under the bubble; a click on one opens it: a file in its app, a picture or a screenshot big, the selected text, what a window or a page showed. Kept with the chat |
 | Under a message in the chat | Its actions, as in Claude's app, under the mouse (always under the last answer): under an answer **Copy**, **Retry** and when it came ("2 min ago"); under a question when you sent it, **Retry**, **Edit** and **Copy**. **Copy** takes the text as written, Markdown included. **Edit** puts the question back in the field, and what went with it back in the attachments (its × takes any of it out): sending it replaces it and drops what followed. Over the field, a line says what comes back with it and what leaves the context — what went with the questions after it, and in a chat opened again what can't come back (a window, a tab or a folder showed what it showed then; a file deleted since). **Retry** sends it again with the same. **Retry** is on the last question and its answer only: the question goes again, unchanged, in place of its answer; when an answer failed, it stays in sight under the question. Chats saved before 0.21.0 have no times |
@@ -773,6 +774,32 @@ original** puts the copy back, only with that click. Network paths are never
 copied, and the record of what came from where is kept beside the folder,
 where the model can't change it. The folder goes with the chat.
 
+**A terminal in that folder**: with **Settings… → Security → Let local models
+use a terminal** (off by default, Windows only), a local model can run commands
+(`workspace_run`, with `cmd.exe`) in its chat's folder of copies: write a
+Python script there and run it on a copied CSV, convert a file, check what a
+program prints. Each command runs in the same Windows sandbox as your tools
+(an AppContainer and a job of its own, `terminal.rs`): it reads and writes that
+folder only, plus a temporary folder emptied before each command; Python and
+Node, when installed, are opened to it to read and run, and everything else
+(your files, Lumo's data, the other chats' folders) stays closed. It has none
+of Lumo's keys or tokens, can't hold more than 4 GB nor start more than 64
+programs at once, and is stopped, with everything it started, after
+**Longest a command may take** (30 s, 2 minutes, the default, or 10 minutes).
+It has no internet; with **Internet in commands** on **Ask every time** (the
+default), a command that needs it (`pip install --target .libs …`, where
+`.libs` is on `PYTHONPATH`) says so and its card asks, in amber, for that
+command only; on **Never** it runs without. The card says who asks, the command
+and where it runs; **Ask for approval** and **Approve for me** ask for every
+command, **Run automatically** only for one that wants the internet, and
+**Allow for this chat** lets the chat's next commands run without a card
+until Lumo closes (never one that wants the internet). The terminal is offered
+only with **Sandbox High** and never on **Plan only**. Above the answer, each
+command shows how it ended (✓ and its time, the exit code, Access denied when
+the sandbox refused something, stopped at its limit) and the end of what it
+printed, saved with the chat; the files it made or changed join the chat's
+files and the copies under the answer, to open or write over the original.
+
 Under a connected Ollama or LM Studio, Settings shows the model it holds in
 memory now (name and size) and **Free memory** unloads it with one click
 (Ollama's `keep_alive: 0`, LM Studio's unload). **Download a model** takes a
@@ -832,6 +859,10 @@ With **Settings → Security → Let agents browse the web** (off by default), t
 island chat's AI (whichever provider) and its agents open the sites they choose in hidden
 tabs inside Lumo, in a separate InPrivate profile: those sites, and everything
 their pages load, see your IP address (see [Agents browse the web](#agents-browse-the-web)).
+With **Settings → Security → Let local models use a terminal** (off by
+default), a command that asks for the internet reaches it only after a click
+on its card, for that command only; **Internet in commands → Never** keeps
+every command off it.
 
 ### Chat with your Claude plan (Claude Code)
 

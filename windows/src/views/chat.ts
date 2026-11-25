@@ -82,6 +82,7 @@ import { Ink, inkWorks } from "./ink";
 import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import { invoke } from "@tauri-apps/api/core";
+import { MAX_COMMANDS, ranCommandOf } from "../core/terminal";
 import { Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type ChatContext, type ChatFileEvent, type ExplorerFolder, type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot } from "../core/bridge";
 import { activeModel, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -96,6 +97,8 @@ import type { AgentsPeek } from "../core/compact";
 import { PICTURE_NAME, comingBack, joinScreen, leaveScreen, restored, sentAgain, sentItems, type SentItem } from "../core/sent";
 import type { ChatPermissions } from "../core/chats";
 import { messageScope, nextMessage } from "../core/checklists";
+import { withReplyFile } from "../core/file-names";
+import { setFileLinkHost } from "./file-links";
 import { addChatFile, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
@@ -1729,6 +1732,15 @@ export function buildPrompt(
     if (done === "missing") lostChatFile(file);
   }
 
+  // The files an answer names or made, as buttons and cards (views/file-links.ts).
+  setFileLinkHost({
+    known: () => chatFiles(State.chatId).map((f) => f.path),
+    showChatFiles: () => {
+      openFiles();
+      showFilesTab("chat");
+    },
+  });
+
   async function revealChatFile(file: ChatFile) {
     const done = await Bridge.chatFileReveal(file.path);
     if (done === "missing") lostChatFile(file);
@@ -3071,6 +3083,9 @@ export function buildPrompt(
     if (run && kind !== "read" && inWorkspace(path)) {
       const copies = (run.copies ??= new Map());
       copies.set(path, copies.get(path) ?? kind === "created");
+    } else if (run && kind !== "read") {
+      // A file of the computer: a card under the answer (views/file-links.ts).
+      run.touched = withReplyFile(run.touched ?? [], path, kind);
     }
     if (chat === State.chatId) drawChatFiles();
   });
@@ -3083,6 +3098,17 @@ export function buildPrompt(
     run.served = model;
     if (!parseOrchestrator(run.model)) lastServed.set(chat, { provider: run.provider, model: run.model, served: model });
     drawIslandActivity();
+  });
+
+  // A command the local model ran in its terminal (terminal.rs): shown above the answer once it is in.
+  void onEvent<unknown>("chat-command", (raw) => {
+    const chat = (raw as { chat?: unknown } | null)?.chat;
+    const run = typeof chat === "string" ? runs.get(chat) : undefined;
+    const ran = ranCommandOf(raw);
+    if (!run || !ran) return;
+    const commands = (run.commands ??= []);
+    commands.push(ran);
+    if (commands.length > MAX_COMMANDS) commands.shift();
   });
 
   void onEvent<{ chat: string; activity: ChatActivity }>("chat-activity", ({ chat, activity }) => {
@@ -3165,13 +3191,13 @@ export function buildPrompt(
     let text = "";
     let tone = "";
     if (run && turnWaiting(run.chatId)) {
-      text = ` · ${t(STALL_TEXT.waiting)}`;
+      text = t(STALL_TEXT.waiting);
       tone = "waiting";
     } else if (run) {
       const lastSignalAt = Math.max(agentStore.get(run.chatId)?.lastSignalAt ?? 0, run.since);
       const stall = stallOf({ kind: "turn", provider: run.provider, activity: run.activity, lastSignalAt });
       if (stall) {
-        text = ` · ${t(STALL_TEXT.noSignal, { time: durationText(stall.seconds * 1000) })}`;
+        text = t(STALL_TEXT.noSignal, { time: durationText(stall.seconds * 1000) });
         tone = "stalled";
       }
     }
@@ -3692,7 +3718,7 @@ export function buildPrompt(
   /** Edit when they finish: the edited question waits above the field, the edit no longer in it. */
   function waitToEdit(entry: NonNullable<ReturnType<typeof held.get>>) {
     const text = entry.retry ? entry.text : input.value.trim();
-    if (!text) return;
+    if (!text && !attachmentsWaiting()) return;
     if (!entry.retry) setInput("");
     // What the edit put back in the attachments stays there, for it.
     editing = null;
@@ -3845,6 +3871,12 @@ export function buildPrompt(
     drawQueue();
   }
 
+  /** Something waits to go with the next question: a file, a screenshot, a selection, a window, a folder. */
+  function attachmentsWaiting(): boolean {
+    const file = State.droppedFile;
+    return (file != null && !file.sent) || State.moreFiles.length > 0 || screenWaits(screen);
+  }
+
   /**
    * `away`: Lumo's own message goes to that chat, not the one on screen
    * (submitAway): its conversation, already loaded in Rust.
@@ -3852,7 +3884,8 @@ export function buildPrompt(
   async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }, queuedQuote?: AskQuote) {
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
-    if (!query || preparing) return;
+    // Nothing written: what is attached goes by itself (a photo, a file).
+    if ((!query && (auto != null || away != null || !attachmentsWaiting())) || preparing) return;
     // "/timer 10m pasta": a timer on the closed island, nothing sent to the AI.
     const timer = auto ? null : /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
     const timerMs = timer ? parseDuration(timer[1]) : null;
@@ -3896,7 +3929,7 @@ export function buildPrompt(
     // field and goes once it is done, but an edited one stops it and replaces it.
     const current = away ? runs.get(away.chatId) : answering();
     if (current) {
-      if (!auto && editing == null) enqueue(current, query, typed);
+      if (!auto && editing == null && query) enqueue(current, query, typed);
       if (auto || editing == null) return;
       const here = State.chatId;
       preparing = true;
@@ -4112,10 +4145,14 @@ export function buildPrompt(
           fix: reply.fix,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
+          commands: run.commands?.length ? run.commands : undefined,
+          files: run.touched?.length ? run.touched : undefined,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
           computer: recap,
         });
         run.copies = undefined;
+        run.commands = undefined;
+        run.touched = undefined;
       } else {
         giveBack(false);
       }

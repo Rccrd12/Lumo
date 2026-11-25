@@ -19637,6 +19637,18 @@
    "id": "Tidak ada balasan",
    "it": "Nessuna risposta"
   },
+  "Talking to the coordinator": {
+   "zh-Hans": "正在与协调者对话",
+   "hi": "समन्वयक से बात हो रही है",
+   "es": "Hablando con el coordinador",
+   "ar": "يتحدث مع المنسّق",
+   "fr": "Parle avec le coordinateur",
+   "bn": "সমন্বয়কের সাথে কথা হচ্ছে",
+   "pt-BR": "Falando com o coordenador",
+   "ru": "Разговор с координатором",
+   "id": "Berbicara dengan koordinator",
+   "it": "Parlo con il coordinatore"
+  },
   "Sending a message": {
    "zh-Hans": "正在发送消息",
    "hi": "संदेश भेज रहे हैं",
@@ -23394,6 +23406,502 @@
    "ru": "{model} выполняет…",
    "id": "{model} sedang menjalankan…",
    "it": "{model} esegue…"
+  },
+  "Open with…": {
+   "zh-Hans": "打开方式…",
+   "hi": "इसके साथ खोलें…",
+   "es": "Abrir con…",
+   "ar": "فتح باستخدام…",
+   "fr": "Ouvrir avec…",
+   "bn": "এর মাধ্যমে খুলুন…",
+   "pt-BR": "Abrir com…",
+   "ru": "Открыть с помощью…",
+   "id": "Buka dengan…",
+   "it": "Apri con…"
+  },
+  "Copy file": {
+   "zh-Hans": "复制文件",
+   "hi": "फ़ाइल कॉपी करें",
+   "es": "Copiar archivo",
+   "ar": "نسخ الملف",
+   "fr": "Copier le fichier",
+   "bn": "ফাইল কপি করুন",
+   "pt-BR": "Copiar arquivo",
+   "ru": "Копировать файл",
+   "id": "Salin file",
+   "it": "Copia file"
+  },
+  "Show in the chat's files": {
+   "zh-Hans": "在聊天文件中显示",
+   "hi": "चैट की फ़ाइलों में दिखाएँ",
+   "es": "Mostrar en los archivos del chat",
+   "ar": "إظهار في ملفات الدردشة",
+   "fr": "Afficher dans les fichiers du chat",
+   "bn": "চ্যাটের ফাইলে দেখান",
+   "pt-BR": "Mostrar nos arquivos do chat",
+   "ru": "Показать в файлах чата",
+   "id": "Tampilkan di file obrolan",
+   "it": "Mostra nei file della chat"
+  },
+  "Created": {
+   "zh-Hans": "已创建",
+   "hi": "बनाई गईं",
+   "es": "Creados",
+   "ar": "أُنشئت",
+   "fr": "Créés",
+   "bn": "তৈরি",
+   "pt-BR": "Criados",
+   "ru": "Созданные",
+   "id": "Dibuat",
+   "it": "Creati"
+  },
+  "Edited": {
+   "zh-Hans": "已修改",
+   "hi": "बदली गईं",
+   "es": "Modificados",
+   "ar": "عُدّلت",
+   "fr": "Modifiés",
+   "bn": "বদলানো",
+   "pt-BR": "Modificados",
+   "ru": "Изменённые",
+   "id": "Diubah",
+   "it": "Modificati"
+  },
+  "Open the folder": {
+   "zh-Hans": "打开文件夹",
+   "hi": "फ़ोल्डर खोलें",
+   "es": "Abrir la carpeta",
+   "ar": "فتح المجلد",
+   "fr": "Ouvrir le dossier",
+   "bn": "ফোল্ডার খুলুন",
+   "pt-BR": "Abrir a pasta",
+   "ru": "Открыть папку",
+   "id": "Buka folder",
+   "it": "Apri la cartella"
+  },
+  "Click to open · right click for more": {
+   "zh-Hans": "点击打开 · 右键查看更多",
+   "hi": "खोलने के लिए क्लिक करें · और के लिए राइट क्लिक",
+   "es": "Clic para abrir · clic derecho para más",
+   "ar": "انقر للفتح · انقر بزر الفأرة الأيمن للمزيد",
+   "fr": "Clic pour ouvrir · clic droit pour plus",
+   "bn": "খুলতে ক্লিক · আরও দেখতে ডান ক্লিক",
+   "pt-BR": "Clique para abrir · botão direito para mais",
+   "ru": "Щелчок открывает · правый щелчок для другого",
+   "id": "Klik untuk membuka · klik kanan untuk lainnya",
+   "it": "Clic per aprire · tasto destro per altro"
+  },
+  "{count} files from the AI": {
+   "zh-Hans": {
+    "other": "AI 处理的 {count} 个文件"
+   },
+   "hi": {
+    "one": "AI की {count} फ़ाइल",
+    "other": "AI की {count} फ़ाइलें"
+   },
+   "es": {
+    "one": "{count} archivo de la IA",
+    "other": "{count} archivos de la IA"
+   },
+   "ar": {
+    "zero": "{count} ملف من الذكاء الاصطناعي",
+    "one": "ملف واحد من الذكاء الاصطناعي",
+    "two": "ملفان من الذكاء الاصطناعي",
+    "few": "{count} ملفات من الذكاء الاصطناعي",
+    "many": "{count} ملفًا من الذكاء الاصطناعي",
+    "other": "{count} ملف من الذكاء الاصطناعي"
+   },
+   "fr": {
+    "one": "{count} fichier de l'IA",
+    "other": "{count} fichiers de l'IA"
+   },
+   "bn": {
+    "one": "AI-এর {count}টি ফাইল",
+    "other": "AI-এর {count}টি ফাইল"
+   },
+   "pt-BR": {
+    "one": "{count} arquivo da IA",
+    "other": "{count} arquivos da IA"
+   },
+   "ru": {
+    "one": "{count} файл от ИИ",
+    "few": "{count} файла от ИИ",
+    "many": "{count} файлов от ИИ",
+    "other": "{count} файла от ИИ"
+   },
+   "id": {
+    "other": "{count} file dari AI"
+   },
+   "it": {
+    "one": "{count} file toccato dall'AI",
+    "other": "{count} file toccati dall'AI"
+   }
+  },
+  "{count} created": {
+   "zh-Hans": {
+    "other": "新建 {count} 个"
+   },
+   "hi": {
+    "one": "{count} बनाई",
+    "other": "{count} बनाईं"
+   },
+   "es": {
+    "one": "{count} creado",
+    "other": "{count} creados"
+   },
+   "ar": {
+    "zero": "{count} مُنشأ",
+    "one": "واحد مُنشأ",
+    "two": "اثنان مُنشآن",
+    "few": "{count} مُنشأة",
+    "many": "{count} مُنشأً",
+    "other": "{count} مُنشأ"
+   },
+   "fr": {
+    "one": "{count} créé",
+    "other": "{count} créés"
+   },
+   "bn": {
+    "one": "{count}টি তৈরি",
+    "other": "{count}টি তৈরি"
+   },
+   "pt-BR": {
+    "one": "{count} criado",
+    "other": "{count} criados"
+   },
+   "ru": {
+    "one": "{count} создан",
+    "few": "{count} создано",
+    "many": "{count} создано",
+    "other": "{count} создано"
+   },
+   "id": {
+    "other": "{count} dibuat"
+   },
+   "it": {
+    "one": "{count} creato",
+    "other": "{count} creati"
+   }
+  },
+  "{count} edited": {
+   "zh-Hans": {
+    "other": "修改 {count} 个"
+   },
+   "hi": {
+    "one": "{count} बदली",
+    "other": "{count} बदलीं"
+   },
+   "es": {
+    "one": "{count} modificado",
+    "other": "{count} modificados"
+   },
+   "ar": {
+    "zero": "{count} مُعدّل",
+    "one": "واحد مُعدّل",
+    "two": "اثنان مُعدّلان",
+    "few": "{count} مُعدّلة",
+    "many": "{count} مُعدّلًا",
+    "other": "{count} مُعدّل"
+   },
+   "fr": {
+    "one": "{count} modifié",
+    "other": "{count} modifiés"
+   },
+   "bn": {
+    "one": "{count}টি বদলানো",
+    "other": "{count}টি বদলানো"
+   },
+   "pt-BR": {
+    "one": "{count} modificado",
+    "other": "{count} modificados"
+   },
+   "ru": {
+    "one": "{count} изменён",
+    "few": "{count} изменено",
+    "many": "{count} изменено",
+    "other": "{count} изменено"
+   },
+   "id": {
+    "other": "{count} diubah"
+   },
+   "it": {
+    "one": "{count} modificato",
+    "other": "{count} modificati"
+   }
+  },
+  "in {count} folders": {
+   "zh-Hans": {
+    "other": "位于 {count} 个文件夹"
+   },
+   "hi": {
+    "one": "{count} फ़ोल्डर में",
+    "other": "{count} फ़ोल्डरों में"
+   },
+   "es": {
+    "one": "en {count} carpeta",
+    "other": "en {count} carpetas"
+   },
+   "ar": {
+    "zero": "في {count} مجلد",
+    "one": "في مجلد واحد",
+    "two": "في مجلدين",
+    "few": "في {count} مجلدات",
+    "many": "في {count} مجلدًا",
+    "other": "في {count} مجلد"
+   },
+   "fr": {
+    "one": "dans {count} dossier",
+    "other": "dans {count} dossiers"
+   },
+   "bn": {
+    "one": "{count}টি ফোল্ডারে",
+    "other": "{count}টি ফোল্ডারে"
+   },
+   "pt-BR": {
+    "one": "em {count} pasta",
+    "other": "em {count} pastas"
+   },
+   "ru": {
+    "one": "в {count} папке",
+    "few": "в {count} папках",
+    "many": "в {count} папках",
+    "other": "в {count} папках"
+   },
+   "id": {
+    "other": "di {count} folder"
+   },
+   "it": {
+    "one": "in {count} cartella",
+    "other": "in {count} cartelle"
+   }
+  },
+  "Let local models use a terminal": {
+   "zh-Hans": "让本地模型使用终端",
+   "hi": "स्थानीय मॉडल को टर्मिनल इस्तेमाल करने दें",
+   "es": "Permitir que los modelos locales usen una terminal",
+   "ar": "السماح للنماذج المحلية باستخدام طرفية",
+   "fr": "Laisser les modèles locaux utiliser un terminal",
+   "bn": "স্থানীয় মডেলকে টার্মিনাল ব্যবহার করতে দিন",
+   "pt-BR": "Deixar os modelos locais usarem um terminal",
+   "ru": "Разрешить локальным моделям терминал",
+   "id": "Izinkan model lokal memakai terminal",
+   "it": "Lascia usare un terminale ai modelli locali"
+  },
+  "Commands in the Windows sandbox, in the chat's folder only.": {
+   "zh-Hans": "命令在 Windows 沙盒中运行，只在聊天的文件夹里。",
+   "hi": "कमांड Windows सैंडबॉक्स में, सिर्फ़ चैट के फ़ोल्डर में।",
+   "es": "Comandos en el sandbox de Windows, solo en la carpeta del chat.",
+   "ar": "أوامر في وضع الحماية في Windows، داخل مجلد المحادثة فقط.",
+   "fr": "Des commandes dans le bac à sable de Windows, dans le dossier de la discussion seulement.",
+   "bn": "Windows স্যান্ডবক্সে কমান্ড, শুধু চ্যাটের ফোল্ডারে।",
+   "pt-BR": "Comandos no sandbox do Windows, só na pasta do chat.",
+   "ru": "Команды в песочнице Windows, только в папке чата.",
+   "id": "Perintah di sandbox Windows, hanya di folder chat.",
+   "it": "Comandi nel sandbox di Windows, solo nella cartella della chat."
+  },
+  "Internet in commands": {
+   "zh-Hans": "命令中的网络",
+   "hi": "कमांड में इंटरनेट",
+   "es": "Internet en los comandos",
+   "ar": "الإنترنت في الأوامر",
+   "fr": "Internet dans les commandes",
+   "bn": "কমান্ডে ইন্টারনেট",
+   "pt-BR": "Internet nos comandos",
+   "ru": "Интернет в командах",
+   "id": "Internet dalam perintah",
+   "it": "Internet nei comandi"
+  },
+  "A command that wants the internet asks on its card.": {
+   "zh-Hans": "需要网络的命令会在它的卡片上询问。",
+   "hi": "जिस कमांड को इंटरनेट चाहिए, वह अपने कार्ड पर पूछती है।",
+   "es": "Un comando que quiere internet lo pide en su tarjeta.",
+   "ar": "الأمر الذي يحتاج الإنترنت يطلبه في بطاقته.",
+   "fr": "Une commande qui veut Internet le demande sur sa carte.",
+   "bn": "যে কমান্ডের ইন্টারনেট দরকার, সে তার কার্ডে জিজ্ঞেস করে।",
+   "pt-BR": "Um comando que quer internet pede no seu cartão.",
+   "ru": "Команда, которой нужен интернет, спрашивает на своей карточке.",
+   "id": "Perintah yang butuh internet meminta di kartunya.",
+   "it": "Un comando che vuole internet lo chiede sulla sua carta."
+  },
+  "Longest a command may take": {
+   "zh-Hans": "命令的最长时间",
+   "hi": "कमांड का अधिकतम समय",
+   "es": "Tiempo máximo de un comando",
+   "ar": "أطول مدة للأمر",
+   "fr": "Durée maximale d'une commande",
+   "bn": "কমান্ডের সর্বোচ্চ সময়",
+   "pt-BR": "Tempo máximo de um comando",
+   "ru": "Наибольшее время команды",
+   "id": "Waktu terlama sebuah perintah",
+   "it": "Tempo massimo di un comando"
+  },
+  "Then Lumo stops it, with whatever it started.": {
+   "zh-Hans": "之后 Lumo 会停止它，以及它启动的一切。",
+   "hi": "फिर Lumo उसे रोक देता है, और जो कुछ उसने शुरू किया वह भी।",
+   "es": "Luego Lumo lo detiene, con todo lo que inició.",
+   "ar": "ثم يوقفه Lumo مع كل ما بدأه.",
+   "fr": "Ensuite Lumo l'arrête, avec tout ce qu'elle a lancé.",
+   "bn": "তারপর Lumo সেটি থামায়, সে যা চালু করেছিল তাও।",
+   "pt-BR": "Depois o Lumo o interrompe, com tudo o que ele iniciou.",
+   "ru": "Затем Lumo останавливает её вместе со всем, что она запустила.",
+   "id": "Lalu Lumo menghentikannya, beserta semua yang dijalankannya.",
+   "it": "Poi Lumo lo ferma, con quello che aveva avviato."
+  },
+  "Access denied": {
+   "zh-Hans": "访问被拒绝",
+   "hi": "पहुँच अस्वीकृत",
+   "es": "Acceso denegado",
+   "ar": "تم رفض الوصول",
+   "fr": "Accès refusé",
+   "bn": "অ্যাক্সেস অস্বীকৃত",
+   "pt-BR": "Acesso negado",
+   "ru": "Доступ запрещён",
+   "id": "Akses ditolak",
+   "it": "Accesso negato"
+  },
+  "Exit code {code}": {
+   "zh-Hans": "退出代码 {code}",
+   "hi": "निकास कोड {code}",
+   "es": "Código de salida {code}",
+   "ar": "رمز الخروج {code}",
+   "fr": "Code de sortie {code}",
+   "bn": "প্রস্থান কোড {code}",
+   "pt-BR": "Código de saída {code}",
+   "ru": "Код выхода {code}",
+   "id": "Kode keluar {code}",
+   "it": "Codice di uscita {code}"
+  },
+  "With the internet": {
+   "zh-Hans": "使用了网络",
+   "hi": "इंटरनेट के साथ",
+   "es": "Con internet",
+   "ar": "مع الإنترنت",
+   "fr": "Avec Internet",
+   "bn": "ইন্টারনেটসহ",
+   "pt-BR": "Com internet",
+   "ru": "С интернетом",
+   "id": "Dengan internet",
+   "it": "Con internet"
+  },
+  "What it printed": {
+   "zh-Hans": "它的输出",
+   "hi": "इसने जो छापा",
+   "es": "Lo que mostró",
+   "ar": "ما طبعه",
+   "fr": "Ce qu'elle a affiché",
+   "bn": "এটি যা দেখাল",
+   "pt-BR": "O que ele exibiu",
+   "ru": "Что она вывела",
+   "id": "Yang dicetaknya",
+   "it": "Quello che ha scritto"
+  },
+  "wants to use the terminal": {
+   "zh-Hans": "想使用终端",
+   "hi": "टर्मिनल इस्तेमाल करना चाहता है",
+   "es": "quiere usar la terminal",
+   "ar": "يريد استخدام الطرفية",
+   "fr": "veut utiliser le terminal",
+   "bn": "টার্মিনাল ব্যবহার করতে চায়",
+   "pt-BR": "quer usar o terminal",
+   "ru": "хочет использовать терминал",
+   "id": "ingin memakai terminal",
+   "it": "vuole usare il terminale"
+  },
+  "Terminal": {
+   "zh-Hans": "终端",
+   "hi": "टर्मिनल",
+   "es": "Terminal",
+   "ar": "الطرفية",
+   "fr": "Terminal",
+   "bn": "টার্মিনাল",
+   "pt-BR": "Terminal",
+   "ru": "Терминал",
+   "id": "Terminal",
+   "it": "Terminale"
+  },
+  "Only the chat's folder": {
+   "zh-Hans": "仅聊天的文件夹",
+   "hi": "सिर्फ़ चैट का फ़ोल्डर",
+   "es": "Solo la carpeta del chat",
+   "ar": "مجلد المحادثة فقط",
+   "fr": "Le dossier de la discussion seulement",
+   "bn": "শুধু চ্যাটের ফোল্ডার",
+   "pt-BR": "Só a pasta do chat",
+   "ru": "Только папка чата",
+   "id": "Hanya folder chat",
+   "it": "Solo la cartella della chat"
+  },
+  "No internet": {
+   "zh-Hans": "无网络",
+   "hi": "इंटरनेट नहीं",
+   "es": "Sin internet",
+   "ar": "بلا إنترنت",
+   "fr": "Sans Internet",
+   "bn": "ইন্টারনেট নেই",
+   "pt-BR": "Sem internet",
+   "ru": "Без интернета",
+   "id": "Tanpa internet",
+   "it": "Senza internet"
+  },
+  "Wants the internet: for this command only": {
+   "zh-Hans": "需要网络：仅此命令",
+   "hi": "इंटरनेट चाहिए: सिर्फ़ इस कमांड के लिए",
+   "es": "Quiere internet: solo para este comando",
+   "ar": "يريد الإنترنت: لهذا الأمر فقط",
+   "fr": "Veut Internet : pour cette commande seulement",
+   "bn": "ইন্টারনেট চায়: শুধু এই কমান্ডের জন্য",
+   "pt-BR": "Quer internet: só para este comando",
+   "ru": "Нужен интернет: только для этой команды",
+   "id": "Butuh internet: hanya untuk perintah ini",
+   "it": "Vuole internet: solo per questo comando"
+  },
+  "At most {time}": {
+   "zh-Hans": "最多 {time}",
+   "hi": "अधिकतम {time}",
+   "es": "Como máximo {time}",
+   "ar": "بحد أقصى {time}",
+   "fr": "{time} au plus",
+   "bn": "সর্বোচ্চ {time}",
+   "pt-BR": "No máximo {time}",
+   "ru": "Не дольше {time}",
+   "id": "Paling lama {time}",
+   "it": "Al massimo {time}"
+  },
+  "Windows sandbox": {
+   "zh-Hans": "Windows 沙盒",
+   "hi": "Windows सैंडबॉक्स",
+   "es": "Sandbox de Windows",
+   "ar": "وضع الحماية في Windows",
+   "fr": "Bac à sable de Windows",
+   "bn": "Windows স্যান্ডবক্স",
+   "pt-BR": "Sandbox do Windows",
+   "ru": "Песочница Windows",
+   "id": "Sandbox Windows",
+   "it": "Sandbox di Windows"
+  },
+  "Allow for this chat": {
+   "zh-Hans": "在此聊天中允许",
+   "hi": "इस चैट के लिए अनुमति दें",
+   "es": "Permitir en este chat",
+   "ar": "السماح لهذه المحادثة",
+   "fr": "Autoriser pour cette discussion",
+   "bn": "এই চ্যাটের জন্য অনুমতি দিন",
+   "pt-BR": "Permitir neste chat",
+   "ru": "Разрешить для этого чата",
+   "id": "Izinkan untuk chat ini",
+   "it": "Consenti per questa chat"
+  },
+  "This chat's next commands run without asking, until Lumo closes; one that wants the internet still asks": {
+   "zh-Hans": "此聊天之后的命令无需询问即可运行，直到 Lumo 关闭；需要网络的命令仍会询问",
+   "hi": "इस चैट की अगली कमांड बिना पूछे चलेंगी, जब तक Lumo बंद न हो; इंटरनेट चाहने वाली कमांड फिर भी पूछेगी",
+   "es": "Los próximos comandos de este chat se ejecutan sin preguntar hasta que Lumo se cierre; uno que quiera internet sigue preguntando",
+   "ar": "تعمل الأوامر التالية لهذه المحادثة دون سؤال حتى يُغلق Lumo؛ والأمر الذي يريد الإنترنت يسأل دائمًا",
+   "fr": "Les prochaines commandes de cette discussion s'exécutent sans demander, jusqu'à la fermeture de Lumo ; celle qui veut Internet demande toujours",
+   "bn": "Lumo বন্ধ না হওয়া পর্যন্ত এই চ্যাটের পরের কমান্ড জিজ্ঞেস না করেই চলবে; ইন্টারনেট চাইলে তবুও জিজ্ঞেস করবে",
+   "pt-BR": "Os próximos comandos deste chat rodam sem perguntar até o Lumo fechar; um que queira internet ainda pergunta",
+   "ru": "Следующие команды этого чата выполняются без вопроса, пока Lumo не закроется; команда, которой нужен интернет, всё равно спросит",
+   "id": "Perintah berikutnya di chat ini berjalan tanpa bertanya sampai Lumo ditutup; yang butuh internet tetap bertanya",
+   "it": "I prossimi comandi di questa chat partono senza chiedere finché Lumo resta aperto; uno che vuole internet chiede comunque"
   }
  }
 }

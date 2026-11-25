@@ -110,7 +110,10 @@ fn user_content(first: bool, context: Option<&ChatContext>, query: &str) -> Vec<
         }
         None => {}
     }
-    content.push(json!({ "type": "text", "text": query }));
+    // Only a file sent, nothing written: the API refuses an empty text block.
+    if !query.trim().is_empty() || content.is_empty() {
+        content.push(json!({ "type": "text", "text": query }));
+    }
     content
 }
 
@@ -1441,6 +1444,14 @@ mod tests {
         // A file that cannot be read still names itself.
         let ctx = ChatContext::File { name: "gone.pdf".into(), path: "/no/such/gone.pdf".into() };
         assert_eq!(user_content(true, Some(&ctx), "q")[0]["text"], "File: gone.pdf");
+    }
+
+    #[test]
+    fn a_file_sent_alone_has_no_empty_text_block() {
+        // The API refuses an empty text block: only the file's name goes.
+        let ctx = ChatContext::File { name: "gone.pdf".into(), path: "/no/such/gone.pdf".into() };
+        assert_eq!(user_content(true, Some(&ctx), ""), vec![json!({"type":"text","text":"File: gone.pdf"})]);
+        assert_eq!(user_content(true, Some(&ctx), "  \n"), vec![json!({"type":"text","text":"File: gone.pdf"})]);
     }
 
     #[test]

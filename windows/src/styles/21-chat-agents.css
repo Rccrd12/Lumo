@@ -254,6 +254,13 @@
   white-space: nowrap;
 }
 
+/* The dot between the words and the note, as far from one as from the
+   other: 6 px from the words (the dots' gap, 4 px, and 2 px), 5 px from the note. */
+.typing-stall::before {
+  content: "·";
+  margin: 0 5px 0 2px;
+}
+
 .typing-stall.stalled { color: #f5a524; }
 .typing-stall.waiting { color: #a78bfa; }
 

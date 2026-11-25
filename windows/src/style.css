@@ -27,3 +27,5 @@
 @import "./styles/21-chat-agents.css"; /* The chat while its agents work: the browser by the dots, Ask, the signs under the card, held messages. */
 @import "./styles/22-chat-fix.css"; /* The cards that put a chat's CLI right: sign in, install, connect agy (views/chat-fix.ts). */
 @import "./styles/23-session-agents.css"; /* A terminal session's agents: the Agents card in its session card (views/views.ts). */
+@import "./styles/24-reply-files.css"; /* The files of an answer: their names in its text as buttons, their cards under it (views/file-links.ts). */
+@import "./styles/25-terminal.css"; /* A local model's terminal: where a command runs, on its card, and the commands above an answer. */

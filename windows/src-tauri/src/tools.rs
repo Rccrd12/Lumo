@@ -1018,6 +1018,13 @@ fn interpreter(exe: &Path, path: &Path) -> Option<(PathBuf, Vec<PathBuf>)> {
     found
 }
 
+/// The Python (`kind` "py") or Node ("js") at `exe` as the Windows sandbox
+/// runs it (`interpreter`): the program to start and the folders it reads.
+/// None when it can't be told, or it is the Microsoft Store's. Blocking.
+pub(crate) fn runtime(exe: &Path, kind: &str) -> Option<(PathBuf, Vec<PathBuf>)> {
+    interpreter(exe, Path::new(&format!("x.{kind}")))
+}
+
 /// A run's stdin, stdout and stderr, wherever it was started.
 type Pipes = (Option<Box<dyn Write + Send>>, Option<Box<dyn Read + Send>>, Option<Box<dyn Read + Send>>);
 
@@ -1091,7 +1098,7 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
             Some("Windows didn't let Lumo make its sandbox".to_string())
         } else if let Some((start, mut read)) = interpreter(&exe, &path) {
             read.splice(0..0, sandbox_reads(dir, &path));
-            let launch = crate::sandbox::Launch { exe: &start, args: &words, cwd: &cwd, env: &env, read: &read, write: std::slice::from_ref(&work), network };
+            let launch = crate::sandbox::Launch { exe: &start, args: &words, cwd: &cwd, env: &env, read: &read, write: std::slice::from_ref(&work), network, line: None, memory: 0, processes: 0 };
             match crate::sandbox::spawn(&launch) {
                 Ok(c) => {
                     child = Some(Running::Contained(c));
@@ -1421,6 +1428,7 @@ pub fn chat_tools(mail: &str, web: bool, workspace: bool, browser: bool) -> Vec<
                     && !crate::github_tools::NAMES.contains(&id)
                     && !crate::web_search::NAMES.contains(&id)
                     && !crate::workspace::NAMES.contains(&id)
+                    && !crate::terminal::NAMES.contains(&id)
                     && !crate::browser::NAMES.contains(&id)
             })
             .map(|t| {
@@ -1576,6 +1584,10 @@ async fn call_plain(app: &AppHandle, chat_id: &str, provider: &str, id: &str, in
             let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-file", json!({ "chat": chat_id, "kind": kind, "path": path }));
         }
         return (text, failed);
+    }
+    // Commands in the chat's folder, in the Windows sandbox: their card as the shield says (terminal.rs).
+    if crate::terminal::NAMES.contains(&id) {
+        return crate::terminal::call(app, chat_id, provider, &input, asking).await;
     }
     // Lumo's web search, read-only: no card, as for a search engine's own,
     // but with Ask for approval, which asks before the internet too.
