@@ -318,6 +318,8 @@ fn activity_for(name: &str, params: &Value) -> Activity {
     if n == "send_message" {
         return match field(&["Recipient", "recipient", "to"]).as_str() {
             "" | "main" | "coordinator" => Activity::new("talk", ""),
+            // A conversation's id: no name for the user (to its parent, transcript_line says "the coordinator").
+            to if safe_session(to).is_some() => Activity::new("talk", ""),
             to => Activity::new("talk", short(to)),
         };
     }
@@ -1207,6 +1209,10 @@ fn transcript_line(row: &mut AgentRow, reading: &mut Reading, files: &mut Vec<Fi
         }
         if name == "send_message" {
             let to = ["Recipient", "recipient", "to"].iter().filter_map(|k| args[*k].as_str()).map(str::trim).find(|s| !s.is_empty()).unwrap_or("");
+            // To the agent that started it: "Talking to the coordinator", never its id.
+            if to_parent(to) {
+                row.now = Some(Activity::new("report", ""));
+            }
             if let Some(text) = args["Message"].as_str().or_else(|| args["message"].as_str()).map(str::trim).filter(|t| !t.is_empty() && to_parent(to)) {
                 heard.reported = true;
                 reading.report = Some(text.to_string());
@@ -2351,6 +2357,12 @@ fn conversation_transcript(conversation_id: &str) -> Option<PathBuf> {
 /// partial first line when seeking past byte `0`, and returns the latest
 /// step's context size.
 fn read_transcript_context(path: &Path) -> Option<u64> {
+    last_transcript_context(&read_transcript_tail(path)?)
+}
+
+/// Up to `TRANSCRIPT_CHUNK` bytes from the tail of `path`, from the first
+/// whole line.
+fn read_transcript_tail(path: &Path) -> Option<Vec<u8>> {
     use std::io::{Seek, SeekFrom};
     let mut file = std::fs::File::open(path).ok()?;
     let len = file.metadata().ok()?.len();
@@ -2360,13 +2372,47 @@ fn read_transcript_context(path: &Path) -> Option<u64> {
     }
     let mut buf = Vec::with_capacity((len - start).min(TRANSCRIPT_CHUNK) as usize);
     (&mut file).take(TRANSCRIPT_CHUNK).read_to_end(&mut buf).ok()?;
-    let tail = if start > 0 {
+    if start > 0 {
         let nl = buf.iter().position(|&b| b == b'\n')?;
-        &buf[nl + 1..]
-    } else {
-        &buf[..]
-    };
-    last_transcript_context(tail)
+        buf.drain(..=nl);
+    }
+    Some(buf)
+}
+
+/// How long a turn agy took up by itself (a subagent's message woke it) may
+/// write nothing in its transcript and still count as under way: the model
+/// may think a long while before its next step, and agy says nothing of it.
+const WOKEN_TURN_MAX: Duration = Duration::from_secs(5 * 60);
+
+/// Whether the last line of a transcript leaves its turn under way: a
+/// message that woke it (a subagent's, agy's own), the user's, a tool's
+/// result, or a step of the model that calls tools. Only an answer without
+/// tool calls, or agy's error, ends a turn.
+fn turn_under_way(tail: &[u8]) -> bool {
+    for line in tail.split(|&b| b == b'\n').rev() {
+        let Ok(v) = serde_json::from_slice::<Value>(line) else { continue };
+        let calls = v["tool_calls"].as_array().is_some_and(|c| !c.is_empty())
+            || v["truncated_fields"].as_array().is_some_and(|f| f.iter().any(|x| x == "tool_calls"));
+        return match v["type"].as_str() {
+            Some("PLANNER_RESPONSE") => calls,
+            Some("ERROR_MESSAGE") | None => false,
+            Some(_) => true,
+        };
+    }
+    false
+}
+
+/// Whether the turn in `path` is under way and its transcript moved within
+/// `max`: one woken by a subagent's message, while agy's stream is quiet
+/// (the model thinks), is not to be cut off by closing agy's input.
+fn transcript_turn_under_way(path: &Path, max: Duration) -> bool {
+    let fresh = std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age < max);
+    fresh && read_transcript_tail(path).is_some_and(|tail| turn_under_way(&tail))
+}
+
+/// The same for the chat's conversation `conversation_id`, in agy's `.gemini` folder.
+fn woken_turn_under_way(conversation_id: &str) -> bool {
+    conversation_transcript(conversation_id).is_some_and(|path| transcript_turn_under_way(&path, WOKEN_TURN_MAX))
 }
 
 /// Actual context window used at the latest model step of `conversation_id`,
@@ -3321,6 +3367,9 @@ fn finish(mut agy: Agy, state: &mut Run, sink: &mut Sink, tell: &Tell) -> Result
 
 /// How long agy stays quiet with no subagent at work before its input closes.
 const LINGER_QUIET: Duration = Duration::from_secs(15);
+/// How often agy's transcript is looked at while it says a turn it took
+/// up by itself is under way.
+const WOKEN_TURN_POLL: Duration = Duration::from_secs(2);
 
 /// A chat's agy going on with its subagents.
 struct Lingering {
@@ -3445,6 +3494,8 @@ fn linger(
     // What agy last wrote to the chat: a result that repeats it is no news.
     let mut said = String::new();
     let mut quiet = Instant::now();
+    // When its transcript was last seen to say its turn is under way.
+    let mut busy_seen: Option<Instant> = None;
     loop {
         let mut leave = |run: &Run| {
             let open = run.subagents.spawns_open();
@@ -3453,7 +3504,25 @@ fn linger(
                 quiet = Instant::now();
             }
             // Not while it writes by itself: the message goes once it is done.
-            run.agy_open && run.idle() && (want.load(Ordering::SeqCst) || (!open && quiet.elapsed() >= LINGER_QUIET))
+            let ready = run.agy_open && run.idle() && (want.load(Ordering::SeqCst) || (!open && quiet.elapsed() >= LINGER_QUIET));
+            if !ready {
+                return false;
+            }
+            // Nor while a subagent's message woke it and the model thinks
+            // between two steps, which agy's stream says nothing of: closing
+            // its input then ends agy mid-turn, and the parent never goes on
+            // with its subagents' reports. Its transcript says (looked at
+            // now and then, not at each poll).
+            if busy_seen.is_some_and(|at| at.elapsed() < WOKEN_TURN_POLL) {
+                return false;
+            }
+            if woken_turn_under_way(conversation) {
+                busy_seen = Some(Instant::now());
+                quiet = Instant::now();
+                return false;
+            }
+            busy_seen = None;
+            true
         };
         let ended = drive(&mut agy, &mut state, &end, true, sink, tell, &mut leave);
         // What it wrote by itself, woken by its subagents: to the chat.
@@ -4272,6 +4341,72 @@ pub(crate) fn complete_in(work: &str, model: &str, prompt: &str, stop: Arc<Stop>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A subagent's message woke the parent (concepts: the real run of
+    /// 24 Nov., agy 1.5.16): its transcript ends on that message, a tool's
+    /// result or a step that calls tools while the model thinks, and agy's
+    /// stream is quiet. Its input must not close then: agy would end mid-turn
+    /// and the parent would never go on with its subagents' reports.
+    #[test]
+    fn a_turn_woken_by_a_subagent_is_under_way_until_its_answer() {
+        let line = |v: Value| format!("{v}\n");
+        let mut t = String::new();
+        t += &line(json!({"type": "PLANNER_RESPONSE", "source": "MODEL", "content": "Waiting for shard_001."}));
+        assert!(!turn_under_way(t.as_bytes()), "an answer without tool calls ends a turn");
+        t += &line(json!({"type": "SYSTEM_MESSAGE", "source": "SYSTEM", "content": "[Message] sender=d038 content=shard_001 done"}));
+        assert!(turn_under_way(t.as_bytes()), "the report woke it");
+        t += &line(json!({"type": "PLANNER_RESPONSE", "source": "MODEL", "tool_calls": [{"name": "run_command", "args": {}}]}));
+        assert!(turn_under_way(t.as_bytes()), "it calls a tool");
+        t += &line(json!({"type": "GENERIC", "source": "MODEL", "status": "DONE", "content": "merged"}));
+        assert!(turn_under_way(t.as_bytes()), "the tool's result: the model goes on");
+        t += &line(json!({"type": "SYSTEM_MESSAGE", "source": "SYSTEM", "content": "Subagent d038 has gone idle."}));
+        assert!(turn_under_way(t.as_bytes()));
+        t += "{\"type\": \"PLANNER_RESP"; // a line still being written
+        assert!(turn_under_way(t.as_bytes()), "a half-written line is skipped");
+        t += &line(json!({"type": "PLANNER_RESPONSE", "source": "MODEL", "truncated_fields": ["tool_calls"]}));
+        assert!(turn_under_way(t.as_bytes()), "calls cut from the line are calls all the same");
+        let mut done = t.clone();
+        done += &line(json!({"type": "PLANNER_RESPONSE", "source": "MODEL", "content": "Wave 1 merged: 90/90."}));
+        assert!(!turn_under_way(done.as_bytes()), "its answer ends it");
+        t += &line(json!({"type": "ERROR_MESSAGE", "error": {"message": "quota"}}));
+        assert!(!turn_under_way(t.as_bytes()), "agy's error ends it");
+        assert!(!turn_under_way(b""), "no transcript, nothing under way");
+    }
+
+    #[test]
+    fn a_woken_turn_counts_while_its_transcript_moves_and_only_while_it_does() {
+        let dir = std::env::temp_dir().join(format!("lumo-woken-{}", chat_agents::run_mark()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("transcript.jsonl");
+        std::fs::write(&path, format!("{}\n", json!({"type": "SYSTEM_MESSAGE", "content": "report"}))).unwrap();
+        assert!(transcript_turn_under_way(&path, WOKEN_TURN_MAX), "just woken: under way");
+        assert!(!transcript_turn_under_way(&path, Duration::ZERO), "silent past the limit: no longer waited for");
+        std::fs::write(&path, format!("{}\n", json!({"type": "PLANNER_RESPONSE", "content": "Done."}))).unwrap();
+        assert!(!transcript_turn_under_way(&path, WOKEN_TURN_MAX), "answered: agy may end");
+        assert!(!transcript_turn_under_way(&dir.join("none.jsonl"), WOKEN_TURN_MAX));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_subagent_reporting_to_its_parent_by_id_talks_to_the_coordinator() {
+        let parent = "52500962-219b-4002-bdb2-47bc3d4412fc";
+        let to_parent = json!({"Recipient": parent, "Message": "shard_008 done"});
+        let a = activity_for("send_message", &to_parent);
+        assert_eq!((a.kind, a.detail.as_str()), ("talk", ""), "an id is never shown");
+        let named = activity_for("send_message", &json!({"Recipient": "reviewer", "Message": "look"}));
+        assert_eq!((named.kind, named.detail.as_str()), ("talk", "reviewer"));
+        // On the subagent's row: "Talking to the coordinator".
+        let mut row = AgentRow::new("r", PROVIDER, "Shard 008 Author");
+        let (mut reading, mut files) = (Reading::default(), Vec::new());
+        let is_parent = |to: &str| to == parent;
+        let line = json!({"type": "PLANNER_RESPONSE", "source": "MODEL", "tool_calls": [{"name": "send_message", "args": to_parent.clone()}]});
+        assert!(transcript_line(&mut row, &mut reading, &mut files, &line, &is_parent).reported);
+        assert_eq!(row.now.as_ref().map(|a| (a.kind, a.detail.as_str())), Some(("report", "")));
+        // To one of its own subagents: an order, by name.
+        let line = json!({"type": "PLANNER_RESPONSE", "source": "MODEL", "tool_calls": [{"name": "send_message", "args": {"Recipient": "helper", "Message": "go"}}]});
+        transcript_line(&mut row, &mut reading, &mut files, &line, &is_parent);
+        assert_eq!(row.now.as_ref().map(|a| (a.kind, a.detail.as_str())), Some(("talk", "helper")));
+    }
 
     #[test]
     fn what_agy_wrote_on_stderr_is_kept_when_it_is_not_utf8() {
