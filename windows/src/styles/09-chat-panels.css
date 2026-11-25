@@ -722,6 +722,10 @@
 
 .history-row {
   gap: 8px;
+  /* As tall as with the pencil and the bin (20 px), which show only under the
+     mouse: the row doesn't grow under it and push the others down. */
+  min-height: 32px;
+  box-sizing: border-box;
 }
 
 /* The past chats' search, beside their title. */
