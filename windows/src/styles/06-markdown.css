@@ -217,8 +217,12 @@ math.mx .mx-underbrace {
   background-position: left bottom, right bottom, center bottom, 0.45em bottom, right 0.45em bottom;
 }
 
-/* \mathbf on a symbol with no bold letter of its own (Greek). */
-math.mx .mx-bold {
+/* \mathbf on a symbol with no bold letter of its own (Greek), and \textbf's
+   words. Latin letters and digits are the font's own bold ones (𝐁, views/math.ts
+   styled): the math font has one weight only, so a weight on them would make
+   the WebView thicken them once more, a 𝐁 run into the 𝑑 before it. */
+math.mx mi.mx-bold,
+math.mx .mx-bold mtext {
   font-weight: 700;
 }
 

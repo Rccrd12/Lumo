@@ -2918,7 +2918,7 @@ export function buildPrompt(
       drawIslandActivity();
     }, CHAT_DONE_HOLD_MS);
     (timer as { unref?: () => void }).unref?.();
-    finishedChats.set(run.chatId, { provider: run.provider, model: run.model, title, timer });
+    finishedChats.set(run.chatId, { provider: run.provider, model: run.served || run.model, title, timer });
   }
 
   function drawIslandActivity() {
@@ -3088,6 +3088,16 @@ export function buildPrompt(
       run.touched = withReplyFile(run.touched ?? [], path, kind);
     }
     if (chat === State.chatId) drawChatFiles();
+  });
+
+  // The model at work on an answer (antigravity_cli.rs emit_model): the closed island names it.
+  const lastServed = new Map<string, { provider: string; model: string; served: string }>();
+  void onEvent<{ chat: string; model: string }>("chat-model", ({ chat, model }) => {
+    const run = runs.get(chat);
+    if (!run || !model || run.served === model) return;
+    run.served = model;
+    if (!parseOrchestrator(run.model)) lastServed.set(chat, { provider: run.provider, model: run.model, served: model });
+    drawIslandActivity();
   });
 
   // A command the local model ran in its terminal (terminal.rs): shown above the answer once it is in.
@@ -4075,6 +4085,10 @@ export function buildPrompt(
         stopping: false,
         done,
       };
+      // agy going on from the last answer says its model once: that answer's
+      // still holds while the pick is the same (not the Orchestrator's executor).
+      const last = lastServed.get(chatId);
+      if (last && last.provider === run.provider && last.model === run.model) run.served = last.served;
       const started = run;
       if (activity !== THINKING) run.timer = setTimeout(() => showActivity(started, THINKING), FIRST_ACTIVITY_MS);
       clearFinishedChat(chatId);

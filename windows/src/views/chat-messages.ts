@@ -789,6 +789,11 @@ export interface Run {
   session: string | null;
   provider: string;
   model: string;
+  /**
+   * The model at work, when the CLI says it: Antigravity CLI's own pick
+   * (its init), the Orchestrator's executor once it works. The island names it.
+   */
+  served?: string;
   /** What the chat may do without asking, as it was when the question went (chats.ts permissionsFor). */
   permissions: ChatPermissions;
   /** The turn the question is in Rust's conversation (chat.rs), for the files it uses. */
@@ -852,9 +857,9 @@ export function chatSpeaker(): { who: string; color: string } {
  * Who gives one answer: the provider and model it was asked of, kept with the
  * answer, so picking another model while it is written doesn't rename it.
  */
-export function runSpeaker(run: { provider: string; model: string }): { who: string; color: string } {
+export function runSpeaker(run: { provider: string; model: string; served?: string }): { who: string; color: string } {
   const p = providerDef(run.provider);
-  return { who: speakerName(p.id, t(p.name), run.model), color: p.accent };
+  return { who: speakerName(p.id, t(p.name), run.served || run.model), color: p.accent };
 }
 
 /** Says on the closed island how the answer went, unless the chat is on screen. */
