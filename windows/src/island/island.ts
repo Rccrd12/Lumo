@@ -30,6 +30,7 @@ import { toolsListRows } from "../views/tools";
 import { onSettingsFieldChanged, settingsHold } from "../views/settings-frame";
 import { cardsFollowDrag } from "../views/rich/resize";
 import { DockEase } from "./dock-ease";
+import { CLOSE_MIN_S, EdgeClose, closeDuration, closingFade, closingRect } from "./edge-close";
 import { gitHubListSection } from "../views/github";
 import { backgroundRows } from "../views/background";
 import { homeHeight, homeInProgressCount, homeLists, homeTilesInARow } from "../views/home";
@@ -193,6 +194,16 @@ export class Island {
   private viewport = { w: 0, h: 0 };
   /** The edge last drawn, to notice when Settings or the tray move it. */
   private lastDock: Dock | null = null;
+  /** The edge of the screen nearest to the island, the one it hides into (island.rs hide_edge). */
+  private hideEdge: Dock = "top";
+  /** Going into that edge and coming back out of it (edge-close.ts). */
+  private edgeClose = new EdgeClose();
+  /** What the island was when it went: drawn as that while it closes. */
+  private closedFrom: IslandMode = "compact";
+  /** How long it took to go (s), and so to come back. */
+  private closeS = CLOSE_MIN_S;
+  /** How much of what the island holds shows while it closes (1: all of it). */
+  private closingFade = 1;
 
   private header!: ViewHost;
   /** The colour last given to the new look's edge light. */
@@ -618,9 +629,36 @@ export class Island {
       // nothing while hidden.
       UploadSeq.deactivate();
     }
+    if (mode === "hidden") this.closeIntoEdge(prev);
+    // (Not at launch: the greeting grows from nothing as it always has.)
+    else if (prev === "hidden" && this.edgeClose.value > 0) this.openFromEdge();
+    else this.animateGeometry(modeOrder(mode) < modeOrder(prev));
     this.updateWindowCollapsed();
-    this.animateGeometry(modeOrder(mode) < modeOrder(prev));
     State.notify();
+  }
+
+  /**
+   * Hidden: its two ends close toward each other and toward the edge of the
+   * screen nearest to it, and meet there (edge-close.ts). It keeps the size
+   * it had meanwhile.
+   */
+  private closeIntoEdge(from: IslandMode) {
+    this.closedFrom = from;
+    for (const t of [this.width, this.height, this.radius]) t.jump(t.value);
+    this.closeS = closeDuration(this.islandRect(), this.hideEdge, window.innerWidth, window.innerHeight);
+    this.edgeClose.close(performance.now(), this.closeS);
+    this.ensureRunning();
+  }
+
+  /** Back: at its size at once, unseen past the edge, its ends open from there to its place. */
+  private openFromEdge() {
+    const { w, h, r } = this.targetSize();
+    this.width.jump(w);
+    this.height.jump(h);
+    this.radius.jump(r);
+    // The window is still the wake strip: it comes back as it went.
+    this.edgeClose.open(performance.now(), this.closeS);
+    this.ensureRunning();
   }
 
   /** True while the drop sequence owns the island body. */
@@ -1443,6 +1481,11 @@ export class Island {
 
   // ── Geometry ────────────────────────────────────────────────────────────────
 
+  /** The mode the island is drawn in: going into its edge, still the one it went from. */
+  private get drawnMode(): IslandMode {
+    return State.mode === "hidden" && this.edgeClose.value < 1 ? this.closedFrom : State.mode;
+  }
+
   /**
    * An agent is using the computer and the island is closed: it is Lumo
    * alone in a short pill, or, with a plan, Lumo and the step under way
@@ -1549,6 +1592,11 @@ export class Island {
   }
 
   private animateGeometry(shrinking: boolean) {
+    // Hidden, it keeps the size it went with: edgeClose draws it going.
+    if (State.mode === "hidden") {
+      this.ensureRunning();
+      return;
+    }
     const { w, h, r } = this.targetSize();
     if (shrinking) {
       this.width.curveTowards(w);
@@ -1565,18 +1613,30 @@ export class Island {
   private applyGeometry() {
     const w = this.width.value;
     const hh = this.height.value;
-    const r = this.radius.value;
-    this.islandEl.style.width = `${w}px`;
-    this.islandEl.style.height = `${hh}px`;
+    this.followViewport();
+    // Going into its edge or coming back out of it (edge-close.ts): drawn
+    // there, from the place it has.
+    const s = this.edgeClose.value;
+    const closing = s > 0
+      ? closingRect(this.islandRect(), this.radius.value, this.hideEdge, window.innerWidth, window.innerHeight, s)
+      : null;
+    const at = closing?.rect ?? this.islandRect();
+    const r = closing?.radius ?? this.radius.value;
+    this.islandEl.style.width = `${at.w}px`;
+    this.islandEl.style.height = `${at.h}px`;
+    // What it holds goes as it closes: an open island's at once, the closed
+    // island's (Lumo's eyes, what it says) on the last part of the way.
+    this.closingFade = !closing ? 1 : this.drawnMode === "expanded" ? Math.max(0, 1 - s / 0.3) : closingFade(s);
+    this.clipEl.style.opacity = closing ? String(this.closingFade) : "";
     // Rounded all round, a little off the edge of the screen. The new look,
-    // against the edge: square on that side (flatTarget).
+    // against the edge: square on that side (flatTarget), rounding as it goes into it.
     const goal = this.flatTarget();
     if (goal !== this.flatGoal) {
       if (this.flatGoal == null) this.flat.jump(goal);
       else this.flat.springTo(goal, 0.4, 1);
       this.flatGoal = goal;
     }
-    const flat = this.flat.value;
+    const flat = this.flat.value * (1 - s);
     if (flat > 0.001) {
       const e = `${Math.max(0, r * (1 - flat))}px`;
       const o = `${r}px`;
@@ -1592,8 +1652,6 @@ export class Island {
     } else {
       this.islandEl.style.borderRadius = `${r}px`;
     }
-    this.followViewport();
-    const at = this.islandRect();
     this.islandEl.style.left = `${at.x}px`;
     this.islandEl.style.top = `${at.y}px`;
     const lift = this.lift.value;
@@ -1614,8 +1672,9 @@ export class Island {
     }
   }
 
-  /** What takes the mouse: the island, and the right-click menu. */
+  /** What takes the mouse: the island, and the right-click menu. Nothing while it goes into its edge. */
   private hitRect(): { x: number; y: number; w: number; h: number } {
+    if (State.mode === "hidden") return { x: -10_000, y: -10_000, w: 0, h: 0 };
     const rect = this.islandRect();
     const menu = this.menu?.rect();
     return menu ? union(rect, menu) : rect;
@@ -1684,14 +1743,15 @@ export class Island {
       this.collapseTimer = null;
     }
     if (State.mode === "hidden") {
-      // Let the island finish retracting, then drop the window to the wake strip:
-      // from there the OS delivers no cursor events, so nothing polls at all.
+      // Let the island finish going into its edge, then drop the window to the
+      // wake strip: from there the OS delivers no cursor events, so nothing
+      // polls at all.
       this.collapseTimer = window.setTimeout(() => {
         this.collapseTimer = null;
         if (State.mode !== "hidden") return;
         this.collapsed = true;
         void Bridge.setCollapsed(true);
-      }, 420);
+      }, this.closeS * 1000 + 40);
     } else if (this.collapsed) {
       // Grow the window back before the island animates open.
       this.collapsed = false;
@@ -2048,6 +2108,7 @@ export class Island {
     this.gap.step(dt, nowMs);
     this.flat.step(dt, nowMs);
     this.dockEase.tick(nowMs);
+    this.edgeClose.tick(nowMs);
     this.applyGeometry();
 
     // The closed island shows what it was measured for: a change it did not
@@ -2099,7 +2160,7 @@ export class Island {
     // spends most of its life in. Geometry still has to finish retracting.
     const settling =
       this.width.animating || this.height.animating || this.radius.animating || this.gap.animating
-      || this.flat.animating || this.dockEase.active;
+      || this.flat.animating || this.dockEase.active || this.edgeClose.active;
     // A permission card that opened from the closed island was measured
     // before it had its room: once the island stops, it is measured again.
     if (this.wasSettling && !settling && State.mode === "expanded" && State.view === "approval") this.refit();
@@ -2127,19 +2188,21 @@ export class Island {
   };
 
   private updateBotTargets() {
+    // Going into its edge, he stays as he was on it until he fades.
+    const mode = this.drawnMode;
     const notch = this.lightGreeting
       ? this.lightGreetBot()
-      : State.mode === "expanded" && !this.onlyLumo
+      : mode === "expanded" && !this.onlyLumo
         ? newLookBot(State.view, this.width.value)
         : null;
     const p = notch ?? (this.onlyLumo
       ? computerCompact("top", this.computerPill.width).bot
-      : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value,
+      : botPosition(mode, State.view, this.height.value, State.uploadProgress, this.width.value,
         State.uploadNames.length > 1));
     // Only his eyes, open or closed island alike (the island is his body),
     // and in the short pill while Claude uses the computer, in its middle.
-    this.engine.eyesOnly = State.mode !== "hidden" && (notch != null || State.mode === "compact");
-    if (this.engine.eyesOnly && State.mode === "compact") {
+    this.engine.eyesOnly = mode !== "hidden" && (notch != null || mode === "compact");
+    if (this.engine.eyesOnly && mode === "compact") {
       p.diameter = NEW_LOOK_COMPACT_DIAMETER;
       if (!this.onlyLumo) p.cx += 4;
     }
@@ -2153,7 +2216,7 @@ export class Island {
     const edge = State.edgePreview ?? parseEdgeLight(State.settings.islandEdgeLight);
     if (document.documentElement.dataset.edge !== edge) document.documentElement.dataset.edge = edge;
     // Upright on a side, the closed island has Lumo at its top end.
-    const turned = isUpright(this.dock) && State.mode !== "expanded";
+    const turned = isUpright(this.dock) && mode !== "expanded";
     this.botCx.target = turned ? p.cy : p.cx;
     this.botCy.target = turned ? p.cx : p.cy;
     this.botSize.target = p.diameter / 0.6;
@@ -2175,7 +2238,7 @@ export class Island {
     // (The new look's drop leaves him in the top bar: the file goes to him there.)
     const ownLumo = !this.uploadActive || this.engine.eyesOnly;
     const visible = p.opacity > 0 && (!greetingActive || this.lightGreeting) && ownLumo && !picture && !listening;
-    this.botCanvas.style.opacity = visible ? "1" : "0";
+    this.botCanvas.style.opacity = visible ? String(this.closingFade) : "0";
 
     if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture && !listening
       && !this.engine.eyesOnly) {
@@ -2451,7 +2514,7 @@ export class Island {
    * there. The island re-anchors, turns upright on a side, and settles with a
    * bounce of its own.
    */
-  onDock(place: { dock: string; offset: number; float?: number; shiftX?: number; shiftY?: number; startAt?: number }) {
+  onDock(place: { dock: string; offset: number; float?: number; shiftX?: number; shiftY?: number; edge?: string; startAt?: number }) {
     // Where it is drawn now: re-anchored, it starts from there (dock-ease.ts),
     // while Rust springs the window to its place.
     const drawn = this.islandRect();
@@ -2459,6 +2522,7 @@ export class Island {
       ...State.settings, islandDock: place.dock, islandOffset: place.offset, islandFloat: place.float ?? 0,
     };
     this.shift = { x: place.shiftX ?? 0, y: place.shiftY ?? 0 };
+    this.setHideEdge(place.edge);
     this.lastDock = this.dock;
     this.clearSettleTimer();
     this.applyDock();
@@ -2505,12 +2569,22 @@ export class Island {
     };
   }
 
-  /** Where Rust put the window: the island is drawn this far off its usual place. */
-  onShift(shift: { x: number; y: number }) {
+  /** Where Rust put the window: the island is drawn this far off its usual place, and hides into that edge. */
+  onShift(shift: { x: number; y: number; edge?: string }) {
+    this.setHideEdge(shift.edge);
     if (!Number.isFinite(shift.x) || !Number.isFinite(shift.y)) return;
     if (shift.x === this.shift.x && shift.y === this.shift.y) return;
     this.shift = { x: shift.x, y: shift.y };
     this.ensureRunning();
+  }
+
+  /** The edge the island hides into (island.rs hide_edge): the wake strip is drawn on it. */
+  private setHideEdge(edge: string | undefined) {
+    if (edge == null) return;
+    const next = parseDock(edge);
+    if (next === this.hideEdge) return;
+    this.hideEdge = next;
+    this.applyDock();
   }
 
   private clearSettleTimer() {
@@ -2549,6 +2623,7 @@ export class Island {
     const dock = this.dock;
     for (const d of ["top", "bottom", "left", "right"] as const) {
       this.root.classList.toggle(`dock-${d}`, d === dock);
+      this.root.classList.toggle(`hide-${d}`, d === this.hideEdge);
     }
     this.root.classList.toggle("movable", this.canResize);
     this.ensureRunning();

@@ -153,13 +153,13 @@ Quit. The look of 0.17, with the ring of light and the tabs, is gone since
 | Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge, anywhere else along it up to its end. Dropped near a corner, it docks in that corner, top or bottom, and stays against it closed or open (the gap from the edge in Settings applies to the side too: with none it touches both edges). **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
-| **…** → Hide in the edge of the screen | Hides the island into the edge of the screen it hangs from, as **Hide when unused** does; bring the mouse to that piece of the edge and it comes back. A request waiting for your answer is folded instead, never hidden |
+| **…** → Hide in the edge of the screen | Hides the island into the edge of the screen nearest to it, wherever it is, as **Hide when unused** does: its two ends close toward each other and toward that edge together and meet as they reach it, leaving nothing on the edge. Bring the mouse to that piece of the edge and it opens back out of it to where it was. A request waiting for your answer is folded instead, never hidden |
 | **…** → Quit | Quits Lumo altogether, tray icon included (open it again from the Start menu) |
 | Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
 | Take a screen capture: `Win+Shift+S`, `Print Screen`, or ShareX, Greenshot, Lightshot, Snagit, PicPick, Flameshot, Snipaste, FastStone Capture, Screenpresso, PowerToys' Text Extractor | The island stays under the capture, dimmed with the rest of the screen, so it can be captured where it is; it neither opens under the capture's mouse nor covers its toolbar. An image such a tool pins to the screen is no capture: the island goes on opening under the mouse while it is in front. Once the capture ends, the island is back on top (Windows) |
 | In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
-| Tray icon | A left click hides the island into its edge, or brings it back (Windows). A right click: Open, Weekly recap, Wardrobe…, Settings…, Pause (**Resume** while paused), Quit |
+| Tray icon | A left click hides the island into the edge nearest to it, or brings it back (Windows). A right click: Open, Weekly recap, Wardrobe…, Settings…, Pause (**Resume** while paused), Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting in the attachments (its × takes it back). Each press adds one more, a row of its own. Type the question and press Enter; nothing is sent before that (Windows) |
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: starts a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)) without opening the island when it is closed; pressed again, pauses the call (the microphone goes off) or picks it up again. End is in the call view |
@@ -1853,8 +1853,8 @@ own window.
 
 ## Limits and notes
 
-- The island lives at the top centre of the screen and retracts into the top
-  edge when it hides.
+- The island lives at the top centre of the screen (or wherever you move it)
+  and closes into the edge of the screen nearest to it when it hides.
 - The closed island says what is going on (the AI at work, notes, a new
   email, timers, the music playing), and the **Email** pill reads an inbox
   over IMAP.

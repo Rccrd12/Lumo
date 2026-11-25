@@ -140,6 +140,8 @@ export interface BetaPull {
 export interface IslandShift {
   x: number;
   y: number;
+  /** The edge of the screen the island hides into (island.rs hide_edge). */
+  edge?: string;
 }
 
 export interface BootInfo {
