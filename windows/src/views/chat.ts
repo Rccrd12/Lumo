@@ -84,7 +84,7 @@ import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from 
 import { invoke } from "@tauri-apps/api/core";
 import { MAX_COMMANDS, ranCommandOf } from "../core/terminal";
 import { Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type ChatContext, type ChatFileEvent, type ExplorerFolder, type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot } from "../core/bridge";
-import { activeModel, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
+import { activeModel, chatEffortOf, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
@@ -93,6 +93,8 @@ import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
 import { browserTabsChanged, openBrowserView, setBrowserViewHost } from "./browser-watch";
 import { updateChatTurns, type AskQuote } from "../core/chats";
+import { GROUP_WORDS, chatGroup, chatWhen, type ChatGroup } from "../core/chat-dates";
+import { DOT_COLORS, chatDot, clearMark, loadMarks, markChat, needsUser, pruneMarks, type ChatDot, type ChatMarks } from "../core/chat-marks";
 import type { AgentsPeek } from "../core/compact";
 import { PICTURE_NAME, comingBack, joinScreen, leaveScreen, restored, sentAgain, sentItems, type SentItem } from "../core/sent";
 import type { ChatPermissions } from "../core/chats";
@@ -555,6 +557,8 @@ export function buildPrompt(
   planBtn.style.display = "none";
   /** Watches each chat's answers asked for, waiting for the user's Listen (drawListenAsk). */
   const listenAsks = new Map<string, ListenAsk[]>();
+  /** Past chats' dots kept for a chat until it is opened: a new answer, or one that failed (core/chat-marks.ts). */
+  let marks: ChatMarks = pruneMarks(loadMarks(), loadChats().map((c) => c.id));
   // The plan: a chip beside the model in place of the icon, its steps rising
   // over the chat from this row (plan-strip.ts).
   const planStrip = buildPlanStrip(() => showPlan());
@@ -745,7 +749,7 @@ export function buildPrompt(
     panelChanged();
     drawModelButton();
     drawUsage();
-  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings)));
+  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings), chatEffortOf(State.settings)));
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
@@ -767,7 +771,7 @@ export function buildPrompt(
   // A search over every past chat, questions and answers alike.
   const historySearch = h("input", {
     type: "search",
-    class: "history-search",
+    class: "history-search history-find",
     placeholder: tl(STRINGS.searchChats),
     spellcheck: "false",
     "aria-label": tl(STRINGS.searchChats),
@@ -1794,10 +1798,79 @@ export function buildPrompt(
     if (body.classList.contains("hearing")) listening.draw();
   }
 
-  /** The clock's badge: the other chats that heard something not seen yet. */
+  /**
+   * The clock's badge: the other chats that heard something not seen yet, or
+   * that need the user (a new answer, a permission, an answer that failed).
+   */
   function drawHistoryBadge() {
-    const others = State.chatSlot === "chat" ? State.listenPending.filter((p) => p.chatId !== State.chatId).length : 0;
-    historyBadge.textContent = others > 0 ? String(others) : "";
+    if (State.chatSlot !== "chat") {
+      historyBadge.textContent = "";
+      return;
+    }
+    const others = new Set(State.listenPending.filter((p) => p.chatId !== State.chatId).map((p) => p.chatId));
+    const chats = slotChats();
+    const ids = new Set(chats.map((c) => c.id));
+    for (const [chatId, dot] of chatDots()) if (ids.has(chatId) && needsUser(dot)) others.add(chatId);
+    historyBadge.textContent = others.size > 0 ? String(others.size) : "";
+  }
+
+  /** The dot of each chat that has one, from the chats at work, waiting or kept (core/chat-marks.ts). */
+  function chatDots(): Map<string, ChatDot> {
+    const ids = new Set([...Object.keys(marks), ...runs.keys(), ...agentStore.keys()]);
+    const dots = new Map<string, ChatDot>();
+    if (ids.size === 0) return dots;
+    let saved: SavedChat[] | null = null;
+    const savedChats = () => (saved ??= loadChats());
+    const cards = chatCards().length > 0;
+    for (const chatId of ids) {
+      const run = runs.get(chatId);
+      const busy = run && !run.forgotten
+        ? (run.text === "" || run.dots ? activityLabel(run.activity) : t(COMPACT_TEXT.writing))
+        : State.activeChats.find((c) => c.chatId === chatId && !c.done)?.line ?? null;
+      const dot = chatDot({ onScreen: chatId === State.chatId, waiting: cards && turnWaiting(chatId, savedChats), working: busy }, marks[chatId]);
+      if (dot) dots.set(chatId, dot);
+    }
+    return dots;
+  }
+
+  /** What the dots last showed, to draw Past chats and the badge again only when one changes. */
+  let dotsKey = "";
+  function drawDots() {
+    const key = [...chatDots()].map(([id, d]) => `${id}:${d.kind}:${d.detail}`).join("\n") + `|${State.chatId}|${State.chatSlot}`;
+    if (key === dotsKey) return;
+    dotsKey = key;
+    drawHistoryBadge();
+    if (body.classList.contains("browsing") && renaming == null) drawHistory();
+  }
+
+  /** What a dot means, under the mouse and before its line. */
+  const DOT_WORDS: Record<ChatDot["kind"], string> = {
+    working: N_("Working"),
+    waiting: N_("Waiting for your permission"),
+    error: N_("Error"),
+    unread: N_("New answer"),
+  };
+  const dotWords = (kind: ChatDot["kind"]) => t(DOT_WORDS[kind]);
+
+  /** The line under the name: what it does now (at work), else what the dot means and what it is about. */
+  function dotLine(dot: ChatDot): string {
+    if (dot.kind === "working") return dot.detail || dotWords(dot.kind);
+    return dot.detail ? `${dotWords(dot.kind)} · ${dot.detail}` : dotWords(dot.kind);
+  }
+
+  /** `chatId`'s answer came, or failed, while another chat was on screen: kept until it is opened. */
+  function markAway(chatId: string, kind: "unread" | "error", text: string) {
+    if (chatId === State.chatId) return;
+    marks = markChat(marks, chatId, kind, text);
+    drawDots();
+  }
+
+  /** `chatId` was opened or deleted: its kept dot goes. */
+  function unmark(chatId: string) {
+    const next = clearMark(marks, chatId);
+    if (next === marks) return;
+    marks = next;
+    drawDots();
   }
 
   // ── Screen button ─────────────────────────────────────────────────────────
@@ -2273,7 +2346,15 @@ export function buildPrompt(
       historyList.append(h("div", { class: "picker-status", text: t(STRINGS.noMatch) }));
       return;
     }
+    const dots = chatDots();
+    // Without a search, the chats go under their day (Today, Yesterday, This week, Earlier).
+    const now = Date.now();
+    let group: ChatGroup | null = null;
     for (const { chat: c, snippet } of rows) {
+      if (!query && chatGroup(c.updatedAt, now) !== group) {
+        group = chatGroup(c.updatedAt, now);
+        historyList.append(h("div", { class: "history-group", text: t(GROUP_WORDS[group]) }));
+      }
       const remove = h("button", { class: "history-delete", title: tl(STRINGS.deleteChat) }, svg(ICONS.trash, 12, { stroke: 1.6 }));
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2286,6 +2367,7 @@ export function buildPrompt(
         dropHeard(c.id);
         forgetHeard(c.id);
         seen(c.id);
+        unmark(c.id);
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
         // Its copies in the inbox too, but for those another chat or the field still has.
@@ -2331,13 +2413,23 @@ export function buildPrompt(
       // It heard something not seen yet: what, in its colour, and the waves.
       const heard = State.chatSlot === "chat" ? State.listenPending.find((p) => p.chatId === c.id) : undefined;
       const heardText = heard && !snippet ? h("span", { class: "history-snippet history-heard-line", style: `color:${heard.color}`, text: `${heard.title} · ${heard.summary}` }) : null;
-      const under = snippet ?? heardText;
+      // At work, waiting for the user, failed or answered and not read: a dot
+      // after the name, and what it is under it (concept: puntini-chat).
+      const dot = dots.get(c.id);
+      const nameLine = dot
+        ? h("span", { class: "history-name" }, name, h("i", { class: `history-dot ${dot.kind}`, style: `--dot:${DOT_COLORS[dot.kind]}`, title: dotWords(dot.kind) }))
+        : name;
+      const dotText = dot && !snippet && !heardText
+        ? h("span", { class: "history-snippet history-dot-line", style: `color:${DOT_COLORS[dot.kind]}`, text: dotLine(dot) })
+        : null;
+      const under = snippet ?? heardText ?? dotText;
       const row = h(
         "div",
         { class: c.id === State.chatId ? "picker-model history-row on" : "picker-model history-row", title: c.title },
-        under ? h("span", { class: "history-text" }, name, under) : name,
+        under ? h("span", { class: "history-text" }, nameLine, under) : nameLine,
         heard ? h("span", { class: "history-heard" }, svg(ICONS.waves, 13, { stroke: 1.8 })) : null,
-        h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
+        // How long ago, at the right; the pencil and the bin take its place under the mouse, and it moves to their left.
+        h("span", { class: "history-date", text: chatWhen(c.updatedAt, now), title: new Date(c.updatedAt).toLocaleString(language()) }),
         rename,
         remove,
       );
@@ -2487,9 +2579,11 @@ export function buildPrompt(
       restoreAgents(agentStore, c.id, c.turns, c.provider);
     }
     State.chatId = c.id;
+    // Opened: its new answer, or what went wrong, is read now.
+    unmark(c.id);
     // The picker shows the provider and model this chat is on (as it was left);
     // a voice call's transcript has none, and leaves the picker as it is.
-    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model } : null));
+    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model, effort: run.effort } : null));
     void checkChatModel(c.id);
     if (picker.isOpen) picker.close();
     closeScreen();
@@ -2552,8 +2646,8 @@ export function buildPrompt(
     dropShots(shotPaths(draft.screen));
   }
 
-  /** The picker on a chat's provider and model, saved as the ones to start the next new chat with. */
-  function useChatModel(chat: { provider: string; model?: string } | null) {
+  /** The picker on a chat's provider, model and effort, saved as the ones to start the next new chat with. */
+  function useChatModel(chat: { provider: string; model?: string; effort?: string } | null) {
     const next = onChatModel(State.settings, chat, readyProviders);
     if (next === State.settings) return;
     State.settings = next;
@@ -2580,7 +2674,7 @@ export function buildPrompt(
         if (!next) return;
         // Picked again meanwhile: that pick stands.
         const now = chatModelOf(id);
-        if (now?.provider === provider && now.model === model) setChatModel(id, provider, next);
+        if (now?.provider === provider && now.model === model) setChatModel(id, provider, next, now.effort);
         if (modelFor(State.settings, provider) === model) {
           State.settings = withModel(State.settings, provider as ProviderId, next);
           saveSettings();
@@ -2767,7 +2861,7 @@ export function buildPrompt(
     void Bridge.chatRestore(State.chatId, turns, null);
     const parsed = latestDraft(State.chatHistory);
     if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
-    saveChat({ id: State.chatId, title: chatName(State.chatId, turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), session: null, turns });
+    saveChat({ id: State.chatId, title: chatName(State.chatId, turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), effort: chatEffortOf(State.settings), session: null, turns });
     renderedCount = -1;
     State.notify();
   }
@@ -2786,6 +2880,7 @@ export function buildPrompt(
       updatedAt: Date.now(),
       provider: run.provider,
       model: run.model,
+      effort: run.effort,
       session: run.session,
       // Each answer with the agents it started that ended.
       turns: withAgents(agentStore.get(run.chatId), turns),
@@ -3164,10 +3259,10 @@ export function buildPrompt(
    * The chat's answer waits for the user: a card is up for it, or for one of
    * its agents the answer waits on (not one in the background), or Rust said so.
    */
-  function turnWaiting(chatId: string): boolean {
+  function turnWaiting(chatId: string, chats: () => SavedChat[] = loadChats): boolean {
     const c = agentStore.get(chatId);
     if (c?.waiting === "permission") return true;
-    const permission = permissionOf(chatId);
+    const permission = permissionOf(chatId, chats);
     return permission.main || [...permission.agents].some((id) => c?.rows.get(id)?.row.background === false);
   }
 
@@ -3499,6 +3594,8 @@ export function buildPrompt(
   // the pace follows (a pace unchanged costs nothing).
   State.subscribe(() => {
     tickAgents();
+    // A chat at work, waiting or answered: its dot in Past chats, and the clock's badge.
+    drawDots();
     // Another chat on screen: its own held message, if any; a chat back on screen sends one whose agents finished.
     drawHold();
     releaseHeld();
@@ -4071,6 +4168,7 @@ export function buildPrompt(
         session: away ? away.session : State.chatSession,
         provider: own.chatProvider,
         model: modelFor(own, own.chatProvider),
+        effort: chatEffortOf(own),
         permissions: keptPermissions(chatId),
         turn,
         text: "",
@@ -4115,7 +4213,7 @@ export function buildPrompt(
       // agy's "/usage"), which would take it as its own words: it goes with
       // the next question.
       const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
-      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model }, run.permissions);
+      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model, effort: run.effort }, run.permissions);
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one). Unless
       // it used the computer meanwhile: Rust kept the turn ("(No answer.)",
@@ -4162,6 +4260,8 @@ export function buildPrompt(
       // An answer from agy used some of its quota: asked again (at most once a minute).
       if (antigravityUsage()) refreshAntigravityPlanUsage();
       outcome = reply.stopped ? null : "finished";
+      // Answered while another chat was on screen: Past chats say so until it is opened.
+      if (!reply.stopped && recorded && !run.forgotten) markAway(run.chatId, "unread", content || t(COMPACT_TEXT.answered, { helper: runSpeaker(run).who }));
       Sound.play(reply.stopped ? "pop" : "finish");
       // Ended with an error after the answer: the closed island says so, in amber.
       if (!reply.stopped) noticeAway(reply.warning ? COMPACT_TEXT.answeredWithProblem : COMPACT_TEXT.answered, reply.warning ? { ...runSpeaker(run), color: WARNING_COLOR } : runSpeaker(run));
@@ -4186,6 +4286,7 @@ export function buildPrompt(
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
       run.history.push({ id: newMessageId(), role: "assistant", content: problem, failed: true, fix, at: Date.now() });
+      if (!run.forgotten) markAway(run.chatId, "error", plainProblem);
       if (!away && !(State.mode === "expanded" && State.view === "prompt")) {
         State.noteMessage = plainProblem;
         State.view = "note";
@@ -4299,6 +4400,8 @@ export function buildPrompt(
       saveChat({ ...saved, updatedAt: Date.now(), turns });
       if (body.classList.contains("browsing")) drawHistory();
     }
+    // Written while another chat was on screen: Past chats say so until it is opened.
+    markAway(chatId, "unread", content);
     Sound.play("finish");
     noticeAway(COMPACT_TEXT.answered, run ? runSpeaker(run) : chatSpeaker());
     State.notify();

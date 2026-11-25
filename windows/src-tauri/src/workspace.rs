@@ -1033,7 +1033,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(base.join("secret.txt")).unwrap(), "no");
         assert!(ws.run(COPY, &json!({ "path": "relative.txt" })).is_err());
         // A path that isn't there says what its folder holds.
-        let missing = base.join("Riccardo").join("file.txt").to_string_lossy().to_string();
+        let missing = base.join("Anna").join("file.txt").to_string_lossy().to_string();
         let said = ws.run(COPY, &json!({ "path": missing })).unwrap_err();
         assert!(said.contains("doesn't exist") && said.contains("secret.txt") && said.contains("ws"), "{said}");
         let _ = std::fs::remove_dir_all(base);

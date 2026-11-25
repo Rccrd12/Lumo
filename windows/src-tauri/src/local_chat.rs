@@ -908,7 +908,6 @@ pub async fn send(
         let groups: Vec<profile::Group> = profile::Group::ALL.into_iter().filter(|g| loaded.iter().any(|id| profile::group_of(id) == Some(*g))).collect();
         let catalog = profile::catalog(&all, loaded);
         let mut prompt = profile::system_prompt(&profile::Prompt {
-            first_name: crate::identity::first_name(),
             today: &today,
             tools,
             web: web && tools,

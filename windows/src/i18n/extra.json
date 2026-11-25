@@ -23902,6 +23902,54 @@
    "ru": "В копиях Lumo: ваш файл остался прежним",
    "id": "Di salinan Lumo: file Anda tetap seperti semula",
    "it": "Nelle copie di Lumo: il tuo file è com'era"
+  },
+  "Working": {
+   "zh-Hans": "工作中",
+   "hi": "काम कर रहा है",
+   "es": "Trabajando",
+   "ar": "يعمل",
+   "fr": "Au travail",
+   "bn": "কাজ করছে",
+   "pt-BR": "Trabalhando",
+   "ru": "Работает",
+   "id": "Sedang bekerja",
+   "it": "Sta lavorando"
+  },
+  "New answer": {
+   "zh-Hans": "新回答",
+   "hi": "नया जवाब",
+   "es": "Respuesta nueva",
+   "ar": "رد جديد",
+   "fr": "Nouvelle réponse",
+   "bn": "নতুন উত্তর",
+   "pt-BR": "Resposta nova",
+   "ru": "Новый ответ",
+   "id": "Jawaban baru",
+   "it": "Risposta nuova"
+  },
+  "This week": {
+   "zh-Hans": "本周",
+   "hi": "इस हफ़्ते",
+   "es": "Esta semana",
+   "ar": "هذا الأسبوع",
+   "fr": "Cette semaine",
+   "bn": "এই সপ্তাহে",
+   "pt-BR": "Esta semana",
+   "ru": "На этой неделе",
+   "id": "Minggu ini",
+   "it": "Questa settimana"
+  },
+  "Earlier": {
+   "zh-Hans": "更早",
+   "hi": "पहले",
+   "es": "Antes",
+   "ar": "أقدم",
+   "fr": "Plus tôt",
+   "bn": "আগে",
+   "pt-BR": "Antes",
+   "ru": "Ранее",
+   "id": "Sebelumnya",
+   "it": "Prima"
   }
  }
 }

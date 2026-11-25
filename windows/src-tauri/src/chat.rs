@@ -1032,18 +1032,11 @@ pub fn system_prompt_in(chat: &Chat, web_search: bool, timer_tool: bool) -> Stri
     }
 }
 
-/// Lumo's instructions. Greets the user by their first name when the account
-/// has one worth using (identity.rs), and only claims web search where the
-/// provider runs it (Claude).
+/// Lumo's instructions. They are the same for everyone: nothing about the
+/// user (no name from the Windows account) goes to the provider. Web search
+/// is only claimed where the provider runs it (Claude).
 pub fn system_prompt(web_search: bool, timer_tool: bool) -> String {
-    system_prompt_for(crate::identity::first_name(), web_search, timer_tool)
-}
-
-fn system_prompt_for(first_name: Option<&str>, web_search: bool, timer_tool: bool) -> String {
-    let opening = match first_name {
-        Some(name) => format!("You are Lumo, {name}'s personal AI assistant living at the top of their screen."),
-        None => "You are Lumo, a personal AI assistant living at the top of the user's screen.".to_string(),
-    };
+    let opening = "You are Lumo, a personal AI assistant living at the top of the user's screen.";
     let abilities = if web_search {
         "You have web search access and can help with absolutely anything — research, coding, finding places, recommendations, tasks, questions."
     } else {
@@ -1103,12 +1096,13 @@ pub fn model_for(settings: &Settings, provider: &str) -> String {
         .unwrap_or_default()
 }
 
-/// `settings` with the provider and model a chat is on (the page keeps them
-/// by chat, chats.ts): that chat is answered by them, whatever the picker
-/// shows for another chat meanwhile. None, or empty, leaves the settings' own;
-/// so does a provider the user took out of the chat (Settings → Chat → Show
-/// in the chat), as the page does (providers.ts onChatModel).
-pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>) -> Settings {
+/// `settings` with the provider, model and effort a chat is on (the page keeps
+/// them by chat, chats.ts): that chat is answered by them, whatever the picker
+/// shows for another chat meanwhile. None, or empty, leaves the settings' own
+/// (an effort of "" is the provider's own, and is kept); so does a provider
+/// the user took out of the chat (Settings → Chat → Show in the chat), as the
+/// page does (providers.ts onChatModel).
+pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>, effort: Option<&str>) -> Settings {
     let Some(provider) = provider.map(str::trim).filter(|p| !p.is_empty()) else { return settings };
     if provider != settings.chat_provider && settings.hidden_chat_providers.iter().any(|h| h == provider) {
         return settings;
@@ -1120,6 +1114,9 @@ pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&
         } else {
             settings.chat_models.insert(provider.to_string(), model.to_string());
         }
+    }
+    if let Some(effort) = effort {
+        settings.chat_effort = effort.trim().to_string();
     }
     settings
 }
@@ -2141,17 +2138,17 @@ mod tests {
     }
 
     #[test]
-    fn the_prompt_greets_by_first_name_and_claims_web_search_only_for_claude() {
-        let p = system_prompt_for(Some("Ada"), true, true);
-        assert!(p.starts_with("You are Lumo, Ada's personal AI assistant living at the top of their screen."));
+    fn the_prompt_names_no_one_and_claims_web_search_only_for_claude() {
+        let p = system_prompt(true, true);
+        assert!(p.starts_with("You are Lumo, a personal AI assistant living at the top of the user's screen."));
         assert!(p.contains("web search access"));
         assert!(p.contains("light Markdown"));
-        let p = system_prompt_for(None, false, false);
+        let p = system_prompt(false, false);
         assert!(p.starts_with("You are Lumo, a personal AI assistant living at the top of the user's screen."));
         assert!(!p.contains("web search"));
         assert!(p.contains("no web access"));
         // The timer: Lumo's tool where the provider has it, the line otherwise.
-        assert!(system_prompt_for(None, false, true).contains("set_timer tool"));
+        assert!(system_prompt(false, true).contains("set_timer tool"));
         assert!(!p.contains("set_timer") && p.contains("[[timer 10m"));
     }
 
@@ -2161,7 +2158,7 @@ mod tests {
         // openai_compat.rs, through system_prompt_in), whatever the timer and
         // web search; the CLIs' and local models' are checked in their files.
         for (web, timer) in [(true, true), (false, false), (true, false), (false, true)] {
-            let p = system_prompt_for(None, web, timer);
+            let p = system_prompt(web, timer);
             assert!(p.contains(rich_note!()), "{web} {timer}");
             assert!(p.contains(math_note!()));
             assert!(p.contains("Avoid tables and big headings: the chat window is small."));
@@ -2230,7 +2227,7 @@ mod tests {
         assert!(note.contains("whole path, as [report.pdf](C:"));
         assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']), "it goes on a command line");
         for (web, timer) in [(true, true), (false, false)] {
-            assert!(system_prompt_for(None, web, timer).contains(note));
+            assert!(system_prompt(web, timer).contains(note));
         }
     }
 
@@ -2392,22 +2389,34 @@ mod tests {
             ..Settings::default()
         };
         // Anthropic's model is `model`; the others' are kept by provider.
-        let a = with_pick(settings.clone(), Some("anthropic"), Some("claude-opus-5-5"));
+        let a = with_pick(settings.clone(), Some("anthropic"), Some("claude-opus-5-5"), None);
         assert_eq!(a.chat_provider, ANTHROPIC);
         assert_eq!(model_for(&a, ANTHROPIC), "claude-opus-5-5");
-        let b = with_pick(settings.clone(), Some("openrouter"), Some("openrouter/auto"));
+        let b = with_pick(settings.clone(), Some("openrouter"), Some("openrouter/auto"), None);
         assert_eq!((b.chat_provider.as_str(), model_for(&b, "openrouter").as_str()), ("openrouter", "openrouter/auto"));
         assert_eq!(model_for(&b, "openai"), "gpt-4o");
         // No model: that provider's own.
-        let c = with_pick(settings.clone(), Some("claude-code"), None);
+        let c = with_pick(settings.clone(), Some("claude-code"), None, None);
         assert_eq!(c.chat_provider, "claude-code");
         // Nothing named: the settings as they are.
-        let d = with_pick(settings.clone(), None, Some("x"));
+        let d = with_pick(settings.clone(), None, Some("x"), Some("max"));
         assert_eq!((d.chat_provider.as_str(), model_for(&d, "openai").as_str()), ("openai", "gpt-4o"));
-        assert_eq!(with_pick(settings.clone(), Some(" "), None).chat_provider, "openai");
+        assert_eq!(with_pick(settings.clone(), Some(" "), None, None).chat_provider, "openai");
         // A provider taken out of the chat: the settings' own answers.
         let hidden = Settings { hidden_chat_providers: vec!["codex".into()], ..settings };
-        let e = with_pick(hidden.clone(), Some("codex"), Some("gpt-5"));
+        let e = with_pick(hidden.clone(), Some("codex"), Some("gpt-5"), Some("max"));
         assert_eq!((e.chat_provider.as_str(), model_for(&e, "codex").as_str()), ("openai", model_for(&hidden, "codex").as_str()));
+        assert_eq!(d.chat_effort, hidden.chat_effort, "no provider named: the effort stays too");
+        assert_eq!(e.chat_effort, hidden.chat_effort);
+    }
+
+    #[test]
+    fn a_chat_is_answered_with_its_own_effort() {
+        let settings = Settings { chat_provider: "claude-code".into(), chat_effort: "low".into(), ..Settings::default() };
+        assert_eq!(with_pick(settings.clone(), Some("claude-code"), Some("default"), Some("max")).chat_effort, "max");
+        // "" is the provider's own effort, picked as such.
+        assert_eq!(with_pick(settings.clone(), Some("claude-code"), None, Some("")).chat_effort, "");
+        // None (Antigravity CLI, a chat saved before): the settings' own.
+        assert_eq!(with_pick(settings, Some("codex"), Some("gpt-5"), None).chat_effort, "low");
     }
 }
