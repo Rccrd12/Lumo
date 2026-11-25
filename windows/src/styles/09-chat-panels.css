@@ -775,6 +775,44 @@
   padding: 0 1px;
 }
 
+/* Past chats: a chat at work, waiting for the user, failed or answered and
+   not read (chat.ts drawHistory, core/chat-marks.ts): a dot after its name,
+   with a soft halo that breathes while it works or waits. */
+.history-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.history-name .picker-model-name {
+  flex: 0 1 auto;
+}
+
+.history-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--dot);
+}
+
+.history-dot.working,
+.history-dot.waiting {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot) 22%, transparent);
+  animation: history-dot-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes history-dot-breathe {
+  50% { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--dot) 12%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-dot.working,
+  .history-dot.waiting { animation: none; }
+}
+
 .history-date {
   flex: 0 0 auto;
   font-size: 10px;

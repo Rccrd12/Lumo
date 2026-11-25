@@ -23902,6 +23902,30 @@
    "ru": "Следующие команды этого чата выполняются без вопроса, пока Lumo не закроется; команда, которой нужен интернет, всё равно спросит",
    "id": "Perintah berikutnya di chat ini berjalan tanpa bertanya sampai Lumo ditutup; yang butuh internet tetap bertanya",
    "it": "I prossimi comandi di questa chat partono senza chiedere finché Lumo resta aperto; uno che vuole internet chiede comunque"
+  },
+  "Working": {
+   "zh-Hans": "工作中",
+   "hi": "काम कर रहा है",
+   "es": "Trabajando",
+   "ar": "يعمل",
+   "fr": "Au travail",
+   "bn": "কাজ করছে",
+   "pt-BR": "Trabalhando",
+   "ru": "Работает",
+   "id": "Sedang bekerja",
+   "it": "Sta lavorando"
+  },
+  "New answer": {
+   "zh-Hans": "新回答",
+   "hi": "नया जवाब",
+   "es": "Respuesta nueva",
+   "ar": "رد جديد",
+   "fr": "Nouvelle réponse",
+   "bn": "নতুন উত্তর",
+   "pt-BR": "Resposta nova",
+   "ru": "Новый ответ",
+   "id": "Jawaban baru",
+   "it": "Risposta nuova"
   }
  }
 }
