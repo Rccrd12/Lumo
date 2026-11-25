@@ -84,7 +84,7 @@ import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from 
 import { invoke } from "@tauri-apps/api/core";
 import { MAX_COMMANDS, ranCommandOf } from "../core/terminal";
 import { Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type ChatContext, type ChatFileEvent, type ExplorerFolder, type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot } from "../core/bridge";
-import { activeModel, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
+import { activeModel, chatEffortOf, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
@@ -749,7 +749,7 @@ export function buildPrompt(
     panelChanged();
     drawModelButton();
     drawUsage();
-  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings)));
+  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings), chatEffortOf(State.settings)));
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
@@ -2583,7 +2583,7 @@ export function buildPrompt(
     unmark(c.id);
     // The picker shows the provider and model this chat is on (as it was left);
     // a voice call's transcript has none, and leaves the picker as it is.
-    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model } : null));
+    useChatModel(chatModelOf(c.id) ?? (run ? { provider: run.provider, model: run.model, effort: run.effort } : null));
     void checkChatModel(c.id);
     if (picker.isOpen) picker.close();
     closeScreen();
@@ -2646,8 +2646,8 @@ export function buildPrompt(
     dropShots(shotPaths(draft.screen));
   }
 
-  /** The picker on a chat's provider and model, saved as the ones to start the next new chat with. */
-  function useChatModel(chat: { provider: string; model?: string } | null) {
+  /** The picker on a chat's provider, model and effort, saved as the ones to start the next new chat with. */
+  function useChatModel(chat: { provider: string; model?: string; effort?: string } | null) {
     const next = onChatModel(State.settings, chat, readyProviders);
     if (next === State.settings) return;
     State.settings = next;
@@ -2674,7 +2674,7 @@ export function buildPrompt(
         if (!next) return;
         // Picked again meanwhile: that pick stands.
         const now = chatModelOf(id);
-        if (now?.provider === provider && now.model === model) setChatModel(id, provider, next);
+        if (now?.provider === provider && now.model === model) setChatModel(id, provider, next, now.effort);
         if (modelFor(State.settings, provider) === model) {
           State.settings = withModel(State.settings, provider as ProviderId, next);
           saveSettings();
@@ -2861,7 +2861,7 @@ export function buildPrompt(
     void Bridge.chatRestore(State.chatId, turns, null);
     const parsed = latestDraft(State.chatHistory);
     if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
-    saveChat({ id: State.chatId, title: chatName(State.chatId, turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), session: null, turns });
+    saveChat({ id: State.chatId, title: chatName(State.chatId, turns), updatedAt: Date.now(), provider: State.settings.chatProvider, model: activeModel(State.settings), effort: chatEffortOf(State.settings), session: null, turns });
     renderedCount = -1;
     State.notify();
   }
@@ -2880,6 +2880,7 @@ export function buildPrompt(
       updatedAt: Date.now(),
       provider: run.provider,
       model: run.model,
+      effort: run.effort,
       session: run.session,
       // Each answer with the agents it started that ended.
       turns: withAgents(agentStore.get(run.chatId), turns),
@@ -4172,6 +4173,7 @@ export function buildPrompt(
         session: away ? away.session : State.chatSession,
         provider: own.chatProvider,
         model: modelFor(own, own.chatProvider),
+        effort: chatEffortOf(own),
         permissions: keptPermissions(chatId),
         turn,
         text: "",
@@ -4216,7 +4218,7 @@ export function buildPrompt(
       // agy's "/usage"), which would take it as its own words: it goes with
       // the next question.
       const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
-      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model }, run.permissions);
+      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext, { provider: run.provider, model: run.model, effort: run.effort }, run.permissions);
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one). Unless
       // it used the computer meanwhile: Rust kept the turn ("(No answer.)",

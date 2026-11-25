@@ -789,6 +789,8 @@ export interface Run {
   session: string | null;
   provider: string;
   model: string;
+  /** Its effort, as it was when the question went (providers.ts chatEffortOf); none on Antigravity CLI. */
+  effort?: string;
   /**
    * The model at work, when the CLI says it: Antigravity CLI's own pick
    * (its init), the Orchestrator's executor once it works. The island names it.

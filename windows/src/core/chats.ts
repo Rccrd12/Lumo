@@ -174,6 +174,12 @@ export interface SavedChat {
   /** Its model, with `provider`; none in chats saved before each chat kept its own. */
   model?: string;
   /**
+   * Its effort (Claude Code's, Codex's…: Settings chatEffort, "" for the
+   * provider's own); none in chats saved before each chat kept its own, and in
+   * Antigravity CLI's, whose effort is in its model's name.
+   */
+  effort?: string;
+  /**
    * A voice call's transcript (live/session.ts): `provider` names the call's,
    * not one picked in the chat, so reopening it leaves the picker as it is,
    * until a question asked in it in writing is answered (it has a `model` then).
@@ -497,11 +503,13 @@ export function joinOwnAnswer(turns: { role: string; content: string; kept?: str
 /** Ticks given in a chat not saved yet (its first answer still being written), until it is. */
 const unsaved = new Map<string, ChatChecklists>();
 
-/** A chat's provider and model, as the picker shows them while it is on screen. */
+/** A chat's provider, model and effort, as the picker shows them while it is on screen. */
 export interface ChatModel {
   provider: string;
   /** None for a chat saved before each chat kept its own: its provider's model then. */
   model?: string;
+  /** None for a chat saved before each chat kept its own, or on Antigravity CLI: the effort is left as it is. */
+  effort?: string;
 }
 
 /**
@@ -512,16 +520,18 @@ export interface ChatModel {
 const picks = new Map<string, ChatModel>();
 
 /**
- * The provider and model picked in chat `id`; a saved chat keeps them where it
- * is, its place in the history does not change.
+ * The provider, model and effort picked in chat `id`; a saved chat keeps them
+ * where it is, its place in the history does not change.
  */
-export function setChatModel(id: string, provider: string, model: string) {
-  picks.set(id, { provider, model });
+export function setChatModel(id: string, provider: string, model: string, effort?: string) {
+  picks.set(id, effort === undefined ? { provider, model } : { provider, model, effort });
   const list = loadChats();
   const chat = list.find((c) => c.id === id);
-  if (!chat || (chat.provider === provider && chat.model === model)) return;
+  if (!chat || (chat.provider === provider && chat.model === model && chat.effort === effort)) return;
   chat.provider = provider;
   chat.model = model;
+  if (effort === undefined) delete chat.effort;
+  else chat.effort = effort;
   store(list);
 }
 
@@ -532,7 +542,9 @@ export function chatModelOf(id: string): ChatModel | null {
   const chat = loadChats().find((c) => c.id === id);
   if (!chat || typeof chat.provider !== "string" || !chat.provider) return null;
   if (chat.call === true && !chat.model) return null;
-  return typeof chat.model === "string" && chat.model ? { provider: chat.provider, model: chat.model } : { provider: chat.provider };
+  const on: ChatModel = typeof chat.model === "string" && chat.model ? { provider: chat.provider, model: chat.model } : { provider: chat.provider };
+  if (typeof chat.effort === "string") on.effort = chat.effort;
+  return on;
 }
 
 /**
@@ -593,7 +605,10 @@ export function permissionsFor(id: string, settings: ChatPermissions): ChatPermi
  */
 export function saveChat(chat: SavedChat): SavedChat[] {
   const picked = picks.get(chat.id);
-  if (picked) chat = { ...chat, provider: picked.provider, model: picked.model };
+  if (picked) {
+    const { effort: _, ...rest } = chat;
+    chat = picked.effort === undefined ? { ...rest, provider: picked.provider, model: picked.model } : { ...rest, provider: picked.provider, model: picked.model, effort: picked.effort };
+  }
   const chats = loadChats();
   const permissions = ownModes.get(chat.id) ?? permissionsFrom(chat.permissions) ?? permissionsFrom(chats.find((c) => c.id === chat.id)?.permissions);
   ownModes.delete(chat.id);

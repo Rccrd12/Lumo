@@ -790,6 +790,7 @@ async fn chat_send(
     screen: Option<screen::ScreenContext>,
     provider: Option<String>,
     model: Option<String>,
+    effort: Option<String>,
     permission_mode: Option<String>,
     permission_mode_agy: Option<String>,
 ) -> Result<ChatReply, String> {
@@ -801,12 +802,13 @@ async fn chat_send(
     // The settings as they are now: a model, effort or permission picked
     // while this answer is written goes with the next message. The chat's own
     // provider and model, when the page names them, answer it; so do its own
-    // permissions, kept for its computer use turns too (computer.rs).
+    // permissions, kept for its computer use turns too (computer.rs); so does
+    // its own effort.
     let permissions = chat::permissions_of(permission_mode.as_deref(), permission_mode_agy.as_deref());
     if permissions.is_some() {
         chat::set_chat_permissions(&chat_id, permissions.clone());
     }
-    let settings = chat::with_pick(shared.settings.lock().unwrap().clone(), provider.as_deref(), model.as_deref());
+    let settings = chat::with_pick(shared.settings.lock().unwrap().clone(), provider.as_deref(), model.as_deref(), effort.as_deref());
     let settings = chat::with_permissions(settings, permissions.as_ref());
     // The screenshots stay in the inbox with the chat that sent them, like its
     // dropped files: its question shows them, and editing it sends them again.

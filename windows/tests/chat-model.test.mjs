@@ -277,3 +277,94 @@ test("a model still offered is left as it is; a CLI or a model server is not sta
   assert.equal(sent("chat_models").slice(listsAsked).filter((a) => a.provider === "antigravity-cli").length, 0);
   assert.equal(loadChats().find((c) => c.id === "agy").model, "gemini-old");
 });
+
+/** Opens the picker and moves the effort slider with key `key` (End, Home, ArrowLeft…), then closes it. */
+async function slide(key) {
+  $(".model-btn").fire("click");
+  await flush();
+  await flush();
+  $(".effort-slider").fire("keydown", { key });
+  $(".model-btn").fire("click");
+  view.sync();
+}
+
+test("an Antigravity CLI effort changed in a chat that came back is still there when it comes back again", async () => {
+  answers.chat_models = ["gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high"].map((id) => ({ id, label: id }));
+  State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatModels: { "antigravity-cli": "gemini-4-argon-low" } };
+  view.sync();
+  await ask("plan the move");
+  button("New chat").fire("click");
+  view.sync();
+  await ask("other work");
+
+  reopen("plan the move");
+  assert.equal(shown(), "Gemini 4 Argon · Low");
+  await slide("End");
+  assert.equal(shown(), "Gemini 4 Argon · High");
+  assert.equal(loadChats().find((c) => c.title === "plan the move").model, "gemini-4-argon-high");
+
+  reopen("other work");
+  assert.equal(shown(), "Gemini 4 Argon · Low", "the other chat keeps its own");
+  reopen("plan the move");
+  assert.equal(shown(), "Gemini 4 Argon · High");
+  await ask("and the boxes?");
+  assert.deepEqual(asked().at(-1), ["and the boxes?", "antigravity-cli", "gemini-4-argon-high"]);
+});
+
+test("Claude Code's effort is each chat's own: changed in a chat that came back, it is still there when it comes back again", async () => {
+  answers.chat_models = [{ id: "default", label: "Default" }];
+  State.settings = { ...State.settings, chatProvider: "claude-code", chatEffort: "low" };
+  view.sync();
+  await ask("plan the move");
+  button("New chat").fire("click");
+  view.sync();
+  await ask("other work");
+
+  reopen("plan the move");
+  assert.equal(shown(), "Default · Low");
+  await slide("End");
+  assert.equal(shown(), "Default · Max");
+  assert.equal(loadChats().find((c) => c.title === "plan the move").effort, "max");
+
+  reopen("other work");
+  assert.equal(shown(), "Default · Low", "the other chat keeps its own");
+  assert.equal(sent("save_settings").at(-1).settings.chatEffort, "low", "Rust answers it with its own");
+  reopen("plan the move");
+  assert.equal(shown(), "Default · Max");
+  await ask("and the boxes?");
+  assert.equal(sent("chat_send").at(-1).effort, "max");
+  assert.equal(sent("save_settings").at(-1).settings.chatEffort, "max");
+
+  // A chat saved before each chat kept its effort leaves it as it is.
+  saveChat({ id: "old", title: "old one", updatedAt: 1, provider: "claude-code", model: "default", session: null, turns: [{ role: "user", content: "old one" }] });
+  reopen("old one");
+  assert.equal(shown(), "Default · Max");
+});
+
+test("the Orchestrator's planner and executor changed in a chat stay with it", async () => {
+  const ids = ["default", "gemini-4-neon-low", "gemini-4-neon-high", "gemini-4-carbon-low", "gemini-4-carbon-high",
+    "gemini-pro-orchestrator", "gemini-4-hydrogen-low", "gemini-4-hydrogen-high"];
+  answers.chat_models = ids.map((id) => ({ id, label: id === "default" ? "Default" : id }));
+  State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatModels: { "antigravity-cli": "orchestrator:gemini-4-neon-high:gemini-4-hydrogen-high" } };
+  view.sync();
+  await ask("plan the move");
+  button("New chat").fire("click");
+  view.sync();
+  await ask("other work");
+
+  reopen("plan the move");
+  $(".model-btn").fire("click");
+  await flush();
+  await flush();
+  view.el.find(".orch-row")[0].find(".orch-step")[1].fire("click");
+  view.el.find(".orch-row")[1].querySelector(".effort-slider").fire("keydown", { key: "Home" });
+  const picked = "orchestrator:gemini-4-carbon-high:gemini-4-hydrogen-low";
+  assert.equal(State.settings.chatModels["antigravity-cli"], picked);
+  assert.equal(loadChats().find((c) => c.title === "plan the move").model, picked);
+  $(".model-btn").fire("click");
+
+  reopen("other work");
+  reopen("plan the move");
+  await ask("and the boxes?");
+  assert.deepEqual(asked().at(-1), ["and the boxes?", "antigravity-cli", picked]);
+});

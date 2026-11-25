@@ -44,7 +44,7 @@ export let readyProviders: ReadonlySet<string> | null = null;
 
 /**
  * Provider chips, then the chosen provider's models — ModelPickerView.
- * `onPicked` once a provider or a model is picked: the chat on screen keeps it.
+ * `onPicked` once a provider, a model or an effort is picked: the chat on screen keeps it.
  */
 export function buildPicker(onChange: () => void, openSettings: () => void, onPicked: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
@@ -117,6 +117,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     const save = (next: Orchestration) => {
       State.settings = withModel(State.settings, p.id, orchestratorModel(next));
       saveSettings();
+      onPicked();
       Sound.play("blip");
       const listed = cache.get(AGY);
       if (listed) drawModels(p, listed);
@@ -207,6 +208,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       if (e === spec.current()) return;
       spec.set(e);
       saveSettings();
+      onPicked();
       Sound.play("blip");
       show();
       onChange();
