@@ -7,6 +7,7 @@ import { cleanChecklists, type ChatChecklists } from "./checklists";
 import { clipUnits } from "./clip";
 import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
 import type { SentItem } from "./sent";
+import { cleanCommands, type RanCommand } from "./terminal";
 import { readReplyFiles, type ReplyFile } from "./file-names";
 
 export interface SavedTurn {
@@ -22,6 +23,8 @@ export interface SavedTurn {
   computer?: ComputerRecap;
   /** The problem said under an answer (ChatMessage.warning). */
   warning?: AnswerWarning;
+  /** An answer's: the commands its local model ran in its terminal (ChatMessage.commands, core/terminal.ts). */
+  commands?: RanCommand[];
   /** An answer's: the agents it started that ended, in short (core/chat-agents.ts savedAgents). */
   agents?: SavedAgent[];
   /** An answer's: the messages its CLI sent its agents, and their answers ("Talking to …"). */
@@ -122,7 +125,7 @@ export function cleanRecap(raw: unknown): ComputerRecap | undefined {
  */
 export function toSavedTurn(m: {
   role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap;
-  warning?: AnswerWarning; ask?: AskQuote; files?: ReplyFile[];
+  warning?: AnswerWarning; ask?: AskQuote; commands?: RanCommand[]; files?: ReplyFile[];
 }): SavedTurn {
   return {
     role: m.role,
@@ -130,6 +133,7 @@ export function toSavedTurn(m: {
     ...(m.at != null ? { at: m.at } : {}),
     ...(m.kept ? { kept: m.kept } : {}),
     ...(m.role === "assistant" && m.computer ? { computer: m.computer } : {}),
+    ...(m.role === "assistant" && m.commands?.length ? { commands: m.commands } : {}),
     ...(m.warning ? { warning: m.warning } : {}),
     ...(m.ask ? { ask: m.ask } : {}),
     ...(m.role === "assistant" && m.files?.length ? { files: m.files } : {}),
@@ -138,9 +142,10 @@ export function toSavedTurn(m: {
 
 /** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */
 export function fromSavedTurn(turn: SavedTurn): {
-  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote; files?: ReplyFile[];
+  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote; commands?: RanCommand[]; files?: ReplyFile[];
 } {
   const computer = turn.role === "assistant" ? cleanRecap(turn.computer) : undefined;
+  const commands = turn.role === "assistant" ? cleanCommands(turn.commands) : undefined;
   const files = turn.role === "assistant" ? readReplyFiles(turn.files) : undefined;
   const warning = savedWarning(turn.warning);
   const ask = askQuoteOf(turn.ask);
@@ -148,6 +153,7 @@ export function fromSavedTurn(turn: SavedTurn): {
     at: typeof turn.at === "number" ? turn.at : undefined,
     kept: typeof turn.kept === "string" ? turn.kept : undefined,
     ...(computer ? { computer } : {}),
+    ...(commands ? { commands } : {}),
     ...(warning ? { warning } : {}),
     ...(ask ? { ask } : {}),
     ...(files ? { files } : {}),

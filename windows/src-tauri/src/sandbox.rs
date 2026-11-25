@@ -40,6 +40,14 @@ pub struct Launch<'a> {
     pub write: &'a [PathBuf],
     /// The internet: the internetClient capability (S-1-15-3-1), else none.
     pub network: bool,
+    /// What follows the program on its command line, as it is, instead of
+    /// `args` quoted one by one: cmd.exe's `/d /s /c "…"` (terminal.rs), which
+    /// splits its line by rules of its own.
+    pub line: Option<&'a str>,
+    /// The most memory the job's processes may hold together, in bytes; 0 for no limit.
+    pub memory: u64,
+    /// The most processes the job may hold at once; 0 for no limit.
+    pub processes: u32,
 }
 
 /// A tool running in the sandbox. Dropping it ends it and whatever it started.
@@ -255,7 +263,8 @@ mod win {
     use ::windows::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation,
         SetInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_UILIMIT_DESKTOP,
+        JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION, JOB_OBJECT_LIMIT_JOB_MEMORY,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_UILIMIT_DESKTOP,
         JOB_OBJECT_UILIMIT_DISPLAYSETTINGS, JOB_OBJECT_UILIMIT_EXITWINDOWS, JOB_OBJECT_UILIMIT_GLOBALATOMS,
         JOB_OBJECT_UILIMIT_HANDLES, JOB_OBJECT_UILIMIT_READCLIPBOARD, JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS,
         JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
@@ -549,7 +558,11 @@ mod win {
             .exe
             .to_str()
             .ok_or_else(|| format!("The path {} can't be passed to Windows.", launch.exe.display()))?;
-        let mut command: Vec<u16> = super::command_line(program, launch.args).encode_utf16().chain([0]).collect();
+        let line = match launch.line {
+            Some(rest) => format!("{} {rest}", super::command_line(program, &[])),
+            None => super::command_line(program, launch.args),
+        };
+        let mut command: Vec<u16> = line.encode_utf16().chain([0]).collect();
         let base = std::env::vars_os()
             .filter(|(k, _)| super::passed_on(k))
             .map(|(k, v)| (k.encode_wide().collect(), v.encode_wide().collect()))
@@ -558,7 +571,7 @@ mod win {
         let app = wide_path(launch.exe);
         let cwd = wide_path(launch.cwd);
 
-        let job = job()?;
+        let job = job(launch.memory, launch.processes)?;
         let (stdin, child_stdin) = pipe(true)?;
         let (stdout, child_stdout) = pipe(false)?;
         let (stderr, child_stderr) = pipe(false)?;
@@ -643,12 +656,22 @@ mod win {
 
     /// A job of its own for the tool: everything in it ends when its handle
     /// closes or the tool crashes, and it can't reach the desktop around it.
-    fn job() -> Result<Owned, String> {
+    /// `memory` (bytes) and `processes`, when not 0: the most the job may
+    /// hold, all its processes together.
+    fn job(memory: u64, processes: u32) -> Result<Owned, String> {
         let job = unsafe { CreateJobObjectW(None, PCWSTR::null()) }
             .map_err(|e| format!("Windows couldn't make a job for the tool: {e}"))?;
         let job = Owned::new(job);
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
+        if memory > 0 {
+            limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_JOB_MEMORY;
+            limits.JobMemoryLimit = usize::try_from(memory).unwrap_or(usize::MAX);
+        }
+        if processes > 0 {
+            limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+            limits.BasicLimitInformation.ActiveProcessLimit = processes;
+        }
         let ui = JOBOBJECT_BASIC_UI_RESTRICTIONS {
             UIRestrictionsClass: JOB_OBJECT_UILIMIT_READCLIPBOARD
                 | JOB_OBJECT_UILIMIT_WRITECLIPBOARD
@@ -835,6 +858,9 @@ mod tests {
             read: &[],
             write: &[],
             network: false,
+            line: None,
+            memory: 0,
+            processes: 0,
         };
         assert_eq!(spawn(&launch).err().as_deref(), Some("The Windows sandbox is only on Windows."));
     }

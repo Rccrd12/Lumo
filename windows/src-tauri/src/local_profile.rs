@@ -59,7 +59,7 @@ pub fn group_of(id: &str) -> Option<Group> {
         Some(Group::Listen)
     } else if crate::browser::NAMES.contains(&id) {
         Some(Group::Browser)
-    } else if crate::web_search::NAMES.contains(&id) || crate::workspace::NAMES.contains(&id) {
+    } else if crate::web_search::NAMES.contains(&id) || crate::workspace::NAMES.contains(&id) || crate::terminal::NAMES.contains(&id) {
         None
     } else {
         Some(Group::User)
@@ -311,6 +311,8 @@ pub struct Prompt<'a> {
     pub web: bool,
     pub timer: bool,
     pub workspace: bool,
+    /// Commands in its folder, in the Windows sandbox (terminal.rs).
+    pub terminal: bool,
     pub groups: &'a [Group],
     pub catalog: &'a str,
     pub mail: &'a str,
@@ -449,6 +451,9 @@ Lumo may give you the windows and documents open on the user's computer: use the
         out.push_str(" You can't open or change the user's files yourself: copy a file or folder into your own folder with workspace_copy (its full path), then read and change the copy with the other workspace tools. The original never changes, so say that the copy changed, never their file; the user can write it over the original with a click.");
         out.push_str(&crate::workspace::folders_note());
     }
+    if p.terminal {
+        out.push_str(" With workspace_run you can run commands (cmd.exe) in that folder: to compute, convert or check something with a script, write it there and run it. Each command is shown to the user; say what it printed, never more.");
+    }
     if p.groups.contains(&Group::GitHub) {
         out.push_str(crate::github_tools::NOTE);
     }
@@ -505,6 +510,7 @@ mod tests {
             web: false,
             timer: false,
             workspace: false,
+            terminal: false,
             groups: &[],
             catalog: "",
             mail: "",

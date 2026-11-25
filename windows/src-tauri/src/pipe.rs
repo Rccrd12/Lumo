@@ -550,7 +550,14 @@ fn name_agent(payload: &mut Value, agent: Option<&str>) {
 ///
 /// An email's card (`lumo_mail_send`) waits MAIL_CARD_TIMEOUT, and its Send
 /// may come back as `{"revised": …}`: the email as the user changed it.
-pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
+pub async fn ask(app: &AppHandle, payload: Value) -> Option<String> {
+    // A card of Lumo's own is never kept for a session.
+    ask_keeping(app, payload).await.map(|d| if d == "always" { "allow".to_string() } else { d })
+}
+
+/// `ask`, with the click as it came: `always` for "Allow for this chat" on a
+/// card that offered it (`lumo_session_allow`, the terminal's: terminal.rs).
+pub async fn ask_keeping(app: &AppHandle, mut payload: Value) -> Option<String> {
     let (id, mut rx) = pending_request(app);
     payload["request_id"] = json!(id);
     let mail = payload.get("lumo_mail_send").is_some_and(Value::is_object);
@@ -592,8 +599,7 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
         }),
     )
     .await;
-    // A card of Lumo's own is never kept for a session.
-    decision.map(|d| if d == "always" { "allow".to_string() } else { d })
+    decision
 }
 
 /// Waits for `decision` with a card up: `up` first, then `end(answered)`

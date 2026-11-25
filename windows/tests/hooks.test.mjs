@@ -666,6 +666,33 @@ test("a simple request stays on the closed island, with its buttons (never answe
   assert.deepEqual(sent("approval_decision"), []);
 });
 
+test("a local model's command gets its whole card, with where it runs and Allow for this chat", () => {
+  // terminal.rs: even a command that only looks never goes to the closed island.
+  ask("r1", {
+    tool_name: "Terminal", tool_input: { command: "dir", description: "Lists the folder" }, lumo_island: true, lumo_session_allow: true,
+    lumo_terminal: { agent: "Ollama", color: "#FACC15", internet: false, seconds: 120 },
+  });
+  const card = State.pendingApproval;
+  assert.notEqual(card.quick, true);
+  assert.ok(!asked.includes("quick"));
+  assert.deepEqual(card.terminal, { agent: "Ollama", color: "#FACC15", internet: false, seconds: 120 });
+  assert.equal(card.command, "Terminal · dir");
+  assert.equal(card.reason, "Lists the folder");
+  assert.equal(card.sessionAllow, true);
+  assert.equal(card.fromChat, true);
+  // Waiting in line, it is never taken for a simple one either.
+  ask("r2", { tool_name: "Terminal", tool_input: { command: "dir" }, lumo_island: true, lumo_terminal: { agent: "Ollama", internet: true, seconds: 30 } });
+  const waiting = State.approvalQueue.find((q) => q.requestId === "r2");
+  assert.notEqual(waiting.simple, true);
+  assert.equal(waiting.terminal.internet, true);
+  assert.equal(waiting.terminal.seconds, 30);
+});
+
+test("a terminal's card is Lumo's own: from outside its chat it is an ordinary request", () => {
+  ask("r1", { tool_name: "Terminal", tool_input: { command: "dir" }, lumo_terminal: { agent: "Fake", internet: false, seconds: 1 } });
+  assert.equal(State.pendingApproval.terminal, undefined);
+});
+
 test("anything else, or an island that cannot show it, gets the full card", () => {
   const card = (extra, before = () => {}) => {
     State.pendingApproval = null;

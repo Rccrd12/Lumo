@@ -23,6 +23,7 @@ import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents"
 import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
 import { editStat, isSimpleRequest, requestKind, requestReason } from "../core/approvals";
+import { terminalAskOf } from "../core/terminal";
 import { parsePermissionMode, storedPermissionMode } from "../core/providers";
 import { permissionsFor } from "../core/chats";
 import { rememberFolder } from "../core/sessions";
@@ -345,6 +346,8 @@ interface HookPayload {
   lumo_title?: string;
   /** A command of an Antigravity session that none of its rules covers (hook/src/main.rs): a card, else Antigravity asks. */
   lumo_agy_gate?: boolean;
+  /** A local model's command, asked for by Lumo itself (terminal.rs): who asks, with the internet or not, for how long. */
+  lumo_terminal?: { agent?: unknown; color?: unknown; internet?: unknown; seconds?: unknown };
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
   /** An email the AI wants to send, on a card of its own (mail_send.rs send). */
@@ -371,7 +374,7 @@ const FLAG_FIELDS = [
   "lumo_diff_truncated", "lumo_island", "lumo_session_allow", "lumo_remembered", "lumo_agy_gate", "lumo_background",
 ] as const;
 const NUMBER_FIELDS = ["lumo_card_secs", "lumo_batch_total"] as const;
-const OBJECT_FIELDS = ["tool_input", "lumo_user_tool", "lumo_mail_send", "lumo_mail_action", "lumo_live_file"] as const;
+const OBJECT_FIELDS = ["tool_input", "lumo_user_tool", "lumo_terminal", "lumo_mail_send", "lumo_mail_action", "lumo_live_file"] as const;
 
 /**
  * A hook event as the island reads it: an object, and each field it knows of
@@ -1115,6 +1118,8 @@ function handleHook(island: Island, payload: HookPayload) {
       const tool = payload.tool_name ?? "Tool";
       const input = payload.tool_input ?? {};
       const userTool = payload.lumo_user_tool ?? null;
+      // A local model's command: only ever Lumo's own card, from its chat.
+      const terminal = fromChat ? terminalAskOf(payload.lumo_terminal) : null;
       // Claude Code asking a question is not a permission to grant: the island
       // shows the options and sends back the one that was picked. Only Claude
       // Code asks questions this way, in a terminal or in the Claude app.
@@ -1165,6 +1170,7 @@ function handleHook(island: Island, payload: HookPayload) {
         // A computer use action: the point it acts on, for the screen around it on the card.
         ...(computerAt ? { computerAt } : {}),
         ...(fromChat && payload.lumo_chat ? { chat: payload.lumo_chat } : {}),
+        ...(terminal ? { terminal } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how
@@ -1172,7 +1178,7 @@ function handleHook(island: Island, payload: HookPayload) {
       const cardMs = email ? mailCardMs(payload.lumo_card_secs)
         : chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 107_000;
       if (inLine) {
-        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && !info.cut && !info.unread && isSimpleRequest(tool, input) ? { simple: true } : {}) });
+        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && !terminal && !info.cut && !info.unread && isSimpleRequest(tool, input) ? { simple: true } : {}) });
         void Bridge.log(`permission ${tool} req=${requestId}${fromChat ? " (chat)" : ""} (waiting, ${State.approvalQueue.length + 1} in line)`);
         // A human will see it: the relay waits for the decision.
         void Bridge.approvalAck(requestId);
@@ -1185,7 +1191,8 @@ function handleHook(island: Island, payload: HookPayload) {
       // answered right there: Deny and Allow next to Lumo (Settings → Island).
       // Still a click, never automatic; anything else opens the full card,
       // a request the relay had to cut or couldn't read too (its card says so).
-      const quick = !questions && !email && !change && !info.cut && !info.unread && State.settings.quickApprovals !== false
+      // A local model's command always shows its whole card: where it runs, and Allow for this chat.
+      const quick = !questions && !email && !change && !terminal && !info.cut && !info.unread && State.settings.quickApprovals !== false
         && State.mode !== "expanded" && isSimpleRequest(tool, input);
       void Bridge.log(`permission ${tool} req=${requestId || "none"}${fromChat ? " (chat)" : ""}${quick ? " (closed island)" : ""}`);
       // The card always comes up, even over another pill or an island that is

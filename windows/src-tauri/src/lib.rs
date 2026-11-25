@@ -91,6 +91,7 @@ mod share;
 mod shortcuts;
 mod smtp;
 mod system_control;
+mod terminal;
 mod tool_review;
 mod tools;
 mod tray;

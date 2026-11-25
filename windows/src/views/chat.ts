@@ -82,6 +82,7 @@ import { Ink, inkWorks } from "./ink";
 import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import { invoke } from "@tauri-apps/api/core";
+import { MAX_COMMANDS, ranCommandOf } from "../core/terminal";
 import { Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type ChatContext, type ChatFileEvent, type ExplorerFolder, type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot } from "../core/bridge";
 import { activeModel, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -3089,6 +3090,17 @@ export function buildPrompt(
     if (chat === State.chatId) drawChatFiles();
   });
 
+  // A command the local model ran in its terminal (terminal.rs): shown above the answer once it is in.
+  void onEvent<unknown>("chat-command", (raw) => {
+    const chat = (raw as { chat?: unknown } | null)?.chat;
+    const run = typeof chat === "string" ? runs.get(chat) : undefined;
+    const ran = ranCommandOf(raw);
+    if (!run || !ran) return;
+    const commands = (run.commands ??= []);
+    commands.push(ran);
+    if (commands.length > MAX_COMMANDS) commands.shift();
+  });
+
   void onEvent<{ chat: string; activity: ChatActivity }>("chat-activity", ({ chat, activity }) => {
     const run = runs.get(chat);
     if (!run || !activity) return;
@@ -4119,11 +4131,13 @@ export function buildPrompt(
           fix: reply.fix,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
+          commands: run.commands?.length ? run.commands : undefined,
           files: run.touched?.length ? run.touched : undefined,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
           computer: recap,
         });
         run.copies = undefined;
+        run.commands = undefined;
         run.touched = undefined;
       } else {
         giveBack(false);

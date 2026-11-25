@@ -20,6 +20,7 @@ import { buildDiffCard } from "./diff";
 import { lastTextStep, toOneLine } from "../core/diff";
 import { approvalKey, approvalKeysArmed, approvalOffer, armApprovalKeys, cutEnds } from "../core/approvals";
 import { formatSize } from "../core/screen";
+import type { TerminalAsk } from "../core/terminal";
 import { Bridge, type Decision } from "../core/bridge";
 import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
@@ -689,6 +690,35 @@ const CUT_TEXT = {
   gapAny: N_("The middle is not shown"),
 };
 
+/** A local model's command on its card (terminal.rs): who asks, and where and how it runs. */
+const TERMINAL_TEXT = {
+  wants: N_("wants to use the terminal"),
+  tool: N_("Terminal"),
+  folder: N_("Only the chat's folder"),
+  offline: N_("No internet"),
+  online: N_("Wants the internet: for this command only"),
+  limit: N_("At most {time}"),
+  sandbox: N_("Windows sandbox"),
+  chatAllow: N_("Allow for this chat"),
+  chatAllowHint: N_("This chat's next commands run without asking, until Lumo closes; one that wants the internet still asks"),
+};
+
+/** A command's time limit, in the words of the card: seconds, or whole minutes. */
+function terminalLimit(seconds: number): string {
+  return seconds < 60 || seconds % 60 ? t("{seconds} s", { seconds }) : t("{minutes} min", { minutes: seconds / 60 });
+}
+
+/** Where and how a local model's command runs, under it on the card. */
+function terminalChips(ask: TerminalAsk): HTMLElement {
+  const chip = (icon: string, text: string, warn = false) =>
+    h("span", { class: warn ? "terminal-chip warn" : "terminal-chip" }, svg(icon, 11, { stroke: 2 }), h("span", { text }));
+  return h("div", { class: "terminal-chips" },
+    chip(ICONS.folder, t(TERMINAL_TEXT.folder)),
+    ask.internet ? chip(ICONS.globe, t(TERMINAL_TEXT.online), true) : chip(ICONS.globe, t(TERMINAL_TEXT.offline)),
+    chip(ICONS.clock, t(TERMINAL_TEXT.limit, { time: terminalLimit(ask.seconds) })),
+    chip(ICONS.shield, t(TERMINAL_TEXT.sandbox)));
+}
+
 function buildApproval(actions: ViewActions): ViewHost {
   const who = h("div");
   const about = h("div", { class: "approval-about" });
@@ -710,6 +740,9 @@ function buildApproval(actions: ViewActions): ViewHost {
   let tailFor = "";
   // A file to write: its lines added and removed, and a new text's size (the text is not shown).
   const stat = h("div", { class: "approval-stat" });
+  // A local model's command: where and how it runs (terminal.rs).
+  const terminalSlot = h("div", { class: "terminal-slot" });
+  let terminalFor: string | null = null;
   const mail = h("div", { class: "mail-slot" });
   const row = h("div", { class: "actions approval-actions" });
   // An email's card has its own buttons, Send and Discard, and no keys: only a
@@ -734,7 +767,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   // Copilot CLI and Cursor CLI in Auto: Allow stands for the rest of the chat, and the card says so (new look only).
   const rememberedNote = h("div", { class: "session-allow session-note", text: tl(REMEMBERED_TEXT) });
   const allowBtn = withClass(planWords(btn(tl("Allow"), "primary", () => guarded("allow")(), "Y"), PLAN_ASK_TEXT.approve), "allow-btn");
-  const body = stack(116, 16, who, about, planSlot, code, gapLine, codeTail, targetSlot, stat, cutNote, mail, row, mailRow);
+  const body = stack(116, 16, who, about, planSlot, code, gapLine, codeTail, targetSlot, terminalSlot, stat, cutNote, mail, row, mailRow);
   let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
   let mailFor: string | null = null;
@@ -835,9 +868,17 @@ function buildApproval(actions: ViewActions): ViewHost {
       const email = pending?.email ?? null;
       // A plan asking to start shows as its steps, with its own words on the buttons.
       const plan = !email && pending?.plan?.length ? pending.plan : null;
+      const terminal = !email && !plan ? pending?.terminal ?? null : null;
       clear(who);
       who.append(computerWho(!email && !plan ? pending?.tool : undefined)
+        ?? (terminal ? requestWho(t(TERMINAL_TEXT.wants), { name: terminal.agent, color: terminal.color }) : null)
         ?? requestWho(email ? t(EMAIL_TEXT.wants) : plan ? t(PLAN_ASK_TEXT.wants) : t("needs permission")));
+      if ((terminal ? req : null) !== terminalFor) {
+        terminalFor = terminal ? req : null;
+        clear(terminalSlot);
+        if (terminal) terminalSlot.append(terminalChips(terminal));
+      }
+      terminalSlot.hidden = !terminal;
       if ((plan ? req : null) !== planFor) {
         planFor = plan ? req : null;
         clear(planSlot);
@@ -887,7 +928,7 @@ function buildApproval(actions: ViewActions): ViewHost {
       // The tool's name stands apart, in Lumo's amber, from what it runs on.
       if (tool && shown.startsWith(`${tool} · `)) {
         clear(code);
-        code.append(h("span", { class: "code-tool", text: tool }), shown.slice(tool.length + 3));
+        code.append(h("span", { class: "code-tool", text: terminal ? t(TERMINAL_TEXT.tool) : tool }), shown.slice(tool.length + 3));
       } else {
         code.textContent = shown;
       }
@@ -940,7 +981,10 @@ function buildApproval(actions: ViewActions): ViewHost {
         : offer.answerThere === "elsewhere" ? t(CUT_TEXT.elsewhere) : "";
       if (answerThere.firstElementChild && answerThere.firstElementChild.textContent !== answerWords) answerThere.firstElementChild.textContent = answerWords;
 
-      sessionAllow.title = t("Allowed again without asking until this session ends");
+      // A local model's command is allowed for its chat, not a session.
+      const sessionWords = terminal ? t(TERMINAL_TEXT.chatAllow) : t("Allow for this session");
+      if (sessionAllow.firstElementChild && sessionAllow.firstElementChild.textContent !== sessionWords) sessionAllow.firstElementChild.textContent = sessionWords;
+      sessionAllow.title = terminal ? t(TERMINAL_TEXT.chatAllowHint) : t("Allowed again without asking until this session ends");
       // The buttons are built once. Rebuilding them between a mouse-down and a
       // mouse-up would swallow the click.
       if (rowKey === "built") return;
