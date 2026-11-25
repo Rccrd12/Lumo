@@ -279,22 +279,33 @@ export function modelFor(settings: Settings, id: string): string {
 }
 
 /**
- * `settings` on the provider and model a chat is on (chats.ts chatModelOf),
- * so the picker shows them again once that chat is back on screen. A provider
- * the picker no longer offers (its key taken out, hidden from the chat, its
- * server's address cleared) leaves them as they are; a chat saved before each
- * chat kept its own model takes its provider's.
+ * `settings` on the provider, model and effort a chat is on (chats.ts
+ * chatModelOf), so the picker shows them again once that chat is back on
+ * screen. A provider the picker no longer offers (its key taken out, hidden
+ * from the chat, its server's address cleared) leaves them as they are; a chat
+ * saved before each chat kept its own model takes its provider's, and one
+ * saved before each kept its own effort leaves the effort as it is.
  */
 export function onChatModel(
   settings: Settings,
-  chat: { provider: string; model?: string } | null,
+  chat: { provider: string; model?: string; effort?: string } | null,
   ready: ReadonlySet<string> | null = null,
 ): Settings {
   if (!chat || !PROVIDERS.some((p) => p.id === chat.provider)) return settings;
   const id = chat.provider as ProviderId;
   if (!visibleProviders(settings, ready).some((p) => p.id === id)) return settings;
-  const on = settings.chatProvider === id ? settings : { ...settings, chatProvider: id };
-  return chat.model && chat.model !== modelFor(on, id) ? withModel(on, id, chat.model) : on;
+  let on = settings.chatProvider === id ? settings : { ...settings, chatProvider: id };
+  if (chat.model && chat.model !== modelFor(on, id)) on = withModel(on, id, chat.model);
+  if (typeof chat.effort === "string" && chat.effort !== on.chatEffort) on = { ...on, chatEffort: chat.effort };
+  return on;
+}
+
+/**
+ * The effort a chat on `settings` keeps as its own (chats.ts setChatModel):
+ * none on Antigravity CLI, whose effort is in its model's name.
+ */
+export function chatEffortOf(settings: Settings): string | undefined {
+  return settings.chatProvider === "antigravity-cli" ? undefined : settings.chatEffort;
 }
 
 /** `settings` with `model` picked for `provider`. */

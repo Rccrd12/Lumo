@@ -1103,12 +1103,13 @@ pub fn model_for(settings: &Settings, provider: &str) -> String {
         .unwrap_or_default()
 }
 
-/// `settings` with the provider and model a chat is on (the page keeps them
-/// by chat, chats.ts): that chat is answered by them, whatever the picker
-/// shows for another chat meanwhile. None, or empty, leaves the settings' own;
-/// so does a provider the user took out of the chat (Settings → Chat → Show
-/// in the chat), as the page does (providers.ts onChatModel).
-pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>) -> Settings {
+/// `settings` with the provider, model and effort a chat is on (the page keeps
+/// them by chat, chats.ts): that chat is answered by them, whatever the picker
+/// shows for another chat meanwhile. None, or empty, leaves the settings' own
+/// (an effort of "" is the provider's own, and is kept); so does a provider
+/// the user took out of the chat (Settings → Chat → Show in the chat), as the
+/// page does (providers.ts onChatModel).
+pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&str>, effort: Option<&str>) -> Settings {
     let Some(provider) = provider.map(str::trim).filter(|p| !p.is_empty()) else { return settings };
     if provider != settings.chat_provider && settings.hidden_chat_providers.iter().any(|h| h == provider) {
         return settings;
@@ -1120,6 +1121,9 @@ pub fn with_pick(mut settings: Settings, provider: Option<&str>, model: Option<&
         } else {
             settings.chat_models.insert(provider.to_string(), model.to_string());
         }
+    }
+    if let Some(effort) = effort {
+        settings.chat_effort = effort.trim().to_string();
     }
     settings
 }
@@ -2392,22 +2396,34 @@ mod tests {
             ..Settings::default()
         };
         // Anthropic's model is `model`; the others' are kept by provider.
-        let a = with_pick(settings.clone(), Some("anthropic"), Some("claude-opus-5-5"));
+        let a = with_pick(settings.clone(), Some("anthropic"), Some("claude-opus-5-5"), None);
         assert_eq!(a.chat_provider, ANTHROPIC);
         assert_eq!(model_for(&a, ANTHROPIC), "claude-opus-5-5");
-        let b = with_pick(settings.clone(), Some("openrouter"), Some("openrouter/auto"));
+        let b = with_pick(settings.clone(), Some("openrouter"), Some("openrouter/auto"), None);
         assert_eq!((b.chat_provider.as_str(), model_for(&b, "openrouter").as_str()), ("openrouter", "openrouter/auto"));
         assert_eq!(model_for(&b, "openai"), "gpt-4o");
         // No model: that provider's own.
-        let c = with_pick(settings.clone(), Some("claude-code"), None);
+        let c = with_pick(settings.clone(), Some("claude-code"), None, None);
         assert_eq!(c.chat_provider, "claude-code");
         // Nothing named: the settings as they are.
-        let d = with_pick(settings.clone(), None, Some("x"));
+        let d = with_pick(settings.clone(), None, Some("x"), Some("max"));
         assert_eq!((d.chat_provider.as_str(), model_for(&d, "openai").as_str()), ("openai", "gpt-4o"));
-        assert_eq!(with_pick(settings.clone(), Some(" "), None).chat_provider, "openai");
+        assert_eq!(with_pick(settings.clone(), Some(" "), None, None).chat_provider, "openai");
         // A provider taken out of the chat: the settings' own answers.
         let hidden = Settings { hidden_chat_providers: vec!["codex".into()], ..settings };
-        let e = with_pick(hidden.clone(), Some("codex"), Some("gpt-5"));
+        let e = with_pick(hidden.clone(), Some("codex"), Some("gpt-5"), Some("max"));
         assert_eq!((e.chat_provider.as_str(), model_for(&e, "codex").as_str()), ("openai", model_for(&hidden, "codex").as_str()));
+        assert_eq!(d.chat_effort, hidden.chat_effort, "no provider named: the effort stays too");
+        assert_eq!(e.chat_effort, hidden.chat_effort);
+    }
+
+    #[test]
+    fn a_chat_is_answered_with_its_own_effort() {
+        let settings = Settings { chat_provider: "claude-code".into(), chat_effort: "low".into(), ..Settings::default() };
+        assert_eq!(with_pick(settings.clone(), Some("claude-code"), Some("default"), Some("max")).chat_effort, "max");
+        // "" is the provider's own effort, picked as such.
+        assert_eq!(with_pick(settings.clone(), Some("claude-code"), None, Some("")).chat_effort, "");
+        // None (Antigravity CLI, a chat saved before): the settings' own.
+        assert_eq!(with_pick(settings, Some("codex"), Some("gpt-5"), None).chat_effort, "low");
     }
 }

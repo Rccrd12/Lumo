@@ -1074,7 +1074,9 @@ Copilot and Cursor configurations are never touched.
 
 Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are
-kept on this computer only, 40 at most. The paperclip in the text field opens
+kept on this computer only, 40 at most. Each chat keeps its own provider, model
+and effort: a reopened chat comes back on what was last picked in it, and a new
+chat starts on what the picker shows. The paperclip in the text field opens
 the file picker: the file joins the chat open now, as a drop does, and goes
 with the next question whatever the provider. `Ctrl+V` in the text
 field does the same with what you copied: a screenshot (`Win+Shift+S`) or
