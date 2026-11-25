@@ -2302,6 +2302,9 @@ struct Run {
     agy_open: bool,
     /// What agy writes by itself, between two messages of the chat (`linger`).
     own: bool,
+    /// The model agy says it runs (its `init`), not passed on yet (`take_model`):
+    /// its own pick when the chat leaves it to agy.
+    model: Option<String>,
 }
 
 /// The tokens a result's `usage` counts: what the model read (cached or not,
@@ -2471,6 +2474,12 @@ impl Run {
                 if event == "init" && self.subagents.main.is_none() {
                     let named = v.get("conversation_id").or_else(|| frame.get("conversation_id")).and_then(Value::as_str);
                     self.subagents.main = named.map(str::trim).filter(|c| safe_id(c).is_some()).map(str::to_string);
+                }
+                // The model it runs: the island says it by its name (core/compact.ts speakerName).
+                if event == "init" {
+                    if let Some(model) = v.get("model").and_then(Value::as_str).and_then(safe_model) {
+                        self.model = Some(model.to_string());
+                    }
                 }
                 event == "step_update" && self.step(v)
             }
@@ -2668,6 +2677,11 @@ impl Run {
         std::mem::take(&mut self.touched)
     }
 
+    /// The model agy said it runs, once.
+    fn take_model(&mut self) -> Option<String> {
+        self.model.take()
+    }
+
     /// The activity, once each time it changes.
     fn take_activity(&mut self) -> Option<Activity> {
         if !self.activity_changed {
@@ -2682,6 +2696,12 @@ impl Run {
 /// `chat`'s: the chat agy works for, never the one on screen when it comes.
 fn emit_plan(app: &AppHandle, chat: &str, tool: &str, input: Value) {
     let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-plan", plan_event(chat, tool, input));
+}
+
+/// The model at work on island chat `chat`'s answer, for the island to say
+/// it by its name (src/views/chat.ts, `chat-model`).
+fn emit_model(app: &AppHandle, chat: &str, model: &str) {
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-model", json!({ "chat": chat, "model": model }));
 }
 
 /// The `chat-plan` event of agy's plan for island chat `chat`.
@@ -3041,6 +3061,8 @@ struct Sink<'a> {
     activity: &'a mut dyn FnMut(&Activity),
     file: &'a mut dyn FnMut(&FileTouch),
     plan: &'a mut dyn FnMut(&Value),
+    /// The model agy says it runs (`Run::take_model`).
+    model: &'a mut dyn FnMut(&str),
 }
 
 /// How reading a turn ended.
@@ -3151,6 +3173,9 @@ fn drive(agy: &mut Agy, state: &mut Run, stop: &Stop, may_linger: bool, sink: &m
                 if let Some(plan) = state.take_plan() {
                     (sink.plan)(&plan);
                 }
+                if let Some(model) = state.take_model() {
+                    (sink.model)(&model);
+                }
                 if state.result.is_some() && agy.closed_at.is_none() {
                     // Its subagents work on: agy too, its input open for what comes next.
                     if may_linger && state.subagents.spawns_open() {
@@ -3193,7 +3218,8 @@ fn run(
     tell: &Tell,
 ) -> Result<Run, String> {
     let agy = start_agy(&exe, &args, &dir, chat_id, String::new())?;
-    let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+    let mut on_model = |_: &str| {};
+    let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan, model: &mut on_model };
     // A run of its own (a command): no conversation to keep subagents for.
     agy_turn(agy, input, Run::default(), &stop, false, &mut sink, tell, None).map_err(|(e, _)| e)
 }
@@ -3408,7 +3434,8 @@ fn keep_going(app: &AppHandle, chat_id: &str, conversation: &str, agy: Agy, mut 
         let mut on_activity = |_: &Activity| {};
         let mut on_file = |file: &FileTouch| events.file(&app, file);
         let mut on_plan = |plan: &Value| emit_plan(&app, &chat_id, "update_plan", plan.clone());
-        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let mut on_model = |_: &str| {};
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan, model: &mut on_model };
         let mut own = |text: &str| own_answer(&app, &chat_id, &conversation, text);
         let subagents = linger(&chat_id, &conversation, agy, subagents, &tell, &want, end, &count, tx, &mut sink, &mut own);
         if let Some(subagents) = subagents {
@@ -3698,13 +3725,15 @@ fn orchestrator_labels(model: &str) {
 struct Phases {
     planner: String,
     executor: String,
+    /// The executor's id: the model the island names once it is at work.
+    executor_id: String,
     executing: bool,
 }
 
 impl Phases {
     fn of(model: &str) -> Option<Phases> {
         let (planner, executor) = orchestration(model)?;
-        Some(Phases { planner: role_name(planner), executor: role_name(executor), executing: false })
+        Some(Phases { planner: role_name(planner), executor: role_name(executor), executor_id: executor.to_string(), executing: false })
     }
 
     fn map(&mut self, activity: &Activity) -> Activity {
@@ -3899,8 +3928,17 @@ pub async fn send(
                 }
             }
         };
+        // Orchestrator: the model at work is the planner, then the executor
+        // (the chat knows the planner from the pick), whatever agy's init says.
+        let orchestrated = phases.is_some();
         let mut on_activity = |activity: &Activity| match phases.as_mut() {
-            Some(phases) => events.activity(&app2, phases.map(activity)),
+            Some(phases) => {
+                let executing = phases.executing;
+                events.activity(&app2, phases.map(activity));
+                if !executing && phases.executing {
+                    emit_model(&app2, &chat_id, &phases.executor_id);
+                }
+            }
             None => events.activity(&app2, activity),
         };
         let mut on_file = |file: &FileTouch| events.file(&app2, file);
@@ -3908,7 +3946,12 @@ pub async fn send(
             by_tool.set(true);
             emit("update_plan", plan.clone());
         };
-        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let mut on_model = |model: &str| {
+            if !orchestrated {
+                emit_model(&app2, &chat_id, model);
+            }
+        };
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan, model: &mut on_model };
         let state = Run { subagents: seeded.unwrap_or_default(), ..Run::default() };
         agy_turn(agy, input, state, &stop, true, &mut sink, &tell2, reused.then_some(&start as &dyn Fn() -> Result<Agy, String>)).map_err(|(e, subagents)| (e, Some(subagents)))
     })
@@ -4515,6 +4558,15 @@ mod tests {
         assert_eq!(run.visible, "Ciao! Come posso aiutarti?\n");
         assert_eq!(run.result, Some(Ok("Ciao! Come posso aiutarti?".to_string())));
         assert_eq!(run.conversation.as_deref(), Some(CID));
+        // The model agy runs, said once for the island.
+        assert_eq!(run.take_model().as_deref(), Some("gemini-3.8-flash-low"));
+        assert_eq!(run.take_model(), None);
+
+        // An init without a model, or with agy's own word for its default, names none.
+        let mut run = Run::default();
+        run.feed(br#"{"event":"init","init":{"model":"default"}}"#);
+        run.feed(br#"{"event":"init","init":{"permission_mode":"default"}}"#);
+        assert_eq!(run.take_model(), None);
 
         // A tool refused: its step ends in ERROR, and that counts as a denial.
         let mut run = Run::default();
@@ -5865,7 +5917,8 @@ claude-sonnet-5-5-medium       Claude Sonnet 5.5 (Medium)
         ]);
         let shown = std::cell::RefCell::new(String::new());
         let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|t: &str| *shown.borrow_mut() = t.to_string(), |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
-        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let mut on_model = |_: &str| {};
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan, model: &mut on_model };
         let started = Instant::now();
         let mut state = agy_turn(agy, user_event("go"), Run::default(), &Stop::default(), true, &mut sink, &chat_agents::silent(), None).unwrap();
         // Written and quiet, its writer at work: the answer is in, agy goes on.
@@ -5899,7 +5952,8 @@ claude-sonnet-5-5-medium       Claude Sonnet 5.5 (Medium)
         let args = ["/c".to_string(), "type".to_string(), stream.to_string_lossy().to_string()];
         let agy = start_agy(std::path::Path::new("cmd"), &args, &dir, "", "k".into()).unwrap();
         let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|_: &str| {}, |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
-        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let mut on_model = |_: &str| {};
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan, model: &mut on_model };
         let Err((_, subagents)) = agy_turn(agy, user_event("go"), Run::default(), &Stop::default(), true, &mut sink, &chat_agents::silent(), None) else {
             panic!("no result: the turn fails");
         };
@@ -5918,7 +5972,8 @@ claude-sonnet-5-5-medium       Claude Sonnet 5.5 (Medium)
             r#"{"event":"result","result":{"status":"SUCCESS","response":"Hello.","conversation_id":"main-1"}}"#.to_string(),
         ]);
         let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|_: &str| {}, |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
-        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let mut on_model = |_: &str| {};
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan, model: &mut on_model };
         let started = Instant::now();
         let state = agy_turn(agy, user_event("hi"), Run::default(), &Stop::default(), true, &mut sink, &chat_agents::silent(), None).unwrap();
         assert!(state.agy.is_none());
@@ -5937,7 +5992,8 @@ claude-sonnet-5-5-medium       Claude Sonnet 5.5 (Medium)
             r#"{"event":"step_update","step_update":{"conversation_id":"main-1","step_index":3,"state":"DONE","step_type":"agent_response","text_delta":"I started a writer."}}"#.to_string(),
         ]);
         let (mut on_text, mut on_activity, mut on_file, mut on_plan) = (|_: &str| {}, |_: &Activity| {}, |_: &FileTouch| {}, |_: &Value| {});
-        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan };
+        let mut on_model = |_: &str| {};
+        let mut sink = Sink { text: &mut on_text, activity: &mut on_activity, file: &mut on_file, plan: &mut on_plan, model: &mut on_model };
         let silent = chat_agents::silent();
         let mut state = agy_turn(agy, user_event("go"), Run::default(), &Stop::default(), true, &mut sink, &silent, None).unwrap();
         let mut agy = *state.agy.take().unwrap();

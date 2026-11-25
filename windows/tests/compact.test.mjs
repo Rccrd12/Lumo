@@ -43,6 +43,14 @@ test("who answers is said by the model's family when there is one", () => {
   assert.equal(speakerName("claude-code", "Claude Code", "opus"), "Opus");
   assert.equal(speakerName("claude-code", "Claude Code", "default"), "Claude Code");
   assert.equal(speakerName("antigravity-cli", "Antigravity CLI", ""), "Antigravity CLI");
+  // Antigravity CLI: the model it runs by its whole name, without its effort.
+  assert.equal(speakerName("antigravity-cli", "Antigravity CLI", "default"), "Antigravity CLI");
+  assert.equal(speakerName("antigravity-cli", "Antigravity CLI", "gemini-3.8-flash-low"), "Gemini 3.8 Flash");
+  assert.equal(speakerName("antigravity-cli", "Antigravity CLI", "gemini-4-neon-high"), "Gemini 4 Neon");
+  assert.equal(speakerName("antigravity-cli", "Antigravity CLI", "Gemini 3.8 Flash (Low)"), "Gemini 3.8 Flash");
+  assert.equal(speakerName("antigravity-cli", "Antigravity CLI", "claude-sonnet-4-6-thinking"), "Sonnet");
+  // Its Orchestrator: the planner, until the executor is at work.
+  assert.equal(speakerName("antigravity-cli", "Antigravity CLI", "orchestrator:gemini-4-neon-high:gemini-4-hydrogen-low"), "Gemini 4 Neon");
   assert.equal(speakerName("openai", "OpenAI", "gpt-4o"), "gpt-4o");
   assert.equal(speakerName("openrouter", "OpenRouter", "anthropic/claude-sonnet-4.5"), "Sonnet");
   assert.equal(speakerName("openrouter", "OpenRouter", "meta-llama/llama-3.1-8b"), "llama-3.1-8b");

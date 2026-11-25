@@ -8,6 +8,9 @@
 
 import { N_, t } from "../i18n/i18n";
 import { eventSoon, type CalEvent } from "./calendar";
+import { splitEffort } from "./effort-groups";
+import { prettyModel } from "./model-names";
+import { parseOrchestrator } from "./orchestrator";
 
 /** One line of text, in a colour. */
 export interface CompactLine {
@@ -356,10 +359,23 @@ function agentWords(a: AgentActivityInput): string | null {
   }
 }
 
-/** A short name for who answers: the model's family ("Haiku"), else the provider. */
+/**
+ * A short name for who answers: the model's family ("Haiku"), else the
+ * provider. Antigravity CLI's models by their whole name without their
+ * effort ("Gemini 3.8 Flash"), its Orchestrator by the planner's until the
+ * executor's is known (concept: nome-modello-isola).
+ */
 export function speakerName(provider: string, providerName: string, model: string): string {
-  const m = model.trim();
+  let m = model.trim();
   if (!m || m === "default") return providerName;
+  if (provider === "antigravity-cli") {
+    m = parseOrchestrator(m)?.planner ?? m;
+    if (!/claude/i.test(m)) {
+      // A name agy gives with its effort ("Gemini 3.8 Flash (Low)") without it.
+      const name = prettyModel(splitEffort(m)?.base ?? m).replace(/\s*\([^)]*\)$/, "");
+      return name && name.length <= 28 ? name : providerName;
+    }
+  }
   const family = /\b(opus|sonnet|haiku|fable)\b/i.exec(m.replace(/[-_.]/g, " "));
   if (family && (provider === "anthropic" || provider === "claude-code" || /claude/i.test(m))) {
     return family[1][0].toUpperCase() + family[1].slice(1).toLowerCase();
