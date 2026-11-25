@@ -2940,9 +2940,9 @@ export function buildPrompt(
     // The closed island draws its segments after the words (island/compact.ts).
     setIslandAgents(agentsLine?.peek ?? null);
     const next = run
-      ? { ...runSpeaker(run), label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null }
-      : compactingLabel != null ? { ...chatSpeaker(), label: compactingLabel }
-      : agentsLine ? { who: agentsLine.island.who, color: agentsLine.chat.color, label: agentsLine.island.label } : null;
+      ? { ...runSpeaker(run), label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null, chatId: run.chatId }
+      : compactingLabel != null ? { ...chatSpeaker(), label: compactingLabel, chatId: State.chatId }
+      : agentsLine ? { who: agentsLine.island.who, color: agentsLine.chat.color, label: agentsLine.island.label, chatId: agentsLine.chat.chatId } : null;
     const nextChats: ActiveChatRun[] = liveRuns.map((r) => {
       const { who, color } = runSpeaker(r);
       return {
@@ -2978,7 +2978,7 @@ export function buildPrompt(
     }
     const nextKey = nextChats.map((c) => `${c.chatId}\t${c.who}\t${c.color}\t${c.title}\t${c.line}\t${c.done ? 1 : 0}`).join("\n");
     const now = State.chatActivity;
-    const sameActivity = next == null ? now == null : now != null && now.label === next.label && now.who === next.who && now.color === next.color;
+    const sameActivity = next == null ? now == null : now != null && now.label === next.label && now.who === next.who && now.color === next.color && now.chatId === next.chatId;
     const peekKey = agentsLine ? `${agentsLine.peek.looks.join(",")}:${agentsLine.peek.done}/${agentsLine.peek.total}` : "";
     if (sameActivity && nextKey === activeChatsKey && peekKey === islandPeekKey) return;
     islandPeekKey = peekKey;

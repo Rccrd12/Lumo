@@ -626,9 +626,9 @@ class AppState {
    * The chat is answering: who answers (the model the answer was asked of, not
    * the one picked since), in its colour, and what it is doing, in words
    * ("Reading main.ts"), or null once the answer is being written. For the
-   * closed island (core/compact.ts).
+   * closed island (core/compact.ts), with the chat it is for (its plan shows there too).
    */
-  chatActivity: { who: string; color: string; label: string | null } | null = null;
+  chatActivity: { who: string; color: string; label: string | null; chatId?: string } | null = null;
   /** Every chat currently answering, thinking, calling tools or compacting, for the home's list. */
   activeChats: ActiveChatRun[] = [];
   /** A question the chat asks as soon as it is on screen (an email's buttons). */
