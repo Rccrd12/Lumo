@@ -8,6 +8,7 @@
 
 import { N_, t } from "../i18n/i18n";
 import { eventSoon, type CalEvent } from "./calendar";
+import { planFinished, planProgress, type PlanStep } from "./agent-plan";
 import { splitEffort } from "./effort-groups";
 import { prettyModel } from "./model-names";
 import { parseOrchestrator } from "./orchestrator";
@@ -21,7 +22,11 @@ export interface CompactLine {
    * shortens it first, so what is going on stays readable (island/compact.ts).
    */
   lead?: string;
-  /** A chat whose agents work after its answer: a segment each after the words (concept: sotto-agenti). */
+  /**
+   * A chat whose agents work after its answer: a segment each after the words
+   * (concept: sotto-agenti). Or the plan its agent follows: a segment a step
+   * (planPeek, concepts/piano-isola-chiusa).
+   */
   agents?: AgentsPeek;
 }
 
@@ -241,6 +246,8 @@ export interface ChatActivityInput {
   color: string;
   /** Its answer is done while its agents still work: their segments. */
   agents?: AgentsPeek | null;
+  /** The plan its agent follows, a segment a step (planPeek): its agents' segments come first. */
+  plan?: AgentsPeek | null;
 }
 
 export interface LiveActivityInput {
@@ -258,6 +265,20 @@ export interface AgentActivityInput {
   /** Its newest step, if it said one. */
   step: string | null;
   color: string;
+  /** The plan it follows, a segment a step (planPeek). */
+  plan?: AgentsPeek | null;
+}
+
+/**
+ * A plan on the closed island as its agents are (views/agent-segments.ts): a
+ * segment a step, green done, blue the one under way, grey those to come, and
+ * how many are done. Past eight, only the steps left have one; past eight
+ * left, how many. Nothing for a plan done: it is about to fold.
+ */
+export function planPeek(steps: readonly PlanStep[] | null | undefined): AgentsPeek | null {
+  if (!steps?.length || planFinished(steps)) return null;
+  const looks = steps.map((s) => (s.status === "done" || s.status === "skipped" ? "done" : s.status === "active" ? "working" : "queued"));
+  return { looks, ...planProgress(steps), stalled: false };
 }
 
 /** The line for what is going on, the chat first, then the call, then the agents. */
@@ -268,7 +289,8 @@ export function activityLine(
 ): CompactLine | null {
   if (chat) {
     const line: CompactLine = { text: `${chat.who} · ${chat.label ?? t(COMPACT_TEXT.writing)}`, color: chat.color, lead: chat.who };
-    if (chat.agents) line.agents = chat.agents;
+    const peek = chat.agents ?? chat.plan;
+    if (peek) line.agents = peek;
     return line;
   }
   if (live && live.phase !== "off") {
@@ -277,7 +299,7 @@ export function activityLine(
   }
   if (agent) {
     const what = agentWords(agent);
-    if (what) return { text: `${agent.name} · ${what}`, color: agent.color, lead: agent.name };
+    if (what) return { text: `${agent.name} · ${what}`, color: agent.color, lead: agent.name, ...(agent.plan ? { agents: agent.plan } : {}) };
   }
   return null;
 }

@@ -7,7 +7,7 @@
 // music only while the closed island is on screen.
 
 import {
-  COMPACT_TEXT, Feed, LIVE_COLOR, MAIL_OPEN_DELAY_MS, MAIL_OPEN_W, activityLines, compactNotice, mailOpenHeight, mailPieces,
+  COMPACT_TEXT, Feed, LIVE_COLOR, planPeek, MAIL_OPEN_DELAY_MS, MAIL_OPEN_W, activityLines, compactNotice, mailOpenHeight, mailPieces,
   mailReadable, mailTime, timerLeft,
   type AgentActivityInput, type ApprovalPeek, type CompactItem, type CompactLine, type CompactShown, type MailPeek,
   type MediaActivity,
@@ -15,6 +15,7 @@ import {
 import { gitHubRunning, readPulse } from "../core/github";
 import { waitingLine } from "../core/heard";
 import { islandAgents } from "../core/chat-agents";
+import { planKey } from "../core/agent-plan";
 import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
 import { isCliProvider } from "../core/providers";
@@ -108,7 +109,15 @@ function agentInputs(): AgentActivityInput[] {
     .filter((x) => waiting(x.state) || busy(x.state))
     .map((x, i) => ({ x, i }))
     .sort((a, b) => rank(a.x) - rank(b.x) || a.i - b.i)
-    .map(({ x }) => ({ name: x.name, state: x.state, step: x.steps.length ? x.steps[x.steps.length - 1] : null, color: x.color }));
+    .map(({ x }) => ({
+      name: x.name, state: x.state, step: x.steps.length ? x.steps[x.steps.length - 1] : null, color: x.color,
+      plan: planPeek(planSteps(planKey(x.id, x.sessionId ?? ""))),
+    }));
+}
+
+/** The steps of the plan a session or a chat follows (island/plan.ts), if it has one. */
+function planSteps(key: string) {
+  return State.plans.find((p) => p.key === key)?.steps ?? null;
 }
 
 /**
@@ -301,7 +310,11 @@ export class CompactStrip {
     // written changes the next one, not this one's name.
     const chat = State.chatActivity;
     // A chat whose answer is done while its agents work: their segments too (core/chat-agents.ts).
-    const chatInput = chat ? { who: chat.who, label: chat.label, color: chat.color, agents: islandAgents() } : null;
+    // And the plan its agent follows, a segment a step (concepts/piano-isola-chiusa).
+    const chatInput = chat ? {
+      who: chat.who, label: chat.label, color: chat.color, agents: islandAgents(),
+      plan: chat.chatId ? planPeek(planSteps(planKey("chat", chat.chatId))) : null,
+    } : null;
     const liveInput = Live.active
       ? { phase: Live.phase, doing: Live.doingDone ? null : Live.doing, muted: Live.muted, color: LIVE_COLOR }
       : null;
