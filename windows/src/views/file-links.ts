@@ -21,7 +21,7 @@ import { N_, t } from "../i18n/i18n";
 import { STRINGS } from "./chat-strings";
 import { CHAT_FILE_KINDS, PICTURE_FILE } from "./chat-attach";
 import {
-  MAX_CARDS, MAX_NAMES, baseName, folderOf, mainFolder, namesIn, replyCounts, wholeName,
+  MAX_CARDS, MAX_NAMES, baseName, changedCopy, folderOf, inWorkspace, mainFolder, namesIn, replyCounts, wholeName,
   type ReplyFile, type ReplyFileKind,
 } from "../core/file-names";
 
@@ -38,7 +38,22 @@ export const FILE_LINK_STRINGS = {
   editedChip: N_("Edited"),
   openFolder: N_("Open the folder"),
   hint: N_("Click to open · right click for more"),
+  /** A local model's copy (workspace.rs), where the card names the folder. */
+  copies: N_("In Lumo's copies"),
+  /** A copy of a file of the computer the model changed: the original wasn't touched. */
+  copyChanged: N_("In Lumo's copies: your file is as it was"),
 };
+
+/** Where a file is, under its name: its folder, or for a local model's copy the words that say so. */
+function whereOf(file: ReplyFile): string {
+  if (!inWorkspace(file.path)) return folderOf(file.path);
+  return t(changedCopy(file) ? FILE_LINK_STRINGS.copyChanged : FILE_LINK_STRINGS.copies);
+}
+
+/** A folder's short name, a chat's folder of copies said so. */
+function folderName(path: string): string {
+  return inWorkspace(path) ? t(FILE_LINK_STRINGS.copies) : baseName(folderOf(path));
+}
 
 /** What the chat lends: its files, and its panel of them. */
 interface Host {
@@ -243,7 +258,7 @@ function card(file: ReplyFile): HTMLElement {
     h("span", { class: "attach-text" },
       h("span", { class: "attach-name", text: baseName(file.path) }),
       h("span", { class: "attach-detail", text: [kindLabel(file.kind), typeOf(file.path)].filter(Boolean).join(" · ") }),
-      h("span", { class: "attach-detail attach-path", text: folderOf(file.path) })),
+      h("span", { class: "attach-detail attach-path", text: whereOf(file) })),
     h("span", { class: "reply-file-open" }, svg(ICONS.arrowUpRight, 13)));
   wire(el, file.path, false);
   if (PICTURE_FILE.test(file.path)) {
@@ -259,7 +274,7 @@ function row(file: ReplyFile): HTMLElement {
   const el = h("div", { class: "reply-files-row" },
     h("span", { class: `attach-tile chat-file-${file.kind}` }, fileIcon(file.path, false, 12)),
     h("span", { class: "reply-files-name", text: baseName(file.path) }),
-    h("span", { class: "reply-files-folder", text: baseName(folderOf(file.path)) }));
+    h("span", { class: "reply-files-folder", text: folderName(file.path) }));
   wire(el, file.path, false);
   return el;
 }
@@ -273,7 +288,7 @@ function many(files: readonly ReplyFile[]): HTMLElement {
   const detail = [
     counts.created ? t(FILE_LINK_STRINGS.created, { count: counts.created }) : "",
     counts.edited ? t(FILE_LINK_STRINGS.edited, { count: counts.edited }) : "",
-    counts.folders > 1 ? t(FILE_LINK_STRINGS.folders, { count: counts.folders }) : baseName(folderOf(files[0].path)),
+    counts.folders > 1 ? t(FILE_LINK_STRINGS.folders, { count: counts.folders }) : folderName(files[0].path),
   ].filter(Boolean).join(" · ");
   const kinds: ReplyFileKind[] = ["created", "edited", "created"];
   const stack = h("span", { class: "reply-files-stack" },
@@ -348,19 +363,36 @@ function many(files: readonly ReplyFile[]): HTMLElement {
 
 /** Each card or row whose file is gone, marked so. */
 async function markMissing(box: HTMLElement, files: readonly ReplyFile[]) {
+  const els = box.querySelectorAll<HTMLElement>(".reply-file, .reply-files-row");
+  await markGoneOf([...els], files);
+}
+
+async function markGoneOf(els: readonly HTMLElement[], files: readonly ReplyFile[]) {
   const present = await Bridge.chatFilesPresent(files.map((f) => f.path)).catch(() => null);
   if (!present) return;
-  const els = box.querySelectorAll<HTMLElement>(".reply-file, .reply-files-row");
   present.forEach((here, i) => {
     if (!here && els[i]) markGone(els[i]);
   });
 }
 
-/** The files an answer made or changed, under it: cards, or one line for many. */
-export function replyFilesBox(files: readonly ReplyFile[]): HTMLElement | null {
+/** What goes under a file's card, if anything: a local model's changed copy shows what changed (views/chat-messages.ts). */
+export type CardExtra = (file: ReplyFile, card: HTMLElement) => HTMLElement | null;
+
+/**
+ * The files an answer made or changed, under it: cards, or one line for many.
+ * A local model's changed copies stay cards of their own, first, with what
+ * changed under each (`extra`).
+ */
+export function replyFilesBox(files: readonly ReplyFile[], extra?: CardExtra): HTMLElement | null {
   if (!files.length) return null;
-  if (files.length > MAX_CARDS) return many(files);
-  const box = h("div", { class: "reply-files" }, ...files.map(card));
-  void markMissing(box, files);
+  const own = extra ? files.filter(changedCopy) : [];
+  const rest = extra ? files.filter((f) => !changedCopy(f)) : files;
+  if (!own.length && rest.length > MAX_CARDS) return many(rest);
+  const box = h("div", { class: "reply-files" });
+  const asCards = own.length + rest.length <= MAX_CARDS ? [...own, ...rest] : own;
+  const cards = asCards.map(card);
+  asCards.forEach((file, i) => box.append(cards[i], ...[extra?.(file, cards[i])].filter((x): x is HTMLElement => x != null)));
+  if (asCards.length < files.length) box.append(many(rest));
+  void markGoneOf(cards, asCards);
   return box;
 }

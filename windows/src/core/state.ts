@@ -197,12 +197,9 @@ export interface ChatMessage {
   kept?: string;
   /** A question's: the agent it was asked of (Ask), shown as a quote over it. */
   ask?: AskQuote;
-  /** The files a local model changed or made in its folder of copies while
-   * answering (workspace.rs), listed under the answer to open or put back. */
-  copies?: { chat: string; path: string; made?: boolean }[];
   /** The commands a local model ran in its terminal while answering (terminal.rs), shown above the answer; saved with the chat. */
   commands?: import("./terminal").RanCommand[];
-  /** The files of the computer the answer made or changed (`chat-file` events), as cards under it (views/file-links.ts); saved with the chat. */
+  /** The files the answer made or changed (`chat-file` events), on the computer or, a local model's, in its folder of copies (workspace.rs): cards under it (views/file-links.ts); saved with the chat. */
   files?: ReplyFile[];
   /** The answer's turn used the computer: its plan as it ended, shown under it (computer.rs, saved with the chat). */
   computer?: ComputerRecap;

@@ -18,6 +18,16 @@ export interface ReplyFile {
   kind: ReplyFileKind;
 }
 
+/** A path in a chat's folder of copies (workspace.rs): a local model's copy. */
+export function inWorkspace(path: string): boolean {
+  return /[\\/]com\.rccrd12\.lumo[\\/]workspaces[\\/]/i.test(path);
+}
+
+/** A copy of a file of the computer that the model changed: what changed can be seen, and written over the original. */
+export function changedCopy(file: ReplyFile): boolean {
+  return file.kind === "edited" && inWorkspace(file.path);
+}
+
 /** Up to this many files show as cards of their own; more are one line that opens into a list. */
 export const MAX_CARDS = 3;
 /** At most this many names of one answer are asked about. */
