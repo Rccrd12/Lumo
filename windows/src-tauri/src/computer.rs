@@ -178,6 +178,10 @@ struct Part {
     chat: String,
     /// Its agent's plan (update_plan), whole: none yet, no computer for it.
     plan: Option<Plan>,
+    /// The plan one of its agent's subagents gave last (update_plan with
+    /// `agent`): it lets that subagent use the computer, but it is never
+    /// the chat's plan, shown on the island or in the recap.
+    subagent_plan: Option<Plan>,
     /// PAUSES when its agent last looked at the screen (a screenshot or a
     /// zoom), or its turn began: a pause since, and its next action is not done.
     seen: u64,
@@ -239,7 +243,7 @@ impl Job {
         let i = match self.parts.iter().position(|p| p.chat == chat) {
             Some(i) => i,
             None => {
-                self.parts.push(Part { chat: chat.to_string(), plan: None, seen: PAUSES.load(Ordering::SeqCst) });
+                self.parts.push(Part { chat: chat.to_string(), plan: None, subagent_plan: None, seen: PAUSES.load(Ordering::SeqCst) });
                 self.parts.len() - 1
             }
         };
@@ -320,10 +324,19 @@ fn newly_done(before: Option<&Plan>, after: &Plan) -> Vec<String> {
     after.steps.iter().filter(|s| s.status == Status::Completed && !done_before(&s.text)).map(|s| s.text.clone()).collect()
 }
 
-/// Nothing on the screen before the plan: why not, while the chat's agent
-/// has given none of its own.
+/// Nothing on the screen before the plan: why not, while neither the chat's
+/// agent nor one of its subagents has given one.
 fn gate(job: &Job, chat: &str) -> Result<(), &'static str> {
-    if job.plan_of(chat).is_some_and(|p| !p.steps.is_empty()) { Ok(()) } else { Err(PLAN_FIRST) }
+    let part = job.part(chat);
+    let given = |plan: Option<&Plan>| plan.is_some_and(|p| !p.steps.is_empty());
+    if given(part.and_then(|p| p.plan.as_ref())) || given(part.and_then(|p| p.subagent_plan.as_ref())) { Ok(()) } else { Err(PLAN_FIRST) }
+}
+
+/// An update_plan of a subagent's own (`agent`, which only a subagent
+/// gives): its row shows it, read from its transcript; the chat's plan stays
+/// the plan of the agent the user talks to.
+fn subagents_plan(input: &Value) -> bool {
+    input.get("agent").and_then(Value::as_str).is_some_and(|a| !a.trim().is_empty())
 }
 
 /// The `computer-state` event (src/core/computer-use.ts ComputerState).
@@ -453,6 +466,16 @@ pub fn note_plan(app: &AppHandle, request: &Value) -> Value {
         return json!({ "error": PLAN_EMPTY });
     };
     let chat = request.get("chat").and_then(Value::as_str).unwrap_or("").to_string();
+    // A subagent's plan opens the computer to it, and nothing else: never the
+    // chat's plan strip, the plan the island shows, the recap's or the
+    // user's question (the last subagent's plan used to take the chat's place).
+    if subagents_plan(&input) {
+        let mut job = job();
+        if TURN.load(Ordering::SeqCst) != 0 && job.part(&chat).is_some() {
+            job.part_mut(&chat).subagent_plan = Some(plan);
+        }
+        return json!({ "text": "Plan shown to the user." });
+    }
     let chat_plan = |who: &Who| {
         if !chat.is_empty() {
             let _ = app.emit_to(
@@ -3590,6 +3613,24 @@ mod tests {
         assert!(!agy2.grid && agy2.started == Asks::Free, "another Antigravity chat keeps its own");
         others().retain(|o| !o.chat.starts_with("own-"));
         assert!(other_of("own-agy").is_none());
+    }
+
+    #[test]
+    fn a_subagents_plan_lets_it_use_the_computer_but_is_never_the_chats() {
+        assert!(subagents_plan(&json!({ "agent": "Shard 002 Author", "plan": [] })));
+        assert!(!subagents_plan(&json!({ "agent": "  ", "plan": [] })) && !subagents_plan(&json!({ "plan": [] })));
+        let mut job = Job::EMPTY;
+        job.part_mut("c1");
+        assert_eq!(gate(&job, "c1"), Err(PLAN_FIRST));
+        // Its subagent's plan opens the computer to it…
+        job.part_mut("c1").subagent_plan = Some(plan(&[("Open Notepad", "in_progress")]));
+        assert!(gate(&job, "c1").is_ok());
+        assert_eq!(gate(&job, "c2"), Err(PLAN_FIRST), "never another chat's");
+        // …and the chat's own plan, shown and recapped, stays its main agent's.
+        assert!(job.plan_of("c1").is_none() && job.plan().is_none());
+        job.set_plan("c1", plan(&[("Plan the shards", "in_progress")]));
+        job.part_mut("c1").subagent_plan = Some(plan(&[("Write shard 3", "in_progress")]));
+        assert_eq!(job.plan().unwrap().steps[0].text, "Plan the shards");
     }
 
     #[test]

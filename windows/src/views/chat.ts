@@ -3181,13 +3181,13 @@ export function buildPrompt(
     let text = "";
     let tone = "";
     if (run && turnWaiting(run.chatId)) {
-      text = ` · ${t(STALL_TEXT.waiting)}`;
+      text = t(STALL_TEXT.waiting);
       tone = "waiting";
     } else if (run) {
       const lastSignalAt = Math.max(agentStore.get(run.chatId)?.lastSignalAt ?? 0, run.since);
       const stall = stallOf({ kind: "turn", provider: run.provider, activity: run.activity, lastSignalAt });
       if (stall) {
-        text = ` · ${t(STALL_TEXT.noSignal, { time: durationText(stall.seconds * 1000) })}`;
+        text = t(STALL_TEXT.noSignal, { time: durationText(stall.seconds * 1000) });
         tone = "stalled";
       }
     }
@@ -3708,7 +3708,7 @@ export function buildPrompt(
   /** Edit when they finish: the edited question waits above the field, the edit no longer in it. */
   function waitToEdit(entry: NonNullable<ReturnType<typeof held.get>>) {
     const text = entry.retry ? entry.text : input.value.trim();
-    if (!text) return;
+    if (!text && !attachmentsWaiting()) return;
     if (!entry.retry) setInput("");
     // What the edit put back in the attachments stays there, for it.
     editing = null;
@@ -3861,6 +3861,12 @@ export function buildPrompt(
     drawQueue();
   }
 
+  /** Something waits to go with the next question: a file, a screenshot, a selection, a window, a folder. */
+  function attachmentsWaiting(): boolean {
+    const file = State.droppedFile;
+    return (file != null && !file.sent) || State.moreFiles.length > 0 || screenWaits(screen);
+  }
+
   /**
    * `away`: Lumo's own message goes to that chat, not the one on screen
    * (submitAway): its conversation, already loaded in Rust.
@@ -3868,7 +3874,8 @@ export function buildPrompt(
   async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }, queuedQuote?: AskQuote) {
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
-    if (!query || preparing) return;
+    // Nothing written: what is attached goes by itself (a photo, a file).
+    if ((!query && (auto != null || away != null || !attachmentsWaiting())) || preparing) return;
     // "/timer 10m pasta": a timer on the closed island, nothing sent to the AI.
     const timer = auto ? null : /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
     const timerMs = timer ? parseDuration(timer[1]) : null;
@@ -3912,7 +3919,7 @@ export function buildPrompt(
     // field and goes once it is done, but an edited one stops it and replaces it.
     const current = away ? runs.get(away.chatId) : answering();
     if (current) {
-      if (!auto && editing == null) enqueue(current, query, typed);
+      if (!auto && editing == null && query) enqueue(current, query, typed);
       if (auto || editing == null) return;
       const here = State.chatId;
       preparing = true;

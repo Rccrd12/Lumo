@@ -169,7 +169,15 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
   if (message.role === "user") {
     const onEdit = opts.onEdit;
     const edit = onEdit ? msgAction("msg-edit", STRINGS.edit, svg(ICONS.pencil, 12, { stroke: 1.8 }), () => onEdit(message)) : null;
-    bar.append(...[when, retry, edit, copy].filter((x): x is HTMLElement => x != null));
+    // Only attachments sent, nothing written: nothing to copy, and no bubble.
+    const bare = !message.content.trim() && !!message.sent?.length && !message.ask;
+    bar.append(...[when, retry, edit, bare ? null : copy].filter((x): x is HTMLElement => x != null));
+    if (bare && message.sent) {
+      // What went is the message: its list, always open, where the bubble would be.
+      const list = sentList(message, message.sent, opts.onOpenSent);
+      list.classList.add("sent-alone");
+      return h("div", { class: `chat-row user${state}` }, list, bar);
+    }
     const sent = sentBubble(message.content);
     // Asked of an agent: that agent on top of the question, as WhatsApp's quoted Reply.
     if (message.ask) sent.insertBefore(askQuote(message.ask), sent.firstChild);
@@ -735,6 +743,8 @@ export const ACTIVITY_STRINGS = {
   /** Claude Code's SendMessage to one of its agents (claude_code.rs activity_for). */
   talking: N_("Talking to {name}"),
   message: N_("Sending a message"),
+  /** A subagent's send_message to the agent that started it (antigravity_cli.rs transcript_line). */
+  report: N_("Talking to the coordinator"),
   plan: N_("Planning"),
   screen: N_("Looking at the screen"),
   computer: COMPUTER_TEXT.using,
@@ -875,6 +885,8 @@ export function activityLabel(activity: ChatActivity | null): string {
     }
     case "talk":
       return detail ? t(ACTIVITY_STRINGS.talking, { name: detail }) : t(ACTIVITY_STRINGS.message);
+    case "report":
+      return t(ACTIVITY_STRINGS.report);
     case "plan":
       return t(ACTIVITY_STRINGS.plan);
     // The step under way in its CLI's own words (Claude Code's task_progress).
@@ -953,6 +965,7 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "edit":
     case "web":
     case "talk":
+    case "report":
     case "plan":
     case "screen":
     case "computer":

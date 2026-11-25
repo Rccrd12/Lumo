@@ -565,6 +565,28 @@ test("Escape stops an answer; stopped before any text, the question stays unansw
   assert.equal(sent("chat_stop").length, 1);
 });
 
+test("a file goes by itself, with nothing written; with nothing attached, an empty field sends nothing", async () => {
+  answers.chat_send = { text: "A cat.", turns: 2 };
+  await ask("");
+  assert.equal(sent("chat_send").length, 0, "nothing written, nothing attached: nothing goes");
+  State.droppedFile = { name: "cat.png", path: "/inbox/cat.png" };
+  await ask("   ");
+  assert.equal(sent("chat_send").length, 1, "the file goes alone");
+  assert.equal(sent("chat_send")[0].query, "");
+  assert.equal(sent("chat_send")[0].context.path, "/inbox/cat.png");
+  assert.ok(State.droppedFile.sent);
+  assert.deepEqual(State.chatHistory.map((m) => m.role), ["user", "assistant"]);
+  assert.deepEqual(State.chatHistory[0].sent.map((s) => s.label), ["cat.png"]);
+  // No empty bubble: what went is shown in its place, with nothing to copy.
+  const row = view.el.querySelector(".chat-row.user");
+  assert.equal(row.find(".bubble").length, 0);
+  assert.equal(row.find(".sent-alone").length, 1);
+  assert.equal(row.find(".msg-copy").length, 0);
+  // Sent, the file no longer waits: an empty field sends nothing again.
+  await ask("");
+  assert.equal(sent("chat_send").length, 1);
+});
+
 test("Copy takes a question or an answer as written, Markdown included", async () => {
   const copied = [];
   Object.defineProperty(globalThis.navigator, "clipboard", {

@@ -19637,6 +19637,18 @@
    "id": "Tidak ada balasan",
    "it": "Nessuna risposta"
   },
+  "Talking to the coordinator": {
+   "zh-Hans": "正在与协调者对话",
+   "hi": "समन्वयक से बात हो रही है",
+   "es": "Hablando con el coordinador",
+   "ar": "يتحدث مع المنسّق",
+   "fr": "Parle avec le coordinateur",
+   "bn": "সমন্বয়কের সাথে কথা হচ্ছে",
+   "pt-BR": "Falando com o coordenador",
+   "ru": "Разговор с координатором",
+   "id": "Berbicara dengan koordinator",
+   "it": "Parlo con il coordinatore"
+  },
   "Sending a message": {
    "zh-Hans": "正在发送消息",
    "hi": "संदेश भेज रहे हैं",

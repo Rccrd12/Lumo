@@ -248,12 +248,12 @@ test("the typing line says when the answer gives no sign, or waits for the user"
   t.after(() => (Date.now = real));
   Date.now = () => real() + 3 * 60_000;
   emit("chat-signal", { chat, at: now - 1 });
-  assert.equal($(".typing-stall").textContent, " · no signal for 3 min");
+  assert.equal($(".typing-stall").textContent, "no signal for 3 min");
   assert.ok($(".typing-stall").classList.contains("stalled"));
   assert.equal($(".typing-label").textContent, "Thinking…", "the dots' words stay as they are");
 
   emit("chat-signal", { chat, at: Date.now(), waiting: "permission" });
-  assert.equal($(".typing-stall").textContent, " · waiting for your permission");
+  assert.equal($(".typing-stall").textContent, "waiting for your permission");
   emit("chat-signal", { chat, at: Date.now(), waiting: null });
   assert.equal($(".typing-stall"), null, "a sign just came");
   Date.now = real;
@@ -269,7 +269,7 @@ test("a permission card asked inside an agent turns its row purple, not the answ
   // A card of the answer itself: the line by the dots says it waits, no row does.
   State.pendingApproval = { requestId: "r0", sessionId: "s", pillId: "agent_claude", tool: "Bash", command: "ls", fromChat: true };
   view.sync();
-  assert.equal($(".typing-stall")?.textContent, " · waiting for your permission");
+  assert.equal($(".typing-stall")?.textContent, "waiting for your permission");
   assert.equal($(".chat-log").find(".agents-row").some((r) => r.className.includes("waiting")), false);
 
   State.pendingApproval = { requestId: "r1", sessionId: "s", pillId: "agent_claude", tool: "Bash", command: "ls", fromChat: true, subagentId: "p2" };
