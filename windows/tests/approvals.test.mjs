@@ -107,6 +107,24 @@ test("Y allows and N denies, alone and not held", () => {
   assert.equal(key("n", { repeat: true }), null);
 });
 
+test("Y and N answer a card that came up by itself; a computer action's only once turned to", async () => {
+  const { approvalKeysAnswer, armApprovalKeys } = await import("../src/core/approvals.ts");
+  armApprovalKeys(null);
+  // The local model's terminal card in the chat, an agent's card, the next one in line.
+  assert.equal(approvalKeysAnswer("r1", false), true);
+  assert.equal(approvalKeysAnswer("r2", false), true);
+  // No request, no answer.
+  assert.equal(approvalKeysAnswer(null, false), false);
+  assert.equal(approvalKeysAnswer("", false), false);
+  // While the computer is in use: only after a click on the card or its shortcut.
+  assert.equal(approvalKeysAnswer("c1", true), false);
+  armApprovalKeys("c1");
+  assert.equal(approvalKeysAnswer("c1", true), true);
+  // The next computer action is a card of its own.
+  assert.equal(approvalKeysAnswer("c2", true), false);
+  armApprovalKeys(null);
+});
+
 test("a file to write is counted for its card: lines added and removed, and a new text's size", async () => {
   const { editStat } = await import("../src/core/approvals.ts");
   const file = "export const x = 1;\n".repeat(700); // 14 000 bytes

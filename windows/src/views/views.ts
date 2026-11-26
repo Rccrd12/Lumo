@@ -18,7 +18,7 @@ import {
 } from "./usage";
 import { buildDiffCard } from "./diff";
 import { lastTextStep, toOneLine } from "../core/diff";
-import { approvalKey, approvalKeysArmed, approvalOffer, armApprovalKeys, cutEnds } from "../core/approvals";
+import { approvalKey, approvalKeysAnswer, approvalOffer, armApprovalKeys, cutEnds } from "../core/approvals";
 import { formatSize } from "../core/screen";
 import type { TerminalAsk } from "../core/terminal";
 import { Bridge, type Decision } from "../core/bridge";
@@ -38,7 +38,7 @@ import type { ComputerCursor } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 import { mailEditor, type MailEditor } from "./mail-editor";
 import type { MailRevision } from "../core/mail-edit";
-import { cardClickTakesKeyboard, isComputerTool } from "../core/computer";
+import { cardClickTakesKeyboard, isComputerTool, islandHoldsClicks } from "../core/computer";
 import { stepPlace } from "../core/computer-plan";
 import { computerTargetBox, pausedCardLine } from "./computer-card";
 import { buildComputerView } from "./computer-plan";
@@ -800,8 +800,9 @@ function buildApproval(actions: ViewActions): ViewHost {
   });
   // Then Y and N answer, as the buttons say, even with the chat field holding
   // the keyboard. Only while the island has it: in another app they are just
-  // letters, never an answer. And only once the user turned to this card (a
-  // click on it, its shortcut): before that they are the chat's letters.
+  // letters, never an answer. A card that came up by itself answers them too
+  // (the chat's own, the next in line); a computer action's only once the
+  // user turned to it (approvalKeysAnswer).
   let lastKeyAt = -Infinity;
   const cardOnScreen = () => {
     const req = State.pendingApproval;
@@ -823,7 +824,9 @@ function buildApproval(actions: ViewActions): ViewHost {
         return;
       }
       const d = approvalKey(e);
-      if (!d || !approvalKeysArmed(State.pendingApproval?.requestId)) {
+      const req = State.pendingApproval;
+      const computer = islandHoldsClicks(req?.tool ?? null, State.computer, State.computerActive);
+      if (!d || !approvalKeysAnswer(req?.requestId, computer)) {
         lastKeyAt = performance.now();
         return;
       }
