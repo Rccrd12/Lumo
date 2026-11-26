@@ -1537,7 +1537,7 @@ pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<Compacte
     } else if let Some(p) = openai_compat::provider(provider) {
         openai_compat::summarize(p, &model, COMPACT_SYSTEM, &prompt).await?
     } else if let Some(server) = local_chat::server(settings, provider) {
-        local_chat::complete(&server, &model, COMPACT_SYSTEM, &prompt).await?
+        local_chat::complete(&server, &model, COMPACT_SYSTEM, &prompt, true).await?
     } else {
         return Err(format!("Unknown chat provider: {provider}"));
     };

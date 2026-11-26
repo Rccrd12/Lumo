@@ -563,6 +563,12 @@ fn set_reasoning(body: &mut Value, server: &str, level: &str) {
     }
 }
 
+/// The least reasoning `caps` offers, as a request says it: Off, else the
+/// lowest level; None for a model that doesn't say.
+fn least_reasoning(caps: &crate::local_models::Caps) -> Option<&'static str> {
+    ["off", "minimal", "low", "medium", "on"].into_iter().find_map(|l| crate::local_models::reasoning_effort(caps, l))
+}
+
 /// One agent's whole turn: its task alone, the chat's tools (no more
 /// agents), its rounds of tools, and its last word as the report.
 async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate::api_agents::Task, sink: crate::api_agents::Sink) -> Result<String, String> {
@@ -1188,14 +1194,23 @@ pub async fn unsloth_search(query: &str, range: &str) -> Result<String, String> 
 }
 
 /// One question with no conversation: the supervisor's review of a tool
-/// (tool_review.rs).
-pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) -> Result<String, String> {
+/// (tool_review.rs), a chat's name (chat_title.rs), its summary (chat.rs).
+/// `light`: with the least reasoning the model takes, for a job that needs
+/// none (a model like Inkling 2 Mini reasons as hard as it can when no level
+/// is said, and a name it takes a minute over comes too late).
+pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str, light: bool) -> Result<String, String> {
     let base = base_url(server)?;
     if model.is_empty() {
         return Err(t("Pick a model above the chat box first."));
     }
     let user = json!({ "role": "user", "content": prompt });
-    let body = request_body(model, system, &[], &user);
+    let mut body = request_body(model, system, &[], &user);
+    if light {
+        let caps = crate::local_models::caps(server, model).await;
+        if let Some(level) = least_reasoning(&caps) {
+            set_reasoning(&mut body, server.id, level);
+        }
+    }
     let to = endpoint(server, &base)?;
     let answer = lumo_local::transport::stream(&to, &body, |_| {}).await.map_err(|f| failure(server, model, &base, f))?.text;
     if answer.is_empty() {
@@ -1364,6 +1379,12 @@ mod tests {
         assert_eq!(body, json!({ "reasoning_effort": "minimal", "enable_thinking": true, "chat_template_kwargs": { "reasoning_effort": "minimal" } }));
         set_reasoning(&mut body, "unsloth", "none");
         assert_eq!((&body["enable_thinking"], &body["chat_template_kwargs"]["reasoning_effort"]), (&json!(false), &json!("none")));
+        // A name or a summary: the least the model takes.
+        let caps = |levels: &[&str]| crate::local_models::Caps { reasoning: levels.iter().map(|l| l.to_string()).collect(), ..Default::default() };
+        assert_eq!(least_reasoning(&caps(&["off", "minimal", "low", "max"])), Some("none"));
+        assert_eq!(least_reasoning(&caps(&["low", "medium", "high"])), Some("low"));
+        assert_eq!(least_reasoning(&caps(&["on"])), Some("medium"));
+        assert_eq!(least_reasoning(&caps(&[])), None);
         // The other servers: the field alone, as before.
         let mut body = json!({});
         set_reasoning(&mut body, "lmstudio", "low");
