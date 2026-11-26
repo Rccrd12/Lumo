@@ -76,7 +76,9 @@ pub struct ChatReply {
 }
 
 /// A problem under an answer: what kind ("malformed": the model sent a tool
-/// call the CLI could not read; "error": any other), and the CLI's own words.
+/// call the CLI could not read; "interrupted": a local model's answer cut
+/// off by its server after its tools ran, local_chat.rs; "error": any
+/// other), and the CLI's or the server's own words.
 /// The island says it in its language (src/views/chat.ts warningWords).
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct ChatWarning {

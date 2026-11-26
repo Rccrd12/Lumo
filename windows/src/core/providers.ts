@@ -347,6 +347,10 @@ export function pickModel(provider: ProviderDef, offered: string[], current: str
   // A bare alias saved before ("haiku") becomes the model it named.
   const named = /^[a-z]+$/.test(current) ? offered.find((id) => id.includes(`-${current}-`)) : undefined;
   if (named) return named;
+  // A model saved without its version ("repo", Unsloth Studio) becomes the
+  // first of its versions listed ("repo:Q3_K_XL"): the one it meant then.
+  const version = current ? offered.find((id) => id.toLowerCase().startsWith(`${current.toLowerCase()}:`)) : undefined;
+  if (version) return version;
   const preferred = provider.prefer ? offered.find((id) => id.includes(provider.prefer!)) : undefined;
   if (preferred) return preferred;
   return offered.includes(provider.defaultModel) ? provider.defaultModel : offered[0];

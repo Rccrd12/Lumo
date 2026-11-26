@@ -352,6 +352,13 @@ const WARNING_TEXT = {
   message: N_("Antigravity CLI's message: {error}"),
 };
 
+/** The same, for a local model's answer its server cut off halfway (ChatWarning "interrupted"). */
+const INTERRUPTED_TEXT = {
+  line: N_("The answer stopped before it was over"),
+  why: N_("The model server stopped this answer before it was over, even after Lumo asked again. What the model wrote and did until then is kept: check that the work is done, and if it isn't, write “continue”."),
+  message: N_("What went wrong: {error}"),
+};
+
 /**
  * A warning's line and what to know, in the island's language now (a chat
  * opened later in another language reads in that one); one saved by the
@@ -359,6 +366,10 @@ const WARNING_TEXT = {
  */
 export function warningWords(w: AnswerWarning): { line: string; detail: string } {
   if ("line" in w) return w;
+  // A local model's answer its server cut off after its tools ran (local_chat.rs).
+  if (w.kind === "interrupted") {
+    return { line: t(INTERRUPTED_TEXT.line), detail: `${t(INTERRUPTED_TEXT.why)}\n\n${t(INTERRUPTED_TEXT.message, { error: failedParts(w.message)[0] })}` };
+  }
   const why = t(w.kind === "malformed" ? WARNING_TEXT.malformed : WARNING_TEXT.error);
   return { line: t(WARNING_TEXT.line), detail: `${why}\n\n${t(WARNING_TEXT.message, { error: w.message })}` };
 }

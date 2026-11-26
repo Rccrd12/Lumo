@@ -905,6 +905,18 @@ test("a warning is said in the island's language when shown; one saved by a beta
   } finally {
     setLanguage("en");
   }
+  // A local model's answer its server cut off after its tools: kept, and "continue" goes on.
+  const cut = savedWarning({ kind: "interrupted", message: "Unsloth Studio stopped the answer before it was over" });
+  assert.deepEqual(cut, { kind: "interrupted", message: "Unsloth Studio stopped the answer before it was over" });
+  setLanguage("it");
+  try {
+    const w = warningWords(cut);
+    assert.equal(w.line, "La risposta si è interrotta prima della fine");
+    assert.match(w.detail, /scrivi “continua”/);
+    assert.ok(w.detail.endsWith("Cosa è andato storto: Unsloth Studio stopped the answer before it was over"));
+  } finally {
+    setLanguage("en");
+  }
   // Saved by the 0.22.2 betas: the words as they were.
   const beta = savedWarning({ line: "L", detail: "D" });
   assert.deepEqual(warningWords(beta), { line: "L", detail: "D" });
