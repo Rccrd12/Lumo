@@ -105,7 +105,7 @@ pub fn api_tool() -> (String, String, Value) {
         "Runs a command in your own folder (the one workspace_copy copies into), with cmd.exe on Windows, in Lumo's sandbox: \
          it sees and changes only that folder, so copy files in first and refer to them by their names there.{net} \
          Python and Node work when the user has them; install Python packages with pip install --target .libs (.libs is on PYTHONPATH). \
-         dir, vol and where /r don't work there (the sandbox can't read the drive itself): list files with forfiles /c \"cmd /c echo @file @fsize\" or for %f in (*) do @echo %f. \
+         dir, vol and where /r don't work there (the sandbox can't read the drive itself): list files with for %f in (*) do @echo %f (folders: for /d %f in (*) do @echo %f), or forfiles /c \"cmd /c echo @file @fsize\" for their sizes, which fails in an empty folder. \
          It is stopped after {} s. You get its exit code and what it printed.",
         c.timeout
     );
@@ -288,7 +288,7 @@ impl Ran {
             text.push_str(&head(out, MAX_OUTPUT));
         }
         if self.denied && self.lists_the_drive {
-            text.push_str("\n(dir, vol and where /r can't read the drive in the sandbox, even in your folder: list files with forfiles /c \"cmd /c echo @file @fsize\" or for %f in (*) do @echo %f.)");
+            text.push_str("\n(dir, vol and where /r can't read the drive in the sandbox, even in your folder: list files with for %f in (*) do @echo %f (folders: for /d %f in (*) do @echo %f), or forfiles /c \"cmd /c echo @file @fsize\" for their sizes, which fails in an empty folder.)");
         } else if self.denied {
             text.push_str("\n(The sandbox refused something: commands see only your folder, never the user's files. Copy a file in with workspace_copy first.)");
         }

@@ -4850,9 +4850,15 @@ export function buildPrompt(
       }
       const said = done ? (auto == null ? COMPACT_STRINGS.done : COMPACT_STRINGS.autoDone) : COMPACT_STRINGS.nothing;
       compactNotice(t(said), providerDef(State.settings.chatProvider).accent);
+      // Nothing compacted: said in the chat too, where the line would have come.
+      if (!done) compactSaid(chatId, t(said));
       Sound.play("blip");
     } catch (err) {
-      State.noteMessage = String(err).replace(/^Error:\s*/, "");
+      const why = String(err).replace(/^Error:\s*/, "");
+      // Said where it is seen: the closed island's note, and the chat if it is on screen
+      // (the note view alone stays unseen while the chat is open).
+      compactNotice(why, WARNING_COLOR);
+      compactSaid(chatId, why);
       Sound.play("error");
     } finally {
       compacting = false;
@@ -4863,6 +4869,16 @@ export function buildPrompt(
       State.notify();
       onHeightChange();
     }
+  }
+
+  /**
+   * Why chat `chatId` wasn't compacted, at the end of its log while it is on
+   * screen, in Stopped's small grey words: gone at the next redraw.
+   */
+  function compactSaid(chatId: string, text: string) {
+    if (chatId !== State.chatId || !text) return;
+    log.append(h("div", { class: "chat-row compact-said" }, h("div", { class: "msg-stopped", text })));
+    follow();
   }
 
   /**
