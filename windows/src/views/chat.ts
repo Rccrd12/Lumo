@@ -125,7 +125,7 @@ import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachR
 import { splitFix } from "./chat-fix";
 import { orchestratorName, parseOrchestrator } from "../core/orchestrator";
 import { cliModelName } from "../core/model-names";
-import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
+import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
@@ -1381,6 +1381,9 @@ export function buildPrompt(
     presenceAsked = "";
     drawChatFiles();
     if (State.chatId) chatRewound(State.chatId);
+    // A summary of turns the edit dropped goes too, as Rust forgets it (chat.rs rewind).
+    const summed = compactOf(State.chatId);
+    if (summed && keep < summed.upto) setCompact(State.chatId, null);
     await Bridge.chatRewind(State.chatId, keep);
   }
 
@@ -4842,6 +4845,8 @@ export function buildPrompt(
       if (done) {
         setCompact(chatId, { upto: done.upto, summary: done.summary });
         estimateContext(chatId, done.before, done.after);
+        // The line where it was compacted shows at once.
+        if (chatId === State.chatId) renderedCount = -1;
       }
       const said = done ? (auto == null ? COMPACT_STRINGS.done : COMPACT_STRINGS.autoDone) : COMPACT_STRINGS.nothing;
       compactNotice(t(said), providerDef(State.settings.chatProvider).accent);
@@ -5195,6 +5200,10 @@ export function buildPrompt(
         const answers = history.filter((m) => m.role === "assistant" && !m.failed).length;
         let answer = 0;
         let lastBubble: HTMLElement | null = null;
+        // Where the chat was compacted: a line after the turns its summary replaced.
+        const compacted = workshop ? null : compactOf(State.chatId);
+        const keptTurns = history.filter((m) => !m.failed).length;
+        const markAt = compacted && compacted.upto > 0 && compacted.upto <= keptTurns ? compacted.upto : -1;
         history.forEach((m, i) => {
           for (const line of heardLines.before[i]) log.append(heardRow(line));
           // A message's scope is its place among those kept with the chat, as the checklists count them.
@@ -5215,6 +5224,7 @@ export function buildPrompt(
             log.append(...agentCardsFor(State.chatId, answer));
             answer++;
           }
+          if (compacted && !m.failed && place === markAt) log.append(compactMark(State.chatId, compacted.upto, compacted.summary));
         });
         // The agents of an answer that never came (stopped, failed) go after
         // its question, and its failed answer.

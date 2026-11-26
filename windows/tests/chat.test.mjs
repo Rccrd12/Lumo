@@ -917,6 +917,17 @@ test("a warning is said in the island's language when shown; one saved by a beta
   } finally {
     setLanguage("en");
   }
+  // Where a chat was compacted: a line, and its summary under it on a click, kept open across redraws.
+  const { compactMark } = await import("../src/views/chat-messages.ts");
+  const mark = compactMark("c-compact", 4, "Riassunto: una fattura da 1250 €.");
+  const label = mark.querySelector(".compact-mark-label");
+  const summary = mark.querySelector(".compact-summary");
+  assert.match(label.textContent, /Chat compacted here/);
+  assert.equal(summary.hidden, true);
+  label.fire("click");
+  assert.equal(summary.hidden, false);
+  assert.equal(summary.textContent, "Riassunto: una fattura da 1250 €.");
+  assert.equal(compactMark("c-compact", 4, "x").querySelector(".compact-summary").hidden, false, "still open once drawn again");
   // Saved by the 0.22.2 betas: the words as they were.
   const beta = savedWarning({ line: "L", detail: "D" });
   assert.deepEqual(warningWords(beta), { line: "L", detail: "D" });
