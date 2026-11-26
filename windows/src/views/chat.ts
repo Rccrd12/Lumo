@@ -4246,8 +4246,13 @@ export function buildPrompt(
         if (State.chatId !== chatId) return;
         const back = more.filter((f) => !State.moreFiles.some((m) => m.path === f.path));
         if (back.length > 0) State.moreFiles = [...back, ...State.moreFiles];
-        // Its screenshots too, like its files: they are the chat's, kept on disk.
+        // What it took from the computer too, first, as its files: the
+        // screenshots are the chat's, kept on disk. What was added meanwhile stays after it.
         if (cleared && screen === cleared) screen = waiting;
+        else if (!auto && screenContext) {
+          const joined = joinScreen(waiting, screen);
+          screen = { ...screen, shots: joined.shots, windows: joined.windows, tabs: joined.tabs, folders: joined.folders, selection: joined.selection, selections: joined.selections };
+        }
       };
 
       // A chat not on screen (a watch that fired in it) is answered by its own

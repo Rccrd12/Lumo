@@ -410,6 +410,35 @@ test("an answer stopped before a word gives back all that went, the same, from t
   assert.deepEqual(again.screen, first.screen, "and everything else with it: the other file, the screenshot, the selection, the page");
 });
 
+test("an answer stopped before a word gives back what went before what was added while it came", async () => {
+  answers.chat_files_adopt = inChat;
+  let stop;
+  answers.chat_send = () => new Promise((resolve) => (stop = () => resolve({ text: "", stopped: true })));
+  State.incomingShare = { kind: "screen", shots: [{ display: 0, name: "s.png", path: SHOT.path, width: 10, height: 10, preview: SHOT.preview }] };
+  view.sync();
+  State.incomingShare = { kind: "selection", selection: SELECTION };
+  view.sync();
+  await ask("why this error?");
+  const id = State.chatId;
+  const a = `C:\\Lumo\\inbox\\chats\\${id}\\screenshot-1.png`;
+  // While it answers: screenshot B, and the same text again.
+  const b = "C:\\Lumo\\inbox\\screenshot-2.png";
+  State.incomingShare = { kind: "screen", shots: [{ display: 0, name: "s2.png", path: b, width: 10, height: 10, preview: SHOT.preview }] };
+  view.sync();
+  State.incomingShare = { kind: "selection", selection: SELECTION };
+  view.sync();
+  stop();
+  await flush();
+  await flush();
+  view.sync();
+  answers.chat_send = () => ({ text: "answer", turns: 2 });
+  await ask("why this error?");
+  const again = sent("chat_send").at(-1);
+  assert.deepEqual(again.screen.shots.map((s) => s.path), [a, `C:\\Lumo\\inbox\\chats\\${id}\\screenshot-2.png`], "A, then B");
+  assert.equal(again.screen.selection?.text, SELECTION.text);
+  assert.equal(again.screen.selections, undefined, "the same text once");
+});
+
 test("when Lumo starts, an older Lumo's copies in the inbox move into their chats' folders, then the inbox is tidied", async () => {
   const { saveChat } = await import("../src/core/chats.ts");
   const { noteSentCopies } = await import("../src/core/chat-files.ts");
