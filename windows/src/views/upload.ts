@@ -5,7 +5,7 @@ import { h } from "./dom";
 import { State } from "../core/state";
 import type { ViewHost } from "./views";
 import { N_, t, tl, tn } from "../i18n/i18n";
-import { fileCells, fileProgress, uploadingLabel } from "../upload/files";
+import { fileCells, uploadingLabel } from "../upload/files";
 
 /** Dashed rounded rect drawn as SVG so the dashes can march. */
 function dashedFrame(): SVGSVGElement {
@@ -105,7 +105,7 @@ export function buildUploading(): ViewHost {
         }));
       }
       for (const { el: fileFill, pct: filePct, index } of fileFills) {
-        const p = fileProgress(State.uploadProgress, index, names.length);
+        const p = State.uploadParts[index] ?? State.uploadProgress;
         const fileDone = p >= 0.999;
         fileFill.style.width = `${p * 100}%`;
         filePct.textContent = fileDone ? "✓" : `${Math.round(p * 100)} %`;

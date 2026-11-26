@@ -6,12 +6,12 @@
 
 import { lerp } from "../core/anim";
 import { NEW_LOOK_BOT } from "../core/layout";
-import { fileCells, fileProgress, uploadingLabel } from "./files";
+import { fileCells, uploadingLabel } from "./files";
 import { State } from "../core/state";
 import { SCRIPT_FONTS } from "../core/fonts";
 import { N_, isRtl, t } from "../i18n/i18n";
 import {
-  USC, eIn, eInOut, progressAt,
+  USC, eIn, eInOut,
   type UploadFrame,
 } from "./sequence";
 
@@ -347,10 +347,7 @@ export class UploadCanvas {
 
     // Glow trail, its length driven by how fast the bar is moving.
     if (f.progress > 0.01 && f.progress < 1) {
-      const v =
-        (progressAt(f.t + 0.01, USC.T_PROG_START, f.progEnd) -
-          progressAt(f.t, USC.T_PROG_START, f.progEnd)) / 0.01;
-      const tl = Math.max(8, Math.min(34, 8 + v * 40));
+      const tl = Math.max(8, Math.min(34, 8 + f.speed * 40));
       const g = ctx.createLinearGradient(fx - tl, 0, fx, 0);
       g.addColorStop(0, "rgba(52,212,153,0)");
       g.addColorStop(1, "rgba(110,231,183,0.6)");
@@ -380,7 +377,7 @@ export class UploadCanvas {
         text(ctx, `+${cell.count}`, cx, ty + 3, `600 11px ${FONT}`, "#8E939B");
         return;
       }
-      const p = fileProgress(f.progress, cell.index, names.length);
+      const p = State.uploadParts[cell.index] ?? f.progress;
       const done = p >= 0.999;
       const pct = done ? "✓" : `${Math.round(p * 100)} %`;
       text(ctx, pct, cx + cellW, ty, `500 10.5px ${FONT}`, done ? "#34D399" : "#8E939B", "right");

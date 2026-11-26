@@ -1229,8 +1229,16 @@ async fn file_preview(path: String) -> Option<String> {
 /// Copies a dropped file into the inbox and reports its name back. Off the
 /// main thread: a big file takes a while to copy, and the island keeps moving.
 #[tauri::command]
-async fn ingest_file(path: String) -> Result<DroppedFile, String> {
-    tauri::async_runtime::spawn_blocking(move || files::ingest(&path)).await.map_err(|e| e.to_string())?
+async fn ingest_file(app: AppHandle, path: String) -> Result<DroppedFile, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // The upload bar follows these: the bytes that landed in the inbox.
+        let mut progress = |done: u64, total: u64| {
+            let _ = app.emit("ingest-progress", serde_json::json!({ "source": path, "done": done, "total": total }));
+        };
+        files::ingest(&path, &mut progress)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Files waiting in the field taken out (their ×), or a deleted chat's

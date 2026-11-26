@@ -548,6 +548,7 @@ export const Bridge = {
   /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */
   localPull: (provider: "ollama" | "lmstudio", model: string) => callOrThrow<void>("local_pull", { provider, model }),
   /** Copies a dropped file into the inbox. */
+  /** Copies a dropped file into the inbox; resolves once it landed (progress: `ingest-progress` events). */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
   /** An attached picture in the inbox as a data URL, for the chat's preview; null for any other file. */
   filePreview: (path: string) => call<string | null>("file_preview", { path }),
@@ -1212,6 +1213,14 @@ export interface LocalLoaded {
   size: number;
   /** Bytes in the graphics card's memory (Ollama), else 0. */
   vram: number;
+}
+
+/** How far a dropped file's copy into the inbox is (`ingest-progress`): bytes so far and in all. */
+export interface IngestProgress {
+  /** The path it was dropped from, as `ingestFile` was given it. */
+  source: string;
+  done: number;
+  total: number;
 }
 
 /** How far loading a model from the chat picker is (`local-load`): LM Studio's percent. */

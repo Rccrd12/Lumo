@@ -1,7 +1,7 @@
 // The island: DOM shell, sizing animation, Lumo placement, mouse handling.
 
 import { Tracked, Spring, clamp } from "../core/anim";
-import { Bridge, IS_TAURI, isDialogOpen, onDialogsChanged, onDragDrop } from "../core/bridge";
+import { Bridge, IS_TAURI, isDialogOpen, onDialogsChanged, onDragDrop, onEvent } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, browserViewHeight, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_GH_LIST_H, newLookBackgroundHeight, questionsHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra, errorCardHeight, finishedCardHeight, chatAutoHeight, toolsViewHeight,
@@ -23,7 +23,8 @@ import { parseComputerCursor } from "../character/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { dropName } from "../upload/files";
 import { buildPicture } from "../views/picture";
-import { USC, UploadSeq, progressAt } from "../upload/sequence";
+import { UploadMeter } from "../upload/meter";
+import { USC, UploadSeq } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen, visiblePlanKinds } from "../views/usage";
 import { buildHeader, buildViews, errorHasLastStep, finishedText, hasSessionTicker, overviewDetailFor, type ViewActions, type ViewHost } from "../views/views";
 import { toolsListRows } from "../views/tools";
@@ -39,7 +40,7 @@ import { ICONS } from "../views/icons";
 import { IslandStateMachine, type LeaveHold } from "./fsm";
 import { CompactStrip } from "./compact";
 import { IslandActivities } from "./activities";
-import type { MailMessage } from "../core/bridge";
+import type { IngestProgress, MailMessage } from "../core/bridge";
 import { refreshConfigured, refreshHookPills } from "./integrations";
 import { ContextMenu, textEntries, type MenuEntry } from "../views/context-menu";
 import { ownEntries } from "../views/own-menu";
@@ -279,13 +280,16 @@ export class Island {
 
   /**
    * Drop bookkeeping: when the file was dropped (performance.now(), null once
-   * it is in the chat), the last tick played, and whether the ✓ has fired. The
-   * upload runs on its own clock, so closing the island does not stop it: the
-   * closed island carries the bar on.
+   * it is in the chat), how far its copies are, the last step and the last
+   * tick played, and when the bar filled (the ✓). The upload runs on its own
+   * clock, so closing the island does not stop it: the closed island carries
+   * the bar on.
    */
   private uploadAt: number | null = null;
+  private uploadMeter: UploadMeter | null = null;
+  private uploadStepAt: number | null = null;
   private uploadTens = 0;
-  private uploadDone = false;
+  private uploadFullAt: number | null = null;
   /** The upload just handed over to the chat: Lumo is already in his place there, no slide. */
   private snapBot = false;
 
@@ -1347,13 +1351,18 @@ export class Island {
       ...waiting.filter((f) => !paths.includes(f.path)).map((f) => ({ name: f.name, path: f.path })),
     ];
 
-    UploadSeq.performDrop(State.uploadDuration, dropped.length > 1 ? USC.BAR_Y_MANY : USC.BAR_Y);
+    UploadSeq.performDrop(dropped.length > 1 ? USC.BAR_Y_MANY : USC.BAR_Y);
     // The new look: the file flies up to his eyes, which are glad of it.
     if (this.engine.eyesOnly) window.setTimeout(() => this.engine.triggerEmote("happy"), 380);
+    // The bar follows these copies (their `ingest-progress`), and fills when they land.
+    const meter = new UploadMeter(dropped.map((f) => ({ name: f.name, source: f.path })));
+    this.uploadMeter = meter;
     this.uploadAt = performance.now();
+    this.uploadStepAt = null;
     this.uploadTens = 0;
-    this.uploadDone = false;
-    State.uploadNames = dropped.map((f) => f.name);
+    this.uploadFullAt = null;
+    State.uploadNames = meter.names;
+    State.uploadParts = dropped.map(() => 0);
     Feed.upload = { name: dropName(State.uploadNames) };
 
     this.engine.gulp();
@@ -1372,6 +1381,7 @@ export class Island {
     for (const { path } of dropped) {
       void Bridge.ingestFile(path)
         .then((file) => {
+          meter.land(path);
           // Taken out (its ×, another drop) before its copy landed: the copy
           // waits for nobody, and leaves the inbox at once.
           if (!holds(path)) {
@@ -1390,21 +1400,25 @@ export class Island {
         .catch((err) => {
           failed++;
           lastError = String(err).replace(/^Error:\s*/, "");
+          // Some of the drop may still land: the bar no longer waits for this one.
+          const others = failed < dropped.length;
+          if (others) meter.remove(path);
+          const current = this.uploadMeter === meter;
+          if (current) {
+            State.uploadNames = meter.names;
+            if (Feed.upload) Feed.upload = { name: dropName(State.uploadNames) };
+          }
           if (!holds(path)) return;
-          if (failed < dropped.length) {
-            // Only this one could not be copied: the others still go.
+          if (others || !current) {
+            // Only this one could not be copied (or a later drop has the bar): the others still go.
             if (State.droppedFile?.path === path) {
-              const [next, ...others] = State.moreFiles;
+              const [next, ...following] = State.moreFiles;
               State.droppedFile = next ? { ...next } : null;
-              State.moreFiles = others;
+              State.moreFiles = following;
               State.promptContext = next ? { kind: "file", name: next.name, path: next.path } : null;
             } else {
               State.moreFiles = State.moreFiles.filter((f) => f.path !== path);
             }
-            // Its bar goes too: the upload shows the files that will be there.
-            const gone = State.uploadNames.indexOf(nameOf(path));
-            if (gone >= 0) State.uploadNames = State.uploadNames.filter((_, i) => i !== gone);
-            if (Feed.upload) Feed.upload = { name: dropName(State.uploadNames) };
             State.notify();
             return;
           }
@@ -1413,6 +1427,7 @@ export class Island {
           State.promptContext = before.context;
           UploadSeq.deactivate();
           this.uploadAt = null;
+          this.uploadMeter = null;
           Feed.upload = null;
           State.noteMessage = lastError;
           this.engine.animateMorph(0);
@@ -1426,25 +1441,29 @@ export class Island {
   }
 
   /**
-   * Sounds and view changes hung off the upload's clock: a `tick` every 10 %,
-   * the ✓ chime when the bar completes, then the file goes into the chat once
-   * the ✓ has popped. Runs open or closed: the closed island shows the bar.
+   * The bar follows the copies into the inbox (upload/meter.ts): a `tick`
+   * every 10 %, the ✓ chime once every copy has landed, then the file goes
+   * into the chat once the ✓ has popped. Runs open or closed: the closed
+   * island shows the bar.
    */
   private stepUpload(nowMs: number) {
-    if (this.uploadAt == null) return;
+    if (this.uploadAt == null || !this.uploadMeter) return;
     const since = (nowMs - this.uploadAt) / 1000;
-    const dur = State.uploadDuration;
-    const p = progressAt(USC.T_DROP + since, USC.T_PROG_START, USC.T_PROG_START + dur);
+    const dt = this.uploadStepAt == null ? 0 : (nowMs - this.uploadStepAt) / 1000;
+    this.uploadStepAt = nowMs;
+    const { total: p, each } = this.uploadMeter.step(since - PRE_PROGRESS, dt);
     State.uploadProgress = p;
+    State.uploadParts = each;
+    UploadSeq.setProgress(p);
 
-    const tens = Math.floor(Math.max(0, Math.min(1, (since - PRE_PROGRESS) / dur)) * 10);
+    const tens = Math.floor(p * 10);
     if (tens > this.uploadTens && tens < 10) {
       this.uploadTens = tens;
       Sound.play("tick");
     }
 
-    if (!this.uploadDone && since >= PRE_PROGRESS + dur) {
-      this.uploadDone = true;
+    if (this.uploadFullAt == null && p >= 1) {
+      this.uploadFullAt = nowMs;
       Sound.play("approve");
       this.engine.triggerEmote("happy");
     }
@@ -1455,12 +1474,13 @@ export class Island {
     }
     this.compact.progress(p);
 
-    if (since >= PRE_PROGRESS + dur + UPLOAD_SETTLE) this.uploadFinished();
+    if (this.uploadFullAt != null && nowMs - this.uploadFullAt >= UPLOAD_SETTLE * 1000) this.uploadFinished();
   }
 
   /** The bar is full: the file waits in the chat, which says so for a moment. */
   private uploadFinished() {
     this.uploadAt = null;
+    this.uploadMeter = null;
     Feed.upload = null;
     State.uploadProgress = 1;
     const name = State.uploadNames.length > 1 ? dropName(State.uploadNames) : State.droppedFile?.name ?? t("file");
@@ -1934,6 +1954,9 @@ export class Island {
         }
       }
     });
+
+    // How far the dropped files' copies are: the upload bar follows them.
+    void onEvent<IngestProgress>("ingest-progress", (e) => this.uploadMeter?.progress(e.source, e.done, e.total));
 
     // A file dragged near the island opens it; it is taken only with the
     // cursor on the island itself.

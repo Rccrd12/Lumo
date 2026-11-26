@@ -117,17 +117,30 @@ fn take_dropped(path: &str) -> bool {
     }
 }
 
-pub fn ingest(source: &str) -> Result<DroppedFile, String> {
+/// A drop's copy into the inbox. `progress` hears the bytes copied so far and
+/// the file's size as they arrive: the island's upload bar follows them.
+pub fn ingest(source: &str, progress: &mut dyn FnMut(u64, u64)) -> Result<DroppedFile, String> {
     if !take_dropped(source) {
         return Err(crate::i18n::t("Only files dropped on the island can be added."));
     }
-    copy_in(Path::new(source))
+    copy_in_with(Path::new(source), progress)
 }
 
 /// Copies `src` into the inbox, as a drop does. Callers check first that the
 /// user chose it: a real drop or the picker (`ingest`), or a file of a folder
 /// they shared that their question names (explorer.rs).
 pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
+    copy_in_with(src, &mut |_, _| {})
+}
+
+/// The bytes a copy reads and writes at a time.
+const COPY_CHUNK: usize = 1 << 20;
+/// How often a copy says how far it is, at most: often enough for a smooth bar.
+const PROGRESS_EVERY: Duration = Duration::from_millis(40);
+
+/// `copy_in`, saying how far it is: `progress(done, total)` once at the start,
+/// every `PROGRESS_EVERY` or so, and once with every byte there.
+pub fn copy_in_with(src: &Path, progress: &mut dyn FnMut(u64, u64)) -> Result<DroppedFile, String> {
     let source = src.to_string_lossy();
     let source = source.as_ref();
     let meta = std::fs::metadata(src)
@@ -151,7 +164,7 @@ pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
     let cannot_copy = |e: std::io::Error| crate::i18n::tf("Cannot copy: {error}", &[("error", &e.to_string())]);
     let mut from = std::fs::File::open(src).map_err(cannot_copy)?;
     let mut to = std::fs::File::options().write(true).create_new(true).open(&dest).map_err(cannot_copy)?;
-    if let Err(e) = std::io::copy(&mut from, &mut to) {
+    if let Err(e) = copy_reporting(&mut from, &mut to, meta.len(), progress) {
         drop(to);
         let _ = std::fs::remove_file(&dest);
         return Err(cannot_copy(e));
@@ -163,6 +176,39 @@ pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
         path: dest.to_string_lossy().to_string(),
         size: meta.len(),
     })
+}
+
+/// `std::io::copy` in chunks, telling `progress` the bytes written and `size`
+/// (the file's length when the copy started; a file still growing reports
+/// its bytes, never more than it, until the last call has them all).
+fn copy_reporting(
+    from: &mut impl std::io::Read,
+    to: &mut impl std::io::Write,
+    size: u64,
+    progress: &mut dyn FnMut(u64, u64),
+) -> std::io::Result<u64> {
+    let mut buf = vec![0u8; COPY_CHUNK];
+    let mut done = 0u64;
+    let mut said = std::time::Instant::now();
+    progress(0, size);
+    loop {
+        let n = match from.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        to.write_all(&buf[..n])?;
+        done += n as u64;
+        if said.elapsed() >= PROGRESS_EVERY {
+            said = std::time::Instant::now();
+            progress(done.min(size), size);
+        }
+    }
+    to.flush()?;
+    let total = size.max(done);
+    progress(total, total);
+    Ok(done)
 }
 
 /// The inbox, created if needed, inside Lumo's private folder.
@@ -642,6 +688,31 @@ mod tests {
     }
 
     #[test]
+    fn a_copy_says_how_far_it_is() {
+        let data = vec![7u8; 3 * COPY_CHUNK + 5];
+        let size = data.len() as u64;
+        let mut heard = Vec::new();
+        let mut out = Vec::new();
+        let copied = copy_reporting(&mut std::io::Cursor::new(&data), &mut out, size, &mut |d, t| heard.push((d, t))).unwrap();
+        assert_eq!(copied, size);
+        assert_eq!(out, data);
+        assert_eq!(heard.first(), Some(&(0, size)));
+        assert_eq!(heard.last(), Some(&(size, size)));
+        assert!(heard.windows(2).all(|w| w[0].0 <= w[1].0 && w[0].1 == w[1].1));
+
+        // A file that grew since its size was read: never past 100 % before the end.
+        let mut heard = Vec::new();
+        copy_reporting(&mut std::io::Cursor::new(&data), &mut Vec::new(), 10, &mut |d, t| heard.push((d, t))).unwrap();
+        assert!(heard[..heard.len() - 1].iter().all(|&(d, t)| d <= t));
+        assert_eq!(heard.last(), Some(&(size, size)));
+
+        // An empty file: there at once.
+        let mut heard = Vec::new();
+        copy_reporting(&mut std::io::Cursor::new(Vec::<u8>::new()), &mut Vec::new(), 0, &mut |d, t| heard.push((d, t))).unwrap();
+        assert_eq!(heard, vec![(0, 0), (0, 0)]);
+    }
+
+    #[test]
     fn ingest_copies_and_never_overwrites() {
         let tmp = std::env::temp_dir().join(format!("lumo-test-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
@@ -650,21 +721,21 @@ mod tests {
 
         let drop = |p: &Path| allow_dropped([p.to_string_lossy().to_string()]);
         drop(&source);
-        let first = ingest(source.to_str().unwrap()).unwrap();
+        let first = ingest(source.to_str().unwrap(), &mut |_, _| {}).unwrap();
         assert_eq!(first.name, "note.txt");
         assert_eq!(std::fs::read(&first.path).unwrap(), b"hello");
 
         // A second drop of the same name must not clobber the first copy.
         std::fs::write(&source, b"second").unwrap();
         drop(&source);
-        let second = ingest(source.to_str().unwrap()).unwrap();
+        let second = ingest(source.to_str().unwrap(), &mut |_, _| {}).unwrap();
         assert_ne!(first.path, second.path);
         assert_eq!(std::fs::read(&first.path).unwrap(), b"hello");
         assert_eq!(std::fs::read(&second.path).unwrap(), b"second");
 
         // Folders are refused rather than silently ignored.
         drop(&tmp);
-        assert!(ingest(tmp.to_str().unwrap()).is_err());
+        assert!(ingest(tmp.to_str().unwrap(), &mut |_, _| {}).is_err());
 
         // An ancient source arrives as a new file, born when it was copied.
         let old_source = tmp.join("ancient.txt");
@@ -677,7 +748,7 @@ mod tests {
             .set_modified(long_ago)
             .unwrap();
         drop(&old_source);
-        let aged = ingest(old_source.to_str().unwrap()).unwrap();
+        let aged = ingest(old_source.to_str().unwrap(), &mut |_, _| {}).unwrap();
         let born = std::fs::metadata(&aged.path).unwrap().modified().unwrap();
         assert!(born > long_ago, "the copy keeps the source's old time");
         let _ = std::fs::remove_file(&aged.path);
@@ -755,7 +826,7 @@ mod drop_tests {
     #[test]
     fn only_a_dropped_path_is_ingested_once_and_the_list_stays_bounded() {
         let p = "/tmp/lumo-test-not-dropped.txt".to_string();
-        assert!(ingest(&p).is_err(), "never dropped");
+        assert!(ingest(&p, &mut |_, _| {}).is_err(), "never dropped");
         allow_dropped([p.clone()]);
         assert!(take_dropped(&p));
         assert!(!take_dropped(&p), "good once");
