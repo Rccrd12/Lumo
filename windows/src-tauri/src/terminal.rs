@@ -105,6 +105,7 @@ pub fn api_tool() -> (String, String, Value) {
         "Runs a command in your own folder (the one workspace_copy copies into), with cmd.exe on Windows, in Lumo's sandbox: \
          it sees and changes only that folder, so copy files in first and refer to them by their names there.{net} \
          Python and Node work when the user has them; install Python packages with pip install --target .libs (.libs is on PYTHONPATH). \
+         dir, vol and where /r don't work there (the sandbox can't read the drive itself): list files with forfiles /c \"cmd /c echo @file @fsize\" or for %f in (*) do @echo %f. \
          It is stopped after {} s. You get its exit code and what it printed.",
         c.timeout
     );
@@ -248,6 +249,9 @@ pub struct Ran {
     pub timed_out: bool,
     /// Something it tried was refused by the sandbox (its output says "Access is denied" or so).
     pub denied: bool,
+    /// The command asks cmd.exe for the drive itself (`dir`, `vol`, `where /r`),
+    /// which the sandbox never lets it read, even in the folder it may.
+    pub lists_the_drive: bool,
     /// What it made or changed in the folder: "created" or "edited", and where.
     pub changed: Vec<(&'static str, PathBuf)>,
     /// It never started: why.
@@ -283,7 +287,9 @@ impl Ran {
             text.push('\n');
             text.push_str(&head(out, MAX_OUTPUT));
         }
-        if self.denied {
+        if self.denied && self.lists_the_drive {
+            text.push_str("\n(dir, vol and where /r can't read the drive in the sandbox, even in your folder: list files with forfiles /c \"cmd /c echo @file @fsize\" or for %f in (*) do @echo %f.)");
+        } else if self.denied {
             text.push_str("\n(The sandbox refused something: commands see only your folder, never the user's files. Copy a file in with workspace_copy first.)");
         }
         if !self.changed.is_empty() {
@@ -319,6 +325,19 @@ pub fn tail(text: &str, max: usize) -> String {
     let rest = &text[start..];
     let rest = rest.find('\n').map(|i| &rest[i + 1..]).filter(|r| !r.is_empty()).unwrap_or(rest);
     format!("…\n{rest}")
+}
+
+/// Whether `command` runs cmd.exe's `dir` or `vol`, or `where /r`, which
+/// read the drive's root first: in the sandbox they say "Access is denied"
+/// even on the folder the command may read.
+fn lists_the_drive(command: &str) -> bool {
+    command
+        .split(['&', '|', '(', ')'])
+        .map(|part| part.trim_start_matches('@').trim().to_lowercase())
+        .any(|part| {
+            let word = part.split_whitespace().next().unwrap_or("");
+            matches!(word, "dir" | "vol") || part.starts_with("dir/") || (word == "where" && part.contains("/r"))
+        })
 }
 
 /// Words Windows and its programs print when the sandbox refused them.
@@ -511,6 +530,7 @@ pub fn run(chat: &str, command: &str, internet: bool, timeout: u64) -> Ran {
     Ran {
         code: status,
         denied: looks_denied(&output),
+        lists_the_drive: lists_the_drive(command),
         output,
         ms: started.elapsed().as_millis() as u64,
         timed_out: status.is_none(),
@@ -601,6 +621,15 @@ mod tests {
         assert_eq!(stopped.for_model(30), "Stopped after 30 s, with everything it started. It printed nothing.");
         let denied = Ran { code: Some(1), output: "PermissionError: [Errno 13] Permission denied".into(), denied: true, ..Default::default() };
         assert!(denied.for_model(120).contains("workspace_copy"));
+        // dir reads the drive's root: denied in the sandbox even in the folder, and the model told what lists instead.
+        let dir = Ran { code: Some(1), output: "Accesso negato.".into(), denied: true, lists_the_drive: lists_the_drive("dir /b"), ..Default::default() };
+        assert!(dir.for_model(120).contains("forfiles"));
+        for listing in ["dir", "DIR /b", "cd sub && dir", "@dir *.txt", "dir/w", "vol", "where /r . *.py"] {
+            assert!(lists_the_drive(listing), "{listing}");
+        }
+        for other in ["python dir.py", "echo dir", "where python", "mkdir sub", "type director.txt"] {
+            assert!(!lists_the_drive(other), "{other}");
+        }
         assert!(looks_denied("Access is denied."));
         assert!(!looks_denied("all good"));
         assert_eq!(Ran::failed("no sandbox".into()).for_model(120), "no sandbox");
