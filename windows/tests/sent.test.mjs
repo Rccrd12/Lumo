@@ -381,6 +381,25 @@ test("the × of a file waiting deletes it from the inbox; one back from an edit 
   assert.equal(sent("inbox_release").length, released, "the inbox has nothing of it");
 });
 
+test("an answer stopped before a word gives back what went: the file and the screenshot, from the chat's folder", async () => {
+  answers.chat_files_adopt = inChat;
+  answers.chat_send = () => ({ text: "", stopped: true });
+  State.droppedFile = { ...PDF };
+  State.incomingShare = { kind: "screen", shots: [{ display: 0, name: "s.png", path: SHOT.path, width: 10, height: 10, preview: SHOT.preview }] };
+  view.sync();
+  await ask("why this error?");
+  const id = State.chatId;
+  const pdf = `C:\\Lumo\\inbox\\chats\\${id}\\contract.pdf`;
+  const shot = `C:\\Lumo\\inbox\\chats\\${id}\\screenshot-1.png`;
+  assert.equal(State.droppedFile?.path, pdf);
+  assert.equal(State.droppedFile?.sent, false);
+  answers.chat_send = () => ({ text: "answer", turns: 2 });
+  await ask("why this error?");
+  const turn = sent("chat_send").at(-1);
+  assert.equal(turn.context?.path, pdf, "the file goes again");
+  assert.deepEqual(turn.screen.shots, [{ name: "Screen 1", path: shot }], "the screenshot goes again");
+});
+
 test("when Lumo starts, an older Lumo's copies in the inbox move into their chats' folders, then the inbox is tidied", async () => {
   const { saveChat } = await import("../src/core/chats.ts");
   const { noteSentCopies } = await import("../src/core/chat-files.ts");

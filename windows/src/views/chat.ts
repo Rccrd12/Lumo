@@ -4138,7 +4138,7 @@ export function buildPrompt(
     let run: Run;
     let finish = () => {};
     // What went with the question, given back to the field if it did not go.
-    let giveBack = (_all: boolean) => {};
+    let giveBack = () => {};
     /** The files that went with the question: the chat's files once it is answered. */
     let sent: { name: string; path: string }[] = [];
     let question: ChatMessage;
@@ -4236,19 +4236,18 @@ export function buildPrompt(
         file.sentWith = question.id;
       }
       if (more.length > 0) State.moreFiles = State.moreFiles.filter((f) => !more.includes(f));
-      // Rust deletes the screenshots once the turn went: what went no longer
-      // waits, even if something changed the attachments meanwhile.
+      // What went no longer waits, even if something changed the attachments meanwhile.
       const cleared = auto ? null : screen === waiting ? nextScreen(screen) : null;
       if (cleared) screen = cleared;
       else if (!auto && screenContext) screen = afterSent(screen, shared);
-      giveBack = (all) => {
+      giveBack = () => {
         // A file goes with the next question, unless the user moved on.
         if (file && context && State.droppedFile === file) file.sent = false;
         if (State.chatId !== chatId) return;
         const back = more.filter((f) => !State.moreFiles.some((m) => m.path === f.path));
         if (back.length > 0) State.moreFiles = [...back, ...State.moreFiles];
-        // Rust deletes the screenshots once a turn went, stopped or not: only a failed one keeps them.
-        if (all && cleared && screen === cleared) screen = waiting;
+        // Its screenshots too, like its files: they are the chat's, kept on disk.
+        if (cleared && screen === cleared) screen = waiting;
       };
 
       // A chat not on screen (a watch that fired in it) is answered by its own
@@ -4339,7 +4338,7 @@ export function buildPrompt(
         run.commands = undefined;
         run.touched = undefined;
       } else {
-        giveBack(false);
+        giveBack();
       }
       if (reply.session) run.session = reply.session;
       // What each CLI session of the chat saw, for opening it again (chat.rs cli_state).
@@ -4360,7 +4359,7 @@ export function buildPrompt(
       // Ended with an error after the answer: the closed island says so, in amber.
       if (!reply.stopped) noticeAway(reply.warning ? COMPACT_TEXT.answeredWithProblem : COMPACT_TEXT.answered, reply.warning ? { ...runSpeaker(run), color: WARNING_COLOR } : runSpeaker(run));
     } catch (err) {
-      giveBack(true);
+      giveBack();
       unsend(run, sent);
       // It would have ended the agents the chat's CLI left at work: the
       // question leaves the chat, and the bar above the field asks what to do.
