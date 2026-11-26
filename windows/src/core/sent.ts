@@ -88,6 +88,21 @@ export function sentItems(
 }
 
 /** What went, as it went, to send again (only what the user shared: what rides along by itself is read again). */
+/**
+ * What went with a question, its files and screenshots moved (old path →
+ * new, files.rs adopt): null when none of them did.
+ */
+export function movedSent(items: readonly SentItem[], moved: ReadonlyMap<string, string>): SentItem[] | null {
+  let changed = false;
+  const out = items.map((i) => {
+    const to = i.path != null ? moved.get(i.path) : undefined;
+    if (to == null || i.path == null) return i;
+    changed = true;
+    return { ...i, path: to, key: i.key === i.path ? to : i.key, title: i.title === i.path ? to : i.title };
+  });
+  return changed ? out : null;
+}
+
 export function sentAgain(screen: PendingScreen, files: readonly { name: string; path: string }[]): SentAgain {
   return {
     screen: { ...emptyScreen(), windows: screen.windows, tabs: screen.tabs, shots: screen.shots, selection: screen.selection ?? null, selections: screen.selections ?? [], folders: screen.folders ?? [] },

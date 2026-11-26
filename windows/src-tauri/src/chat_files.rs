@@ -107,7 +107,7 @@ pub fn remember(path: &str) {
 /// A file of a chat: one an answer reported, or one the user attached.
 fn allowed(path: &str) -> bool {
     let k = key(path);
-    with_store(|s| s.paths.contains(&k)) || crate::files::in_inbox(Path::new(path))
+    with_store(|s| s.paths.contains(&k)) || crate::files::is_chat_copy(Path::new(path))
 }
 
 /// Opened by its type, it would run something (or has no type to open it

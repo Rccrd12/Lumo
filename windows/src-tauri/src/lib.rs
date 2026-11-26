@@ -1025,10 +1025,27 @@ fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
 }
 
 /// The × of one of the chat's files: out of the chat's context from the next
-/// question on (chat.rs `forget_file`).
+/// question on (chat.rs `forget_file`), and out of its folder when it is
+/// there (files.rs `forget_files`); one read where it is stays.
 #[tauri::command]
 fn chat_forget_file(chats: State<Chats>, chat_id: String, name: String, path: String) {
     chats.get(&chat_id).forget_file(&name, &path);
+    files::forget_files(&chat_id, &[path]);
+}
+
+/// The files a question takes leave the inbox for its chat's folder (files.rs
+/// `adopt`); each one's path from then on, in order.
+#[tauri::command]
+async fn chat_files_adopt(items: Vec<files::Adopt>) -> Vec<String> {
+    let asked: Vec<String> = items.iter().map(|i| i.path.clone()).collect();
+    tauri::async_runtime::spawn_blocking(move || files::adopt(&items)).await.unwrap_or(asked)
+}
+
+/// An edited question went without some of the files the turns it replaced
+/// had: they leave the chat's folder (files.rs `forget_files`).
+#[tauri::command]
+async fn chat_files_forget(chat: String, paths: Vec<String>) -> usize {
+    tauri::async_runtime::spawn_blocking(move || files::forget_files(&chat, &paths)).await.unwrap_or(0)
 }
 
 /// The commands Claude Code's last chat turn said it has, for the "/" menu; None before one.
@@ -1216,14 +1233,16 @@ async fn ingest_file(path: String) -> Result<DroppedFile, String> {
     tauri::async_runtime::spawn_blocking(move || files::ingest(&path)).await.map_err(|e| e.to_string())?
 }
 
-/// A deleted chat's copies in the inbox go, but for those `keep` (the other
-/// chats) still name. Only files directly in the inbox are touched.
+/// Files waiting in the field taken out (their ×), or a deleted chat's
+/// copies a Lumo before this one left in the inbox: they go, but for those
+/// `keep` (a field, another chat) still names. Only files directly in the
+/// inbox are touched.
 #[tauri::command]
 async fn inbox_release(paths: Vec<String>, keep: Vec<String>) -> usize {
     tauri::async_runtime::spawn_blocking(move || files::release(&paths, &keep)).await.unwrap_or(0)
 }
 
-/// The inbox's files no chat names in `keep`, a day old or more, go.
+/// When Lumo starts: the inbox's files no field and no chat names in `keep` go.
 #[tauri::command]
 async fn inbox_tidy(keep: Vec<String>) -> usize {
     tauri::async_runtime::spawn_blocking(move || files::tidy(&keep)).await.unwrap_or(0)
@@ -1601,6 +1620,8 @@ pub fn run() {
             chat_allow_restart,
             chat_rewind,
             chat_forget_file,
+            chat_files_adopt,
+            chat_files_forget,
             island_drag,
             island_resize,
             island_reset_size,

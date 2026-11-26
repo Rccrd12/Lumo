@@ -807,7 +807,7 @@ pub fn workspace_delete(chat: String) {
     delete(&chat);
     // "Allow for this chat" of its commands goes with it (terminal.rs).
     crate::terminal::forget(&chat);
-    // Its folder in the inbox too (files.rs for_chat).
+    // Its folder in the inbox too, with what it was sent and its AI wrote (files.rs).
     crate::files::forget_chat(&chat);
 }
 

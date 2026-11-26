@@ -497,13 +497,10 @@ impl Chat {
         c.forgotten.retain(|(_, p)| p != path);
     }
 
-    /// The files added in this chat, oldest first.
-    /// As its CLI is told them: each one in the inbox, in this chat's own
-    /// folder of it (files.rs for_chat).
+    /// The files added in this chat, oldest first: each one in the chat's
+    /// own folder of the inbox (files.rs adopt), the one its CLI reads.
     pub fn files(&self) -> Vec<(String, String)> {
-        let files: Vec<(String, String)> =
-            self.inner.lock().unwrap().files.iter().map(|(name, path, _)| (name.clone(), path.clone())).collect();
-        files.into_iter().map(|(name, path)| (name, crate::files::for_chat(&self.id, &path))).collect()
+        self.inner.lock().unwrap().files.iter().map(|(name, path, _)| (name.clone(), path.clone())).collect()
     }
 
     /// The × of one of the chat's files: it is no longer told to a fresh
@@ -1180,19 +1177,24 @@ pub fn with_permissions(mut settings: Settings, permissions: Option<&ChatPermiss
 }
 
 /// A file rides along only if it is one of Lumo's own copies of a dropped
-/// file (files.rs puts them in the inbox). The page names the path, so without
-/// this any file the user can read could be sent to a chat provider.
-fn checked_context(context: ChatContext) -> Result<ChatContext, String> {
+/// file: waiting in the inbox, or moved into the folder of the chat it goes
+/// to (files.rs adopt). The page names the path, so without this any file
+/// the user can read could be sent to a chat provider.
+fn checked_context(chat: &str, context: ChatContext) -> Result<ChatContext, String> {
     match context {
         ChatContext::File { name, path } => {
-            let inbox = crate::files::inbox_dir();
-            if !is_inside(&inbox, std::path::Path::new(&path)) {
+            if !is_copy_for(chat, std::path::Path::new(&path)) {
                 return Err(crate::i18n::t("Only a file dropped on the island can be sent with a question."));
             }
             Ok(ChatContext::File { name, path })
         }
         other => Ok(other),
     }
+}
+
+/// Directly in the inbox, or directly in the folder of `chat`: never another chat's.
+fn is_copy_for(chat: &str, path: &std::path::Path) -> bool {
+    is_inside(&crate::files::inbox_dir(), path) || (!chat.trim().is_empty() && is_inside(&crate::files::chat_dir(chat), path))
 }
 
 /// True when `path` is a regular file directly inside `dir`, both resolved
@@ -1203,12 +1205,11 @@ pub(crate) fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
         && std::fs::symlink_metadata(&file).map(|m| m.is_file()).unwrap_or(false)
 }
 
-/// Screenshots ride along only from the inbox, where screen.rs writes them —
-/// the same rule as a dropped file.
-fn checked_screen(mut screen: ScreenContext) -> Result<ScreenContext, String> {
-    let inbox = crate::files::inbox_dir();
+/// Screenshots ride along only from the inbox, where screen.rs writes them,
+/// or the chat's folder they move to — the same rule as a dropped file.
+fn checked_screen(chat: &str, mut screen: ScreenContext) -> Result<ScreenContext, String> {
     let paths = screen.shots.iter().chain(screen.files.iter());
-    if paths.map(|s| std::path::Path::new(&s.path)).any(|p| !is_inside(&inbox, p)) {
+    if paths.map(|s| std::path::Path::new(&s.path)).any(|p| !is_copy_for(chat, p)) {
         return Err(crate::i18n::t("Only a file dropped on the island can be sent with a question."));
     }
     // A shared window's document is named only when Rust found it (share.rs).
@@ -1289,7 +1290,7 @@ async fn dispatch(
     screen: Option<ScreenContext>,
     usage: &mut Option<ChatUsage>,
 ) -> Result<ChatReply, String> {
-    let mut context = context.map(checked_context).transpose()?;
+    let mut context = context.map(|c| checked_context(chat.id(), c)).transpose()?;
     // The turn's Stop, armed before anything is gathered for it: a Stop
     // pressed while the open windows or the emails are read (seconds, at
     // times) ends the turn before it is sent.
@@ -1300,7 +1301,7 @@ async fn dispatch(
     // few the same (antigravity_cli.rs).
     let command = (settings.chat_provider == claude_code::PROVIDER && claude_code::is_command(&query))
         || (settings.chat_provider == antigravity_cli::PROVIDER && antigravity_cli::is_command(&query));
-    let mut screen = if command { None } else { screen.map(checked_screen).transpose()? };
+    let mut screen = if command { None } else { screen.map(|s| checked_screen(chat.id(), s)).transpose()? };
     // Settings → Security → "Open windows": the windows and their
     // documents go with every question (desk.rs).
     if settings.chat_share_open && !command {
@@ -1318,9 +1319,16 @@ async fn dispatch(
             let front = documents.iter().find(|d| d.active).or(documents.first());
             if let Some(doc) = front.filter(|d| crate::desk::asks_about(&query, d)) {
                 let path = std::path::PathBuf::from(&doc.path);
-                let copied = tauri::async_runtime::spawn_blocking(move || crate::files::copy_in(&path))
-                    .await
-                    .unwrap_or_else(|e| Err(e.to_string()));
+                let id = chat.id().to_string();
+                // Its copy is the chat's at once, in its folder (files.rs adopt).
+                let copied = tauri::async_runtime::spawn_blocking(move || {
+                    crate::files::copy_in(&path).map(|f| {
+                        let path = crate::files::adopt(&[crate::files::Adopt { chat: id, path: f.path, name: Some(f.name.clone()) }]).remove(0);
+                        crate::files::DroppedFile { path, ..f }
+                    })
+                })
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()));
                 match copied {
                     Ok(f) => context = Some(ChatContext::File { name: f.name, path: f.path }),
                     Err(e) => crate::log::line(format!("[desk] {e}")),
@@ -1342,15 +1350,9 @@ async fn dispatch(
     let at = chat.turns();
     let more: Vec<(String, String)> =
         screen.as_ref().map(|s| s.files.iter().map(|f| (f.name.clone(), f.path.clone())).collect()).unwrap_or_default();
-    // A CLI is told the files of this question in this chat's own folder of
-    // the inbox, the one it reads; the chat keeps them by their place in the
-    // inbox, as the island names them.
-    let (told, screen) = if is_cli(&settings.chat_provider) {
-        in_chat_folder(chat.id(), context.clone(), screen)
-    } else {
-        (context.clone(), screen)
-    };
-    let reply = send_to(app, chat, settings, query, told, screen, usage).await;
+    // The island moved the files of this question into the chat's own folder
+    // of the inbox as it sent it (files.rs adopt): where its CLI reads them.
+    let reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await;
     // What the island's tools asked for during the turn (island_tools.rs), as
     // the lines the island reads; a failed turn, or one stopped before it
     // said anything, drops them. One stopped that used the computer is kept
@@ -1374,22 +1376,6 @@ async fn dispatch(
     reply.turns = chat.turns();
     reply.cli = chat.cli_state();
     Ok(reply)
-}
-
-/// The file and the screenshots of a question as the CLI of `chat` is told
-/// them: each one in the inbox, in the chat's own folder of it (files.rs for_chat).
-fn in_chat_folder(chat: &str, context: Option<ChatContext>, screen: Option<ScreenContext>) -> (Option<ChatContext>, Option<ScreenContext>) {
-    let context = context.map(|c| match c {
-        ChatContext::File { name, path } => ChatContext::File { path: crate::files::for_chat(chat, &path), name },
-        other => other,
-    });
-    let screen = screen.map(|mut s| {
-        for shot in s.shots.iter_mut().chain(s.files.iter_mut()) {
-            shot.path = crate::files::for_chat(chat, &shot.path);
-        }
-        s
-    });
-    (context, screen)
 }
 
 /// A turn stopped before its question went: nothing was said, nothing is kept.
@@ -2323,8 +2309,8 @@ mod tests {
     fn only_screenshots_in_the_inbox_ride_along() {
         use crate::screen::ShotRef;
         let outside = ScreenContext { shots: vec![ShotRef { name: "x".into(), path: "/etc/passwd".into() }], ..Default::default() };
-        assert!(checked_screen(outside).is_err());
-        assert!(checked_screen(ScreenContext::default()).is_ok());
+        assert!(checked_screen("a", outside).is_err());
+        assert!(checked_screen("a", ScreenContext::default()).is_ok());
     }
 
     #[test]
@@ -2342,6 +2328,17 @@ mod tests {
         assert!(!is_inside(&inbox, &inbox.join("missing.txt")));
         assert!(!is_inside(&inbox, &inbox));
         let _ = std::fs::remove_dir_all(&base);
+        // Sent: in its own chat's folder only, never another chat's.
+        let (a, b) = ("test-ctx-chat-a", "test-ctx-chat-b");
+        crate::files::forget_chat(a);
+        std::fs::create_dir_all(crate::files::chat_dir(a)).unwrap();
+        let sent = crate::files::chat_dir(a).join("sent.txt");
+        std::fs::write(&sent, b"x").unwrap();
+        let file = |p: &std::path::Path| ChatContext::File { name: "sent.txt".into(), path: p.to_string_lossy().to_string() };
+        assert!(checked_context(a, file(&sent)).is_ok());
+        assert!(checked_context(b, file(&sent)).is_err());
+        assert!(checked_context("", file(&sent)).is_err());
+        crate::files::forget_chat(a);
     }
 
     #[test]

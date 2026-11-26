@@ -576,10 +576,14 @@ export const Bridge = {
   chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),
   /** A chat's picture as a data URL, for its preview; null for any other file. */
   chatFilePreview: (path: string) => call<string | null>("chat_file_preview", { path }),
-  /** A deleted chat's copies in the inbox go, but for those `keep` names; how many went. */
+  /** Files waiting in the inbox (their ×, or an old chat's copies) go, but for those `keep` names; how many went. */
   inboxRelease: (paths: string[], keep: string[]) => call<number>("inbox_release", { paths, keep }),
-  /** The inbox's files no chat names in `keep`, a day old or more, go; how many went. */
+  /** When Lumo starts: the inbox's files no field and no chat names in `keep` go; how many went. */
   inboxTidy: (keep: string[]) => call<number>("inbox_tidy", { keep }),
+  /** The files a question takes leave the inbox for their chat's folder (files.rs adopt): each one's path from then on, in order. */
+  chatFilesAdopt: (items: { chat: string; path: string; name?: string }[]) => call<string[]>("chat_files_adopt", { items }),
+  /** Files taken out of a chat (an edit that no longer sends them) leave its folder; how many went. */
+  chatFilesForget: (chat: string, paths: string[]) => call<number>("chat_files_forget", { chat, paths }),
   /** Which of a chat's files are still where they were. */
   chatFilesPresent: (paths: string[]) => call<boolean[]>("chat_files_present", { paths }),
   /**

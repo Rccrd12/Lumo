@@ -6,7 +6,7 @@
 import { cleanChecklists, type ChatChecklists } from "./checklists";
 import { clipUnits } from "./clip";
 import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
-import type { SentItem } from "./sent";
+import { movedSent, type SentItem } from "./sent";
 import { cleanCommands, type RanCommand } from "./terminal";
 import { readReplyFiles, type ReplyFile } from "./file-names";
 
@@ -373,10 +373,59 @@ export function makeRoom(keep?: string): boolean {
   }
   try {
     s.setItem(KEY, JSON.stringify(less));
-    return true;
   } catch {
     return false;
   }
+  tellLeft(list, less);
+  return true;
+}
+
+// ── Chats that leave the history ──────────────────────────────────────────────
+//
+// Past the MAX_CHATS kept, or to make room, the oldest chat leaves the
+// history without being deleted: it can't be opened again, so its folder of
+// files goes as a deleted chat's does (views/chat.ts).
+
+const leftListeners = new Set<(ids: string[]) => void>();
+
+/** `fn` hears the ids of the chats that left the history, after they did. */
+export function onChatsLeft(fn: (ids: string[]) => void): () => void {
+  leftListeners.add(fn);
+  return () => leftListeners.delete(fn);
+}
+
+function tellLeft(before: readonly SavedChat[], after: readonly SavedChat[]) {
+  const gone = before.filter((c) => !after.some((a) => a.id === c.id));
+  if (!gone.length) return;
+  // Only those the stored history really lost: a write that failed lost none.
+  const now = loadChats();
+  const ids = gone.filter((c) => !now.some((a) => a.id === c.id)).map((c) => c.id);
+  if (!ids.length) return;
+  for (const fn of leftListeners) {
+    try {
+      fn(ids);
+    } catch {
+      // One listener's trouble is not the history's.
+    }
+  }
+}
+
+/**
+ * Chat `id`'s files moved (old path → new, files.rs adopt): what its
+ * questions sent follows. Its place in the history does not change.
+ */
+export function moveSentPaths(id: string, moved: ReadonlyMap<string, string>) {
+  const list = loadChats();
+  const chat = list.find((c) => c.id === id);
+  if (!chat) return;
+  let changed = false;
+  chat.turns = chat.turns.map((turn) => {
+    const sent = turn.sent ? movedSent(turn.sent, moved) : null;
+    if (!sent) return turn;
+    changed = true;
+    return { ...turn, sent };
+  });
+  if (changed) store(list);
 }
 
 /**
@@ -620,7 +669,10 @@ export function saveChat(chat: SavedChat): SavedChat[] {
   if (name) chat = { ...chat, title: name.title, named: name.by };
   const saved = ticks && Object.keys(ticks).length ? { ...chat, checklists: ticks } : chat;
   const list = [saved, ...chats.filter((c) => c.id !== chat.id)].slice(0, MAX_CHATS);
-  return store(list);
+  const stored = store(list);
+  // Past the most kept, or not written for room: the oldest left.
+  tellLeft(chats.filter((c) => c.id !== chat.id), stored);
+  return stored;
 }
 
 /** What the user ticked in a chat's checklists. */
