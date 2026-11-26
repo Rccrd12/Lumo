@@ -392,15 +392,19 @@ island shrinks to its compact size and stays on screen, nothing is answered, and
 opening it again shows the card. Under the request, a line says what it is
 for: the agent's own words when it gave some (Claude Code and Gemini CLI
 describe each command), else what the request does ("Only looks: changes
-nothing.", "Changes a file."). Once the island has the keyboard (a click on the
-card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say, even
-with the chat field focused. In another app they are just letters, never an
-answer. A letter typed right after another key, mid-word, is never taken as an
-answer. While an agent uses the computer, and on a computer action's card, a
-click on the card does not give the island the keyboard: the window the agent
-works in keeps the front, so what it opened (the Start menu, Search, a
-drop-down) stays open. Its buttons are clicked as usual; `Ctrl+Alt+A` still
-brings Y and N.
+nothing.", "Changes a file."). While the island has the keyboard, **Y** allows
+and **N** denies the card on screen, as the buttons say, even with the chat
+field focused: a card you clicked or reached with `Ctrl+Alt+A`, one that came
+up by itself in the chat, the next one in line after an answer. In another app
+they are just letters, never an answer. A letter typed as part of a word is
+never taken as an answer: the card ignores keys for its first 600 ms, and a Y
+or N pressed less than 800 ms after another key. While an agent uses the
+computer, and on a computer action's card, a click on the card does not give
+the island the keyboard: the window the agent works in keeps the front, so
+what it opened (the Start menu, Search, a drop-down) stays open. Its buttons
+are clicked as usual, and Y and N answer it only once you clicked it or
+pressed `Ctrl+Alt+A`, so keys meant for that window never do. Questions and
+emails have no keys.
 **Open terminal** brings the window the session
 runs in to the front.
 
@@ -964,9 +968,17 @@ Like Claude Code, it reads the files you drop or attach and the folder you
 share, says what it is doing next to the typing dots, stops on **Stop**, and
 continues the same conversation (`--conversation`) until **New chat**. Its
 models come from `agy models` (**Default** leaves agy's own choice), in the
-picker and in **Settings… → Chat → Antigravity CLI**. There is no effort to
-pick: each model carries its own in its name (`gemini-3.8-flash-low`), and agy
-refuses a mismatched `--effort`. The shield's **Plan only** goes to agy as
+picker and in **Settings… → Chat → Antigravity CLI**. agy lists one model per
+effort, its effort in its name (`gemini-3.8-flash-low`, `-medium`, `-high`):
+the picker shows them as one row, with an effort slider under the list that
+picks the variant, and agy gets the whole name (it refuses a mismatched
+`--effort`); a model with no levels stays as it is. **Orchestrator** is one row
+too: under the list, a **Planner** and an **Executor**, ‹ › going through the
+models agy lets take each role, each with its own effort. A turn runs it with
+those two for that run only (agy's `settings.json` is never written), and the
+chat says "Neon is planning…", then "Hydrogen is executing…" once agy leaves
+plan mode; the model button reads "Orchestrator · Neon → Hydrogen". The
+closed island names the model at work. The shield's **Plan only** goes to agy as
 `--mode plan`; **Auto** as `--dangerously-skip-permissions`, with no card. Headless agy never prompts: it reads and writes workspace files
 freely, and a shell command, or a file it would change outside the chat's
 folders, needs your approval. With the hooks of
@@ -1076,7 +1088,13 @@ Copilot and Cursor configurations are never touched.
 
 Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are
-kept on this computer only, 40 at most. Each chat keeps its own provider, model
+kept on this computer only, 40 at most. They sit under Today, Yesterday, This
+week and Earlier (not while searching), each with how long ago it was used at
+the right; the pencil and the bin show under the mouse. A dot after a chat's
+name, and a line under it, say what a chat not on screen has for you: at work
+(green, what it does), waiting for your permission (amber), an answer that
+failed (red), a new answer not read yet (blue); the clock's badge counts the
+chats that need you. Each chat keeps its own provider, model
 and effort: a reopened chat comes back on what was last picked in it, and a new
 chat starts on what the picker shows. The paperclip in the text field opens
 the file picker: the file joins the chat open now, as a drop does, and goes
@@ -1667,7 +1685,7 @@ that shows what it will listen to, in full, and what it will do by itself.
 
 | Source | What it hears |
 |--------|---------------|
-| GitHub | A pull request's checks finishing or turning green, an approval, ready to merge, merged or closed |
+| GitHub | A pull request's checks finishing or turning green, an approval, a review, requested changes, a new comment or commit, ready to merge, merged or closed; an issue opened, commented on, labelled, assigned, closed or reopened; a branch's checks or new commits; a workflow's runs by name ("Windows beta" on main); a release or a tag; a deployment; your notifications (mentions, review requests, assignments); security alerts; discussions; stars and forks |
 | Files and folders | A new, changed or deleted file, a download that finishes |
 | Programs and ports | A program that starts or ends, a port that opens or closes |
 | Web pages | A page or an API that changes (saying what changed), a site that goes up or down (down after three failed looks in a row, never while this PC is offline), a page that shows a text or no longer does |

@@ -42,13 +42,13 @@ Claude, Gemini, ChatGPT, OpenRouter or a model on your own PC, with an API key o
 
 ### …and more
 
-Your own tools for the agents · Lumo listening to a pull request, a file or a web page · a voice call with Gemini Live · Claude using the computer, every action approved · 11 languages. All in the **[full guide](windows/README.md)**.
+Agents of their own for every AI, on one card · your own tools for the agents · agents that browse the web in hidden tabs · Lumo listening to GitHub, a file or a web page · your email and Google Calendar on the island · a voice call with Gemini Live · Claude Code and Antigravity using the computer, every action approved · 11 languages. All in the **[full guide](windows/README.md)**.
 
 ## Install
 
 1. Download **[Lumo-Windows-setup.exe](https://github.com/Rccrd12/Lumo/releases/download/windows-latest/Lumo-Windows-setup.exe)** (Windows 10/11, always the newest version) and run it.
 2. Windows may say *"Windows protected your PC"*: click **More info**, then **Run anyway**. The installer isn't code-signed yet; Lumo is open source and Microsoft Defender scans it as clean.
-3. Click the Lumo icon in the system tray → **Settings…** → **Agents** → **Claude Code** → **Install hooks**. Lumo shows you the change to `~/.claude/settings.json` and backs it up before writing.
+3. Click the Lumo icon in the system tray → **Settings…** → **Agents** → on Claude Code's card, **Connect…** beside *Terminal sessions in the island*. Lumo shows you the change to `~/.claude/settings.json` and backs it up before writing.
 
 Start Claude Code and watch the island. Other agents, chat providers and services are set up in the same Settings ([how](windows/README.md#supported-agents)).
 
