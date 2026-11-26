@@ -1113,7 +1113,7 @@ async fn pick_file(app: AppHandle, window: tauri::WebviewWindow) -> Result<Optio
     let Some(picked) = picked else { return Ok(None) };
     let path = picked.into_path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
     files::allow_dropped([path.clone()]);
-    files::ingest(&path).map(Some)
+    files::ingest(&path, &mut |_, _| {}).map(Some)
 }
 
 /// "Choose…" in the Listening panel's form: the system's folder picker. Only
