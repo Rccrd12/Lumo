@@ -549,6 +549,20 @@ struct Launch<'a> {
     budget: crate::api_agents::Budget,
 }
 
+/// How hard the model reasons (`level`, local_models.rs reasoning_effort) in
+/// a request to server `server`. Unsloth Studio turns thinking on and off with
+/// its own switch, and its `reasoning_effort` field never reaches a template
+/// that reads the level itself (Inkling 2 Mini's maps "minimal" to 0.1, "max"
+/// to 0.99, and takes 0.9 when it gets none): the level goes to the template
+/// too, which one that doesn't read it leaves aside.
+fn set_reasoning(body: &mut Value, server: &str, level: &str) {
+    body["reasoning_effort"] = json!(level);
+    if server == "unsloth" {
+        body["enable_thinking"] = json!(level != "none");
+        body["chat_template_kwargs"] = json!({ "reasoning_effort": level });
+    }
+}
+
 /// One agent's whole turn: its task alone, the chat's tools (no more
 /// agents), its rounds of tools, and its last word as the report.
 async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate::api_agents::Task, sink: crate::api_agents::Sink) -> Result<String, String> {
@@ -561,10 +575,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate:
         body["tools"] = tools;
     }
     if let Some(level) = l.effort {
-        body["reasoning_effort"] = json!(level);
-        if l.server.id == "unsloth" {
-            body["enable_thinking"] = json!(level != "none");
-        }
+        set_reasoning(&mut body, l.server.id, level);
     }
     if matches!(l.server.id, "ollama" | "lmstudio" | "unsloth") {
         body["stream_options"] = json!({ "include_usage": true });
@@ -1029,11 +1040,7 @@ pub async fn send(
             body["tools"] = crate::openai_compat::function_tools(&tools);
         }
         if let Some(level) = crate::local_models::reasoning_effort(&caps, effort) {
-            body["reasoning_effort"] = json!(level);
-            // Unsloth Studio turns thinking on and off with its own switch.
-            if server.id == "unsloth" {
-                body["enable_thinking"] = json!(level != "none");
-            }
+            set_reasoning(&mut body, server.id, level);
         }
         // How much of the context the chat fills comes with the last event (the ring).
         if matches!(server.id, "ollama" | "lmstudio" | "unsloth") {
@@ -1348,6 +1355,19 @@ mod tests {
         assert!(block_on(list("ollama", &url("http://127.0.0.1:1"), None)).unwrap_err().starts_with("Cannot reach"));
         let u = serve_once("401 Unauthorized", "Content-Length: 2\r\n", b"{}".to_vec());
         assert!(block_on(list("ollama", &url(&u), Some("bad"))).unwrap_err().contains("refused the key"));
+    }
+
+    #[test]
+    fn the_reasoning_level_reaches_unsloth_studio_s_template() {
+        let mut body = json!({});
+        set_reasoning(&mut body, "unsloth", "minimal");
+        assert_eq!(body, json!({ "reasoning_effort": "minimal", "enable_thinking": true, "chat_template_kwargs": { "reasoning_effort": "minimal" } }));
+        set_reasoning(&mut body, "unsloth", "none");
+        assert_eq!((&body["enable_thinking"], &body["chat_template_kwargs"]["reasoning_effort"]), (&json!(false), &json!("none")));
+        // The other servers: the field alone, as before.
+        let mut body = json!({});
+        set_reasoning(&mut body, "lmstudio", "low");
+        assert_eq!(body, json!({ "reasoning_effort": "low" }));
     }
 
     #[test]
