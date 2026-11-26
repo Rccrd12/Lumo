@@ -342,19 +342,32 @@ export function approvalKey(
 }
 
 /**
- * The request whose card Y and N may answer: one the user turned to by
- * themselves, with a click on the card or the shortcut to the waiting card
- * (island/shortcuts.ts). A card that comes up while the chat is being typed
- * in leaves Y and N to the chat.
+ * The request the user turned to by themselves, with a click on its card or
+ * the shortcut to the waiting card (island/shortcuts.ts). Only a computer
+ * action's card waits for that before Y and N answer it (approvalKeysAnswer).
  */
 let keysFor: string | null = null;
 
-/** Y and N now answer the card of `requestId`: the user turned to it. */
+/** The user turned to the card of `requestId`. */
 export function armApprovalKeys(requestId: string | null | undefined): void {
   keysFor = requestId || null;
 }
 
-/** Whether Y and N answer the card of `requestId`. */
+/** Whether the user turned to the card of `requestId` (armApprovalKeys). */
 export function approvalKeysArmed(requestId: string | null | undefined): boolean {
   return keysFor != null && keysFor === requestId;
+}
+
+/**
+ * Whether Y and N answer the card of `requestId`, on screen while the island
+ * has the keyboard (in another app they never reach it). Any card: the one
+ * that came up by itself in the chat, the next one in line after an answer.
+ * While the computer is in use (`computer`: core/computer.ts
+ * islandHoldsClicks) only once the user turned to the card: keys meant for
+ * the window the agent works in never answer it. A letter typed as part of a
+ * word never answers either (views.ts KEY_QUIET_MS).
+ */
+export function approvalKeysAnswer(requestId: string | null | undefined, computer: boolean): boolean {
+  if (!requestId) return false;
+  return !computer || approvalKeysArmed(requestId);
 }
