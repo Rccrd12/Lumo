@@ -922,7 +922,7 @@ test("a warning is said in the island's language when shown; one saved by a beta
   const mark = compactMark("c-compact", 4, "Riassunto: una fattura da 1250 €.");
   const label = mark.querySelector(".compact-mark-label");
   const summary = mark.querySelector(".compact-summary");
-  assert.match(label.textContent, /Chat compacted here/);
+  assert.match(label.textContent, /Chat compacted$/);
   assert.equal(summary.hidden, true);
   label.fire("click");
   assert.equal(summary.hidden, false);

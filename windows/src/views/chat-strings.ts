@@ -140,7 +140,7 @@ export const COMPACT_STRINGS = {
   autoDone: N_("Chat compacted by itself: the model starts again from its summary"),
   nothing: N_("Nothing new to compact"),
   /** The line in the chat where it was compacted (views/chat-messages.ts compactMark). */
-  mark: N_("Chat compacted here · the model starts again from the summary"),
+  mark: N_("Chat compacted"),
 };
 
 /** The picker's − and + on a local model: in and out of the server's memory. */

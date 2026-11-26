@@ -20213,17 +20213,17 @@
    "id": "Chat ini sudah pendek: ringkasannya akan memakan lebih banyak ruang daripada pesan yang digantikannya.",
    "it": "La chat è già breve: il riassunto occuperebbe più spazio dei messaggi che sostituisce."
   },
-  "Chat compacted here · the model starts again from the summary": {
-   "zh-Hans": "对话在此处已压缩 · 模型从摘要重新开始",
-   "hi": "चैट यहाँ संक्षिप्त की गई · मॉडल सारांश से फिर शुरू करता है",
-   "es": "Chat compactado aquí · el modelo empieza de nuevo desde el resumen",
-   "ar": "تم ضغط المحادثة هنا · يبدأ النموذج من جديد من الملخص",
-   "fr": "Chat compacté ici · le modèle repart du résumé",
-   "bn": "চ্যাট এখানে সংক্ষিপ্ত করা হয়েছে · মডেল সারসংক্ষেপ থেকে আবার শুরু করে",
-   "pt-BR": "Chat compactado aqui · o modelo recomeça a partir do resumo",
-   "ru": "Чат сжат здесь · модель продолжает со сводки",
-   "id": "Chat dipadatkan di sini · model mulai lagi dari ringkasan",
-   "it": "Chat compattata qui · il modello riparte dal riassunto"
+  "Chat compacted": {
+   "zh-Hans": "对话已压缩",
+   "hi": "चैट संक्षिप्त की गई",
+   "es": "Chat compactado",
+   "ar": "تم ضغط المحادثة",
+   "fr": "Chat compacté",
+   "bn": "চ্যাট সংক্ষিপ্ত করা হয়েছে",
+   "pt-BR": "Chat compactado",
+   "ru": "Чат сжат",
+   "id": "Chat dipadatkan",
+   "it": "Chat compattata"
   },
   "What went wrong: {error}": {
    "zh-Hans": "出了什么问题：{error}",
