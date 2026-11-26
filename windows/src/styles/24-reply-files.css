@@ -284,3 +284,26 @@
 .reply-files-folder-btn:hover {
   color: #b5d6fd;
 }
+
+/* A local model's changed copy (workspace.rs): its card, and under it what
+   changed and Write it over the original, as wide as the answer. */
+.reply-files:has(> .reply-copy-detail) {
+  max-width: none;
+}
+
+.reply-files:has(> .reply-copy-detail) > .reply-file {
+  max-width: 380px;
+}
+
+/* Its many other files, one line after the cards. */
+.reply-files > .reply-files.many {
+  margin: 0;
+}
+
+.reply-files > .reply-copy-detail {
+  margin: 0 0 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}

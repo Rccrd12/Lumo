@@ -29,7 +29,7 @@ import { draftIn, isWorkshopChat, stripDraft } from "../core/tools";
 import { FORGE_STRINGS, draftChip } from "./forge";
 import { STRINGS } from "./chat-strings";
 import { fixCard } from "./chat-fix";
-import type { ReplyFile } from "../core/file-names";
+import { changedCopy, type ReplyFile } from "../core/file-names";
 import { linkFiles, replyFilesBox } from "./file-links";
 
 let nextId = 1;
@@ -68,6 +68,8 @@ interface BubbleOptions {
   onOpenSent?: (message: ChatMessage, item: SentItem) => void;
   /** Settings → Agents, for a card that sets up the chat's CLI there (views/chat-fix.ts). */
   onOpenAgents?: () => void;
+  /** The chat it is in: a local model's changed copies show what changed (workspace.rs). */
+  chat?: string;
 }
 
 /** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
@@ -229,14 +231,15 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
     bar.append(...[copy, retry, stopped, warning, when].filter((x): x is HTMLElement => x != null));
     // The turn used the computer: how it went, under the answer (views/computer-recap.ts).
     const computer = message.computer ? computerRecapBox(message.computer, message.id) : null;
-    const copies = message.copies?.length ? copiesBox(message.copies) : null;
-    // The files of the computer it made or changed: cards to open (views/file-links.ts).
-    const files = message.files?.length ? replyFilesBox(message.files) : null;
+    // The files it made or changed, on the computer or in a local model's folder
+    // of copies: cards to open (views/file-links.ts), a changed copy with what changed.
+    const chat = opts.chat;
+    const files = message.files?.length ? replyFilesBox(message.files, chat ? (f, card) => copyChanges(chat, f, card) : undefined) : null;
     // What would have let the CLI do more (agy skipped commands): a card under the answer.
     const fix = message.fix ? fixCard(message.fix, "", { openAgents: opts.onOpenAgents }) : null;
     // The commands its local model ran in its terminal, above what it says of them.
     const commands = message.commands?.length ? commandsBox(message.commands) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, commands, reply, computer, copies, files, fix, bar, detail));
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, commands, reply, computer, files, fix, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
@@ -509,11 +512,8 @@ export function plainQuestion(text: string): string {
     .join("\n");
 }
 
-/** What the copies' box under an answer says (workspace.rs). */
+/** What a changed copy's card says of its changes (workspace.rs). */
 const COPY_STRINGS = {
-  title: N_("Changed in Lumo's copies: your files are as they were"),
-  open: N_("Open"),
-  folder: N_("Show the folder"),
   confirm: N_("Write it over the original"),
   original: N_("The original: {path}"),
   rewritten: N_("rewritten"),
@@ -603,35 +603,21 @@ function commandsBox(commands: RanCommand[]): HTMLElement {
 }
 
 /** A path in a chat's folder of copies (workspace.rs). */
-export function inWorkspace(path: string): boolean {
-  return /[\\/]com\.rccrd12\.lumo[\\/]workspaces[\\/]/i.test(path);
-}
+export { inWorkspace } from "../core/file-names";
 
 /**
- * The copies an answer changed or made: each with Open and, for a copy of a
- * file of the computer, what changed in it and a button that writes it over
- * the original.
+ * Under the card of a copy of a file of the computer that the model changed
+ * (views/file-links.ts): what changed in it, and a button that writes it over
+ * the original. Its card says where it changed and how much.
  */
-function copiesBox(copies: { chat: string; path: string; made?: boolean }[]): HTMLElement {
-  const box = h("div", { class: "reply-copies" },
-    h("div", { class: "reply-copies-title", text: t(COPY_STRINGS.title) }));
-  for (const copy of copies) {
-    const name = copy.path.split(/[\\/]/).pop() ?? copy.path;
-    const detail = h("div", { class: "reply-copy-detail" });
-    const open = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.open) });
-    open.addEventListener("click", () => void Bridge.chatFileOpen(copy.path));
-    const folder = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.folder) });
-    folder.addEventListener("click", () => void Bridge.chatFileReveal(copy.path));
-    const row = h("div", { class: "reply-copy-row" },
-      h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder);
-    box.append(h("div", { class: "reply-copy" }, row, detail));
-    // A copy of a file of the computer shows what changed right away.
-    if (!copy.made) void showDiff(copy, detail, row);
-  }
-  return box;
+function copyChanges(chat: string, file: ReplyFile, card: HTMLElement): HTMLElement | null {
+  if (!changedCopy(file)) return null;
+  const detail = h("div", { class: "reply-copy-detail" });
+  void showDiff({ chat, path: file.path }, detail, card);
+  return detail;
 }
 
-async function showDiff(copy: { chat: string; path: string }, detail: HTMLElement, row: HTMLElement) {
+async function showDiff(copy: { chat: string; path: string }, detail: HTMLElement, card: HTMLElement) {
   clear(detail);
   let diff: CopyDiff;
   try {
@@ -650,10 +636,11 @@ async function showDiff(copy: { chat: string; path: string }, detail: HTMLElemen
   // Beside the name: how it changed.
   const where = best === "text" ? t(COPY_STRINGS.rewritten)
     : found.length === 1 ? t(COPY_STRINGS.line, { n: found[0].at }) : t(COPY_STRINGS.places, { count: found.length });
-  const name = row.querySelector(".reply-copy-name");
-  if (name) name.append(h("span", { class: "reply-copy-where", text: ` · ${where}` }));
-  name?.after(h("span", { class: "reply-copy-count" },
-    h("span", { class: "plus", text: `+${added}` }), " ", h("span", { class: "minus", text: `−${removed}` })));
+  const line = card.querySelector(".attach-detail");
+  if (line && !card.classList.contains("missing")) {
+    line.append(` · ${where} · `, h("span", { class: "reply-copy-count" },
+      h("span", { class: "plus", text: `+${added}` }), " ", h("span", { class: "minus", text: `−${removed}` })));
+  }
 
   const body = h("div", { class: "reply-copy-body" });
   const show = (view: CopyView) => {
@@ -814,11 +801,9 @@ export interface Run {
   stopping: boolean;
   /** Deleted from Past chats meanwhile: its answer is stopped, and the chat is not saved again. */
   forgotten?: boolean;
-  /** The copies the answer changed or made in the chat's folder (workspace.rs). */
-  copies?: Map<string, boolean>;
   /** The commands the answer's local model ran in its terminal (terminal.rs), in order. */
   commands?: import("../core/terminal").RanCommand[];
-  /** The files of the computer the answer changed or made, outside that folder (ChatMessage.files). */
+  /** The files the answer changed or made, on the computer or in the chat's folder of copies (ChatMessage.files). */
   touched?: ReplyFile[];
   /** Settles once the answer is over (answered, stopped or failed). */
   done: Promise<void>;

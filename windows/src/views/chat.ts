@@ -125,7 +125,7 @@ import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachR
 import { splitFix } from "./chat-fix";
 import { orchestratorName, parseOrchestrator } from "../core/orchestrator";
 import { cliModelName } from "../core/model-names";
-import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, inWorkspace, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
+import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
@@ -3172,16 +3172,11 @@ export function buildPrompt(
   // A file the answer read, edited or created: the chat's files list it.
   void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
     addChatFile(chat, kind, path, undefined, undefined, runs.get(chat)?.turn);
-    // A copy changed or made in the chat's folder: listed under the answer.
+    // A file of the computer, or a copy changed or made in the chat's folder
+    // (workspace.rs): a card under the answer (views/file-links.ts). A copy
+    // made from nothing stays "created": there is no original to put it back over.
     const run = runs.get(chat);
-    // `made`: the model wrote it from nothing, so there is no original to put it back over.
-    if (run && kind !== "read" && inWorkspace(path)) {
-      const copies = (run.copies ??= new Map());
-      copies.set(path, copies.get(path) ?? kind === "created");
-    } else if (run && kind !== "read") {
-      // A file of the computer: a card under the answer (views/file-links.ts).
-      run.touched = withReplyFile(run.touched ?? [], path, kind);
-    }
+    if (run && kind !== "read") run.touched = withReplyFile(run.touched ?? [], path, kind);
     if (chat === State.chatId) drawChatFiles();
   });
 
@@ -4242,13 +4237,11 @@ export function buildPrompt(
           warning: reply.warning,
           fix: reply.fix,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
-          copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
           commands: run.commands?.length ? run.commands : undefined,
           files: run.touched?.length ? run.touched : undefined,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
           computer: recap,
         });
-        run.copies = undefined;
         run.commands = undefined;
         run.touched = undefined;
       } else {
@@ -5212,7 +5205,7 @@ export function buildPrompt(
           lastBubble = bubble(m, {
             onEdit: startEdit, onRetry: retries && asked ? () => retry(asked) : undefined, shown,
             editing: i === at, dropped: at >= 0 && i > at, workshop, scope, onOpenSent: (msg, item) => void openSent(msg, item),
-            onOpenAgents: openAgents,
+            onOpenAgents: openAgents, chat: State.chatId,
           });
           // The messages the CLI sent its agents meanwhile, before its answer.
           if (m.role === "assistant" && !m.failed) log.append(...talkBoxesFor(State.chatId, answer));

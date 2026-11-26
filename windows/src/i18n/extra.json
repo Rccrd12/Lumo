@@ -14699,30 +14699,6 @@
    "id": "Unsloth Studio tidak dapat memuat model: {error}",
    "it": "Unsloth Studio non è riuscito a caricare il modello: {error}"
   },
-  "Changed in Lumo's copies: your files are as they were": {
-   "zh-Hans": "在 Lumo 的副本中更改：你的文件保持原样",
-   "hi": "Lumo की कॉपी में बदला गया: आपकी फ़ाइलें जैसी थीं वैसी ही हैं",
-   "es": "Cambiado en las copias de Lumo: tus archivos siguen como estaban",
-   "ar": "تم التغيير في نسخ Lumo: ملفاتك كما كانت",
-   "fr": "Modifié dans les copies de Lumo : vos fichiers sont restés tels quels",
-   "bn": "Lumo-র কপিতে বদলানো হয়েছে: আপনার ফাইল আগের মতোই আছে",
-   "pt-BR": "Alterado nas cópias do Lumo: seus arquivos continuam como estavam",
-   "ru": "Изменено в копиях Lumo: ваши файлы остались прежними",
-   "id": "Diubah di salinan Lumo: file Anda tetap seperti semula",
-   "it": "Modificato nelle copie di Lumo: i tuoi file sono com'erano"
-  },
-  "Show the folder": {
-   "zh-Hans": "显示文件夹",
-   "hi": "फ़ोल्डर दिखाएँ",
-   "es": "Mostrar la carpeta",
-   "ar": "إظهار المجلد",
-   "fr": "Afficher le dossier",
-   "bn": "ফোল্ডার দেখান",
-   "pt-BR": "Mostrar a pasta",
-   "ru": "Показать папку",
-   "id": "Tampilkan folder",
-   "it": "Mostra la cartella"
-  },
   "Write it over the original": {
    "zh-Hans": "覆盖原文件",
    "hi": "मूल पर लिखें",
@@ -23902,6 +23878,30 @@
    "ru": "Следующие команды этого чата выполняются без вопроса, пока Lumo не закроется; команда, которой нужен интернет, всё равно спросит",
    "id": "Perintah berikutnya di chat ini berjalan tanpa bertanya sampai Lumo ditutup; yang butuh internet tetap bertanya",
    "it": "I prossimi comandi di questa chat partono senza chiedere finché Lumo resta aperto; uno che vuole internet chiede comunque"
+  },
+  "In Lumo's copies": {
+   "zh-Hans": "在 Lumo 的副本中",
+   "hi": "Lumo की कॉपी में",
+   "es": "En las copias de Lumo",
+   "ar": "في نسخ Lumo",
+   "fr": "Dans les copies de Lumo",
+   "bn": "Lumo-র কপিতে",
+   "pt-BR": "Nas cópias do Lumo",
+   "ru": "В копиях Lumo",
+   "id": "Di salinan Lumo",
+   "it": "Nelle copie di Lumo"
+  },
+  "In Lumo's copies: your file is as it was": {
+   "zh-Hans": "在 Lumo 的副本中：你的文件保持原样",
+   "hi": "Lumo की कॉपी में: आपकी फ़ाइल जैसी थी वैसी ही है",
+   "es": "En las copias de Lumo: tu archivo sigue como estaba",
+   "ar": "في نسخ Lumo: ملفك كما كان",
+   "fr": "Dans les copies de Lumo : votre fichier est resté tel quel",
+   "bn": "Lumo-র কপিতে: আপনার ফাইল আগের মতোই আছে",
+   "pt-BR": "Nas cópias do Lumo: seu arquivo continua como estava",
+   "ru": "В копиях Lumo: ваш файл остался прежним",
+   "id": "Di salinan Lumo: file Anda tetap seperti semula",
+   "it": "Nelle copie di Lumo: il tuo file è com'era"
   },
   "Working": {
    "zh-Hans": "工作中",

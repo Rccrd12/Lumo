@@ -768,8 +768,10 @@ PC — nothing leaves it then — and warns before a key would travel over plain
 
 **A folder of copies for each chat**: a local model never works on your files.
 It copies a file or a folder in (`%LOCALAPPDATA%\com.rccrd12.lumo\workspaces`),
-then reads, searches and changes only the copies there. What changed shows under
-the answer, line by line, with the original's full path; **Write it over the
+then reads, searches and changes only the copies there. The copies it made or
+changed are cards under the answer, as the files other AIs make (a click opens
+one, the right click has the rest); under a changed copy's card, what changed,
+line by line, with the original's full path; **Write it over the
 original** puts the copy back, only with that click. Network paths are never
 copied, and the record of what came from where is kept beside the folder,
 where the model can't change it. The folder goes with the chat.
