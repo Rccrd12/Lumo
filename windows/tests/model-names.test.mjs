@@ -26,4 +26,8 @@ test("the button takes the CLI's own name for a model, and leaves other provider
   assert.equal(cliModelName("antigravity-cli", "gemini-4-argon", "gemini-4-argon"), "Gemini 4 Argon", "agy lists its ids as names");
   assert.equal(cliModelName("anthropic", "claude-sonnet-5"), "claude-sonnet-5");
   assert.equal(cliModelName("ollama", "llama3.2:3b"), "llama3.2:3b");
+  // Unsloth Studio's model with its version, as its picker says it: shorter than the id.
+  assert.equal(cliModelName("unsloth", "unsloth/Inkling-2-Mini-GGUF:UD-Q3_K_XL"), "Inkling-2-Mini-GGUF · UD-Q3_K_XL");
+  assert.equal(cliModelName("unsloth", "Rccrd12/Qwen3.6-35B-A3B-Effort-GGUF"), "Rccrd12/Qwen3.6-35B-A3B-Effort-GGUF");
+  assert.equal(cliModelName("unsloth", "my-finetune"), "my-finetune");
 });

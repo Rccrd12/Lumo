@@ -998,7 +998,8 @@ export function buildPrompt(
     if (!line) closeUsage();
     usageSetup = Boolean(line?.setup);
     usageEl.classList.toggle("setup", usageSetup);
-    usageEl.title = line ? [line.text, line.title].filter(Boolean).join("\n") : "";
+    // A title the text already starts with ("Context: 11.7K of 64K", then "Context") is said once.
+    usageEl.title = line ? [line.text, line.title && !line.text.startsWith(line.title) ? line.title : ""].filter(Boolean).join("\n") : "";
     usageEl.setAttribute("aria-label", line?.text ?? "");
     usageRing.set(line?.pct ?? null, line?.color ?? null);
     if (body.classList.contains("metering")) drawUsageMenu();

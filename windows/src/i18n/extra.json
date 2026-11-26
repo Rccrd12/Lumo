@@ -20201,6 +20201,18 @@
    "id": "Server model menghentikan jawaban ini sebelum selesai, bahkan setelah Lumo memintanya lagi. Apa yang ditulis dan dilakukan model sampai saat itu tetap disimpan: periksa apakah pekerjaannya sudah selesai, dan jika belum, tulis “lanjutkan”.",
    "it": "Il server del modello ha interrotto questa risposta prima della fine, anche dopo che Lumo l'ha richiesta di nuovo. Quello che il modello ha scritto e fatto fino a quel momento è stato tenuto: controlla che il lavoro sia finito e, se non lo è, scrivi “continua”."
   },
+  "The chat is already short: its summary would take more room than the messages it replaces.": {
+   "zh-Hans": "这段对话已经很短：它的摘要会比要替换的消息占用更多空间。",
+   "hi": "चैट पहले से छोटी है: उसका सारांश उन संदेशों से ज़्यादा जगह लेगा जिनकी जगह वह लेता।",
+   "es": "El chat ya es corto: su resumen ocuparía más espacio que los mensajes que reemplaza.",
+   "ar": "المحادثة قصيرة أصلًا: ملخصها سيشغل مساحة أكبر من الرسائل التي يحل محلها.",
+   "fr": "Le chat est déjà court : son résumé prendrait plus de place que les messages qu'il remplace.",
+   "bn": "চ্যাটটি এমনিতেই ছোট: এর সারসংক্ষেপ যে বার্তাগুলোর জায়গা নেবে, তার চেয়ে বেশি জায়গা নেবে।",
+   "pt-BR": "O chat já é curto: o resumo ocuparia mais espaço do que as mensagens que substitui.",
+   "ru": "Чат и так короткий: его сводка заняла бы больше места, чем сообщения, которые она заменяет.",
+   "id": "Chat ini sudah pendek: ringkasannya akan memakan lebih banyak ruang daripada pesan yang digantikannya.",
+   "it": "La chat è già breve: il riassunto occuperebbe più spazio dei messaggi che sostituisce."
+  },
   "What went wrong: {error}": {
    "zh-Hans": "出了什么问题：{error}",
    "hi": "क्या गड़बड़ हुई: {error}",

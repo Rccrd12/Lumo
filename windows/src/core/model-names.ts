@@ -50,6 +50,12 @@ export function prettyModel(id: string, dropVendor = false): string {
  * Other providers' models keep the names they have.
  */
 export function cliModelName(provider: string, model: string, listed?: string): string {
+  // Unsloth Studio's model with its version ("unsloth/Inkling-2-Mini-GGUF:UD-Q3_K_XL"):
+  // as the picker's list says it, without whose it is ("Inkling-2-Mini-GGUF · UD-Q3_K_XL").
+  if (provider === "unsloth") {
+    const [repo, quant] = model.split(/:(?=[^:/]+$)/);
+    return quant ? `${repo.slice(repo.lastIndexOf("/") + 1)} · ${quant}` : model;
+  }
   if (provider !== CLAUDE_CODE && provider !== AGY) return model;
   if (listed && listed !== model) return listed;
   if (model === "default") return t("Default");

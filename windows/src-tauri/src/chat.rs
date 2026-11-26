@@ -1545,6 +1545,11 @@ pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<Compacte
     if summary.is_empty() {
         return Err(crate::i18n::t("The model gave no summary. Try again."));
     }
+    // A short chat (its long part a picture or a file, sent with its own
+    // question only): a summary as long as the turns would only add to it.
+    if summary.len() >= text.len() {
+        return Err(crate::i18n::t("The chat is already short: its summary would take more room than the messages it replaces."));
+    }
     let before = chat.history_chars();
     if !chat.set_compact_since(epoch, upto, summary.clone()) {
         return Err(crate::i18n::t("The chat changed while it was being summed up. Send /compact again."));
