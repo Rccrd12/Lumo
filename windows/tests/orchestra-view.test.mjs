@@ -190,6 +190,29 @@ test("messages between members say who from and who to, grey; Lumo's notes say w
   assert.ok(!$(".orc-relay").classList.contains("open"));
 });
 
+test("a queued message can be cancelled or taken back to the field, as a chat's queued question", async () => {
+  await flush();
+  answers.orchestra_unqueue = ({ message }) => ({ text: message === "c9" ? "Look at the fees too" : "", sent: [] });
+  const buttons = () => $(".orc-queued").querySelectorAll(".queue-btn");
+  // Edit: its text in the field, before what is typed there.
+  $(".chat-input").value = "and the deposit";
+  buttons()[0].fire("click");
+  await flush();
+  assert.deepEqual(sent("orchestra_unqueue").at(-1), { id: "o1", member: "coordinator", message: "c9" });
+  assert.equal($(".chat-input").value, "Look at the fees too\nand the deposit");
+  // Cancel: gone, nothing in the field.
+  $(".chat-input").value = "";
+  buttons()[1].fire("click");
+  await flush();
+  assert.equal(sent("orchestra_unqueue").length, 2);
+  assert.equal($(".chat-input").value, "");
+  // Read meanwhile: it stays, and the field too.
+  answers.orchestra_unqueue = null;
+  buttons()[0].fire("click");
+  await flush();
+  assert.equal($(".chat-input").value, "");
+});
+
 test("a card's option answers the member that asked, at once", async () => {
   await flush();
   const options = $(".orc-card").find(".orc-opt");

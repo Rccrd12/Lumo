@@ -764,6 +764,12 @@ export function buildPrompt(
       setInput(text);
       input.focus();
     },
+    unqueued: (text) => {
+      const typed = input.value.trim();
+      setInput(typed ? `${text}\n${typed}` : text);
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    },
     inkInto: (chat, into, text, scope) => {
       if (ink && inkChat === chat && ink.behind) {
         ink.update(text, true);

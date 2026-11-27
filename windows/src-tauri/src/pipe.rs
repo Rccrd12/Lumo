@@ -254,6 +254,10 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         Some(while_relay_waits(&mut pipe, in_chat(&app, request, Box::pin(crate::tools::serve_call(&app, request)))).await)
     } else if payload.get("lumo_tools").is_some() {
         Some(crate::tools::serve_list())
+    } else if let Some(request) = payload.get("lumo_orchestra_mail") {
+        // After a tool of a project member's Claude Code (lumo-hook
+        // --step-mail): the messages that came for it meanwhile, at once.
+        Some(Value::from(crate::orchestra::step_mail(&app, request.get("chat").and_then(Value::as_str).unwrap_or(""))))
     } else if let Some(request) = payload.get("lumo_orchestra") {
         // A CLI member of an orchestra (orchestra.rs): its role's tools.
         Some(crate::orchestra::serve(&app, request))

@@ -45,7 +45,7 @@ import { withReplyFile, type ReplyFileKind } from "../core/file-names";
 import { MAX_COMMANDS, type RanCommand } from "../core/terminal";
 import { splitFix } from "./chat-fix";
 import type { SentItem } from "../core/sent";
-import { AUTO_COMPACT_PCT, COMPACT_STRINGS, effortLabel } from "./chat-strings";
+import { AUTO_COMPACT_PCT, COMPACT_STRINGS, STRINGS as CHAT_S, effortLabel } from "./chat-strings";
 import { readyProviders } from "./chat-models";
 import { ORCHESTRA_STRINGS as S } from "./orchestra-strings";
 import { dropChatFiles } from "../core/chat-files";
@@ -203,6 +203,8 @@ export interface OrchestraHooks {
   inkInto?: (chat: string, into: HTMLElement, text: string, scope: string) => void;
   /** Edit: the message's text in the field, to be changed and sent again. */
   startEdit?: (text: string) => void;
+  /** A queued message taken back to be edited: its text in the field, before what is typed there. */
+  unqueued?: (text: string) => void;
 }
 
 /** A member's message as a chat's: drawn by the same bubble, with its actions, its time and what went with it. */
@@ -884,10 +886,38 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     const waiting = m?.messages.filter((x) => x.kind === "user" && x.delivered === "queued" && x.note !== "answer") ?? [];
     queue.hidden = waiting.length === 0;
     for (const msg of waiting) {
-      queue.append(h("div", { class: "chat-queue orc-queued" },
+      // Edit and Cancel, as a chat's queued question has: until the member reads it.
+      const edit = h("button", { class: "queue-btn", title: t(CHAT_S.edit), "aria-label": t(CHAT_S.edit) }, svg(ICONS.pencil, 11, { stroke: 1.8 }));
+      const cancel = h("button", { class: "queue-btn", title: t(CHAT_S.cancel), "aria-label": t(CHAT_S.cancel) }, svg(ICONS.xmark, 9));
+      const text = h("div", { class: "queue-text", text: msg.text, title: msg.text });
+      edit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void unqueue(m!, msg.id, true);
+      });
+      text.addEventListener("click", () => edit.click());
+      cancel.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void unqueue(m!, msg.id, false);
+      });
+      queue.append(h("div", { class: "chat-queue orc-queued", title: t(S.nextStep) },
         h("span", { class: "queue-label" }, svg(ICONS.clock, 10, { stroke: 2 }), h("span", { text: t(S.nextStep) })),
-        h("div", { class: "queue-text", text: msg.text })));
+        text, edit, cancel));
     }
+  }
+
+  /** The queued message `message` of `m` taken back: gone (Cancel), or back in the field (Edit). Read meanwhile, it stays. */
+  async function unqueue(m: OrchestraMember, message: string, toField: boolean) {
+    if (!snap) return;
+    const id = snap.id;
+    let taken: { text: string; sent: SentItem[] } | null = null;
+    try {
+      taken = await Orchestra.unqueue(id, m.id, message);
+    } catch (err) {
+      console.error("[lumo] orchestra_unqueue failed", err);
+    }
+    if (!taken) return;
+    Sound.play(toField ? "blip" : "pop");
+    if (toField) hooks.unqueued?.(taken.text);
   }
 
   function drawDoc() {

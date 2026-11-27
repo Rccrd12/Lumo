@@ -218,6 +218,9 @@ export const Orchestra = {
   compact: (id: string, member: string) => ask<void>("orchestra_compact", { id, member }),
   /** Retry (no text) or Edit of a member's last message: it and what came after go, and it goes again. */
   retry: (id: string, member: string, message: string, text?: string) => ask<void>("orchestra_retry", { id, member, message, text: text ?? null }),
+  /** Cancel or Edit of the user's message still waiting for its member: its text and what went with it, null once read. */
+  unqueue: (id: string, member: string, message: string) =>
+    ask<{ text: string; sent: SentItem[] } | null>("orchestra_unqueue", { id, member, message }),
   keepAnswer: (id: string, member: string, message: string, answer: OrchestraAnswer) => ask<void>("orchestra_keep_answer", { id, member, message, answer }),
   send: (id: string, to: string, text: string, attached?: OrchestraAttached, asked?: string) =>
     ask<void>("orchestra_send", {

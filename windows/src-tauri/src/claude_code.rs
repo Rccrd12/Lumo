@@ -441,7 +441,11 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
 ///   * with `browser`, a PreToolUse hook on Lumo's browser_open that tells
 ///     Lumo which agent opens the tab (lumo-hook --browser-claim, browser.rs
 ///     `claim`): it decides nothing.
-fn chat_settings(permission: Value, guard: &str, browser: bool) -> Value {
+///   * with `step_mail` (a project's member, orchestra.rs), a PostToolUse hook
+///     after each of its tools: the messages that came for it meanwhile go
+///     with the tool's answer, so it reads them at this step, as Claude Code
+///     reads what is typed while it works (lumo-hook --step-mail).
+fn chat_settings(permission: Value, guard: &str, browser: bool, step_mail: Option<&str>) -> Value {
     let mut pre = vec![
         json!({
             "matcher": "Bash|PowerShell",
@@ -462,12 +466,14 @@ fn chat_settings(permission: Value, guard: &str, browser: bool) -> Value {
             "hooks": [{ "type": "command", "command": format!("{guard} --browser-claim"), "timeout": 10 }],
         }));
     }
-    json!({
-        "hooks": {
-            "PermissionRequest": [permission],
-            "PreToolUse": pre,
-        },
-    })
+    let mut hooks = json!({
+        "PermissionRequest": [permission],
+        "PreToolUse": pre,
+    });
+    if let Some(command) = step_mail {
+        hooks["PostToolUse"] = json!([{ "matcher": "*", "hooks": [{ "type": "command", "command": command, "timeout": 10 }] }]);
+    }
+    json!({ "hooks": hooks })
 }
 
 /// Claude Code's hook timeout for the computer's turn, in seconds: past the
@@ -490,12 +496,14 @@ pub fn is_computer_tool(name: &str) -> bool {
 }
 
 /// `args`, plus the chat's own hooks (`chat_settings`), when the file could be
-/// written where Claude Code can be pointed at it. With the browser, in a
-/// file of its own: one name, one configuration.
-fn with_cards(mut args: Vec<String>, browser: bool) -> Vec<String> {
+/// written where Claude Code can be pointed at it. With the browser, or for a
+/// project's member (`project`), in a file of its own: one name, one configuration.
+fn with_cards(mut args: Vec<String>, browser: bool, project: bool) -> Vec<String> {
     let guard = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PreToolUse");
-    let path = crate::platform::local_dir().join(if browser { "chat-hooks-browser.json" } else { "chat-hooks.json" });
-    let text = chat_settings(crate::hooks::chat_permission_entry(), &guard, browser).to_string();
+    let step_mail = project.then(|| crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PostToolUse --step-mail"));
+    let name = format!("chat-hooks{}{}.json", if browser { "-browser" } else { "" }, if project { "-project" } else { "" });
+    let path = crate::platform::local_dir().join(name);
+    let text = chat_settings(crate::hooks::chat_permission_entry(), &guard, browser, step_mail.as_deref()).to_string();
     let written = write_config(&path, &text);
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
@@ -2994,7 +3002,8 @@ pub async fn send(
     let base = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
     // The tool workshop: what a tool is and how to hand one over, too.
     let append = if chat.is_workshop() { format!("{base}{}{WORKSHOP_TRY}", crate::chat::workshop_note!()) } else { base.to_string() };
-    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), browser);
+    let project = crate::orchestra::is_member_chat(chat.id());
+    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), browser, project);
     // The user's tools that are on, for Claude to use (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
     // Lumo's email tools, as Settings → Security lets the AI have them,
@@ -3186,7 +3195,7 @@ pub(crate) fn help(
     let inbox = if crate::settings::load().chat_other_files { crate::files::inbox_dir().to_string_lossy().to_string() } else { String::new() };
     let folders: Vec<String> = folder.into_iter().collect();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
-    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), false);
+    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), false, false);
     // The user's own tools too, while one is on.
     let args = with_mcp(args, computer, false, crate::tools::any_enabled(), false, "");
     let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_| {}, |_, _| {})?;
@@ -3741,7 +3750,7 @@ mod tests {
     #[test]
     fn the_chat_asks_with_lumos_own_permission_hook_and_guards_shell_commands() {
         let permission = crate::hooks::permission_request_entry();
-        let v = chat_settings(permission.clone(), "'/x/lumo-hook' --chat-guard PreToolUse", false);
+        let v = chat_settings(permission.clone(), "'/x/lumo-hook' --chat-guard PreToolUse", false, None);
         // The very entry installing writes, so Claude Code runs it once when both are there.
         assert_eq!(v["hooks"]["PermissionRequest"][0], permission);
         let hook = &permission["hooks"][0];
@@ -3751,6 +3760,12 @@ mod tests {
         let guard = &v["hooks"]["PreToolUse"][0];
         assert_eq!(guard["matcher"], "Bash|PowerShell");
         assert!(guard["hooks"][0]["command"].as_str().unwrap().contains("--chat-guard"));
+        assert!(v["hooks"].get("PostToolUse").is_none(), "only a project's member reads its messages after each tool");
+        // A project's member: after each tool, the messages that came for it meanwhile.
+        let member = chat_settings(permission, "'/x/lumo-hook' --chat-guard PreToolUse", false, Some("'/x/lumo-hook' --chat-guard PostToolUse --step-mail"));
+        let post = &member["hooks"]["PostToolUse"][0];
+        assert_eq!(post["matcher"], "*");
+        assert_eq!(post["hooks"][0]["command"], "'/x/lumo-hook' --chat-guard PostToolUse --step-mail");
     }
 
     #[test]
@@ -3780,21 +3795,21 @@ mod tests {
 
         // The tab is claimed for its agent before browser_open runs, and nothing else is.
         let guard = "'/x/lumo-hook' --chat-guard PreToolUse";
-        let v = chat_settings(crate::hooks::permission_request_entry(), guard, true);
+        let v = chat_settings(crate::hooks::permission_request_entry(), guard, true, None);
         let pre = v["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre.len(), 3);
         assert_eq!(pre[2]["matcher"], "mcp__lumo__browser_open");
         assert_eq!(pre[2]["hooks"][0]["command"], format!("{guard} --browser-claim"));
         assert_eq!(pre[2]["hooks"][0]["timeout"], 10);
         assert!(!regex_lite_full(pre[1]["matcher"].as_str().unwrap())("mcp__lumo__browser_open"), "the computer's turn is not the browser's");
-        let off = chat_settings(crate::hooks::permission_request_entry(), guard, false);
+        let off = chat_settings(crate::hooks::permission_request_entry(), guard, false, None);
         assert_eq!(off["hooks"]["PreToolUse"].as_array().unwrap().len(), 2, "no browser, no claim");
         assert!(!is_computer_tool("mcp__lumo__browser_click"));
     }
 
     #[test]
     fn each_computer_tool_waits_for_its_turn_and_nothing_else_does() {
-        let v = chat_settings(crate::hooks::permission_request_entry(), "'/x/lumo-hook' --chat-guard PreToolUse", false);
+        let v = chat_settings(crate::hooks::permission_request_entry(), "'/x/lumo-hook' --chat-guard PreToolUse", false, None);
         let gate = &v["hooks"]["PreToolUse"][1];
         let matcher = regex_lite_full(gate["matcher"].as_str().unwrap());
         for tool in COMPUTER_TOOLS {

@@ -594,9 +594,22 @@
   text-underline-offset: 2px;
 }
 
+/* What was said, opened: greyer than the chat's own text, and set in a little. */
+.orc-relay-body,
+.orc-relay .orc-when {
+  padding-left: 12px;
+}
+
 .orc-relay-body .md-p,
 .orc-relay-body .md-bullet {
   font-size: 13px;
+}
+
+.orc-relay-body .md-p,
+.orc-relay-body .md-bullet,
+.orc-relay-body .md-h,
+.orc-relay-body strong {
+  color: var(--dim-2);
 }
 
 .orc-when {

@@ -188,9 +188,10 @@ pub struct Member {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub turn: String,
     /// What the user attached to the messages waiting (a file, screenshots, a
-    /// selection…), in their chat's folder: it goes with the turn that reads them.
+    /// selection…), in their chat's folder, by the id of the message's line:
+    /// it goes with the turn that reads them.
     #[serde(skip)]
-    pub attached: Vec<(Option<ChatContext>, Option<ScreenContext>)>,
+    pub attached: Vec<(String, Option<ChatContext>, Option<ScreenContext>)>,
     /// Where its conversation was compacted and its summary (`Chat::restore`), as a chat keeps it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compact: Option<(usize, String)>,
@@ -199,7 +200,7 @@ pub struct Member {
     pub compact_due: bool,
     /// What its last turn's messages brought, to go again with Retry or Edit.
     #[serde(skip)]
-    pub last_attached: Vec<(Option<ChatContext>, Option<ScreenContext>)>,
+    pub last_attached: Vec<(String, Option<ChatContext>, Option<ScreenContext>)>,
     pub mail: Vec<Mail>,
     /// It said its task is done (message_coordinator with done).
     pub done: bool,
@@ -543,6 +544,11 @@ impl Orchestra {
 
     /// The messages `member` has not read, as one text, each marked read as `how`.
     pub fn take_mail(&mut self, member: &str, how: &str) -> Option<String> {
+        // What the user attached goes with the turn that reads it: such
+        // messages wait for the member's next turn, all of them together.
+        if how == "mid-turn" && self.member(member)?.attached.iter().any(|(line, _, _)| !line.is_empty()) {
+            return None;
+        }
         let mail = std::mem::take(&mut self.member_mut(member)?.mail);
         if mail.is_empty() {
             return None;
@@ -558,6 +564,19 @@ impl Orchestra {
             return Some(mail[0].text.clone());
         }
         Some(mail.iter().map(|m| format!("[From {}]\n{}", self.title_of(&m.from), m.text)).collect::<Vec<_>>().join("\n\n"))
+    }
+
+    /// Cancel or Edit of the user's message `message` to `member` while it
+    /// waits to be read, as a chat's queued question: it goes from its chat,
+    /// with what it brought. Its text and what went with it, or None once read.
+    pub fn unqueue(&mut self, member: &str, message: &str) -> Option<(String, Vec<Value>)> {
+        let m = self.member_mut(member)?;
+        let at = m.mail.iter().position(|x| x.line == message && x.from == "user")?;
+        m.mail.remove(at);
+        m.attached.retain(|(line, _, _)| line != message);
+        let line = m.messages.iter().position(|x| x.id == message).map(|i| m.messages.remove(i));
+        self.updated = now();
+        line.map(|l| (l.text, l.sent))
     }
 
     /// Retry or Edit: `member`'s last message from the user, `message`, and
@@ -811,10 +830,10 @@ async fn compact_member(app: &AppHandle, id: &str, member: &str, chat: &Chat, se
 
 /// What several messages brought, as one turn takes it: the first file as the
 /// chat's file, the others with the rest of what was shared.
-fn merge_attached(list: Vec<(Option<ChatContext>, Option<ScreenContext>)>) -> (Option<ChatContext>, Option<ScreenContext>) {
+fn merge_attached(list: Vec<(String, Option<ChatContext>, Option<ScreenContext>)>) -> (Option<ChatContext>, Option<ScreenContext>) {
     let mut context: Option<ChatContext> = None;
     let mut all: Option<ScreenContext> = None;
-    for (file, shared) in list {
+    for (_, file, shared) in list {
         let mut shared = shared;
         match file {
             Some(ChatContext::File { name, path }) if context.is_some() => shared.get_or_insert_with(ScreenContext::default).files.insert(0, ShotRef { name, path }),
@@ -1774,10 +1793,15 @@ pub fn waiting(app: &AppHandle, chat_id: &str, waits: bool) {
     });
 }
 
-/// After a tool of a member's chat ran: the messages that came for it
-/// meanwhile go with the tool's answer, so it reads them at this step.
-pub fn with_mail(app: &AppHandle, chat_id: &str, text: String) -> String {
-    let Some((id, member)) = parse_chat(chat_id) else { return text };
+/// Whether `chat_id` is the chat of a project's member.
+pub fn is_member_chat(chat_id: &str) -> bool {
+    parse_chat(chat_id).is_some()
+}
+
+/// The messages that came for a member's chat while it worked, as it reads
+/// them after a tool, or nothing.
+pub fn step_mail(app: &AppHandle, chat_id: &str) -> String {
+    let Some((id, member)) = parse_chat(chat_id) else { return String::new() };
     let (id, member) = (id.to_string(), member.to_string());
     let mail = with(Some(app), &id, |o| {
         let mail = o.take_mail(&member, "mid-turn");
@@ -1787,11 +1811,19 @@ pub fn with_mail(app: &AppHandle, chat_id: &str, text: String) -> String {
         mail
     })
     .flatten();
-    match mail {
-        Some(mail) => format!(
-            "{text}\n\n<lumo-messages>\nWhile you were working, new messages came for you. Read them now: they may change what you do next.\n\n{mail}\n</lumo-messages>"
-        ),
-        None => text,
+    mail.map(|mail| {
+        format!("<lumo-messages>\nWhile you were working, new messages came for you. Read them now: they may change what you do next.\n\n{mail}\n</lumo-messages>")
+    })
+    .unwrap_or_default()
+}
+
+/// After a tool of a member's chat ran: the messages that came for it
+/// meanwhile go with the tool's answer, so it reads them at this step.
+/// Claude Code's own tools get them from its PostToolUse hook (`step_mail`).
+pub fn with_mail(app: &AppHandle, chat_id: &str, text: String) -> String {
+    match step_mail(app, chat_id) {
+        mail if mail.is_empty() => text,
+        mail => format!("{text}\n\n{mail}"),
     }
 }
 
@@ -1911,7 +1943,8 @@ pub fn orchestra_send(
         // What went with it waits with it, for the turn that reads it (in the member's chat's folder: chat.rs checks).
         if context.is_some() || screen.as_ref().is_some_and(|s| !s.is_empty()) {
             if let Some(m) = o.member_mut(&to) {
-                m.attached.push((context, screen));
+                let line = m.mail.last().map(|x| x.line.clone()).unwrap_or_default();
+                m.attached.push((line, context, screen));
             }
         }
         Ok::<bool, String>(wakes)
@@ -1921,6 +1954,14 @@ pub fn orchestra_send(
         wake(&app, &id, &to);
     }
     Ok(())
+}
+
+/// Cancel or Edit of the user's message waiting for its member
+/// (Orchestra::unqueue): its text and what went with it, null once read.
+#[tauri::command]
+pub fn orchestra_unqueue(app: AppHandle, id: String, member: String, message: String) -> Result<Value, String> {
+    let taken = with(Some(&app), &id, |o| o.unqueue(&member, &message)).ok_or_else(not_found)?;
+    Ok(taken.map(|(text, sent)| json!({ "text": text, "sent": sent })).unwrap_or(Value::Null))
 }
 
 /// Retry (`text` None) or Edit of a member's last message (Orchestra::rewind):
@@ -1936,7 +1977,8 @@ pub fn orchestra_retry(app: AppHandle, id: String, member: String, message: Stri
         chat.rewind(keep * 2);
         let wakes = o.deliver_with("user", &member, &said, sent, None)?;
         if let Some(m) = o.member_mut(&member) {
-            m.attached = attached;
+            let line = m.mail.last().map(|x| x.line.clone()).unwrap_or_default();
+            m.attached = attached.into_iter().map(|(_, c, s)| (line.clone(), c, s)).collect();
         }
         Ok::<bool, String>(wakes)
     })
@@ -2164,6 +2206,31 @@ mod tests {
     }
 
     #[test]
+    fn a_message_waiting_for_its_member_can_be_taken_back_and_waits_for_the_turn_its_files_go_with() {
+        let mut o = Orchestra::new("o1", Pick::default(), Pick::default());
+        let t = o.start_thread("T", "x").unwrap();
+        o.take_mail(&t, "woke");
+        o.member_mut(&t).unwrap().running = true;
+        o.deliver("user", &t, "prima").unwrap();
+        let sent = vec![json!({ "kind": "file", "label": "a.pdf" })];
+        o.deliver_with("user", &t, "seconda", sent, None).unwrap();
+        let first = o.member(&t).unwrap().mail[0].line.clone();
+        let second = o.member(&t).unwrap().mail[1].line.clone();
+        o.member_mut(&t).unwrap().attached.push((second.clone(), None, Some(ScreenContext::default())));
+        // With a file waiting, nothing is read mid-turn: it all goes with the next turn.
+        assert_eq!(o.take_mail(&t, "mid-turn"), None);
+        // Edit: the second goes back with what it brought, and its file with it.
+        let (text, sent) = o.unqueue(&t, &second).unwrap();
+        assert_eq!((text.as_str(), sent.len()), ("seconda", 1));
+        let m = o.member(&t).unwrap();
+        assert!(m.attached.is_empty() && m.mail.len() == 1 && !m.messages.iter().any(|x| x.id == second));
+        // Now the first is read at the next step; once read, it can't be taken back.
+        assert_eq!(o.take_mail(&t, "mid-turn").as_deref(), Some("prima"));
+        assert!(o.unqueue(&t, &first).is_none());
+        assert!(o.member(&t).unwrap().messages.iter().any(|x| x.id == first));
+    }
+
+    #[test]
     fn retry_takes_back_a_members_last_message_and_its_answer_while_nothing_came_of_it() {
         let mut o = Orchestra::new("o1", Pick::default(), Pick::default());
         o.start_thread("Via Roma", "Leggi il contratto").unwrap();
@@ -2205,7 +2272,7 @@ mod tests {
         // Two messages read in one turn: the first file is the chat's file, the second goes with the rest.
         let file = |n: &str| Some(ChatContext::File { name: n.into(), path: format!("C:/chats/{n}") });
         let shot = ScreenContext { shots: vec![ShotRef { name: "Screen 1".into(), path: "C:/shot.png".into() }], ..Default::default() };
-        let (context, screen) = merge_attached(vec![(file("a.pdf"), None), (file("b.pdf"), Some(shot))]);
+        let (context, screen) = merge_attached(vec![("l1".into(), file("a.pdf"), None), ("l2".into(), file("b.pdf"), Some(shot))]);
         assert!(matches!(context, Some(ChatContext::File { ref name, .. }) if name == "a.pdf"));
         let screen = screen.expect("the rest");
         assert_eq!(screen.files.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["b.pdf"]);
