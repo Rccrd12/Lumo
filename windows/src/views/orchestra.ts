@@ -41,7 +41,7 @@ import { State, type OrchestraPick } from "../core/state";
 import { language, t, tn } from "../i18n/i18n";
 import { activityLabel, bubble, compactMark, sentAgo, speedLine, speedText, typingDots } from "./chat-messages";
 import type { ChatMessage, TokenSpeed } from "../core/state";
-import { withReplyFile, type ReplyFileKind } from "../core/file-names";
+import { withReplyFile, type ReplyFile, type ReplyFileKind } from "../core/file-names";
 import { MAX_COMMANDS, type RanCommand } from "../core/terminal";
 import { splitFix } from "./chat-fix";
 import type { SentItem } from "../core/sent";
@@ -96,6 +96,8 @@ export interface OrchestraView {
   send(text: string, attached?: OrchestraAttached, asked?: string): Promise<void>;
   /** The chat of the member on screen, whose folder what is attached goes to; none before the project has one. */
   memberChat(): string | null;
+  /** The files of the member on screen's answers, which its words may name (views/file-links.ts). */
+  knownFiles(): string[];
   /** The chat's streams: true when `chat` is a member's, so the chat itself has nothing to do. */
   delta(chat: string, text: string): boolean;
   activity(chat: string, activity: ChatActivity): boolean;
@@ -623,12 +625,17 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     if (planOpen && plan.length > 0) log.append(planCard(plan));
     if (coord && snap.locks.length > 0) log.append(locksCard(snap));
     let files: HTMLElement | null = null;
+    const under = sharedUnder(m);
     // The agents its answers started, as a chat draws them: its messages to them before each answer, their card after it.
     hooks.agentsReset?.();
     let answer = 0;
-    for (const msg of m.messages) {
+    for (const raw of m.messages) {
       // The user's message waiting for the member's next step is over the field.
-      if (msg.kind === "user" && msg.delivered === "queued") continue;
+      if (raw.kind === "user" && raw.delivered === "queued") continue;
+      // A file it shared goes under the answer that followed, as a chat's answer shows the files it made.
+      if (raw.kind === "file" && under.skip.has(raw.id)) continue;
+      const more = under.files.get(raw.id);
+      const msg = more ? { ...raw, answer: { ...raw.answer, files: more } } : raw;
       if (msg.kind === "file" && msg.file) {
         if (!files) {
           files = h("div", { class: "orc-files" });
@@ -666,6 +673,33 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     }
     if (error) log.append(h("div", { class: "orc-error", text: error }));
     log.scrollTop = atEnd ? log.scrollHeight : kept;
+  }
+
+  /**
+   * The files `m` shared itself (share_file) in its own chat: under the
+   * answer that came after, with those that answer made or changed, as a
+   * chat's answer shows its files. One shared while it still works keeps
+   * its card until that answer comes. In the coordinator's chat they stay
+   * cards: the threads' files, given to the user.
+   */
+  function sharedUnder(m: OrchestraMember): { skip: Set<string>; files: Map<string, ReplyFile[]> } {
+    const skip = new Set<string>();
+    const files = new Map<string, ReplyFile[]>();
+    if (m.id === COORDINATOR) return { skip, files };
+    let pending: OrchestraMessage[] = [];
+    for (const msg of m.messages) {
+      if (msg.kind === "file" && msg.file && msg.from === m.id) pending.push(msg);
+      else if (msg.kind === "assistant" && pending.length > 0) {
+        let list: ReplyFile[] = [...(msg.answer?.files ?? [])];
+        for (const f of pending) {
+          skip.add(f.id);
+          list = withReplyFile(list, f.file!.path, "created");
+        }
+        files.set(msg.id, list);
+        pending = [];
+      }
+    }
+    return { skip, files };
   }
 
   function planCard(plan: readonly OrchestraStep[]): HTMLElement {
@@ -1406,6 +1440,11 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     send,
     memberChat() {
       return page === "project" ? current()?.chat ?? null : null;
+    },
+    knownFiles() {
+      const m = page === "project" ? current() : undefined;
+      if (!m) return [];
+      return m.messages.flatMap((x) => [...(x.file ? [x.file.path] : []), ...(x.answer?.files ?? []).map((f) => f.path)]);
     },
     delta(chat, text) {
       const m = snap ? memberByChat(snap, chat) : undefined;

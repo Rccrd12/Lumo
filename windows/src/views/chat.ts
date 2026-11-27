@@ -1825,7 +1825,8 @@ export function buildPrompt(
 
   // The files an answer names or made, as buttons and cards (views/file-links.ts).
   setFileLinkHost({
-    known: () => chatFiles(filesChat()).map((f) => f.path),
+    // A project member's: its chat's files, and those its answers name (shared too).
+    known: () => [...chatFiles(filesChat()).map((f) => f.path), ...(orchestra.inProject() ? orchestra.knownFiles() : [])],
     showChatFiles: () => {
       openFiles();
       showFilesTab("chat");

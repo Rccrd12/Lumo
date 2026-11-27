@@ -213,6 +213,30 @@ test("a queued message can be cancelled or taken back to the field, as a chat's 
   assert.equal($(".chat-input").value, "");
 });
 
+test("a file a thread shared goes under its answer, as in a chat", async () => {
+  const shared = { path: "C:/Leases/parallel.md", name: "parallel.md", markdown: true };
+  answers.orchestra_open = {
+    ...SNAP,
+    threads: [member("t1", "Main St", "done", [
+      { id: "s1", at: 1, kind: "relay", from: "coordinator", text: "Write the report." },
+      { id: "s2", at: 2, kind: "file", from: "t1", text: "", file: shared },
+      { id: "s3", at: 3, kind: "assistant", from: "t1", text: "The whole report is here: parallel.md" },
+    ])],
+  };
+  view = buildPrompt(() => {});
+  view.sync();
+  await flush();
+  item("t1").fire("click");
+  await flush();
+  // No card of its own in the thread: one under the answer, as a chat's answer shows the files it made.
+  assert.equal($(".orc-files"), null);
+  assert.equal($(".reply-file").querySelector(".attach-name").textContent, "parallel.md");
+  // In the coordinator's chat the threads' files stay cards.
+  item("coordinator").fire("click");
+  await flush();
+  assert.ok($(".orc-files"));
+});
+
 test("a card's option answers the member that asked, at once", async () => {
   await flush();
   const options = $(".orc-card").find(".orc-opt");

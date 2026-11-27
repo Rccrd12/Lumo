@@ -94,7 +94,8 @@ const SNAP = {
       state: "done", activity: null, queued: 0,
       messages: [
         msg("i1", "relay", "coordinator", "Leggi `Contratti/corso-italia-3.pdf` ed estrai i dati, poi mandameli.", { ago: 11 }),
-        msg("i2", "assistant", "t2", "Fatto: 4+4 anni, 950 €/mese, nessuna clausola strana.", { ago: 4 }),
+        msg("i1b", "file", "t2", "", { file: { path: "Contratti/corso-italia-3.md", name: "corso-italia-3.md", markdown: true }, ago: 4 }),
+        msg("i2", "assistant", "t2", "Fatto: 4+4 anni, 950 €/mese, nessuna clausola strana. Il resoconto completo è qui: corso-italia-3.md", { ago: 4 }),
         msg("i3", "relay", "t2", "4+4 anni, 950 €/mese, deposito 2 mensilità, penale di 3 mensilità, nessuna clausola strana.", { to: "coordinator", ago: 4 }),
       ],
     },
@@ -176,6 +177,7 @@ await ctx.addInitScript(([snap, report]) => {
       return structuredClone(snap);
     },
     orchestra_read_file: ({ path }) => ({ name: path.split("/").pop(), path, text: report }),
+    chat_file_find: ({ names }) => names.map((n) => (n === "corso-italia-3.md" ? { path: "Contratti/corso-italia-3.md", folder: false } : null)),
   };
 }, [SNAP, REPORT]);
 
@@ -248,6 +250,11 @@ await member("t1");
 await emit("chat-delta", { chat: "orch-o1-m-t1", text: "Ho trovato le penali a pagina 6: **6 mesi di preavviso**, nessuna penale dopo il primo anno. Ora aggiungo al riepilogo la riga di via Verdi 7" });
 await emit("chat-activity", { chat: "orch-o1-m-t1", activity: { kind: "edit", detail: "riepilogo.csv" } });
 await shot("3-thread-al-lavoro");
+await member("t2");
+await page.waitForTimeout(500);
+await shot("3d-thread-file-sotto-la-risposta");
+await member("t1");
+await page.waitForTimeout(300);
 // A message from the coordinator, unfolded by a click on who it is from.
 await page.evaluate(() => document.querySelector(".orc-from").click());
 await page.waitForTimeout(250);
