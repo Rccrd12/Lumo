@@ -94,7 +94,7 @@ export interface OrchestraMessage {
    * repository of the environment, `holder` its folder) and "clone-failed" (`text` "owner/name: why"). A
    * relay with "reply" is a thread's answer sent on to the coordinator.
    */
-  note?: "lock" | "started" | "stopped" | "error" | "answer" | "limit" | "cloned" | "clone-failed" | "reply";
+  note?: "lock" | "started" | "stopped" | "error" | "answer" | "limit" | "cloned" | "clone-failed" | "reply" | "compacted" | "compact-nothing" | "compact-failed";
   /** A "limit" note: when the member goes on, seconds since the epoch. */
   until?: number;
   /** A "lock" note: the member changing the file. */
@@ -215,6 +215,7 @@ export const Orchestra = {
   setPick: (id: string, member: string, pick: OrchestraPick) => ask<OrchestraSnapshot>("orchestra_set_pick", { id, member, pick }),
   open: (id: string) => ask<OrchestraSnapshot>("orchestra_open", { id }),
   /** `to`: "coordinator" or a thread id. */
+  compact: (id: string, member: string) => ask<void>("orchestra_compact", { id, member }),
   keepAnswer: (id: string, member: string, message: string, answer: OrchestraAnswer) => ask<void>("orchestra_keep_answer", { id, member, message, answer }),
   send: (id: string, to: string, text: string, attached?: OrchestraAttached, asked?: string) =>
     ask<void>("orchestra_send", {

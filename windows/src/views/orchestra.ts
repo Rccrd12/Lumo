@@ -30,7 +30,7 @@ import {
   COORDINATOR, Orchestra, fieldsOf, memberByChat, memberOf, membersOf, planProgress,
   type OrchestraAnswer, type OrchestraAttached, type OrchestraFile, type ProjectFields, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
 } from "../core/orchestra-bridge";
-import { providerDef } from "../core/providers";
+import { isCliProvider, providerDef } from "../core/providers";
 import { ORCHESTRA_ACCENT, resolvePick } from "../core/orchestra-picks";
 import { saveSettings } from "./chat-attach";
 import { buildModelMenu, buildProjectForm, buildProjectList, modelName, projectsCard, type ProjectForm } from "./projects";
@@ -39,13 +39,13 @@ import { durationText } from "../core/chat-agents";
 import { Sound } from "../core/sound";
 import { State, type OrchestraPick } from "../core/state";
 import { language, t, tn } from "../i18n/i18n";
-import { activityLabel, bubble, sentAgo, typingDots } from "./chat-messages";
+import { activityLabel, bubble, compactMark, sentAgo, typingDots } from "./chat-messages";
 import type { ChatMessage, TokenSpeed } from "../core/state";
 import { withReplyFile, type ReplyFileKind } from "../core/file-names";
 import { MAX_COMMANDS, type RanCommand } from "../core/terminal";
 import { splitFix } from "./chat-fix";
 import type { SentItem } from "../core/sent";
-import { effortLabel } from "./chat-strings";
+import { AUTO_COMPACT_PCT, COMPACT_STRINGS, effortLabel } from "./chat-strings";
 import { readyProviders } from "./chat-models";
 import { ORCHESTRA_STRINGS as S } from "./orchestra-strings";
 import { dropChatFiles } from "../core/chat-files";
@@ -103,6 +103,10 @@ export interface OrchestraView {
   turnFile(chat: string, kind: ReplyFileKind | "read", path: string): boolean;
   turnCommand(chat: string, ran: RanCommand): boolean;
   turnSpeed(chat: string, speed: TokenSpeed): boolean;
+  /** How full a member's context is: a local model's nearly full is compacted, as a chat is. */
+  contextSeen(chat: string, used: number, total: number, estimate?: boolean): void;
+  /** "/compact" for the member on screen: true when it was its to do (not a CLI's, which compacts itself). */
+  compactMember(): boolean;
   /** The field's placeholder: who it writes to. */
   placeholder(): string;
   /** The model button's words and dot. */
@@ -201,6 +205,8 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   const seenCards = new Set<string>();
   /** What each member's turn did so far besides its words, by its chat: kept with its answer when it comes. */
   const turnExtras = new Map<string, OrchestraAnswer>();
+  /** The members' chats a compaction was asked for, while their context stays that full. */
+  const compactAsked = new Set<string>();
   const extrasOf = (chat: string): OrchestraAnswer => {
     let x = turnExtras.get(chat);
     if (!x) turnExtras.set(chat, (x = {}));
@@ -703,6 +709,13 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       }
       case "stopped":
         return h("div", { class: "orc-note", text: t(S.stopped) });
+      // Its conversation compacted (orchestra.rs compact_member): the chat's own line, its summary on a click.
+      case "compacted":
+        return compactMark(m.chat, msg.at, msg.text);
+      case "compact-nothing":
+        return h("div", { class: "orc-note", text: t(COMPACT_STRINGS.nothing) });
+      case "compact-failed":
+        return h("div", { class: "orc-note limit" }, h("span", { class: "orc-note-main", text: msg.text }));
       case "error": {
         // As a chat's failed answer: what went wrong, and the card that puts it right when Lumo can (signed out, not installed).
         const [problem, fix] = splitFix(msg.text);
@@ -1258,6 +1271,26 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       }
       renderMarkdown(liveEl, text, { streaming: true, scope: scope(m, "live") });
       if (atEnd) log.scrollTop = log.scrollHeight;
+      return true;
+    },
+    contextSeen(chat, used, total, estimate) {
+      const m = snap ? memberByChat(snap, chat) : undefined;
+      if (!snap || !m || estimate || !(total > 0)) return;
+      const pct = Math.round((used / total) * 100);
+      // Asked once while it stays this full; a local model only, as a chat's auto-compaction.
+      if (pct < AUTO_COMPACT_PCT) compactAsked.delete(chat);
+      if (pct < AUTO_COMPACT_PCT || compactAsked.has(chat) || State.settings.chatAutoCompact === false) return;
+      if (!providerDef(pickOf(m).provider).urlField) return;
+      compactAsked.add(chat);
+      void Orchestra.compact(snap.id, m.id).catch(() => compactAsked.delete(chat));
+    },
+    compactMember() {
+      const m = current();
+      if (!snap || !m || page !== "project" || isCliProvider(pickOf(m).provider)) return false;
+      void Orchestra.compact(snap.id, m.id).catch((err) => {
+        error = t(S.notSent, { error: String(err).replace(/^Error:\s*/, "") });
+        drawLog(true);
+      });
       return true;
     },
     turnFile(chat, kind, path) {

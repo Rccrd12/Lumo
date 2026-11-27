@@ -1122,7 +1122,11 @@ export function buildPrompt(
       if (total > 0) u = { ...u, context: { ...u.context, total } };
     }
     seenUsage.set(u.provider, { ...u, at: Date.now() });
-    if (u.context && typeof u.context.chat === "string") seenContext.set(u.context.chat, { ...u, at: Date.now() });
+    if (u.context && typeof u.context.chat === "string") {
+      seenContext.set(u.context.chat, { ...u, at: Date.now() });
+      // A project member's: compacted when nearly full, as this chat would be (views/orchestra.ts).
+      orchestra.contextSeen(u.context.chat, u.context.used, u.context.total, u.context.estimate);
+    }
     // The usage menu open on this chat shows how full it now is.
     if (body.classList.contains("metering")) drawUsageMenu();
     State.notify();
@@ -4224,6 +4228,13 @@ export function buildPrompt(
         return;
       }
       const own = lumoCommand(typed, State.settings.chatProvider);
+      // "/compact": the member's conversation, Lumo's to compact unless a CLI does it itself.
+      if (own === "compact" && orchestra.compactMember()) {
+        closeSlash();
+        setInput("");
+        Sound.play("blip");
+        return;
+      }
       if (own && own !== "compact") {
         closeSlash();
         setInput("");

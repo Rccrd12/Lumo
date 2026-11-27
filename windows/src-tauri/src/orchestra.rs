@@ -191,6 +191,12 @@ pub struct Member {
     /// selection…), in their chat's folder: it goes with the turn that reads them.
     #[serde(skip)]
     pub attached: Vec<(Option<ChatContext>, Option<ScreenContext>)>,
+    /// Where its conversation was compacted and its summary (`Chat::restore`), as a chat keeps it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compact: Option<(usize, String)>,
+    /// Asked to be compacted while a turn of its ran: before its next one.
+    #[serde(skip)]
+    pub compact_due: bool,
     pub mail: Vec<Mail>,
     /// It said its task is done (message_coordinator with done).
     pub done: bool,
@@ -728,6 +734,27 @@ fn interrupted(m: &mut Member) {
     }
 }
 
+/// A member's conversation compacted (chat.rs compact): from now on its model
+/// starts from the summary, kept with the member for when Lumo restarts. Said
+/// in its chat, as a chat says it.
+async fn compact_member(app: &AppHandle, id: &str, member: &str, chat: &Chat, settings: &crate::settings::Settings) {
+    let done = chat::compact(chat, settings).await;
+    with(Some(app), id, |o| {
+        let note = match done {
+            // The line where it was compacted, its summary under it on a click.
+            Ok(Some(c)) => {
+                if let Some(m) = o.member_mut(member) {
+                    m.compact = Some((c.upto, c.summary.clone()));
+                }
+                Message { kind: "note".into(), from: "lumo".into(), note: Some("compacted".into()), text: c.summary, ..Default::default() }
+            }
+            Ok(None) => Message { kind: "note".into(), from: "lumo".into(), note: Some("compact-nothing".into()), ..Default::default() },
+            Err(e) => Message { kind: "note".into(), from: "lumo".into(), note: Some("compact-failed".into()), text: e, ..Default::default() },
+        };
+        o.push(member, note);
+    });
+}
+
 /// What several messages brought, as one turn takes it: the first file as the
 /// chat's file, the others with the rest of what was shared.
 fn merge_attached(list: Vec<(Option<ChatContext>, Option<ScreenContext>)>) -> (Option<ChatContext>, Option<ScreenContext>) {
@@ -814,7 +841,7 @@ fn chat_of(member: &Member) -> Arc<Chat> {
         .or_insert_with(|| {
             let chat = Chat::new(&member.chat);
             if !member.history.is_empty() {
-                chat.restore(turns_of(&member.history), None, member.cli.clone(), None);
+                chat.restore(turns_of(&member.history), None, member.cli.clone(), member.compact.clone());
             }
             Arc::new(chat)
         })
@@ -1005,6 +1032,11 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
             let repo_folders: Vec<PathBuf> = with(None, &id, |o| repo_dirs(o).into_iter().map(|(_, d)| d).collect()).unwrap_or_default();
             let settings = settings_for(&app, &pick);
             let cli = is_cli(&settings.chat_provider);
+            // Asked to be compacted while it worked: now, before this turn, as a chat is before its question.
+            let due = with(None, &id, |o| o.member_mut(&member).map(|m| std::mem::take(&mut m.compact_due))).flatten().unwrap_or(false);
+            if due && !cli {
+                compact_member(&app, &id, &member, &conversation, &settings).await;
+            }
             // What the member is sent, its role first for a CLI's first message: kept as it is, so
             // the conversation given back after a restart has it too.
             let sent = if cli && !role.is_empty() { format!("{}\n\n---\n\n{query}", role.trim()) } else { query.clone() };
@@ -1832,6 +1864,29 @@ pub fn orchestra_send(
     if wakes {
         wake(&app, &id, &to);
     }
+    Ok(())
+}
+
+/// "/compact", or the island seeing a local model's context nearly full: the
+/// member's conversation is compacted now, or before its next turn when one runs.
+#[tauri::command]
+pub async fn orchestra_compact(app: AppHandle, id: String, member: String) -> Result<(), String> {
+    let now = with(None, &id, |o| {
+        let m = o.member_mut(&member)?;
+        if m.running {
+            m.compact_due = true;
+            return Some(None);
+        }
+        Some(Some((chat_of(m), m.pick.clone())))
+    })
+    .flatten()
+    .ok_or_else(not_found)?;
+    let Some((chat, pick)) = now else { return Ok(()) };
+    let settings = settings_for(&app, &pick);
+    if is_cli(&settings.chat_provider) {
+        return Err(crate::i18n::t("This provider compacts the chat itself: send /compact."));
+    }
+    compact_member(&app, &id, &member, &chat, &settings).await;
     Ok(())
 }
 

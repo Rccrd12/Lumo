@@ -258,6 +258,20 @@ test("what is attached goes with the message, into the member's chat's files, an
   assert.deepEqual(sent("orchestra_send").at(-1).sent.map((i) => i.label), ["deposit.pdf"]);
 });
 
+test("a local model member nearly full is compacted once, as a chat; /compact compacts the member on screen", async () => {
+  await flush();
+  emit("chat-usage", { provider: "lmstudio", context: { chat: "orc-o1-t1", used: 28_000, total: 32_768 } });
+  emit("chat-usage", { provider: "lmstudio", context: { chat: "orc-o1-t1", used: 29_000, total: 32_768 } });
+  assert.deepEqual(sent("orchestra_compact"), [{ id: "o1", member: "t1" }], "asked once while it stays that full");
+  // An API model's is not compacted by itself, as in a chat.
+  emit("chat-usage", { provider: "anthropic", context: { chat: SNAP.coordinator.chat, used: 190_000, total: 200_000 } });
+  assert.equal(sent("orchestra_compact").length, 1);
+  // Asked with /compact: the member on screen's, never words sent to it.
+  await typeAndSend("/compact");
+  assert.deepEqual(sent("orchestra_compact").at(-1), { id: "o1", member: "coordinator" });
+  assert.deepEqual(sent("orchestra_send"), []);
+});
+
 test("with no project, the list shows; New project's form makes one with what it says", async () => {
   await flush();
   calls.length = 0;
