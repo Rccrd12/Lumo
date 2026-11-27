@@ -105,6 +105,18 @@ export interface OrchestraMessage {
   to?: string;
   /** The user's message: what went with it, shown on its bubble as in a chat. */
   sent?: SentItem[];
+  /** An answer: what its turn did besides its words, drawn under it as a chat's (orchestra.rs Message::answer). */
+  answer?: OrchestraAnswer;
+}
+
+/** What a member's turn did besides its words, as a chat's answer keeps it (core/state.ts ChatMessage). */
+export interface OrchestraAnswer {
+  files?: import("./file-names").ReplyFile[];
+  commands?: import("./terminal").RanCommand[];
+  speed?: import("./state").TokenSpeed;
+  computer?: import("./computer-use").ComputerRecap;
+  warning?: import("./chats").AnswerWarning;
+  fix?: import("./bridge").ChatFix;
 }
 
 /** What the user attached to a message to a member, as a chat's question takes it (views/chat.ts). */
@@ -203,6 +215,7 @@ export const Orchestra = {
   setPick: (id: string, member: string, pick: OrchestraPick) => ask<OrchestraSnapshot>("orchestra_set_pick", { id, member, pick }),
   open: (id: string) => ask<OrchestraSnapshot>("orchestra_open", { id }),
   /** `to`: "coordinator" or a thread id. */
+  keepAnswer: (id: string, member: string, message: string, answer: OrchestraAnswer) => ask<void>("orchestra_keep_answer", { id, member, message, answer }),
   send: (id: string, to: string, text: string, attached?: OrchestraAttached) =>
     ask<void>("orchestra_send", { id, to, text, ...(attached ? { context: attached.context, screen: attached.screen, sent: attached.sent } : {}) }),
   /** Answers card `message` of `member` (who asked) with option `choice`. */

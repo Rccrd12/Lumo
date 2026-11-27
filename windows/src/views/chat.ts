@@ -748,7 +748,7 @@ export function buildPrompt(
 
   const body = h("div", { class: "chat-body" });
   // The projects (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
-  const orchestra = buildOrchestra(() => drawIslandActivity(), { openSent: (msg, item) => void openSent(msg, item) });
+  const orchestra = buildOrchestra(() => drawIslandActivity(), { openSent: (msg, item) => void openSent(msg, item), openAgents: () => openAgents() });
   const picker = buildPicker(() => {
     if (picker.isOpen) coverLog();
     body.classList.toggle("picking", picker.isOpen);
@@ -3263,6 +3263,7 @@ export function buildPrompt(
   void onEvent<{ chat: string } & Record<string, unknown>>("chat-tokens", (made) => {
     const run = runs.get(made.chat);
     const speed = cleanSpeed(made);
+    if (speed && orchestra.turnSpeed(made.chat, speed)) return;
     if (!run || !speed) return;
     run.speed = speed;
     drawSpeed(run);
@@ -3369,6 +3370,11 @@ export function buildPrompt(
   // A file the answer read, edited or created: the chat's files list it.
   void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
     addChatFile(chat, kind, path, undefined, undefined, runs.get(chat)?.turn);
+    // A project member's: under its answer when it comes (views/orchestra.ts).
+    if (orchestra.turnFile(chat, kind, path)) {
+      if (chat === filesChat()) drawChatFiles();
+      return;
+    }
     // A file of the computer, or a copy changed or made in the chat's folder
     // (workspace.rs): a card under the answer (views/file-links.ts). A copy
     // made from nothing stays "created": there is no original to put it back over.
@@ -3392,6 +3398,7 @@ export function buildPrompt(
     const chat = (raw as { chat?: unknown } | null)?.chat;
     const run = typeof chat === "string" ? runs.get(chat) : undefined;
     const ran = ranCommandOf(raw);
+    if (typeof chat === "string" && ran && orchestra.turnCommand(chat, ran)) return;
     if (!run || !ran) return;
     const commands = (run.commands ??= []);
     commands.push(ran);

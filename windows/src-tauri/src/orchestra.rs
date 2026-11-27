@@ -140,6 +140,11 @@ pub struct Message {
     /// The user's message: what went with it (core/sent.ts SentItem), shown on its bubble as in a chat.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sent: Vec<Value>,
+    /// An answer: what its turn did besides its words, drawn under it as a
+    /// chat's (`computer`, `warning`, `fix` from its reply; `files`, `commands`,
+    /// `speed` from the turn's events, kept by the island: orchestra_keep_answer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<Value>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -1031,7 +1036,19 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                         // The coordinator with nothing to say: kept in its conversation, not shown.
                         let quiet = member == COORDINATOR && text.starts_with(QUIET);
                         if !text.is_empty() && !quiet {
-                            o.push(&member, Message { kind: "assistant".into(), from: member.clone(), text: text.clone(), ..Default::default() });
+                            // What the reply says besides its words, as a chat's answer keeps it.
+                            let mut extra = serde_json::Map::new();
+                            if let Some(c) = r.computer.clone() {
+                                extra.insert("computer".into(), c);
+                            }
+                            if let Some(w) = r.warning.as_ref().and_then(|w| serde_json::to_value(w).ok()) {
+                                extra.insert("warning".into(), w);
+                            }
+                            if let Some(f) = r.fix {
+                                extra.insert("fix".into(), json!(f));
+                            }
+                            let answer = (!extra.is_empty()).then_some(Value::Object(extra));
+                            o.push(&member, Message { kind: "assistant".into(), from: member.clone(), text: text.clone(), answer, ..Default::default() });
                         }
                         // A thread's answer reaches the coordinator by itself, unless it wrote to it meanwhile.
                         let wrote = o.member(&member).is_some_and(|m| m.wrote_coordinator);
@@ -1813,6 +1830,27 @@ pub fn orchestra_send(
         wake(&app, &id, &to);
     }
     Ok(())
+}
+
+/// The island kept what a member's turn did (the files it made or changed,
+/// the commands it ran, how fast its local model wrote): with its answer.
+#[tauri::command]
+pub fn orchestra_keep_answer(app: AppHandle, id: String, member: String, message: String, answer: Value) -> Result<(), String> {
+    let Value::Object(fields) = answer else { return Err("Not an answer's details.".into()) };
+    with(Some(&app), &id, |o| {
+        let line = o.member_mut(&member)?.messages.iter_mut().find(|m| m.id == message && m.kind == "assistant")?;
+        let mut kept = match line.answer.take() {
+            Some(Value::Object(k)) => k,
+            _ => serde_json::Map::new(),
+        };
+        for (k, v) in fields.into_iter().filter(|(k, _)| matches!(k.as_str(), "files" | "commands" | "speed")) {
+            kept.insert(k, v);
+        }
+        line.answer = Some(Value::Object(kept));
+        Some(())
+    })
+    .flatten()
+    .ok_or_else(not_found)
 }
 
 #[tauri::command]

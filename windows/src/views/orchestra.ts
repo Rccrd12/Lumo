@@ -28,7 +28,7 @@ import { renderMarkdown } from "./markdown";
 import { Bridge, type ChatActivity } from "../core/bridge";
 import {
   COORDINATOR, Orchestra, fieldsOf, memberByChat, memberOf, membersOf, planProgress,
-  type OrchestraAttached, type OrchestraFile, type ProjectFields, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
+  type OrchestraAnswer, type OrchestraAttached, type OrchestraFile, type ProjectFields, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
 } from "../core/orchestra-bridge";
 import { providerDef } from "../core/providers";
 import { ORCHESTRA_ACCENT, resolvePick } from "../core/orchestra-picks";
@@ -40,7 +40,10 @@ import { Sound } from "../core/sound";
 import { State, type OrchestraPick } from "../core/state";
 import { language, t, tn } from "../i18n/i18n";
 import { activityLabel, bubble, sentAgo, typingDots } from "./chat-messages";
-import type { ChatMessage } from "../core/state";
+import type { ChatMessage, TokenSpeed } from "../core/state";
+import { withReplyFile, type ReplyFileKind } from "../core/file-names";
+import { MAX_COMMANDS, type RanCommand } from "../core/terminal";
+import { splitFix } from "./chat-fix";
 import type { SentItem } from "../core/sent";
 import { effortLabel } from "./chat-strings";
 import { readyProviders } from "./chat-models";
@@ -95,6 +98,10 @@ export interface OrchestraView {
   /** The chat's streams: true when `chat` is a member's, so the chat itself has nothing to do. */
   delta(chat: string, text: string): boolean;
   activity(chat: string, activity: ChatActivity): boolean;
+  /** What a member's turn did besides its words (a file, a command, its speed): kept with its answer. True when `chat` is a member's. */
+  turnFile(chat: string, kind: ReplyFileKind | "read", path: string): boolean;
+  turnCommand(chat: string, ran: RanCommand): boolean;
+  turnSpeed(chat: string, speed: TokenSpeed): boolean;
   /** The field's placeholder: who it writes to. */
   placeholder(): string;
   /** The model button's words and dot. */
@@ -171,13 +178,15 @@ export function summaryOf(s: OrchestraSnapshot, asks: (m: OrchestraMember) => bo
 /** What the chat lends the projects: a click on what went with a message opens it as in a chat. */
 export interface OrchestraHooks {
   openSent?: (message: ChatMessage, item: SentItem) => void;
+  /** Settings → Agents, for a card that puts a CLI right (views/chat-fix.ts). */
+  openAgents?: () => void;
 }
 
 /** A member's message as a chat's: drawn by the same bubble, with its actions, its time and what went with it. */
 function asChatMessage(msg: OrchestraMessage, role: "user" | "assistant"): ChatMessage {
   let id = 0;
   for (const c of msg.id) id = (Math.imul(id, 31) + c.charCodeAt(0)) | 0;
-  return { id, role, content: msg.text, ...(msg.at ? { at: msg.at } : {}), ...(msg.sent?.length ? { sent: msg.sent } : {}) };
+  return { id, role, content: msg.text, ...(msg.at ? { at: msg.at } : {}), ...(msg.sent?.length ? { sent: msg.sent } : {}), ...(msg.answer ?? {}) };
 }
 
 export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraHooks = {}): OrchestraView {
@@ -189,6 +198,13 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   let askedOnIsland = "";
   /** The cards the user has seen on the open island: the closed island no longer says they ask. */
   const seenCards = new Set<string>();
+  /** What each member's turn did so far besides its words, by its chat: kept with its answer when it comes. */
+  const turnExtras = new Map<string, OrchestraAnswer>();
+  const extrasOf = (chat: string): OrchestraAnswer => {
+    let x = turnExtras.get(chat);
+    if (!x) turnExtras.set(chat, (x = {}));
+    return x;
+  };
   let summaries: OrchestraSummary[] = [];
   /** The list was asked once: its count can be said. */
   let listed = false;
@@ -571,7 +587,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       case "assistant": {
         // The last answer keeps its actions in sight, as a chat's does.
         const last = m.messages.filter((x) => x.kind === "assistant").at(-1)?.id === msg.id && m.state !== "working";
-        return [bubble(asChatMessage(msg, "assistant"), { scope: scope(m, msg.id), shown: last, chat: m.chat })];
+        return [bubble(asChatMessage(msg, "assistant"), { scope: scope(m, msg.id), shown: last, chat: m.chat, onOpenAgents: hooks.openAgents })];
       }
       case "relay":
         // Lumo's own (an email), never a member's message.
@@ -686,8 +702,11 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       }
       case "stopped":
         return h("div", { class: "orc-note", text: t(S.stopped) });
-      case "error":
-        return h("div", { class: "orc-note error", text: msg.text });
+      case "error": {
+        // As a chat's failed answer: what went wrong, and the card that puts it right when Lumo can (signed out, not installed).
+        const [problem, fix] = splitFix(msg.text);
+        return bubble({ ...asChatMessage({ ...msg, text: problem }, "assistant"), failed: true, ...(fix ? { fix } : {}) }, { onOpenAgents: hooks.openAgents, chat: m.chat });
+      }
       // A repository of the project's environment, cloned before the first turn (orchestra.rs ensure_repos).
       case "cloned":
         return h("div", { class: "orc-act cloned", title: msg.holder ?? "" }, h("span", { text: t(S.cloned, { repo: msg.text }) }));
@@ -1087,6 +1106,16 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
         const answers = (x: OrchestraMember | undefined) => x?.messages.filter((y) => y.kind === "assistant").length ?? 0;
         // Its turn ended, or its answer came whole: the streamed text gives way.
         if (m.state !== "working" || answers(m) > answers(before)) live.delete(m.chat);
+        // Its answer came: what the turn did goes with it, as with a chat's answer, kept by Rust.
+        const extras = turnExtras.get(m.chat);
+        if (extras && answers(m) > answers(before)) {
+          const last = m.messages.filter((x) => x.kind === "assistant").at(-1);
+          if (last && Object.keys(extras).length > 0) {
+            last.answer = { ...(last.answer ?? {}), ...extras };
+            void Orchestra.keepAnswer(s.id, m.id, last.id, extras).catch(() => {});
+          }
+          turnExtras.delete(m.chat);
+        } else if (extras && m.state !== "working") turnExtras.delete(m.chat);
         if (m.state !== "working") acts.delete(m.chat);
       }
     }
@@ -1228,6 +1257,26 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       }
       renderMarkdown(liveEl, text, { streaming: true, scope: scope(m, "live") });
       if (atEnd) log.scrollTop = log.scrollHeight;
+      return true;
+    },
+    turnFile(chat, kind, path) {
+      if (!snap || !memberByChat(snap, chat)) return false;
+      // A file it only read is in the chat's files, not under its answer.
+      if (kind !== "read") {
+        const x = extrasOf(chat);
+        x.files = withReplyFile(x.files ?? [], path, kind);
+      }
+      return true;
+    },
+    turnCommand(chat, ran) {
+      if (!snap || !memberByChat(snap, chat)) return false;
+      const x = extrasOf(chat);
+      x.commands = [...(x.commands ?? []), ran].slice(-MAX_COMMANDS);
+      return true;
+    },
+    turnSpeed(chat, speed) {
+      if (!snap || !memberByChat(snap, chat)) return false;
+      extrasOf(chat).speed = speed;
       return true;
     },
     activity(chat, activity) {

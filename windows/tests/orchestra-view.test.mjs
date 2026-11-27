@@ -362,6 +362,8 @@ test("a member's answer streams in under its chat id; the next update has it who
   item("t1").fire("click");
   emit("chat-delta", { chat: "orc-o1-t1", text: "The deposit is **three** months" });
   emit("chat-activity", { chat: "orc-o1-t1", activity: { kind: "edit", detail: "summary.csv" } });
+  // A file it changed meanwhile: under its answer when it comes, as in a chat.
+  emit("chat-file", { chat: "orc-o1-t1", kind: "edited", path: "C:\\Leases\\summary.csv" });
   assert.match($(".orc-log").querySelector(".reply").textContent, /The deposit is three months/);
   assert.match($(".orc-now").textContent, /summary\.csv/);
   assert.match(item("t1").querySelector(".orc-item-step").textContent, /summary\.csv/);
@@ -373,6 +375,14 @@ test("a member's answer streams in under its chat id; the next update has it who
   const replies = $(".orc-log").find(".reply").map((r) => r.textContent);
   assert.deepEqual(replies, ["The deposit is three months."]);
   assert.equal($(".orc-now"), null);
+  assert.deepEqual(sent("orchestra_keep_answer"), [{ id: "o1", member: "t1", message: "a2", answer: { files: [{ path: "C:\\Leases\\summary.csv", kind: "edited" }] } }]);
+  // Its actions as a chat answer's: Copy, and when it came.
+  assert.ok($(".orc-log").querySelector(".msg-copy"));
+  // A turn that failed for something Lumo can put right: the chat's card for it.
+  const failed = structuredClone(next);
+  failed.threads[0].messages.push({ id: "a3", at: 10, kind: "note", from: "lumo", note: "error", text: "Claude Code isn't installed.\u2064claude-install" });
+  emit("orchestra-update", failed);
+  assert.ok($(".orc-log").querySelector(".chat-fix"), "said as a chat's failed answer, with its card");
   // The coordinator saying nothing to a thread's answer ([quiet]): never shown, even as it comes.
   item("coordinator").fire("click");
   const before = $(".orc-log").find(".reply").length;
