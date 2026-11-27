@@ -359,7 +359,7 @@ async fn one_start(tick: &mut impl FnMut(u64)) -> tokio::sync::MutexGuard<'stati
 
 /// `asked`, a start going on that began at `began`: `tick` hears the seconds it
 /// has taken at once, then each one after.
-async fn waiting<T>(asked: impl std::future::Future<Output = T>, began: Instant, tick: &mut impl FnMut(u64)) -> T {
+pub(crate) async fn waiting<T>(asked: impl std::future::Future<Output = T>, began: Instant, tick: &mut impl FnMut(u64)) -> T {
     let mut said = began.elapsed().as_secs();
     tick(said);
     ticking(asked, began, &mut said, tick).await
@@ -368,7 +368,7 @@ async fn waiting<T>(asked: impl std::future::Future<Output = T>, began: Instant,
 /// `asked`, and every whole second since `began` while it is going: `second`
 /// hears 1, 2, 3… as they come, however long `asked` takes. `said` is the last
 /// second it heard.
-async fn ticking<T>(asked: impl std::future::Future<Output = T>, began: Instant, said: &mut u64, mut second: impl FnMut(u64)) -> T {
+pub(crate) async fn ticking<T>(asked: impl std::future::Future<Output = T>, began: Instant, said: &mut u64, mut second: impl FnMut(u64)) -> T {
     let mut asked = std::pin::pin!(asked);
     loop {
         let next = tokio::time::Instant::from_std(began + Duration::from_secs(*said + 1));

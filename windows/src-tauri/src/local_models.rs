@@ -257,7 +257,7 @@ const LEVELS: &[&str] = &["off", "on", "minimal", "low", "medium", "high", "xhig
 /// model; a server that doesn't answer gives the empty Caps (nothing known).
 pub async fn caps(server: &Server, model: &str) -> Caps {
     let Some(model) = safe_name(model) else { return Caps::default() };
-    if !matches!(server.id, "ollama" | "lmstudio" | "unsloth") {
+    if !matches!(server.id, "ollama" | "lmstudio" | "unsloth" | "maya") {
         return Caps::default();
     }
     let Ok(base) = local_chat::base_url(server) else { return Caps::default() };
@@ -272,6 +272,15 @@ pub async fn caps(server: &Server, model: &str) -> Caps {
         let ps = get_json(server, &base, "api/ps").await;
         match show {
             Ok(show) => parse_ollama_caps(model, &show, ps.as_ref().ok()),
+            Err(e) => {
+                crate::log::line(format!("[local] {model}: {e}"));
+                Caps::default()
+            }
+        }
+    } else if server.id == "maya" {
+        // Maya: its model list says the context it was started with and whether it reads pictures.
+        match get_json(server, &base, "v1/models").await {
+            Ok(models) => parse_maya_caps(model, &models),
             Err(e) => {
                 crate::log::line(format!("[local] {model}: {e}"));
                 Caps::default()
@@ -665,6 +674,28 @@ fn parse_unsloth_caps(model: &str, models: &Value, status: Option<&Value>) -> Ca
     caps
 }
 
+/// Inkling 2 Mini's effort levels, as Maya's chat template takes them ("none"
+/// to "max"; Off opens the answer at once when no tool is offered).
+const MAYA_LEVELS: &[&str] = &["off", "minimal", "low", "medium", "high", "max"];
+
+/// Maya's `/v1/models` (maya.rs): its one model, the context it was started
+/// with (`context_length`) and whether its image encoder is on
+/// (`architecture.input_modalities`). It calls tools and reasons, always.
+fn parse_maya_caps(model: &str, models: &Value) -> Caps {
+    let rows = models["data"].as_array().cloned().unwrap_or_default();
+    let Some(row) = rows.iter().find(|m| m["id"].as_str() == Some(model)).or(rows.first()) else { return Caps::default() };
+    let context = row["context_length"].as_u64().or_else(|| row["meta"]["n_ctx"].as_u64()).unwrap_or(0);
+    let vision = row["architecture"]["input_modalities"].as_array().map(|m| m.iter().any(|v| v == "image"));
+    Caps {
+        vision,
+        tools: Some(true),
+        reasoning: MAYA_LEVELS.iter().map(|l| l.to_string()).collect(),
+        max_context: context,
+        loaded_context: context,
+        loaded: Some(row["status"]["value"].as_str().is_none_or(|v| v == "loaded")),
+    }
+}
+
 /// The `/v1/models` row of `model`: its id, or the id without the quant it
 /// was pinned to (`repo:Q4_K_M`), any case. Rows of speech or music models
 /// (`task`) don't chat.
@@ -913,7 +944,7 @@ pub async fn slots(server: &Server, model: &str) -> Option<Slots> {
             let var = std::env::var("OLLAMA_NUM_PARALLEL").ok();
             Some(Slots { total: ollama_parallel(var.as_deref(), net::is_loopback_url(&base))?, busy: 0 })
         }
-        "unsloth" | "custom" => {
+        "unsloth" | "maya" | "custom" => {
             let props = get_quick(server, with_model(&base, "props", model)?).await;
             let mut total = props.as_ref().and_then(parse_total_slots);
             if total.is_none() && server.id == "unsloth" {
@@ -1081,6 +1112,21 @@ pub async fn pull(app: &AppHandle, provider: &str, model: &str) -> Result<(), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maya_says_its_context_its_pictures_and_inkling_s_levels() {
+        let body = json!({ "object": "list", "data": [{ "id": "inkling-2-mini", "object": "model", "status": { "value": "loaded" },
+            "meta": { "n_ctx": 32768 }, "context_length": 32768,
+            "architecture": { "input_modalities": ["text", "image"], "output_modalities": ["text"] } }] });
+        let caps = parse_maya_caps("inkling-2-mini", &body);
+        assert_eq!((caps.vision, caps.tools, caps.max_context, caps.loaded_context, caps.loaded), (Some(true), Some(true), 32768, 32768, Some(true)));
+        assert_eq!(reasoning_effort(&caps, "off"), Some("none"));
+        assert_eq!(reasoning_effort(&caps, "max"), Some("max"));
+        assert_eq!(reasoning_effort(&caps, "xhigh"), None);
+        let text = json!({ "data": [{ "id": "inkling-2-mini", "context_length": 16384, "architecture": { "input_modalities": ["text"] } }] });
+        assert_eq!(parse_maya_caps("inkling-2-mini", &text).vision, Some(false));
+        assert_eq!(parse_maya_caps("inkling-2-mini", &json!({})), Caps::default());
+    }
 
     #[test]
     fn llama_cpp_says_its_slots_and_which_are_busy() {

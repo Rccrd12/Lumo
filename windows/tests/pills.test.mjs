@@ -32,6 +32,7 @@ test("the catalog holds every pill, in order, with its values", () => {
     ["ai_ollama", "Ollama", "#FACC15", "ai", "Chat"],
     ["ai_lmstudio", "LM Studio", "#A3E635", "ai", "Chat"],
     ["ai_unsloth", "Unsloth Studio", "#34D399", "ai", "Chat"],
+    ["ai_maya", "Maya", "#FB7185", "ai", "Chat"],
     ["integration_resend", "Resend", "#22C55E", "service", "Integration"],
     ["integration_n8n", "n8n", "#F29B38", "service", "Integration"],
     ["integration_vercel", "Vercel", "#7C5CFF", "service", "Integration"],

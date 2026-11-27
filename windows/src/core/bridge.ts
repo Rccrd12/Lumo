@@ -525,7 +525,7 @@ export const Bridge = {
   /** The custom server's key, bound to the address it is entered for. */
   localSetKey: (url: string, key: string, provider: "custom" | "unsloth" = "custom") => callOrThrow<void>("local_set_key", { url, key, provider }),
 
-  localConnect: (provider: "ollama" | "lmstudio" | "unsloth" | "custom", url: string) =>
+  localConnect: (provider: "ollama" | "lmstudio" | "unsloth" | "maya" | "custom", url: string) =>
     callOrThrow<LocalServer>("local_connect", { provider, url }),
   /** Settings → Local models: the models Ollama, LM Studio or Unsloth Studio holds in memory now. */
   localLoaded: (provider: "ollama" | "lmstudio" | "unsloth") => callOrThrow<LocalLoaded[]>("local_loaded", { provider }),
@@ -545,6 +545,14 @@ export const Bridge = {
   unslothStudioStart: () => callOrThrow<void>("unsloth_studio_start"),
   /** Settings → Local models → Stop now: the Unsloth Studio Lumo started stops; whether there was one. */
   unslothStudioStop: () => callOrThrow<boolean>("unsloth_studio_stop"),
+  /** Settings → Local models → Maya: what its folder holds (the connected one for ""). */
+  mayaInstall: (dir: string) => call<MayaInstall>("maya_install", { dir }),
+  /** Settings → Local models → Maya: off, starting or on, and whether Lumo started it. */
+  mayaStatus: () => call<MayaServer>("maya_status"),
+  /** Settings → Local models → Maya → Start now: resolves once Maya answers (progress: `maya-server` events). */
+  mayaStart: () => callOrThrow<void>("maya_start"),
+  /** Settings → Local models → Maya → Stop now: the Maya Lumo started stops; whether there was one. */
+  mayaStop: () => callOrThrow<boolean>("maya_stop"),
   /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */
   localPull: (provider: "ollama" | "lmstudio", model: string) => callOrThrow<void>("local_pull", { provider, model }),
   /** Copies a dropped file into the inbox. */
@@ -1039,6 +1047,26 @@ export interface UnslothStudio {
 
 /** The event that follows Unsloth Studio's state while Lumo starts or stops it. */
 export const UNSLOTH_STUDIO_EVENT = "unsloth-studio";
+
+/** Maya as Lumo starts and stops it (maya.rs Status), also the payload of the `maya-server` event. */
+export interface MayaServer extends UnslothStudio {
+  /** Started with other settings than Settings has now: they apply once it starts again. */
+  outdated: boolean;
+}
+
+/** The event that follows Maya's state while Lumo starts or stops it. */
+export const MAYA_EVENT = "maya-server";
+
+/** What a Maya folder holds (maya.rs Install). */
+export interface MayaInstall {
+  ready: boolean;
+  /** What is missing, in a sentence; "" when nothing is. */
+  missing: string;
+  /** The drafter's weights are there. */
+  drafter: boolean;
+  /** The image encoder is built and its weights are there. */
+  vision: boolean;
+}
 
 /** One answered chat turn (chat.rs ChatReply). */
 export interface ChatReply {

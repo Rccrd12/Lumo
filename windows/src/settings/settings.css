@@ -384,6 +384,30 @@ section > h2 + div > .setting:first-child {
   min-width: 0;
 }
 
+/* Local models: one box per engine (Ollama, LM Studio, Unsloth Studio, Maya…),
+   its name on top and its own options inside, so it is clear whose they are. */
+.setting-list.engines {
+  gap: 10px;
+}
+
+.setting-block.engine {
+  background: rgba(255, 255, 255, 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.setting-block.engine > .setting:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.engine-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .row.end {
   justify-content: flex-end;
 }

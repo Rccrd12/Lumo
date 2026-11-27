@@ -37,7 +37,7 @@ export type PillConnect =
   /** A key in the credential store (or, for Email, Outlook on this PC turned on). */
   | { kind: "key"; key: string; orSetting?: "mailOutlook" }
   /** A model server the chat is connected to (Settings → Local models). */
-  | { kind: "server"; field: "ollamaUrl" | "lmstudioUrl" | "unslothUrl" }
+  | { kind: "server"; field: "ollamaUrl" | "lmstudioUrl" | "unslothUrl" | "mayaUrl" }
   /** Nothing to set up. */
   | { kind: "none" };
 
@@ -56,7 +56,7 @@ export interface PillDefinition {
 const hooks: PillConnect = { kind: "hooks" };
 const key = (k: string): PillConnect => ({ kind: "key", key: k });
 const none: PillConnect = { kind: "none" };
-const server = (field: "ollamaUrl" | "lmstudioUrl" | "unslothUrl"): PillConnect => ({ kind: "server", field });
+const server = (field: "ollamaUrl" | "lmstudioUrl" | "unslothUrl" | "mayaUrl"): PillConnect => ({ kind: "server", field });
 
 /** Each chat provider's accent colour. */
 const ACCENT = {
@@ -66,6 +66,7 @@ const ACCENT = {
   ollama: "#FACC15",
   lmstudio: "#A3E635",
   unsloth: "#34D399",
+  maya: "#FB7185",
 };
 
 export const PILL_CATALOG: readonly PillDefinition[] = [
@@ -114,6 +115,9 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
     subtitle: N_("Chat"), source: "n8n", support: "yes", connect: server("lmstudioUrl") },
   { id: "ai_unsloth", name: "Unsloth Studio", color: ACCENT.unsloth, category: "ai",
     subtitle: N_("Chat"), source: "n8n", support: "yes", connect: server("unslothUrl") },
+  // Maya (maya-inkling-mini), the engine for Inkling 2 Mini that Lumo starts itself (maya.rs).
+  { id: "ai_maya", name: "Maya", color: ACCENT.maya, category: "ai",
+    subtitle: N_("Chat"), source: "n8n", support: "yes", connect: server("mayaUrl") },
   // ── Services ───────────────────────────────────────────────────────────────
   { id: "integration_resend", name: "Resend", color: "#22C55E", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("resend-api-key") },

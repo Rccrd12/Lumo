@@ -1421,6 +1421,25 @@ async fn send_to(
     } else {
         None
     };
+    // Maya off: started the same way (maya.rs), and started again when its settings changed.
+    let _maya = if provider == "maya" {
+        let (app_for_start, settings, events, stop) = (app.clone(), settings.clone(), chat.events(), chat.stopper());
+        let start = tauri::async_runtime::spawn(async move {
+            crate::maya::ensure(&app_for_start, &settings, |seconds| {
+                if !stop.is_stopped() {
+                    events.activity(&app_for_start, crate::claude_code::Activity::new("starting", seconds.to_string()));
+                }
+            })
+            .await
+        });
+        let Some(started) = chat.unless_stopped(start).await else {
+            return Ok(ChatReply::stopped(String::new(), None));
+        };
+        started.map_err(|e| e.to_string())??;
+        Some(crate::maya::busy())
+    } else {
+        None
+    };
     // A local model: what its server says it can do decides what goes with the question.
     let local = local_chat::server(settings, provider);
     let caps = match &local {

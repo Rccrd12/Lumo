@@ -143,7 +143,7 @@ fn key_for(stored: &str, url: &Url) -> Option<String> {
 /// Whether `provider` is a model server of the user's (Ollama, LM Studio,
 /// Unsloth Studio, a custom one).
 pub fn is_local(provider: &str) -> bool {
-    matches!(provider, "ollama" | "lmstudio" | "unsloth" | "custom")
+    matches!(provider, "ollama" | "lmstudio" | "unsloth" | "maya" | "custom")
 }
 
 /// A model server as the settings describe it.
@@ -155,7 +155,7 @@ pub struct Server {
     pub key: Option<String>,
 }
 
-/// Ollama, LM Studio, Unsloth Studio or "custom", from the settings; None for any other id.
+/// Ollama, LM Studio, Unsloth Studio, Maya or "custom", from the settings; None for any other id.
 pub fn server(settings: &Settings, id: &str) -> Option<Server> {
     let (id, name, url, key) = match id {
         "ollama" => ("ollama", "Ollama", &settings.ollama_url, None),
@@ -164,6 +164,8 @@ pub fn server(settings: &Settings, id: &str) -> Option<Server> {
             let key = net::normalise_server_url(&settings.unsloth_url).ok().and_then(|u| key_of("unsloth", &u));
             ("unsloth", "Unsloth Studio", &settings.unsloth_url, key)
         }
+        // Lumo's own Maya (maya.rs), on this computer, with no key.
+        "maya" => ("maya", "Maya", &settings.maya_url, None),
         "custom" => {
             let key = net::normalise_server_url(&settings.custom_url).ok().and_then(|u| key_of("custom", &u));
             ("custom", crate::i18n::n_("OpenAI-compatible server"), &settings.custom_url, key)

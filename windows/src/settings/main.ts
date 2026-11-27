@@ -199,11 +199,11 @@ export async function main() {
     if (Object.entries(s).some(([k, v]) => !UNSHOWN_KEYS.has(k) && JSON.stringify(v) !== JSON.stringify((settings as unknown as Record<string, unknown>)[k]))) {
       stale = true;
     }
-    const before = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
+    const before = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.mayaUrl}|${settings.customUrl}`;
     setSettings({ ...settings, ...s });
     shortcutsListener?.settingsChanged();
     for (const redraw of declaredViews) redraw();
-    const after = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
+    const after = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.mayaUrl}|${settings.customUrl}`;
     if (before !== after) localRedraw?.();
     applyLanguage();
   });

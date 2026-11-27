@@ -1,11 +1,12 @@
-// Settings → Local models: Ollama, LM Studio, Unsloth Studio and a custom
-// server, with their addresses, keys and the models they serve.
+// Settings → Local models: Ollama, LM Studio, Unsloth Studio, Maya and a
+// custom server, with their addresses, keys and the models they serve.
 
 import { Bridge, type UnslothStudio } from "../../core/bridge";
 import { CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, pickModel, providerDef, urlExposure } from "../../core/providers";
 import { h, clear } from "../../views/dom";
-import { accentDot, sectionHead, setting, statusDot, wideSetting } from "../parts";
+import { accentDot, group, sectionHead, setting, statusDot, wideSetting } from "../parts";
 import { localModelsBlock, type UnslothMemory } from "../local-models";
+import { mayaBlock } from "../maya";
 import { N_, t } from "../../i18n/i18n";
 import { CHAT_STRINGS } from "./chat";
 import { save, select, settings, toggle } from "../store";
@@ -53,6 +54,7 @@ function exposureNotice(url: string, withKey: boolean): HTMLElement | null {
 
 /** A local model's chat compacted by itself when its context is nearly full (views/chat.ts). */
 const AUTO_COMPACT = {
+  get group() { return t("For all local models"); },
   get label() { return t("Compact by itself when the context is full"); },
   get hint() { return t("Over 80 %, before the question goes: the model starts again from a summary of the chat."); },
 };
@@ -144,12 +146,14 @@ const unslothMemory: UnslothMemory = {
 };
 
 export function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
-  const body = h("div", { class: "setting-list" });
+  // One box per engine (settings.css .engine), so its options are clearly its own.
+  const body = h("div", { class: "setting-list engines" });
   const section = h(
     "section",
     {},
     ...sectionHead(CHAT_STRINGS.localTitle, CHAT_STRINGS.localHint),
     body,
+    group(AUTO_COMPACT.group),
     h("div", { class: "setting-list" },
       setting(AUTO_COMPACT.label, AUTO_COMPACT.hint,
         toggle(settings.chatAutoCompact !== false, (on) => { settings.chatAutoCompact = on; void save(); }),
@@ -158,7 +162,11 @@ export function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLEleme
   );
   const redraw = () => {
     clear(body);
-    for (const id of Object.keys(LOCAL) as LocalId[]) body.append(serverBlock(id));
+    for (const id of Object.keys(LOCAL) as LocalId[]) {
+      body.append(serverBlock(id));
+      // Maya, which Lumo starts from its folder (settings/maya.ts), after the other server it starts.
+      if (id === "unsloth") body.append(mayaBlock(redraw));
+    }
   };
 
   function serverBlock(id: LocalId): HTMLElement {
@@ -169,7 +177,7 @@ export function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLEleme
     const status = h("div", {});
     const exposure = h("div", {});
     const label = () => h("span", { class: "with-dot" }, accentDot(p.accent), t(def.name));
-    const block = h("div", { class: "setting-block" });
+    const block = h("div", { class: "setting-block engine" });
 
     if (connected) {
       const inUse = settings.chatProvider === id;
@@ -197,12 +205,15 @@ export function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLEleme
       );
       exposure.append(exposureNotice(settings[field], keys[id] === true) ?? "");
       block.append(exposure);
+      // Its options, under a line, in its box.
+      const options = h("div", { class: "engine-options" });
       // Unsloth Studio on this computer: Lumo starts it when the chat needs it, and stops it.
-      if (id === "unsloth") block.append(unslothStartBlock());
+      if (id === "unsloth") options.append(unslothStartBlock());
       // What Ollama, LM Studio and Unsloth Studio hold in memory (and a model to download where offered).
       if (id === "ollama" || id === "lmstudio" || id === "unsloth") {
-        block.append(localModelsBlock(id, id === "unsloth" ? unslothMemory : undefined));
+        options.append(localModelsBlock(id, id === "unsloth" ? unslothMemory : undefined));
       }
+      if (options.childElementCount) block.append(options);
       return block;
     }
 
