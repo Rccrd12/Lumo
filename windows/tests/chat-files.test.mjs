@@ -5,7 +5,7 @@ import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { loadChats, saveChat } from "../src/core/chats.ts";
 import {
-  MAX_FILES, addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, fileName, filesByKind, removeChatFile, rewindChatFiles, withFile, withdrawAttached,
+  MAX_FILES, addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, inInbox, inboxCopies, keptCopies, moveChatPaths, noteSentCopies, fileName, filesByKind, removeChatFile, rewindChatFiles, withFile, withdrawAttached,
 } from "../src/core/chat-files.ts";
 
 const mem = new Map();
@@ -209,4 +209,22 @@ test("storage filled by the past chats: they make room, and the file is listed",
   assert.deepEqual(chatFiles("a").map((f) => f.name), ["out.txt"]);
   assert.equal(list.length, 1);
   assert.deepEqual(loadChats().map((c) => c.id), ["a"], "the oldest chat gave room, never this one");
+});
+
+test("the copies an older Lumo kept in the inbox are listed by chat, and follow when they move into its folder", () => {
+  saveChat(chat("a"));
+  saveChat(chat("b"));
+  const old = `${INBOX}\\Fisica2 (2).tex`;
+  const moved = `${INBOX}\\chats\\a\\Fisica2 (2).tex`;
+  noteSentCopies("a", [old, `${INBOX}\\chats\\a\\new.pdf`]);
+  addChatFile("a", "attached", old, "Fisica2.tex", 1);
+  addChatFile("a", "read", String.raw`C:\Users\me\notes.md`, undefined, 2);
+  noteSentCopies("b", [`${INBOX}\\b.png`]);
+  assert.ok(inInbox(old) && inInbox(`${INBOX}/x.png`));
+  assert.ok(!inInbox(moved) && !inInbox(String.raw`C:\Users\me\notes.md`) && !inInbox(INBOX));
+  assert.deepEqual(inboxCopies(), [{ chat: "b", path: `${INBOX}\\b.png` }, { chat: "a", path: old }], "only what waits in the inbox, once");
+  moveChatPaths("a", new Map([[old, moved]]));
+  assert.deepEqual(chatCopies("a"), [moved, `${INBOX}\\chats\\a\\new.pdf`, String.raw`C:\Users\me\notes.md`]);
+  assert.deepEqual(chatFiles("a").map((f) => [f.name, f.path]), [["notes.md", String.raw`C:\Users\me\notes.md`], ["Fisica2.tex", moved]], "its row keeps its name");
+  assert.deepEqual(inboxCopies(), [{ chat: "b", path: `${INBOX}\\b.png` }]);
 });

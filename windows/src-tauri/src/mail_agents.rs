@@ -836,11 +836,12 @@ async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<c
     Ok(saved)
 }
 
-/// What `mail_attachment` answers: where the file is, in the folder of the
-/// chat that asked (files.rs for_chat), the one its CLI reads without asking.
-/// No chat (a provider of the island's own, a task of Gemini Live): in the inbox.
+/// What `mail_attachment` answers: where the file is, moved into the folder
+/// of the chat that asked (files.rs adopt), the one its CLI reads without
+/// asking. No chat (a provider of the island's own, a task of Gemini Live):
+/// in the inbox, until Lumo starts again.
 pub(crate) fn saved_text(saved: &crate::files::DroppedFile, chat: &str) -> String {
-    let path = if chat.trim().is_empty() { saved.path.clone() } else { crate::files::for_chat(chat, &saved.path) };
+    let path = crate::files::adopt(&[crate::files::Adopt { chat: chat.to_string(), path: saved.path.clone(), name: Some(saved.name.clone()) }]).remove(0);
     format!("Saved {} ({}) with the files attached to the chat: {}. Read it from there.", saved.name, size_text(saved.size as usize), path)
 }
 
@@ -1388,13 +1389,15 @@ mod tests {
         let chat = "saved-text-test-chat";
         crate::files::forget_chat(chat);
         let told = saved_text(&saved, chat);
-        let linked = crate::files::chat_dir(chat).join(&saved.name);
-        assert!(told.contains(&linked.to_string_lossy().to_string()), "{told}");
-        assert_eq!(std::fs::read(&linked).unwrap(), b"%PDF");
+        let moved = crate::files::chat_dir(chat).join("saved-text-test.pdf");
+        assert!(told.contains(&moved.to_string_lossy().to_string()), "{told}");
+        assert_eq!(std::fs::read(&moved).unwrap(), b"%PDF");
+        assert!(!std::path::Path::new(&saved.path).exists(), "it left the inbox");
         // No chat (an API provider, a task of Gemini Live): the inbox's own path.
-        assert!(saved_text(&saved, "").contains(&saved.path));
+        let waiting = crate::files::write_in("saved-text-test.pdf", b"%PDF").unwrap();
+        assert!(saved_text(&waiting, "").contains(&waiting.path));
         crate::files::forget_chat(chat);
-        let _ = std::fs::remove_file(&saved.path);
+        let _ = std::fs::remove_file(&waiting.path);
     }
 
     #[test]

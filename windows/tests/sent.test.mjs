@@ -313,3 +313,148 @@ test("in a chat opened again, the screenshot comes back if it is still there; a 
   await ask("look again");
   assert.deepEqual(sent("chat_send").at(-1).screen.shots, [{ name: "Screen 1", path: SHOT.path }]);
 });
+
+// ── Each chat's folder ───────────────────────────────────────────────────────
+
+/** As files.rs adopt answers: each file waiting in the inbox, moved into its chat's folder under its own name. */
+const inChat = (args) => args.items.map((i) => {
+  const name = i.name ?? i.path.split("\\").pop();
+  return i.path.startsWith("C:\\Lumo\\inbox\\chats\\") ? i.path : `C:\\Lumo\\inbox\\chats\\${i.chat}\\${name}`;
+});
+
+test("what a question takes moves into its chat's folder, and goes and stays there by that path", async () => {
+  answers.chat_files_adopt = inChat;
+  State.droppedFile = { name: "contract.pdf", path: "C:\\Lumo\\inbox\\contract (2).pdf" };
+  State.incomingShare = { kind: "screen", shots: [{ display: 0, name: "s.png", path: SHOT.path, width: 10, height: 10, preview: SHOT.preview }] };
+  view.sync();
+  await ask("why?");
+  const id = State.chatId;
+  const pdf = `C:\\Lumo\\inbox\\chats\\${id}\\contract.pdf`;
+  const shot = `C:\\Lumo\\inbox\\chats\\${id}\\screenshot-1.png`;
+  assert.deepEqual(sent("chat_files_adopt").at(-1).items, [
+    { chat: id, path: "C:\\Lumo\\inbox\\contract (2).pdf", name: "contract.pdf" },
+    { chat: id, path: SHOT.path },
+  ], "the file under the name it had, the screenshot under its file's");
+  const turn = sent("chat_send").at(-1);
+  assert.equal(turn.context?.path, pdf);
+  assert.deepEqual(turn.screen.shots, [{ name: "Screen 1", path: shot }]);
+  const saved = loadChats().find((c) => c.id === id);
+  assert.deepEqual(saved.turns[0].sent.filter((i) => i.path).map((i) => i.path), [pdf, shot], "the bubble opens them there");
+  assert.ok(chatCopies(id).includes(pdf) && chatCopies(id).includes(shot));
+  assert.equal(sent("inbox_release").length, 0);
+});
+
+test("the × of a file waiting deletes it from the inbox; one back from an edit leaves the chat's folder once the edit goes", async () => {
+  answers.chat_files_adopt = inChat;
+  // Waiting, never sent: its × deletes it at once.
+  State.droppedFile = { ...PHOTO };
+  view.sync();
+  $(".attach-btn")?.fire("click");
+  view.sync();
+  const row = () => view.el.find(".files-list")[0].find(".attach-row").find((r) => r.find(".attach-name")[0].textContent === "plan.jpg");
+  row().find(".attach-remove")[0].fire("click");
+  view.sync();
+  assert.deepEqual(sent("inbox_release").at(-1)?.paths, [PHOTO.path]);
+  assert.equal(State.droppedFile, null);
+
+  // Sent with a screenshot: both in the chat's folder.
+  State.droppedFile = { ...PDF };
+  State.incomingShare = { kind: "screen", shots: [{ display: 0, name: "s.png", path: SHOT.path, width: 10, height: 10, preview: SHOT.preview }] };
+  view.sync();
+  await ask("why this error?");
+  const id = State.chatId;
+  const pdf = `C:\\Lumo\\inbox\\chats\\${id}\\contract.pdf`;
+  const shot = `C:\\Lumo\\inbox\\chats\\${id}\\screenshot-1.png`;
+
+  // Edit: both come back; the screenshot's × takes it out of the question.
+  rows()[0].find(".msg-edit")[0].fire("click");
+  await flush();
+  view.sync();
+  const released = sent("inbox_release").length;
+  const shotRow = view.el.find(".files-list")[0].find(".attach-row").find((r) => r.find(".attach-name")[0].textContent === "Screen 1");
+  shotRow.find(".attach-remove")[0].fire("click");
+  view.sync();
+  assert.equal(sent("chat_files_forget").length, 0, "nothing goes before the edit does");
+  await ask("why this error, again?");
+  assert.equal(sent("chat_send").at(-1).context?.path, pdf, "the file goes again from the chat's folder");
+  assert.deepEqual(sent("chat_files_forget").at(-1), { chat: id, paths: [shot] }, "what the edit no longer sends leaves the folder");
+  assert.equal(sent("inbox_release").length, released, "the inbox has nothing of it");
+});
+
+test("an answer stopped before a word gives back all that went, the same, from the chat's folder", async () => {
+  answers.chat_files_adopt = inChat;
+  answers.chat_send = () => ({ text: "", stopped: true });
+  State.droppedFile = { ...PDF };
+  State.moreFiles = [{ ...PHOTO }];
+  State.incomingShare = { kind: "screen", shots: [{ display: 0, name: "s.png", path: SHOT.path, width: 10, height: 10, preview: SHOT.preview }] };
+  view.sync();
+  State.incomingShare = { kind: "selection", selection: SELECTION };
+  view.sync();
+  const tab = { id: 7, title: "Lumo", url: "https://example.com/", text: "a page", cut: false };
+  State.incomingShare = { kind: "page", tab };
+  view.sync();
+  await ask("why this error?");
+  const first = sent("chat_send").at(-1);
+  const id = State.chatId;
+  const folder = `C:\\Lumo\\inbox\\chats\\${id}\\`;
+  assert.equal(first.context?.path, `${folder}contract.pdf`);
+  assert.deepEqual(first.screen.shots, [{ name: "Screen 1", path: `${folder}screenshot-1.png` }]);
+  assert.deepEqual(first.screen.files, [{ name: "plan.jpg", path: `${folder}plan.jpg` }], "the second file went too");
+  assert.equal(first.screen.selection?.text, SELECTION.text);
+  assert.equal(first.screen.tabs?.length, 1);
+
+  answers.chat_send = () => ({ text: "answer", turns: 2 });
+  await ask("why this error?");
+  const again = sent("chat_send").at(-1);
+  assert.deepEqual(again.context, first.context, "the file goes again");
+  assert.deepEqual(again.screen, first.screen, "and everything else with it: the other file, the screenshot, the selection, the page");
+});
+
+test("an answer stopped before a word gives back what went before what was added while it came", async () => {
+  answers.chat_files_adopt = inChat;
+  let stop;
+  answers.chat_send = () => new Promise((resolve) => (stop = () => resolve({ text: "", stopped: true })));
+  State.incomingShare = { kind: "screen", shots: [{ display: 0, name: "s.png", path: SHOT.path, width: 10, height: 10, preview: SHOT.preview }] };
+  view.sync();
+  State.incomingShare = { kind: "selection", selection: SELECTION };
+  view.sync();
+  await ask("why this error?");
+  const id = State.chatId;
+  const a = `C:\\Lumo\\inbox\\chats\\${id}\\screenshot-1.png`;
+  // While it answers: screenshot B, and the same text again.
+  const b = "C:\\Lumo\\inbox\\screenshot-2.png";
+  State.incomingShare = { kind: "screen", shots: [{ display: 0, name: "s2.png", path: b, width: 10, height: 10, preview: SHOT.preview }] };
+  view.sync();
+  State.incomingShare = { kind: "selection", selection: SELECTION };
+  view.sync();
+  stop();
+  await flush();
+  await flush();
+  view.sync();
+  answers.chat_send = () => ({ text: "answer", turns: 2 });
+  await ask("why this error?");
+  const again = sent("chat_send").at(-1);
+  assert.deepEqual(again.screen.shots.map((s) => s.path), [a, `C:\\Lumo\\inbox\\chats\\${id}\\screenshot-2.png`], "A, then B");
+  assert.equal(again.screen.selection?.text, SELECTION.text);
+  assert.equal(again.screen.selections, undefined, "the same text once");
+});
+
+test("when Lumo starts, an older Lumo's copies in the inbox move into their chats' folders, then the inbox is tidied", async () => {
+  const { saveChat } = await import("../src/core/chats.ts");
+  const { noteSentCopies } = await import("../src/core/chat-files.ts");
+  const old = "C:\\Lumo\\inbox\\old (2).pdf";
+  const item = { kind: "file", label: "old.pdf", detail: "File · PDF", title: old, key: old, path: old };
+  saveChat({ id: "older", title: "older", updatedAt: 1, provider: "claude-code", session: null, turns: [{ role: "user", content: "q", sent: [item] }, { role: "assistant", content: "a" }] });
+  noteSentCopies("older", [old]);
+  answers.chat_files_adopt = inChat;
+  calls.length = 0;
+  buildPrompt(() => {});
+  for (let i = 0; i < 4; i++) await flush();
+  const moved = "C:\\Lumo\\inbox\\chats\\older\\old (2).pdf";
+  assert.deepEqual(sent("chat_files_adopt")[0].items.filter((i) => i.chat === "older"), [{ chat: "older", path: old }], "under the inbox's name, the one its AI may know");
+  assert.deepEqual(loadChats().find((c) => c.id === "older").turns[0].sent[0].path, moved);
+  assert.ok(chatCopies("older").includes(moved) && !chatCopies("older").includes(old));
+  const order = calls.map(([cmd]) => cmd);
+  assert.ok(order.indexOf("chat_files_adopt") < order.indexOf("inbox_tidy"), "moved first, tidied after");
+  assert.ok(sent("inbox_tidy")[0].keep.includes(moved));
+});

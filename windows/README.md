@@ -1239,20 +1239,22 @@ and you can remove any of them before sending; it goes with your next question
 only, and a click on its row shows exactly what it sends. Screenshots are saved only in the inbox
 (`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files: one that went with a
 question stays with its chat (its bubble shows it, and editing the question sends it
-again) and is deleted with the chat; one that never went is deleted after a day. The island keeps itself out of the screenshot (Windows 10 2004 and later).
+again) and is deleted with the chat; one that never went is deleted when you
+remove it, or when Lumo starts again. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
-Each chat has its own folder in the inbox (`inbox\chats\<chat>`): the files
-and screenshots of a chat are linked there as they go to its CLI (the same
-file on disk, not a second copy), and the chat's Claude Code and Antigravity
-CLI read only that folder without asking, never the files of another chat.
-An email's file that an agent saves with `mail_attachment` goes in its
+Each chat has its own folder in the inbox (`inbox\chats\<chat>`). A file or
+a screenshot waits in the inbox only while it is in the attachments: its × deletes
+it, and the question that takes it moves it into the chat's folder, under the
+name it had on your computer. From then on it is the chat's: the chat's Claude
+Code and Antigravity CLI read only that folder without asking, never the files
+of another chat, and the AI writes its own files beside it. Nothing sweeps the
+folder: a deleted chat takes it with it, the × of a file in **Chat files**
+deletes that file, and editing a question deletes the files it no longer
+sends. An email's file that an agent saves with `mail_attachment` goes in its
 chat's folder too. **Settings → Security → Other chats' files** (off by
-default) gives them the whole inbox instead: every file Lumo received in the
-last week. A task Gemini Live hands to Claude Code or Antigravity CLI gets no
-inbox folder unless that switch is on; Gemini Live itself can read any file
-of the inbox, switch or not. A deleted chat takes its folder with it, and a
-link whose file left the inbox (a chat past the 40 kept in the history) goes
-at the next sweep.
+default) gives them the whole inbox instead. A task Gemini Live hands to
+Claude Code or Antigravity CLI gets no inbox folder unless that switch is on;
+Gemini Live itself can read any file of the inbox, switch or not.
 
 Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
 and OpenRouter receive them as images; the local model servers take the window

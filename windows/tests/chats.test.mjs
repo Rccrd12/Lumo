@@ -3,7 +3,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_CHATS, PICTURE_CHARS, RECAP_PICTURES, boundPictures, chatTitle, cliOf, compactOf, deleteChat, joinOwnAnswer, loadChats, saveChat, setChatCli, setCompact, toSavedTurn,
+  MAX_CHATS, PICTURE_CHARS, RECAP_PICTURES, boundPictures, chatTitle, cliOf, compactOf, deleteChat, joinOwnAnswer, loadChats, makeRoom, moveSentPaths, onChatsLeft, saveChat, setChatCli, setCompact, toSavedTurn,
 } from "../src/core/chats.ts";
 
 const mem = new Map();
@@ -248,4 +248,43 @@ test("a long first question makes a title that never ends in half an emoji", () 
   const title = chatTitle([{ role: "user", content: `${"a".repeat(58)}😀 and more after it` }]);
   assert.ok(title.endsWith("…"));
   assert.ok(!/[\uD800-\uDBFF]…$/.test(title), JSON.stringify(title));
+});
+
+test("a chat that leaves the history past the most kept, or for room, is told; a deleted one or a failed write is not", () => {
+  const left = [];
+  const stop = onChatsLeft((ids) => left.push(...ids));
+  try {
+    for (let i = 0; i < MAX_CHATS; i++) saveChat(chat(`c${i}`));
+    assert.deepEqual(left, []);
+    saveChat(chat("new"));
+    assert.deepEqual(left, ["c0"], "the oldest, past the most kept");
+    saveChat(chat("c5"));
+    assert.deepEqual(left, ["c0"], "saving one again moves it up, nobody leaves");
+    deleteChat("c7");
+    assert.deepEqual(left, ["c0"], "a deleted chat is the delete's");
+    // Room for chat c1, the oldest: the next oldest gives it.
+    assert.ok(makeRoom("c1"));
+    assert.deepEqual(left, ["c0", "c2"]);
+    // Nothing fits any more: the history stays as it was, and nobody left.
+    const before = loadChats().map((c) => c.id);
+    quota = 10;
+    saveChat(chat("too-big"));
+    assert.deepEqual(loadChats().map((c) => c.id), before);
+    assert.equal(left.length, 2);
+  } finally {
+    stop();
+  }
+});
+
+test("a chat's files moved into its folder: what its questions sent follows, its place does not change", () => {
+  const sentFile = { kind: "file", label: "a.pdf", detail: "File · PDF", title: "C:\\L\\inbox\\a (2).pdf", key: "C:\\L\\inbox\\a (2).pdf", path: "C:\\L\\inbox\\a (2).pdf" };
+  const text = { kind: "selection", label: "Text", detail: "", title: "", key: "x", text: "x" };
+  saveChat({ ...chat("a"), turns: [{ role: "user", content: "q", sent: [sentFile, text] }, { role: "assistant", content: "r" }] });
+  saveChat(chat("b"));
+  const to = "C:\\L\\inbox\\chats\\a\\a.pdf";
+  moveSentPaths("a", new Map([[sentFile.path, to]]));
+  const [b, a] = loadChats();
+  assert.equal(b.id, "b", "the order stays");
+  assert.deepEqual(a.turns[0].sent[0], { ...sentFile, title: to, key: to, path: to });
+  assert.deepEqual(a.turns[0].sent[1], text);
 });

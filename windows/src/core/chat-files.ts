@@ -283,13 +283,16 @@ export function dropChatFiles(id: string) {
   }
 }
 
-// ── The inbox's copies ────────────────────────────────────────────────────────
+// ── The copies a chat was sent ────────────────────────────────────────────────
 //
-// What goes with a question is Lumo's copy in the inbox (files.rs). Each chat
-// notes the copies it sent, kept apart from its files above (whose row takes
-// the file's own path once the AI read it there), so that deleting the chat
-// deletes them too, but for one another chat sent as well. Any copy no chat
-// names goes on its own once a day old (`inbox_tidy`).
+// What goes with a question is Lumo's copy of the file, moved from the inbox
+// into the chat's own folder as it goes (files.rs adopt), which goes with the
+// chat. Each chat notes the copies it sent, kept apart from its files above
+// (whose row takes the file's own path once the AI read it there). A Lumo
+// before 0.23.1 left them in the inbox: they move into their chat's folder
+// when Lumo starts (`inboxCopies`, `moveChatPaths`), and until then deleting
+// the chat deletes them, but for one another chat sent as well. When Lumo
+// starts, a file of the inbox no chat and no field names goes (`inbox_tidy`).
 
 const COPIES_KEY = "lumo.chatCopies.v1";
 
@@ -339,4 +342,30 @@ export function chatCopies(id: string): string[] {
 /** What every past chat names, so that nothing they can still open is deleted. */
 export function keptCopies(): string[] {
   return loadChats().flatMap((c) => chatCopies(c.id));
+}
+
+/** Directly in the inbox, not in a chat's folder of it: a copy waiting, or one a Lumo before 0.23.1 kept there. */
+export function inInbox(path: string): boolean {
+  return /[\\/]inbox[\\/][^\\/]+$/i.test(path.trim());
+}
+
+/** The copies the past chats still name in the inbox (a Lumo before 0.23.1 kept them there), to move into their chats' folders. */
+export function inboxCopies(): { chat: string; path: string }[] {
+  return loadChats().flatMap((c) => chatCopies(c.id).filter(inInbox).map((path) => ({ chat: c.id, path })));
+}
+
+/** Chat `id`'s files moved (old path → new, files.rs adopt): its copies and its files follow. */
+export function moveChatPaths(id: string, moved: ReadonlyMap<string, string>) {
+  if (moved.size === 0) return;
+  const to = (p: string) => moved.get(p) ?? p;
+  const copies = loadCopies();
+  if (copies[id]?.some((p) => moved.has(p))) {
+    copies[id] = copies[id].map(to);
+    storeCopies(copies);
+  }
+  const all = loadAll();
+  if (all[id]?.some((f) => moved.has(f.path))) {
+    all[id] = all[id].map((f) => (moved.has(f.path) ? { ...f, path: to(f.path) } : f));
+    store(all, id);
+  }
 }

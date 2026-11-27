@@ -1372,7 +1372,12 @@ export class Island {
     for (const { path } of dropped) {
       void Bridge.ingestFile(path)
         .then((file) => {
-          if (!holds(path)) return;
+          // Taken out (its ×, another drop) before its copy landed: the copy
+          // waits for nobody, and leaves the inbox at once.
+          if (!holds(path)) {
+            void Bridge.inboxRelease([file.path], []);
+            return;
+          }
           const landed = { name: file.name, path: file.path };
           if (State.droppedFile?.path === path) {
             State.droppedFile = landed;

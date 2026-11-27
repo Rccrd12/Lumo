@@ -1,10 +1,10 @@
 // Dropped files are copied into %LOCALAPPDATA%\com.rccrd12.lumo\inbox so the original is
 // never touched and the copy survives the drag source going away.
-// The inbox is swept of anything older than a week. A deleted chat takes its
-// copies with it (`release`), and a copy no chat names any more goes once it
-// is a day old (`tidy`), so the inbox only holds what a chat can still use.
-// Each chat has its own folder in it, inbox\chats\<chat>, the one its CLI
-// reads (`for_chat`, `cli_inbox`).
+// The inbox only holds what waits in the field: the question that takes a
+// file moves it into its chat's own folder, inbox\chats\<chat> (`adopt`),
+// the one the chat's CLI reads (`cli_inbox`), and the folder goes with its
+// chat (`forget_chat`). The × of a file waiting deletes it (`release`), and
+// what no field holds when Lumo starts goes (`tidy`).
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -12,8 +12,6 @@ use std::time::{Duration, SystemTime};
 use serde::Serialize;
 
 use crate::settings;
-
-const KEEP_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -44,22 +42,29 @@ pub fn image_mime(path: &Path) -> Option<&'static str> {
 }
 
 /// A picture the user attached (dropped, pasted or picked), as a data URL for
-/// the chat's preview. Only a file directly in the inbox, and only a picture:
-/// the page can't use this to read anything else.
+/// the chat's preview. Only a file directly in the inbox or in a chat's
+/// folder of it, and only a picture: the page can't use this to read anything else.
 pub fn preview(path: &str) -> Option<String> {
     let path = Path::new(path);
-    let inbox = inbox_dir().canonicalize().ok()?;
-    let real = path.canonicalize().ok()?;
-    if real.parent() != Some(inbox.as_path()) {
+    if !is_chat_copy(path) {
         return None;
     }
-    picture_data(&real)
+    picture_data(&path.canonicalize().ok()?)
 }
 
-/// Directly in the inbox: a file the user attached (dropped, pasted or picked).
+/// Directly in the inbox: a file the user attached (dropped, pasted or
+/// picked) that waits for its question.
 pub fn in_inbox(path: &Path) -> bool {
     let (Ok(inbox), Ok(real)) = (inbox_dir().canonicalize(), path.canonicalize()) else { return false };
     real.parent() == Some(inbox.as_path())
+}
+
+/// Directly in the inbox, or directly in a chat's folder of it: a file the
+/// user attached, waiting or sent, or one a chat's AI wrote beside it.
+pub fn is_chat_copy(path: &Path) -> bool {
+    let (Ok(inbox), Ok(real)) = (inbox_dir().canonicalize(), path.canonicalize()) else { return false };
+    let Some(parent) = real.parent() else { return false };
+    parent == inbox || parent.parent() == Some(inbox.join("chats").as_path())
 }
 
 /// A picture at most MAX_PREVIEW_BYTES big, as a data URL; None for any other file.
@@ -140,11 +145,9 @@ pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
 
     let dest = unique_in(&dir, &name);
 
-    // Written by hand rather than with `std::fs::copy`: CopyFileEx carries the
-    // source's timestamps across, so a file last edited three years ago would
-    // sit in the inbox looking older than the sweep window until restamped, and
-    // a sweep running meanwhile (another drop, a screenshot) deleted it. A new
-    // file is born with the time *we* copied it.
+    // Written by hand rather than with `std::fs::copy`, which carries the
+    // source's timestamps across (CopyFileEx): a new file is born with the
+    // time *we* copied it.
     let cannot_copy = |e: std::io::Error| crate::i18n::tf("Cannot copy: {error}", &[("error", &e.to_string())]);
     let mut from = std::fs::File::open(src).map_err(cannot_copy)?;
     let mut to = std::fs::File::options().write(true).create_new(true).open(&dest).map_err(cannot_copy)?;
@@ -154,7 +157,6 @@ pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
         return Err(cannot_copy(e));
     }
     drop(to);
-    sweep(&dir);
 
     Ok(DroppedFile {
         name,
@@ -195,7 +197,6 @@ fn unique_in(dir: &Path, name: &str) -> PathBuf {
 /// path in the inbox under `name`, next to the dropped files Claude Code may read.
 pub fn new_inbox_file(name: &str) -> Result<PathBuf, String> {
     let dir = ready_inbox()?;
-    sweep(&dir);
     Ok(unique_in(&dir, name))
 }
 
@@ -263,35 +264,26 @@ pub fn write_in(name: &str, bytes: &[u8]) -> Result<DroppedFile, String> {
         return Err(cannot_copy(e));
     }
     drop(file);
+    // Its own name, as a dropped file's: the inbox's may be "image (2).png",
+    // and the chat's folder it moves to gives it this one back (`adopt`).
     Ok(DroppedFile {
-        name: dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(name),
+        name,
         path: dest.to_string_lossy().to_string(),
         size: bytes.len() as u64,
     })
 }
 
-/// Drops anything copied here more than a week ago. `ingest` stamps every copy
-/// with the time it landed, so this really is the age of the copy and not the
-/// age of whatever the user happened to drag in.
-fn sweep(dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    let now = SystemTime::now();
-    for entry in entries.flatten() {
-        let Ok(meta) = entry.metadata() else { continue };
-        let Ok(copied) = meta.modified() else { continue };
-        if now.duration_since(copied).map(|age| age > KEEP_FOR).unwrap_or(false) {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
-}
-
 // ── Each chat's own folder ────────────────────────────────────────────────────
 //
 // A file lands in the inbox before any chat has it (dropped, pasted, a
-// screenshot). The CLIs a chat runs (Claude Code, Antigravity CLI) read
-// without asking only inbox\chats\<chat>, where each file the chat is given
-// is linked as it goes (a hard link, the same file on disk; a copy where a
-// link can't be made): never the files of the other chats. Settings →
+// screenshot) and waits there while it is in the field. The question that
+// takes it moves it into inbox\chats\<chat> (`adopt`), under the name it had
+// on the computer, and from then on it is the chat's: the island, the AI and
+// the CLIs the chat runs (Claude Code, Antigravity CLI) find it there, and
+// the AI writes its own files beside it. Nothing sweeps that folder: it goes
+// with its chat (`forget_chat`), and a file of it with the × of the chat's
+// files or an edit that leaves it out (`forget_files`). The CLIs read
+// without asking only their chat's folder, never another chat's; Settings →
 // Security → "Other chats' files" on gives them the whole inbox instead.
 
 /// Where the chats' folders are.
@@ -304,32 +296,69 @@ pub fn chat_dir(chat: &str) -> PathBuf {
     chats_dir().join(crate::workspace::safe_id(chat))
 }
 
-/// `path` as the CLI of `chat` is told it: for a file directly in the inbox,
-/// its link in the chat's folder, made now; any other path (a file read where
-/// it is, or already in a chat's folder) as it is. Where no link nor copy can
-/// be made, the inbox's own path: the CLI then asks before reading it.
-pub fn for_chat(chat: &str, path: &str) -> String {
-    let source = Path::new(path);
-    let Some(name) = source.file_name() else { return path.to_string() };
-    if !in_inbox(source) || !source.is_file() {
-        return path.to_string();
+/// A file a question takes: the chat it goes to, where it waits, and the
+/// name it had on the computer (the inbox's may be "notes (2).txt").
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct Adopt {
+    pub chat: String,
+    pub path: String,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Each file waiting in the inbox moves into its chat's folder; the new
+/// path of each, in order (the same path for one that is not in the inbox,
+/// or could not be moved). One that two chats name (sent by a Lumo before
+/// this) is copied for all but the last of them.
+pub fn adopt(items: &[Adopt]) -> Vec<String> {
+    let ready = ready_inbox().is_ok();
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let later = items[i + 1..].iter().any(|o| o.chat != item.chat && path_key(&o.path) == path_key(&item.path));
+            if ready {
+                adopt_one(item, later)
+            } else {
+                item.path.clone()
+            }
+        })
+        .collect()
+}
+
+fn adopt_one(item: &Adopt, copy: bool) -> String {
+    let source = Path::new(&item.path);
+    if item.chat.trim().is_empty() || !in_inbox(source) || !source.is_file() {
+        return item.path.clone();
     }
-    let dir = chat_dir(chat);
-    if ready_inbox().is_err() || std::fs::create_dir_all(&dir).is_err() {
-        return path.to_string();
+    let dir = chat_dir(&item.chat);
+    let Some(inbox_name) = source.file_name() else { return item.path.clone() };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return item.path.clone();
     }
-    let dest = dir.join(name);
-    // Made again each time: the inbox gives a name again once its file is
-    // gone, so a link of the same name may be an older file's.
-    let _ = std::fs::remove_file(&dest);
-    let made = std::fs::hard_link(source, &dest).is_ok() || std::fs::copy(source, &dest).is_ok();
-    // Where it could not be made again (the old one open in another app),
-    // the one there is good only if it is this very file.
-    if made || same_file(source, &dest) {
-        dest.to_string_lossy().to_string()
-    } else {
-        path.to_string()
+    // Given to its CLI by a Lumo before this one: the chat's folder already
+    // has a link of this very file under the inbox's name, the path the CLI
+    // knows. That one is the chat's, and the inbox's goes.
+    let linked = dir.join(inbox_name);
+    if same_file(source, &linked) {
+        if !copy {
+            let _ = std::fs::remove_file(source);
+        }
+        return linked.to_string_lossy().to_string();
     }
+    // A new file: the name it had on the computer. One moved by a Lumo
+    // before this keeps the inbox's, the name its chat's AI may know.
+    let name = item.name.as_deref().map(safe_file_name).unwrap_or_else(|| inbox_name.to_string_lossy().to_string());
+    let dest = unique_in(&dir, &name);
+    if !copy && std::fs::rename(source, &dest).is_ok() {
+        return dest.to_string_lossy().to_string();
+    }
+    // Open in another app (it can't move then), or another chat names it
+    // too: a copy goes, and the inbox's waits for `tidy`.
+    if std::fs::copy(source, &dest).is_ok() {
+        return dest.to_string_lossy().to_string();
+    }
+    item.path.clone()
 }
 
 /// `a` and `b` hold the same file: a link of it, or a copy (same size, same
@@ -340,11 +369,8 @@ fn same_file(a: &Path, b: &Path) -> bool {
 }
 
 /// The inbox folder the CLI of `chat` may read without asking: its own, or
-/// the whole inbox with "Other chats' files" on (`others`). Created if
-/// needed; the chats' folders are swept like the inbox.
+/// the whole inbox with "Other chats' files" on (`others`). Created if needed.
 pub fn cli_inbox(chat: &str, others: bool) -> String {
-    drop_orphans(&chats_dir(), &inbox_dir());
-    sweep_chats(&chats_dir(), UNNAMED_FOR);
     let dir = if others { inbox_dir() } else { chat_dir(chat) };
     if ready_inbox().is_ok() {
         let _ = std::fs::create_dir_all(&dir);
@@ -352,8 +378,8 @@ pub fn cli_inbox(chat: &str, others: bool) -> String {
     dir.to_string_lossy().to_string()
 }
 
-/// The chat is deleted: its folder of links goes with it. The files stay in
-/// the inbox for the chats that still have them (`release`).
+/// The chat is deleted: its folder goes with it, the files it was sent and
+/// the ones its AI wrote there.
 pub fn forget_chat(chat: &str) {
     let dir = chat_dir(chat);
     // Never the inbox itself, whatever the id.
@@ -362,65 +388,35 @@ pub fn forget_chat(chat: &str) {
     }
 }
 
-/// A link whose file left the inbox goes too: the inbox no longer has a file
-/// of its name, or has another one. So a chat that left the history without
-/// being deleted (past the 40 kept, chats.ts MAX_CHATS) keeps none of its
-/// files once `tidy` takes them out of the inbox.
-fn drop_orphans(chats: &Path, inbox: &Path) {
-    let Ok(folders) = std::fs::read_dir(chats) else { return };
-    for folder in folders.flatten() {
-        let Ok(meta) = std::fs::symlink_metadata(folder.path()) else { continue };
-        if !meta.is_dir() {
-            continue;
-        }
-        let Ok(files) = std::fs::read_dir(folder.path()) else { continue };
-        for file in files.flatten() {
-            let link = file.path();
-            let is_file = std::fs::symlink_metadata(&link).is_ok_and(|m| m.is_file());
-            if is_file && !same_file(&inbox.join(file.file_name()), &link) {
-                let _ = std::fs::remove_file(&link);
-            }
-        }
-    }
+/// Files taken out of `chat` (the × of its files, an edit that leaves them
+/// out): each of `paths` directly in the chat's folder is deleted, never a
+/// file anywhere else (one the AI read where it is). Returns how many went.
+pub fn forget_files(chat: &str, paths: &[String]) -> usize {
+    let Ok(dir) = chat_dir(chat).canonicalize() else { return 0 };
+    paths
+        .iter()
+        .filter(|p| {
+            let Ok(real) = Path::new(p.as_str()).canonicalize() else { return false };
+            let file = std::fs::symlink_metadata(&real).is_ok_and(|m| m.is_file());
+            file && real.parent() == Some(dir.as_path()) && std::fs::remove_file(&real).is_ok()
+        })
+        .count()
 }
 
-/// Each chat's folder swept of what is over a week old, like the inbox, and
-/// a folder left empty for `empty_for` goes.
-fn sweep_chats(dir: &Path, empty_for: Duration) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    let now = SystemTime::now();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
-        if !meta.is_dir() {
-            continue;
-        }
-        sweep(&path);
-        let idle = meta.modified().ok().and_then(|at| now.duration_since(at).ok()).is_some_and(|age| age >= empty_for);
-        if idle {
-            // Only an empty folder: remove_dir refuses any other.
-            let _ = std::fs::remove_dir(&path);
-        }
-    }
-}
-
-// ── Copies no chat needs any more ─────────────────────────────────────────────
+// ── Files waiting no field holds ──────────────────────────────────────────────
 //
-// The page names the copies by path, so it could name any file: only a file
+// The page names the files by path, so it could name any file: only a file
 // directly in the inbox is ever deleted here (`in_inbox`), never a folder, and
 // never one of the user's own files an answer read where it is.
-
-/// A copy no chat names is left this long: it may be waiting in the field, or
-/// a screenshot not sent yet.
-const UNNAMED_FOR: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// The same file whatever its case or slashes (Windows paths).
 fn path_key(path: &str) -> String {
     path.trim().replace('/', "\\").to_lowercase()
 }
 
-/// A deleted chat's copies: each of `paths` that is in the inbox and not in
-/// `keep` (another chat sent it too) is deleted. Returns how many went.
+/// The × of files waiting in the field: each of `paths` that is in the inbox
+/// and not in `keep` (another field still has it, or a chat a Lumo before
+/// this one sent it to) is deleted. Returns how many went.
 pub fn release(paths: &[String], keep: &[String]) -> usize {
     let kept: std::collections::HashSet<String> = keep.iter().map(|p| path_key(p)).collect();
     let mut gone = 0;
@@ -436,21 +432,16 @@ pub fn release(paths: &[String], keep: &[String]) -> usize {
     gone
 }
 
-/// Every file of the inbox no chat names in `keep` and older than a day is
-/// deleted: the copies of chats deleted before Lumo did this, or gone past the history's
-/// end, and attachments taken out of the field before they went.
+/// When Lumo starts: every file of the inbox no field and no chat names in
+/// `keep` is deleted (a file left in the field when Lumo closed, a
+/// screenshot never sent). Returns how many went.
 pub fn tidy(keep: &[String]) -> usize {
-    let gone = tidy_in(&inbox_dir(), keep, UNNAMED_FOR);
-    // The chats' links of what just went, and the folders left empty.
-    drop_orphans(&chats_dir(), &inbox_dir());
-    sweep_chats(&chats_dir(), UNNAMED_FOR);
-    gone
+    tidy_in(&inbox_dir(), keep)
 }
 
-fn tidy_in(dir: &Path, keep: &[String], older_than: Duration) -> usize {
+fn tidy_in(dir: &Path, keep: &[String]) -> usize {
     let kept: std::collections::HashSet<String> = keep.iter().map(|p| path_key(p)).collect();
     let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
-    let now = SystemTime::now();
     let mut gone = 0;
     for entry in entries.flatten() {
         let path = entry.path();
@@ -458,8 +449,7 @@ fn tidy_in(dir: &Path, keep: &[String], older_than: Duration) -> usize {
         if !meta.is_file() || kept.contains(&path_key(&path.to_string_lossy())) {
             continue;
         }
-        let old = meta.modified().ok().and_then(|at| now.duration_since(at).ok()).is_some_and(|age| age >= older_than);
-        if old && std::fs::remove_file(&path).is_ok() {
+        if std::fs::remove_file(&path).is_ok() {
             gone += 1;
         }
     }
@@ -488,97 +478,137 @@ mod tests {
         let _ = std::fs::remove_file(&outside);
     }
 
+    fn adopt(chat: &str, path: &str, name: Option<&str>) -> String {
+        super::adopt(&[Adopt { chat: chat.into(), path: path.into(), name: name.map(String::from) }]).remove(0)
+    }
+
     #[test]
-    fn a_chat_gets_its_own_link_and_never_another_chats_files() {
-        let mine = write_in("chat-dir-test-mine.txt", b"mine").unwrap();
-        let theirs = write_in("chat-dir-test-theirs.txt", b"theirs").unwrap();
-        let (a, b) = ("test-chat-a", "test-chat-b");
-        forget_chat(a);
-        forget_chat(b);
-        let linked = for_chat(a, &mine.path);
-        assert_eq!(Path::new(&linked).parent(), Some(chat_dir(a).as_path()), "{linked}");
-        assert_eq!(std::fs::read(&linked).unwrap(), b"mine");
-        assert_eq!(for_chat(a, &mine.path), linked, "again: the same place");
-        assert_eq!(for_chat(a, &linked), linked, "already in the chat's folder");
-        let theirs_linked = for_chat(b, &theirs.path);
-        assert!(!chat_dir(a).join("chat-dir-test-theirs.txt").exists(), "the other chat's file stays out");
-        assert!(!chat_dir(b).join("chat-dir-test-mine.txt").exists());
-        // A file outside the inbox is named where it is.
-        let outside = std::env::temp_dir().join(format!("lumo-chat-dir-{}.txt", std::process::id()));
-        std::fs::write(&outside, b"x").unwrap();
-        assert_eq!(for_chat(a, &outside.to_string_lossy()), outside.to_string_lossy());
+    fn a_sent_file_moves_into_its_chat_under_the_name_it_had() {
+        let chat = "test-adopt-moves";
+        forget_chat(chat);
+        let first = write_in("adopt-test.txt", b"first").unwrap();
+        let second = write_in("adopt-test.txt", b"second").unwrap();
+        assert_ne!(first.path, second.path, "two of a name wait side by side in the inbox");
+        // The second goes: in the chat's folder, under its own name, and out of the inbox.
+        let moved = adopt(chat, &second.path, Some("adopt-test.txt"));
+        assert_eq!(Path::new(&moved), chat_dir(chat).join("adopt-test.txt"));
+        assert_eq!(std::fs::read(&moved).unwrap(), b"second");
+        assert!(!Path::new(&second.path).exists(), "it left the inbox");
+        assert!(is_chat_copy(Path::new(&moved)) && !in_inbox(Path::new(&moved)));
+        // Sent again (an edit): where it is.
+        assert_eq!(adopt(chat, &moved, Some("adopt-test.txt")), moved);
+        // A file the AI wrote there of that name is never written over.
+        std::fs::write(chat_dir(chat).join("made.txt"), b"the AI's").unwrap();
+        let other = write_in("made.txt", b"the user's").unwrap();
+        let beside = adopt(chat, &other.path, Some("made.txt"));
+        assert_eq!(Path::new(&beside), chat_dir(chat).join("made (2).txt"));
+        assert_eq!(std::fs::read(chat_dir(chat).join("made.txt")).unwrap(), b"the AI's");
+        // A file outside the inbox (read where it is), or no chat: as it is.
+        let outside = std::env::temp_dir().join(format!("lumo-adopt-outside-{}.txt", std::process::id()));
+        std::fs::write(&outside, b"mine").unwrap();
+        assert_eq!(adopt(chat, &outside.to_string_lossy(), None), outside.to_string_lossy());
+        assert!(outside.exists());
+        assert_eq!(adopt("", &first.path, None), first.path);
+        assert!(Path::new(&first.path).exists());
         // The CLI's folder: the chat's own, or the whole inbox.
-        assert_eq!(cli_inbox(a, false), chat_dir(a).to_string_lossy());
-        assert_eq!(cli_inbox(a, true), inbox_dir().to_string_lossy());
-        // The chat deleted: its links go, the inbox's files stay for the others.
-        forget_chat(a);
-        assert!(!chat_dir(a).exists());
-        assert!(Path::new(&mine.path).exists());
-        assert!(Path::new(&theirs_linked).exists());
-        forget_chat(b);
-        for p in [&mine.path, &theirs.path] {
-            let _ = std::fs::remove_file(p);
-        }
+        assert_eq!(cli_inbox(chat, false), chat_dir(chat).to_string_lossy());
+        assert_eq!(cli_inbox(chat, true), inbox_dir().to_string_lossy());
+        // The chat deleted: its folder goes, the files the AI wrote too.
+        forget_chat(chat);
+        assert!(!chat_dir(chat).exists());
+        let _ = std::fs::remove_file(&first.path);
         let _ = std::fs::remove_file(&outside);
     }
 
     #[test]
-    fn a_link_whose_file_left_the_inbox_goes_and_a_stale_one_is_never_given() {
-        let dir = std::env::temp_dir().join(format!("lumo-orphans-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let (inbox, chat) = (dir.join("inbox"), dir.join("inbox").join("chats").join("a"));
-        std::fs::create_dir_all(&chat).unwrap();
-        std::fs::write(inbox.join("kept.txt"), b"kept").unwrap();
-        std::fs::hard_link(inbox.join("kept.txt"), chat.join("kept.txt")).unwrap();
-        std::fs::write(inbox.join("gone.txt"), b"gone").unwrap();
-        std::fs::hard_link(inbox.join("gone.txt"), chat.join("gone.txt")).unwrap();
-        std::fs::write(chat.join("other.txt"), b"an older file").unwrap();
-        std::fs::write(inbox.join("other.txt"), b"a new one, same name").unwrap();
-        // Tidied out of the inbox: its link goes with it.
-        std::fs::remove_file(inbox.join("gone.txt")).unwrap();
-        drop_orphans(&inbox.join("chats"), &inbox);
-        assert!(chat.join("kept.txt").exists(), "its file is still in the inbox");
-        assert!(!chat.join("gone.txt").exists(), "its file left the inbox");
-        assert!(!chat.join("other.txt").exists(), "another file now has its name");
-        assert_eq!(std::fs::read(inbox.join("other.txt")).unwrap(), b"a new one, same name", "the inbox's own stays");
-        assert!(same_file(&inbox.join("kept.txt"), &chat.join("kept.txt")));
-        assert!(!same_file(&inbox.join("kept.txt"), &inbox.join("other.txt")));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn a_link_an_older_lumo_gave_its_cli_stays_where_the_cli_knows_it() {
+        let chat = "test-adopt-linked";
+        forget_chat(chat);
+        let sent = write_in("linked-test (2).tex", b"tex").unwrap();
+        std::fs::create_dir_all(chat_dir(chat)).unwrap();
+        let link = chat_dir(chat).join(Path::new(&sent.path).file_name().unwrap());
+        std::fs::hard_link(&sent.path, &link).unwrap();
+        let moved = adopt(chat, &sent.path, None);
+        assert_eq!(Path::new(&moved), link.as_path());
+        assert_eq!(std::fs::read(&link).unwrap(), b"tex");
+        assert!(!Path::new(&sent.path).exists(), "the inbox's goes");
+        forget_chat(chat);
     }
 
     #[test]
-    fn an_empty_chat_folder_goes_at_a_sweep_and_a_full_one_stays() {
-        let dir = std::env::temp_dir().join(format!("lumo-sweep-chats-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("empty")).unwrap();
-        std::fs::create_dir_all(dir.join("full")).unwrap();
-        std::fs::write(dir.join("full").join("a.txt"), b"x").unwrap();
-        sweep_chats(&dir, Duration::from_secs(3600));
-        assert!(dir.join("empty").is_dir(), "not idle long enough yet");
-        sweep_chats(&dir, Duration::ZERO);
-        assert!(!dir.join("empty").exists());
-        assert!(dir.join("full").join("a.txt").exists(), "a file under a week old stays");
-        let _ = std::fs::remove_dir_all(&dir);
+    fn a_file_two_old_chats_name_is_copied_for_one_and_moved_for_the_last() {
+        let (a, b) = ("test-adopt-shared-a", "test-adopt-shared-b");
+        forget_chat(a);
+        forget_chat(b);
+        let both = write_in("shared-test.txt", b"both").unwrap();
+        let alone = write_in("alone-test.txt", b"alone").unwrap();
+        let got = super::adopt(&[
+            Adopt { chat: a.into(), path: both.path.clone(), name: None },
+            Adopt { chat: a.into(), path: alone.path.clone(), name: None },
+            Adopt { chat: b.into(), path: both.path.clone(), name: None },
+        ]);
+        // Moved by a Lumo before this one: under the inbox's name, the one its AI may know.
+        let named = |f: &DroppedFile| Path::new(&f.path).file_name().unwrap().to_owned();
+        assert_eq!(Path::new(&got[0]), chat_dir(a).join(named(&both)));
+        assert_eq!(Path::new(&got[1]), chat_dir(a).join(named(&alone)));
+        assert_eq!(Path::new(&got[2]), chat_dir(b).join(named(&both)));
+        for p in [&got[0], &got[2]] {
+            assert_eq!(std::fs::read(p).unwrap(), b"both");
+        }
+        assert!(!Path::new(&both.path).exists() && !Path::new(&alone.path).exists(), "both left the inbox");
+        forget_chat(a);
+        forget_chat(b);
     }
 
     #[test]
-    fn tidy_drops_only_old_files_no_chat_names() {
+    fn only_files_in_the_chats_own_folder_are_forgotten() {
+        let (a, b) = ("test-forget-a", "test-forget-b");
+        forget_chat(a);
+        forget_chat(b);
+        for chat in [a, b] {
+            std::fs::create_dir_all(chat_dir(chat).join("deeper")).unwrap();
+            std::fs::write(chat_dir(chat).join("x.txt"), b"x").unwrap();
+        }
+        std::fs::write(chat_dir(a).join("deeper").join("y.txt"), b"y").unwrap();
+        let waiting = write_in("forget-test.txt", b"w").unwrap();
+        let outside = std::env::temp_dir().join(format!("lumo-forget-outside-{}.txt", std::process::id()));
+        std::fs::write(&outside, b"mine").unwrap();
+        let named = |p: PathBuf| p.to_string_lossy().to_string();
+        let paths = vec![
+            named(chat_dir(a).join("x.txt")),
+            named(chat_dir(a).join("deeper").join("y.txt")),
+            named(chat_dir(a).join("deeper")),
+            named(chat_dir(a)),
+            named(chat_dir(b).join("x.txt")),
+            named(chat_dir(a).join("..").join(crate::workspace::safe_id(b)).join("x.txt")),
+            waiting.path.clone(),
+            named(outside.clone()),
+        ];
+        assert_eq!(forget_files(a, &paths), 1);
+        assert!(!chat_dir(a).join("x.txt").exists());
+        assert!(chat_dir(a).join("deeper").join("y.txt").exists(), "only directly in the folder");
+        assert!(chat_dir(b).join("x.txt").exists(), "never another chat's");
+        assert!(Path::new(&waiting.path).exists() && outside.exists());
+        forget_chat(a);
+        forget_chat(b);
+        let _ = std::fs::remove_file(&waiting.path);
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn tidy_drops_every_waiting_file_nobody_names() {
         let dir = std::env::temp_dir().join(format!("lumo-tidy-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("folder")).unwrap();
-        for name in ["named.txt", "orphan.txt"] {
+        std::fs::create_dir_all(dir.join("chats").join("a")).unwrap();
+        for name in ["named.txt", "left.txt"] {
             std::fs::write(dir.join(name), b"x").unwrap();
         }
-        std::fs::write(dir.join("folder").join("inside.txt"), b"x").unwrap();
+        std::fs::write(dir.join("chats").join("a").join("sent.txt"), b"x").unwrap();
         let keep = vec![dir.join("NAMED.txt").to_string_lossy().to_string()];
-        // Nothing is old enough yet.
-        assert_eq!(tidy_in(&dir, &keep, Duration::from_secs(3600)), 0);
-        assert!(dir.join("orphan.txt").exists());
-        // Now everything is: only the orphan goes, the folder stays.
-        assert_eq!(tidy_in(&dir, &keep, Duration::ZERO), 1);
-        assert!(!dir.join("orphan.txt").exists());
+        assert_eq!(tidy_in(&dir, &keep), 1);
+        assert!(!dir.join("left.txt").exists());
         assert!(dir.join("named.txt").exists());
-        assert!(dir.join("folder").join("inside.txt").exists());
+        assert!(dir.join("chats").join("a").join("sent.txt").exists(), "a chat's folder is never tidied");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -593,6 +623,16 @@ mod tests {
         std::fs::write(&outside, b"x").unwrap();
         assert!(preview(&outside.to_string_lossy()).is_none(), "not in the inbox");
         assert!(preview("C:\\nowhere\\x.png").is_none());
+        // Sent: in its chat's folder, it is still previewed; deeper, never.
+        let chat = "test-preview-chat";
+        forget_chat(chat);
+        let sent = super::adopt(&[Adopt { chat: chat.into(), path: png.path.clone(), name: None }]).remove(0);
+        assert!(preview(&sent).is_some(), "{sent}");
+        std::fs::create_dir_all(chat_dir(chat).join("deeper")).unwrap();
+        let deeper = chat_dir(chat).join("deeper").join("x.png");
+        std::fs::write(&deeper, [0x89, b'P', b'N', b'G']).unwrap();
+        assert!(preview(&deeper.to_string_lossy()).is_none());
+        forget_chat(chat);
         for p in [&png.path, &txt.path] {
             let _ = std::fs::remove_file(p);
         }
@@ -626,10 +666,10 @@ mod tests {
         drop(&tmp);
         assert!(ingest(tmp.to_str().unwrap()).is_err());
 
-        // An ancient source must not arrive already older than the sweep window.
+        // An ancient source arrives as a new file, born when it was copied.
         let old_source = tmp.join("ancient.txt");
         std::fs::write(&old_source, b"old").unwrap();
-        let long_ago = SystemTime::now() - KEEP_FOR - Duration::from_secs(60 * 60);
+        let long_ago = SystemTime::now() - Duration::from_secs(8 * 24 * 60 * 60);
         std::fs::File::options()
             .write(true)
             .open(&old_source)
@@ -638,10 +678,8 @@ mod tests {
             .unwrap();
         drop(&old_source);
         let aged = ingest(old_source.to_str().unwrap()).unwrap();
-        assert!(
-            Path::new(&aged.path).exists(),
-            "a file copied just now was swept as if it were a week old"
-        );
+        let born = std::fs::metadata(&aged.path).unwrap().modified().unwrap();
+        assert!(born > long_ago, "the copy keeps the source's old time");
         let _ = std::fs::remove_file(&aged.path);
 
         let _ = std::fs::remove_file(&first.path);
@@ -677,7 +715,7 @@ mod paste_tests {
     #[test]
     fn pasted_bytes_land_in_the_inbox_and_too_many_are_refused() {
         let got = write_in("../shot.png", b"\x89PNG").unwrap();
-        assert!(got.name.starts_with("shot") && got.name.ends_with(".png"), "{}", got.name);
+        assert_eq!(got.name, "shot.png", "its own name, whatever the inbox's");
         assert!(Path::new(&got.path).starts_with(inbox_dir()));
         assert_eq!(std::fs::read(&got.path).unwrap(), b"\x89PNG");
         assert_eq!(got.size, 4);

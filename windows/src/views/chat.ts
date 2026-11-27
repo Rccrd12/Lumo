@@ -88,7 +88,7 @@ import { activeModel, chatEffortOf, effortFor, hasPermissions, isApiProvider, is
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
-import { cliOf, setChatCli } from "../core/chats";
+import { cliOf, moveSentPaths, onChatsLeft, setChatCli } from "../core/chats";
 import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore, noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, sealAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns, type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
 import { browserTabsChanged, openBrowserView, setBrowserViewHost } from "./browser-watch";
@@ -96,12 +96,12 @@ import { updateChatTurns, type AskQuote } from "../core/chats";
 import { GROUP_WORDS, chatGroup, chatWhen, type ChatGroup } from "../core/chat-dates";
 import { DOT_COLORS, chatDot, clearMark, loadMarks, markChat, needsUser, pruneMarks, type ChatDot, type ChatMarks } from "../core/chat-marks";
 import type { AgentsPeek } from "../core/compact";
-import { PICTURE_NAME, comingBack, joinScreen, leaveScreen, restored, sentAgain, sentItems, type SentItem } from "../core/sent";
+import { PICTURE_NAME, comingBack, joinScreen, leaveScreen, movedSent, restored, sentAgain, sentItems, type SentItem } from "../core/sent";
 import type { ChatPermissions } from "../core/chats";
 import { messageScope, nextMessage } from "../core/checklists";
 import { withReplyFile } from "../core/file-names";
 import { setFileLinkHost } from "./file-links";
-import { addChatFile, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
+import { addChatFile, chatCopies, chatFiles, dropChatFiles, inboxCopies, keptCopies, moveChatPaths, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import { PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, itemPreview, keepShots, afterSent, autoShare, folderPicks, foldersByThemselves, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short, screenWaits, shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type PickEntry, type PendingScreen, type PreviewBlock, type ScreenItem } from "../core/screen";
@@ -230,9 +230,19 @@ export function buildPrompt(
   decide: (d: "allow" | "deny", requestId: string) => void = () => {},
   chatRewound: (chatId: string) => void = () => {},
 ): ViewHost {
-  // Copies no past chat names any more (deleted before Lumo released them,
-  // or gone past the history's end) leave the inbox once a day old.
-  void Bridge.inboxTidy([...keptCopies(), ...fieldCopies()]);
+  // The copies a Lumo before this one kept in the inbox move into their
+  // chats' folders; then what no chat and no field names leaves the inbox
+  // (a file left in the field when Lumo closed, a screenshot never sent).
+  void settleInbox();
+  // A chat that leaves the history past the most kept can't be opened
+  // again: its folder of files goes, as a deleted chat's does.
+  onChatsLeft((ids) => {
+    for (const id of ids) {
+      const copies = chatCopies(id);
+      void Bridge.workspaceDelete(id);
+      if (copies.length > 0) void Bridge.inboxRelease(copies, [...keptCopies(), ...fieldCopies()]);
+    }
+  });
   /** Settings on its Agents page, where a chat's CLI is set up (views/chat-fix.ts). */
   const openAgents = () => {
     try {
@@ -1883,6 +1893,70 @@ export function buildPrompt(
   // screenshot is made when its entry is clicked, never before; a screenshot
   // is previewed and joins the chat only on Send. Cancel deletes it.
 
+  // ── Each chat's folder of files ───────────────────────────────────────────
+  //
+  // A file waits in the inbox while it is in the attachments; its × deletes
+  // it. The question that takes it moves it into its chat's folder (files.rs
+  // adopt), where it stays until the chat goes, the × of Chat files takes
+  // it, or an edit sends the question again without it.
+
+  /** What a question takes leaves the inbox for its chat's folder: each one's path is the new one from then on. */
+  async function toChatFolder(chatId: string, files: { name: string; path: string }[], shots: { path: string }[]) {
+    // A screenshot keeps its file's name: its own ("Screen 1") is no file name.
+    const items = [...files.map((f) => ({ chat: chatId, path: f.path, name: f.name })), ...shots.map((x) => ({ chat: chatId, path: x.path }))];
+    if (!items.length) return;
+    const moved = await Bridge.chatFilesAdopt(items).catch(() => null);
+    if (!moved || moved.length !== items.length) return;
+    const all: { path: string }[] = [...files, ...shots];
+    all.forEach((f, i) => {
+      if (!moved[i] || moved[i] === f.path) return;
+      // The question about it names it where it now is.
+      if (State.promptContext?.kind === "file" && State.promptContext.path === f.path) State.promptContext = { ...State.promptContext, path: moved[i] };
+      f.path = moved[i];
+    });
+  }
+
+  /** Files taken out of the attachments before they went: the inbox's copy goes at once (one back from an edit is in the chat's folder, and stays). */
+  function discardWaiting(paths: string[]) {
+    const gone = paths.filter((p) => p !== "");
+    if (gone.length > 0) void Bridge.inboxRelease(gone, [...keptCopies(), ...fieldCopies()]);
+  }
+
+  /** The paths of what went with message `id` and the questions after it. */
+  function sentPathsFrom(id: number): string[] {
+    const at = State.chatHistory.findIndex((m) => m.id === id);
+    if (at < 0) return [];
+    return State.chatHistory.slice(at).flatMap((m) => (m.role === "user" ? (m.sent ?? []).flatMap((i) => (i.path ? [i.path] : [])) : []));
+  }
+
+  /** When Lumo starts: the past chats' copies still in the inbox move into their folders, then the inbox keeps only what a field or a chat names. */
+  async function settleInbox() {
+    const items = inboxCopies();
+    const moved = items.length ? await Bridge.chatFilesAdopt(items).catch(() => null) : null;
+    if (moved && moved.length === items.length) {
+      const byChat = new Map<string, Map<string, string>>();
+      items.forEach((it, i) => {
+        if (!moved[i] || moved[i] === it.path) return;
+        const m = byChat.get(it.chat) ?? new Map<string, string>();
+        m.set(it.path, moved[i]);
+        byChat.set(it.chat, m);
+      });
+      for (const [chatId, m] of byChat) {
+        moveChatPaths(chatId, m);
+        moveSentPaths(chatId, m);
+        // Open already: its questions name them where they now are.
+        if (State.chatId !== chatId) continue;
+        State.chatHistory = State.chatHistory.map((msg) => {
+          const sent = msg.sent ? movedSent(msg.sent, m) : null;
+          if (!sent && !msg.again) return msg;
+          const again = msg.again ? { ...msg.again, files: msg.again.files.map((f) => ({ ...f, path: m.get(f.path) ?? f.path })), screen: { ...msg.again.screen, shots: msg.again.screen.shots.map((x) => ({ ...x, path: m.get(x.path) ?? x.path })) } } : undefined;
+          return { ...msg, ...(sent ? { sent } : {}), ...(again ? { again } : {}) };
+        });
+      }
+    }
+    await Bridge.inboxTidy([...keptCopies(), ...fieldCopies()]).catch(() => 0);
+  }
+
   /** Forgets the screenshots that were not sent, and deletes them. */
   function dropShots(paths: string[]) {
     // One that went with a question is the chat's: it goes with the chat.
@@ -1903,11 +1977,13 @@ export function buildPrompt(
 
   /** Remove all: every attachment waiting goes, the screenshots' files with them. */
   function removeAll() {
+    const waiting = [...(State.droppedFile && !State.droppedFile.sent ? [State.droppedFile.path] : []), ...State.moreFiles.map((f) => f.path)];
     if (State.droppedFile && !State.droppedFile.sent) {
       State.droppedFile = null;
       if (State.promptContext?.kind === "file") State.promptContext = null;
     }
     State.moreFiles = [];
+    discardWaiting(waiting);
     dropShots(shotPaths(screen));
     // What rides along by itself stays out of this message too.
     const skip = screenItems(screen).filter((it) => it.kind === "folder" || it.kind === "tab").map((it) => it.key);
@@ -4066,7 +4142,7 @@ export function buildPrompt(
     let run: Run;
     let finish = () => {};
     // What went with the question, given back to the field if it did not go.
-    let giveBack = (_all: boolean) => {};
+    let giveBack = () => {};
     /** The files that went with the question: the chat's files once it is answered. */
     let sent: { name: string; path: string }[] = [];
     let question: ChatMessage;
@@ -4084,6 +4160,8 @@ export function buildPrompt(
         editBack = null;
         editSent = null;
       }
+      // What the questions it replaces sent: what this one no longer sends leaves the chat's folder.
+      const replaced = edited != null ? sentPathsFrom(edited) : [];
       if (edited != null) await rewindTo(edited);
 
       // What the screen button added goes once, then the chip goes.
@@ -4092,6 +4170,15 @@ export function buildPrompt(
       if (!auto && (shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], query);
       // A chat's model that may be retired is checked first: just opened, or not on screen.
       if (away || modelChecks.has(askedIn)) await modelChecked(askedIn);
+      // What it takes leaves the inbox for the chat's own folder, under the
+      // name it had on the computer: the chat's from now on, there for its
+      // AI, and for an edit that sends it again. Only while its chat is on
+      // screen, the attachments being its own; one that comes on screen
+      // meanwhile finds them in its draft, moved already.
+      if (!auto && State.chatId === askedIn) {
+        const waitingFile = State.droppedFile && !State.droppedFile.sent ? [State.droppedFile] : [];
+        await toChatFolder(askedIn, [...waitingFile, ...State.moreFiles], shared.shots);
+      }
       // Another chat came on screen meanwhile: the question goes back to the
       // field rather than into it.
       if (!away && State.chatId !== askedIn) {
@@ -4104,19 +4191,26 @@ export function buildPrompt(
 
       // The file goes with the first question asked after it was added, once.
       const file = auto ? null : State.droppedFile;
-      context = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
       const more = auto ? [] : State.moreFiles;
+      context = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
       screenContext = auto ? null : screenPayload(shared, more);
       sent = [...(file && context ? [file] : []), ...more];
 
       // The chat it is asked in, whichever is on screen when its answer comes.
       const chatId = askedIn;
       const history = away?.history ?? State.chatHistory;
-      // Its copies in the inbox now belong to the chat, its screenshots too
-      // (Edit sends them again): they go when it is deleted.
+      // Its files and screenshots now belong to the chat (Edit sends them
+      // again): they go when it is deleted.
       const shots = screenContext ? shared.shots.map((x) => x.path) : [];
       for (const path of shots) keptShots.add(path);
       noteSentCopies(chatId, [...sent.map((f) => f.path), ...shots]);
+      // An edit: what the questions it replaced sent and this one doesn't
+      // leaves the chat's folder (a file read where it is stays).
+      if (replaced.length > 0) {
+        const still = [...sent.map((f) => f.path), ...shots, ...sentPathsFrom(history[0]?.id ?? -1)];
+        const gone = replaced.filter((p) => !still.some((q) => samePath(p, q)));
+        if (gone.length > 0) void Bridge.chatFilesForget(chatId, gone);
+      }
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: newMessageId(), role: "user", content: query, at: Date.now() };
@@ -4146,19 +4240,23 @@ export function buildPrompt(
         file.sentWith = question.id;
       }
       if (more.length > 0) State.moreFiles = State.moreFiles.filter((f) => !more.includes(f));
-      // Rust deletes the screenshots once the turn went: what went no longer
-      // waits, even if something changed the attachments meanwhile.
+      // What went no longer waits, even if something changed the attachments meanwhile.
       const cleared = auto ? null : screen === waiting ? nextScreen(screen) : null;
       if (cleared) screen = cleared;
       else if (!auto && screenContext) screen = afterSent(screen, shared);
-      giveBack = (all) => {
+      giveBack = () => {
         // A file goes with the next question, unless the user moved on.
         if (file && context && State.droppedFile === file) file.sent = false;
         if (State.chatId !== chatId) return;
         const back = more.filter((f) => !State.moreFiles.some((m) => m.path === f.path));
         if (back.length > 0) State.moreFiles = [...back, ...State.moreFiles];
-        // Rust deletes the screenshots once a turn went, stopped or not: only a failed one keeps them.
-        if (all && cleared && screen === cleared) screen = waiting;
+        // What it took from the computer too, first, as its files: the
+        // screenshots are the chat's, kept on disk. What was added meanwhile stays after it.
+        if (cleared && screen === cleared) screen = waiting;
+        else if (!auto && screenContext) {
+          const joined = joinScreen(waiting, screen);
+          screen = { ...screen, shots: joined.shots, windows: joined.windows, tabs: joined.tabs, folders: joined.folders, selection: joined.selection, selections: joined.selections };
+        }
       };
 
       // A chat not on screen (a watch that fired in it) is answered by its own
@@ -4249,7 +4347,7 @@ export function buildPrompt(
         run.commands = undefined;
         run.touched = undefined;
       } else {
-        giveBack(false);
+        giveBack();
       }
       if (reply.session) run.session = reply.session;
       // What each CLI session of the chat saw, for opening it again (chat.rs cli_state).
@@ -4270,7 +4368,7 @@ export function buildPrompt(
       // Ended with an error after the answer: the closed island says so, in amber.
       if (!reply.stopped) noticeAway(reply.warning ? COMPACT_TEXT.answeredWithProblem : COMPACT_TEXT.answered, reply.warning ? { ...runSpeaker(run), color: WARNING_COLOR } : runSpeaker(run));
     } catch (err) {
-      giveBack(true);
+      giveBack();
       unsend(run, sent);
       // It would have ended the agents the chat's CLI left at work: the
       // question leaves the chat, and the bar above the field asks what to do.
@@ -5124,6 +5222,7 @@ export function buildPrompt(
               State.droppedFile = { ...next };
               State.promptContext = { kind: "file", name: next.name, path: next.path };
             }
+            discardWaiting([file.path]);
             Sound.play("pop");
             State.notify();
           };
@@ -5136,6 +5235,7 @@ export function buildPrompt(
         moreFiles.forEach((more, i) => {
           const removeMore = () => {
             State.moreFiles = State.moreFiles.filter((f) => f.path !== more.path);
+            discardWaiting([more.path]);
             Sound.play("pop");
             State.notify();
           };
