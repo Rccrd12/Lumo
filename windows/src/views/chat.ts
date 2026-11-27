@@ -760,6 +760,10 @@ export function buildPrompt(
     agentsUnder: (chat, answer, after) => agentCardsFor(chat, answer, after),
     // A member's answer written in ink as a chat's, going on into its bubble when it comes whole.
     writeLive: (chat, into, text, fresh, scope) => writeAnswer(chat, into, text, fresh, scope),
+    startEdit: (text) => {
+      setInput(text);
+      input.focus();
+    },
     inkInto: (chat, into, text, scope) => {
       if (ink && inkChat === chat && ink.behind) {
         ink.update(text, true);
@@ -4267,6 +4271,11 @@ export function buildPrompt(
         runLumo(own);
         return;
       }
+      // A message being edited goes again in its new words, what came after it gone.
+      if (typed && orchestra.editSend(typed)) {
+        setInput("");
+        return;
+      }
       // "/pdfcraft merge them": the member is asked to use that tool, as a chat's AI is.
       const called = toolCommand(typed, State.settings.chatProvider, State.tools);
       const text = typed;
@@ -5319,6 +5328,9 @@ export function buildPrompt(
     if (key === "Enter" && !ke.shiftKey && !ke.isComposing) {
       e.preventDefault();
       void submit();
+    } else if (key === "Escape" && orchestra.cancelEdit()) {
+      e.preventDefault();
+      setInput("");
     } else if (key === "Escape" && orchestra.closeModelMenu()) {
       e.preventDefault();
     } else if (key === "Escape" && picker.isOpen) {

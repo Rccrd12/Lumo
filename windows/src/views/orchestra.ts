@@ -111,6 +111,10 @@ export interface OrchestraView {
   anchorOf(chat: string): number | null;
   /** Its conversation drawn again (an agent came). */
   redraw(): void;
+  /** A message being edited: `text` replaces it and it goes again. True when it was one. */
+  editSend(text: string): boolean;
+  /** Escape while editing: the edit is dropped. True when there was one. */
+  cancelEdit(): boolean;
   /** The field's placeholder: who it writes to. */
   placeholder(): string;
   /** The model button's words and dot. */
@@ -197,6 +201,8 @@ export interface OrchestraHooks {
   writeLive?: (chat: string, into: HTMLElement, text: string, fresh: boolean, scope: string) => void;
   /** Its answer come whole: the ink goes on in its bubble until all is uncovered. */
   inkInto?: (chat: string, into: HTMLElement, text: string, scope: string) => void;
+  /** Edit: the message's text in the field, to be changed and sent again. */
+  startEdit?: (text: string) => void;
 }
 
 /** A member's message as a chat's: drawn by the same bubble, with its actions, its time and what went with it. */
@@ -260,6 +266,38 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
 
   /** The members' chats a compaction was asked for, while their context stays that full. */
   const compactAsked = new Set<string>();
+  /** The message being edited, in the field: which member's, which. */
+  let editing: { member: string; message: string } | null = null;
+
+  /**
+   * The member's message Retry and Edit work on: its last from the user,
+   * while only its answers and Lumo's lines came after (orchestra.rs rewind
+   * says the rest: the coordinator already reading its answer).
+   */
+  function retryable(m: OrchestraMember): string | null {
+    if (m.state === "working") return null;
+    const at = m.messages.map((x) => x.kind === "user" && x.note !== "answer" && x.delivered !== "queued").lastIndexOf(true);
+    if (at < 0) return null;
+    const after = m.messages.slice(at + 1);
+    return after.every((x) => x.kind === "assistant" || (x.kind === "note" && x.from === "lumo")) ? m.messages[at].id : null;
+  }
+
+  function retry(m: OrchestraMember, message: string, text?: string) {
+    if (!snap) return;
+    error = "";
+    editing = null;
+    Sound.play("send");
+    void Orchestra.retry(snap.id, m.id, message, text).catch((err) => {
+      error = t(S.notSent, { error: String(err).replace(/^Error:\s*/, "") });
+      drawLog(true);
+    });
+  }
+
+  function startEdit(m: OrchestraMember, msg: OrchestraMessage) {
+    editing = { member: m.id, message: msg.id };
+    hooks.startEdit?.(msg.text);
+    drawLog();
+  }
   const extrasOf = (chat: string): OrchestraAnswer => {
     let x = turnExtras.get(chat);
     if (!x) turnExtras.set(chat, (x = {}));
@@ -655,14 +693,29 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       case "user": {
         // The answer to a card: the card shows it.
         if (msg.note === "answer") return [];
-        const out: HTMLElement[] = [bubble(asChatMessage(msg, "user"), { scope: scope(m, msg.id), onOpenSent: hooks.openSent, chat: m.chat })];
+        // Its last message: Retry and Edit, as on a chat's question.
+        const again = retryable(m) === msg.id;
+        const out: HTMLElement[] = [bubble(asChatMessage(msg, "user"), {
+          scope: scope(m, msg.id), onOpenSent: hooks.openSent, chat: m.chat,
+          onRetry: again ? () => retry(m, msg.id) : undefined,
+          onEdit: again ? () => startEdit(m, msg) : undefined,
+          editing: editing?.message === msg.id,
+          shown: again && !m.messages.slice(m.messages.indexOf(msg) + 1).some((x) => x.kind === "assistant"),
+        })];
         if (msg.delivered === "mid-turn") out.push(h("div", { class: "orc-seen", text: `${t(S.readMidTurn)} · ${sentAgo(msg.at)}` }));
         return out;
       }
       case "assistant": {
         // The last answer keeps its actions in sight, as a chat's does.
         const last = m.messages.filter((x) => x.kind === "assistant").at(-1)?.id === msg.id && m.state !== "working";
-        return [bubble(asChatMessage(msg, "assistant"), { scope: scope(m, msg.id), shown: last, chat: m.chat, onOpenAgents: hooks.openAgents })];
+        // The answer to its last message: Retry too, as a chat's last answer.
+        const asked = retryable(m);
+        const again = asked != null && m.messages.findIndex((x) => x.id === asked) < m.messages.indexOf(msg);
+        const dropped = editing != null && editing.member === m.id && again;
+        return [bubble(asChatMessage(msg, "assistant"), {
+          scope: scope(m, msg.id), shown: last, chat: m.chat, onOpenAgents: hooks.openAgents,
+          onRetry: again && asked ? () => retry(m, asked) : undefined, dropped,
+        })];
       }
       case "relay":
         // Lumo's own (an email), never a member's message.
@@ -1353,6 +1406,18 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       if (!providerDef(pickOf(m).provider).urlField) return;
       compactAsked.add(chat);
       void Orchestra.compact(snap.id, m.id).catch(() => compactAsked.delete(chat));
+    },
+    editSend(text) {
+      const m = current();
+      if (!editing || !m || editing.member !== m.id) return false;
+      retry(m, editing.message, text);
+      return true;
+    },
+    cancelEdit() {
+      if (!editing) return false;
+      editing = null;
+      drawLog();
+      return true;
     },
     anchorOf(chat) {
       const m = snap ? memberByChat(snap, chat) : undefined;

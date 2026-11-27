@@ -415,6 +415,31 @@ test("a member's answer streams in under its chat id; the next update has it who
   assert.equal($(".orc-log").find(".reply").length, before);
 });
 
+test("Retry and Edit work on a member's last message while nothing came of its answer", async () => {
+  await flush();
+  const next = structuredClone(SNAP);
+  next.threads[1].messages.splice(1, 0, { id: "u1", at: 2, kind: "user", from: "user", text: "How much is it?" });
+  emit("orchestra-update", next);
+  item("t2").fire("click");
+  view.sync();
+  // Retry, on the question and on its answer.
+  assert.equal($(".orc-log").find(".msg-retry").length, 2);
+  $(".orc-log").querySelector(".msg-retry").fire("click");
+  await flush();
+  assert.deepEqual(sent("orchestra_retry"), [{ id: "o1", member: "t2", message: "u1", text: null }]);
+  // Edit: its words in the field, sent again changed.
+  $(".orc-log").querySelector(".msg-edit").fire("click");
+  assert.equal($(".chat-input").value, "How much is it?");
+  await typeAndSend("How much is it a month?");
+  assert.deepEqual(sent("orchestra_retry").at(-1), { id: "o1", member: "t2", message: "u1", text: "How much is it a month?" });
+  assert.deepEqual(sent("orchestra_send"), [], "never a new message");
+  // A member whose answer went on (Oak St wrote to Main St): none.
+  item("t3").fire("click");
+  view.sync();
+  assert.equal($(".orc-log").find(".msg-retry").length, 0);
+  assert.equal($(".orc-log").find(".msg-edit").length, 0);
+});
+
 test("the agents a member starts show under its answer, as in a chat", async () => {
   await flush();
   item("t1").fire("click");

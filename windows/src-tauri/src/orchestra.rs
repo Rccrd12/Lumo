@@ -197,6 +197,9 @@ pub struct Member {
     /// Asked to be compacted while a turn of its ran: before its next one.
     #[serde(skip)]
     pub compact_due: bool,
+    /// What its last turn's messages brought, to go again with Retry or Edit.
+    #[serde(skip)]
+    pub last_attached: Vec<(Option<ChatContext>, Option<ScreenContext>)>,
     pub mail: Vec<Mail>,
     /// It said its task is done (message_coordinator with done).
     pub done: bool,
@@ -555,6 +558,57 @@ impl Orchestra {
             return Some(mail[0].text.clone());
         }
         Some(mail.iter().map(|m| format!("[From {}]\n{}", self.title_of(&m.from), m.text)).collect::<Vec<_>>().join("\n\n"))
+    }
+
+    /// Retry or Edit: `member`'s last message from the user, `message`, and
+    /// what came after it in its chat go, as a chat's question and its answer
+    /// do; the message goes again (`text`, edited, or as it was). Only while
+    /// nothing else came of its answer: no thread started, no message sent,
+    /// no card, and the coordinator not yet reading what it answered.
+    /// Returns the text and what went with it, and how many of its turns stay.
+    pub fn rewind(&mut self, member: &str, message: &str, text: Option<&str>) -> Result<(String, Vec<Value>, usize), String> {
+        let not_now = || crate::i18n::t("This message can't be sent again: what came of its answer has gone on.");
+        let m = self.member(member).ok_or_else(|| format!("There is no member {member}."))?;
+        if m.running {
+            return Err(not_now());
+        }
+        let at = m.messages.iter().rposition(|x| x.kind == "user" && x.note.as_deref() != Some("answer")).ok_or_else(not_now)?;
+        if m.messages[at].id != message {
+            return Err(not_now());
+        }
+        let after = &m.messages[at + 1..];
+        // Only its answers and Lumo's lines about them: anything else went on to others.
+        if !after.iter().all(|x| x.kind == "assistant" || (x.kind == "note" && x.from == "lumo")) {
+            return Err(not_now());
+        }
+        let answers = after.iter().filter(|x| x.kind == "assistant").count();
+        // Its answer sent on to the coordinator: taken back while still unread, otherwise too late.
+        let forwarded: Vec<String> = if member == COORDINATOR {
+            Vec::new()
+        } else {
+            self.coordinator.messages.iter().filter(|x| x.kind == "relay" && x.from == member && x.note.as_deref() == Some("reply") && x.at >= m.messages[at].at).map(|x| x.id.clone()).collect()
+        };
+        if forwarded.iter().any(|id| self.coordinator.messages.iter().any(|x| &x.id == id && x.delivered.as_deref() != Some("queued"))) {
+            return Err(not_now());
+        }
+        self.coordinator.messages.retain(|x| !forwarded.contains(&x.id));
+        self.coordinator.mail.retain(|x| !forwarded.contains(&x.line));
+        let m = self.member_mut(member).expect("checked above");
+        let line = m.messages[at].clone();
+        m.messages.truncate(at);
+        let keep = m.history.len().saturating_sub(answers);
+        m.history.truncate(keep);
+        if m.compact.as_ref().is_some_and(|(upto, _)| keep * 2 < *upto) {
+            m.compact = None;
+        }
+        m.cli = None;
+        m.done = false;
+        if m.state != "waiting" {
+            m.state = m.settled().into();
+        }
+        self.updated = now();
+        let said = text.map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).unwrap_or(line.text);
+        Ok((said, line.sent, keep))
     }
 
     /// A new thread, its task as its first message from the coordinator.
@@ -1006,7 +1060,9 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                 let m = o.member_mut(&member)?;
                 m.wrote_coordinator = false;
                 // What the messages it reads now brought with them goes with this turn.
-                let attached = merge_attached(std::mem::take(&mut m.attached));
+                let taken = std::mem::take(&mut m.attached);
+                m.last_attached = taken.clone();
+                let attached = merge_attached(taken);
                 let Some(query) = query else {
                     m.running = false;
                     m.activity = None;
@@ -1867,6 +1923,30 @@ pub fn orchestra_send(
     Ok(())
 }
 
+/// Retry (`text` None) or Edit of a member's last message (Orchestra::rewind):
+/// its chat goes back to before it, and it goes again with what it brought.
+#[tauri::command]
+pub fn orchestra_retry(app: AppHandle, id: String, member: String, message: String, text: Option<String>) -> Result<(), String> {
+    let wakes = with(Some(&app), &id, |o| {
+        let (said, sent, keep) = o.rewind(&member, &message, text.as_deref())?;
+        let (chat, attached) = {
+            let m = o.member(&member).expect("rewound");
+            (chat_of(m), m.last_attached.clone())
+        };
+        chat.rewind(keep * 2);
+        let wakes = o.deliver_with("user", &member, &said, sent, None)?;
+        if let Some(m) = o.member_mut(&member) {
+            m.attached = attached;
+        }
+        Ok::<bool, String>(wakes)
+    })
+    .ok_or_else(not_found)??;
+    if wakes {
+        wake(&app, &id, &member);
+    }
+    Ok(())
+}
+
 /// "/compact", or the island seeing a local model's context nearly full: the
 /// member's conversation is compacted now, or before its next turn when one runs.
 #[tauri::command]
@@ -2081,6 +2161,33 @@ mod tests {
         assert!(told.starts_with("You changed"), "{told}");
         assert_eq!(o.member("t2").unwrap().mail.len(), 1, "a CLI hears it as a message");
         assert_eq!(o.coordinator.mail.len(), 1);
+    }
+
+    #[test]
+    fn retry_takes_back_a_members_last_message_and_its_answer_while_nothing_came_of_it() {
+        let mut o = Orchestra::new("o1", Pick::default(), Pick::default());
+        o.start_thread("Via Roma", "Leggi il contratto").unwrap();
+        let t = o.threads[0].id.clone();
+        o.deliver("user", &t, "Quanto costa?").unwrap();
+        let asked = o.member(&t).unwrap().messages.last().unwrap().id.clone();
+        o.take_mail(&t, "woke");
+        o.push(&t, Message { kind: "assistant".into(), from: t.clone(), text: "820 €".into(), ..Default::default() });
+        o.member_mut(&t).unwrap().history.push(("Quanto costa?".into(), "820 €".into()));
+        // Its answer sent on to the coordinator, still unread: taken back with it.
+        o.forward_reply(&t, "820 €", Some("Quanto costa?"));
+        assert_eq!(o.coordinator.mail.len(), 1);
+        let (said, _, keep) = o.rewind(&t, &asked, Some("Quanto costa al mese?")).unwrap();
+        assert_eq!((said.as_str(), keep), ("Quanto costa al mese?", 0));
+        assert!(o.member(&t).unwrap().messages.iter().all(|m| m.id != asked && m.kind != "assistant"));
+        assert!(o.coordinator.mail.is_empty() && !o.coordinator.messages.iter().any(|m| m.note.as_deref() == Some("reply")));
+        // Once the thread wrote to another, it went on: no Retry.
+        o.deliver("user", &t, "Riprova").unwrap();
+        let again = o.member(&t).unwrap().messages.last().unwrap().id.clone();
+        o.take_mail(&t, "woke");
+        o.deliver(&t, COORDINATOR, "Ho finito").unwrap();
+        assert!(o.rewind(&t, &again, None).is_err());
+        // Nor an older message than the last.
+        assert!(o.rewind(&t, &asked, None).is_err());
     }
 
     #[test]

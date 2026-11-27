@@ -1574,6 +1574,7 @@ pub fn run() {
             orchestra::orchestra_set_pick,
             orchestra::orchestra_keep_answer,
             orchestra::orchestra_compact,
+            orchestra::orchestra_retry,
             github_tools::github_repo_names,
             orchestra::orchestra_delete,
             orchestra::orchestra_read_file,

@@ -12523,6 +12523,18 @@
    "id": "Git belum terpasang di PC ini.",
    "it": "Git non è installato su questo PC."
   },
+  "This message can't be sent again: what came of its answer has gone on.": {
+   "zh-Hans": "这条消息无法再次发送：它的回答已经引出了后续。",
+   "hi": "यह संदेश फिर से नहीं भेजा जा सकता: इसके जवाब से आगे काम हो चुका है।",
+   "es": "Este mensaje no se puede volver a enviar: lo que surgió de su respuesta ya siguió adelante.",
+   "ar": "لا يمكن إرسال هذه الرسالة مجددًا: ما نتج عن إجابتها قد مضى.",
+   "fr": "Ce message ne peut pas être renvoyé : ce qui a découlé de sa réponse a déjà suivi son cours.",
+   "bn": "এই বার্তাটি আর পাঠানো যাবে না: এর উত্তর থেকে কাজ এগিয়ে গেছে।",
+   "pt-BR": "Esta mensagem não pode ser enviada de novo: o que veio da resposta dela já seguiu adiante.",
+   "ru": "Это сообщение нельзя отправить снова: то, что последовало за его ответом, уже пошло дальше.",
+   "id": "Pesan ini tidak bisa dikirim lagi: hal yang muncul dari jawabannya sudah berlanjut.",
+   "it": "Questo messaggio non si può più rimandare: quello che è nato dalla sua risposta è già andato avanti."
+  },
   "GitHub is not connected.": {
    "zh-Hans": "GitHub 未连接。",
    "hi": "GitHub कनेक्ट नहीं है।",

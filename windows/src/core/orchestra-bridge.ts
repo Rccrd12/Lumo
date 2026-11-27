@@ -216,6 +216,8 @@ export const Orchestra = {
   open: (id: string) => ask<OrchestraSnapshot>("orchestra_open", { id }),
   /** `to`: "coordinator" or a thread id. */
   compact: (id: string, member: string) => ask<void>("orchestra_compact", { id, member }),
+  /** Retry (no text) or Edit of a member's last message: it and what came after go, and it goes again. */
+  retry: (id: string, member: string, message: string, text?: string) => ask<void>("orchestra_retry", { id, member, message, text: text ?? null }),
   keepAnswer: (id: string, member: string, message: string, answer: OrchestraAnswer) => ask<void>("orchestra_keep_answer", { id, member, message, answer }),
   send: (id: string, to: string, text: string, attached?: OrchestraAttached, asked?: string) =>
     ask<void>("orchestra_send", {
