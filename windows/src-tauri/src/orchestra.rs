@@ -53,6 +53,9 @@ pub const GOAL_MAX: usize = 8_000;
 const TITLE_MAX: usize = 60;
 /// A usage limit that says no time: tried again after this long (seconds).
 const LIMIT_RETRY: u64 = 15 * 60;
+/// What the coordinator answers when a thread's answer needs nothing from it:
+/// kept in its conversation, never shown.
+pub const QUIET: &str = "[quiet]";
 /// What a member stopped by a usage limit is told when they reset.
 const RESUMED: &str = "The usage limits have reset: go on with your task from where you stopped.";
 
@@ -175,6 +178,9 @@ pub struct Member {
     /// A turn of its is running.
     #[serde(skip)]
     pub running: bool,
+    /// It wrote to the coordinator during this turn: its answer is not sent on too.
+    #[serde(skip)]
+    pub wrote_coordinator: bool,
 }
 
 /// A file of the shared folder a thread is changing.
@@ -460,6 +466,28 @@ impl Orchestra {
         Ok(!running)
     }
 
+    /// A thread's answer in its own chat, sent on to the coordinator as this
+    /// project's threads report: the user sees it in the thread, the
+    /// coordinator reads it (with what the user had written, when the user
+    /// asked) and sums it up or says nothing. Whether the coordinator must be
+    /// woken: not while it answers, nor stopped by the user or a usage limit.
+    pub fn forward_reply(&mut self, thread: &str, text: &str, user: Option<&str>) -> bool {
+        let text = text.trim();
+        if text.is_empty() || thread == COORDINATOR || self.member(thread).is_none() {
+            return false;
+        }
+        let line = Message { kind: "relay".into(), from: thread.into(), text: text.into(), note: Some("reply".into()), delivered: Some("queued".into()), ..Default::default() };
+        let line = self.push(COORDINATOR, line).unwrap_or_default();
+        let mut mail = String::from("(Its answer in its own chat: the user sees it there.)\n");
+        if let Some(asked) = user.map(str::trim).filter(|u| !u.is_empty()) {
+            mail.push_str(&format!("The user had written to it:\n{}\n\nIt answered:\n", clip(asked, READ_CLIP)));
+        }
+        mail.push_str(&clip(text, READ_CLIP * 2));
+        let c = &mut self.coordinator;
+        c.mail.push(Mail { from: thread.into(), text: mail, line });
+        !c.running && c.state != "stopped" && c.state != "paused"
+    }
+
     /// The messages `member` has not read, as one text, each marked read as `how`.
     pub fn take_mail(&mut self, member: &str, how: &str) -> Option<String> {
         let mail = std::mem::take(&mut self.member_mut(member)?.mail);
@@ -725,8 +753,11 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
     Box::pin(async move {
         loop {
             let next = with(Some(&app), &id, |o| {
+                // Only the user's words woke it: the coordinator reads them with its answer.
+                let asked_by_user = o.member(&member).is_some_and(|m| !m.mail.is_empty() && m.mail.iter().all(|x| x.from == "user"));
                 let query = o.take_mail(&member, "woke");
                 let m = o.member_mut(&member)?;
+                m.wrote_coordinator = false;
                 let Some(query) = query else {
                     m.running = false;
                     m.activity = None;
@@ -742,10 +773,10 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                 let m = o.member(&member)?.clone();
                 // A CLI is told its role with its first message: Lumo can't add to its instructions.
                 let role = if m.history.is_empty() { note_for(o, &member, true) } else { String::new() };
-                Some((query, role, m.pick.clone(), chat_of(&m), o.folder.clone()))
+                Some((query, role, m.pick.clone(), chat_of(&m), o.folder.clone(), asked_by_user))
             })
             .flatten();
-            let Some((query, role, pick, conversation, project_folder)) = next else { return };
+            let Some((query, role, pick, conversation, project_folder, asked_by_user)) = next else { return };
             let settings = settings_for(&app, &pick);
             let cli = is_cli(&settings.chat_provider);
             let reply = if cli && member == COORDINATOR && settings.chat_provider != crate::claude_code::PROVIDER {
@@ -765,13 +796,21 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                 }
                 Box::pin(chat::send(&app, &conversation, &settings, query, None, None)).await
             };
+            let mut tell_coordinator = false;
             let resume = with(Some(&app), &id, |o| {
                 let mut resume = None;
                 match reply {
                     Ok(r) => {
                         let text = r.text.trim().to_string();
-                        if !text.is_empty() {
+                        // The coordinator with nothing to say: kept in its conversation, not shown.
+                        let quiet = member == COORDINATOR && text.starts_with(QUIET);
+                        if !text.is_empty() && !quiet {
                             o.push(&member, Message { kind: "assistant".into(), from: member.clone(), text: text.clone(), ..Default::default() });
+                        }
+                        // A thread's answer reaches the coordinator by itself, unless it wrote to it meanwhile.
+                        let wrote = o.member(&member).is_some_and(|m| m.wrote_coordinator);
+                        if member != COORDINATOR && !r.stopped && !wrote {
+                            tell_coordinator = o.forward_reply(&member, &text, asked_by_user.then_some(query.as_str()));
                         }
                         if let Some(m) = o.member_mut(&member) {
                             m.history.push((query, r.kept.unwrap_or(text)));
@@ -813,6 +852,9 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
             .flatten();
             if let Some(until) = resume {
                 resume_later(&app, &id, &member, until);
+            }
+            if tell_coordinator {
+                wake(&app, &id, COORDINATOR);
             }
             let goes_on = with(None, &id, |o| o.member(&member).is_some_and(|m| m.running)).unwrap_or(false);
             if !goes_on {
@@ -1008,7 +1050,9 @@ you can write to them (message_thread), read them (read_thread, list_threads) an
 Threads share one folder for what they make (some of them, the CLIs, also work on the user's files directly), and hand finished files over with share_file. \
 Two threads never change the same file at once: Lumo tells you when one tries. \
 Messages from threads, from Lumo and the user's answers to your cards come to you as new messages that start with [From …]. While you are working they may also come inside a tool's result, between <lumo-messages> tags: read them and change your plan if needed. \
-The user sees every thread and can talk to each directly. Keep your answers to the user short: what is going on, what you decided, what you need. Use ask_user for a decision that changes the user's goal. \
+Every answer a thread writes in its own chat comes to you by itself, marked \"Its answer in its own chat\": the user sees it there, and talks to each thread directly. Most of them need nothing from you (progress, or the user and the thread talking): then answer only {QUIET}, which the user never sees. Write to the user only when a thread finished its task (one or two sentences on what came of it, never its text again), needs the user, or failed; when several threads work together, wait for them and write one summary. \
+A message a thread sends you itself (message_coordinator) is a request: do what it needs (start a thread, pass something on to another, unblock it). \
+Keep your answers to the user short: what is going on, what you decided, what you need. Use ask_user for a decision that changes the user's goal. \
 Don't start threads for a simple question you can answer yourself, and don't start the same work twice: check list_threads first.{project}\n\nThe threads:\n{threads}"
         );
     }
@@ -1027,7 +1071,7 @@ Don't start threads for a simple question you can answer yourself, and don't sta
     format!(
         "\n\nYou are thread {member} \"{title}\" of a project in Lumo: a coordinator plans the job and gives each thread a part of it. Your task, from the coordinator:\n{task}\n\n\
 {work} \
-When you are done, or blocked, or need a decision, write to the coordinator with message_coordinator (done true when your task is finished). You may write to another thread with message_thread. \
+What you answer in your chat reaches the coordinator by itself, and the user sees it: you don't need to write to the coordinator to report. Write to it with message_coordinator only when you need something from it (another thread, a decision about your task, help when you are blocked), and with done true when your task is finished, saying what you did and where the results are. You may write to another thread with message_thread. \
 The user can write to you directly: do what they ask, and tell the coordinator when it changes your task. Use ask_user only for a decision the user must make. \
 Messages from the coordinator, other threads, Lumo and the user come as new messages that start with [From …]. While you are working they may also come inside a tool's result, between <lumo-messages> tags: read them at once and change what you do if needed. \
 Lumo stops you from changing a file another thread is changing right now, and says who: then don't change it, write to that thread or work on something else.{project}\n\nThe threads:\n{threads}"
@@ -1104,8 +1148,9 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
             }
             MESSAGE_COORDINATOR if !coordinator => {
                 let wakes = o.deliver(&member, COORDINATOR, &s("message"))?;
-                if input.get("done").and_then(Value::as_bool) == Some(true) {
-                    if let Some(m) = o.member_mut(&member) {
+                if let Some(m) = o.member_mut(&member) {
+                    m.wrote_coordinator = true;
+                    if input.get("done").and_then(Value::as_bool) == Some(true) {
                         m.done = true;
                     }
                 }
@@ -1864,5 +1909,33 @@ mod tests {
         // A call with no step leaves it as it is.
         apply_plan_call(&mut plan, "update_plan", &json!({ "plan": [] }));
         assert_eq!(steps(&plan), ["D:completed"]);
+    }
+
+    #[test]
+    fn a_threads_answer_reaches_the_coordinator_which_may_say_nothing() {
+        let mut o = orchestra();
+        o.start_thread("Via Roma", "task").unwrap();
+        o.take_mail(COORDINATOR, "woke");
+        // With what the user had written to it, marked as its answer in its own chat.
+        assert!(o.forward_reply("t1", "Penali a pagina 6.", Some("Dove sono le penali?")));
+        let line = o.coordinator.messages.last().unwrap().clone();
+        assert_eq!((line.kind.as_str(), line.from.as_str(), line.note.as_deref(), line.text.as_str()), ("relay", "t1", Some("reply"), "Penali a pagina 6."));
+        let mail = o.take_mail(COORDINATOR, "woke").unwrap();
+        assert!(mail.starts_with("[From thread \"Via Roma\" (t1)]\n(Its answer in its own chat"), "{mail}");
+        assert!(mail.contains("The user had written to it:\nDove sono le penali?") && mail.ends_with("It answered:\nPenali a pagina 6."), "{mail}");
+        // Nothing in the thread's own chat: its answer is there already.
+        assert!(o.member("t1").unwrap().messages.iter().all(|m| m.to.is_none()));
+        // The coordinator at work, or stopped by the user, is not woken; an empty answer goes nowhere.
+        o.coordinator.running = true;
+        assert!(!o.forward_reply("t1", "Fatto.", None));
+        o.coordinator.running = false;
+        o.coordinator.state = "stopped".into();
+        assert!(!o.forward_reply("t1", "Fatto.", None));
+        assert!(!o.forward_reply("t1", "  ", None));
+        assert_eq!(o.coordinator.mail.len(), 2);
+        // The coordinator's own answer never goes back to it.
+        assert!(!o.forward_reply(COORDINATOR, "x", None));
+        // The coordinator is told how to say nothing.
+        assert!(note_for(&o, COORDINATOR, false).contains(QUIET));
     }
 }

@@ -125,7 +125,7 @@ pub fn thread_tools() -> Vec<Value> {
     vec![
         tool(
             MESSAGE_COORDINATOR,
-            "Sends a message to the coordinator: what you did, a question, a problem. With done true, your task is finished: say what you did and where the results are.",
+            "Sends a message to the coordinator when you need something from it: another thread, a decision about your task, help when you are blocked. Your answers in your chat reach it by themselves. With done true, your task is finished: say what you did and where the results are.",
             json!({
                 "message": { "type": "string" },
                 "done": { "type": "boolean", "description": "True when your task is finished." },

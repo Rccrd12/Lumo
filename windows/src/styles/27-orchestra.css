@@ -588,6 +588,12 @@
   transform: rotate(90deg);
 }
 
+/* In the coordinator's chat: the way to the thread, a link on hover. */
+.orc-from.link:hover span {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .orc-relay-body .md-p,
 .orc-relay-body .md-bullet {
   font-size: 13px;

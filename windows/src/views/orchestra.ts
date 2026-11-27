@@ -109,6 +109,16 @@ const WAITING_COLOR = "#f5c542";
 const DONE_COLOR = "#4ade80";
 
 /** The cards still waiting for the user that member `id` of `snap` put, wherever they show. */
+/** What the coordinator answers when a thread's answer needs nothing from it (orchestra.rs QUIET): never shown. */
+const QUIET = "[quiet]";
+
+/** The coordinator's answer is, or begins to be, its word for nothing to say. */
+function quietText(m: OrchestraMember, text: string): boolean {
+  if (m.id !== COORDINATOR) return false;
+  const said = text.trim();
+  return said.startsWith(QUIET) || (said.length > 0 && QUIET.startsWith(said));
+}
+
 function waitingCardsIn(snap: OrchestraSnapshot, id: string): number {
   const ids = new Set<string>();
   for (const m of membersOf(snap)) {
@@ -459,7 +469,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     }
     if (m.state === "working") {
       const text = live.get(m.chat);
-      if (text) {
+      if (text && !quietText(m, text)) {
         liveEl = h("div", { class: "reply" });
         renderMarkdown(liveEl, text, { streaming: true, scope: scope(m, "live") });
         log.append(h("div", { class: "chat-row" }, liveEl));
@@ -526,7 +536,12 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     }
   }
 
-  /** A message between members: who from (or to), grey and folded, as Claude Code shows its agents' messages. */
+  /**
+   * A message between members: who from (or to), grey. In a thread, folded
+   * as Claude Code shows its agents' messages; in the coordinator's chat, a
+   * way to the thread, as the thread's answers reach the coordinator by
+   * themselves (orchestra.rs `forward_reply`).
+   */
   function relay(m: OrchestraMember, msg: OrchestraMessage): HTMLElement {
     const mine = msg.from === m.id;
     const other = mine ? msg.to ?? "" : msg.from;
@@ -536,6 +551,14 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     else {
       label = t(S.from, { name: titleOf(other) });
       if (snap && memberOf(snap, other)?.state === "done") label += ` · ${t(S.finished)}`;
+    }
+    // In the coordinator's chat: only who it is from (or to), a way to that thread; what was said is the thread's to show.
+    if (m.id === COORDINATOR) {
+      const link = h("button", { class: "orc-from link" }, h("span", { text: label }), svg(ICONS.chevronRight, 8, { stroke: 2.4 }));
+      link.addEventListener("click", () => {
+        if (snap && memberOf(snap, other)) select(other);
+      });
+      return h("div", { class: mine ? "orc-relay out" : "orc-relay" }, link);
     }
     const key = `${m.id}:${msg.id}`;
     const open = openRelays.has(key);
@@ -1049,7 +1072,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       if (!m) return false;
       if (!text) return true;
       live.set(chat, text);
-      if (m.id !== selected || !on()) return true;
+      if (m.id !== selected || !on() || quietText(m, text)) return true;
       const atEnd = stuck();
       if (!liveEl) {
         liveEl = h("div", { class: "reply" });

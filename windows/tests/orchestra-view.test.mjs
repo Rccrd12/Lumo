@@ -126,12 +126,17 @@ test("messages between members say who from and who to, grey; Lumo's notes say w
   // The queued message waits above the field, not in the conversation.
   assert.equal($(".orc-queued").querySelector(".queue-text").textContent, "Look at the fees too");
   assert.ok(!texts(".bubble").some((t) => t.includes("fees")));
-  // Folded: a click on "From Elm St" shows what it said, another hides it, and it stays as left.
+  // In the coordinator's chat only who it is from: a click opens that thread.
+  assert.equal($(".orc-relay-body"), null);
+  view.el.find(".orc-from")[0].fire("click");
+  assert.equal($(".orc-head-title").textContent, "Elm St");
+  // In a thread, folded: a click shows what the coordinator said, another hides it, and it stays as left.
   const relay = $(".orc-relay");
+  assert.equal(texts(".orc-from")[0], "From the coordinator");
   assert.ok(!relay.classList.contains("open"));
   view.el.find(".orc-from")[0].fire("click");
   assert.ok(relay.classList.contains("open"));
-  assert.equal($(".orc-head-title").textContent, "Coordinator", "the conversation stays where it is");
+  assert.equal($(".orc-head-title").textContent, "Elm St", "the conversation stays where it is");
   view.sync();
   assert.ok($(".orc-relay").classList.contains("open"));
   view.el.find(".orc-from")[0].fire("click");
@@ -298,6 +303,12 @@ test("a member's answer streams in under its chat id; the next update has it who
   const replies = $(".orc-log").find(".reply").map((r) => r.textContent);
   assert.deepEqual(replies, ["The deposit is three months."]);
   assert.equal($(".orc-now"), null);
+  // The coordinator saying nothing to a thread's answer ([quiet]): never shown, even as it comes.
+  item("coordinator").fire("click");
+  const before = $(".orc-log").find(".reply").length;
+  emit("chat-delta", { chat: SNAP.coordinator.chat, text: "[qui" });
+  emit("chat-delta", { chat: SNAP.coordinator.chat, text: "[quiet]" });
+  assert.equal($(".orc-log").find(".reply").length, before);
 });
 
 test("a Markdown file opens in the reader beside the chat", async () => {
