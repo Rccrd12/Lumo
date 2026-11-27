@@ -10,8 +10,10 @@
 /* ── Lumo's light along the island's edge (--lumo-light, island.ts) ──────────
    Four ways to draw it, picked in the wardrobe (html[data-edge], island.ts):
    a line and its glow as it was ("full"), both softer ("soft"), the line
-   alone ("line"), the glow alone ("glow"). The wardrobe's swatches take the
-   same values from their own class. */
+   alone ("line"), the soft glow alone ("glow": the same as "soft"
+   without its line; the wider, stronger one it had before showed a halo on
+   bright screens). The wardrobe's swatches take the same values from their
+   own class. */
 
 html.look-new #island,
 html.look-new .edge-swatch.full {
@@ -47,10 +49,10 @@ html.look-new[data-edge="glow"] #island,
 html.look-new .edge-swatch.glow {
   --edge-w: 0px;
   --edge-line: transparent;
-  --edge-y: 10px;
-  --edge-blur: 28px;
-  --edge-spread: -12px;
-  --edge-glow: color-mix(in srgb, var(--lumo-light, transparent) 38%, transparent);
+  --edge-y: 6px;
+  --edge-blur: 18px;
+  --edge-spread: -8px;
+  --edge-glow: color-mix(in srgb, var(--lumo-light, transparent) 32%, transparent);
 }
 
 html.look-new #island {
@@ -1246,9 +1248,9 @@ html.look-new .edge-swatch.soft {
 }
 
 html.look-new .edge-swatch.glow {
-  --edge-y: 6px;
-  --edge-blur: 14px;
-  --edge-spread: -4px;
+  --edge-y: 4px;
+  --edge-blur: 9px;
+  --edge-spread: -3px;
 }
 
 /* ── The chat's panels (past chats, files, sharing, permissions, usage,
