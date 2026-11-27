@@ -96,6 +96,16 @@ pub struct Card {
     pub recommended: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chose: Option<usize>,
+    /// The user wrote to the member instead of choosing: the card is closed.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub words: bool,
+}
+
+impl Card {
+    /// Still waiting for the user: no option chosen, nothing written instead.
+    pub fn open(&self) -> bool {
+        self.chose.is_none() && !self.words
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -338,7 +348,7 @@ impl Member {
     }
 
     fn waits_for_user(&self) -> bool {
-        self.messages.iter().any(|m| m.kind == "card" && m.card.as_ref().is_some_and(|c| c.chose.is_none()))
+        self.messages.iter().any(|m| m.kind == "card" && m.card.as_ref().is_some_and(Card::open))
     }
 
     /// Its state once no turn runs.
@@ -507,6 +517,16 @@ impl Orchestra {
             return Err("The message is empty.".into());
         }
         let running = self.member(to).ok_or_else(|| format!("There is no member {to}."))?.running;
+        // The user wrote instead of choosing: the member's open cards close, as
+        // a card answered in words does, and it is told so with the message.
+        let mut closed = Vec::new();
+        if from == "user" {
+            let m = self.member_mut(to).expect("checked above");
+            for card in m.messages.iter_mut().filter_map(|l| l.card.as_mut()).filter(|c| c.open()) {
+                card.words = true;
+                closed.push(card.question.clone());
+            }
+        }
         let kind = if from == "user" { "user" } else { "relay" };
         let line = Message { kind: kind.into(), from: from.into(), text: text.into(), delivered: Some("queued".into()), sent, ..Default::default() };
         let line = self.push(to, line).unwrap_or_default();
@@ -515,7 +535,14 @@ impl Orchestra {
             self.push(from, Message { kind: "relay".into(), from: from.into(), to: Some(to.into()), text: text.into(), ..Default::default() });
         }
         let member = self.member_mut(to).expect("checked above");
-        member.mail.push(Mail { from: from.into(), text: asked.filter(|a| !a.trim().is_empty()).unwrap_or(text).into(), line });
+        let mut read = asked.filter(|a| !a.trim().is_empty()).unwrap_or(text).to_string();
+        for question in closed {
+            read.push_str(&format!(
+                "\n\n(Your card \"{}\" is closed: the user wrote this instead of choosing. If it does not answer it, ask again.)",
+                clip(&question, 200)
+            ));
+        }
+        member.mail.push(Mail { from: from.into(), text: read, line });
         // A new message: a thread that was done or stopped is not any more.
         member.done = false;
         if member.state == "stopped" || member.state == "done" || member.state == "failed" {
@@ -682,7 +709,7 @@ impl Orchestra {
     pub fn answer(&mut self, member: &str, line: &str, choice: usize) -> Result<bool, String> {
         let m = self.member_mut(member).ok_or("No such member.")?;
         let card = m.messages.iter_mut().find(|l| l.id == line).and_then(|l| l.card.as_mut()).ok_or("No such card.")?;
-        if card.chose.is_some() {
+        if !card.open() {
             return Err("Already answered.".into());
         }
         let opt = card.options.get(choice).cloned().ok_or("No such option.")?;
@@ -1588,7 +1615,7 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
                     return Err("A card needs a question and 2 to 4 options.".into());
                 }
                 let recommended = input.get("recommended").and_then(Value::as_u64).unwrap_or(0) as usize;
-                let card = Card { question, recommended: recommended.min(options.len() - 1), options, chose: None };
+                let card = Card { question, recommended: recommended.min(options.len() - 1), options, chose: None, words: false };
                 o.push(&member, Message { kind: "card".into(), from: member.clone(), card: Some(card), ..Default::default() });
                 Ok("The card is in front of the user. Their choice comes as a new message: end your turn now unless other work does not depend on it.".into())
             }
@@ -2361,13 +2388,29 @@ mod tests {
     #[test]
     fn a_card_answered_goes_back_to_who_asked_once() {
         let mut o = orchestra();
-        let card = Card { question: "Quale formato?".into(), options: vec![Opt { label: "PDF".into(), consequence: "".into() }, Opt { label: "MD".into(), consequence: "".into() }], recommended: 1, chose: None };
+        let card = Card { question: "Quale formato?".into(), options: vec![Opt { label: "PDF".into(), consequence: "".into() }, Opt { label: "MD".into(), consequence: "".into() }], recommended: 1, chose: None, words: false };
         let line = o.push(COORDINATOR, Message { kind: "card".into(), from: COORDINATOR.into(), card: Some(card), ..Default::default() }).unwrap();
         assert_eq!(o.coordinator.settled(), "waiting");
         assert!(o.answer(COORDINATOR, &line, 1).unwrap());
         assert_eq!(o.coordinator.messages[0].card.as_ref().unwrap().chose, Some(1));
         assert!(o.take_mail(COORDINATOR, "woke").unwrap().contains("MD"));
         assert_eq!(o.coordinator.settled(), "idle");
+        assert!(o.answer(COORDINATOR, &line, 0).is_err());
+    }
+
+    #[test]
+    fn a_card_answered_in_words_closes_and_the_member_is_told() {
+        let mut o = orchestra();
+        let card = Card { question: "Quale formato?".into(), options: vec![Opt { label: "PDF".into(), consequence: "".into() }, Opt { label: "MD".into(), consequence: "".into() }], recommended: 1, chose: None, words: false };
+        let line = o.push(COORDINATOR, Message { kind: "card".into(), from: COORDINATOR.into(), card: Some(card), ..Default::default() }).unwrap();
+        assert_eq!(o.coordinator.settled(), "waiting");
+        o.deliver("user", COORDINATOR, "Fai un HTML").unwrap();
+        let card = o.coordinator.messages[0].card.clone().unwrap();
+        assert!(card.words && card.chose.is_none() && !card.open());
+        assert_eq!(o.coordinator.settled(), "idle", "no longer waiting for the user");
+        let read = o.take_mail(COORDINATOR, "woke").unwrap();
+        assert!(read.starts_with("Fai un HTML") && read.contains("\"Quale formato?\" is closed"));
+        // Closed, its options answer nothing; a message from another member closes nothing.
         assert!(o.answer(COORDINATOR, &line, 0).is_err());
     }
 

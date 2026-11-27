@@ -165,7 +165,7 @@ function waitingCardsIn(snap: OrchestraSnapshot, id: string): number {
 function waitingCardIds(snap: OrchestraSnapshot, id: string): Set<string> {
   const ids = new Set<string>();
   for (const m of membersOf(snap)) {
-    for (const msg of m.messages) if (msg.kind === "card" && msg.from === id && msg.card && msg.card.chose == null) ids.add(msg.id);
+    for (const msg of m.messages) if (msg.kind === "card" && msg.from === id && msg.card && msg.card.chose == null && !msg.card.words) ids.add(msg.id);
   }
   return ids;
 }
@@ -831,7 +831,8 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   /** A question a member puts to the user: its options answer it (orchestra_answer). */
   function card(m: OrchestraMember, msg: OrchestraMessage): HTMLElement {
     const c = msg.card!;
-    const answered = c.chose != null;
+    // Chosen, or the user wrote instead: closed, as a card answered in words.
+    const answered = c.chose != null || c.words === true;
     const q = h("div", { class: "orc-card-q" });
     renderMarkdown(q, c.question, { scope: scope(m, `${msg.id}:q`) });
     const options = c.options.map((o, i) => {
@@ -1246,7 +1247,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   }
 
   function answer(msg: OrchestraMessage, choice: number) {
-    if (!snap || !msg.card || msg.card.chose != null) return;
+    if (!snap || !msg.card || msg.card.chose != null || msg.card.words) return;
     // Every copy of the card (the asker's chat, the coordinator's) shows the answer at once.
     for (const m of membersOf(snap)) {
       for (const x of m.messages) if (x.id === msg.id && x.card) x.card = { ...x.card, chose: choice };

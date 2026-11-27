@@ -252,6 +252,20 @@ test("a card's option answers the member that asked, at once", async () => {
   assert.equal(sent("orchestra_answer").length, 1);
 });
 
+test("a card the user answered in words is closed, and its options answer nothing", async () => {
+  const words = structuredClone(SNAP);
+  words.coordinator.messages = words.coordinator.messages.map((x) => (x.card ? { ...x, card: { ...x.card, words: true } } : x));
+  answers.orchestra_open = words;
+  view = buildPrompt(() => {});
+  view.sync();
+  await flush();
+  assert.ok($(".orc-card").classList.contains("answered"));
+  assert.ok(!$(".orc-card").find(".orc-opt").some((o) => o.classList.contains("chosen")));
+  $(".orc-card").find(".orc-opt")[0].fire("click");
+  await flush();
+  assert.equal(sent("orchestra_answer").length, 0);
+});
+
 test("what is typed goes to the member on screen", async () => {
   await flush();
   await typeAndSend("How is it going?");

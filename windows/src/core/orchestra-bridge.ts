@@ -73,6 +73,8 @@ export interface OrchestraCard {
   recommended: number;
   /** The option picked, once answered. */
   chose?: number;
+  /** The user wrote to the member instead of choosing: closed. */
+  words?: boolean;
 }
 
 export interface OrchestraMessage {
@@ -255,7 +257,7 @@ export function memberByChat(snap: OrchestraSnapshot, chat: string): OrchestraMe
 
 /** The decision cards of `member` still waiting for the user. */
 export function openCards(member: OrchestraMember): OrchestraMessage[] {
-  return member.messages.filter((m) => m.kind === "card" && m.card && m.card.chose == null && m.from === member.id);
+  return member.messages.filter((m) => m.kind === "card" && m.card && m.card.chose == null && !m.card.words && m.from === member.id);
 }
 
 /** How far a plan has gone: the steps completed, and all of them. */
