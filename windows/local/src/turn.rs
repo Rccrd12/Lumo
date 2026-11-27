@@ -5,7 +5,7 @@
 // `Hooks`: shows the answer, runs the tools, loads more of them.
 
 use std::future::Future;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -15,7 +15,7 @@ use crate::guard::{
 use crate::native::calls_in_text;
 use crate::plan::{self, Plan};
 use crate::sse::progressive_filter;
-use crate::transport::{ask_whole, stream, Endpoint, Failure, Seen};
+use crate::transport::{ask_whole, stream, Endpoint, Failure, Made, Seen};
 
 /// The tool that loads more of Lumo's tools, by name (local_profile.rs).
 pub const MORE: &str = "lumo_tools";
@@ -69,6 +69,10 @@ pub trait Hooks {
     /// What a request of the turn took, in tokens, as soon as the server says
     /// (each round of tools has its own): how full the context is now.
     fn used(&mut self, _tokens: u64) {}
+    /// What the model made in this turn so far, every streamed round added
+    /// up (the prompt's tokens: the last round's), and the seconds since the
+    /// turn began: a few times a second while it streams (transport.rs `Seen::Made`).
+    fn made(&mut self, _made: Made) {}
     /// The system message for a request with no tools (a model that refused them).
     fn without_tools(&mut self) -> String;
     /// More tools for `name` called with `input`: `lumo_tools`, or a tool of
@@ -201,6 +205,20 @@ fn push(body: &mut Value, messages: impl IntoIterator<Item = Value>) {
     }
 }
 
+/// What the rounds before made (`before`) with this round's (`round`) added,
+/// as of now. The prompt's tokens are the last round's that says them (each
+/// round reads the whole conversation again).
+fn added(before: &Made, round: &Made, began: Instant) -> Made {
+    Made {
+        tokens: before.tokens + round.tokens,
+        reasoning: before.reasoning + round.reasoning,
+        secs: before.secs + round.secs,
+        prompt_tokens: round.prompt_tokens.or(before.prompt_tokens),
+        prompt_secs: before.prompt_secs + round.prompt_secs,
+        total_secs: began.elapsed().as_secs_f64(),
+    }
+}
+
 /// Runs one turn on `body` (a chat completions request, its last message the
 /// user's). The body grows with the turn: whatever ends the turn (its future
 /// dropped on Stop included), its user message is still where it was, without
@@ -236,7 +254,12 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let mut blind = false;
     // A request with screenshots was answered: the model takes them.
     let mut seen = false;
+    // What the rounds before this one made, and when the turn began.
+    let mut made_so_far = Made::default();
+    let turn_began = Instant::now();
     loop {
+        // This round's, as the stream says them.
+        let mut round = Made::default();
         // The plan's check after the answer is unseen: the answer stays on
         // the island as it was, with nothing said about it.
         let hushed = plan.checking.is_some();
@@ -280,6 +303,11 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             stream(to, body, |seen| match seen {
                 // Still moving, even while nothing shows.
                 Seen::Chunk => hooks.signal(),
+                // The plan's check is unseen: its tokens too.
+                Seen::Made(now) if !hushed => {
+                    round = now;
+                    hooks.made(added(&made_so_far, &now, turn_began));
+                }
                 // Nothing new yet in this round: the text so far isn't sent
                 // again, or the island would drop the dots that say what the
                 // answer is doing.
@@ -292,11 +320,15 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 }
                 Seen::Reasoning => hooks.doing(Doing::Reasoning),
                 Seen::Calling(name) => hooks.doing(Doing::Calling(name)),
+                Seen::Made(_) => {}
             })
             .await
         };
         // The answer came (a whole one, at once), or the server said no: news too.
         hooks.signal();
+        // Every round adds up, one that failed too (asked again, answered
+        // whole): the model made those tokens, and the count never goes back.
+        made_so_far = added(&made_so_far, &round, turn_began);
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
         }

@@ -57,6 +57,12 @@ const AUTO_COMPACT = {
   get hint() { return t("Over 80 %, before the question goes: the model starts again from a summary of the chat."); },
 };
 
+/** The line under a local model's answer with its tokens and how fast (views/chat.ts drawSpeed). */
+const TOKEN_SPEED = {
+  get label() { return t("Show tokens per second"); },
+  get hint() { return t("Under each answer: how many tokens the model made and how many a second, live while it writes. Its reasoning counts too."); },
+};
+
 /** Unsloth Studio started and stopped by Lumo (unsloth_studio.rs). */
 const UNSLOTH_START = {
   label: N_("Start and stop it by itself"),
@@ -153,6 +159,9 @@ export function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLEleme
     h("div", { class: "setting-list" },
       setting(AUTO_COMPACT.label, AUTO_COMPACT.hint,
         toggle(settings.chatAutoCompact !== false, (on) => { settings.chatAutoCompact = on; void save(); }),
+      ),
+      setting(TOKEN_SPEED.label, TOKEN_SPEED.hint,
+        toggle(settings.chatTokenSpeed !== false, (on) => { settings.chatTokenSpeed = on; void save(); }),
       ),
     ),
   );

@@ -768,6 +768,15 @@ every provider (Thinking… with its seconds, Using a tool), plus reading the
 prompt, trying again after its server dropped the request, or sent back once
 when it said something was done that wasn't. Over 80 % of its context, the chat compacts itself before the next
 question (**Compact by itself when the context is full**, on by default).
+Under the answer, live while it is written, a quiet line says how many tokens
+the model made and how fast (**698 tokens · 44 tok/sec**, its reasoning and
+tool calls included; next to the dots while it only reasons). The servers send
+no count while they stream, but each token comes as its own piece, so the
+pieces are counted; the server's own count at the end replaces it. Once the
+answer is done the numbers sit on its bar beside Copy and Retry, and show and
+hide with them; on hover they open the details: reasoning and answer, the
+speed, the question read (its tokens and seconds) and the whole turn's time.
+They are saved with the chat (**Show tokens per second**, on by default).
 A thin **Chat compacted** line marks where, with the summary under it on a
 click; a summary that wouldn't be shorter isn't kept, and the chat says why.
 An answer the server cuts off is asked again; if it still stops after its

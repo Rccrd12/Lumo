@@ -89,6 +89,31 @@ pub fn usage_of(line: &str) -> Option<u64> {
     json.pointer("/usage/total_tokens").and_then(Value::as_u64)
 }
 
+/// What an event line's `usage` says of the tokens, whatever else it carries:
+/// the model made (`completion_tokens`), of which reasoning
+/// (`completion_tokens_details.reasoning_tokens`), and the prompt it read
+/// (`prompt_tokens`). None when it has no `completion_tokens`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsageCounts {
+    pub completion: u64,
+    pub reasoning: Option<u64>,
+    pub prompt: Option<u64>,
+}
+
+pub fn usage_counts(line: &str) -> Option<UsageCounts> {
+    let payload = line.strip_prefix("data:").map(str::trim_start)?;
+    if !payload.contains("completion_tokens") {
+        return None;
+    }
+    let json = serde_json::from_str::<Value>(payload).ok()?;
+    let usage = json.get("usage")?;
+    Some(UsageCounts {
+        completion: usage.get("completion_tokens").and_then(Value::as_u64)?,
+        reasoning: usage.pointer("/completion_tokens_details/reasoning_tokens").and_then(Value::as_u64),
+        prompt: usage.get("prompt_tokens").and_then(Value::as_u64),
+    })
+}
+
 /// The tool calls of an answer, put together from their pieces: each one's
 /// id, name and arguments (a JSON text), in order.
 #[derive(Default)]
@@ -294,6 +319,14 @@ mod tests {
         assert_eq!(usage_of(text), Some(121));
         assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":""}}],"usage":{"total_tokens":122}}"#), Some(Event::Usage(122)));
         assert_eq!(usage_of(r#"data: {"choices":[{"delta":{"content":"total_tokens"}}]}"#), None);
+    }
+
+    #[test]
+    fn the_usage_says_the_tokens_made_their_reasoning_and_the_prompt() {
+        let end = r#"data: {"choices":[],"usage":{"prompt_tokens":1840,"completion_tokens":870,"total_tokens":2710,"completion_tokens_details":{"reasoning_tokens":412}}}"#;
+        assert_eq!(usage_counts(end), Some(UsageCounts { completion: 870, reasoning: Some(412), prompt: Some(1840) }));
+        assert_eq!(usage_counts(r#"data: {"choices":[],"usage":{"completion_tokens":3}}"#), Some(UsageCounts { completion: 3, reasoning: None, prompt: None }));
+        assert_eq!(usage_counts(r#"data: {"choices":[{"delta":{"content":"completion_tokens"}}]}"#), None);
     }
 
     #[test]

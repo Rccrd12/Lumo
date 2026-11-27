@@ -177,6 +177,19 @@ export interface AskedQuestion {
   multiSelect: boolean;
 }
 
+/** The tokens a local model made for an answer, and the seconds from its first token to its last (lumo-local `Seen::Made`). */
+export interface TokenSpeed {
+  tokens: number;
+  secs: number;
+  /** Of `tokens`, the reasoning (the model's own, and its text before the answer showed). */
+  reasoning?: number;
+  /** The tokens of the question it read, when the server said; and how long reading took. */
+  promptTokens?: number;
+  promptSecs?: number;
+  /** The whole turn, its tools included. */
+  totalSecs?: number;
+}
+
 export interface ChatMessage {
   id: number;
   role: "user" | "assistant";
@@ -203,6 +216,8 @@ export interface ChatMessage {
   files?: ReplyFile[];
   /** The answer's turn used the computer: its plan as it ended, shown under it (computer.rs, saved with the chat). */
   computer?: ComputerRecap;
+  /** A local model's answer: the tokens it made and in how many seconds (`chat-tokens`), the line under it; saved with the chat. */
+  speed?: TokenSpeed;
   /** A question: what went with it (core/sent.ts), shown on its bubble; saved with the chat. */
   sent?: SentItem[];
   /** The same, as it went, to send again on Edit: kept in memory only. */
@@ -418,6 +433,8 @@ export interface Settings {
   localTerminalTimeout: number;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
   chatAutoCompact: boolean;
+  /** A local model's answer shows the tokens it made and how many a second, on a line under it (settings.rs). */
+  chatTokenSpeed: boolean;
   /** Once its first answer is in, the chat's own provider names the chat (chat_title.rs). Off: the start of the first question. */
   chatAiTitles: boolean;
   /** The model that names the chats: "light", the provider's lightest, or "chat", the chat's own. */
@@ -564,6 +581,7 @@ export const DEFAULT_SETTINGS: Settings = {
   localTerminalNetwork: "ask",
   localTerminalTimeout: 120,
   chatAutoCompact: true,
+  chatTokenSpeed: true,
   chatAiTitles: true,
   chatTitleModel: "light",
   webImages: false,

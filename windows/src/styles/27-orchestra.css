@@ -3,7 +3,7 @@
    the left (or the reader of a Markdown file in its place), the member on
    screen on the right, over the chat's own buttons and field. Nothing of it
    shows otherwise. Concept: modalita-orchestratore v2. The projects' list and
-   form are in 27-projects.css. */
+   form are in 28-projects.css. */
 
 .chat-body:not(.orc) > .orc-part,
 .orc-queue[hidden] {
