@@ -234,7 +234,9 @@ fn config(settings: &Settings, dir: &Path) -> Value {
     let weights = path_str(&dir.join(WEIGHTS));
     let ctx = context(settings);
     let found = install(&path_str(dir));
-    let drafter = settings.maya_drafter && found.drafter;
+    // On a smaller card the drafter slows Maya down (the guide's 8 GB config has none):
+    // checking two tokens at once runs about twice the experts on the processor.
+    let drafter = settings.maya_drafter && found.drafter && full_card(&settings.maya_vram);
     let vision = settings.maya_vision && found.vision;
     let mut args = vec!["--model".to_string(), weights.clone(), "--max-context".into(), ctx.to_string()];
     let mut env = serde_json::Map::new();
@@ -258,6 +260,11 @@ fn config(settings: &Settings, dir: &Path) -> Value {
             ("IK2_ROOM_MIB", "256"),
         ] {
             set(k, v);
+        }
+        // A longer context on a smaller card: its memory in FP8, as the full card's,
+        // leaves the experts' cache the room it would take (64K: 657 experts, not 410).
+        if ctx > SMALL_DEFAULT {
+            set("IK2_KV", "fp8");
         }
     }
     for (k, v) in [("IK2_GATE_TILE", "64"), ("IK2_GATE_BF16", "1"), ("IK2_Q8_UNROLL", "1"), ("IK2_BATCH_PREFILL", "1")] {
@@ -685,6 +692,9 @@ mod tests {
         assert_eq!(cfg["model_name"], MODEL);
 
         // Both off, on an 8 GB card: the guide's 8 GB config, no drafter, no encoder.
+        // An 8 GB card leaves the drafter out even when it's on.
+        let small_drafter = Settings { maya_vram: "8".into(), ..s.clone() };
+        assert!(!config(&small_drafter, &dir)["args"].as_array().unwrap().iter().any(|a| a == "--draft"));
         let small = Settings { maya_vram: "8".into(), maya_drafter: false, maya_vision: false, ..s.clone() };
         let cfg = config(&small, &dir);
         let args: Vec<&str> = cfg["args"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
@@ -693,6 +703,9 @@ mod tests {
         assert_eq!(args[args.iter().position(|a| *a == "--max-context").unwrap() + 1], "16384");
         assert_eq!(cfg["env"]["IK2_CPU"], "1");
         assert!(cfg["env"].get("IK2_KV").is_none());
+        // 64K on the same card: its memory in FP8.
+        let long = Settings { maya_context: 65_536, ..small.clone() };
+        assert_eq!(config(&long, &dir)["env"]["IK2_KV"], "fp8");
         assert!(cfg.get("vision").is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }

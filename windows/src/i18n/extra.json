@@ -145,6 +145,18 @@
    "id": "Drafter dari Thinking Machines menebak kata berikutnya: kode dan suntingan datang hingga 1,5 kali lebih cepat. Ia memakai sekitar 1 GB memori kartu.",
    "it": "Il drafter di Thinking Machines indovina le parole successive: codice e modifiche arrivano fino a 1,5 volte più veloci. Occupa circa 1 GB della scheda."
   },
+  "On a card under 24 GB the drafter slows Maya down: checking its guesses runs more experts on the processor.": {
+   "zh-Hans": "在小于 24 GB 的显卡上，草稿模型会让 Maya 变慢：核对它的猜测要在处理器上算更多专家。",
+   "hi": "24 GB से छोटे कार्ड पर ड्राफ्टर Maya को धीमा कर देता है: उसके अनुमान जाँचने में प्रोसेसर पर ज़्यादा एक्सपर्ट चलते हैं।",
+   "es": "En una tarjeta de menos de 24 GB el drafter hace más lenta a Maya: comprobar sus conjeturas hace trabajar más expertos en el procesador.",
+   "ar": "على بطاقة أصغر من 24 غيغابايت تُبطئ المسوّدة Maya: التحقق من تخميناتها يشغّل خبراء أكثر على المعالج.",
+   "fr": "Sur une carte de moins de 24 Go, le drafter ralentit Maya : vérifier ses suppositions fait calculer plus d'experts au processeur.",
+   "bn": "24 GB-এর ছোট কার্ডে ড্রাফটার Maya-কে ধীর করে: এর অনুমান যাচাই করতে প্রসেসরে আরও বেশি এক্সপার্ট চালাতে হয়।",
+   "pt-BR": "Numa placa com menos de 24 GB o drafter deixa a Maya mais lenta: conferir seus palpites faz o processador calcular mais especialistas.",
+   "ru": "На карте меньше 24 ГБ черновая модель замедляет Maya: проверка её догадок заставляет процессор считать больше экспертов.",
+   "id": "Di kartu di bawah 24 GB, drafter membuat Maya lebih lambat: memeriksa tebakannya membuat prosesor menghitung lebih banyak expert.",
+   "it": "Su una scheda sotto i 24 GB il drafter rallenta Maya: controllare le sue ipotesi fa calcolare al processore più esperti."
+  },
   "Its weights aren't there: mtp.safetensors goes in the models folder.": {
    "zh-Hans": "缺少它的权重：mtp.safetensors 应放在 models 文件夹中。",
    "hi": "इसके वेट्स मौजूद नहीं हैं: mtp.safetensors को models फ़ोल्डर में रखें।",
