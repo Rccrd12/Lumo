@@ -1566,7 +1566,7 @@ pub fn run() {
             orchestra::orchestra_send,
             orchestra::orchestra_answer,
             orchestra::orchestra_stop,
-            orchestra::orchestra_set_picks,
+            orchestra::orchestra_update,
             orchestra::orchestra_delete,
             orchestra::orchestra_read_file,
             save_settings,

@@ -1,5 +1,5 @@
-// The island's side of the orchestra (orchestra.rs): a coordinator that plans
-// and its threads, each a chat with its own model, that talk to the user and
+// The island's side of the projects (orchestra.rs): in each, a coordinator that
+// plans and its threads, each a chat with its own model, that talk to the user and
 // to each other. Typed wrappers over the orchestra_* commands and the
 // `orchestra-update` event (views/orchestra.ts draws them). As the rest of
 // core/bridge.ts, every call is a no-op in a plain browser.
@@ -10,15 +10,48 @@ import type { OrchestraPick } from "./state";
 
 export type { OrchestraPick } from "./state";
 
-/** A past orchestra, as orchestra_list gives it. */
+/** Where a project stands, as the list of projects says it. */
+export type ProjectState = "waiting" | "working" | "paused" | "done" | "stopped" | "idle";
+
+/** A project, as orchestra_list gives it. */
 export interface OrchestraSummary {
   id: string;
   title: string;
+  /** Its icon's name (core/project-icons.ts), "" for the default one. */
+  icon: string;
+  /** "#rrggbb", or "" for none. */
+  color: string;
+  goal: string;
   /** Last change, ms since the epoch. */
   updated: number;
-  /** A member of it is at work now. */
-  working: boolean;
+  state: ProjectState;
+  /** How many of its members are at work. */
+  working: number;
+  /** The member that asks the user, when one does. */
+  asking: string;
+  planDone: number;
+  planTotal: number;
+  coordinator: OrchestraPick;
+  thread: OrchestraPick;
 }
+
+/** What New project and a project's settings set (orchestra.rs Project). */
+export interface ProjectFields {
+  title: string;
+  icon: string;
+  color: string;
+  /** What the user wants to work on, up to GOAL_MAX characters. */
+  goal: string;
+  /** A full path, or "" for the project's own folder. */
+  folder: string;
+  coordinator: OrchestraPick;
+  thread: OrchestraPick;
+  /** Its threads go on by themselves once the usage limits reset. */
+  resume: boolean;
+}
+
+/** The most a project's goal holds (orchestra.rs GOAL_MAX). */
+export const GOAL_MAX = 8000;
 
 export type OrchestraStepStatus = "pending" | "in_progress" | "completed";
 
@@ -27,7 +60,8 @@ export interface OrchestraStep {
   status: OrchestraStepStatus;
 }
 
-export type OrchestraMemberState = "idle" | "working" | "waiting" | "done" | "failed" | "stopped";
+/** "paused": stopped by a usage limit, it goes on at `resumeAt` when its project says so. */
+export type OrchestraMemberState = "idle" | "working" | "waiting" | "done" | "failed" | "stopped" | "paused";
 
 /** A decision card a member puts to the user (kind "card"). */
 export interface OrchestraCard {
@@ -51,10 +85,13 @@ export interface OrchestraMessage {
   file?: { path: string; name: string; markdown: boolean };
   /**
    * A note's kind (kind "note"): "started" (`from` the new thread, `text` its title), "lock" (`from` tried to
-   * change file `text`, which `holder` is changing), "stopped", "error" (`text` the error). A user line with
-   * "answer" is the user's answer to a card, which the card itself shows.
+   * change file `text`, which `holder` is changing), "stopped", "error" (`text` the error), "limit" (a usage
+   * limit stopped it, `text` the provider's words; it goes on at `until` when the project says so). A user
+   * line with "answer" is the user's answer to a card, which the card itself shows.
    */
-  note?: "lock" | "started" | "stopped" | "error" | "answer";
+  note?: "lock" | "started" | "stopped" | "error" | "answer" | "limit";
+  /** A "limit" note: when the member goes on, seconds since the epoch. */
+  until?: number;
   /** A "lock" note: the member changing the file. */
   holder?: string;
   /** A message to a member: waiting for its next step, read while it worked, or woke it. */
@@ -80,6 +117,8 @@ export interface OrchestraMember {
   /** Messages waiting for its next step. */
   queued: number;
   messages: OrchestraMessage[];
+  /** Paused by a usage limit: when it goes on, seconds since the epoch. */
+  resumeAt?: number | null;
 }
 
 /** The whole state of one orchestra, as orchestra-update sends it after every change. */
@@ -88,6 +127,13 @@ export interface OrchestraSnapshot {
   title: string;
   created: number;
   updated: number;
+  icon: string;
+  color: string;
+  goal: string;
+  folder: string;
+  resume: boolean;
+  /** Who plays the threads, those to come too. */
+  threadPick: OrchestraPick;
   coordinator: OrchestraMember;
   threads: OrchestraMember[];
   /** The coordinator's plan. */
@@ -132,8 +178,10 @@ export const Orchestra = {
       return [];
     }
   },
-  /** A new, empty orchestra with the picks in the settings. */
-  create: () => ask<OrchestraSnapshot>("orchestra_create"),
+  /** A new project, empty until the user's first message. */
+  create: (project: ProjectFields) => ask<OrchestraSnapshot>("orchestra_create", { project }),
+  /** A project's settings saved. */
+  update: (id: string, project: ProjectFields) => ask<OrchestraSnapshot>("orchestra_update", { id, project }),
   open: (id: string) => ask<OrchestraSnapshot>("orchestra_open", { id }),
   /** `to`: "coordinator" or a thread id. */
   send: (id: string, to: string, text: string) => ask<void>("orchestra_send", { id, to, text }),
@@ -141,8 +189,6 @@ export const Orchestra = {
   answer: (id: string, member: string, message: string, choice: number) => ask<void>("orchestra_answer", { id, member, message, choice }),
   /** Stops `member`, or everyone without it. */
   stop: (id: string, member?: string) => tell("orchestra_stop", member ? { id, member } : { id }),
-  setPicks: (id: string, coordinator?: OrchestraPick, thread?: OrchestraPick) =>
-    ask<OrchestraSnapshot>("orchestra_set_picks", { id, ...(coordinator ? { coordinator } : {}), ...(thread ? { thread } : {}) }),
   remove: (id: string) => tell("orchestra_delete", { id }),
   readFile: (id: string, path: string) => ask<OrchestraFile>("orchestra_read_file", { id, path }),
   /** Every change of any orchestra, whole. */
@@ -173,4 +219,13 @@ export function openCards(member: OrchestraMember): OrchestraMessage[] {
 export function planProgress(plan: readonly OrchestraStep[] | undefined): { done: number; total: number } {
   const steps = plan ?? [];
   return { done: steps.filter((s) => s.status === "completed").length, total: steps.length };
+}
+
+/** What a project's form starts from: what `snap` keeps. */
+export function fieldsOf(snap: OrchestraSnapshot): ProjectFields {
+  return {
+    title: snap.title, icon: snap.icon ?? "", color: snap.color ?? "", goal: snap.goal ?? "", folder: snap.folder ?? "",
+    coordinator: snap.coordinator.pick, thread: snap.threadPick ?? snap.threads[0]?.pick ?? { provider: "", model: "", effort: "" },
+    resume: Boolean(snap.resume),
+  };
 }

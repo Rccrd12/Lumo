@@ -1,10 +1,11 @@
-// The orchestra (src/views/orchestra.ts) in the chat, on a fake DOM, through
-// the real bridge: a coordinator and its threads in the rail, the member on
-// screen with the messages between members, a decision card answered by a
-// click, what is typed going to the member on screen (and starting an
-// orchestra when none is open), the answer streaming in under the member's
-// chat id; and its entry in the model picker (src/views/chat-models.ts), with
-// a row for each role and no CLI to pick for them.
+// The projects (src/views/orchestra.ts, src/views/projects.ts) in the chat, on
+// a fake DOM, through the real bridge: a project open with its coordinator and
+// threads in the rail, the member on screen with the messages between members,
+// a decision card answered by a click, what is typed going to the member on
+// screen, the answer streaming in under the member's chat id, a member paused
+// by a usage limit; the empty chat's Projects card, the list, New project's
+// form (its icon, its models with no CLI but Claude Code to coordinate, its
+// folder) and the gear that opens a project's settings.
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -39,7 +40,7 @@ const member = (id, title, state, messages, extra = {}) => ({
   id, chat: `orc-o1-${id}`, title, task: "", pick: id === "coordinator" ? OPUS : LM, state, activity: null, plan: [], queued: 0, messages, ...extra,
 });
 const SNAP = {
-  id: "o1", title: "Leases", created: 1, updated: 2,
+  id: "o1", title: "Leases", created: 1, updated: 2, icon: "house", color: "#f5b942", goal: "Compare the three leases.", folder: "", resume: true, threadPick: LM,
   plan: [{ step: "Read the leases", status: "completed" }, { step: "Compare them", status: "in_progress" }],
   locks: [{ path: "Leases/summary.csv", member: "t1" }],
   coordinator: member("coordinator", "Coordinatore", "working", [
@@ -71,7 +72,7 @@ let view;
 beforeEach(() => {
   calls.length = 0;
   answers = {
-    orchestra_list: [{ id: "o1", title: "Leases", updated: 2, working: true }],
+    orchestra_list: [{ id: "o1", title: "Leases", icon: "house", color: "#f5b942", goal: "Compare the three leases.", updated: 2, state: "waiting", working: 2, asking: "t3", planDone: 1, planTotal: 2, coordinator: OPUS, thread: LM }],
     orchestra_open: SNAP,
   };
   State.settings = { ...DEFAULT_SETTINGS, chatModels: {}, lmstudioUrl: "http://127.0.0.1:1234", orchestraMode: true, orchestraCoordinator: OPUS, orchestraThread: LM };
@@ -92,9 +93,11 @@ async function typeAndSend(text) {
   await flush();
 }
 
-test("the orchestra takes the chat's place: the last one opens on its coordinator", async () => {
+test("the projects take the chat's place: the last one opens on its coordinator", async () => {
   await flush();
+  view.sync();
   assert.ok($(".chat-body").classList.contains("orc"));
+  assert.ok(!$(".chat-body").classList.contains("orc-full"));
   assert.deepEqual(sent("orchestra_open"), [{ id: "o1" }]);
   assert.deepEqual(texts(".orc-item-title"), ["Coordinator", "Main St", "Elm St", "Oak St"]);
   assert.ok(item("coordinator").classList.contains("on"));
@@ -107,6 +110,9 @@ test("the orchestra takes the chat's place: the last one opens on its coordinato
   assert.equal($(".orc-head-title").textContent, "Coordinator");
   assert.equal($(".orc-plan-btn").textContent, "Plan 1/2");
   assert.equal($(".orc-stop").textContent, "Stop all");
+  assert.ok($(".pj-gear"), "the project's settings, beside Stop all");
+  assert.equal($(".orc-top-name").textContent, "Leases");
+  assert.ok($(".orc-top").querySelector(".pj-ic"), "its icon before its name");
   assert.equal($(".chat-input").placeholder, "Write to the coordinator…");
   assert.match($(".model-name").textContent, /^Coordinator · Opus 5\.5 → gemma-4-26b-a4b$/);
 });
@@ -164,19 +170,109 @@ test("what is typed goes to the member on screen", async () => {
   assert.deepEqual(sent("orchestra_stop"), [{ id: "o1", member: "t3" }]);
 });
 
-test("with no orchestra open, the first message starts one", async () => {
+test("with no project, the list shows; New project's form makes one with what it says", async () => {
   await flush();
   calls.length = 0;
   answers.orchestra_list = [];
-  answers.orchestra_create = { ...SNAP, id: "o2", title: "", plan: [], locks: [], coordinator: member("coordinator", "Coordinatore", "idle", []), threads: [] };
+  answers.orchestra_create = { ...SNAP, id: "o2", title: "Trip", goal: "Plan my trip", plan: [], locks: [], coordinator: member("coordinator", "Coordinatore", "idle", []), threads: [] };
+  answers.chat_providers = ["anthropic", "claude-code", "codex", "lmstudio"];
+  answers.secret_present = true;
+  answers.pick_folder = "C:\\Trips";
   view = buildPrompt(() => {});
   view.sync();
   await flush();
+  view.sync();
   assert.deepEqual(sent("orchestra_open"), []);
+  assert.ok($(".chat-body").classList.contains("orc-full"), "the list in the chat's place");
+  assert.equal($(".pj-title").textContent, "Projects");
+  assert.match($(".pj-none").textContent, /^No projects yet/);
+  // Nothing typed reaches a project that does not exist.
   await typeAndSend("Plan my trip");
-  assert.equal(sent("orchestra_create").length, 1);
+  assert.deepEqual(sent("orchestra_send"), []);
+
+  $(".pj-new").fire("click");
+  view.sync();
+  assert.equal($(".pj-h").textContent, "New project");
+  const create = view.el.find(".pj-b").find((b) => b.textContent === "Create project");
+  assert.equal(create.disabled, true, "a name first");
+  const name = $(".pj-name-input");
+  name.value = "Trip";
+  name.fire("input");
+  assert.equal(create.disabled, false);
+  const goal = $(".pj-area");
+  goal.value = "Plan my trip";
+  goal.fire("input");
+  assert.equal($(".pj-count").textContent, "12 / 8000");
+  // The icon: a picker with a search, the icons and the colours.
+  $(".pj-mark-btn").fire("click");
+  assert.ok($(".pj-pop-icons"));
+  assert.equal(view.el.find(".pj-icon").length, 48);
+  const search = $(".pj-search-input");
+  search.value = "rocket";
+  search.fire("input");
+  assert.deepEqual(view.el.find(".pj-icon").map((b) => b.getAttribute("data-icon")), ["rocket"]);
+  $(".pj-icon").fire("click");
+  view.el.find(".pj-color").find((c) => c.getAttribute("data-color") === "#60a5fa").fire("click");
+  // The folder, from the system's dialog.
+  $(".pj-folder").fire("click");
+  await flush();
+  assert.equal($(".pj-folder-text").textContent, "C:\\Trips");
+  create.fire("click");
+  await flush();
+  const made = sent("orchestra_create")[0].project;
+  assert.deepEqual({ ...made, coordinator: undefined, thread: undefined }, { title: "Trip", icon: "rocket", color: "#60a5fa", goal: "Plan my trip", folder: "C:\\Trips", resume: true, coordinator: undefined, thread: undefined });
+  assert.deepEqual(made.coordinator, OPUS, "New project starts from the last project's models");
+  view.sync();
+  assert.ok($(".chat-body").classList.contains("orc"), "the new project, open");
+  await typeAndSend("Plan my trip");
   assert.deepEqual(sent("orchestra_send"), [{ id: "o2", to: "coordinator", text: "Plan my trip" }]);
   assert.ok(texts(".bubble").some((t) => t.includes("Plan my trip")), "shown at once");
+});
+
+test("the models' menus: grouped by provider, no CLI but Claude Code to coordinate, the effort under them", async () => {
+  State.settings = { ...State.settings, orchestraCoordinator: { provider: "", model: "", effort: "" }, chatProvider: "anthropic" };
+  answers.orchestra_list = [];
+  answers.chat_providers = ["anthropic", "claude-code", "codex", "lmstudio"];
+  answers.secret_present = true;
+  answers.chat_models = ({ provider }) => provider === "anthropic"
+    ? [{ id: "claude-opus-5-5", label: "Claude Opus 5.5", reasoning: ["low", "medium", "high"] }, { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }]
+    : provider === "lmstudio" ? [{ id: "gemma-4-26b-a4b", label: "gemma-4-26b-a4b" }] : [{ id: "default", label: "Default" }];
+  answers.local_caps = { vision: false, tools: true, reasoning: [], maxContext: 0, loadedContext: 0 };
+  view = buildPrompt(() => {});
+  view.sync();
+  $(".model-btn").fire("click");
+  await flush();
+  // The picker has only providers now.
+  assert.ok(!view.el.find(".picker-chip").some((c) => c.textContent === "Orchestra"));
+  $(".model-btn").fire("click");
+  await flush();
+  $(".pj-new").fire("click");
+  view.sync();
+  $(".pj-coord").fire("click");
+  await flush();
+  assert.deepEqual(texts(".pj-grp"), ["Anthropic", "Claude Code", "LM Studio"]);
+  assert.ok($(".pj-coord").classList.contains("open"));
+  // Its effort: the levels its model takes.
+  assert.deepEqual(view.el.find(".pj-seg")[0].children.map((b) => b.textContent), ["Low", "Medium", "High"]);
+  view.el.find(".pj-seg")[0].children[2].fire("click");
+  assert.match($(".pj-coord").textContent, /^Opus 5\.5Anthropic · High$/);
+  // A search narrows the list.
+  const search = $(".pj-search-input");
+  search.value = "sonnet";
+  search.fire("input");
+  assert.deepEqual(view.el.find(".pj-opt").map((o) => o.textContent), ["Claude Sonnet 5.5"]);
+  // The threads': every provider, the CLIs too.
+  $(".pj-thread").fire("click");
+  await flush();
+  assert.deepEqual(texts(".pj-grp"), ["Anthropic", "Claude Code", "Codex", "LM Studio"]);
+  view.el.find(".pj-opt").find((o) => o.textContent.includes("gemma")).fire("click");
+  assert.match($(".pj-thread").textContent, /gemma-4-26b-a4b.*LM Studio/);
+  // The pure rules.
+  assert.ok(orchestraAllowed("claude-code") && !orchestraAllowed("copilot-cli") && !orchestraAllowed("codex") && orchestraAllowed("ollama"));
+  assert.ok(orchestraAllowed("codex", "thread") && orchestraAllowed("antigravity-cli", "thread") && orchestraAllowed("cursor-cli", "thread"));
+  const chat = { ...State.settings, chatProvider: "anthropic" };
+  assert.equal(resolvePick({ provider: "codex", model: "x", effort: "" }, chat).provider, "anthropic", "a CLI that can't coordinate is never the coordinator");
+  assert.deepEqual(resolvePick({ provider: "codex", model: "x", effort: "high" }, chat, null, "thread"), { provider: "codex", model: "x", effort: "high" });
 });
 
 test("a member's answer streams in under its chat id; the next update has it whole", async () => {
@@ -209,17 +305,90 @@ test("a Markdown file opens in the reader beside the chat", async () => {
   assert.ok(!$(".chat-body").classList.contains("orc-reading"));
 });
 
-test("the rail's title lists the past orchestras and starts a new one", async () => {
+test("the rail's title lists the projects, New project, the settings and all of them", async () => {
   await flush();
   $(".orc-top").fire("click");
   await flush();
-  assert.deepEqual(texts(".orc-menu-name"), ["Leases"]);
+  assert.deepEqual(texts(".orc-menu-name"), ["Leases", "Settings", "All projects"]);
+  view.el.find(".orc-menu-foot").find((r) => r.textContent === "All projects").fire("click");
+  await flush();
+  view.sync();
+  assert.ok($(".chat-body").classList.contains("orc-full"));
+  const card = $(".pj-card");
+  assert.equal(card.querySelector(".pj-name").textContent, "Leases");
+  assert.equal(card.querySelector(".pj-goal").textContent, "Compare the three leases.");
+  assert.equal(card.querySelector(".pj-state").textContent, "Waiting for you");
+  assert.equal(card.querySelector(".pj-models").textContent, "Opus 5.5 → gemma-4-26b-a4b");
+  card.fire("click");
+  await flush();
+  view.sync();
+  assert.ok($(".chat-body").classList.contains("orc"));
+  $(".orc-top").fire("click");
   $(".orc-menu-new").fire("click");
-  assert.equal($(".orc-head-title").textContent, "Coordinator");
-  assert.equal(view.el.find(".orc-item").length, 1, "an empty orchestra: its coordinator only");
+  view.sync();
+  assert.equal($(".pj-h").textContent, "New project");
+  view.el.find(".pj-b").find((b) => b.textContent === "Cancel").fire("click");
+  view.sync();
+  assert.equal($(".orc-head-title").textContent, "Coordinator", "back to the project it came from");
 });
 
-test("the normal chat is untouched with the orchestra off", async () => {
+test("the gear opens the project's settings in the conversation's place: saved, or deleted with two clicks", async () => {
+  answers.orchestra_update = ({ project }) => ({ ...structuredClone(SNAP), title: project.title, goal: project.goal, resume: project.resume, threadPick: project.thread });
+  await flush();
+  $(".pj-gear").fire("click");
+  view.sync();
+  assert.ok($(".chat-body").classList.contains("orc-settings"));
+  assert.ok($(".pj-gear").classList.contains("on"));
+  assert.equal($(".pj-h").textContent, "Project settings");
+  assert.equal($(".pj-name-input").value, "Leases");
+  assert.equal($(".pj-area").value, "Compare the three leases.");
+  assert.ok(!$(".chat-body").classList.contains("orc-full"), "the rail stays");
+  const name = $(".pj-name-input");
+  name.value = "Leases 2026";
+  name.fire("input");
+  $(".pj-switch").fire("click");
+  view.el.find(".pj-b").find((b) => b.textContent === "Save").fire("click");
+  await flush();
+  const saved = sent("orchestra_update")[0];
+  assert.equal(saved.id, "o1");
+  assert.equal(saved.project.title, "Leases 2026");
+  assert.equal(saved.project.resume, false);
+  assert.deepEqual(saved.project.thread, LM);
+  view.sync();
+  assert.ok(!$(".chat-body").classList.contains("orc-settings"), "back to the conversation");
+  assert.equal($(".orc-top-name").textContent, "Leases 2026");
+
+  // The model button opens them too; Delete asks a second click.
+  $(".model-btn").fire("click");
+  view.sync();
+  assert.ok($(".chat-body").classList.contains("orc-settings"));
+  const del = view.el.find(".pj-b").find((b) => b.textContent === "Delete project");
+  del.fire("click");
+  assert.deepEqual(sent("orchestra_delete"), []);
+  assert.equal(del.textContent, "Click again to delete it");
+  del.fire("click");
+  await flush();
+  assert.deepEqual(sent("orchestra_delete"), [{ id: "o1" }]);
+  view.sync();
+  assert.ok($(".chat-body").classList.contains("orc-full"), "the list, after");
+});
+
+test("a member stopped by a usage limit says when it goes on", async () => {
+  await flush();
+  const next = structuredClone(SNAP);
+  const until = Math.floor(new Date(2026, 10, 27, 18, 30).getTime() / 1000);
+  next.threads[0].state = "paused";
+  next.threads[0].resumeAt = until;
+  next.threads[0].messages.push({ id: "a9", at: 9, kind: "note", from: "t1", text: "You've hit your limit · resets 6:30pm", note: "limit", until });
+  emit("orchestra-update", next);
+  assert.ok(item("t1").querySelector(".orc-mk").classList.contains("paused"));
+  assert.match(item("t1").querySelector(".orc-item-step").textContent, /^Goes on at 18.30$|^Goes on at 06:30 PM$/);
+  item("t1").fire("click");
+  assert.match($(".orc-note.limit").textContent, /^Usage limit reached: it goes on by itself at .*\.You've hit your limit/);
+  assert.equal($(".orc-stop").textContent, "Stop thread", "a paused member can be stopped");
+});
+
+test("the normal chat is untouched with the projects off; its empty chat leads to them", async () => {
   await flush();
   calls.length = 0;
   State.settings = { ...State.settings, orchestraMode: false };
@@ -227,82 +396,23 @@ test("the normal chat is untouched with the orchestra off", async () => {
   view.sync();
   await flush();
   assert.ok(!$(".chat-body").classList.contains("orc"));
-  assert.deepEqual(sent("orchestra_list"), []);
+  assert.deepEqual(sent("orchestra_open"), []);
+  // The empty chat's card: how many there are and who waits.
+  assert.equal($(".pj-start").querySelector(".pj-start-count").textContent, "1 project · 1 waiting for you");
+  $(".pj-start").fire("click");
+  await flush();
+  view.sync();
+  assert.equal(State.settings.orchestraMode, true);
+  assert.equal(sent("save_settings").at(-1).settings.orchestraMode, true);
+  assert.ok($(".chat-body").classList.contains("orc-full"));
+  assert.equal(view.el.find(".pj-card").length, 1);
+  // + leaves them for a new chat.
+  view.el.find(".tool-btn")[0].fire("click");
+  view.sync();
+  assert.equal(State.settings.orchestraMode, false);
+  assert.ok(!$(".chat-body").classList.contains("orc-full"));
   // A chat-delta of another chat is the chat's, as before.
   assert.doesNotThrow(() => emit("chat-delta", { chat: "nobody", text: "x" }));
-});
-
-// ── The model picker ─────────────────────────────────────────────────────────
-
-test("the picker: Orchestra first, then a row for the coordinator and one for the threads", async () => {
-  State.settings = { ...State.settings, orchestraMode: false, chatProvider: "anthropic", orchestraCoordinator: { provider: "", model: "", effort: "" }, orchestraThread: { provider: "", model: "", effort: "" } };
-  answers.chat_providers = ["anthropic", "claude-code", "codex", "lmstudio"];
-  answers.secret_present = true;
-  answers.chat_models = ({ provider }) => provider === "anthropic"
-    ? [{ id: "claude-opus-5-5", label: "Claude Opus 5.5", reasoning: ["low", "medium", "high"] }, { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }]
-    : [{ id: "gemma-4-26b-a4b", label: "gemma-4-26b-a4b" }];
-  answers.local_caps = { vision: false, tools: true, reasoning: [], maxContext: 0, loadedContext: 0 };
-  view = buildPrompt(() => {});
-  view.sync();
-  $(".model-btn").fire("click");
-  await flush();
-  const chips = () => view.el.find(".picker-chip").map((c) => c.textContent);
-  assert.equal(chips()[0], "Orchestra");
-
-  view.el.find(".picker-chip")[0].fire("click");
-  await flush();
-  assert.equal(State.settings.orchestraMode, true);
-  // The blanks are written out: the chat's own provider and model.
-  assert.deepEqual(State.settings.orchestraCoordinator, { provider: "anthropic", model: "claude-opus-5-5", effort: "" });
-  assert.equal(sent("save_settings").at(-1).settings.orchestraMode, true);
-  const rows = view.el.find(".orch-line");
-  assert.deepEqual(rows.map((r) => r.querySelector(".orch-line-role").textContent), ["Coordinator", "Thread"]);
-  assert.equal(rows[0].querySelector(".orch-pick-name").textContent, "Claude Opus 5.5");
-  // Its effort: the levels its model takes.
-  assert.ok(rows[0].querySelector(".effort-slider"));
-  rows[0].querySelector(".effort-slider").fire("keydown", { key: "End" });
-  assert.equal(State.settings.orchestraCoordinator.effort, "high");
-
-  // The coordinator's: no CLI but Claude Code, whose own tools Lumo takes away.
-  view.el.find(".orch-pick")[0].fire("click");
-  await flush();
-  assert.deepEqual(chips(), ["Anthropic", "Claude Code", "LM Studio"]);
-  view.el.find(".orch-back")[0].fire("click");
-  await flush();
-  // The threads': every provider, the CLIs too.
-  view.el.find(".orch-pick")[1].fire("click");
-  await flush();
-  assert.deepEqual(chips(), ["Anthropic", "Claude Code", "Codex", "LM Studio"]);
-  view.el.find(".picker-chip").find((c) => c.textContent === "LM Studio").fire("click");
-  await flush();
-  view.el.find(".picker-model").find((m) => m.textContent.includes("gemma")).fire("click");
-  assert.deepEqual(State.settings.orchestraThread, { provider: "lmstudio", model: "gemma-4-26b-a4b", effort: "" });
-  assert.equal(view.el.find(".orch-line").length, 2, "back on the two rows");
-  view.sync();
-  assert.equal($(".model-name").textContent, "Coordinator · Opus 5.5 → gemma-4-26b-a4b");
-
-  // A provider picked: the orchestra steps aside.
-  view.el.find(".picker-chip").find((c) => c.textContent === "Anthropic").fire("click");
-  await flush();
-  assert.equal(State.settings.orchestraMode, false);
-});
-
-test("the picker offers no Orchestra when no one can coordinate (only CLIs other than Claude Code)", async () => {
-  State.settings = { ...State.settings, orchestraMode: false, chatProvider: "codex", lmstudioUrl: "" };
-  answers.chat_providers = ["antigravity-cli", "codex"];
-  answers.chat_models = [{ id: "default", label: "Default" }];
-  view = buildPrompt(() => {});
-  view.sync();
-  await flush();
-  $(".model-btn").fire("click");
-  await flush();
-  assert.ok(!view.el.find(".picker-chip").some((c) => c.textContent === "Orchestra"));
-  // The coordinator: an API, a local model or Claude Code (whose own tools Lumo takes away); a thread: anyone.
-  assert.ok(orchestraAllowed("claude-code") && !orchestraAllowed("copilot-cli") && !orchestraAllowed("codex") && orchestraAllowed("ollama"));
-  assert.ok(orchestraAllowed("codex", "thread") && orchestraAllowed("antigravity-cli", "thread") && orchestraAllowed("cursor-cli", "thread"));
-  const chat = { ...State.settings, chatProvider: "anthropic" };
-  assert.equal(resolvePick({ provider: "codex", model: "x", effort: "" }, chat).provider, "anthropic", "a CLI that can't coordinate is never the coordinator");
-  assert.deepEqual(resolvePick({ provider: "codex", model: "x", effort: "high" }, chat, null, "thread"), { provider: "codex", model: "x", effort: "high" });
 });
 
 test("the usage ring shows the context of the member on screen, by its own chat", async () => {

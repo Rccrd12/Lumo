@@ -137,11 +137,11 @@ pub struct Settings {
     /// Claude Code's effort level for the chat ("low" … "max"); empty: Claude
     /// Code's own default. Only the Claude Code provider uses it.
     pub chat_effort: String,
-    /// The chat view shows the orchestra (orchestra.rs) instead of a chat:
-    /// picked as "Orchestrator" in the model picker.
+    /// The chat view shows the projects (orchestra.rs) instead of a chat:
+    /// entered from the Projects card of the empty chat.
     pub orchestra_mode: bool,
-    /// The provider, model and effort of an orchestra's coordinator, and of
-    /// its threads; empty ones are the chat's own.
+    /// The provider, model and effort of the last project's coordinator, and
+    /// of its threads, for the next New project; empty ones are the chat's own.
     pub orchestra_coordinator: crate::orchestra::Pick,
     pub orchestra_thread: crate::orchestra::Pick,
     /// What the chat's CLIs (Claude Code, Antigravity CLI) may do without a

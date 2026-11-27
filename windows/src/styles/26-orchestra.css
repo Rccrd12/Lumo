@@ -1,8 +1,9 @@
-/* ── The orchestra (views/orchestra.ts) ─────────────────────────────────────
+/* ── A project open (views/orchestra.ts) ───────────────────────────────────
    In the chat, while Settings.orchestraMode is on: the rail of its members on
    the left (or the reader of a Markdown file in its place), the member on
    screen on the right, over the chat's own buttons and field. Nothing of it
-   shows otherwise. Concept: modalita-orchestratore v2. */
+   shows otherwise. Concept: modalita-orchestratore v2. The projects' list and
+   form are in 27-projects.css. */
 
 .chat-body:not(.orc) > .orc-part,
 .orc-queue[hidden] {
@@ -295,7 +296,21 @@
   background: #8b929e;
 }
 
-/* The past orchestras, in the rail's place while its title is open. */
+/* Stopped by a usage limit, until it goes on: an orange ring with a pause. */
+.orc-mk.paused {
+  border: 1.5px solid rgba(251, 146, 60, 0.7);
+}
+
+.orc-mk.paused::after {
+  content: "";
+  width: 5px;
+  height: 6px;
+  border-left: 1.5px solid #fb923c;
+  border-right: 1.5px solid #fb923c;
+  box-sizing: border-box;
+}
+
+/* The other projects, in the rail's place while its title is open. */
 .orc-menu-row {
   display: flex;
   align-items: center;
@@ -587,6 +602,21 @@
 .orc-note.error,
 .orc-error {
   color: var(--red-text);
+}
+
+/* A usage limit stopped a member: when it goes on, then the provider's words. */
+.orc-note.limit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 90%;
+  text-align: center;
+  color: #fdba74;
+}
+
+.orc-note-sub {
+  color: #6b717c;
 }
 
 .orc-error {
@@ -958,117 +988,6 @@
 
 .orc-doc-body .md-h1 {
   font-size: 21px;
-}
-
-/* ── The picker's two roles (views/chat-models.ts) ──────────────────────── */
-
-.picker-chip.orchestra .picker-dot {
-  box-sizing: border-box;
-  border: 1.6px solid var(--accent);
-  background: transparent;
-}
-
-.orch-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 2px 0 4px;
-}
-
-.orch-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 8px;
-}
-
-.orch-line-role {
-  flex: 0 0 82px;
-  font: 400 12px var(--font);
-  color: #8b929e;
-}
-
-.orch-pick {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: 0 1 260px;
-  min-width: 0;
-  padding: 5px 10px;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-  font: 400 12px var(--font);
-  color: #8b929e;
-  cursor: default;
-}
-
-.orch-pick:hover {
-  background: rgba(255, 255, 255, 0.11);
-}
-
-.orch-pick-dot {
-  flex: 0 0 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.orch-pick-name {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: #e8eaed;
-}
-
-.orch-pick-provider {
-  flex: 0 0 auto;
-  font-size: 10.5px;
-  white-space: nowrap;
-}
-
-.orch-pick svg {
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-
-.orch-line .effort-track {
-  flex: 1 1 150px;
-  min-width: 70px;
-}
-
-.orch-line .effort-value {
-  min-width: 52px;
-}
-
-.orch-note {
-  padding: 4px 8px 0;
-  font: 400 11px/1.5 var(--font);
-  color: #8a8f98;
-}
-
-.orch-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
-  padding: 2px 8px 2px 4px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  font: 500 11.5px var(--font);
-  color: #e8eaed;
-  cursor: default;
-}
-
-.orch-back:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.orch-back svg {
-  color: #8b929e;
 }
 
 /* A step Lumo notes (a thread opened): grey, with its bullet; a click opens it. */

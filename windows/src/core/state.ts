@@ -379,11 +379,11 @@ export interface Settings {
   chatModels: Record<string, string>;
   /** Claude Code's effort for the chat ("low" … "max"); "" = Claude Code's default. */
   chatEffort: string;
-  /** The chat shows the orchestra (views/orchestra.ts): a coordinator and its threads, picked as "Orchestrator" in the model picker. */
+  /** The chat shows the projects (views/orchestra.ts): their list, or one open with its coordinator and threads. */
   orchestraMode: boolean;
-  /** The orchestra's coordinator: its provider, model and effort ("" = the chat's own). A new orchestra copies it (orchestra.rs). */
+  /** The coordinator of the last project made: New project starts from it ("" = the chat's own). */
   orchestraCoordinator: OrchestraPick;
-  /** The orchestra's threads: one provider, model and effort for all of them ("" = the chat's own). */
+  /** The threads of the last project made: one provider, model and effort for all of them ("" = the chat's own). */
   orchestraThread: OrchestraPick;
   /** What the chat's CLIs may do without asking (core/providers.ts PERMISSION_MODES). */
   chatPermissionMode: string;

@@ -1,5 +1,8 @@
-// Orchestra mode: a coordinator that plans and hands the work out, and
-// threads that do it. Each member is a chat of its own (chat.rs), answered by
+// Projects (the island calls them so; the code, orchestras): a coordinator
+// that plans and hands the work out, and threads that do it. A project has a
+// name, an icon, what the user wants to work on (its goal, which every member
+// is told), a folder of the user's where the threads work, and the model and
+// effort of each role. Each member is a chat of its own (chat.rs), answered by
 // the model picked for its role: the coordinator never touches a file, it has
 // only the tools below to start threads, write to them, read them and ask the
 // user; each thread has the chat's tools, minus agents of its own, plus a
@@ -44,6 +47,14 @@ use crate::orchestra_tool_defs::{MEMBER, PREFIX};
 const MAX_THREADS: usize = 8;
 /// The most characters of a message a member reads of another's in `read_thread`.
 const READ_CLIP: usize = 4_000;
+/// The most characters of a project's goal ("What do you want to work on?").
+pub const GOAL_MAX: usize = 8_000;
+/// The most characters of a project's name.
+const TITLE_MAX: usize = 60;
+/// A usage limit that says no time: tried again after this long (seconds).
+const LIMIT_RETRY: u64 = 15 * 60;
+/// What a member stopped by a usage limit is told when they reset.
+const RESUMED: &str = "The usage limits have reset: go on with your task from where you stopped.";
 
 // ── What is kept ──────────────────────────────────────────────────────────────
 
@@ -116,6 +127,9 @@ pub struct Message {
     /// A "lock" note: the member changing the file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub holder: Option<String>,
+    /// A "limit" note: when the member goes on (ms since the epoch); none when it waits for the user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub until: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -143,7 +157,7 @@ pub struct Member {
     pub title: String,
     pub task: String,
     pub pick: Pick,
-    /// "idle", "working", "waiting", "done", "failed" or "stopped".
+    /// "idle", "working", "waiting", "paused" (a usage limit), "done", "failed" or "stopped".
     pub state: String,
     pub activity: Option<Activity>,
     pub plan: Vec<Step>,
@@ -153,6 +167,8 @@ pub struct Member {
     pub mail: Vec<Mail>,
     /// It said its task is done (message_coordinator with done).
     pub done: bool,
+    /// Stopped by a usage limit: when it goes on by itself (ms since the epoch).
+    pub resume_at: Option<u64>,
     /// A turn of its is running.
     #[serde(skip)]
     pub running: bool,
@@ -172,6 +188,15 @@ pub struct Lock {
 pub struct Orchestra {
     pub id: String,
     pub title: String,
+    /// Its icon (one of the island's, core/project-icons.ts) and its colour ("#rrggbb"; "" for none).
+    pub icon: String,
+    pub color: String,
+    /// What the user wants to work on: every member is told it.
+    pub goal: String,
+    /// The user's folder the threads work in ("": the project's own shared folder only).
+    pub folder: String,
+    /// A member stopped by a usage limit goes on by itself once they reset.
+    pub resume: bool,
     pub created: u64,
     pub updated: u64,
     pub coordinator: Member,
@@ -188,13 +213,40 @@ pub struct Orchestra {
     pub locks: Vec<Lock>,
 }
 
-#[derive(Serialize)]
+/// What New project and a project's settings set.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Project {
+    pub title: String,
+    pub icon: String,
+    pub color: String,
+    pub goal: String,
+    pub folder: String,
+    pub coordinator: Pick,
+    pub thread: Pick,
+    pub resume: bool,
+}
+
+/// A project as the list of projects shows it.
+#[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Summary {
     pub id: String,
     pub title: String,
+    pub icon: String,
+    pub color: String,
+    pub goal: String,
     pub updated: u64,
-    pub working: bool,
+    /// "waiting" (a member asks the user), "working", "paused" (a usage limit), "done", "stopped" or "idle".
+    pub state: String,
+    /// How many of its members are at work.
+    pub working: usize,
+    /// The member that asks the user, when one does.
+    pub asking: String,
+    pub plan_done: usize,
+    pub plan_total: usize,
+    pub coordinator: Pick,
+    pub thread: Pick,
 }
 
 fn now() -> u64 {
@@ -263,6 +315,69 @@ impl Orchestra {
             coordinator: Member::new(COORDINATOR, id, "Coordinator", "", coordinator),
             thread_pick: thread,
             ..Default::default()
+        }
+    }
+
+    /// What the user set for the project (New project, its settings): the
+    /// roles' picks reach every member, the threads already started too.
+    pub fn apply(&mut self, p: Project) -> Result<(), String> {
+        let title = clip(p.title.trim(), TITLE_MAX);
+        if title.is_empty() {
+            return Err(crate::i18n::t("A project needs a name."));
+        }
+        let folder = p.folder.trim().trim_matches('"').to_string();
+        if !folder.is_empty() && !Path::new(&folder).is_absolute() {
+            return Err(crate::i18n::t("The project's folder must be a full path."));
+        }
+        let color = p.color.trim();
+        let hex = color.len() == 7 && color.starts_with('#') && color[1..].chars().all(|c| c.is_ascii_hexdigit());
+        self.title = title;
+        self.icon = p.icon.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(32).collect();
+        self.color = if hex { color.to_lowercase() } else { String::new() };
+        self.goal = p.goal.trim().chars().take(GOAL_MAX).collect();
+        self.folder = folder;
+        self.resume = p.resume;
+        self.coordinator.pick = p.coordinator;
+        for m in self.threads.iter_mut() {
+            m.pick = p.thread.clone();
+        }
+        self.thread_pick = p.thread;
+        self.updated = now();
+        Ok(())
+    }
+
+    /// How the list of projects shows it.
+    pub fn summary(&self) -> Summary {
+        let members: Vec<&Member> = std::iter::once(&self.coordinator).chain(self.threads.iter()).collect();
+        let working = members.iter().filter(|m| m.state == "working").count();
+        let asking = members.iter().find(|m| m.state == "waiting" || m.waits_for_user()).map(|m| m.id.clone()).unwrap_or_default();
+        let state = if !asking.is_empty() {
+            "waiting"
+        } else if working > 0 {
+            "working"
+        } else if members.iter().any(|m| m.state == "paused") {
+            "paused"
+        } else if !self.threads.is_empty() && self.threads.iter().all(|t| t.state == "done") {
+            "done"
+        } else if members.iter().any(|m| m.state == "stopped" || m.state == "failed") {
+            "stopped"
+        } else {
+            "idle"
+        };
+        Summary {
+            id: self.id.clone(),
+            title: self.title.clone(),
+            icon: self.icon.clone(),
+            color: self.color.clone(),
+            goal: self.goal.clone(),
+            updated: self.updated,
+            state: state.into(),
+            working,
+            asking,
+            plan_done: self.plan.iter().filter(|s| s.status == "completed").count(),
+            plan_total: self.plan.len(),
+            coordinator: self.coordinator.pick.clone(),
+            thread: self.thread_pick.clone(),
         }
     }
 
@@ -475,11 +590,13 @@ impl Orchestra {
             json!({
                 "id": m.id, "chat": m.chat, "title": m.title, "task": m.task, "pick": m.pick,
                 "state": m.state, "activity": m.activity, "plan": m.plan, "queued": m.mail.len(),
-                "messages": m.messages,
+                "messages": m.messages, "resumeAt": m.resume_at,
             })
         };
         json!({
             "id": self.id, "title": self.title, "created": self.created, "updated": self.updated,
+            "icon": self.icon, "color": self.color, "goal": self.goal, "folder": self.folder, "resume": self.resume,
+            "threadPick": self.thread_pick,
             "coordinator": member(&self.coordinator),
             "threads": self.threads.iter().map(member).collect::<Vec<_>>(),
             "plan": self.plan,
@@ -617,14 +734,15 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                     return None;
                 };
                 m.state = "working".into();
+                m.resume_at = None;
                 m.activity = Some(Activity { kind: "thinking".into(), detail: String::new() });
                 let m = o.member(&member)?.clone();
                 // A CLI is told its role with its first message: Lumo can't add to its instructions.
                 let role = if m.history.is_empty() { note_for(o, &member, true) } else { String::new() };
-                Some((query, role, m.pick.clone(), chat_of(&m)))
+                Some((query, role, m.pick.clone(), chat_of(&m), o.folder.clone()))
             })
             .flatten();
-            let Some((query, role, pick, conversation)) = next else { return };
+            let Some((query, role, pick, conversation, project_folder)) = next else { return };
             let settings = settings_for(&app, &pick);
             let cli = is_cli(&settings.chat_provider);
             let reply = if cli && member == COORDINATOR && settings.chat_provider != crate::claude_code::PROVIDER {
@@ -637,10 +755,15 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                     let folder = crate::workspace::dir(&shared_folder(&conversation_id(&id, &member)));
                     let _ = std::fs::create_dir_all(&folder);
                     conversation.cli_dirs(Some(folder.to_string_lossy().to_string()));
+                    // The project's own folder of the user's: where it works.
+                    if !project_folder.is_empty() {
+                        conversation.cli_dirs(Some(project_folder.clone()));
+                    }
                 }
                 Box::pin(chat::send(&app, &conversation, &settings, query, None, None)).await
             };
-            with(Some(&app), &id, |o| {
+            let resume = with(Some(&app), &id, |o| {
+                let mut resume = None;
                 match reply {
                     Ok(r) => {
                         let text = r.text.trim().to_string();
@@ -655,12 +778,24 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                             o.push(&member, Message { kind: "note".into(), from: "lumo".into(), note: Some("stopped".into()), ..Default::default() });
                         }
                     }
-                    Err(e) => {
-                        o.push(&member, Message { kind: "note".into(), from: "lumo".into(), note: Some("error".into()), text: e, ..Default::default() });
-                        if let Some(m) = o.member_mut(&member) {
-                            m.state = "failed".into();
+                    Err(e) => match limit_wait(&e, now() / 1000, local_minute()) {
+                        // A usage limit: the member waits for it to reset, and goes on then when the project says so.
+                        Some(wait) => {
+                            let until = o.resume.then(|| now() + wait * 1000);
+                            o.push(&member, Message { kind: "note".into(), from: "lumo".into(), note: Some("limit".into()), text: e, until, ..Default::default() });
+                            if let Some(m) = o.member_mut(&member) {
+                                m.state = if until.is_some() { "paused".into() } else { "failed".into() };
+                                m.resume_at = until;
+                            }
+                            resume = until;
                         }
-                    }
+                        None => {
+                            o.push(&member, Message { kind: "note".into(), from: "lumo".into(), note: Some("error".into()), text: e, ..Default::default() });
+                            if let Some(m) = o.member_mut(&member) {
+                                m.state = "failed".into();
+                            }
+                        }
+                    },
                 }
                 o.release(&member);
                 if let Some(m) = o.member_mut(&member) {
@@ -670,11 +805,132 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                         m.activity = None;
                     }
                 }
-            });
+                resume
+            })
+            .flatten();
+            if let Some(until) = resume {
+                resume_later(&app, &id, &member, until);
+            }
             let goes_on = with(None, &id, |o| o.member(&member).is_some_and(|m| m.running)).unwrap_or(false);
             if !goes_on {
                 return;
             }
+        }
+    })
+}
+
+/// The member's turns go on at `until` (ms), when it is still waiting for the
+/// usage limits then (no message woke it meanwhile, it was not stopped).
+fn resume_later(app: &AppHandle, id: &str, member: &str, until: u64) {
+    let key = format!("{id}/{member}/{until}");
+    {
+        let mut armed = ARMED.lock().unwrap_or_else(|e| e.into_inner());
+        if armed.contains(&key) {
+            return;
+        }
+        armed.push(key.clone());
+    }
+    let (app, id, member) = (app.clone(), id.to_string(), member.to_string());
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(until.saturating_sub(now()))).await;
+        ARMED.lock().unwrap_or_else(|e| e.into_inner()).retain(|k| k != &key);
+        let wakes = with(Some(&app), &id, |o| {
+            let m = o.member_mut(&member)?;
+            if m.state != "paused" || m.resume_at != Some(until) {
+                return None;
+            }
+            m.resume_at = None;
+            m.state = "idle".into();
+            o.deliver("lumo", &member, RESUMED).ok()
+        })
+        .flatten();
+        if wakes == Some(true) {
+            wake(&app, &id, &member);
+        }
+    });
+}
+
+/// The waits already set (orchestra/member/until), so one is never set twice.
+static ARMED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// The local time's minute of the day, for a limit that resets at "3pm".
+fn local_minute() -> u32 {
+    let t = crate::platform::local_time();
+    t.hour * 60 + t.minute
+}
+
+/// How long (seconds) a member stopped by `error` waits before it goes on,
+/// when `error` is a usage limit; None for any other error. The time it says
+/// ("|1764280800", "resets 3pm", "try again in 2 hours"), else `LIMIT_RETRY`;
+/// a minute more, as a limit resets on the minute. `now` in seconds, `minute`
+/// the local minute of the day.
+fn limit_wait(error: &str, now: u64, minute: u32) -> Option<u64> {
+    let lower = error.to_lowercase();
+    const SAID: [&str; 11] = [
+        "usage limit", "limit reached", "hit your limit", "rate limit", "rate_limit", "too many requests", "quota", " 429", "(429", "limit resets", "resets at",
+    ];
+    if !SAID.iter().any(|s| lower.contains(s)) && !lower.starts_with("429") {
+        return None;
+    }
+    let wait = at_epoch(&lower, now).or_else(|| at_clock(&lower, minute)).or_else(|| after_while(&lower)).unwrap_or(LIMIT_RETRY);
+    Some(wait.clamp(60, 24 * 3600) + 60)
+}
+
+/// "…|1764280800" (Claude Code's limit): seconds (or ms) since the epoch.
+fn at_epoch(text: &str, now: u64) -> Option<u64> {
+    let digits: String = text.split('|').nth(1)?.chars().take_while(char::is_ascii_digit).collect();
+    let n: u64 = digits.parse().ok()?;
+    let secs = if digits.len() >= 13 { n / 1000 } else { n };
+    (digits.len() >= 10 && secs > now).then(|| secs - now)
+}
+
+/// "resets 3pm", "resets at 15:00", "resets 3:30 pm (Europe/Rome)": the next time the clock says it.
+fn at_clock(text: &str, minute: u32) -> Option<u64> {
+    let rest = text.split("resets").nth(1)?.trim_start();
+    let rest = rest.strip_prefix("at").unwrap_or(rest).trim_start();
+    let hour: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    let mut h: u32 = hour.parse().ok()?;
+    let mut tail = &rest[hour.len()..];
+    let mut m = 0;
+    let mut clock = false;
+    if let Some(after) = tail.strip_prefix(':') {
+        let mins: String = after.chars().take_while(char::is_ascii_digit).collect();
+        m = mins.parse().ok()?;
+        tail = &after[mins.len()..];
+        clock = true;
+    }
+    let tail = tail.trim_start();
+    if tail.starts_with("pm") || tail.starts_with("p.m") {
+        h = h % 12 + 12;
+        clock = true;
+    } else if tail.starts_with("am") || tail.starts_with("a.m") {
+        h %= 12;
+        clock = true;
+    }
+    if !clock || h > 23 || m > 59 {
+        return None;
+    }
+    let target = h * 60 + m;
+    Some(u64::from((target + 1440 - minute % 1440) % 1440) * 60)
+}
+
+/// "try again in 2 hours", "retry after 30 seconds", "in 5 minutes".
+fn after_while(text: &str) -> Option<u64> {
+    let words: Vec<&str> = text.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    words.windows(3).find_map(|w| {
+        if w[0] != "in" && w[0] != "after" {
+            return None;
+        }
+        let n: u64 = w[1].parse().ok()?;
+        let unit = w[2];
+        if unit.starts_with("sec") || unit == "s" {
+            Some(n)
+        } else if unit.starts_with("min") || unit == "m" {
+            Some(n * 60)
+        } else if unit.starts_with("hour") || unit.starts_with("hr") || unit == "h" {
+            Some(n * 3600)
+        } else {
+            None
         }
     })
 }
@@ -740,16 +996,17 @@ fn note_for(o: &Orchestra, member: &str, cli: bool) -> String {
     } else {
         o.threads.iter().map(|t| format!("- {} \"{}\": {} ({})", t.id, t.title, clip(&t.task, 160), t.state)).collect::<Vec<_>>().join("\n")
     };
+    let project = project_words(o, member, cli);
     if member == COORDINATOR {
         return format!(
-            "\n\nYou are the coordinator of an orchestra in Lumo. You never do the work yourself: you have no file, terminal or browser tools, only your own. \
+            "\n\nYou are the coordinator of a project in Lumo. You never do the work yourself: you have no file, terminal or browser tools, only your own. \
 You understand what the user wants, make a plan (update_plan), split the work into threads (start_thread), each with a clear, self-contained task, and follow them: \
 you can write to them (message_thread), read them (read_thread, list_threads) and stop them (stop_thread). \
 Threads share one folder for what they make (some of them, the CLIs, also work on the user's files directly), and hand finished files over with share_file. \
 Two threads never change the same file at once: Lumo tells you when one tries. \
 Messages from threads, from Lumo and the user's answers to your cards come to you as new messages that start with [From …]. While you are working they may also come inside a tool's result, between <lumo-messages> tags: read them and change your plan if needed. \
 The user sees every thread and can talk to each directly. Keep your answers to the user short: what is going on, what you decided, what you need. Use ask_user for a decision that changes the user's goal. \
-Don't start threads for a simple question you can answer yourself, and don't start the same work twice: check list_threads first.\n\nThe threads:\n{threads}"
+Don't start threads for a simple question you can answer yourself, and don't start the same work twice: check list_threads first.{project}\n\nThe threads:\n{threads}"
         );
     }
     let me = o.member(member);
@@ -765,13 +1022,35 @@ Don't start threads for a simple question you can answer yourself, and don't sta
         "Do your task with your tools. The files you work on are copies in a folder shared by every thread: copy files in with workspace_copy, change them there, and hand a finished file to the user with share_file.".to_string()
     };
     format!(
-        "\n\nYou are thread {member} \"{title}\" of an orchestra in Lumo: a coordinator plans the job and gives each thread a part of it. Your task, from the coordinator:\n{task}\n\n\
+        "\n\nYou are thread {member} \"{title}\" of a project in Lumo: a coordinator plans the job and gives each thread a part of it. Your task, from the coordinator:\n{task}\n\n\
 {work} \
 When you are done, or blocked, or need a decision, write to the coordinator with message_coordinator (done true when your task is finished). You may write to another thread with message_thread. \
 The user can write to you directly: do what they ask, and tell the coordinator when it changes your task. Use ask_user only for a decision the user must make. \
 Messages from the coordinator, other threads, Lumo and the user come as new messages that start with [From …]. While you are working they may also come inside a tool's result, between <lumo-messages> tags: read them at once and change what you do if needed. \
-Lumo stops you from changing a file another thread is changing right now, and says who: then don't change it, write to that thread or work on something else.\n\nThe threads:\n{threads}"
+Lumo stops you from changing a file another thread is changing right now, and says who: then don't change it, write to that thread or work on something else.{project}\n\nThe threads:\n{threads}"
     )
+}
+
+/// The project a member works for: its name, what the user wants (its goal), and its folder.
+fn project_words(o: &Orchestra, member: &str, cli: bool) -> String {
+    let mut out = String::new();
+    if !o.title.is_empty() {
+        out.push_str(&format!("\n\nThe project is \"{}\".", o.title));
+    }
+    if !o.goal.is_empty() {
+        out.push_str(&format!(" What the user wants to work on in it, in their words:\n<project-goal>\n{}\n</project-goal>\nKeep to it in everything you do.", o.goal));
+    }
+    if !o.folder.is_empty() {
+        let how = if member == COORDINATOR {
+            "the threads work on the files there: tell them which files their task is about"
+        } else if cli {
+            "work on the files there"
+        } else {
+            "copy the files you need from it with workspace_copy, giving their full paths"
+        };
+        out.push_str(&format!("\nThe project's folder is {}: {how}.", o.folder));
+    }
+    out
 }
 
 /// A call to one of this module's tools, or a member's plan: what goes back to
@@ -1061,6 +1340,10 @@ pub fn with_mail(app: &AppHandle, chat_id: &str, text: String) -> String {
 fn stop_member(o: &mut Orchestra, member: &str) {
     let Some(m) = o.member_mut(member) else { return };
     m.mail.clear();
+    if m.state == "paused" {
+        m.state = "stopped".into();
+        m.resume_at = None;
+    }
     let chat = m.chat.clone();
     if m.running {
         if let Some(chat) = held_chat(&chat) {
@@ -1080,20 +1363,14 @@ fn new_id() -> String {
 }
 
 fn not_found() -> String {
-    crate::i18n::t("This orchestra no longer exists.")
+    crate::i18n::t("This project no longer exists.")
 }
 
 #[tauri::command]
 pub fn orchestra_list() -> Vec<Summary> {
     let mut out: Vec<Summary> = Vec::new();
-    let held: HashMap<String, (String, u64, bool)> = all()
-        .as_ref()
-        .map(|m| {
-            m.values()
-                .map(|o| (o.id.clone(), (o.title.clone(), o.updated, o.coordinator.running || o.threads.iter().any(|t| t.running))))
-                .collect()
-        })
-        .unwrap_or_default();
+    let held: HashMap<String, Summary> = all().as_ref().map(|m| m.values().map(|o| (o.id.clone(), o.summary())).collect()).unwrap_or_default();
+    let mut held = held;
     if let Ok(entries) = std::fs::read_dir(dir()) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -1101,37 +1378,52 @@ pub fn orchestra_list() -> Vec<Summary> {
                 continue;
             }
             let id = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-            if let Some((title, updated, working)) = held.get(&id) {
-                out.push(Summary { id, title: title.clone(), updated: *updated, working: *working });
+            if let Some(summary) = held.remove(&id) {
+                out.push(summary);
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
-            let Ok(v) = serde_json::from_str::<Value>(&text) else { continue };
-            out.push(Summary {
-                id,
-                title: v["title"].as_str().unwrap_or_default().to_string(),
-                updated: v["updated"].as_u64().unwrap_or_default(),
-                working: false,
-            });
+            if let Some(o) = load(&id) {
+                out.push(o.summary());
+            }
         }
     }
     out.sort_by_key(|s| std::cmp::Reverse(s.updated));
     out
 }
 
+/// A new project, as New project set it; empty until the user's first message.
 #[tauri::command]
-pub fn orchestra_create(app: AppHandle) -> Value {
-    let settings = app.state::<crate::Shared>().settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let o = Orchestra::new(&new_id(), settings.orchestra_coordinator.clone(), settings.orchestra_thread.clone());
+pub fn orchestra_create(project: Project) -> Result<Value, String> {
+    let mut o = Orchestra::new(&new_id(), Pick::default(), Pick::default());
+    o.apply(project)?;
     let snapshot = o.snapshot();
     save(&o);
     all().get_or_insert_with(HashMap::new).insert(o.id.clone(), o);
-    snapshot
+    Ok(snapshot)
+}
+
+/// A project's settings saved: its name, icon, goal, folder, models, resume.
+#[tauri::command]
+pub fn orchestra_update(app: AppHandle, id: String, project: Project) -> Result<Value, String> {
+    with(Some(&app), &id, |o| o.apply(project).map(|_| o.snapshot())).ok_or_else(not_found)?
 }
 
 #[tauri::command]
-pub fn orchestra_open(id: String) -> Result<Value, String> {
-    with(None, &id, |o| o.snapshot()).ok_or_else(not_found)
+pub fn orchestra_open(app: AppHandle, id: String) -> Result<Value, String> {
+    let (snapshot, paused) = with(None, &id, |o| {
+        let paused: Vec<(String, u64)> = std::iter::once(&o.coordinator)
+            .chain(o.threads.iter())
+            .filter(|m| m.state == "paused")
+            .filter_map(|m| Some((m.id.clone(), m.resume_at?)))
+            .collect();
+        (o.snapshot(), paused)
+    })
+    .ok_or_else(not_found)?;
+    // Waiting for the usage limits when Lumo closed: they go on as planned.
+    for (member, until) in paused {
+        resume_later(&app, &id, &member, until);
+    }
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -1173,23 +1465,6 @@ pub fn orchestra_stop(app: AppHandle, id: String, member: Option<String>) -> Res
 }
 
 #[tauri::command]
-pub fn orchestra_set_picks(app: AppHandle, id: String, coordinator: Option<Pick>, thread: Option<Pick>) -> Result<Value, String> {
-    with(Some(&app), &id, |o| {
-        if let Some(c) = coordinator {
-            o.coordinator.pick = c;
-        }
-        if let Some(t) = thread {
-            for m in o.threads.iter_mut() {
-                m.pick = t.clone();
-            }
-            o.thread_pick = t;
-        }
-        o.snapshot()
-    })
-    .ok_or_else(not_found)
-}
-
-#[tauri::command]
 pub fn orchestra_delete(id: String) {
     let o = with(None, &id, |o| {
         for m in std::iter::once(COORDINATOR.to_string()).chain(o.threads.iter().map(|t| t.id.clone())).collect::<Vec<_>>() {
@@ -1226,7 +1501,7 @@ pub fn orchestra_read_file(id: String, path: String) -> Result<FileText, String>
     let handed = with(None, &id, |o| o.shared.iter().any(|p| p == &path)).unwrap_or(false);
     let full = inside(&folder, &path)
         .or_else(|| handed.then(|| full_file(&path)).flatten())
-        .ok_or_else(|| crate::i18n::t("This file is not in the orchestra's folder."))?;
+        .ok_or_else(|| crate::i18n::t("This file is not in the project's folder."))?;
     let bytes = std::fs::read(&full).map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&bytes[..bytes.len().min(1_000_000)]).to_string();
     let name = full.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -1391,5 +1666,118 @@ mod tests {
         assert!(s["threads"][0].get("history").is_none());
         assert_eq!(s["threads"][0]["queued"], 1);
         assert_eq!(s["coordinator"]["chat"], "orch-abc-m-coordinator");
+    }
+
+    fn project(title: &str) -> Project {
+        Project {
+            title: title.into(),
+            icon: "code".into(),
+            color: "#A78BFA".into(),
+            goal: "Add features, always with a concept first.".into(),
+            folder: String::new(),
+            coordinator: Pick { provider: "claude-code".into(), model: "opus".into(), effort: "high".into() },
+            thread: Pick { provider: "codex".into(), model: "gpt-5.5".into(), effort: "medium".into() },
+            resume: true,
+        }
+    }
+
+    #[test]
+    fn a_project_is_what_its_form_says_and_its_threads_follow_the_models() {
+        let mut o = orchestra();
+        o.start_thread("A", "a").unwrap();
+        assert!(o.apply(project("  ")).is_err(), "a name is needed");
+        let mut far = project("Lumo");
+        far.folder = "Code\\Lumo".into();
+        assert!(o.apply(far).is_err(), "a folder is a full path");
+        let mut p = project("Lumo");
+        p.icon = "code\"><script>".into();
+        p.goal = "x".repeat(GOAL_MAX + 50);
+        o.apply(p).unwrap();
+        assert_eq!(o.title, "Lumo");
+        assert_eq!(o.icon, "codescript", "only the letters of an icon's name");
+        assert_eq!(o.color, "#a78bfa");
+        assert_eq!(o.goal.chars().count(), GOAL_MAX);
+        assert!(o.resume);
+        assert_eq!(o.coordinator.pick.provider, "claude-code");
+        assert_eq!(o.member("t1").unwrap().pick.provider, "codex", "a thread already started takes the new model");
+        assert_eq!(o.thread_pick.model, "gpt-5.5");
+        let mut bad = project("Lumo");
+        bad.color = "red; background:url(x)".into();
+        o.apply(bad).unwrap();
+        assert_eq!(o.color, "", "only a #rrggbb colour");
+        let s = o.snapshot();
+        assert_eq!(s["icon"], "code");
+        assert_eq!(s["threadPick"]["provider"], "codex");
+    }
+
+    #[test]
+    fn every_member_is_told_the_goal_and_the_folder() {
+        let mut o = orchestra();
+        let mut p = project("Contratti");
+        p.goal = "Confrontare i contratti.".into();
+        p.folder = if cfg!(windows) { "C:\\Docs\\Contratti".into() } else { "/docs/contratti".into() };
+        o.apply(p).unwrap();
+        o.start_thread("A", "a").unwrap();
+        let coord = note_for(&o, COORDINATOR, false);
+        assert!(coord.contains("\"Contratti\"") && coord.contains("<project-goal>\nConfrontare i contratti.\n</project-goal>"));
+        assert!(coord.contains("tell them which files"));
+        assert!(note_for(&o, "t1", false).contains("workspace_copy"), "an API thread copies from the folder");
+        assert!(note_for(&o, "t1", true).contains("work on the files there"), "a CLI works in it");
+        let bare = orchestra();
+        assert!(!note_for(&bare, COORDINATOR, false).contains("project's folder"));
+    }
+
+    #[test]
+    fn the_list_says_where_each_project_stands() {
+        let mut o = orchestra();
+        o.apply(project("Lumo")).unwrap();
+        assert_eq!(o.summary().state, "idle");
+        o.start_thread("A", "a").unwrap();
+        o.start_thread("B", "b").unwrap();
+        o.member_mut("t1").unwrap().state = "working".into();
+        let s = o.summary();
+        assert_eq!((s.state.as_str(), s.working), ("working", 1));
+        o.member_mut("t2").unwrap().state = "waiting".into();
+        let s = o.summary();
+        assert_eq!((s.state.as_str(), s.asking.as_str()), ("waiting", "t2"));
+        for t in o.threads.iter_mut() {
+            t.state = "done".into();
+        }
+        o.plan = vec![Step { step: "a".into(), status: "completed".into() }, Step { step: "b".into(), status: "pending".into() }];
+        let s = o.summary();
+        assert_eq!((s.state.as_str(), s.plan_done, s.plan_total), ("done", 1, 2));
+        assert_eq!(s.thread.provider, "codex");
+        o.member_mut("t1").unwrap().state = "paused".into();
+        assert_eq!(o.summary().state, "paused");
+    }
+
+    #[test]
+    fn a_usage_limit_waits_for_the_time_it_says() {
+        let now = 1_764_270_000;
+        // Claude Code: the reset as seconds since the epoch, after a bar.
+        assert_eq!(limit_wait("Claude AI usage limit reached|1764273600", now, 0), Some(3600 + 60));
+        // "resets 3pm", at 13:10 local time: 1 h 50 min, and a minute more.
+        assert_eq!(limit_wait("5-hour limit reached ∙ resets 3pm", now, 13 * 60 + 10), Some(110 * 60 + 60));
+        assert_eq!(limit_wait("You've hit your limit · resets 3:30 pm (Europe/Rome)", now, 15 * 60), Some(30 * 60 + 60));
+        // Past it today: tomorrow.
+        assert_eq!(limit_wait("usage limit reached, resets at 08:00", now, 9 * 60), Some(23 * 3600 + 60));
+        assert_eq!(limit_wait("Rate limit exceeded: try again in 2 minutes", now, 0), Some(120 + 60));
+        assert_eq!(limit_wait("429 Too Many Requests", now, 0), Some(LIMIT_RETRY + 60), "no time said: tried again later");
+        // Not a limit: a failure as any other.
+        assert_eq!(limit_wait("The model is not loaded.", now, 0), None);
+        assert_eq!(limit_wait("prompt is too long: 210000 tokens > 200000 maximum", now, 0), None);
+        assert_eq!(limit_wait("connection lost, 5 hours of work", now, 0), None);
+    }
+
+    #[test]
+    fn a_member_stopped_by_a_limit_stays_stopped_when_the_user_stops_it() {
+        let mut o = orchestra();
+        o.start_thread("A", "a").unwrap();
+        let m = o.member_mut("t1").unwrap();
+        m.state = "paused".into();
+        m.resume_at = Some(now() + 60_000);
+        stop_member(&mut o, "t1");
+        let m = o.member("t1").unwrap();
+        assert_eq!((m.state.as_str(), m.resume_at), ("stopped", None));
     }
 }

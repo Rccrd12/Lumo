@@ -24011,18 +24011,6 @@
    "id": "Sebelumnya",
    "it": "Prima"
   },
-  "Orchestra": {
-   "zh-Hans": "编排",
-   "hi": "ऑर्केस्ट्रा",
-   "es": "Orquesta",
-   "ar": "الأوركسترا",
-   "fr": "Orchestre",
-   "bn": "অর্কেস্ট্রা",
-   "pt-BR": "Orquestra",
-   "ru": "Оркестр",
-   "id": "Orkestra",
-   "it": "Orchestratore"
-  },
   "Coordinator": {
    "zh-Hans": "协调者",
    "hi": "समन्वयक",
@@ -24395,30 +24383,6 @@
    "id": "diperbarui oleh Lumo",
    "it": "aggiornato da Lumo"
   },
-  "New orchestra": {
-   "zh-Hans": "新编排",
-   "hi": "नया ऑर्केस्ट्रा",
-   "es": "Nueva orquesta",
-   "ar": "أوركسترا جديدة",
-   "fr": "Nouvel orchestre",
-   "bn": "নতুন অর্কেস্ট্রা",
-   "pt-BR": "Nova orquestra",
-   "ru": "Новый оркестр",
-   "id": "Orkestra baru",
-   "it": "Nuova orchestra"
-  },
-  "Orchestras": {
-   "zh-Hans": "编排",
-   "hi": "ऑर्केस्ट्रा",
-   "es": "Orquestas",
-   "ar": "الأوركسترات",
-   "fr": "Orchestres",
-   "bn": "অর্কেস্ট্রাগুলো",
-   "pt-BR": "Orquestras",
-   "ru": "Оркестры",
-   "id": "Orkestra",
-   "it": "Orchestre"
-  },
   "Not sent: {error}": {
    "zh-Hans": "未发送：{error}",
    "hi": "नहीं भेजा गया: {error}",
@@ -24455,29 +24419,469 @@
    "id": "Koordinator bisa berupa model API, model lokal, atau Claude Code: pilih salah satunya.",
    "it": "Il coordinatore può essere un modello via API, un modello locale o Claude Code: scegline uno."
   },
-  "This orchestra no longer exists.": {
-   "zh-Hans": "这个编排已不存在。",
-   "hi": "यह ऑर्केस्ट्रा अब मौजूद नहीं है।",
-   "es": "Esta orquesta ya no existe.",
-   "ar": "لم تعد هذه الأوركسترا موجودة.",
-   "fr": "Cet orchestre n'existe plus.",
-   "bn": "এই অর্কেস্ট্রা আর নেই।",
-   "pt-BR": "Esta orquestra não existe mais.",
-   "ru": "Этого оркестра больше нет.",
-   "id": "Orkestra ini sudah tidak ada.",
-   "it": "Questa orchestra non esiste più."
+  "New project": {
+   "zh-Hans": "新项目",
+   "hi": "नया प्रोजेक्ट",
+   "es": "Nuevo proyecto",
+   "ar": "مشروع جديد",
+   "fr": "Nouveau projet",
+   "bn": "নতুন প্রজেক্ট",
+   "pt-BR": "Novo projeto",
+   "ru": "Новый проект",
+   "id": "Proyek baru",
+   "it": "Nuovo progetto"
   },
-  "This file is not in the orchestra's folder.": {
-   "zh-Hans": "这个文件不在编排的文件夹里。",
-   "hi": "यह फ़ाइल ऑर्केस्ट्रा के फ़ोल्डर में नहीं है।",
-   "es": "Este archivo no está en la carpeta de la orquesta.",
-   "ar": "هذا الملف ليس في مجلد الأوركسترا.",
-   "fr": "Ce fichier n'est pas dans le dossier de l'orchestre.",
-   "bn": "এই ফাইল অর্কেস্ট্রার ফোল্ডারে নেই।",
-   "pt-BR": "Este arquivo não está na pasta da orquestra.",
-   "ru": "Этого файла нет в папке оркестра.",
-   "id": "File ini tidak ada di folder orkestra.",
-   "it": "Questo file non è nella cartella dell'orchestra."
+  "Goes on at {time}": {
+   "zh-Hans": "{time} 继续",
+   "hi": "{time} पर फिर चलेगा",
+   "es": "Sigue a las {time}",
+   "ar": "يستأنف عند {time}",
+   "fr": "Reprend à {time}",
+   "bn": "{time}-এ আবার চলবে",
+   "pt-BR": "Continua às {time}",
+   "ru": "Продолжит в {time}",
+   "id": "Lanjut pukul {time}",
+   "it": "Riparte alle {time}"
+  },
+  "Usage limit reached: it goes on by itself at {time}.": {
+   "zh-Hans": "已达到用量上限：{time} 会自动继续。",
+   "hi": "उपयोग की सीमा पूरी हुई: यह {time} पर अपने आप फिर चलेगा।",
+   "es": "Límite de uso alcanzado: seguirá solo a las {time}.",
+   "ar": "تم بلوغ حد الاستخدام: سيستأنف تلقائيًا عند {time}.",
+   "fr": "Limite d'utilisation atteinte : il reprendra tout seul à {time}.",
+   "bn": "ব্যবহারের সীমা শেষ: {time}-এ এটি নিজে থেকেই আবার চলবে।",
+   "pt-BR": "Limite de uso atingido: ele continua sozinho às {time}.",
+   "ru": "Достигнут лимит использования: продолжит сам в {time}.",
+   "id": "Batas penggunaan tercapai: akan lanjut sendiri pukul {time}.",
+   "it": "Limite di utilizzo raggiunto: riparte da solo alle {time}."
+  },
+  "Usage limit reached: write to it once the limits reset.": {
+   "zh-Hans": "已达到用量上限：用量重置后再给它写信。",
+   "hi": "उपयोग की सीमा पूरी हुई: सीमाएँ रीसेट होने पर इसे लिखें।",
+   "es": "Límite de uso alcanzado: escríbele cuando se restablezcan los límites.",
+   "ar": "تم بلوغ حد الاستخدام: راسله بعد إعادة ضبط الحدود.",
+   "fr": "Limite d'utilisation atteinte : écrivez-lui quand les limites seront réinitialisées.",
+   "bn": "ব্যবহারের সীমা শেষ: সীমা রিসেট হলে একে লিখুন।",
+   "pt-BR": "Limite de uso atingido: escreva para ele quando os limites forem redefinidos.",
+   "ru": "Достигнут лимит использования: напишите ему, когда лимиты обновятся.",
+   "id": "Batas penggunaan tercapai: tulis lagi setelah batasnya direset.",
+   "it": "Limite di utilizzo raggiunto: scrivigli quando i limiti si ripristinano."
+  },
+  "Projects": {
+   "zh-Hans": "项目",
+   "hi": "प्रोजेक्ट",
+   "es": "Proyectos",
+   "ar": "المشاريع",
+   "fr": "Projets",
+   "bn": "প্রজেক্ট",
+   "pt-BR": "Projetos",
+   "ru": "Проекты",
+   "id": "Proyek",
+   "it": "Progetti"
+  },
+  "Several models work together on one goal": {
+   "zh-Hans": "多个模型一起完成一个目标",
+   "hi": "कई मॉडल मिलकर एक लक्ष्य पर काम करते हैं",
+   "es": "Varios modelos trabajan juntos en un objetivo",
+   "ar": "عدة نماذج تعمل معًا على هدف واحد",
+   "fr": "Plusieurs modèles travaillent ensemble sur un objectif",
+   "bn": "কয়েকটি মডেল একসাথে একটি লক্ষ্যে কাজ করে",
+   "pt-BR": "Vários modelos trabalham juntos em um objetivo",
+   "ru": "Несколько моделей работают вместе над одной целью",
+   "id": "Beberapa model bekerja sama untuk satu tujuan",
+   "it": "Più modelli lavorano insieme su un obiettivo"
+  },
+  "{count} projects": {
+   "zh-Hans": {
+    "other": "{count} 个项目"
+   },
+   "hi": {
+    "one": "{count} प्रोजेक्ट",
+    "other": "{count} प्रोजेक्ट"
+   },
+   "es": {
+    "one": "{count} proyecto",
+    "other": "{count} proyectos"
+   },
+   "ar": {
+    "zero": "لا مشاريع",
+    "one": "مشروع واحد",
+    "two": "مشروعان",
+    "few": "{count} مشاريع",
+    "many": "{count} مشروعًا",
+    "other": "{count} مشروع"
+   },
+   "fr": {
+    "one": "{count} projet",
+    "other": "{count} projets"
+   },
+   "bn": {
+    "one": "{count}টি প্রজেক্ট",
+    "other": "{count}টি প্রজেক্ট"
+   },
+   "pt-BR": {
+    "one": "{count} projeto",
+    "other": "{count} projetos"
+   },
+   "ru": {
+    "one": "{count} проект",
+    "few": "{count} проекта",
+    "many": "{count} проектов",
+    "other": "{count} проекта"
+   },
+   "id": {
+    "other": "{count} proyek"
+   },
+   "it": {
+    "one": "{count} progetto",
+    "other": "{count} progetti"
+   }
+  },
+  "{count} waiting for you": {
+   "zh-Hans": {
+    "other": "{count} 个在等你"
+   },
+   "hi": {
+    "one": "{count} आपका इंतज़ार कर रहा है",
+    "other": "{count} आपका इंतज़ार कर रहे हैं"
+   },
+   "es": {
+    "one": "{count} te espera",
+    "other": "{count} te esperan"
+   },
+   "ar": {
+    "zero": "لا شيء ينتظرك",
+    "one": "واحد ينتظرك",
+    "two": "اثنان ينتظرانك",
+    "few": "{count} تنتظرك",
+    "many": "{count} تنتظرك",
+    "other": "{count} تنتظرك"
+   },
+   "fr": {
+    "one": "{count} vous attend",
+    "other": "{count} vous attendent"
+   },
+   "bn": {
+    "one": "{count}টি আপনার অপেক্ষায়",
+    "other": "{count}টি আপনার অপেক্ষায়"
+   },
+   "pt-BR": {
+    "one": "{count} espera por você",
+    "other": "{count} esperam por você"
+   },
+   "ru": {
+    "one": "{count} ждёт вас",
+    "few": "{count} ждут вас",
+    "many": "{count} ждут вас",
+    "other": "{count} ждут вас"
+   },
+   "id": {
+    "other": "{count} menunggu Anda"
+   },
+   "it": {
+    "one": "{count} ti aspetta",
+    "other": "{count} ti aspettano"
+   }
+  },
+  "No projects yet. In a project a coordinator and its threads, each with its own model, work together on what you ask.": {
+   "zh-Hans": "还没有项目。在项目中，一个协调者和它的线程（各用自己的模型）一起完成你的请求。",
+   "hi": "अभी कोई प्रोजेक्ट नहीं। प्रोजेक्ट में एक कोऑर्डिनेटर और उसके थ्रेड, हर एक अपने मॉडल के साथ, मिलकर आपके काम पर लगते हैं।",
+   "es": "Aún no hay proyectos. En un proyecto, un coordinador y sus hilos, cada uno con su propio modelo, trabajan juntos en lo que pides.",
+   "ar": "لا توجد مشاريع بعد. في المشروع يعمل منسّق وخيوطه، لكل منها نموذجه، معًا على ما تطلبه.",
+   "fr": "Pas encore de projet. Dans un projet, un coordinateur et ses fils, chacun avec son modèle, travaillent ensemble sur ce que vous demandez.",
+   "bn": "এখনও কোনো প্রজেক্ট নেই। প্রজেক্টে একজন কোঅর্ডিনেটর আর তার থ্রেডগুলো, প্রত্যেকে নিজের মডেলে, একসাথে আপনার চাওয়া কাজ করে।",
+   "pt-BR": "Ainda não há projetos. Em um projeto, um coordenador e seus threads, cada um com seu modelo, trabalham juntos no que você pede.",
+   "ru": "Проектов пока нет. В проекте координатор и его потоки, каждый со своей моделью, вместе работают над вашей задачей.",
+   "id": "Belum ada proyek. Dalam proyek, seorang koordinator dan thread-nya, masing-masing dengan modelnya sendiri, bekerja sama untuk permintaan Anda.",
+   "it": "Ancora nessun progetto. In un progetto un coordinatore e i suoi thread, ognuno con il suo modello, lavorano insieme su quello che chiedi."
+  },
+  "Project settings": {
+   "zh-Hans": "项目设置",
+   "hi": "प्रोजेक्ट सेटिंग्स",
+   "es": "Configuración del proyecto",
+   "ar": "إعدادات المشروع",
+   "fr": "Réglages du projet",
+   "bn": "প্রজেক্ট সেটিংস",
+   "pt-BR": "Configurações do projeto",
+   "ru": "Настройки проекта",
+   "id": "Pengaturan proyek",
+   "it": "Impostazioni del progetto"
+  },
+  "All projects": {
+   "zh-Hans": "所有项目",
+   "hi": "सभी प्रोजेक्ट",
+   "es": "Todos los proyectos",
+   "ar": "كل المشاريع",
+   "fr": "Tous les projets",
+   "bn": "সব প্রজেক্ট",
+   "pt-BR": "Todos os projetos",
+   "ru": "Все проекты",
+   "id": "Semua proyek",
+   "it": "Tutti i progetti"
+  },
+  "Name and icon": {
+   "zh-Hans": "名称和图标",
+   "hi": "नाम और आइकन",
+   "es": "Nombre e icono",
+   "ar": "الاسم والأيقونة",
+   "fr": "Nom et icône",
+   "bn": "নাম ও আইকন",
+   "pt-BR": "Nome e ícone",
+   "ru": "Название и значок",
+   "id": "Nama dan ikon",
+   "it": "Nome e icona"
+  },
+  "Project name": {
+   "zh-Hans": "项目名称",
+   "hi": "प्रोजेक्ट का नाम",
+   "es": "Nombre del proyecto",
+   "ar": "اسم المشروع",
+   "fr": "Nom du projet",
+   "bn": "প্রজেক্টের নাম",
+   "pt-BR": "Nome do projeto",
+   "ru": "Название проекта",
+   "id": "Nama proyek",
+   "it": "Nome del progetto"
+  },
+  "What do you want to work on?": {
+   "zh-Hans": "你想做什么？",
+   "hi": "आप किस पर काम करना चाहते हैं?",
+   "es": "¿En qué quieres trabajar?",
+   "ar": "على ماذا تريد العمل؟",
+   "fr": "Sur quoi voulez-vous travailler ?",
+   "bn": "আপনি কী নিয়ে কাজ করতে চান?",
+   "pt-BR": "No que você quer trabalhar?",
+   "ru": "Над чем вы хотите работать?",
+   "id": "Anda ingin mengerjakan apa?",
+   "it": "Su cosa vuoi lavorare?"
+  },
+  "The goal, what to keep to, how you want the work done…": {
+   "zh-Hans": "目标、要遵守的事项、你希望怎样完成…",
+   "hi": "लक्ष्य, किन बातों का ध्यान रखना है, काम कैसे चाहिए…",
+   "es": "El objetivo, qué respetar, cómo quieres el trabajo…",
+   "ar": "الهدف، وما يجب الالتزام به، وكيف تريد إنجاز العمل…",
+   "fr": "L'objectif, ce qu'il faut respecter, comment vous voulez le travail…",
+   "bn": "লক্ষ্য, কী মেনে চলতে হবে, কাজটা কীভাবে চান…",
+   "pt-BR": "O objetivo, o que respeitar, como você quer o trabalho…",
+   "ru": "Цель, чего держаться, как сделать работу…",
+   "id": "Tujuannya, apa yang harus dipatuhi, bagaimana pekerjaan dilakukan…",
+   "it": "L'obiettivo, cosa rispettare, come vuoi il lavoro…"
+  },
+  "Where the threads work. Without one, the project has its own.": {
+   "zh-Hans": "线程工作的位置。不选的话，项目会有自己的文件夹。",
+   "hi": "जहाँ थ्रेड काम करते हैं। न चुनें तो प्रोजेक्ट का अपना फ़ोल्डर होगा।",
+   "es": "Donde trabajan los hilos. Sin una, el proyecto tiene la suya.",
+   "ar": "حيث تعمل الخيوط. دون مجلد يكون للمشروع مجلده الخاص.",
+   "fr": "Là où travaillent les fils. Sans dossier, le projet a le sien.",
+   "bn": "যেখানে থ্রেডগুলো কাজ করে। না দিলে প্রজেক্টের নিজের ফোল্ডার থাকে।",
+   "pt-BR": "Onde os threads trabalham. Sem uma, o projeto tem a sua.",
+   "ru": "Где работают потоки. Без неё у проекта будет своя.",
+   "id": "Tempat thread bekerja. Tanpa folder, proyek punya foldernya sendiri.",
+   "it": "Dove lavorano i thread. Senza, il progetto ne ha una sua."
+  },
+  "Choose a folder": {
+   "zh-Hans": "选择文件夹",
+   "hi": "फ़ोल्डर चुनें",
+   "es": "Elegir una carpeta",
+   "ar": "اختر مجلدًا",
+   "fr": "Choisir un dossier",
+   "bn": "ফোল্ডার বেছে নিন",
+   "pt-BR": "Escolher uma pasta",
+   "ru": "Выбрать папку",
+   "id": "Pilih folder",
+   "it": "Scegli una cartella"
+  },
+  "No folder": {
+   "zh-Hans": "不用文件夹",
+   "hi": "कोई फ़ोल्डर नहीं",
+   "es": "Sin carpeta",
+   "ar": "بلا مجلد",
+   "fr": "Aucun dossier",
+   "bn": "কোনো ফোল্ডার নয়",
+   "pt-BR": "Sem pasta",
+   "ru": "Без папки",
+   "id": "Tanpa folder",
+   "it": "Nessuna cartella"
+  },
+  "Models": {
+   "zh-Hans": "模型",
+   "hi": "मॉडल",
+   "es": "Modelos",
+   "ar": "النماذج",
+   "fr": "Modèles",
+   "bn": "মডেল",
+   "pt-BR": "Modelos",
+   "ru": "Модели",
+   "id": "Model",
+   "it": "Modelli"
+  },
+  "Continue the threads when the usage limits reset": {
+   "zh-Hans": "用量上限重置后继续线程",
+   "hi": "उपयोग की सीमाएँ रीसेट होने पर थ्रेड जारी रखें",
+   "es": "Seguir con los hilos cuando se restablezcan los límites de uso",
+   "ar": "متابعة الخيوط عند إعادة ضبط حدود الاستخدام",
+   "fr": "Reprendre les fils quand les limites d'utilisation sont réinitialisées",
+   "bn": "ব্যবহারের সীমা রিসেট হলে থ্রেডগুলো চালিয়ে যান",
+   "pt-BR": "Continuar os threads quando os limites de uso forem redefinidos",
+   "ru": "Продолжать потоки, когда лимиты использования обновятся",
+   "id": "Lanjutkan thread saat batas penggunaan direset",
+   "it": "Continua i thread quando si ripristinano i limiti di utilizzo"
+  },
+  "Create project": {
+   "zh-Hans": "创建项目",
+   "hi": "प्रोजेक्ट बनाएँ",
+   "es": "Crear proyecto",
+   "ar": "إنشاء المشروع",
+   "fr": "Créer le projet",
+   "bn": "প্রজেক্ট তৈরি করুন",
+   "pt-BR": "Criar projeto",
+   "ru": "Создать проект",
+   "id": "Buat proyek",
+   "it": "Crea progetto"
+  },
+  "Delete project": {
+   "zh-Hans": "删除项目",
+   "hi": "प्रोजेक्ट हटाएँ",
+   "es": "Eliminar proyecto",
+   "ar": "حذف المشروع",
+   "fr": "Supprimer le projet",
+   "bn": "প্রজেক্ট মুছুন",
+   "pt-BR": "Excluir projeto",
+   "ru": "Удалить проект",
+   "id": "Hapus proyek",
+   "it": "Elimina progetto"
+  },
+  "Click again to delete it": {
+   "zh-Hans": "再点一次即删除",
+   "hi": "हटाने के लिए फिर क्लिक करें",
+   "es": "Haz clic otra vez para eliminarlo",
+   "ar": "انقر مرة أخرى لحذفه",
+   "fr": "Cliquez encore pour le supprimer",
+   "bn": "মুছতে আবার ক্লিক করুন",
+   "pt-BR": "Clique de novo para excluir",
+   "ru": "Нажмите ещё раз, чтобы удалить",
+   "id": "Klik lagi untuk menghapusnya",
+   "it": "Clicca di nuovo per eliminarlo"
+  },
+  "Search icons": {
+   "zh-Hans": "搜索图标",
+   "hi": "आइकन खोजें",
+   "es": "Buscar iconos",
+   "ar": "البحث في الأيقونات",
+   "fr": "Rechercher une icône",
+   "bn": "আইকন খুঁজুন",
+   "pt-BR": "Buscar ícones",
+   "ru": "Поиск значков",
+   "id": "Cari ikon",
+   "it": "Cerca icone"
+  },
+  "No icon found": {
+   "zh-Hans": "没有找到图标",
+   "hi": "कोई आइकन नहीं मिला",
+   "es": "No se encontró ningún icono",
+   "ar": "لم يُعثر على أيقونة",
+   "fr": "Aucune icône trouvée",
+   "bn": "কোনো আইকন পাওয়া যায়নি",
+   "pt-BR": "Nenhum ícone encontrado",
+   "ru": "Значки не найдены",
+   "id": "Ikon tidak ditemukan",
+   "it": "Nessuna icona trovata"
+  },
+  "No color": {
+   "zh-Hans": "无颜色",
+   "hi": "कोई रंग नहीं",
+   "es": "Sin color",
+   "ar": "بلا لون",
+   "fr": "Aucune couleur",
+   "bn": "কোনো রং নয়",
+   "pt-BR": "Sem cor",
+   "ru": "Без цвета",
+   "id": "Tanpa warna",
+   "it": "Nessun colore"
+  },
+  "Reset icon and color": {
+   "zh-Hans": "重置图标和颜色",
+   "hi": "आइकन और रंग रीसेट करें",
+   "es": "Restablecer icono y color",
+   "ar": "إعادة ضبط الأيقونة واللون",
+   "fr": "Réinitialiser l'icône et la couleur",
+   "bn": "আইকন ও রং রিসেট করুন",
+   "pt-BR": "Redefinir ícone e cor",
+   "ru": "Сбросить значок и цвет",
+   "id": "Atur ulang ikon dan warna",
+   "it": "Ripristina icona e colore"
+  },
+  "Search for a model": {
+   "zh-Hans": "搜索模型",
+   "hi": "मॉडल खोजें",
+   "es": "Buscar un modelo",
+   "ar": "ابحث عن نموذج",
+   "fr": "Rechercher un modèle",
+   "bn": "মডেল খুঁজুন",
+   "pt-BR": "Buscar um modelo",
+   "ru": "Найти модель",
+   "id": "Cari model",
+   "it": "Cerca un modello"
+  },
+  "No model found": {
+   "zh-Hans": "没有找到模型",
+   "hi": "कोई मॉडल नहीं मिला",
+   "es": "No se encontró ningún modelo",
+   "ar": "لم يُعثر على نموذج",
+   "fr": "Aucun modèle trouvé",
+   "bn": "কোনো মডেল পাওয়া যায়নি",
+   "pt-BR": "Nenhum modelo encontrado",
+   "ru": "Модели не найдены",
+   "id": "Model tidak ditemukan",
+   "it": "Nessun modello trovato"
+  },
+  "A project needs a name.": {
+   "zh-Hans": "项目需要一个名称。",
+   "hi": "प्रोजेक्ट को एक नाम चाहिए।",
+   "es": "Un proyecto necesita un nombre.",
+   "ar": "يحتاج المشروع إلى اسم.",
+   "fr": "Un projet a besoin d'un nom.",
+   "bn": "প্রজেক্টের একটি নাম লাগবে।",
+   "pt-BR": "Um projeto precisa de um nome.",
+   "ru": "У проекта должно быть название.",
+   "id": "Proyek perlu nama.",
+   "it": "Un progetto ha bisogno di un nome."
+  },
+  "The project's folder must be a full path.": {
+   "zh-Hans": "项目文件夹必须是完整路径。",
+   "hi": "प्रोजेक्ट का फ़ोल्डर पूरा पाथ होना चाहिए।",
+   "es": "La carpeta del proyecto debe ser una ruta completa.",
+   "ar": "يجب أن يكون مجلد المشروع مسارًا كاملًا.",
+   "fr": "Le dossier du projet doit être un chemin complet.",
+   "bn": "প্রজেক্টের ফোল্ডার পুরো পাথ হতে হবে।",
+   "pt-BR": "A pasta do projeto precisa ser um caminho completo.",
+   "ru": "Папка проекта должна быть указана полным путём.",
+   "id": "Folder proyek harus berupa path lengkap.",
+   "it": "La cartella del progetto deve essere un percorso completo."
+  },
+  "This project no longer exists.": {
+   "zh-Hans": "这个项目已不存在。",
+   "hi": "यह प्रोजेक्ट अब मौजूद नहीं है।",
+   "es": "Este proyecto ya no existe.",
+   "ar": "لم يعد هذا المشروع موجودًا.",
+   "fr": "Ce projet n'existe plus.",
+   "bn": "এই প্রজেক্টটি আর নেই।",
+   "pt-BR": "Este projeto não existe mais.",
+   "ru": "Этого проекта больше нет.",
+   "id": "Proyek ini sudah tidak ada.",
+   "it": "Questo progetto non esiste più."
+  },
+  "This file is not in the project's folder.": {
+   "zh-Hans": "这个文件不在项目文件夹中。",
+   "hi": "यह फ़ाइल प्रोजेक्ट के फ़ोल्डर में नहीं है।",
+   "es": "Este archivo no está en la carpeta del proyecto.",
+   "ar": "هذا الملف ليس في مجلد المشروع.",
+   "fr": "Ce fichier n'est pas dans le dossier du projet.",
+   "bn": "এই ফাইলটি প্রজেক্টের ফোল্ডারে নেই।",
+   "pt-BR": "Este arquivo não está na pasta do projeto.",
+   "ru": "Этого файла нет в папке проекта.",
+   "id": "File ini tidak ada di folder proyek.",
+   "it": "Questo file non è nella cartella del progetto."
   }
  }
 }

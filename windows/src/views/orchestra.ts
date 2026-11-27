@@ -1,11 +1,16 @@
-// The orchestra (concept modalita-orchestratore v2): in the chat, in place of
-// its conversation while Settings.orchestraMode is on (the model picker's
-// "Orchestra" chip). A coordinator plans and delegates; its threads, each a
-// chat with its own model and the chat's tools, do the work and write to each
-// other (orchestra.rs). The user talks to the coordinator and to any thread.
+// The projects (concepts modalita-orchestratore v2 and progetti v2): in the
+// chat, in place of its conversation while Settings.orchestraMode is on, from
+// the Projects card of the empty chat. In a project a coordinator plans and
+// delegates; its threads, each a chat with its own model and the chat's tools,
+// do the work and write to each other (orchestra.rs). The user talks to the
+// coordinator and to any thread.
 //
-// On the left, the rail: the orchestra's name (a click lists the past ones and
-// starts a new one), the coordinator, then the threads, each with a mark for
+// Its pages: the list of projects and the form of a new one (views/projects.ts)
+// take the whole chat; a project open has its rail and its conversation, and
+// its gear opens its settings in the conversation's place.
+//
+// On the left, the rail: the project's icon and name (a click lists the others,
+// New project, its settings and all the projects), the coordinator, then the threads, each with a mark for
 // where it stands (at work, waiting for you, done, waiting, failed, stopped)
 // and its last step. On the right, the member picked: its header (its state,
 // its model, its plan's progress, Stop) and its conversation. Messages from the
@@ -22,21 +27,24 @@ import { ICONS } from "./icons";
 import { renderMarkdown } from "./markdown";
 import { Bridge, type ChatActivity } from "../core/bridge";
 import {
-  COORDINATOR, Orchestra, memberByChat, memberOf, membersOf, planProgress,
-  type OrchestraFile, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
+  COORDINATOR, Orchestra, fieldsOf, memberByChat, memberOf, membersOf, planProgress,
+  type OrchestraFile, type ProjectFields, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
 } from "../core/orchestra-bridge";
 import { providerDef } from "../core/providers";
 import { ORCHESTRA_ACCENT, resolvePick, shortModel } from "../core/orchestra-picks";
+import { saveSettings } from "./chat-attach";
+import { buildProjectForm, buildProjectList, projectsCard, type ProjectForm } from "./projects";
+import { DEFAULT_ICON, GEAR_LINE, projectMark } from "./project-icons";
 import { durationText } from "../core/chat-agents";
 import { Sound } from "../core/sound";
 import { State, type OrchestraPick } from "../core/state";
-import { t, tn } from "../i18n/i18n";
+import { language, t, tn } from "../i18n/i18n";
 import { activityLabel, sentAgo } from "./chat-messages";
 import { effortLabel } from "./chat-strings";
 import { readyProviders } from "./chat-models";
 import { ORCHESTRA_STRINGS as S } from "./orchestra-strings";
 
-/** Where the orchestra last on screen is kept, to come back to it (a per-viewer convenience). */
+/** Where the project last on screen is kept, to come back to it (a per-viewer convenience). */
 const LAST_KEY = "lumo.orchestra.last";
 /** Narrower than this (page px), the chat's body gives the rail less room. */
 const NARROW_PX = 600;
@@ -53,8 +61,20 @@ export interface OrchestraView {
   log: HTMLElement;
   /** Above the field: the messages waiting for the member's next step. */
   queue: HTMLElement;
-  /** The orchestra is what the chat shows now. */
+  /** The list of projects, a project's form: in the chat's place (or the conversation's, for a project's settings). */
+  page: HTMLElement;
+  /** The projects are what the chat shows now (a page of them, or one open). */
   on(): boolean;
+  /** A project is open on its conversation: the field writes to it. */
+  inProject(): boolean;
+  /** The empty chat's Projects card. */
+  welcomeCard(): HTMLElement;
+  /** Into the projects, on their list (the empty chat's card). */
+  enter(): void;
+  /** Out of the projects, back to the chat. */
+  leave(): void;
+  /** The project's settings, in place of its conversation (the gear, the model button). */
+  openSettings(): void;
   /** Called from the chat's own sync: shows or hides the orchestra in `body`. */
   sync(body: HTMLElement): void;
   /** Sends what was typed to the member on screen (the coordinator first), starting an orchestra if none is open. */
@@ -66,12 +86,10 @@ export interface OrchestraView {
   placeholder(): string;
   /** The model button's words and dot. */
   button(): { name: string; dot: string };
-  /** A new orchestra: the screen empties, and the next message starts it. */
+  /** New project: its form. */
   startNew(): void;
-  /** The past orchestras, in the rail. */
+  /** The other projects, in the rail. */
   toggleMenu(): void;
-  /** The picker changed who plays a role: an open orchestra takes it too. */
-  picksChanged(): void;
   /** The orchestra on screen, if one is. */
   readonly snapshot: OrchestraSnapshot | null;
   /** The member on screen. */
@@ -90,6 +108,34 @@ export interface OrchestraView {
 const WAITING_COLOR = "#f5c542";
 const DONE_COLOR = "#4ade80";
 
+/** The cards still waiting for the user that member `id` of `snap` put, wherever they show. */
+function waitingCardsIn(snap: OrchestraSnapshot, id: string): number {
+  const ids = new Set<string>();
+  for (const m of membersOf(snap)) {
+    for (const msg of m.messages) if (msg.kind === "card" && msg.from === id && msg.card && msg.card.chose == null) ids.add(msg.id);
+  }
+  return ids.size;
+}
+
+/** How the list of projects shows `s`, as orchestra.rs Orchestra::summary says it. */
+export function summaryOf(s: OrchestraSnapshot, asks: (m: OrchestraMember) => boolean = () => false): OrchestraSummary {
+  const members = membersOf(s);
+  const working = members.filter((m) => m.state === "working").length;
+  const asking = members.find((m) => m.state === "waiting" || asks(m))?.id ?? "";
+  const state: OrchestraSummary["state"] = asking ? "waiting"
+    : working > 0 ? "working"
+    : members.some((m) => m.state === "paused") ? "paused"
+    : s.threads.length > 0 && s.threads.every((m) => m.state === "done") ? "done"
+    : members.some((m) => m.state === "stopped" || m.state === "failed") ? "stopped"
+    : "idle";
+  const { done, total } = planProgress(s.plan);
+  return {
+    id: s.id, title: s.title, icon: s.icon ?? "", color: s.color ?? "", goal: s.goal ?? "", updated: s.updated,
+    state, working, asking, planDone: done, planTotal: total,
+    coordinator: s.coordinator.pick, thread: s.threadPick ?? s.threads[0]?.pick ?? { provider: "", model: "", effort: "" },
+  };
+}
+
 /** `changed`: the orchestra on screen changed (the closed island's line may say something else). */
 export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   let snap: OrchestraSnapshot | null = null;
@@ -99,7 +145,15 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   /** The member whose question the closed island said: shown when the island opens. */
   let askedOnIsland = "";
   let summaries: OrchestraSummary[] = [];
+  /** The list was asked once: its count can be said. */
+  let listed = false;
   let booted = false;
+  /** What shows: the list of projects, a new project's form, a project open, its settings. */
+  let page: "list" | "form" | "project" | "settings" = "project";
+  /** Where the new project's form goes back to. */
+  let formBack: "list" | "project" = "list";
+  /** The form on screen (New project, a project's settings). */
+  let form: ProjectForm | null = null;
   let menuOpen = false;
   let planOpen = true;
   /** The file in the reader, and whether its text came. */
@@ -122,8 +176,14 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   const log = h("div", { class: "chat-log orc-log orc-part" });
   gentleWheel(log);
   const queue = h("div", { class: "orc-queue orc-part" });
+  const pageEl = h("div", { class: "orc-page" });
+  // Esc closes the form's menu before it closes the island.
+  pageEl.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Escape" && form?.dismiss()) e.stopPropagation();
+  });
 
   const on = () => State.settings.orchestraMode && State.chatSlot !== "forge";
+  const inProject = () => on() && page === "project" && snap != null;
 
   // ── Who is who ──────────────────────────────────────────────────────────────
 
@@ -133,19 +193,20 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
 
   /** Who plays `m`, its blanks filled as orchestra.rs fills them. */
   function pickOf(m: OrchestraMember | null): OrchestraPick {
-    const fallback = m == null || m.id === COORDINATOR ? State.settings.orchestraCoordinator : State.settings.orchestraThread;
+    const coord = m == null || m.id === COORDINATOR;
+    const fallback = coord ? snap?.coordinator.pick ?? State.settings.orchestraCoordinator : snap?.threadPick ?? State.settings.orchestraThread;
     const own = m?.pick?.provider ? m.pick : fallback;
-    return resolvePick(own, State.settings, readyProviders, m == null || m.id === COORDINATOR ? "coordinator" : "thread");
+    return resolvePick(own, State.settings, readyProviders, coord ? "coordinator" : "thread");
+  }
+
+  /** A time of day, as the user's language says it: when a member stopped by a usage limit goes on. */
+  function clock(seconds: number): string {
+    return new Date(seconds * 1000).toLocaleTimeString(language(), { hour: "2-digit", minute: "2-digit" });
   }
 
   /** The cards still waiting for the user that `id` put, wherever they show. */
   function waitingCards(id: string): number {
-    if (!snap) return 0;
-    const ids = new Set<string>();
-    for (const m of membersOf(snap)) {
-      for (const msg of m.messages) if (msg.kind === "card" && msg.from === id && msg.card && msg.card.chose == null) ids.add(msg.id);
-    }
-    return ids.size;
+    return snap ? waitingCardsIn(snap, id) : 0;
   }
 
   function stepText(m: OrchestraMember): string {
@@ -167,6 +228,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     if (m.state === "waiting") return { text: t(S.waiting), cls: "ask", dot: false };
     if (m.state === "working") return { text: withModel(m.id === COORDINATOR && !acts.get(m.chat) && !m.activity ? t(S.planning) : stepText(m)), cls: "", dot: true };
     if (m.state === "failed") return { text: t(S.failed), cls: "bad", dot: false };
+    if (m.state === "paused") return { text: m.resumeAt ? t(S.resumesAt, { time: clock(m.resumeAt) }) : t(S.paused), cls: "paused", dot: false };
     if (m.state === "stopped") return { text: t(S.stopped), cls: "", dot: false };
     if (m.id === COORDINATOR) {
       const allDone = snap != null && snap.threads.length > 0 && snap.threads.every((x) => x.state === "done");
@@ -182,7 +244,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   /** A member's mark: the coordinator's ring, a thread's state. */
   function mark(m: OrchestraMember | null): HTMLElement {
     if (!m || m.id === COORDINATOR) return h("span", { class: `orc-mk coord${m?.state === "working" ? " working" : ""}` });
-    const cls = { working: "work", waiting: "ask", done: "done", idle: "idle", failed: "failed", stopped: "stopped" }[m.state] ?? "idle";
+    const cls = { working: "work", waiting: "ask", done: "done", idle: "idle", failed: "failed", stopped: "stopped", paused: "paused" }[m.state] ?? "idle";
     const el = h("span", { class: `orc-mk ${cls}` });
     if (m.state === "done") el.append(svg(ICONS.check, 9, { stroke: 3 }));
     else if (m.state === "failed") el.append(svg(ICONS.xmark, 8));
@@ -197,14 +259,19 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     drawLog(toEnd);
     drawQueue();
     drawDoc();
+    drawPage();
     placeClasses();
   }
 
   function placeClasses() {
     if (!host) return;
     const shown = on();
-    host.classList.toggle("orc", shown);
-    host.classList.toggle("orc-reading", shown && reading != null);
+    const full = shown && (page === "list" || page === "form" || snap == null);
+    // A project open (its conversation or its settings): the rail on the left.
+    host.classList.toggle("orc", shown && !full);
+    host.classList.toggle("orc-full", full);
+    host.classList.toggle("orc-settings", shown && !full && page === "settings");
+    host.classList.toggle("orc-reading", shown && !full && reading != null);
     const width = host.clientWidth;
     host.classList.toggle("orc-narrow", shown && width > 0 && width < NARROW_PX);
   }
@@ -212,7 +279,8 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   function drawRail() {
     clear(rail);
     const title = snap?.title || t(S.untitled);
-    const top = h("button", { class: menuOpen ? "orc-top open" : "orc-top", title: t(S.orchestras), "aria-expanded": String(menuOpen) },
+    const top = h("button", { class: menuOpen ? "orc-top open" : "orc-top", title: t(S.projects), "aria-expanded": String(menuOpen) },
+      projectMark(snap?.icon || DEFAULT_ICON, snap?.color ?? "", 18, 11),
       h("span", { class: "orc-top-name", text: title }),
       svg(ICONS.chevronDown, 9, { stroke: 2.2 }));
     top.addEventListener("click", () => toggleMenu());
@@ -229,20 +297,26 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     rail.append(list);
   }
 
-  /** The past orchestras, newest first, after "New orchestra". */
+  /** New project, the projects newest first, then this one's settings and all the projects. */
   function drawMenu(): HTMLElement {
     const menu = h("div", { class: "orc-menu" });
-    const fresh = h("button", { class: "orc-menu-row orc-menu-new" }, svg(ICONS.plus, 10), h("span", { text: t(S.newOrchestra) }));
+    const fresh = h("button", { class: "orc-menu-row orc-menu-new" }, svg(ICONS.plus, 10), h("span", { text: t(S.newProject) }));
     fresh.addEventListener("click", () => startNew());
     menu.append(fresh);
     for (const s of [...summaries].sort((a, b) => b.updated - a.updated)) {
-      const row = h("button", { class: snap?.id === s.id ? "orc-menu-row on" : "orc-menu-row", title: s.title },
-        h("span", { class: s.working ? "orc-mk work small" : "orc-mk idle small" }),
+      const row = h("button", { class: snap?.id === s.id ? "orc-menu-row on" : "orc-menu-row", title: s.title, "data-project": s.id },
+        projectMark(s.icon, s.color, 16, 10),
         h("span", { class: "orc-menu-name", text: s.title || t(S.untitled) }),
         h("span", { class: "orc-menu-when", text: sentAgo(s.updated) }));
       row.addEventListener("click", () => void openOrchestra(s.id));
       menu.append(row);
     }
+    const settings = h("button", { class: "orc-menu-row orc-menu-foot first" }, svg(GEAR_LINE, 12, { stroke: 1.8 }), h("span", { class: "orc-menu-name", text: t(S.settings) }));
+    settings.addEventListener("click", () => openSettings());
+    const all = h("button", { class: "orc-menu-row orc-menu-foot" }, svg(ICONS.activities, 11, { stroke: 1.8 }), h("span", { class: "orc-menu-name", text: t(S.allProjects) }));
+    all.addEventListener("click", () => showList());
+    if (snap) menu.append(settings);
+    menu.append(all);
     return menu;
   }
 
@@ -281,6 +355,8 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
         return m.id === COORDINATOR ? null : pill(t(S.done), "green");
       case "failed":
         return pill(t(S.failed), "red");
+      case "paused":
+        return pill(m.resumeAt ? t(S.resumesAt, { time: clock(m.resumeAt) }) : t(S.paused), "amber");
       case "stopped":
         return pill(t(S.stopped));
       default:
@@ -320,7 +396,8 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       head.append(planBtn);
     }
     if (snap && m) {
-      const busy = coord ? membersOf(snap).some((x) => x.state === "working" || x.state === "waiting") : m.state === "working" || m.state === "waiting";
+      const going = (x: OrchestraMember) => x.state === "working" || x.state === "waiting" || x.state === "paused";
+      const busy = coord ? membersOf(snap).some(going) : going(m);
       if (busy) {
         const stop = h("button", { class: "orc-stop", text: t(coord ? S.stopAll : S.stopOne) });
         stop.addEventListener("click", () => {
@@ -330,6 +407,13 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
         });
         head.append(stop);
       }
+    }
+    if (snap) {
+      const settings = page === "settings";
+      const gear = h("button", { class: settings ? "pj-gear on" : "pj-gear", title: t(S.projectSettings), "aria-label": t(S.projectSettings), "aria-pressed": String(settings) },
+        svg(GEAR_LINE, 14, { stroke: 1.8 }));
+      gear.addEventListener("click", () => (page === "settings" ? closeSettings() : openSettings()));
+      head.append(gear);
     }
   }
 
@@ -510,6 +594,10 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
         return h("div", { class: "orc-note", text: t(S.stopped) });
       case "error":
         return h("div", { class: "orc-note error", text: msg.text });
+      case "limit": {
+        const then = msg.until ? t(S.limitResumes, { time: clock(msg.until) }) : t(S.limitStops);
+        return h("div", { class: "orc-note limit" }, h("span", { class: "orc-note-main", text: then }), msg.text ? h("span", { class: "orc-note-sub", text: msg.text }) : null);
+      }
       default:
         return msg.text ? h("div", { class: "orc-note", text: msg.text }) : null;
     }
@@ -583,28 +671,131 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   function toggleMenu() {
     menuOpen = !menuOpen;
     drawRail();
-    if (menuOpen) void Orchestra.list().then((list) => {
-      summaries = list;
-      if (menuOpen) drawRail();
-    });
+    if (menuOpen) void refreshList();
   }
 
-  function startNew() {
-    snap = null;
-    selected = COORDINATOR;
+  async function refreshList() {
+    summaries = await Orchestra.list();
+    listed = true;
+    if (menuOpen) drawRail();
+    if (page === "list") drawPage();
+  }
+
+  /** The page in the chat's place (the list, a form), or the settings in the conversation's. */
+  function drawPage() {
+    const kept = page === "form" || page === "settings" ? form : null;
+    if (kept && pageEl.contains(kept.el)) return;
+    clear(pageEl);
+    if (page === "list") {
+      form = null;
+      pageEl.append(buildProjectList(listed ? summaries : null, { open: (id) => void openOrchestra(id), create: () => startNew() }));
+    } else if (page === "form") {
+      form = buildProjectForm({ mode: "new", fields: newFields(), save: create, cancel: () => go(formBack === "project" && snap ? "project" : "list") });
+      pageEl.append(form.el);
+    } else if (page === "settings" && snap) {
+      const id = snap.id;
+      form = buildProjectForm({ mode: "edit", fields: fieldsOf(snap), save: (f) => saveProject(id, f), cancel: () => closeSettings(), remove: () => void removeProject(id) });
+      pageEl.append(form.el);
+    } else form = null;
+  }
+
+  /** What New project starts from: the models of the last project made. */
+  function newFields(): ProjectFields {
+    const s = State.settings;
+    return {
+      title: "", icon: "", color: "", goal: "", folder: "",
+      coordinator: resolvePick(s.orchestraCoordinator, s, readyProviders, "coordinator"),
+      thread: resolvePick(s.orchestraThread, s, readyProviders, "thread"),
+      resume: true,
+    };
+  }
+
+  /** Another page: what shows, and the chat around it. */
+  function go(next: typeof page) {
+    page = next;
     menuOpen = false;
-    reading = null;
-    error = "";
-    live.clear();
-    acts.clear();
-    remember("");
-    Sound.play("blip");
+    form = null;
     draw(true);
     State.notify();
   }
 
+  function showList() {
+    go("list");
+    void refreshList();
+  }
+
+  function startNew() {
+    formBack = page === "list" || !snap ? "list" : "project";
+    Sound.play("blip");
+    go("form");
+  }
+
+  function openSettings() {
+    if (!snap) return;
+    Sound.play("pop");
+    go("settings");
+  }
+
+  function closeSettings() {
+    go(snap ? "project" : "list");
+  }
+
+  async function create(fields: ProjectFields): Promise<string | null> {
+    let s: OrchestraSnapshot | null;
+    try {
+      s = await Orchestra.create(fields);
+    } catch (err) {
+      return String(err).replace(/^Error:\s*/, "");
+    }
+    if (!s) return null;
+    // The next project starts from these models.
+    State.settings = { ...State.settings, orchestraCoordinator: fields.coordinator, orchestraThread: fields.thread };
+    saveSettings();
+    page = "project";
+    form = null;
+    Sound.play("blip");
+    show(s);
+    State.notify();
+    return null;
+  }
+
+  async function saveProject(id: string, fields: ProjectFields): Promise<string | null> {
+    let s: OrchestraSnapshot | null;
+    try {
+      s = await Orchestra.update(id, fields);
+    } catch (err) {
+      return String(err).replace(/^Error:\s*/, "");
+    }
+    if (!s) return null;
+    page = "project";
+    form = null;
+    Sound.play("blip");
+    show(s);
+    draw();
+    State.notify();
+    return null;
+  }
+
+  async function removeProject(id: string) {
+    await Orchestra.remove(id);
+    summaries = summaries.filter((x) => x.id !== id);
+    if (snap?.id === id) {
+      snap = null;
+      selected = COORDINATOR;
+      reading = null;
+      live.clear();
+      acts.clear();
+      remember("");
+    }
+    Sound.play("pop");
+    showList();
+    changed();
+  }
+
   async function openOrchestra(id: string) {
     menuOpen = false;
+    page = "project";
+    form = null;
     drawRail();
     let s: OrchestraSnapshot | null = null;
     try {
@@ -612,23 +803,18 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     } catch (err) {
       console.error("[lumo] orchestra_open failed", err);
     }
-    if (s) show(s);
+    if (s) {
+      show(s);
+      // The rail, the field and the model button follow it.
+      draw(true);
+      State.notify();
+    }
   }
 
   async function send(text: string) {
-    let s = snap;
+    const s = snap;
     error = "";
-    if (!s) {
-      try {
-        s = await Orchestra.create();
-      } catch (err) {
-        error = t(S.notSent, { error: String(err).replace(/^Error:\s*/, "") });
-        draw(true);
-        return;
-      }
-      if (!s) return;
-      show(s);
-    }
+    if (!s || page !== "project") return;
     const to = selected;
     const m = memberOf(s, to);
     // Shown at once; the orchestra's next word has it as Rust keeps it.
@@ -699,7 +885,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   }
 
   function noteSummary(s: OrchestraSnapshot) {
-    const row: OrchestraSummary = { id: s.id, title: s.title, updated: s.updated, working: membersOf(s).some((m) => m.state === "working") };
+    const row = summaryOf(s, (m) => waitingCardsIn(s, m.id) > 0);
     const at = summaries.findIndex((x) => x.id === s.id);
     if (at >= 0) summaries[at] = row;
     else summaries.push(row);
@@ -741,23 +927,43 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
 
   void Orchestra.onUpdate((s) => {
     if (!s || typeof s.id !== "string") return;
-    if (!snap || s.id === snap.id) show(s);
+    if (snap && s.id === snap.id) show(s);
     else {
       noteSummary(s);
       if (menuOpen) drawRail();
+      if (page === "list" && on()) drawPage();
     }
   });
 
-  /** The first time the orchestra shows: the one last on screen (or the newest) comes back. */
+  /** The first time the projects show: the one last on screen (or the newest) comes back, else their list. */
   async function boot() {
     summaries = await Orchestra.list();
-    if (snap || summaries.length === 0) {
+    listed = true;
+    if (snap) {
       drawRail();
       return;
     }
-    const last = lastOpened();
-    const pick = summaries.find((s) => s.id === last) ?? [...summaries].sort((a, b) => b.updated - a.updated)[0];
-    await openOrchestra(pick.id);
+    const last = summaries.find((s) => s.id === lastOpened()) ?? [...summaries].sort((a, b) => b.updated - a.updated)[0];
+    if (last) await openOrchestra(last.id);
+    else showList();
+  }
+
+  function enter() {
+    if (!State.settings.orchestraMode) {
+      State.settings = { ...State.settings, orchestraMode: true };
+      saveSettings();
+    }
+    booted = true;
+    Sound.play("pop");
+    showList();
+  }
+
+  function leave() {
+    menuOpen = false;
+    form = null;
+    if (!State.settings.orchestraMode) return;
+    State.settings = { ...State.settings, orchestraMode: false };
+    saveSettings();
   }
 
   draw();
@@ -768,7 +974,26 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     head,
     log,
     queue,
+    page: pageEl,
     on,
+    inProject,
+    welcomeCard() {
+      const holder = h("div", { class: "pj-start-row" });
+      const fill = () => {
+        clear(holder);
+        holder.append(projectsCard(listed ? summaries : null, enter));
+      };
+      fill();
+      void Orchestra.list().then((list) => {
+        summaries = list;
+        listed = true;
+        fill();
+      });
+      return holder;
+    },
+    enter,
+    leave,
+    openSettings,
     sync(body: HTMLElement) {
       host = body;
       placeClasses();
@@ -834,7 +1059,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       }
       const c = pickOf(snap?.coordinator ?? null);
       const first = snap?.threads[0];
-      const x = first ? pickOf(first) : resolvePick(State.settings.orchestraThread, State.settings, readyProviders, "thread");
+      const x = first ? pickOf(first) : resolvePick(snap?.threadPick ?? State.settings.orchestraThread, State.settings, readyProviders, "thread");
       const a = providerDef(c.provider).accent;
       const b = providerDef(x.provider).accent;
       return {
@@ -844,20 +1069,6 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     },
     startNew,
     toggleMenu,
-    picksChanged() {
-      placeClasses();
-      drawHead();
-      drawRail();
-      // In or out of the orchestra: the chat draws itself again around it.
-      queueMicrotask(() => State.notify());
-      if (!snap || !on()) return;
-      const id = snap.id;
-      void Orchestra.setPicks(id, State.settings.orchestraCoordinator, State.settings.orchestraThread)
-        .then((s) => {
-          if (s && snap?.id === id) show(s);
-        })
-        .catch((err) => console.error("[lumo] orchestra_set_picks failed", err));
-    },
     get snapshot() {
       return snap;
     },
@@ -886,7 +1097,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       return { who, color: DONE_COLOR, label: first ? `${t(S.finished)} · ${first}` : t(S.finished) };
     },
     usageOf() {
-      if (!on()) return null;
+      if (!inProject()) return null;
       const m = current() ?? null;
       const pick = pickOf(m);
       // No orchestra yet: the coordinator's to be, on a chat of its own none has written to.

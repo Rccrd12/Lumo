@@ -746,7 +746,7 @@ export function buildPrompt(
     h("div", { class: "model-side" }, planBtn, planStrip.chip, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
-  // The orchestra (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
+  // The projects (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
   const orchestra = buildOrchestra(() => drawIslandActivity());
   const picker = buildPicker(() => {
     if (picker.isOpen) coverLog();
@@ -762,7 +762,7 @@ export function buildPrompt(
     panelChanged();
     drawModelButton();
     drawUsage();
-  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings), chatEffortOf(State.settings)), () => orchestra.picksChanged());
+  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings), chatEffortOf(State.settings)));
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
@@ -858,6 +858,7 @@ export function buildPrompt(
   body.insertBefore(orchestra.doc, body.firstChild);
   body.insertBefore(orchestra.rail, orchestra.doc);
   body.insertBefore(orchestra.head, log);
+  body.insertBefore(orchestra.page, orchestra.log);
   body.insertBefore(orchestra.log, picker.el);
   body.insertBefore(orchestra.queue, modelRow);
 
@@ -1166,8 +1167,8 @@ export function buildPrompt(
     // Antigravity CLI's Orchestrator: who plans and who executes ("Orchestrator · Neon → Hydrogen").
     const orchestration = p.id === AGY ? parseOrchestrator(model) : null;
     modelName.textContent = orchestration ? orchestratorName(orchestration) : effort ? `${name} · ${effortLabel(effort)}` : name;
-    // The orchestra: who the field writes to, and its models.
-    if (orchestra.on()) {
+    // A project open: who the field writes to, and its models.
+    if (orchestra.inProject()) {
       const shown = orchestra.button();
       modelName.textContent = shown.name;
       modelDot.style.background = shown.dot;
@@ -2837,7 +2838,7 @@ export function buildPrompt(
     input.focus();
   }
 
-  /** The empty chat: a question, and three ways to start. */
+  /** The empty chat: a question, three ways to start, and the projects. */
   function welcome(): HTMLElement {
     const start = (label: string, run: () => void) =>
       h("button", { class: "welcome-chip", onclick: run }, h("span", { text: t(label) }));
@@ -2859,6 +2860,8 @@ export function buildPrompt(
           }, 60);
         }),
       ),
+      // The projects: several models on one goal (views/projects.ts).
+      orchestra.welcomeCard(),
     );
   }
 
@@ -3055,8 +3058,11 @@ export function buildPrompt(
     }
   }
 
-  // On the orchestra, + starts a new orchestra and the clock lists the past ones.
-  newBtn.addEventListener("click", () => (orchestra.on() ? orchestra.startNew() : newChat()));
+  // + leaves the projects for a new chat; in a project, the clock lists the others.
+  newBtn.addEventListener("click", () => {
+    if (orchestra.on()) orchestra.leave();
+    newChat();
+  });
   attachBtn.addEventListener("click", () => void attach());
   screenBtn.addEventListener("click", () => {
     if (body.classList.contains("screening")) closeScreen();
@@ -3074,7 +3080,7 @@ export function buildPrompt(
   attachTab.addEventListener("click", () => showFilesTab("attached"));
   chatFilesTab.addEventListener("click", () => showFilesTab("chat"));
   historyBtn.addEventListener("click", () => {
-    if (orchestra.on() && !body.classList.contains("browsing")) {
+    if (orchestra.inProject() && !body.classList.contains("browsing")) {
       orchestra.toggleMenu();
       return;
     }
@@ -3102,6 +3108,11 @@ export function buildPrompt(
   }
 
   modelBtn.addEventListener("click", () => {
+    // A project's models are in its settings.
+    if (orchestra.inProject()) {
+      orchestra.openSettings();
+      return;
+    }
     if (picker.isOpen) picker.close();
     else picker.open();
   });
@@ -4106,8 +4117,8 @@ export function buildPrompt(
    * (submitAway): its conversation, already loaded in Rust.
    */
   async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }, queuedQuote?: AskQuote) {
-    // The orchestra on screen: what is typed goes to the member it shows.
-    if (orchestra.on() && auto == null && queuedText == null && away == null) {
+    // A project on screen: what is typed goes to the member it shows.
+    if (orchestra.inProject() && auto == null && queuedText == null && away == null) {
       const text = input.value.trim();
       if (!text) return;
       setInput("");
@@ -5470,7 +5481,7 @@ export function buildPrompt(
         : planAsking() ? t(STRINGS.planChange)
         : askFor.has(State.chatId) ? t(STRINGS.askPlaceholder, { name: askFor.get(State.chatId)!.title })
         : t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
-      if (orchestra.on()) input.placeholder = orchestra.placeholder();
+      if (orchestra.inProject()) input.placeholder = orchestra.placeholder();
     },
     focus() {
       input.focus();

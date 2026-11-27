@@ -1,0 +1,851 @@
+/* ── The projects (views/projects.ts, views/orchestra.ts) ─────────────────
+   The empty chat's Projects card; the list of projects and a new project's
+   form, in the chat's place (.orc-full); a project's settings, in its
+   conversation's place beside the rail (.orc-settings); the menus over the
+   form (the icon, the models); the gear beside Stop all. Concept: progetti v2. */
+
+/* The page shows only on the projects' pages. */
+.chat-body:not(.orc-full):not(.orc-settings) > .orc-page {
+  display: none !important;
+}
+
+.orc-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* The list and the form take the chat's place: no conversation, no model, no field under them. */
+.chat-body.orc-full > :is(.chat-log, .chip-row, .chat-queue, .chat-ask, .chat-hold, .edit-strip, .chat-to-end, .chat-bar, .slash-menu),
+.chat-body.orc-settings > :is(.orc-log, .orc-queue, .chat-bar, .slash-menu) {
+  display: none !important;
+}
+
+.chat-body:is(.orc-full, .orc-settings) .model-row :is(.model-side, .plan-strip) {
+  visibility: hidden;
+}
+
+/* A panel (the history, the files…) takes the page's place, as it takes the conversation's. */
+.chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) > .orc-page {
+  display: none !important;
+}
+
+.orc-page button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: default;
+  text-align: left;
+}
+
+.orc-page input,
+.orc-page textarea {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  outline: none;
+  background: transparent;
+}
+
+/* A project's mark: its icon in its colour, on a tint of it. */
+.pj-ic {
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  box-sizing: border-box;
+}
+
+.orc-top .pj-ic {
+  border-radius: 6px;
+}
+
+.orc-menu-row .pj-ic {
+  border-radius: 5px;
+}
+
+/* ── The empty chat's card ─────────────────────────────────────────────────── */
+
+.pj-start-row {
+  display: flex;
+  margin-top: 6px;
+}
+
+.pj-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  padding: 11px 14px 11px 11px;
+  border: 1px solid rgba(242, 211, 142, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  font: 400 12px var(--font);
+  color: #c8cdd4;
+  text-align: left;
+  cursor: default;
+}
+
+.pj-start:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pj-start-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pj-start b {
+  font: 600 13px var(--font);
+  color: #f1f2f4;
+}
+
+.pj-start small {
+  font-size: 11.5px;
+  color: #9aa0a8;
+}
+
+.pj-start-count {
+  margin-left: 10px;
+  font-size: 11.5px;
+  color: #9aa0a8;
+  white-space: nowrap;
+}
+
+.pj-start-count.asking {
+  color: #f5c542;
+}
+
+.pj-start > svg {
+  margin-left: 6px;
+  color: #8a9098;
+}
+
+/* ── The list ──────────────────────────────────────────────────────────────── */
+
+.pj-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px;
+  font: 400 12px var(--font);
+  color: #c8cdd4;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.pj-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 6px;
+}
+
+.pj-title {
+  flex: 1;
+  font: 600 14px var(--font);
+  color: #f1f2f4;
+}
+
+.orc-page .pj-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: #f2d38e;
+  font: 600 11.5px var(--font);
+  color: #1b1710;
+}
+
+.orc-page .pj-new:hover {
+  background: #f6dea6;
+}
+
+.orc-page .pj-card {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.orc-page .pj-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pj-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pj-name {
+  font: 600 13px var(--font);
+  color: #f1f2f4;
+}
+
+.pj-goal {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #9aa0a8;
+}
+
+.pj-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: #8a9098;
+}
+
+.pj-models {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pj-state {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.pj-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+}
+
+.pj-side {
+  flex: 0 0 auto;
+  padding-top: 2px;
+  font-size: 11px;
+  color: #7d838b;
+  white-space: nowrap;
+}
+
+.pj-none {
+  padding: 18px 6px;
+  font: 400 12px var(--font);
+  line-height: 1.5;
+  color: #8a9098;
+}
+
+.pj-none.small {
+  grid-column: 1 / -1;
+  padding: 10px 8px;
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* ── The form ──────────────────────────────────────────────────────────────── */
+
+.pj-page {
+  --pjw: min(330px, 58%);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-body.orc-settings .pj-page {
+  --pjw: min(300px, 58%);
+}
+
+.pj-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 2px 6px;
+  font: 400 12.5px var(--font);
+  color: #d5d8dd;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.pj-h {
+  display: flex;
+  align-items: center;
+  margin: 6px 0 10px;
+  font: 600 13.5px var(--font);
+  color: #f1f2f4;
+}
+
+.orc-page .pj-x {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #8a9098;
+}
+
+.orc-page .pj-x:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8eaed;
+}
+
+.pj-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 40px;
+}
+
+.pj-lbl {
+  flex: 1;
+  min-width: 0;
+}
+
+.pj-lbl small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #80868e;
+}
+
+.pj-field {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: var(--pjw);
+  height: 32px;
+  padding: 0 10px 0 4px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1f2f4;
+}
+
+.orc-page .pj-field.sel {
+  justify-content: space-between;
+  padding-left: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.orc-page .pj-field.sel:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.pj-field.open {
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.7);
+}
+
+.pj-field > svg {
+  flex: 0 0 auto;
+  color: #8a9098;
+}
+
+.pj-sel-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pj-sel-main b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.pj-sel-sub {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: normal;
+  color: #8a9098;
+}
+
+.pj-folder-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pj-folder-text.empty {
+  color: #8a9098;
+}
+
+.pj-folder-wrap {
+  position: relative;
+  display: flex;
+}
+
+.orc-page .pj-folder {
+  padding-right: 30px;
+}
+
+.orc-page .pj-folder-x {
+  position: absolute;
+  right: 26px;
+  top: 7px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #8a9098;
+}
+
+.orc-page .pj-folder-x:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8eaed;
+}
+
+.pj-folder-x[hidden] {
+  display: none !important;
+}
+
+.orc-page .pj-mark-btn {
+  flex: 0 0 auto;
+  display: grid;
+  border-radius: 8px;
+}
+
+.orc-page .pj-mark-btn:hover {
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.18);
+}
+
+.orc-page .pj-name-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  color: #f1f2f4;
+}
+
+.pj-name-input::placeholder,
+.pj-area::placeholder,
+.pj-search-input::placeholder {
+  color: #6f757d;
+}
+
+.pj-pdot {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.pj-q {
+  margin: 12px 0 6px;
+}
+
+.orc-page .pj-area {
+  flex: 0 0 auto;
+  min-height: 54px;
+  max-height: 180px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  line-height: 1.5;
+  color: #eceef1;
+  resize: vertical;
+  scrollbar-width: thin;
+}
+
+.pj-count {
+  margin: 4px 0 6px;
+  font-size: 11px;
+  text-align: right;
+  color: #6f757d;
+}
+
+.pj-sep {
+  flex: 0 0 auto;
+  height: 1px;
+  margin: 10px 0 4px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pj-sep + .pj-h {
+  margin-top: 8px;
+}
+
+.orc-page .pj-switch {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  position: relative;
+  transition: background 0.15s;
+}
+
+.orc-page .pj-switch.on {
+  background: #3b82f6;
+}
+
+.pj-switch::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.pj-switch.on::after {
+  transform: translateX(14px);
+}
+
+.pj-error {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--red-text);
+}
+
+.pj-error[hidden] {
+  display: none;
+}
+
+.pj-actions {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.orc-page .pj-b {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font: 600 11.5px var(--font);
+  color: #e5e7ea;
+}
+
+.orc-page .pj-b:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.orc-page .pj-b.primary {
+  background: #f2d38e;
+  color: #1b1710;
+}
+
+.orc-page .pj-b.primary:hover {
+  background: #f6dea6;
+}
+
+.orc-page .pj-b.primary:disabled {
+  opacity: 0.45;
+}
+
+.orc-page .pj-b.danger {
+  margin-right: auto;
+  padding-left: 2px;
+  background: transparent;
+  color: #f87171;
+}
+
+.orc-page .pj-b.danger.armed {
+  padding-left: 12px;
+  background: rgba(248, 113, 113, 0.14);
+}
+
+/* ── The menus over the form ───────────────────────────────────────────────── */
+
+.pj-pop {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  background: #232428;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+  font: 400 12px var(--font);
+  color: #d5d8dd;
+  overflow: hidden;
+}
+
+.pj-search {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  margin: 10px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #80868e;
+}
+
+.pj-search:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.75);
+}
+
+.orc-page .pj-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  color: #eceef1;
+}
+
+.pj-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0 10px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.orc-page .pj-icon {
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #c3c7cd;
+}
+
+.orc-page .pj-icon:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.orc-page .pj-icon.on {
+  background: rgba(255, 255, 255, 0.09);
+  color: #f1f2f4;
+}
+
+.pj-colors {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.orc-page .pj-color {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.orc-page .pj-color.none {
+  position: relative;
+  box-shadow: inset 0 0 0 1.5px #6b7078;
+}
+
+.pj-color.none::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 9px;
+  height: 1.5px;
+  background: #6b7078;
+  transform: rotate(-45deg);
+}
+
+.orc-page .pj-color.on {
+  box-shadow: 0 0 0 2px #232428, 0 0 0 3.5px #e8e8ea;
+}
+
+.orc-page .pj-color.none.on {
+  box-shadow: inset 0 0 0 1.5px #6b7078, 0 0 0 2px #232428, 0 0 0 3.5px #e8e8ea;
+}
+
+.orc-page .pj-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  color: #c8cdd4;
+  text-align: center;
+}
+
+.orc-page .pj-reset:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pj-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 236px;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.pj-grp {
+  padding: 8px 8px 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #80868e;
+}
+
+.orc-page .pj-opt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  color: #e3e5e8;
+}
+
+.orc-page .pj-opt:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.orc-page .pj-opt.on {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pj-opt-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pj-opt > svg {
+  color: #f2d38e;
+}
+
+.pj-opt-note {
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: #80868e;
+}
+
+.pj-effort {
+  flex: 0 0 auto;
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.pj-effort[hidden] {
+  display: none;
+}
+
+.pj-effort-l {
+  display: flex;
+  margin-bottom: 7px;
+  font-size: 11px;
+  color: #80868e;
+}
+
+.pj-effort-l b {
+  margin-left: auto;
+  font-weight: 600;
+  color: #eceef1;
+}
+
+.pj-seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.orc-page .pj-seg button {
+  flex: 1;
+  padding: 5px 0;
+  border-radius: 7px;
+  font-size: 11px;
+  text-align: center;
+  color: #9aa0a8;
+}
+
+.orc-page .pj-seg button:hover {
+  color: #e8eaed;
+}
+
+.orc-page .pj-seg button.on {
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 600;
+  color: #f1f2f4;
+}
+
+/* ── A project open: the gear beside Stop all, the rail's menu ─────────────── */
+
+.pj-gear {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #c8cdd4;
+  cursor: default;
+}
+
+.pj-gear:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.pj-gear.on {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.orc-menu-foot {
+  color: #c8cdd4 !important;
+}
+
+.orc-menu-foot svg {
+  flex: 0 0 16px;
+  color: #8a9098;
+}
+
+.orc-menu-foot.first {
+  margin-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 0 0 9px 9px;
+  padding-top: 9px;
+}
+
+.orc-item-status.paused {
+  color: #fdba74;
+}

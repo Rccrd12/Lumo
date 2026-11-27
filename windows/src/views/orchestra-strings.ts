@@ -1,14 +1,11 @@
-// The orchestra's words (views/orchestra.ts and its rows in the model picker,
-// views/chat-models.ts). Windows-only strings: their translations are in
-// src/i18n/extra.json.
+// The projects' words (views/orchestra.ts, views/projects.ts). Windows-only
+// strings: their translations are in src/i18n/extra.json.
 
 import { N_ } from "../i18n/i18n";
 
 export const ORCHESTRA_STRINGS = {
-  /** The picker's chip, as a provider's. */
-  orchestra: N_("Orchestra"),
   coordinator: N_("Coordinator"),
-  /** The picker's row for the threads' model. */
+  /** The form's row for the threads' model. */
   thread: N_("Thread"),
   /** The rail's title over the threads (in capitals). */
   threads: N_("Threads"),
@@ -59,10 +56,54 @@ export const ORCHESTRA_STRINGS = {
   writeTo: N_("Write to {name}…"),
   locksTitle: N_("Who holds which files"),
   locksBy: N_("updated by Lumo"),
-  newOrchestra: N_("New orchestra"),
-  orchestras: N_("Orchestras"),
-  untitled: N_("New orchestra"),
+  untitled: N_("New project"),
   notSent: N_("Not sent: {error}"),
   showInFolder: N_("Show in folder"),
   close: N_("Close"),
+  /** A member stopped by a usage limit, until it goes on. */
+  paused: N_("Paused"),
+  /** In the rail: when a member stopped by a usage limit goes on. */
+  resumesAt: N_("Goes on at {time}"),
+  /** A usage limit stopped a member: the project goes on by itself at {time}. */
+  limitResumes: N_("Usage limit reached: it goes on by itself at {time}."),
+  limitStops: N_("Usage limit reached: write to it once the limits reset."),
+
+  // ── The projects (views/projects.ts)
+  projects: N_("Projects"),
+  /** Under "Projects" on the empty chat's card. */
+  projectsSub: N_("Several models work together on one goal"),
+  /** The empty chat's card: how many projects (a plural). */
+  projectCount: N_("{count} projects"),
+  /** The empty chat's card: how many wait for the user (a plural). */
+  waitingCount: N_("{count} waiting for you"),
+  newProject: N_("New project"),
+  noProjects: N_("No projects yet. In a project a coordinator and its threads, each with its own model, work together on what you ask."),
+  /** A project not started yet. */
+  ready: N_("Ready"),
+  projectSettings: N_("Project settings"),
+  allProjects: N_("All projects"),
+  settings: N_("Settings"),
+  nameAndIcon: N_("Name and icon"),
+  namePlaceholder: N_("Project name"),
+  goalQuestion: N_("What do you want to work on?"),
+  goalPlaceholder: N_("The goal, what to keep to, how you want the work done…"),
+  folder: N_("Folder"),
+  folderNote: N_("Where the threads work. Without one, the project has its own."),
+  pickFolder: N_("Choose a folder"),
+  clearFolder: N_("No folder"),
+  models: N_("Models"),
+  effort: N_("Effort"),
+  resumeLabel: N_("Continue the threads when the usage limits reset"),
+  cancel: N_("Cancel"),
+  create: N_("Create project"),
+  save: N_("Save"),
+  deleteProject: N_("Delete project"),
+  /** Delete project, clicked once: a second click deletes it. */
+  deleteSure: N_("Click again to delete it"),
+  searchIcons: N_("Search icons"),
+  noIcons: N_("No icon found"),
+  noColor: N_("No color"),
+  resetIcon: N_("Reset icon and color"),
+  searchModels: N_("Search for a model"),
+  noModels: N_("No model found"),
 };
