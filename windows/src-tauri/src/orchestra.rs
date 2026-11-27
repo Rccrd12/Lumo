@@ -154,6 +154,10 @@ pub struct Activity {
     pub detail: String,
 }
 
+/// What the user attached to a message (its line's id, a file, what was
+/// shared from the screen), waiting for the turn that reads it.
+pub type Attached = (String, Option<ChatContext>, Option<ScreenContext>);
+
 /// A message waiting for its member to read it.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -191,7 +195,7 @@ pub struct Member {
     /// selection…), in their chat's folder, by the id of the message's line:
     /// it goes with the turn that reads them.
     #[serde(skip)]
-    pub attached: Vec<(String, Option<ChatContext>, Option<ScreenContext>)>,
+    pub attached: Vec<Attached>,
     /// Where its conversation was compacted and its summary (`Chat::restore`), as a chat keeps it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compact: Option<(usize, String)>,
@@ -200,7 +204,7 @@ pub struct Member {
     pub compact_due: bool,
     /// What its last turn's messages brought, to go again with Retry or Edit.
     #[serde(skip)]
-    pub last_attached: Vec<(String, Option<ChatContext>, Option<ScreenContext>)>,
+    pub last_attached: Vec<Attached>,
     pub mail: Vec<Mail>,
     /// It said its task is done (message_coordinator with done).
     pub done: bool,
@@ -545,10 +549,28 @@ impl Orchestra {
     /// The messages `member` has not read, as one text, each marked read as `how`.
     pub fn take_mail(&mut self, member: &str, how: &str) -> Option<String> {
         // What the user attached goes with the turn that reads it: such
-        // messages wait for the member's next turn, all of them together.
-        if how == "mid-turn" && self.member(member)?.attached.iter().any(|(line, _, _)| !line.is_empty()) {
+        // messages wait for the member's next turn (`take_mail_attached`
+        // gives them with it, to a member that reads files by their path).
+        if how == "mid-turn" && !self.member(member)?.attached.is_empty() {
             return None;
         }
+        self.read_mail(member, how)
+    }
+
+    /// `take_mail` at a step of the member's turn, with what the messages
+    /// brought: for Claude Code, which reads the files where they are.
+    pub fn take_mail_attached(&mut self, member: &str) -> Option<(String, Vec<Attached>)> {
+        let attached = std::mem::take(&mut self.member_mut(member)?.attached);
+        match self.read_mail(member, "mid-turn") {
+            Some(text) => Some((text, attached)),
+            None => {
+                self.member_mut(member)?.attached = attached;
+                None
+            }
+        }
+    }
+
+    fn read_mail(&mut self, member: &str, how: &str) -> Option<String> {
         let mail = std::mem::take(&mut self.member_mut(member)?.mail);
         if mail.is_empty() {
             return None;
@@ -830,7 +852,7 @@ async fn compact_member(app: &AppHandle, id: &str, member: &str, chat: &Chat, se
 
 /// What several messages brought, as one turn takes it: the first file as the
 /// chat's file, the others with the rest of what was shared.
-fn merge_attached(list: Vec<(String, Option<ChatContext>, Option<ScreenContext>)>) -> (Option<ChatContext>, Option<ScreenContext>) {
+fn merge_attached(list: Vec<Attached>) -> (Option<ChatContext>, Option<ScreenContext>) {
     let mut context: Option<ChatContext> = None;
     let mut all: Option<ScreenContext> = None;
     for (_, file, shared) in list {
@@ -1799,12 +1821,21 @@ pub fn is_member_chat(chat_id: &str) -> bool {
 }
 
 /// The messages that came for a member's chat while it worked, as it reads
-/// them after a tool, or nothing.
-pub fn step_mail(app: &AppHandle, chat_id: &str) -> String {
+/// them after a tool, or nothing. With `attached` (Claude Code, which reads
+/// files by their path), what they brought goes too, as `attached` says it;
+/// otherwise such messages wait for the next turn, which carries it.
+pub fn step_mail(app: &AppHandle, chat_id: &str, attached: Option<&dyn Fn(Option<ChatContext>, Option<ScreenContext>) -> String>) -> String {
     let Some((id, member)) = parse_chat(chat_id) else { return String::new() };
     let (id, member) = (id.to_string(), member.to_string());
     let mail = with(Some(app), &id, |o| {
-        let mail = o.take_mail(&member, "mid-turn");
+        let mail = match attached {
+            Some(say) => o.take_mail_attached(&member).map(|(text, with)| {
+                let (context, screen) = merge_attached(with);
+                let said = if context.is_some() || screen.is_some() { say(context, screen) } else { String::new() };
+                if said.trim().is_empty() { text } else { format!("{}\n\n{text}", said.trim_end()) }
+            }),
+            None => o.take_mail(&member, "mid-turn"),
+        };
         if let Some(m) = o.member_mut(&member) {
             m.activity = Some(Activity { kind: "thinking".into(), detail: String::new() });
         }
@@ -1821,7 +1852,7 @@ pub fn step_mail(app: &AppHandle, chat_id: &str) -> String {
 /// meanwhile go with the tool's answer, so it reads them at this step.
 /// Claude Code's own tools get them from its PostToolUse hook (`step_mail`).
 pub fn with_mail(app: &AppHandle, chat_id: &str, text: String) -> String {
-    match step_mail(app, chat_id) {
+    match step_mail(app, chat_id, None) {
         mail if mail.is_empty() => text,
         mail => format!("{text}\n\n{mail}"),
     }
@@ -2217,8 +2248,15 @@ mod tests {
         let first = o.member(&t).unwrap().mail[0].line.clone();
         let second = o.member(&t).unwrap().mail[1].line.clone();
         o.member_mut(&t).unwrap().attached.push((second.clone(), None, Some(ScreenContext::default())));
-        // With a file waiting, nothing is read mid-turn: it all goes with the next turn.
+        // With a file waiting, nothing is read mid-turn: it all goes with the next turn,
+        // but for a member that reads files by their path, which has them now.
         assert_eq!(o.take_mail(&t, "mid-turn"), None);
+        let before = o.member(&t).unwrap().mail.clone();
+        let (text, with) = o.take_mail_attached(&t).unwrap();
+        assert!(text.contains("prima") && text.contains("seconda") && with.len() == 1);
+        let m = o.member_mut(&t).unwrap();
+        m.attached = with;
+        m.mail = before;
         // Edit: the second goes back with what it brought, and its file with it.
         let (text, sent) = o.unqueue(&t, &second).unwrap();
         assert_eq!((text.as_str(), sent.len()), ("seconda", 1));

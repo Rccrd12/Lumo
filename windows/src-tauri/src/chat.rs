@@ -1184,7 +1184,7 @@ pub fn with_permissions(mut settings: Settings, permissions: Option<&ChatPermiss
 /// file: waiting in the inbox, or moved into the folder of the chat it goes
 /// to (files.rs adopt). The page names the path, so without this any file
 /// the user can read could be sent to a chat provider.
-fn checked_context(chat: &str, context: ChatContext) -> Result<ChatContext, String> {
+pub(crate) fn checked_context(chat: &str, context: ChatContext) -> Result<ChatContext, String> {
     match context {
         ChatContext::File { name, path } => {
             if !is_copy_for(chat, std::path::Path::new(&path)) {
@@ -1211,7 +1211,7 @@ pub(crate) fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
 
 /// Screenshots ride along only from the inbox, where screen.rs writes them,
 /// or the chat's folder they move to — the same rule as a dropped file.
-fn checked_screen(chat: &str, mut screen: ScreenContext) -> Result<ScreenContext, String> {
+pub(crate) fn checked_screen(chat: &str, mut screen: ScreenContext) -> Result<ScreenContext, String> {
     let paths = screen.shots.iter().chain(screen.files.iter());
     if paths.map(|s| std::path::Path::new(&s.path)).any(|p| !is_copy_for(chat, p)) {
         return Err(crate::i18n::t("Only a file dropped on the island can be sent with a question."));

@@ -257,7 +257,10 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     } else if let Some(request) = payload.get("lumo_orchestra_mail") {
         // After a tool of a project member's Claude Code (lumo-hook
         // --step-mail): the messages that came for it meanwhile, at once.
-        Some(Value::from(crate::orchestra::step_mail(&app, request.get("chat").and_then(Value::as_str).unwrap_or(""))))
+        // What the messages brought goes with them: Claude Code reads the files where they are.
+        let chat = request.get("chat").and_then(Value::as_str).unwrap_or("");
+        let say = |context, screen| crate::claude_code::attached_text(chat, context, screen);
+        Some(Value::from(crate::orchestra::step_mail(&app, chat, Some(&say))))
     } else if let Some(request) = payload.get("lumo_orchestra") {
         // A CLI member of an orchestra (orchestra.rs): its role's tools.
         Some(crate::orchestra::serve(&app, request))

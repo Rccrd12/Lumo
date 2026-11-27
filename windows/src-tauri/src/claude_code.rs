@@ -680,6 +680,18 @@ pub(crate) fn prompt(context: Option<&ChatContext>, carried: &[Value], files: &[
     out
 }
 
+/// What a project member's messages brought (a file, screenshots, a
+/// selection…), read at a step of its turn (orchestra.rs step_mail): said as
+/// its question would say it, checked as a question's is (chat.rs), the files
+/// by their path for Claude Code to read.
+pub fn attached_text(chat_id: &str, context: Option<ChatContext>, screen: Option<crate::screen::ScreenContext>) -> String {
+    let context = context.and_then(|c| crate::chat::checked_context(chat_id, c).ok());
+    let screen = screen.and_then(|s| crate::chat::checked_screen(chat_id, s).ok());
+    let mut out = screen.map(|s| crate::screen::context_text(&s, true)).unwrap_or_default();
+    out.push_str(&prompt(context.as_ref(), &[], &[], ""));
+    out
+}
+
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 /// The commands Claude Code's last turn said it has, for the island's menu.
