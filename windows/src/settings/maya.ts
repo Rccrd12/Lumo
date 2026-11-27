@@ -29,6 +29,7 @@ const STRINGS = {
   drafter: N_("Drafter"),
   drafterHint: N_("Thinking Machines' drafter guesses the next words: code and edits come up to 1.5 times faster. It takes about 1 GB of the card's memory."),
   drafterMissing: N_("Its weights aren't there: mtp.safetensors goes in the models folder."),
+  drafterSmallCard: N_("On a card under 24 GB the drafter slows Maya down: checking its guesses runs more experts on the processor."),
   stopAfter: N_("Stop after"),
   stopAfterHint: N_("Only if Lumo started it: a Maya you started yourself stays on."),
   minutes5: N_("5 minutes with no question"),
@@ -162,10 +163,12 @@ export function mayaBlock(redrawAll: () => void): HTMLElement {
     // Without its files a switch is off and can't be turned on: Lumo leaves it out of the config (maya.rs config).
     const visionMissing = install !== null && !install.vision;
     const drafterMissing = install !== null && !install.drafter;
+    // On a smaller card the drafter is left out too (maya.rs config): its checks run more experts on the processor.
+    const drafterOff = drafterMissing || !fullCard();
     const vision = toggle(settings.mayaVision && !visionMissing, (on) => { settings.mayaVision = on; changed(); });
-    const drafter = toggle(settings.mayaDrafter && !drafterMissing, (on) => { settings.mayaDrafter = on; changed(); });
+    const drafter = toggle(settings.mayaDrafter && !drafterOff, (on) => { settings.mayaDrafter = on; changed(); });
     (vision as HTMLButtonElement).disabled = visionMissing;
-    (drafter as HTMLButtonElement).disabled = drafterMissing;
+    (drafter as HTMLButtonElement).disabled = drafterOff;
     options.append(
       setting(t(STRINGS.autoStart), t(STRINGS.autoStartHint),
         toggle(settings.mayaAutoStart !== false, (on) => { settings.mayaAutoStart = on; void save().then(() => void refresh()); })),
@@ -175,7 +178,7 @@ export function mayaBlock(redrawAll: () => void): HTMLElement {
       setting(t(STRINGS.context), t(STRINGS.contextHint),
         select(contexts().map(([n, text]) => [String(n), text]), String(pickedContext()), (v) => { settings.mayaContext = Number(v); changed(); })),
       setting(t(STRINGS.vision), t(visionMissing ? STRINGS.visionMissing : STRINGS.visionHint), vision),
-      setting(t(STRINGS.drafter), t(drafterMissing ? STRINGS.drafterMissing : STRINGS.drafterHint), drafter),
+      setting(t(STRINGS.drafter), t(drafterMissing ? STRINGS.drafterMissing : fullCard() ? STRINGS.drafterHint : STRINGS.drafterSmallCard), drafter),
       setting(t(STRINGS.stopAfter), t(STRINGS.stopAfterHint),
         select([
           ["5", t(STRINGS.minutes5)],
