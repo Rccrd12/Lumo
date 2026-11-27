@@ -311,11 +311,10 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         };
         // The answer came (a whole one, at once), or the server said no: news too.
         hooks.signal();
-        // What a round that failed made is shown no more: the next one counts from here.
-        if answer.is_ok() {
-            made_tokens += round.0;
-            made_secs += round.1;
-        }
+        // Every round adds up, one that failed too (asked again, answered
+        // whole): the model made those tokens, and the count never goes back.
+        made_tokens += round.0;
+        made_secs += round.1;
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
         }
