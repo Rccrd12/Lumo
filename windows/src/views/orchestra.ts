@@ -41,7 +41,7 @@ import { State, type OrchestraPick } from "../core/state";
 import { language, t, tn } from "../i18n/i18n";
 import { activityLabel, bubble, compactMark, sentAgo, speedLine, speedText, typingDots } from "./chat-messages";
 import type { ChatMessage, TokenSpeed } from "../core/state";
-import { withReplyFile, type ReplyFile, type ReplyFileKind } from "../core/file-names";
+import { withReplyFile, type ReplyFileKind } from "../core/file-names";
 import { MAX_COMMANDS, type RanCommand } from "../core/terminal";
 import { splitFix } from "./chat-fix";
 import type { SentItem } from "../core/sent";
@@ -634,8 +634,8 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       if (raw.kind === "user" && raw.delivered === "queued") continue;
       // A file it shared goes under the answer that followed, as a chat's answer shows the files it made.
       if (raw.kind === "file" && under.skip.has(raw.id)) continue;
-      const more = under.files.get(raw.id);
-      const msg = more ? { ...raw, answer: { ...raw.answer, files: more } } : raw;
+      const shared = under.files.get(raw.id);
+      const msg = shared ? withoutShared(raw, shared) : raw;
       if (msg.kind === "file" && msg.file) {
         if (!files) {
           files = h("div", { class: "orc-files" });
@@ -647,7 +647,9 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       files = null;
       const isAnswer = msg.kind === "assistant";
       if (isAnswer) log.append(...(hooks.talksUnder?.(m.chat, answer) ?? []));
-      log.append(...message(m, msg));
+      const drawn = message(m, msg);
+      if (shared) underReply(drawn, shared);
+      log.append(...drawn);
       if (isAnswer) log.append(...(hooks.agentsUnder?.(m.chat, answer++) ?? []));
     }
     // Those of the answer being written, or of one that never came.
@@ -682,24 +684,38 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
    * its card until that answer comes. In the coordinator's chat they stay
    * cards: the threads' files, given to the user.
    */
-  function sharedUnder(m: OrchestraMember): { skip: Set<string>; files: Map<string, ReplyFile[]> } {
+  function sharedUnder(m: OrchestraMember): { skip: Set<string>; files: Map<string, OrchestraMessage[]> } {
     const skip = new Set<string>();
-    const files = new Map<string, ReplyFile[]>();
+    const files = new Map<string, OrchestraMessage[]>();
     if (m.id === COORDINATOR) return { skip, files };
     let pending: OrchestraMessage[] = [];
     for (const msg of m.messages) {
       if (msg.kind === "file" && msg.file && msg.from === m.id) pending.push(msg);
       else if (msg.kind === "assistant" && pending.length > 0) {
-        let list: ReplyFile[] = [...(msg.answer?.files ?? [])];
-        for (const f of pending) {
-          skip.add(f.id);
-          list = withReplyFile(list, f.file!.path, "created");
-        }
-        files.set(msg.id, list);
+        for (const f of pending) skip.add(f.id);
+        files.set(msg.id, pending);
         pending = [];
       }
     }
     return { skip, files };
+  }
+
+  /** The answer without the cards of the files it shared, which show as their own cards under it. */
+  function withoutShared(msg: OrchestraMessage, shared: readonly OrchestraMessage[]): OrchestraMessage {
+    const files = msg.answer?.files;
+    if (!files?.length) return msg;
+    const norm = (p: string) => p.trim().replace(/\//g, "\\").toLowerCase();
+    const paths = new Set(shared.map((f) => norm(f.file!.path)));
+    return { ...msg, answer: { ...msg.answer, files: files.filter((f) => !paths.has(norm(f.path))) } };
+  }
+
+  /** The cards of the files an answer shared, under its words and above its bar, as a chat's files are. */
+  function underReply(drawn: HTMLElement[], shared: readonly OrchestraMessage[]) {
+    const wrap = drawn[0]?.querySelector<HTMLElement>(".reply-wrap");
+    const reply = wrap?.querySelector<HTMLElement>(".reply");
+    const box = h("div", { class: "orc-files orc-files-under" }, ...shared.map(fileCard));
+    if (wrap && reply) wrap.insertBefore(box, reply.nextSibling);
+    else drawn.push(box);
   }
 
   function planCard(plan: readonly OrchestraStep[]): HTMLElement {

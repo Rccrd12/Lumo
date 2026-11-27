@@ -228,9 +228,10 @@ test("a file a thread shared goes under its answer, as in a chat", async () => {
   await flush();
   item("t1").fire("click");
   await flush();
-  // No card of its own in the thread: one under the answer, as a chat's answer shows the files it made.
-  assert.equal($(".orc-files"), null);
-  assert.equal($(".reply-file").querySelector(".attach-name").textContent, "parallel.md");
+  // Its card under the answer, in the answer's place for files, not where it was shared.
+  const under = $(".reply-wrap").querySelector(".orc-files-under");
+  assert.equal(under.querySelector(".orc-fname").textContent, "parallel.md");
+  assert.equal(view.el.find(".orc-files").length, 1);
   // In the coordinator's chat the threads' files stay cards.
   item("coordinator").fire("click");
   await flush();

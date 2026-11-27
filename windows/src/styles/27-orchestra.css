@@ -856,6 +856,11 @@
   margin: 2px 0;
 }
 
+/* Those a thread shared, under the answer that followed, as a chat's files are. */
+.orc-files-under {
+  margin: 10px 0 2px;
+}
+
 .orc-fcard {
   display: flex;
   flex-direction: column;
