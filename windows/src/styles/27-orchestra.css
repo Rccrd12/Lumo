@@ -709,14 +709,20 @@
   flex-direction: column;
 }
 
+/* Each option a row, a thin line between them; under the mouse the whole row
+   lights up, rounded, the lines beside it gone and the return arrow at its
+   right, as Claude's own cards do. */
 .orc-opt {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
-  padding: 7px 0;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 8px;
+  box-sizing: border-box;
   border: 0;
-  border-top: 1px solid #333338;
+  border-radius: 10px;
   background: transparent;
   font: inherit;
   text-align: left;
@@ -724,9 +730,35 @@
   cursor: default;
 }
 
-.orc-opt:hover:not(:disabled) .orc-opt-key {
-  background: #48484f;
-  color: #f1f2f4;
+.orc-opt::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  border-top: 1px solid #333338;
+}
+
+.orc-opt:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.orc-opt:hover:not(:disabled)::before,
+.orc-opt:hover:not(:disabled) + .orc-opt::before {
+  border-top-color: transparent;
+}
+
+.orc-opt-go {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  color: #c8cdd4;
+  visibility: hidden;
+}
+
+.orc-opt:hover:not(:disabled) .orc-opt-go {
+  visibility: visible;
 }
 
 .orc-opt:disabled {

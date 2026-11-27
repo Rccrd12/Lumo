@@ -232,6 +232,16 @@ await shot("1b-coordinatore-fine");
 // 2. A thread waiting for the user: its task, a lock, a message to another thread, a card.
 await member("t3");
 await shot("2-thread-aspetta-te");
+// The same card with the mouse on its second choice: the whole row lights up, with the return arrow.
+{
+  const opt = page.locator(".orc-opt").nth(1);
+  await opt.scrollIntoViewIfNeeded();
+  const box = await opt.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/2b-card-scelta-sotto-il-mouse.png`, clip: { x: 0, y: 0, width: W + 80, height: H + 40 } });
+  console.log(`${OUT}/2b-card-scelta-sotto-il-mouse.png`);
+}
 
 // 3. A thread at work: the answer streaming in, what it is doing.
 await member("t1");

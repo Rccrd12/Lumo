@@ -117,6 +117,9 @@ const WAITING_COLOR = "#f5c542";
 const DONE_COLOR = "#4ade80";
 
 /** The cards still waiting for the user that member `id` of `snap` put, wherever they show. */
+/** A return arrow: the option under the mouse is the one a click picks. */
+const RETURN_LINE = "M19 6v5a3 3 0 0 1-3 3H6M10 10l-4 4 4 4";
+
 /** What the coordinator answers when a thread's answer needs nothing from it (orchestra.rs QUIET): never shown. */
 const QUIET = "[quiet]";
 
@@ -599,7 +602,9 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
         h("span", { class: "orc-opt-key", text: String.fromCharCode(65 + i) }),
         h("span", { class: "orc-opt-text" },
           h("span", { class: "orc-opt-label" }, h("span", { text: o.label }), i === c.recommended ? h("span", { class: "orc-rec", text: t(S.recommended) }) : null),
-          o.consequence ? h("span", { class: "orc-opt-cons", text: o.consequence }) : null));
+          o.consequence ? h("span", { class: "orc-opt-cons", text: o.consequence }) : null),
+        // On hover, as Claude's own cards: the return arrow, what a click does.
+        answered ? null : h("span", { class: "orc-opt-go" }, svg(RETURN_LINE, 14, { stroke: 1.8 })));
       b.addEventListener("click", () => answer(msg, i));
       return b;
     });
