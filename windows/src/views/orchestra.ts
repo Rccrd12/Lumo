@@ -28,7 +28,7 @@ import { renderMarkdown } from "./markdown";
 import { Bridge, type ChatActivity } from "../core/bridge";
 import {
   COORDINATOR, Orchestra, fieldsOf, memberByChat, memberOf, membersOf, planProgress,
-  type OrchestraFile, type ProjectFields, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
+  type OrchestraAttached, type OrchestraFile, type ProjectFields, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
 } from "../core/orchestra-bridge";
 import { providerDef } from "../core/providers";
 import { ORCHESTRA_ACCENT, resolvePick } from "../core/orchestra-picks";
@@ -39,10 +39,13 @@ import { durationText } from "../core/chat-agents";
 import { Sound } from "../core/sound";
 import { State, type OrchestraPick } from "../core/state";
 import { language, t, tn } from "../i18n/i18n";
-import { activityLabel, sentAgo, typingDots } from "./chat-messages";
+import { activityLabel, bubble, sentAgo, typingDots } from "./chat-messages";
+import type { ChatMessage } from "../core/state";
+import type { SentItem } from "../core/sent";
 import { effortLabel } from "./chat-strings";
 import { readyProviders } from "./chat-models";
 import { ORCHESTRA_STRINGS as S } from "./orchestra-strings";
+import { dropChatFiles } from "../core/chat-files";
 
 /** Where the project last on screen is kept, to come back to it (a per-viewer convenience). */
 const LAST_KEY = "lumo.orchestra.last";
@@ -86,7 +89,9 @@ export interface OrchestraView {
   /** Called from the chat's own sync: shows or hides the orchestra in `body`. */
   sync(body: HTMLElement): void;
   /** Sends what was typed to the member on screen (the coordinator first), starting an orchestra if none is open. */
-  send(text: string): Promise<void>;
+  send(text: string, attached?: OrchestraAttached): Promise<void>;
+  /** The chat of the member on screen, whose folder what is attached goes to; none before the project has one. */
+  memberChat(): string | null;
   /** The chat's streams: true when `chat` is a member's, so the chat itself has nothing to do. */
   delta(chat: string, text: string): boolean;
   activity(chat: string, activity: ChatActivity): boolean;
@@ -131,11 +136,16 @@ function quietText(m: OrchestraMember, text: string): boolean {
 }
 
 function waitingCardsIn(snap: OrchestraSnapshot, id: string): number {
+  return waitingCardIds(snap, id).size;
+}
+
+/** The ids of the cards `id` put that still wait for the user. */
+function waitingCardIds(snap: OrchestraSnapshot, id: string): Set<string> {
   const ids = new Set<string>();
   for (const m of membersOf(snap)) {
     for (const msg of m.messages) if (msg.kind === "card" && msg.from === id && msg.card && msg.card.chose == null) ids.add(msg.id);
   }
-  return ids.size;
+  return ids;
 }
 
 /** How the list of projects shows `s`, as orchestra.rs Orchestra::summary says it. */
@@ -158,13 +168,27 @@ export function summaryOf(s: OrchestraSnapshot, asks: (m: OrchestraMember) => bo
 }
 
 /** `changed`: the orchestra on screen changed (the closed island's line may say something else). */
-export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
+/** What the chat lends the projects: a click on what went with a message opens it as in a chat. */
+export interface OrchestraHooks {
+  openSent?: (message: ChatMessage, item: SentItem) => void;
+}
+
+/** A member's message as a chat's: drawn by the same bubble, with its actions, its time and what went with it. */
+function asChatMessage(msg: OrchestraMessage, role: "user" | "assistant"): ChatMessage {
+  let id = 0;
+  for (const c of msg.id) id = (Math.imul(id, 31) + c.charCodeAt(0)) | 0;
+  return { id, role, content: msg.text, ...(msg.at ? { at: msg.at } : {}), ...(msg.sent?.length ? { sent: msg.sent } : {}) };
+}
+
+export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraHooks = {}): OrchestraView {
   let snap: OrchestraSnapshot | null = null;
   let selected = COORDINATOR;
   /** The orchestra finished its work with the island closed, and it was not opened since. */
   let finishedUnseen = false;
   /** The member whose question the closed island said: shown when the island opens. */
   let askedOnIsland = "";
+  /** The cards the user has seen on the open island: the closed island no longer says they ask. */
+  const seenCards = new Set<string>();
   let summaries: OrchestraSummary[] = [];
   /** The list was asked once: its count can be said. */
   let listed = false;
@@ -230,6 +254,25 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   /** The cards still waiting for the user that `id` put, wherever they show. */
   function waitingCards(id: string): number {
     return snap ? waitingCardsIn(snap, id) : 0;
+  }
+
+  /** Those of them the user has not seen yet on the open island. */
+  function unseenCards(id: string): number {
+    return snap ? [...waitingCardIds(snap, id)].filter((c) => !seenCards.has(`${snap?.id}/${c}`)).length : 0;
+  }
+
+  /** The cards of the member on screen, the island open on it: seen. True when one was not yet. */
+  function markCardsSeen(): boolean {
+    if (!snap || !on() || State.mode !== "expanded" || State.view !== "prompt") return false;
+    let fresh = false;
+    for (const c of waitingCardIds(snap, selected)) {
+      const key = `${snap.id}/${c}`;
+      if (!seenCards.has(key)) {
+        seenCards.add(key);
+        fresh = true;
+      }
+    }
+    return fresh;
   }
 
   function stepText(m: OrchestraMember): string {
@@ -521,16 +564,14 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       case "user": {
         // The answer to a card: the card shows it.
         if (msg.note === "answer") return [];
-        const bubble = h("div", { class: "bubble md" });
-        renderMarkdown(bubble, msg.text, { scope: scope(m, msg.id) });
-        const out: HTMLElement[] = [h("div", { class: "chat-row user" }, bubble)];
+        const out: HTMLElement[] = [bubble(asChatMessage(msg, "user"), { scope: scope(m, msg.id), onOpenSent: hooks.openSent, chat: m.chat })];
         if (msg.delivered === "mid-turn") out.push(h("div", { class: "orc-seen", text: `${t(S.readMidTurn)} · ${sentAgo(msg.at)}` }));
         return out;
       }
       case "assistant": {
-        const reply = h("div", { class: "reply" });
-        renderMarkdown(reply, msg.text, { scope: scope(m, msg.id) });
-        return [h("div", { class: "chat-row" }, h("div", { class: "reply-wrap" }, reply))];
+        // The last answer keeps its actions in sight, as a chat's does.
+        const last = m.messages.filter((x) => x.kind === "assistant").at(-1)?.id === msg.id && m.state !== "working";
+        return [bubble(asChatMessage(msg, "assistant"), { scope: scope(m, msg.id), shown: last, chat: m.chat })];
       }
       case "relay":
         // Lumo's own (an email), never a member's message.
@@ -724,6 +765,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     seen.add(id);
     menuOpen = false;
     draw(true);
+    if (markCardsSeen()) changed();
     // The field and the model button say who it writes to now.
     State.notify();
   }
@@ -910,6 +952,8 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
 
   async function removeProject(id: string) {
     await Orchestra.remove(id);
+    // Its members' files go from the list with it, as a deleted chat's (the files stay where they are).
+    if (snap?.id === id) for (const m of membersOf(snap)) dropChatFiles(m.chat);
     summaries = summaries.filter((x) => x.id !== id);
     if (snap?.id === id) {
       snap = null;
@@ -943,7 +987,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     }
   }
 
-  async function send(text: string) {
+  async function send(text: string, attached?: OrchestraAttached) {
     const s = snap;
     error = "";
     if (!s || page !== "project") return;
@@ -954,12 +998,13 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       m.messages = [...m.messages, {
         id: `local-${Date.now()}`, at: Date.now(), kind: "user", from: "user", text,
         ...(m.state === "working" ? { delivered: "queued" as const } : {}),
+        ...(attached?.sent.length ? { sent: attached.sent } : {}),
       }];
       drawLog(true);
       drawQueue();
     }
     try {
-      await Orchestra.send(s.id, to, text);
+      await Orchestra.send(s.id, to, text, attached);
     } catch (err) {
       error = t(S.notSent, { error: String(err).replace(/^Error:\s*/, "") });
       drawLog(true);
@@ -1052,6 +1097,8 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     snap = s;
     if (!memberOf(s, selected)) selected = COORDINATOR;
     draw(other);
+    // A card that comes while the island is open on its member is seen at once.
+    markCardsSeen();
     changed();
     // The model button and the field follow the member on screen.
     if (other) State.notify();
@@ -1155,12 +1202,17 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
         finishedUnseen = false;
         changed();
       }
+      // Seen: the closed island no longer says the member on screen asks, as a chat's answer once read.
+      if (markCardsSeen()) changed();
       if (!booted) {
         booted = true;
         void boot();
       }
     },
     send,
+    memberChat() {
+      return page === "project" ? current()?.chat ?? null : null;
+    },
     delta(chat, text) {
       const m = snap ? memberByChat(snap, chat) : undefined;
       if (!m) return false;
@@ -1211,7 +1263,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       const who = `«${snap.title || t(S.untitled)}»`;
       const members = membersOf(snap);
       // A card waiting for the user comes first: a click opens the island on it.
-      const asking = members.find((m) => waitingCards(m.id) > 0);
+      const asking = members.find((m) => unseenCards(m.id) > 0);
       if (asking) {
         // Said on the closed island: opening it shows that member's question.
         if (State.mode !== "expanded") askedOnIsland = asking.id;

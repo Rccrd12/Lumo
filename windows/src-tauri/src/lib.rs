@@ -1034,7 +1034,11 @@ fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
 /// there (files.rs `forget_files`); one read where it is stays.
 #[tauri::command]
 fn chat_forget_file(chats: State<Chats>, chat_id: String, name: String, path: String) {
-    chats.get(&chat_id).forget_file(&name, &path);
+    // A project member's chat is the project's (orchestra.rs), not one of the chats.
+    match orchestra::held_chat(&chat_id) {
+        Some(chat) => chat.forget_file(&name, &path),
+        None => chats.get(&chat_id).forget_file(&name, &path),
+    }
     files::forget_files(&chat_id, &[path]);
 }
 

@@ -34,7 +34,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::chat::{self, Chat};
+use crate::chat::{self, Chat, ChatContext};
+use crate::screen::{ScreenContext, ShotRef};
 use crate::island::WINDOW_LABEL;
 
 pub use crate::orchestra_tool_defs::{
@@ -136,6 +137,9 @@ pub struct Message {
     /// A "limit" note: when the member goes on (ms since the epoch); none when it waits for the user.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub until: Option<u64>,
+    /// The user's message: what went with it (core/sent.ts SentItem), shown on its bubble as in a chat.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sent: Vec<Value>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -178,6 +182,10 @@ pub struct Member {
     /// update) gives it back to the member with its next message.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub turn: String,
+    /// What the user attached to the messages waiting (a file, screenshots, a
+    /// selection…), in their chat's folder: it goes with the turn that reads them.
+    #[serde(skip)]
+    pub attached: Vec<(Option<ChatContext>, Option<ScreenContext>)>,
     pub mail: Vec<Mail>,
     /// It said its task is done (message_coordinator with done).
     pub done: bool,
@@ -467,13 +475,19 @@ impl Orchestra {
     /// `to`'s chat, waiting for it to read it. Whether `to` must be woken
     /// (no turn of its runs).
     pub fn deliver(&mut self, from: &str, to: &str, text: &str) -> Result<bool, String> {
+        self.deliver_with(from, to, text, Vec::new())
+    }
+
+    /// `deliver`, with what went with it shown on its bubble: then it may be
+    /// only that, nothing written, as a chat's question may.
+    pub fn deliver_with(&mut self, from: &str, to: &str, text: &str, sent: Vec<Value>) -> Result<bool, String> {
         let text = text.trim();
-        if text.is_empty() {
+        if text.is_empty() && sent.is_empty() {
             return Err("The message is empty.".into());
         }
         let running = self.member(to).ok_or_else(|| format!("There is no member {to}."))?.running;
         let kind = if from == "user" { "user" } else { "relay" };
-        let line = Message { kind: kind.into(), from: from.into(), text: text.into(), delivered: Some("queued".into()), ..Default::default() };
+        let line = Message { kind: kind.into(), from: from.into(), text: text.into(), delivered: Some("queued".into()), sent, ..Default::default() };
         let line = self.push(to, line).unwrap_or_default();
         // What the sender wrote shows in its own chat too, as sent.
         if from != "user" && from != "lumo" && from != to {
@@ -707,6 +721,45 @@ fn interrupted(m: &mut Member) {
     }
 }
 
+/// What several messages brought, as one turn takes it: the first file as the
+/// chat's file, the others with the rest of what was shared.
+fn merge_attached(list: Vec<(Option<ChatContext>, Option<ScreenContext>)>) -> (Option<ChatContext>, Option<ScreenContext>) {
+    let mut context: Option<ChatContext> = None;
+    let mut all: Option<ScreenContext> = None;
+    for (file, shared) in list {
+        let mut shared = shared;
+        match file {
+            Some(ChatContext::File { name, path }) if context.is_some() => shared.get_or_insert_with(ScreenContext::default).files.insert(0, ShotRef { name, path }),
+            Some(c) if context.is_none() => context = Some(c),
+            _ => {}
+        }
+        let Some(s) = shared else { continue };
+        match all.as_mut() {
+            None => all = Some(s),
+            Some(a) => {
+                a.windows.extend(s.windows);
+                a.shots.extend(s.shots);
+                a.files.extend(s.files);
+                match (&a.selection, s.selection) {
+                    (None, sel) => a.selection = sel,
+                    (Some(_), Some(sel)) => a.selections.push(sel),
+                    _ => {}
+                }
+                a.selections.extend(s.selections);
+                match (&a.folder, s.folder) {
+                    (None, f) => a.folder = f,
+                    (Some(_), Some(f)) => a.folders.push(f),
+                    _ => {}
+                }
+                a.folders.extend(s.folders);
+                a.shared_windows.extend(s.shared_windows);
+                a.tabs.extend(s.tabs);
+            }
+        }
+    }
+    (context, all.filter(|s| !s.is_empty()))
+}
+
 /// A member's (message, answer) pairs as the turns of its chat.
 fn turns_of(history: &[(String, String)]) -> Vec<(String, String)> {
     history.iter().flat_map(|(q, a)| [("user".to_string(), q.clone()), ("assistant".to_string(), a.clone())]).collect()
@@ -761,7 +814,7 @@ fn chat_of(member: &Member) -> Arc<Chat> {
         .clone()
 }
 
-fn held_chat(chat: &str) -> Option<Arc<Chat>> {
+pub(crate) fn held_chat(chat: &str) -> Option<Arc<Chat>> {
     CHATS.lock().unwrap_or_else(|e| e.into_inner()).as_ref()?.get(chat).cloned()
 }
 
@@ -918,6 +971,8 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                 let query = o.take_mail(&member, "woke");
                 let m = o.member_mut(&member)?;
                 m.wrote_coordinator = false;
+                // What the messages it reads now brought with them goes with this turn.
+                let attached = merge_attached(std::mem::take(&mut m.attached));
                 let Some(query) = query else {
                     m.running = false;
                     m.activity = None;
@@ -934,10 +989,10 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                 let m = o.member(&member)?.clone();
                 // A CLI is told its role with its first message: Lumo can't add to its instructions.
                 let role = if m.history.is_empty() { note_for(o, &member, true) } else { String::new() };
-                Some((query, role, m.pick.clone(), chat_of(&m), o.folder.clone(), asked_by_user))
+                Some((query, role, m.pick.clone(), chat_of(&m), o.folder.clone(), asked_by_user, attached))
             })
             .flatten();
-            let Some((query, role, pick, conversation, project_folder, asked_by_user)) = next else { return };
+            let Some((query, role, pick, conversation, project_folder, asked_by_user, (context, screen))) = next else { return };
             // Its environment's repositories, cloned before the first turn that needs them.
             ensure_repos(&app, &id).await;
             let repo_folders: Vec<PathBuf> = with(None, &id, |o| repo_dirs(o).into_iter().map(|(_, d)| d).collect()).unwrap_or_default();
@@ -965,7 +1020,7 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                         conversation.cli_dirs(Some(folder.to_string_lossy().to_string()));
                     }
                 }
-                Box::pin(chat::send(&app, &conversation, &settings, query, None, None)).await
+                Box::pin(chat::send(&app, &conversation, &settings, query, context, screen)).await
             };
             let mut tell_coordinator = false;
             let resume = with(Some(&app), &id, |o| {
@@ -1636,6 +1691,7 @@ pub fn with_mail(app: &AppHandle, chat_id: &str, text: String) -> String {
 fn stop_member(o: &mut Orchestra, member: &str) {
     let Some(m) = o.member_mut(member) else { return };
     m.mail.clear();
+    m.attached.clear();
     if m.state == "paused" {
         m.state = "stopped".into();
         m.resume_at = None;
@@ -1729,12 +1785,28 @@ pub fn orchestra_open(app: AppHandle, id: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub fn orchestra_send(app: AppHandle, id: String, to: String, text: String) -> Result<(), String> {
+#[allow(clippy::too_many_arguments)]
+pub fn orchestra_send(
+    app: AppHandle,
+    id: String,
+    to: String,
+    text: String,
+    context: Option<ChatContext>,
+    screen: Option<ScreenContext>,
+    sent: Option<Vec<Value>>,
+) -> Result<(), String> {
     let wakes = with(Some(&app), &id, |o| {
         if o.title.is_empty() && to == COORDINATOR {
             o.title = clip(text.trim().lines().next().unwrap_or(""), 60);
         }
-        o.deliver("user", &to, &text)
+        let wakes = o.deliver_with("user", &to, &text, sent.unwrap_or_default())?;
+        // What went with it waits with it, for the turn that reads it (in the member's chat's folder: chat.rs checks).
+        if context.is_some() || screen.as_ref().is_some_and(|s| !s.is_empty()) {
+            if let Some(m) = o.member_mut(&to) {
+                m.attached.push((context, screen));
+            }
+        }
+        Ok::<bool, String>(wakes)
     })
     .ok_or_else(not_found)??;
     if wakes {
@@ -1913,6 +1985,25 @@ mod tests {
         assert!(told.starts_with("You changed"), "{told}");
         assert_eq!(o.member("t2").unwrap().mail.len(), 1, "a CLI hears it as a message");
         assert_eq!(o.coordinator.mail.len(), 1);
+    }
+
+    #[test]
+    fn what_the_user_attached_goes_with_the_turn_that_reads_it() {
+        let mut o = Orchestra::new("o1", Pick::default(), Pick::default());
+        // Only a file, nothing written: it goes, as a chat's question may.
+        let sent = vec![json!({ "kind": "file", "label": "lease.pdf" })];
+        assert!(o.deliver_with("user", COORDINATOR, "", sent).is_ok());
+        assert_eq!(o.coordinator.messages.last().map(|m| m.sent.len()), Some(1));
+        assert!(o.deliver_with("user", COORDINATOR, "  ", Vec::new()).is_err());
+        // Two messages read in one turn: the first file is the chat's file, the second goes with the rest.
+        let file = |n: &str| Some(ChatContext::File { name: n.into(), path: format!("C:/chats/{n}") });
+        let shot = ScreenContext { shots: vec![ShotRef { name: "Screen 1".into(), path: "C:/shot.png".into() }], ..Default::default() };
+        let (context, screen) = merge_attached(vec![(file("a.pdf"), None), (file("b.pdf"), Some(shot))]);
+        assert!(matches!(context, Some(ChatContext::File { ref name, .. }) if name == "a.pdf"));
+        let screen = screen.expect("the rest");
+        assert_eq!(screen.files.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["b.pdf"]);
+        assert_eq!(screen.shots.len(), 1);
+        assert!(merge_attached(Vec::new()).1.is_none());
     }
 
     #[test]

@@ -5,7 +5,8 @@
 // core/bridge.ts, every call is a no-op in a plain browser.
 
 import { invoke } from "@tauri-apps/api/core";
-import { IS_TAURI, onEvent, type ChatActivity } from "./bridge";
+import { IS_TAURI, onEvent, type ChatActivity, type ChatContext, type ScreenContext } from "./bridge";
+import type { SentItem } from "./sent";
 import type { OrchestraPick } from "./state";
 
 export type { OrchestraPick } from "./state";
@@ -102,6 +103,15 @@ export interface OrchestraMessage {
   delivered?: "queued" | "mid-turn" | "woke";
   /** A relay this member sent: who to ("coordinator", "t2"…). */
   to?: string;
+  /** The user's message: what went with it, shown on its bubble as in a chat. */
+  sent?: SentItem[];
+}
+
+/** What the user attached to a message to a member, as a chat's question takes it (views/chat.ts). */
+export interface OrchestraAttached {
+  context: ChatContext | null;
+  screen: ScreenContext | null;
+  sent: SentItem[];
 }
 
 export interface OrchestraMember {
@@ -193,7 +203,8 @@ export const Orchestra = {
   setPick: (id: string, member: string, pick: OrchestraPick) => ask<OrchestraSnapshot>("orchestra_set_pick", { id, member, pick }),
   open: (id: string) => ask<OrchestraSnapshot>("orchestra_open", { id }),
   /** `to`: "coordinator" or a thread id. */
-  send: (id: string, to: string, text: string) => ask<void>("orchestra_send", { id, to, text }),
+  send: (id: string, to: string, text: string, attached?: OrchestraAttached) =>
+    ask<void>("orchestra_send", { id, to, text, ...(attached ? { context: attached.context, screen: attached.screen, sent: attached.sent } : {}) }),
   /** Answers card `message` of `member` (who asked) with option `choice`. */
   answer: (id: string, member: string, message: string, choice: number) => ask<void>("orchestra_answer", { id, member, message, choice }),
   /** Stops `member`, or everyone without it. */

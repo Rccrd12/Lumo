@@ -128,6 +128,7 @@ import { cliModelName } from "../core/model-names";
 import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, speedLine, speedText, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
 import { buildOrchestra } from "./orchestra";
+import type { OrchestraAttached } from "../core/orchestra-bridge";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
 // ── Usage ring ────────────────────────────────────────────────────────────────
@@ -747,7 +748,7 @@ export function buildPrompt(
 
   const body = h("div", { class: "chat-body" });
   // The projects (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
-  const orchestra = buildOrchestra(() => drawIslandActivity());
+  const orchestra = buildOrchestra(() => drawIslandActivity(), { openSent: (msg, item) => void openSent(msg, item) });
   const picker = buildPicker(() => {
     if (picker.isOpen) coverLog();
     body.classList.toggle("picking", picker.isOpen);
@@ -1704,12 +1705,17 @@ export function buildPrompt(
     return asked;
   }
 
+  /** Whose files the panel lists: the chat's, or in a project the member's on screen. */
+  function filesChat(): string {
+    return (orchestra.inProject() ? orchestra.memberChat() : null) ?? State.chatId;
+  }
+
   /** The chat's files, newest first; asked again each time, so a new one shows at once. */
   function drawChatFiles() {
     if (filesTab !== "chat" || !body.classList.contains("filing")) return;
-    const files = chatFiles(State.chatId);
+    const files = chatFiles(filesChat());
     // Which are still there: asked once each time the list or the chat changes.
-    const asking = `${State.chatId}\n${files.map((f) => f.path).join("\n")}`;
+    const asking = `${filesChat()}\n${files.map((f) => f.path).join("\n")}`;
     if (asking !== presenceAsked) {
       presenceAsked = asking;
       const paths = files.map((f) => f.path);
@@ -1758,8 +1764,8 @@ export function buildPrompt(
 
   /** Its ×: out of the chat's list and context; the AI is told with the next question. */
   function forgetChatFile(file: ChatFile) {
-    removeChatFile(State.chatId, file);
-    void Bridge.chatForgetFile(State.chatId, file.name, file.path);
+    removeChatFile(filesChat(), file);
+    void Bridge.chatForgetFile(filesChat(), file.name, file.path);
     presenceAsked = "";
     Sound.play("pop");
     drawChatFiles();
@@ -1787,7 +1793,7 @@ export function buildPrompt(
 
   // The files an answer names or made, as buttons and cards (views/file-links.ts).
   setFileLinkHost({
-    known: () => chatFiles(State.chatId).map((f) => f.path),
+    known: () => chatFiles(filesChat()).map((f) => f.path),
     showChatFiles: () => {
       openFiles();
       showFilesTab("chat");
@@ -3368,7 +3374,7 @@ export function buildPrompt(
     // made from nothing stays "created": there is no original to put it back over.
     const run = runs.get(chat);
     if (run && kind !== "read") run.touched = withReplyFile(run.touched ?? [], path, kind);
-    if (chat === State.chatId) drawChatFiles();
+    if (chat === filesChat()) drawChatFiles();
   });
 
   // The model at work on an answer (antigravity_cli.rs emit_model): the closed island names it.
@@ -4155,6 +4161,38 @@ export function buildPrompt(
     drawQueue();
   }
 
+  /**
+   * What waits in the attachments, for a project's member whose chat is
+   * `chat`: as a chat's question takes it (submit), into that chat's folder,
+   * the attachments then ready for the next message. Its icons go on the bubble.
+   */
+  async function projectAttachments(chat: string, text: string): Promise<OrchestraAttached> {
+    const waiting = screen;
+    const shared = await withAuto(waiting);
+    if ((shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], text);
+    const waitingFile = State.droppedFile && !State.droppedFile.sent ? [State.droppedFile] : [];
+    await toChatFolder(chat, [...waitingFile, ...State.moreFiles], shared.shots);
+    const file = State.droppedFile;
+    const more = State.moreFiles;
+    const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
+    const screenContext = screenPayload(shared, more);
+    const sent = [...(file && context ? [file] : []), ...more];
+    const shots = screenContext ? shared.shots.map((x) => x.path) : [];
+    for (const path of shots) keptShots.add(path);
+    noteSentCopies(chat, [...sent.map((f) => f.path), ...shots]);
+    const went = screenContext || sent.length ? sentItems(screenContext ? shared : emptyScreen(), sent, fileDetail) : [];
+    await addThumbs(went, screenContext ? shared.shots : []);
+    // The chat's files from now on, as a question's once it went.
+    for (const f of sent) addChatFile(chat, "attached", f.path, f.name, Date.now());
+    // What went leaves the field, ready for the next message.
+    if (file && context) file.sent = true;
+    if (more.length > 0) State.moreFiles = State.moreFiles.filter((f) => !more.includes(f));
+    if (screen === waiting) screen = nextScreen(screen);
+    else if (screenContext) screen = afterSent(screen, shared);
+    State.notify();
+    return { context, screen: screenContext, sent: went };
+  }
+
   /** Something waits to go with the next question: a file, a screenshot, a selection, a window, a folder. */
   function attachmentsWaiting(): boolean {
     const file = State.droppedFile;
@@ -4169,12 +4207,26 @@ export function buildPrompt(
     // A project on screen: what is typed goes to the member it shows.
     if (orchestra.inProject() && auto == null && queuedText == null && away == null) {
       const text = input.value.trim();
-      if (!text) return;
+      const to = orchestra.memberChat();
+      // Nothing written: what is attached goes by itself, as in a chat.
+      const attaching = to != null && attachmentsWaiting();
+      if ((!text && !attaching) || preparing) return;
       setInput("");
       closeSlash();
       if (picker.isOpen) picker.close();
+      closeHistory();
+      closeScreen();
       Sound.play("send");
-      await orchestra.send(text);
+      let attached: OrchestraAttached | undefined;
+      if (attaching && to != null) {
+        preparing = true;
+        try {
+          attached = await projectAttachments(to, text);
+        } finally {
+          preparing = false;
+        }
+      }
+      await orchestra.send(text, attached);
       return;
     }
     const query = auto ?? queuedText ?? input.value.trim();

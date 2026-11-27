@@ -229,6 +229,29 @@ test("what is typed goes to the member on screen", async () => {
   assert.deepEqual(sent("orchestra_stop"), [{ id: "o1", member: "t3" }]);
 });
 
+test("what is attached goes with the message, into the member's chat's files, and leaves the field", async () => {
+  await flush();
+  // Elm St, its work done: the message shows in its chat at once.
+  item("t2").fire("click");
+  view.sync();
+  State.moreFiles = [{ name: "lease.pdf", path: "C:\\inbox\\lease.pdf" }];
+  await typeAndSend("Read this one");
+  const [call] = sent("orchestra_send");
+  assert.equal(call.to, "t2");
+  assert.equal(call.text, "Read this one");
+  assert.deepEqual(call.screen.files, [{ name: "lease.pdf", path: "C:\\inbox\\lease.pdf" }]);
+  assert.deepEqual(call.sent.map((i) => [i.kind, i.label]), [["file", "lease.pdf"]]);
+  assert.deepEqual(sent("chat_files_adopt").at(-1)?.items?.map((i) => i.chat), ["orc-o1-t2"], "moved into the member's chat's folder");
+  assert.deepEqual(State.moreFiles, [], "the next message starts with nothing attached");
+  // Its bubble says what went, as a chat's question does.
+  assert.ok(view.el.find(".sent-badges").length > 0);
+  // Only a file, nothing written: it goes too.
+  State.moreFiles = [{ name: "deposit.pdf", path: "C:\\inbox\\deposit.pdf" }];
+  await typeAndSend("");
+  assert.equal(sent("orchestra_send").at(-1).text, "");
+  assert.deepEqual(sent("orchestra_send").at(-1).sent.map((i) => i.label), ["deposit.pdf"]);
+});
+
 test("with no project, the list shows; New project's form makes one with what it says", async () => {
   await flush();
   calls.length = 0;
@@ -541,6 +564,16 @@ test("the closed island says how many work and the plan, who waits for you, and 
   // A card waits (Oak St's): that first.
   assert.equal(State.chatActivity?.label, "Oak St asks you");
   assert.equal(State.chatActivity?.who, "«Leases»");
+  // Seen on the open island, its card still waiting: no longer said, as a chat's answer once read.
+  State.mode = "expanded";
+  item("t3").fire("click");
+  await flush();
+  assert.equal(State.chatActivity?.label, "2 at work · Plan 1/2");
+  State.mode = "compact";
+  view.sync();
+  await flush();
+  assert.equal(State.chatActivity?.label, "2 at work · Plan 1/2", "closed again, it does not come back");
+  item("coordinator").fire("click");
   // Answered: how many work, and how far the plan is.
   const busy = structuredClone(SNAP);
   for (const m of [busy.coordinator, ...busy.threads]) for (const x of m.messages) if (x.card) x.card.chose = 0;
