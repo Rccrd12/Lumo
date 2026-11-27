@@ -92,7 +92,8 @@ export interface OrchestraView {
   /** Called from the chat's own sync: shows or hides the orchestra in `body`. */
   sync(body: HTMLElement): void;
   /** Sends what was typed to the member on screen (the coordinator first), starting an orchestra if none is open. */
-  send(text: string, attached?: OrchestraAttached): Promise<void>;
+  /** `asked`: what the member reads, when not what the chat shows (a "/tool" command). */
+  send(text: string, attached?: OrchestraAttached, asked?: string): Promise<void>;
   /** The chat of the member on screen, whose folder what is attached goes to; none before the project has one. */
   memberChat(): string | null;
   /** The chat's streams: true when `chat` is a member's, so the chat itself has nothing to do. */
@@ -1006,7 +1007,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     }
   }
 
-  async function send(text: string, attached?: OrchestraAttached) {
+  async function send(text: string, attached?: OrchestraAttached, asked?: string) {
     const s = snap;
     error = "";
     if (!s || page !== "project") return;
@@ -1023,7 +1024,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       drawQueue();
     }
     try {
-      await Orchestra.send(s.id, to, text, attached);
+      await Orchestra.send(s.id, to, text, attached, asked);
     } catch (err) {
       error = t(S.notSent, { error: String(err).replace(/^Error:\s*/, "") });
       drawLog(true);

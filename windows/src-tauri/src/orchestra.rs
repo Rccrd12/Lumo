@@ -480,12 +480,14 @@ impl Orchestra {
     /// `to`'s chat, waiting for it to read it. Whether `to` must be woken
     /// (no turn of its runs).
     pub fn deliver(&mut self, from: &str, to: &str, text: &str) -> Result<bool, String> {
-        self.deliver_with(from, to, text, Vec::new())
+        self.deliver_with(from, to, text, Vec::new(), None)
     }
 
     /// `deliver`, with what went with it shown on its bubble: then it may be
     /// only that, nothing written, as a chat's question may.
-    pub fn deliver_with(&mut self, from: &str, to: &str, text: &str, sent: Vec<Value>) -> Result<bool, String> {
+    /// `asked`: what the member reads when it is not what the chat shows (a
+    /// "/tool" command, asked of the member in words, as a chat's is).
+    pub fn deliver_with(&mut self, from: &str, to: &str, text: &str, sent: Vec<Value>, asked: Option<&str>) -> Result<bool, String> {
         let text = text.trim();
         if text.is_empty() && sent.is_empty() {
             return Err("The message is empty.".into());
@@ -499,7 +501,7 @@ impl Orchestra {
             self.push(from, Message { kind: "relay".into(), from: from.into(), to: Some(to.into()), text: text.into(), ..Default::default() });
         }
         let member = self.member_mut(to).expect("checked above");
-        member.mail.push(Mail { from: from.into(), text: text.into(), line });
+        member.mail.push(Mail { from: from.into(), text: asked.filter(|a| !a.trim().is_empty()).unwrap_or(text).into(), line });
         // A new message: a thread that was done or stopped is not any more.
         member.done = false;
         if member.state == "stopped" || member.state == "done" || member.state == "failed" {
@@ -1811,12 +1813,13 @@ pub fn orchestra_send(
     context: Option<ChatContext>,
     screen: Option<ScreenContext>,
     sent: Option<Vec<Value>>,
+    asked: Option<String>,
 ) -> Result<(), String> {
     let wakes = with(Some(&app), &id, |o| {
         if o.title.is_empty() && to == COORDINATOR {
             o.title = clip(text.trim().lines().next().unwrap_or(""), 60);
         }
-        let wakes = o.deliver_with("user", &to, &text, sent.unwrap_or_default())?;
+        let wakes = o.deliver_with("user", &to, &text, sent.unwrap_or_default(), asked.as_deref())?;
         // What went with it waits with it, for the turn that reads it (in the member's chat's folder: chat.rs checks).
         if context.is_some() || screen.as_ref().is_some_and(|s| !s.is_empty()) {
             if let Some(m) = o.member_mut(&to) {
@@ -2030,9 +2033,13 @@ mod tests {
         let mut o = Orchestra::new("o1", Pick::default(), Pick::default());
         // Only a file, nothing written: it goes, as a chat's question may.
         let sent = vec![json!({ "kind": "file", "label": "lease.pdf" })];
-        assert!(o.deliver_with("user", COORDINATOR, "", sent).is_ok());
+        assert!(o.deliver_with("user", COORDINATOR, "", sent, None).is_ok());
         assert_eq!(o.coordinator.messages.last().map(|m| m.sent.len()), Some(1));
-        assert!(o.deliver_with("user", COORDINATOR, "  ", Vec::new()).is_err());
+        assert!(o.deliver_with("user", COORDINATOR, "  ", Vec::new(), None).is_err());
+        // A "/tool" command: the chat shows what was typed, the member reads what it is asked.
+        o.deliver_with("user", COORDINATOR, "/pdfcraft merge", Vec::new(), Some("Use my Lumo tool \"PDF craft\" for this.\n\nmerge")).unwrap();
+        assert_eq!(o.coordinator.messages.last().map(|m| m.text.as_str()), Some("/pdfcraft merge"));
+        assert!(o.coordinator.mail.last().is_some_and(|m| m.text.starts_with("Use my Lumo tool")));
         // Two messages read in one turn: the first file is the chat's file, the second goes with the rest.
         let file = |n: &str| Some(ChatContext::File { name: n.into(), path: format!("C:/chats/{n}") });
         let shot = ScreenContext { shots: vec![ShotRef { name: "Screen 1".into(), path: "C:/shot.png".into() }], ..Default::default() };

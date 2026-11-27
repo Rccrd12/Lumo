@@ -223,6 +223,12 @@ test("what is typed goes to the member on screen", async () => {
   assert.ok(!texts(".bubble").includes("1"), "the line answering a card is the card's");
   await typeAndSend("Yes, flag it");
   assert.deepEqual(sent("orchestra_send").at(-1), { id: "o1", to: "t3", text: "Yes, flag it" });
+  // Lumo's own commands run as in a chat, never sent: "/model" opens the member's model menu.
+  const before = sent("orchestra_send").length;
+  await typeAndSend("/model");
+  assert.equal(sent("orchestra_send").length, before);
+  assert.ok($(".orc-model-pop"), "the model menu of the member on screen");
+  $(".chat-input").fire("keydown", { key: "Escape" });
 
   $(".orc-stop").fire("click");
   await flush();

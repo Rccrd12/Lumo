@@ -216,8 +216,12 @@ export const Orchestra = {
   open: (id: string) => ask<OrchestraSnapshot>("orchestra_open", { id }),
   /** `to`: "coordinator" or a thread id. */
   keepAnswer: (id: string, member: string, message: string, answer: OrchestraAnswer) => ask<void>("orchestra_keep_answer", { id, member, message, answer }),
-  send: (id: string, to: string, text: string, attached?: OrchestraAttached) =>
-    ask<void>("orchestra_send", { id, to, text, ...(attached ? { context: attached.context, screen: attached.screen, sent: attached.sent } : {}) }),
+  send: (id: string, to: string, text: string, attached?: OrchestraAttached, asked?: string) =>
+    ask<void>("orchestra_send", {
+      id, to, text,
+      ...(attached ? { context: attached.context, screen: attached.screen, sent: attached.sent } : {}),
+      ...(asked ? { asked } : {}),
+    }),
   /** Answers card `message` of `member` (who asked) with option `choice`. */
   answer: (id: string, member: string, message: string, choice: number) => ask<void>("orchestra_answer", { id, member, message, choice }),
   /** Stops `member`, or everyone without it. */

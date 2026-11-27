@@ -4213,7 +4213,27 @@ export function buildPrompt(
   async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }, queuedQuote?: AskQuote) {
     // A project on screen: what is typed goes to the member it shows.
     if (orchestra.inProject() && auto == null && queuedText == null && away == null) {
-      const text = input.value.trim();
+      const typed = input.value.trim();
+      // "/timer 10m pasta" and Lumo's own commands ("/new", "/model"…) as in a chat; "/compact" goes to the member's CLI.
+      const timer = /^\/timer\s+(\S+)\s*(.*)$/i.exec(typed);
+      const timerMs = timer ? parseDuration(timer[1]) : null;
+      if (timer && timerMs != null) {
+        setInput("");
+        compactTimer(timerMs, timer[2]);
+        Sound.play("blip");
+        return;
+      }
+      const own = lumoCommand(typed, State.settings.chatProvider);
+      if (own && own !== "compact") {
+        closeSlash();
+        setInput("");
+        runLumo(own);
+        return;
+      }
+      // "/pdfcraft merge them": the member is asked to use that tool, as a chat's AI is.
+      const called = toolCommand(typed, State.settings.chatProvider, State.tools);
+      const text = typed;
+      const asked = called ? toolAsk(called.tool, called.rest) : undefined;
       const to = orchestra.memberChat();
       // Nothing written: what is attached goes by itself, as in a chat.
       const attaching = to != null && attachmentsWaiting();
@@ -4233,7 +4253,7 @@ export function buildPrompt(
           preparing = false;
         }
       }
-      await orchestra.send(text, attached);
+      await orchestra.send(text, attached, asked);
       return;
     }
     const query = auto ?? queuedText ?? input.value.trim();
@@ -5067,6 +5087,8 @@ export function buildPrompt(
   function runLumo(action: SlashAction) {
     switch (action) {
       case "new":
+        // As the + button: out of a project too.
+        if (orchestra.on()) orchestra.leave();
         newChat();
         break;
       case "history":
@@ -5074,7 +5096,9 @@ export function buildPrompt(
         break;
       case "model":
       case "effort":
-        if (!picker.isOpen) picker.open();
+        // In a project: the menu of the member on screen's model (views/orchestra.ts).
+        if (orchestra.inProject()) orchestra.toggleModelMenu(modelBtn, body);
+        else if (!picker.isOpen) picker.open();
         break;
       case "attach":
         void attach();
