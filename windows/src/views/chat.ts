@@ -748,7 +748,17 @@ export function buildPrompt(
 
   const body = h("div", { class: "chat-body" });
   // The projects (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
-  const orchestra = buildOrchestra(() => drawIslandActivity(), { openSent: (msg, item) => void openSent(msg, item), openAgents: () => openAgents() });
+  const orchestra = buildOrchestra(() => drawIslandActivity(), {
+    openSent: (msg, item) => void openSent(msg, item),
+    openAgents: () => openAgents(),
+    // The agents a member's answers started, and its messages to them, as under a chat's.
+    agentsReset: () => {
+      shownCards.clear();
+      shownTalks.clear();
+    },
+    talksUnder: (chat, answer, after) => talkBoxesFor(chat, answer, after),
+    agentsUnder: (chat, answer, after) => agentCardsFor(chat, answer, after),
+  });
   const picker = buildPicker(() => {
     if (picker.isOpen) coverLog();
     body.classList.toggle("picking", picker.isOpen);
@@ -3435,6 +3445,9 @@ export function buildPrompt(
 
   /** Which answer of `chatId` a new batch of agents goes under: the one being written, else the last. */
   function anchorFor(chatId: string): number {
+    // A project member's: its answers in the project (views/orchestra.ts).
+    const member = orchestra.anchorOf(chatId);
+    if (member != null) return member;
     const run = runs.get(chatId);
     const history = run?.history ?? (chatId === State.chatId ? State.chatHistory : null);
     const answers = history
@@ -3601,10 +3614,15 @@ export function buildPrompt(
 
   /** Draws the chat on screen's Agents cards again, where they are; a new card draws the log again. */
   function drawAgents(chatId: string, onlyOpen = false, redraw = true) {
-    if (chatId !== State.chatId) return;
+    if (chatId !== filesChat()) return;
     const c = agentStore.get(chatId);
     if (!c) return;
     const unseen = c.batches.some((b) => !shownCards.has(agentsCardKey(chatId, b))) || c.talks.some((x) => !shownTalks.has(x.call));
+    // A project member's: its conversation draws them again (views/orchestra.ts).
+    if (redraw && unseen && chatId !== State.chatId) {
+      orchestra.redraw();
+      return;
+    }
     if (redraw && unseen) {
       // The log is drawn again on its next sync; it syncs now only when it shows.
       renderedCount = -1;
@@ -3778,7 +3796,7 @@ export function buildPrompt(
     // The island hidden: nothing to draw, nothing runs (0 % CPU).
     if (State.mode === "hidden") return 0;
     const shown = State.mode === "expanded" && State.view === "prompt";
-    const c = agentStore.get(State.chatId);
+    const c = agentStore.get(filesChat());
     if (shown && (answering() || openCount(c) > 0 || waitingTalk(c))) return 1000;
     for (const c of agentStore.values()) if (openCount(c) > 0) return 5000;
     return 0;

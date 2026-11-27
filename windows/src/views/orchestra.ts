@@ -107,6 +107,10 @@ export interface OrchestraView {
   contextSeen(chat: string, used: number, total: number, estimate?: boolean): void;
   /** "/compact" for the member on screen: true when it was its to do (not a CLI's, which compacts itself). */
   compactMember(): boolean;
+  /** A member's chat: the answer its agents belong to (the one being written while it works); null for any other chat. */
+  anchorOf(chat: string): number | null;
+  /** Its conversation drawn again (an agent came). */
+  redraw(): void;
   /** The field's placeholder: who it writes to. */
   placeholder(): string;
   /** The model button's words and dot. */
@@ -185,6 +189,10 @@ export interface OrchestraHooks {
   openSent?: (message: ChatMessage, item: SentItem) => void;
   /** Settings → Agents, for a card that puts a CLI right (views/chat-fix.ts). */
   openAgents?: () => void;
+  /** The agents a member's answer `answer` started (cards) and its messages to them (boxes), as a chat draws them; past the last with `after`. */
+  agentsReset?: () => void;
+  talksUnder?: (chat: string, answer: number, after?: boolean) => HTMLElement[];
+  agentsUnder?: (chat: string, answer: number, after?: boolean) => HTMLElement[];
 }
 
 /** A member's message as a chat's: drawn by the same bubble, with its actions, its time and what went with it. */
@@ -530,6 +538,9 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     if (planOpen && plan.length > 0) log.append(planCard(plan));
     if (coord && snap.locks.length > 0) log.append(locksCard(snap));
     let files: HTMLElement | null = null;
+    // The agents its answers started, as a chat draws them: its messages to them before each answer, their card after it.
+    hooks.agentsReset?.();
+    let answer = 0;
     for (const msg of m.messages) {
       // The user's message waiting for the member's next step is over the field.
       if (msg.kind === "user" && msg.delivered === "queued") continue;
@@ -542,8 +553,13 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
         continue;
       }
       files = null;
+      const isAnswer = msg.kind === "assistant";
+      if (isAnswer) log.append(...(hooks.talksUnder?.(m.chat, answer) ?? []));
       log.append(...message(m, msg));
+      if (isAnswer) log.append(...(hooks.agentsUnder?.(m.chat, answer++) ?? []));
     }
+    // Those of the answer being written, or of one that never came.
+    log.append(...(hooks.talksUnder?.(m.chat, answer, true) ?? []), ...(hooks.agentsUnder?.(m.chat, answer, true) ?? []));
     if (m.state === "working") {
       const text = live.get(m.chat);
       if (text && !quietText(m, text)) {
@@ -1283,6 +1299,15 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       if (!providerDef(pickOf(m).provider).urlField) return;
       compactAsked.add(chat);
       void Orchestra.compact(snap.id, m.id).catch(() => compactAsked.delete(chat));
+    },
+    anchorOf(chat) {
+      const m = snap ? memberByChat(snap, chat) : undefined;
+      if (!m) return null;
+      const answers = m.messages.filter((x) => x.kind === "assistant").length;
+      return m.state === "working" ? answers : Math.max(0, answers - 1);
+    },
+    redraw() {
+      if (on() && page === "project") drawLog();
     },
     compactMember() {
       const m = current();

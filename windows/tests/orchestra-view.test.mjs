@@ -411,6 +411,20 @@ test("a member's answer streams in under its chat id; the next update has it who
   assert.equal($(".orc-log").find(".reply").length, before);
 });
 
+test("the agents a member starts show under its answer, as in a chat", async () => {
+  await flush();
+  item("t1").fire("click");
+  view.sync();
+  const now = Date.now();
+  emit("chat-agent", { chat: "orc-o1-t1", agent: { id: "a1", source: "claude-code", title: "Read page 3", state: "working", steps: 0, startedAt: now, lastSignalAt: now, background: true, canStop: true, canAsk: true } });
+  await flush();
+  assert.ok($(".orc-log").querySelector(".agents"), "its Agents card, in the member's chat");
+  // Another member's chat on screen: not there.
+  item("t2").fire("click");
+  view.sync();
+  assert.equal($(".orc-log").querySelector(".agents"), null);
+});
+
 test("a Markdown file opens in the reader beside the chat", async () => {
   answers.orchestra_read_file = { name: "report.md", path: "Leases/report.md", text: "# Report\n\nElm St wins." };
   await flush();
