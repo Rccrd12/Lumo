@@ -227,6 +227,11 @@ await member("t1");
 await emit("chat-delta", { chat: "orch-o1-m-t1", text: "Ho trovato le penali a pagina 6: **6 mesi di preavviso**, nessuna penale dopo il primo anno. Ora aggiungo al riepilogo la riga di via Verdi 7" });
 await emit("chat-activity", { chat: "orch-o1-m-t1", activity: { kind: "edit", detail: "riepilogo.csv" } });
 await shot("3-thread-al-lavoro");
+// A message from the coordinator, unfolded by a click on who it is from.
+await page.evaluate(() => document.querySelector(".orc-from").click());
+await page.waitForTimeout(250);
+await shot("3a-messaggio-aperto");
+await page.evaluate(() => document.querySelector(".orc-from").click());
 // Its context, from the ring by the model button.
 await page.click(".chat-usage");
 await shot("3b-contesto-del-thread");

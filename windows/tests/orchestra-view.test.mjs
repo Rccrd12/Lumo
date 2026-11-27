@@ -126,9 +126,16 @@ test("messages between members say who from and who to, grey; Lumo's notes say w
   // The queued message waits above the field, not in the conversation.
   assert.equal($(".orc-queued").querySelector(".queue-text").textContent, "Look at the fees too");
   assert.ok(!texts(".bubble").some((t) => t.includes("fees")));
-  // A click on "From Elm St" opens that thread.
+  // Folded: a click on "From Elm St" shows what it said, another hides it, and it stays as left.
+  const relay = $(".orc-relay");
+  assert.ok(!relay.classList.contains("open"));
   view.el.find(".orc-from")[0].fire("click");
-  assert.equal($(".orc-head-title").textContent, "Elm St");
+  assert.ok(relay.classList.contains("open"));
+  assert.equal($(".orc-head-title").textContent, "Coordinator", "the conversation stays where it is");
+  view.sync();
+  assert.ok($(".orc-relay").classList.contains("open"));
+  view.el.find(".orc-from")[0].fire("click");
+  assert.ok(!$(".orc-relay").classList.contains("open"));
 });
 
 test("a card's option answers the member that asked, at once", async () => {

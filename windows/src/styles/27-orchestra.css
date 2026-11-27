@@ -571,6 +571,21 @@
 
 .orc-from svg {
   color: #6b717c;
+  transition: transform 0.15s ease;
+}
+
+/* Folded until a click on who it is from: then what was said, and when. */
+.orc-relay:not(.open) .orc-relay-body,
+.orc-relay:not(.open) .orc-when {
+  display: none;
+}
+
+.orc-relay:not(.open) .orc-from {
+  margin-bottom: 0;
+}
+
+.orc-relay.open .orc-from svg {
+  transform: rotate(90deg);
 }
 
 .orc-relay-body .md-p,

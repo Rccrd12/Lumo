@@ -164,6 +164,8 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   /** Each member's answer as far as it is written, and what it is doing, by its chat id. */
   const live = new Map<string, string>();
   const acts = new Map<string, ChatActivity>();
+  /** The messages between members opened by a click: they show only who from (or to) until then. */
+  const openRelays = new Set<string>();
   /** The threads already looked at (or there when the orchestra opened): the others say "new". */
   const seen = new Set<string>();
   /** The streamed answer on screen, and the line of what the member does. */
@@ -524,7 +526,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     }
   }
 
-  /** A message between members: who from (or to), grey, as Claude Code labels its agents' messages. */
+  /** A message between members: who from (or to), grey and folded, as Claude Code shows its agents' messages. */
   function relay(m: OrchestraMember, msg: OrchestraMessage): HTMLElement {
     const mine = msg.from === m.id;
     const other = mine ? msg.to ?? "" : msg.from;
@@ -535,16 +537,24 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       label = t(S.from, { name: titleOf(other) });
       if (snap && memberOf(snap, other)?.state === "done") label += ` · ${t(S.finished)}`;
     }
-    const from = h("button", { class: "orc-from" }, h("span", { text: label }), svg(ICONS.chevronRight, 8, { stroke: 2.4 }));
-    from.addEventListener("click", () => {
-      if (snap && memberOf(snap, other)) select(other);
-    });
+    const key = `${m.id}:${msg.id}`;
+    const open = openRelays.has(key);
+    const from = h("button", { class: "orc-from", "aria-expanded": String(open) }, h("span", { text: label }), svg(ICONS.chevronRight, 8, { stroke: 2.4 }));
     const body = h("div", { class: "orc-relay-body" });
     renderMarkdown(body, msg.text, { scope: scope(m, msg.id) });
     const foot = msg.delivered === "queued" ? t(S.queuedLine)
       : msg.delivered === "mid-turn" ? `${t(S.readMidTurn)} · ${sentAgo(msg.at)}`
       : !mine && Number.isFinite(msg.at) && msg.at > 0 ? sentAgo(msg.at) : "";
-    return h("div", { class: mine ? "orc-relay out" : "orc-relay" }, from, body, foot ? h("div", { class: "orc-when", text: foot }) : null);
+    const el = h("div", { class: `orc-relay${mine ? " out" : ""}${open ? " open" : ""}` }, from, body, foot ? h("div", { class: "orc-when", text: foot }) : null);
+    // Folded like an agent's message in Claude Code: a click shows what was said, another hides it.
+    from.addEventListener("click", () => {
+      const now = !openRelays.has(key);
+      if (now) openRelays.add(key);
+      else openRelays.delete(key);
+      el.classList.toggle("open", now);
+      from.setAttribute("aria-expanded", String(now));
+    });
+    return el;
   }
 
   /** A question a member puts to the user: its options answer it (orchestra_answer). */
