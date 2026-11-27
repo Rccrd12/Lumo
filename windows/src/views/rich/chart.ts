@@ -25,7 +25,7 @@
 // Forgiving where models slip: a decimal comma (1,59), thousands written
 // with commas, dots or spaces, a unit written after every value (12 %, 6 °C),
 // a list marker before a row, `=` for `:`, a missing value (-, n/a) as a
-// gap. A block with too few or too many labels or series, or no number at
+// gap, the fence's line written as attributes (`bar title="Sales" unit="€"`). A block with too few or too many labels or series, or no number at
 // all, is no card: null, and markdown.ts shows it as code.
 //
 // The bars are DOM nodes; the lines are SVG nodes built one by one (never
@@ -200,9 +200,38 @@ const keyLike = (k: string) => {
   return UNIT_KEYS.has(n) || SERIES_KEYS.has(n) || X_KEYS.has(n) || TYPE_KEYS.has(n);
 };
 
+/** `key="value"` in the fence's line, as HTML has it, in straight or curly quotes, or `key=value` with no space. */
+const ATTRIBUTE = /(?:^|\s)(\p{L}+)\s*=\s*(?:"([^"]*)"|'([^']*)'|“([^”]*)”|([^\s"'“”]+))(?=\s|$)/gu;
+const TITLE_KEYS = words("title titolo name nome caption");
+
+/**
+ * The fence's line written as attributes (`bar title="Speed" unit="ms"`),
+ * as some models do: the title and the keys the body could hold. Null when
+ * the line is a plain title, `=` being part of it (`Speed = distance / time`,
+ * `Rate at x = 5`): attributes need a title key or a value in quotes.
+ */
+function attributes(line: string): { rest: string; title: string | null; keys: [string, string][] } | null {
+  const found = [...line.matchAll(ATTRIBUTE)].map((m) => {
+    const key = keyName(m[1]);
+    const quoted = m[5] === undefined;
+    return { all: m[0], key, value: (m[2] ?? m[3] ?? m[4] ?? m[5] ?? "").trim(), quoted, title: TITLE_KEYS.has(key) };
+  });
+  const ours = found.filter((a) => a.title || keyLike(a.key));
+  if (!ours.some((a) => a.title || a.quoted)) return null;
+  let rest = line;
+  for (const a of ours) rest = rest.replace(a.all, " ");
+  return { rest: rest.trim(), title: ours.find((a) => a.title)?.value ?? null, keys: ours.filter((a) => !a.title).map((a) => [a.key, a.value]) };
+}
+
 /** The ```lumo-chart block as a chart, or null when it can't be drawn. */
 export function parseChart(title: string, body: string): Chart | null {
   let name = title.trim();
+  // `title="…"` (and its kin) give the title, and their other keys are lines of the body.
+  const attrs = attributes(name);
+  if (attrs) {
+    name = attrs.title === null ? attrs.rest : `${attrs.rest.split(/\s+/).filter((w) => kindOf(w)).join(" ")} ${attrs.title}`.trim();
+    body = [...attrs.keys.map(([k, v]) => `${k}: ${v}`), body].join("\n");
+  }
   let kind: ChartKind | null = null;
   const first = /^(\S+)\s*(.*)$/.exec(name);
   // Lowercase, as the syntax has it: `Line count by file` is a title.
@@ -478,7 +507,10 @@ function renderBars(chart: Chart, body: HTMLElement): HTMLElement {
   });
 
   // Beside the row's longest bar, or before it when there is no room; inside
-  // the body when it fits there, from the body's top when it doesn't.
+  // the body when it fits there. Taller than the body (few rows, several
+  // series), it rises over the card's top line: the card clips what goes
+  // past its edges (content-visibility in rich.css), and a value would go
+  // missing. Taller than the card, the body grows to hold it.
   function place(tip: HTMLElement, row: HTMLElement, track: HTMLElement, i: number) {
     if (typeof track.getBoundingClientRect !== "function") return;
     const b = body.getBoundingClientRect();
@@ -486,10 +518,13 @@ function renderBars(chart: Chart, body: HTMLElement): HTMLElement {
     const end = Math.max(...chart.series.map((s) => (Number.isFinite(s.values[i]) ? (Math.max(s.values[i], 0) - lo) / span : 0)));
     let left = r.left - b.left + r.width * end + 12;
     if (left + tip.offsetWidth > body.clientWidth - 4) left = Math.max(4, r.left - b.left + r.width * end - 12 - tip.offsetWidth);
+    const above = b.top - (body.parentElement?.getBoundingClientRect().top ?? b.top) - 4;
+    const room = body.clientHeight + Math.max(0, above);
+    if (tip.offsetHeight + 2 > room) body.style.minHeight = `${body.clientHeight + tip.offsetHeight + 2 - room}px`;
     let top = row.getBoundingClientRect().top - b.top - 6;
     top = Math.min(top, body.clientHeight - tip.offsetHeight - 2);
     tip.style.left = `${left}px`;
-    tip.style.top = `${Math.max(0, top)}px`;
+    tip.style.top = `${Math.max(-Math.max(0, above), top)}px`;
   }
   return box;
 }

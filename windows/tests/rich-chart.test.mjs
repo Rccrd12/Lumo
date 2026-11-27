@@ -53,6 +53,25 @@ test("the kind is the title's first word in lowercase, English or Italian; bar w
   assert.equal(parseChart("Sales", "type: line\na: 1\nb: 2").kind, "line");
 });
 
+test("a fence line written as attributes: title=\"…\" is the title, the other keys as body lines", () => {
+  const body = "series: Stamattina, Prima di questa modifica, Ora\n1ª chat dopo l'avvio: 24.7, 11.1, 11.0\nChat successive: 24.7, 11.1, 0.6";
+  const chart = parseChart('bar title="Lettura della domanda in ms"', body);
+  assert.equal(chart.title, "Lettura della domanda in ms");
+  assert.equal(chart.kind, "bar");
+  assert.equal(chart.series.length, 3);
+  assert.equal(parseChart('title="Lettura"', body).title, "Lettura");
+  assert.equal(parseChart("titolo='Lettura'", body).title, "Lettura");
+  assert.equal(parseChart("title=“Lettura”", body).title, "Lettura");
+  const all = parseChart('type="line" title="Temperature" unit="°C"', "a: 1\nb: 2");
+  assert.deepEqual([all.kind, all.title, all.unit], ["line", "Temperature", "°C"]);
+  const noTitle = parseChart('line Temperature unit="°C"', "a: 1\nb: 2");
+  assert.deepEqual([noTitle.kind, noTitle.title, noTitle.unit], ["line", "Temperature", "°C"]);
+  // An `=` in a plain title stays part of it.
+  assert.equal(parseChart("Speed = distance / time", "a: 1\nb: 2").title, "Speed = distance / time");
+  assert.equal(parseChart("bar Rate at x = 5", "a: 1\nb: 2").title, "Rate at x = 5");
+  assert.equal(parseChart("bar Rate at x=5", "a: 1\nb: 2").title, "Rate at x=5");
+});
+
 test("several series: a series line, then a value per series on each row", () => {
   const chart = parseChart("line Temperatures", "unit: °C\nseries: High, Low\nJan: 6, -1\nFeb: 9; 0\nMar: 14 | 4");
   assert.deepEqual(chart.labels, ["Jan", "Feb", "Mar"]);
