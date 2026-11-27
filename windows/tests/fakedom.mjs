@@ -120,6 +120,8 @@ class FakeElement {
   }
   /** Moves `node` before `ref` (at the end when null), out of where it was. */
   insertBefore(node, ref) {
+    // As a browser: a reference that is not a child is an error, not the end.
+    if (ref && ref.parentNode !== this) throw new Error("NotFoundError: the node before which the new node is to be inserted is not a child of this node");
     node.parentNode?.removeChild(node);
     const at = ref ? this.childNodes.indexOf(ref) : -1;
     this.childNodes.splice(at < 0 ? this.childNodes.length : at, 0, node);

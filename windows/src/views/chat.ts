@@ -858,8 +858,9 @@ export function buildPrompt(
   body.insertBefore(orchestra.doc, body.firstChild);
   body.insertBefore(orchestra.rail, orchestra.doc);
   body.insertBefore(orchestra.head, log);
-  body.insertBefore(orchestra.page, orchestra.log);
   body.insertBefore(orchestra.log, picker.el);
+  // The projects' pages (their list, a form) where the conversation is.
+  body.insertBefore(orchestra.page, orchestra.log);
   body.insertBefore(orchestra.queue, modelRow);
 
   // A picture in a preview, clicked: it fills the whole open island, with
