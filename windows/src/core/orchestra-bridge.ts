@@ -44,6 +44,8 @@ export interface ProjectFields {
   goal: string;
   /** A full path, or "" for the project's own folder. */
   folder: string;
+  /** Its environment: the user's GitHub repositories ("owner/name"), cloned for it. */
+  repos: string[];
   coordinator: OrchestraPick;
   thread: OrchestraPick;
   /** Its threads go on by themselves once the usage limits reset. */
@@ -87,9 +89,11 @@ export interface OrchestraMessage {
    * A note's kind (kind "note"): "started" (`from` the new thread, `text` its title), "lock" (`from` tried to
    * change file `text`, which `holder` is changing), "stopped", "error" (`text` the error), "limit" (a usage
    * limit stopped it, `text` the provider's words; it goes on at `until` when the project says so). A user
-   * line with "answer" is the user's answer to a card, which the card itself shows.
+   * line with "answer" is the user's answer to a card, which the card itself shows. "cloned" (`text` a
+   * repository of the environment, `holder` its folder) and "clone-failed" (`text` "owner/name: why"). A
+   * relay with "reply" is a thread's answer sent on to the coordinator.
    */
-  note?: "lock" | "started" | "stopped" | "error" | "answer" | "limit";
+  note?: "lock" | "started" | "stopped" | "error" | "answer" | "limit" | "cloned" | "clone-failed" | "reply";
   /** A "limit" note: when the member goes on, seconds since the epoch. */
   until?: number;
   /** A "lock" note: the member changing the file. */
@@ -131,6 +135,7 @@ export interface OrchestraSnapshot {
   color: string;
   goal: string;
   folder: string;
+  repos?: string[];
   resume: boolean;
   /** Who plays the threads, those to come too. */
   threadPick: OrchestraPick;
@@ -182,6 +187,8 @@ export const Orchestra = {
   create: (project: ProjectFields) => ask<OrchestraSnapshot>("orchestra_create", { project }),
   /** A project's settings saved. */
   update: (id: string, project: ProjectFields) => ask<OrchestraSnapshot>("orchestra_update", { id, project }),
+  /** The user's GitHub repositories a project's environment may hold: the newest pushed first. */
+  repoNames: () => ask<{ name: string; private: boolean; description: string }[]>("github_repo_names", {}),
   /** One member's model and effort, from its chat's model button: a thread's only, the coordinator's the project's. */
   setPick: (id: string, member: string, pick: OrchestraPick) => ask<OrchestraSnapshot>("orchestra_set_pick", { id, member, pick }),
   open: (id: string) => ask<OrchestraSnapshot>("orchestra_open", { id }),
@@ -226,7 +233,7 @@ export function planProgress(plan: readonly OrchestraStep[] | undefined): { done
 /** What a project's form starts from: what `snap` keeps. */
 export function fieldsOf(snap: OrchestraSnapshot): ProjectFields {
   return {
-    title: snap.title, icon: snap.icon ?? "", color: snap.color ?? "", goal: snap.goal ?? "", folder: snap.folder ?? "",
+    title: snap.title, icon: snap.icon ?? "", color: snap.color ?? "", goal: snap.goal ?? "", folder: snap.folder ?? "", repos: snap.repos ?? [],
     coordinator: snap.coordinator.pick, thread: snap.threadPick ?? snap.threads[0]?.pick ?? { provider: "", model: "", effort: "" },
     resume: Boolean(snap.resume),
   };

@@ -279,7 +279,7 @@ test("with no project, the list shows; New project's form makes one with what it
   create.fire("click");
   await flush();
   const made = sent("orchestra_create")[0].project;
-  assert.deepEqual({ ...made, coordinator: undefined, thread: undefined }, { title: "Trip", icon: "rocket", color: "#60a5fa", goal: "Plan my trip", folder: "C:\\Trips", resume: true, coordinator: undefined, thread: undefined });
+  assert.deepEqual({ ...made, coordinator: undefined, thread: undefined }, { title: "Trip", icon: "rocket", color: "#60a5fa", goal: "Plan my trip", folder: "C:\\Trips", repos: [], resume: true, coordinator: undefined, thread: undefined });
   assert.deepEqual(made.coordinator, OPUS, "New project starts from the last project's models");
   view.sync();
   assert.ok($(".chat-body").classList.contains("orc"), "the new project, open");
@@ -398,6 +398,8 @@ test("the rail's title lists the projects, New project, the settings, all of the
 });
 
 test("the gear opens the project's settings in the conversation's place: saved, or deleted with two clicks", async () => {
+  answers.secret_present = true;
+  answers.github_repo_names = [{ name: "Rccrd12/Lumo", private: false, description: "The island" }, { name: "Rccrd12/leases", private: true, description: "" }];
   answers.orchestra_update = ({ project }) => ({ ...structuredClone(SNAP), title: project.title, goal: project.goal, resume: project.resume, threadPick: project.thread });
   await flush();
   $(".pj-gear").fire("click");
@@ -412,10 +414,28 @@ test("the gear opens the project's settings in the conversation's place: saved, 
   name.value = "Leases 2026";
   name.fire("input");
   $(".pj-switch").fire("click");
+  // Its environment: the user's repositories, from a search; one added, then another taken off.
+  assert.equal($(".pj-repo-add").textContent, "Add a repository");
+  $(".pj-repo-add").fire("click");
+  await flush();
+  assert.deepEqual(view.el.find(".pj-repo-opt").map((o) => o.dataset.repo ?? o.getAttribute("data-repo")), ["Rccrd12/Lumo", "Rccrd12/leases"]);
+  assert.equal(view.el.find(".pj-repo-opt")[1].querySelector(".pj-opt-tag").textContent, "Private");
+  const search = $(".pj-search-input");
+  search.value = "lease";
+  search.fire("input");
+  assert.equal(view.el.find(".pj-repo-opt").length, 1);
+  view.el.find(".pj-repo-opt")[0].fire("click");
+  $(".pj-repo-add").fire("click");
+  await flush();
+  view.el.find(".pj-repo-opt")[0].fire("click");
+  assert.deepEqual(texts(".pj-repo-name"), ["Rccrd12/leases", "Rccrd12/Lumo"]);
+  view.el.find(".pj-repo-x")[1].fire("click");
+  assert.deepEqual(texts(".pj-repo-name"), ["Rccrd12/leases"]);
   view.el.find(".pj-b").find((b) => b.textContent === "Save").fire("click");
   await flush();
   const saved = sent("orchestra_update")[0];
   assert.equal(saved.id, "o1");
+  assert.deepEqual(saved.project.repos, ["Rccrd12/leases"]);
   assert.equal(saved.project.title, "Leases 2026");
   assert.equal(saved.project.resume, false);
   assert.deepEqual(saved.project.thread, LM);

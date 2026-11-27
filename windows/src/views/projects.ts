@@ -10,7 +10,7 @@
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { Bridge, type ModelInfo } from "../core/bridge";
-import { GOAL_MAX, type OrchestraSummary, type ProjectFields } from "../core/orchestra-bridge";
+import { GOAL_MAX, Orchestra, type OrchestraSummary, type ProjectFields } from "../core/orchestra-bridge";
 import { ORCHESTRA_ACCENT, orchestraProviders, shortModel, type OrchestraRole } from "../core/orchestra-picks";
 import { apiCaps, effortsFor, isCliProvider, providerDef } from "../core/providers";
 import { cliModelName } from "../core/model-names";
@@ -21,7 +21,7 @@ import { t, tn } from "../i18n/i18n";
 import { sentAgo } from "./chat-messages";
 import { STRINGS, effortLabel } from "./chat-strings";
 import { readyProviders } from "./chat-models";
-import { DEFAULT_ICON, GEAR_LINE, NONE_LINE, PROJECT_COLORS, SEARCH_LINE, findIcons, iconSvg, projectMark } from "./project-icons";
+import { DEFAULT_ICON, GEAR_LINE, NONE_LINE, PROJECT_COLORS, REPO_LINE, SEARCH_LINE, findIcons, iconSvg, projectMark } from "./project-icons";
 import { ORCHESTRA_STRINGS as S } from "./orchestra-strings";
 
 export { GEAR_LINE };
@@ -122,6 +122,27 @@ export interface ProjectForm {
   dismiss(): boolean;
 }
 
+/** A repository of the user's, for a project's environment. */
+interface RepoName {
+  name: string;
+  private: boolean;
+  description: string;
+}
+
+/** The user's GitHub repositories, asked once while the island is open (a failure is asked again). */
+let reposListed: Promise<RepoName[]> | null = null;
+
+function reposOf(): Promise<RepoName[]> {
+  if (!reposListed) {
+    const got = Orchestra.repoNames().then((list) => (Array.isArray(list) ? list : []));
+    got.catch(() => {
+      reposListed = null;
+    });
+    reposListed = got;
+  }
+  return reposListed;
+}
+
 /** The models each provider lists, asked once while the island is open. */
 const listed = new Map<string, Promise<ModelInfo[]>>();
 /** The efforts each model takes, by "provider|model". */
@@ -192,6 +213,7 @@ export function buildProjectForm(opts: {
   remove?(): void;
 }): ProjectForm {
   const f: ProjectFields = structuredClone(opts.fields);
+  f.repos = f.repos ?? [];
   const editing = opts.mode === "edit";
   /** The menu open over the form, and the field it belongs to. */
   let pop: HTMLElement | null = null;
@@ -250,6 +272,37 @@ export function buildProjectForm(opts: {
     f.folder = "";
     drawFolder();
   });
+
+  // ── Its environment: the user's GitHub repositories, cloned for it (orchestra.rs ensure_repos)
+  const env = h("div", { class: "pj-env" });
+  const addRepo = h("button", { class: "pj-repo-add" }, svg(ICONS.plus, 10, { stroke: 2.2 }), h("span", { text: t(S.addRepo) }));
+  /** GitHub's token saved in Lumo: null until known. */
+  let github: boolean | null = null;
+  const drawEnv = () => {
+    clear(env);
+    for (const r of f.repos) {
+      const x = h("button", { class: "pj-repo-x", title: t(S.removeRepo), "aria-label": `${t(S.removeRepo)} ${r}` }, svg(ICONS.xmark, 7));
+      x.addEventListener("click", () => {
+        f.repos = f.repos.filter((y) => y !== r);
+        drawEnv();
+      });
+      env.append(h("span", { class: "pj-repo", title: r }, svg(REPO_LINE, 12, { stroke: 1.8 }), h("span", { class: "pj-repo-name", text: r }), x));
+    }
+    if (github === false) env.append(h("div", { class: "pj-env-note", text: t(S.connectGithub) }));
+    else if (f.repos.length < 8) env.append(addRepo);
+  };
+  drawEnv();
+  void Bridge.secretPresent("github-token").then(
+    (yes) => {
+      github = !!yes;
+      drawEnv();
+    },
+    () => {
+      github = false;
+      drawEnv();
+    },
+  );
+  addRepo.addEventListener("click", () => togglePop(env, repoPicker));
 
   // ── The models
   const coordBtn = h("button", { class: "pj-field sel pj-coord" });
@@ -358,6 +411,7 @@ export function buildProjectForm(opts: {
     count,
     row(h("span", { class: "pj-lbl" }, h("span", { text: t(S.folder) }), h("small", { text: t(S.folderNote) })),
       h("span", { class: "pj-folder-wrap" }, folderBtn, folderClear)),
+    row(h("span", { class: "pj-lbl" }, h("span", { text: t(S.environment) }), h("small", { text: t(S.environmentNote) })), env, "pj-env-row"),
     h("div", { class: "pj-sep" }),
     h("h3", { class: "pj-h", text: t(S.models) }),
     row(t(S.coordinator), coordBtn),
@@ -453,6 +507,62 @@ export function buildProjectForm(opts: {
     return h("div", { class: "pj-pop pj-pop-icons" },
       h("label", { class: "pj-search" }, svg(SEARCH_LINE, 13, { stroke: 1.8 }), query),
       grid, colors, reset);
+  }
+
+  /** Search and the user's repositories not in the environment yet: a click adds one. */
+  function repoPicker(): HTMLElement {
+    const list = h("div", { class: "pj-list" });
+    let q = "";
+    let got: RepoName[] | string | null = null;
+    const draw = () => {
+      clear(list);
+      if (got == null) {
+        list.append(h("div", { class: "pj-opt-note", text: t(STRINGS.loading) }));
+        return;
+      }
+      if (typeof got === "string") {
+        list.append(h("div", { class: "pj-opt-note", text: got }));
+        return;
+      }
+      const words = q.trim().toLowerCase();
+      const rows = got.filter((r) => !f.repos.includes(r.name) && (!words || `${r.name} ${r.description}`.toLowerCase().includes(words)));
+      if (rows.length === 0) {
+        list.append(h("div", { class: "pj-none small", text: t(S.noRepos) }));
+        return;
+      }
+      for (const r of rows.slice(0, 100)) {
+        const b = h("button", { class: "pj-opt pj-repo-opt", title: r.description || r.name, "data-repo": r.name },
+          svg(REPO_LINE, 12, { stroke: 1.8 }),
+          h("span", { class: "pj-opt-name", text: r.name }),
+          r.private ? h("span", { class: "pj-opt-tag", text: t(S.privateRepo) }) : null);
+        b.addEventListener("click", () => {
+          f.repos = [...f.repos, r.name];
+          Sound.play("blip");
+          closePop();
+          drawEnv();
+        });
+        list.append(b);
+      }
+    };
+    const search = searchBox(t(S.searchRepos), (v) => {
+      q = v;
+      draw();
+    });
+    const menu = h("div", { class: "pj-pop pj-pop-repos" }, h("label", { class: "pj-search" }, svg(SEARCH_LINE, 13, { stroke: 1.8 }), search), list);
+    draw();
+    void reposOf().then(
+      (repos) => {
+        got = repos;
+      },
+      (err) => {
+        got = String(err).replace(/^Error:\s*/, "");
+      },
+    ).then(() => {
+      if (pop !== menu) return;
+      draw();
+      place();
+    });
+    return menu;
   }
 
   /** The models' menu of a role's field. */

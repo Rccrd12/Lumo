@@ -204,6 +204,9 @@ pub struct Orchestra {
     pub goal: String,
     /// The user's folder the threads work in ("": the project's own shared folder only).
     pub folder: String,
+    /// Its environment: the user's GitHub repositories ("owner/name") Lumo
+    /// clones for it (`ensure_repos`), in its folder or its own.
+    pub repos: Vec<String>,
     /// A member stopped by a usage limit goes on by itself once they reset.
     pub resume: bool,
     pub created: u64,
@@ -231,6 +234,7 @@ pub struct Project {
     pub color: String,
     pub goal: String,
     pub folder: String,
+    pub repos: Vec<String>,
     pub coordinator: Pick,
     pub thread: Pick,
     pub resume: bool,
@@ -346,6 +350,7 @@ impl Orchestra {
         self.color = if hex { color.to_lowercase() } else { String::new() };
         self.goal = p.goal.trim().chars().take(GOAL_MAX).collect();
         self.folder = folder;
+        self.repos = repos_of(&p.repos);
         self.resume = p.resume;
         self.coordinator.pick = p.coordinator;
         for m in self.threads.iter_mut().filter(|m| m.pick == self.thread_pick) {
@@ -636,7 +641,7 @@ impl Orchestra {
         };
         json!({
             "id": self.id, "title": self.title, "created": self.created, "updated": self.updated,
-            "icon": self.icon, "color": self.color, "goal": self.goal, "folder": self.folder, "resume": self.resume,
+            "icon": self.icon, "color": self.color, "goal": self.goal, "folder": self.folder, "repos": self.repos, "resume": self.resume,
             "threadPick": self.thread_pick,
             "coordinator": member(&self.coordinator),
             "threads": self.threads.iter().map(member).collect::<Vec<_>>(),
@@ -743,6 +748,107 @@ fn settings_for(app: &AppHandle, pick: &Pick) -> crate::settings::Settings {
     chat::with_pick(base, Some(&pick.provider), Some(&pick.model), Some(&pick.effort))
 }
 
+// ── Its environment: the user's GitHub repositories ───────────────────────────
+
+/// The most repositories a project's environment holds.
+const MAX_REPOS: usize = 8;
+
+/// The repositories the user picked, as "owner/name", once each.
+fn repos_of(raw: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for r in raw {
+        let Some((owner, name)) = crate::github_tools::parse_repo(r) else { continue };
+        let full = format!("{owner}/{name}");
+        if !out.iter().any(|x| x.eq_ignore_ascii_case(&full)) && out.len() < MAX_REPOS {
+            out.push(full);
+        }
+    }
+    out
+}
+
+/// Where the repositories of a project are cloned: its folder, or its own in
+/// Lumo's data when it has none.
+fn repos_base(o: &Orchestra) -> PathBuf {
+    if o.folder.is_empty() {
+        dir().join(crate::workspace::safe_id(&o.id)).join("repos")
+    } else {
+        PathBuf::from(&o.folder)
+    }
+}
+
+/// Each repository of the project and its folder: its name, or
+/// "owner-name" when two share a name.
+fn repo_dirs(o: &Orchestra) -> Vec<(String, PathBuf)> {
+    let base = repos_base(o);
+    o.repos
+        .iter()
+        .map(|full| {
+            let (owner, name) = full.split_once('/').unwrap_or(("", full));
+            let shared = o.repos.iter().filter(|r| r.rsplit('/').next().is_some_and(|n| n.eq_ignore_ascii_case(name))).count() > 1;
+            let folder = if shared { format!("{owner}-{name}") } else { name.to_string() };
+            (full.clone(), base.join(folder))
+        })
+        .collect()
+}
+
+/// One clone at a time, so two members starting together never clone the same repository twice.
+static CLONING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// The project's repositories not cloned yet are cloned (`git clone`, with
+/// the user's own git; the GitHub token saved in Lumo, when there is one,
+/// goes to git in its environment only, never on its command line or on
+/// disk), and the coordinator's chat says so. A folder already there is
+/// left as it is. Before every turn: nothing to do once they are there.
+async fn ensure_repos(app: &AppHandle, id: &str) {
+    let missing: Vec<(String, PathBuf)> = with(None, id, |o| repo_dirs(o)).unwrap_or_default().into_iter().filter(|(_, d)| !d.exists()).collect();
+    if missing.is_empty() {
+        return;
+    }
+    let _one = CLONING.lock().await;
+    for (full, folder) in missing {
+        if folder.exists() {
+            continue;
+        }
+        let token = crate::secrets::get("github-token");
+        let (url, target) = (format!("https://github.com/{full}.git"), folder.clone());
+        let done = tauri::async_runtime::spawn_blocking(move || clone_repo(&url, &target, token.as_deref())).await.unwrap_or_else(|e| Err(e.to_string()));
+        let line = match done {
+            Ok(()) => Message { kind: "note".into(), from: "lumo".into(), note: Some("cloned".into()), text: full.clone(), holder: Some(folder.to_string_lossy().to_string()), ..Default::default() },
+            Err(e) => Message { kind: "note".into(), from: "lumo".into(), note: Some("clone-failed".into()), text: format!("{full}: {e}"), ..Default::default() },
+        };
+        with(Some(app), id, |o| o.push(COORDINATOR, line));
+    }
+}
+
+fn clone_repo(url: &str, folder: &Path, token: Option<&str>) -> Result<(), String> {
+    if let Some(parent) = folder.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("clone").arg("--quiet").arg(url).arg(folder);
+    // Never a prompt for a password: git fails at once instead.
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    if let Some(token) = token.filter(|t| !t.is_empty()) {
+        let basic = crate::claude::base64_for(format!("x-access-token:{token}").as_bytes());
+        cmd.env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader")
+            .env("GIT_CONFIG_VALUE_0", format!("AUTHORIZATION: basic {basic}"));
+    }
+    crate::platform::no_console(&mut cmd);
+    let out = cmd.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            crate::i18n::t("Git is not installed on this PC.")
+        } else {
+            e.to_string()
+        }
+    })?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let said = String::from_utf8_lossy(&out.stderr);
+    Err(said.lines().map(str::trim).rfind(|l| !l.is_empty()).unwrap_or("git clone failed").to_string())
+}
+
 /// Starts a turn for `member` of `id` when none runs and it has messages to read.
 fn wake(app: &AppHandle, id: &str, member: &str) {
     let start = with(None, id, |o| match o.member_mut(member) {
@@ -787,6 +893,9 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
             })
             .flatten();
             let Some((query, role, pick, conversation, project_folder, asked_by_user)) = next else { return };
+            // Its environment's repositories, cloned before the first turn that needs them.
+            ensure_repos(&app, &id).await;
+            let repo_folders: Vec<PathBuf> = with(None, &id, |o| repo_dirs(o).into_iter().map(|(_, d)| d).collect()).unwrap_or_default();
             let settings = settings_for(&app, &pick);
             let cli = is_cli(&settings.chat_provider);
             let reply = if cli && member == COORDINATOR && settings.chat_provider != crate::claude_code::PROVIDER {
@@ -802,6 +911,10 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                     // The project's own folder of the user's: where it works.
                     if !project_folder.is_empty() {
                         conversation.cli_dirs(Some(project_folder.clone()));
+                    }
+                    // Its repositories, when they are not in it.
+                    for folder in repo_folders.iter().filter(|d| project_folder.is_empty() || !d.starts_with(&project_folder)) {
+                        conversation.cli_dirs(Some(folder.to_string_lossy().to_string()));
                     }
                 }
                 Box::pin(chat::send(&app, &conversation, &settings, query, None, None)).await
@@ -1106,6 +1219,18 @@ fn project_words(o: &Orchestra, member: &str, cli: bool) -> String {
             "copy the files you need from it with workspace_copy, giving their full paths"
         };
         out.push_str(&format!("\nThe project's folder is {}: {how}.", o.folder));
+    }
+    let repos = repo_dirs(o);
+    if !repos.is_empty() {
+        let list = repos.iter().map(|(full, d)| format!("{full} (cloned at {})", d.display())).collect::<Vec<_>>().join(", ");
+        let how = if member == COORDINATOR {
+            "the threads work in them: tell each which repository its task is about"
+        } else if cli {
+            "work in them with your own tools and your own git: make a branch of your own for your changes, commit them there, and push or open a pull request only when the task or the user asks; never push to the default branch or force-push unless the user says so"
+        } else {
+            "copy the files you need from them with workspace_copy, giving their full paths"
+        };
+        out.push_str(&format!("\nThe project's GitHub repositories, its environment: {list}: {how}."));
     }
     out
 }
@@ -1798,6 +1923,7 @@ mod tests {
             color: "#A78BFA".into(),
             goal: "Add features, always with a concept first.".into(),
             folder: String::new(),
+            repos: Vec::new(),
             coordinator: Pick { provider: "claude-code".into(), model: "opus".into(), effort: "high".into() },
             thread: Pick { provider: "codex".into(), model: "gpt-5.5".into(), effort: "medium".into() },
             resume: true,
@@ -1975,5 +2101,26 @@ mod tests {
         o.apply(fields).unwrap();
         assert_eq!(o.member("t1").unwrap().pick, mine);
         assert_eq!(o.member("t2").unwrap().pick.model, "llama");
+    }
+
+    #[test]
+    fn its_environment_holds_the_users_repositories_each_in_a_folder_of_its_own() {
+        let mut o = orchestra();
+        let mut p = project("P");
+        p.repos = vec!["Rccrd12/Lumo".into(), "https://github.com/rccrd12/lumo".into(), "acme/lumo.git".into(), "x".into(), "acme/site".into()];
+        o.apply(p.clone()).unwrap();
+        assert_eq!(o.repos, ["Rccrd12/Lumo", "acme/lumo", "acme/site"], "once each, by owner/name, anything else left out");
+        // In its own folder of Lumo's while it has none; two of the same name by their owner too.
+        let dirs = repo_dirs(&o);
+        assert!(dirs[0].1.ends_with(Path::new("repos").join("Rccrd12-Lumo")), "{:?}", dirs[0].1);
+        assert!(dirs[1].1.ends_with("acme-lumo") && dirs[2].1.ends_with("site"));
+        // In its folder once it has one; every member is told where they are.
+        p.folder = if cfg!(windows) { "C:\\Progetti\\P".into() } else { "/home/u/P".into() };
+        o.apply(p).unwrap();
+        assert!(repo_dirs(&o)[2].1.starts_with(&o.folder));
+        let words = note_for(&o, "t1", true);
+        assert!(words.contains("acme/site (cloned at ") && words.contains("branch of your own"), "{words}");
+        assert!(note_for(&o, COORDINATOR, false).contains("tell each which repository"));
+        assert!(o.snapshot()["repos"].as_array().is_some_and(|r| r.len() == 3));
     }
 }

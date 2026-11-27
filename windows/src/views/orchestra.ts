@@ -642,6 +642,13 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
         return h("div", { class: "orc-note", text: t(S.stopped) });
       case "error":
         return h("div", { class: "orc-note error", text: msg.text });
+      // A repository of the project's environment, cloned before the first turn (orchestra.rs ensure_repos).
+      case "cloned":
+        return h("div", { class: "orc-act cloned", title: msg.holder ?? "" }, h("span", { text: t(S.cloned, { repo: msg.text }) }));
+      case "clone-failed": {
+        const [repo, ...why] = msg.text.split(": ");
+        return h("div", { class: "orc-note limit" }, h("span", { class: "orc-note-main", text: t(S.cloneFailed, { repo }) }), why.length ? h("span", { class: "orc-note-sub", text: why.join(": ") }) : null);
+      }
       case "limit": {
         const then = msg.until ? t(S.limitResumes, { time: clock(msg.until) }) : t(S.limitStops);
         return h("div", { class: "orc-note limit" }, h("span", { class: "orc-note-main", text: then }), msg.text ? h("span", { class: "orc-note-sub", text: msg.text }) : null);
@@ -751,7 +758,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   function newFields(): ProjectFields {
     const s = State.settings;
     return {
-      title: "", icon: "", color: "", goal: "", folder: "",
+      title: "", icon: "", color: "", goal: "", folder: "", repos: [],
       coordinator: resolvePick(s.orchestraCoordinator, s, readyProviders, "coordinator"),
       thread: resolvePick(s.orchestraThread, s, readyProviders, "thread"),
       resume: true,

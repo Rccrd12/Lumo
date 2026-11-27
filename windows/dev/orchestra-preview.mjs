@@ -163,6 +163,12 @@ await ctx.addInitScript(([snap, report]) => {
       { id: "o-1", title: "Pulizia della cartella Download", icon: "broom", color: "#4ade80", goal: "Mettere in ordine Download: doppioni, installer vecchi, foto in Immagini.", updated: snap.updated - 4 * 86_400_000, state: "stopped", working: 0, asking: "", planDone: 1, planTotal: 4, coordinator: snap.threadPick, thread: snap.threadPick },
     ],
     pick_folder: () => "C:\\Users\\Riccardo\\Progetti\\Lumo",
+    github_repo_names: () => [
+      { name: "Rccrd12/Lumo", private: false, description: "Lumo for Windows" },
+      { name: "Rccrd12/contratti", private: true, description: "I contratti di casa" },
+      { name: "Rccrd12/sito", private: false, description: "Il sito personale" },
+      { name: "Rccrd12/maya", private: true, description: "" },
+    ],
     orchestra_open: () => structuredClone(snap),
     orchestra_set_pick: ({ member, pick }) => {
       const m = member === "coordinator" ? snap.coordinator : snap.threads.find((x) => x.id === member);
@@ -265,6 +271,13 @@ await page.click(".orc-top");
 await page.click(".pj-gear");
 await page.waitForTimeout(500);
 await shot("6-impostazioni-progetto");
+// Its environment: the user's GitHub repositories, from a search.
+await page.click(".pj-repo-add");
+await page.waitForTimeout(400);
+await shot("6b-ambiente-scegli-repo");
+await page.click('.pj-repo-opt[data-repo="Rccrd12/contratti"]');
+await page.waitForTimeout(300);
+await shot("6c-ambiente-con-repo");
 await page.click(".pj-gear");
 await page.waitForTimeout(300);
 
