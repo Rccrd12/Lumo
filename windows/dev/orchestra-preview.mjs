@@ -164,6 +164,11 @@ await ctx.addInitScript(([snap, report]) => {
     ],
     pick_folder: () => "C:\\Users\\Riccardo\\Progetti\\Lumo",
     orchestra_open: () => structuredClone(snap),
+    orchestra_set_pick: ({ member, pick }) => {
+      const m = member === "coordinator" ? snap.coordinator : snap.threads.find((x) => x.id === member);
+      m.pick = pick;
+      return structuredClone(snap);
+    },
     orchestra_read_file: ({ path }) => ({ name: path.split("/").pop(), path, text: report }),
   };
 }, [SNAP, REPORT]);
@@ -232,10 +237,16 @@ await page.evaluate(() => document.querySelector(".orc-from").click());
 await page.waitForTimeout(250);
 await shot("3a-messaggio-aperto");
 await page.evaluate(() => document.querySelector(".orc-from").click());
+// Its own model and effort, from the model button.
+await page.click(".model-btn");
+await page.waitForTimeout(500);
+await shot("3c-modello-del-thread");
+await page.keyboard.press("Escape");
+await page.evaluate(() => document.querySelector(".orc-model-pop") && document.querySelector(".model-btn").click());
 // Its context, from the ring by the model button.
-await page.click(".chat-usage");
+await page.click(".chat-usage", { force: true });
 await shot("3b-contesto-del-thread");
-await page.click(".chat-usage");
+await page.click(".chat-usage", { force: true });
 
 // 4. A Markdown file handed over, open beside the chat.
 await member("coordinator");

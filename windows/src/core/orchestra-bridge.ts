@@ -182,6 +182,8 @@ export const Orchestra = {
   create: (project: ProjectFields) => ask<OrchestraSnapshot>("orchestra_create", { project }),
   /** A project's settings saved. */
   update: (id: string, project: ProjectFields) => ask<OrchestraSnapshot>("orchestra_update", { id, project }),
+  /** One member's model and effort, from its chat's model button: a thread's only, the coordinator's the project's. */
+  setPick: (id: string, member: string, pick: OrchestraPick) => ask<OrchestraSnapshot>("orchestra_set_pick", { id, member, pick }),
   open: (id: string) => ask<OrchestraSnapshot>("orchestra_open", { id }),
   /** `to`: "coordinator" or a thread id. */
   send: (id: string, to: string, text: string) => ask<void>("orchestra_send", { id, to, text }),

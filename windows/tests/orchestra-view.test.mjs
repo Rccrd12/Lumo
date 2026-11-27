@@ -114,7 +114,54 @@ test("the projects take the chat's place: the last one opens on its coordinator"
   assert.equal($(".orc-top-name").textContent, "Leases");
   assert.ok($(".orc-top").querySelector(".pj-ic"), "its icon before its name");
   assert.equal($(".chat-input").placeholder, "Write to the coordinator…");
-  assert.match($(".model-name").textContent, /^Coordinator · Opus 5\.5 → gemma-4-26b-a4b$/);
+  // The model button: only the model of the chat on screen.
+  assert.equal($(".model-name").textContent, "Opus 5.5 · High");
+  item("t1").fire("click");
+  view.sync();
+  assert.equal($(".model-name").textContent, "gemma-4-26b-a4b · Medium");
+});
+
+test("the model button changes the model of the chat on screen: a thread's its own, the coordinator's the project's", async () => {
+  answers.chat_providers = ["anthropic", "lmstudio"];
+  answers.secret_present = true;
+  answers.chat_models = ({ provider }) => provider === "anthropic"
+    ? [{ id: "claude-opus-5-5", label: "Claude Opus 5.5", reasoning: ["low", "medium", "high"] }, { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", reasoning: ["low", "high"] }]
+    : [{ id: "gemma-4-26b-a4b", label: "gemma-4-26b-a4b" }];
+  answers.local_caps = { vision: false, tools: true, reasoning: [], maxContext: 0, loadedContext: 0 };
+  answers.orchestra_set_pick = ({ member, pick }) => {
+    const next = structuredClone(SNAP);
+    const m = member === "coordinator" ? next.coordinator : next.threads.find((x) => x.id === member);
+    m.pick = pick;
+    return next;
+  };
+  view = buildPrompt(() => {});
+  view.sync();
+  await flush();
+  view.sync();
+  item("t1").fire("click");
+  $(".model-btn").fire("click");
+  await flush();
+  assert.ok($(".orc-model-pop"), "its menu, not the project's settings");
+  assert.ok(!$(".chat-body").classList.contains("orc-settings"));
+  assert.deepEqual(texts(".pj-grp"), ["Anthropic", "LM Studio"]);
+  view.el.find(".pj-opt").find((o) => o.textContent === "Claude Sonnet 5.5").fire("click");
+  await flush();
+  assert.deepEqual(sent("orchestra_set_pick").at(-1), { id: "o1", member: "t1", pick: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "" } });
+  view.sync();
+  assert.equal($(".model-name").textContent, "Sonnet 5.5");
+  // Its effort, under it.
+  view.el.find(".pj-seg")[0].children[1].fire("click");
+  await flush();
+  assert.equal(sent("orchestra_set_pick").at(-1).pick.effort, "high");
+  // Escape-like: a press away closes it; the coordinator's is its own menu.
+  $(".model-btn").fire("click");
+  assert.equal($(".orc-model-pop"), null);
+  item("coordinator").fire("click");
+  $(".model-btn").fire("click");
+  await flush();
+  view.el.find(".pj-opt").find((o) => o.textContent === "Claude Sonnet 5.5").fire("click");
+  await flush();
+  assert.equal(sent("orchestra_set_pick").at(-1).member, "coordinator");
 });
 
 test("messages between members say who from and who to, grey; Lumo's notes say what happened", async () => {
@@ -376,8 +423,8 @@ test("the gear opens the project's settings in the conversation's place: saved, 
   assert.ok(!$(".chat-body").classList.contains("orc-settings"), "back to the conversation");
   assert.equal($(".orc-top-name").textContent, "Leases 2026");
 
-  // The model button opens them too; Delete asks a second click.
-  $(".model-btn").fire("click");
+  // Delete asks a second click.
+  $(".pj-gear").fire("click");
   view.sync();
   assert.ok($(".chat-body").classList.contains("orc-settings"));
   const del = view.el.find(".pj-b").find((b) => b.textContent === "Delete project");

@@ -32,7 +32,8 @@
   display: none !important;
 }
 
-.orc-page button {
+.orc-page button,
+.orc-model-pop button {
   font: inherit;
   color: inherit;
   border: 0;
@@ -42,7 +43,8 @@
 }
 
 .orc-page input,
-.orc-page textarea {
+.orc-page textarea,
+.orc-model-pop input {
   font: inherit;
   color: inherit;
   border: 0;
@@ -670,7 +672,8 @@
   box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.75);
 }
 
-.orc-page .pj-search-input {
+.orc-page .pj-search-input,
+.orc-model-pop .pj-search-input {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -777,7 +780,8 @@
   color: #80868e;
 }
 
-.orc-page .pj-opt {
+.orc-page .pj-opt,
+.orc-model-pop .pj-opt {
   width: 100%;
   display: flex;
   align-items: center;
@@ -787,11 +791,13 @@
   color: #e3e5e8;
 }
 
-.orc-page .pj-opt:hover {
+.orc-page .pj-opt:hover,
+.orc-model-pop .pj-opt:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.orc-page .pj-opt.on {
+.orc-page .pj-opt.on,
+.orc-model-pop .pj-opt.on {
   background: rgba(255, 255, 255, 0.07);
 }
 
@@ -844,7 +850,8 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
-.orc-page .pj-seg button {
+.orc-page .pj-seg button,
+.orc-model-pop .pj-seg button {
   flex: 1;
   padding: 5px 0;
   border-radius: 7px;
@@ -853,11 +860,13 @@
   color: #9aa0a8;
 }
 
-.orc-page .pj-seg button:hover {
+.orc-page .pj-seg button:hover,
+.orc-model-pop .pj-seg button:hover {
   color: #e8eaed;
 }
 
-.orc-page .pj-seg button.on {
+.orc-page .pj-seg button.on,
+.orc-model-pop .pj-seg button.on {
   background: rgba(255, 255, 255, 0.12);
   font-weight: 600;
   color: #f1f2f4;
@@ -906,4 +915,10 @@
 
 .orc-item-status.paused {
   color: #fdba74;
+}
+
+/* The model button's menu in a project: the model of the chat on screen, over the button. */
+.chat-body > .orc-model-pop {
+  width: 300px;
+  max-width: calc(100% - 16px);
 }

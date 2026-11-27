@@ -900,6 +900,7 @@ export function buildPrompt(
     if (target instanceof Element && target.closest(".ctx-menu")) return;
     const inside = (...els: Element[]) => target != null && els.some((el) => el.contains(target));
     if (picker.isOpen && !inside(picker.el, modelBtn)) picker.close();
+    orchestra.closeModelMenu(target);
     if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
     if (body.classList.contains("filing") && !inside(filesEl, filesBtn)) closeFiles();
     if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
@@ -3109,9 +3110,9 @@ export function buildPrompt(
   }
 
   modelBtn.addEventListener("click", () => {
-    // A project's models are in its settings.
+    // In a project: the model of the member on screen (views/orchestra.ts).
     if (orchestra.inProject()) {
-      orchestra.openSettings();
+      orchestra.toggleModelMenu(modelBtn, body);
       return;
     }
     if (picker.isOpen) picker.close();
@@ -5198,6 +5199,8 @@ export function buildPrompt(
     if (key === "Enter" && !ke.shiftKey && !ke.isComposing) {
       e.preventDefault();
       void submit();
+    } else if (key === "Escape" && orchestra.closeModelMenu()) {
+      e.preventDefault();
     } else if (key === "Escape" && picker.isOpen) {
       e.preventDefault();
       picker.close();

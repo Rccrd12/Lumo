@@ -33,7 +33,7 @@ import {
 import { providerDef } from "../core/providers";
 import { ORCHESTRA_ACCENT, resolvePick, shortModel } from "../core/orchestra-picks";
 import { saveSettings } from "./chat-attach";
-import { buildProjectForm, buildProjectList, projectsCard, type ProjectForm } from "./projects";
+import { buildModelMenu, buildProjectForm, buildProjectList, modelName, projectsCard, type ProjectForm } from "./projects";
 import { DEFAULT_ICON, GEAR_LINE, projectMark } from "./project-icons";
 import { durationText } from "../core/chat-agents";
 import { Sound } from "../core/sound";
@@ -73,8 +73,16 @@ export interface OrchestraView {
   enter(): void;
   /** Out of the projects, back to the chat. */
   leave(): void;
-  /** The project's settings, in place of its conversation (the gear, the model button). */
+  /** The project's settings, in place of its conversation (the gear). */
   openSettings(): void;
+  /**
+   * The model button in a project: the models' menu of the member on screen,
+   * over `anchor` in `host`, or closed when open. A thread's model is its
+   * own; the coordinator's is the project's.
+   */
+  toggleModelMenu(anchor: HTMLElement, host: HTMLElement): void;
+  /** Closes the models' menu unless `target` is in it or its button: true when it was open. */
+  closeModelMenu(target?: Node | null): boolean;
   /** Called from the chat's own sync: shows or hides the orchestra in `body`. */
   sync(body: HTMLElement): void;
   /** Sends what was typed to the member on screen (the coordinator first), starting an orchestra if none is open. */
@@ -770,6 +778,78 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     go("form");
   }
 
+  // ── The model button's menu: the member on screen's model and effort
+
+  let modelPop: HTMLElement | null = null;
+  let modelAnchor: HTMLElement | null = null;
+  let modelHost: HTMLElement | null = null;
+
+  function closeModelMenu(target?: Node | null): boolean {
+    if (!modelPop) return false;
+    if (target != null && (modelPop.contains(target) || modelAnchor?.contains(target))) return false;
+    modelPop.remove();
+    modelAnchor?.classList.remove("open");
+    modelPop = modelAnchor = modelHost = null;
+    return true;
+  }
+
+  function toggleModelMenu(anchor: HTMLElement, host: HTMLElement) {
+    if (closeModelMenu()) return;
+    const m = current() ?? snap?.coordinator;
+    if (!snap || !m) return;
+    const member = m.id;
+    let pick = pickOf(m);
+    const menu = buildModelMenu({
+      role: member === COORDINATOR ? "coordinator" : "thread",
+      get: () => pick,
+      set: (next) => {
+        pick = next;
+        void choose(member, next);
+      },
+      placed: placeModelMenu,
+      open: (el) => modelPop === el,
+    });
+    menu.classList.add("orc-model-pop");
+    modelPop = menu;
+    modelAnchor = anchor;
+    modelHost = host;
+    anchor.classList.add("open");
+    host.append(menu);
+    placeModelMenu();
+  }
+
+  /** Over the button, at its right edge; its list at most as tall as the room above. */
+  function placeModelMenu() {
+    if (!modelPop || !modelAnchor || !modelHost) return;
+    const a = modelAnchor.getBoundingClientRect();
+    const b = modelHost.getBoundingClientRect();
+    modelPop.style.right = `${Math.max(0, b.right - a.right)}px`;
+    modelPop.style.bottom = `${Math.max(0, b.bottom - a.top + 6)}px`;
+    const list = modelPop.querySelector<HTMLElement>(".pj-list");
+    if (list) list.style.maxHeight = `${Math.max(120, Math.min(320, a.top - b.top - 140))}px`;
+  }
+
+  /** A member's model picked: shown at once, kept by the project (orchestra_set_pick). */
+  async function choose(member: string, pick: OrchestraPick) {
+    if (!snap) return;
+    const id = snap.id;
+    const m = memberOf(snap, member);
+    if (m) m.pick = pick;
+    State.notify();
+    try {
+      const next = await Orchestra.setPick(id, member, pick);
+      if (snap?.id === id) {
+        snap = next;
+        drawRail();
+        drawHead();
+        State.notify();
+      }
+    } catch (err) {
+      error = String(err).replace(/^Error:\s*/, "");
+      draw();
+    }
+  }
+
   function openSettings() {
     if (!snap) return;
     Sound.play("pop");
@@ -1042,6 +1122,8 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     enter,
     leave,
     openSettings,
+    toggleModelMenu,
+    closeModelMenu,
     sync(body: HTMLElement) {
       host = body;
       placeClasses();
@@ -1099,21 +1181,10 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       return m && m.id !== COORDINATOR ? t(S.writeTo, { name: m.title }) : t(S.writeCoordinator);
     },
     button() {
-      const m = current() ?? null;
-      if (m && m.id !== COORDINATOR) {
-        const pick = pickOf(m);
-        const model = shortModel(pick.provider, pick.model);
-        return { name: [m.title, model, pick.effort ? effortLabel(pick.effort) : ""].filter(Boolean).join(" · "), dot: providerDef(pick.provider).accent };
-      }
-      const c = pickOf(snap?.coordinator ?? null);
-      const first = snap?.threads[0];
-      const x = first ? pickOf(first) : resolvePick(snap?.threadPick ?? State.settings.orchestraThread, State.settings, readyProviders, "thread");
-      const a = providerDef(c.provider).accent;
-      const b = providerDef(x.provider).accent;
-      return {
-        name: `${t(S.coordinator)} · ${shortModel(c.provider, c.model)} → ${shortModel(x.provider, x.model)}`,
-        dot: `linear-gradient(90deg, ${a} 50%, ${b} 50%)`,
-      };
+      // Only the model of the chat on screen: the coordinator's, or the thread's.
+      const pick = pickOf(current() ?? null);
+      const name = modelName(pick.provider, pick.model);
+      return { name: pick.effort ? `${name} · ${effortLabel(pick.effort)}` : name, dot: providerDef(pick.provider).accent };
     },
     startNew,
     toggleMenu,

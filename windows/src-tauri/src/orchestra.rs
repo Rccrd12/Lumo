@@ -328,7 +328,8 @@ impl Orchestra {
     }
 
     /// What the user set for the project (New project, its settings): the
-    /// roles' picks reach every member, the threads already started too.
+    /// coordinator's pick, and the threads' for the threads to come and for
+    /// those started with it (one the user gave a model of its own keeps it).
     pub fn apply(&mut self, p: Project) -> Result<(), String> {
         let title = clip(p.title.trim(), TITLE_MAX);
         if title.is_empty() {
@@ -347,10 +348,19 @@ impl Orchestra {
         self.folder = folder;
         self.resume = p.resume;
         self.coordinator.pick = p.coordinator;
-        for m in self.threads.iter_mut() {
+        for m in self.threads.iter_mut().filter(|m| m.pick == self.thread_pick) {
             m.pick = p.thread.clone();
         }
         self.thread_pick = p.thread;
+        self.updated = now();
+        Ok(())
+    }
+
+    /// The model and effort of one member, from the model button of its chat:
+    /// the coordinator's is the project's own; a thread's is that thread's
+    /// only, the others and those to come keep the project's.
+    pub fn set_pick(&mut self, member: &str, pick: Pick) -> Result<(), String> {
+        self.member_mut(member).ok_or_else(|| format!("There is no member {member}."))?.pick = pick;
         self.updated = now();
         Ok(())
     }
@@ -1515,6 +1525,12 @@ pub fn orchestra_update(app: AppHandle, id: String, project: Project) -> Result<
     with(Some(&app), &id, |o| o.apply(project).map(|_| o.snapshot())).ok_or_else(not_found)?
 }
 
+/// One member's model and effort, picked in its chat.
+#[tauri::command]
+pub fn orchestra_set_pick(app: AppHandle, id: String, member: String, pick: Pick) -> Result<Value, String> {
+    with(Some(&app), &id, |o| o.set_pick(&member, pick).map(|_| o.snapshot())).ok_or_else(not_found)?
+}
+
 #[tauri::command]
 pub fn orchestra_open(app: AppHandle, id: String) -> Result<Value, String> {
     let (snapshot, paused) = with(None, &id, |o| {
@@ -1937,5 +1953,27 @@ mod tests {
         assert!(!o.forward_reply(COORDINATOR, "x", None));
         // The coordinator is told how to say nothing.
         assert!(note_for(&o, COORDINATOR, false).contains(QUIET));
+    }
+
+    #[test]
+    fn a_threads_own_model_is_its_only_and_the_coordinators_is_the_projects() {
+        let mut o = orchestra();
+        o.start_thread("A", "x").unwrap();
+        o.start_thread("B", "x").unwrap();
+        let mine = Pick { provider: "codex".into(), model: "gpt-6".into(), effort: "high".into() };
+        o.set_pick("t1", mine.clone()).unwrap();
+        assert_eq!(o.member("t1").unwrap().pick, mine);
+        assert_eq!(o.member("t2").unwrap().pick, o.thread_pick, "the others keep the project's");
+        let started = o.start_thread("C", "x").unwrap();
+        assert_eq!(o.member(&started).unwrap().pick, o.thread_pick, "and so do those to come");
+        let coord = Pick { provider: "claude-code".into(), model: "opus".into(), effort: String::new() };
+        o.set_pick(COORDINATOR, coord.clone()).unwrap();
+        assert_eq!(o.summary().coordinator, coord, "the coordinator's is the project's");
+        assert!(o.set_pick("t9", coord).is_err());
+        // The project's thread model saved again: the thread with its own keeps it.
+        let fields = Project { title: "P".into(), coordinator: o.coordinator.pick.clone(), thread: Pick { provider: "ollama".into(), model: "llama".into(), effort: String::new() }, ..Default::default() };
+        o.apply(fields).unwrap();
+        assert_eq!(o.member("t1").unwrap().pick, mine);
+        assert_eq!(o.member("t2").unwrap().pick.model, "llama");
     }
 }

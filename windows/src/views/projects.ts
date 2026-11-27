@@ -154,8 +154,8 @@ export function shortPath(path: string, max = 28): string {
   return `…${sep}${out}`;
 }
 
-/** A model's name as the menus say it. */
-function modelName(provider: string, model: string, label?: string): string {
+/** A model's name as the menus say it (and a project's model button). */
+export function modelName(provider: string, model: string, label?: string): string {
   if (!model) return t(STRINGS.noModel);
   if (label) return label;
   return isCliProvider(provider) ? cliModelName(provider, model) : shortModel(provider, model);
@@ -407,13 +407,6 @@ export function buildProjectForm(opts: {
     pop.style.top = `${Math.max(0, f0.top - b.top - pop.offsetHeight - 6)}px`;
   }
 
-  function searchBox(placeholder: string, run: (q: string) => void): HTMLInputElement {
-    const input = h("input", { class: "pj-search-input", type: "text", placeholder, spellcheck: "false" }) as HTMLInputElement;
-    input.addEventListener("input", () => run(input.value));
-    queueMicrotask(() => input.focus?.());
-    return input;
-  }
-
   /** Search, the icons, the colours, and Reset. */
   function iconPicker(): HTMLElement {
     const grid = h("div", { class: "pj-grid" });
@@ -462,93 +455,19 @@ export function buildProjectForm(opts: {
       grid, colors, reset);
   }
 
-  /** Search, the models grouped by provider (the CLIs other than Claude Code left out for the coordinator), the effort. */
+  /** The models' menu of a role's field. */
   function modelMenu(role: OrchestraRole): HTMLElement {
     const key = role === "coordinator" ? "coordinator" : "thread";
-    const list = h("div", { class: "pj-list" });
-    const effort = h("div", { class: "pj-effort" });
-    const providers = orchestraProviders(State.settings, readyProviders, role);
-    const got = new Map<string, ModelInfo[] | string>();
-    let q = "";
-    const drawList = () => {
-      clear(list);
-      const words = q.trim().toLowerCase();
-      let any = false;
-      for (const p of providers) {
-        const models = got.get(p.id);
-        const rows: HTMLElement[] = [];
-        if (models == null) rows.push(h("div", { class: "pj-opt-note", text: t(STRINGS.loading) }));
-        else if (typeof models === "string") rows.push(h("div", { class: "pj-opt-note", text: models }));
-        else {
-          for (const m of models) {
-            const label = modelName(p.id, m.id, m.label);
-            if (words && !`${label} ${m.id} ${t(p.name)}`.toLowerCase().includes(words)) continue;
-            const on = f[key].provider === p.id && f[key].model === m.id;
-            const b = h("button", { class: on ? "pj-opt on" : "pj-opt", title: m.id, "data-model": m.id },
-              h("i", { class: "pj-pdot", style: `background:${p.accent}` }),
-              h("span", { class: "pj-opt-name", text: label }),
-              on ? svg(ICONS.check, 10, { stroke: 2.4 }) : null);
-            b.addEventListener("click", () => {
-              const now = f[key];
-              f[key] = { provider: p.id, model: m.id, effort: now.provider === p.id && now.model === m.id ? now.effort : "" };
-              Sound.play("blip");
-              drawPicks();
-              drawList();
-              void drawEffort();
-            });
-            rows.push(b);
-          }
-        }
-        if (words && rows.every((r) => !r.classList.contains("pj-opt"))) continue;
-        any = true;
-        list.append(h("div", { class: "pj-grp", text: t(p.name) }), ...rows);
-      }
-      if (!any) list.append(h("div", { class: "pj-none small", text: t(S.noModels) }));
-    };
-    let drawn = 0;
-    const drawEffort = async () => {
-      const ticket = ++drawn;
-      const pick = f[key];
-      const levels = await levelsOf(pick);
-      if (ticket !== drawn) return;
-      clear(effort);
-      effort.hidden = levels.length === 0;
-      if (effort.hidden) return;
-      const seg = h("div", { class: "pj-seg" });
-      for (const e of levels) {
-        const b = h("button", { class: pick.effort === e ? "on" : "", "data-effort": e, text: effortLabel(e) });
-        b.addEventListener("click", () => {
-          // A second click on the level on: back to the model's own.
-          f[key] = { ...f[key], effort: f[key].effort === e ? "" : e };
-          Sound.play("pop");
-          drawPicks();
-          void drawEffort();
-        });
-        seg.append(b);
-      }
-      effort.append(h("div", { class: "pj-effort-l" }, h("span", { text: t(S.effort) }), h("b", { text: effortLabel(f[key].effort) })), seg);
-      place();
-    };
-    effort.hidden = true;
-    drawList();
-    void drawEffort();
-    for (const p of providers) {
-      void modelsOf(p.id).then(
-        (models) => got.set(p.id, models.length ? models : t(S.noModels)),
-        (err) => got.set(p.id, String(err).replace(/^Error:\s*/, "")),
-      ).then(() => {
-        // Still open: the provider's models join the list.
-        if (pop === menu) drawList();
-      });
-    }
-    const search = searchBox(t(S.searchModels), (v) => {
-      q = v;
-      drawList();
+    return buildModelMenu({
+      role,
+      get: () => f[key],
+      set: (pick) => {
+        f[key] = pick;
+        drawPicks();
+      },
+      placed: place,
+      open: (menu) => pop === menu,
     });
-    const menu = h("div", { class: "pj-pop pj-pop-models" },
-      h("label", { class: "pj-search" }, svg(SEARCH_LINE, 13, { stroke: 1.8 }), search),
-      list, effort);
-    return menu;
   }
 
   // A click away from the menu closes it.
@@ -568,4 +487,124 @@ export function buildProjectForm(opts: {
       return true;
     },
   };
+}
+
+function searchBox(placeholder: string, run: (q: string) => void): HTMLInputElement {
+  const input = h("input", { class: "pj-search-input", type: "text", placeholder, spellcheck: "false" }) as HTMLInputElement;
+  input.addEventListener("input", () => run(input.value));
+  queueMicrotask(() => input.focus?.());
+  return input;
+}
+
+/**
+ * The models' menu: a search, the models grouped by provider (the CLIs other
+ * than Claude Code left out for the coordinator), the effort under them.
+ * `get` and `set` the pick it shows; `placed` once its height changed;
+ * `open` whether it is still on screen.
+ */
+export function buildModelMenu(o: {
+  role: OrchestraRole;
+  get(): OrchestraPick;
+  set(pick: OrchestraPick): void;
+  placed(): void;
+  open(menu: HTMLElement): boolean;
+}): HTMLElement {
+  const role = o.role;
+  const list = h("div", { class: "pj-list" });
+  const effort = h("div", { class: "pj-effort" });
+  const providers = orchestraProviders(State.settings, readyProviders, role);
+  const got = new Map<string, ModelInfo[] | string>();
+  let q = "";
+  const drawList = () => {
+    // Drawn again as providers answer: where the list was scrolled stays.
+    const top = list.scrollTop;
+    clear(list);
+    const words = q.trim().toLowerCase();
+    let any = false;
+    for (const p of providers) {
+      const models = got.get(p.id);
+      const rows: HTMLElement[] = [];
+      if (models == null) rows.push(h("div", { class: "pj-opt-note", text: t(STRINGS.loading) }));
+      else if (typeof models === "string") rows.push(h("div", { class: "pj-opt-note", text: models }));
+      else {
+        for (const m of models) {
+          const label = modelName(p.id, m.id, m.label);
+          if (words && !`${label} ${m.id} ${t(p.name)}`.toLowerCase().includes(words)) continue;
+          const on = o.get().provider === p.id && o.get().model === m.id;
+          const b = h("button", { class: on ? "pj-opt on" : "pj-opt", title: m.id, "data-model": m.id },
+            h("i", { class: "pj-pdot", style: `background:${p.accent}` }),
+            h("span", { class: "pj-opt-name", text: label }),
+            on ? svg(ICONS.check, 10, { stroke: 2.4 }) : null);
+          b.addEventListener("click", () => {
+            const now = o.get();
+            o.set({ provider: p.id, model: m.id, effort: now.provider === p.id && now.model === m.id ? now.effort : "" });
+            Sound.play("blip");
+            drawList();
+            void drawEffort();
+          });
+          rows.push(b);
+        }
+      }
+      if (words && rows.every((r) => !r.classList.contains("pj-opt"))) continue;
+      any = true;
+      list.append(h("div", { class: "pj-grp", text: t(p.name) }), ...rows);
+    }
+    if (!any) list.append(h("div", { class: "pj-none small", text: t(S.noModels) }));
+    list.scrollTop = top;
+  };
+  let drawn = 0;
+  let shown = false;
+  const drawEffort = async () => {
+    const ticket = ++drawn;
+    const pick = o.get();
+    const levels = await levelsOf(pick);
+    if (ticket !== drawn) return;
+    clear(effort);
+    effort.hidden = levels.length === 0;
+    if (effort.hidden) return;
+    const seg = h("div", { class: "pj-seg" });
+    for (const e of levels) {
+      const b = h("button", { class: pick.effort === e ? "on" : "", "data-effort": e, text: effortLabel(e) });
+      b.addEventListener("click", () => {
+        // A second click on the level on: back to the model's own.
+        const now = o.get();
+        o.set({ ...now, effort: now.effort === e ? "" : e });
+        Sound.play("pop");
+        void drawEffort();
+      });
+      seg.append(b);
+    }
+    effort.append(h("div", { class: "pj-effort-l" }, h("span", { text: t(S.effort) }), h("b", { text: effortLabel(o.get().effort) })), seg);
+    o.placed();
+  };
+  effort.hidden = true;
+  drawList();
+  void drawEffort();
+  for (const p of providers) {
+    void modelsOf(p.id).then(
+      (models) => got.set(p.id, models.length ? models : t(S.noModels)),
+      (err) => got.set(p.id, String(err).replace(/^Error:\s*/, "")),
+    ).then(() => {
+      // Still open: the provider's models join the list, the model picked in sight.
+      if (!o.open(menu)) return;
+      drawList();
+      if (!shown) {
+        const on = list.querySelector<HTMLElement>(".pj-opt.on");
+        if (on) {
+          shown = true;
+          // Where it sits in the list (the list is the menu's own scroller).
+          const at = on.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+          list.scrollTop = Math.max(0, at - list.clientHeight / 2 + on.offsetHeight / 2);
+        }
+      }
+    });
+  }
+  const search = searchBox(t(S.searchModels), (v) => {
+    q = v;
+    drawList();
+  });
+  const menu = h("div", { class: "pj-pop pj-pop-models" },
+    h("label", { class: "pj-search" }, svg(SEARCH_LINE, 13, { stroke: 1.8 }), search),
+    list, effort);
+  return menu;
 }
