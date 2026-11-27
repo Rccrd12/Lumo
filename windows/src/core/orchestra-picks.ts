@@ -1,6 +1,8 @@
 // Who plays the orchestra's two roles (Settings.orchestraCoordinator and
-// orchestraThread): an API provider or a local model, never a CLI, which
-// runs its own loop (orchestra.rs). Pure helpers for the model picker
+// orchestraThread): any provider for the threads, the CLIs too (they get the
+// orchestra's tools from lumo-hook); for the coordinator an API provider, a
+// local model or Claude Code, the one CLI whose own tools Lumo can take away
+// (orchestra.rs claude_code_args). Pure helpers for the model picker
 // (views/chat-models.ts) and the orchestra view (views/orchestra.ts).
 
 import { isCliProvider, modelFor, providerDef, visibleProviders, type ProviderDef } from "./providers";
@@ -17,14 +19,15 @@ export function roleField(role: OrchestraRole): "orchestraCoordinator" | "orches
   return role === "coordinator" ? "orchestraCoordinator" : "orchestraThread";
 }
 
-/** Whether provider `id` may take a role: the providers called by their API and the model servers. */
-export function orchestraAllowed(id: string): boolean {
-  return !isCliProvider(id) && providerDef(id).id === id;
+/** Whether provider `id` may take `role`: any for a thread; for the coordinator no CLI but Claude Code. */
+export function orchestraAllowed(id: string, role: OrchestraRole = "coordinator"): boolean {
+  if (providerDef(id).id !== id) return false;
+  return role === "thread" || !isCliProvider(id) || id === "claude-code";
 }
 
-/** The providers the picker offers for a role: those set up, without the CLIs. */
-export function orchestraProviders(settings: Settings, ready: ReadonlySet<string> | null): ProviderDef[] {
-  return visibleProviders(settings, ready).filter((p) => orchestraAllowed(p.id));
+/** The providers the picker offers for `role`: those set up that may take it. */
+export function orchestraProviders(settings: Settings, ready: ReadonlySet<string> | null, role: OrchestraRole = "coordinator"): ProviderDef[] {
+  return visibleProviders(settings, ready).filter((p) => orchestraAllowed(p.id, role));
 }
 
 /**
@@ -32,10 +35,10 @@ export function orchestraProviders(settings: Settings, ready: ReadonlySet<string
  * provider, its model and effort. A chat on a CLI lends nothing: the first
  * provider the picker offers instead (Anthropic when none is known).
  */
-export function resolvePick(pick: OrchestraPick | undefined, settings: Settings, ready: ReadonlySet<string> | null = null): OrchestraPick {
-  const own = pick?.provider && orchestraAllowed(pick.provider) ? pick.provider : "";
-  const chat = orchestraAllowed(settings.chatProvider) ? settings.chatProvider : "";
-  const provider = own || chat || orchestraProviders(settings, ready)[0]?.id || "anthropic";
+export function resolvePick(pick: OrchestraPick | undefined, settings: Settings, ready: ReadonlySet<string> | null = null, role: OrchestraRole = "coordinator"): OrchestraPick {
+  const own = pick?.provider && orchestraAllowed(pick.provider, role) ? pick.provider : "";
+  const chat = orchestraAllowed(settings.chatProvider, role) ? settings.chatProvider : "";
+  const provider = own || chat || orchestraProviders(settings, ready, role)[0]?.id || "anthropic";
   const model = (own && pick?.model) || modelFor(settings, provider);
   const effort = own ? pick?.effort ?? "" : pick?.effort || (provider === settings.chatProvider ? settings.chatEffort : "");
   return { provider, model, effort };
@@ -51,13 +54,13 @@ export function shortModel(provider: string, model: string): string {
 /** The model button's words in orchestra mode: who coordinates, then who works ("Opus 5.5 → gemma-4-26b"). */
 export function picksName(settings: Settings, ready: ReadonlySet<string> | null = null): string {
   const c = resolvePick(settings.orchestraCoordinator, settings, ready);
-  const x = resolvePick(settings.orchestraThread, settings, ready);
+  const x = resolvePick(settings.orchestraThread, settings, ready, "thread");
   return `${shortModel(c.provider, c.model)} → ${shortModel(x.provider, x.model)}`;
 }
 
 /** The model button's dot in orchestra mode: half each role's colour. */
 export function picksDot(settings: Settings, ready: ReadonlySet<string> | null = null): string {
   const c = providerDef(resolvePick(settings.orchestraCoordinator, settings, ready).provider).accent;
-  const x = providerDef(resolvePick(settings.orchestraThread, settings, ready).provider).accent;
+  const x = providerDef(resolvePick(settings.orchestraThread, settings, ready, "thread").provider).accent;
   return `linear-gradient(90deg, ${c} 50%, ${x} 50%)`;
 }

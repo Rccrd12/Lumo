@@ -26,11 +26,11 @@ import {
   type OrchestraFile, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
 } from "../core/orchestra-bridge";
 import { providerDef } from "../core/providers";
-import { resolvePick, shortModel } from "../core/orchestra-picks";
+import { ORCHESTRA_ACCENT, resolvePick, shortModel } from "../core/orchestra-picks";
 import { durationText } from "../core/chat-agents";
 import { Sound } from "../core/sound";
 import { State, type OrchestraPick } from "../core/state";
-import { t } from "../i18n/i18n";
+import { t, tn } from "../i18n/i18n";
 import { activityLabel, sentAgo } from "./chat-messages";
 import { effortLabel } from "./chat-strings";
 import { readyProviders } from "./chat-models";
@@ -76,11 +76,28 @@ export interface OrchestraView {
   readonly snapshot: OrchestraSnapshot | null;
   /** The member on screen. */
   readonly selected: string;
+  /**
+   * What the closed island says of the orchestra while no chat answers: how
+   * many work and how far the plan is, who waits for the user, or that it is
+   * finished and the coordinator's first line (concept 7). Null: nothing.
+   */
+  islandLine(): { who: string; color: string; label: string } | null;
+  /** Whose usage the ring by the model button shows: the member on screen, its chat and who plays it. */
+  usageOf(): { chat: string; provider: string; model: string; effort: string } | null;
 }
 
-export function buildOrchestra(): OrchestraView {
+/** The closed island's colours: a thread waiting for the user, and an orchestra finished. */
+const WAITING_COLOR = "#f5c542";
+const DONE_COLOR = "#4ade80";
+
+/** `changed`: the orchestra on screen changed (the closed island's line may say something else). */
+export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   let snap: OrchestraSnapshot | null = null;
   let selected = COORDINATOR;
+  /** The orchestra finished its work with the island closed, and it was not opened since. */
+  let finishedUnseen = false;
+  /** The member whose question the closed island said: shown when the island opens. */
+  let askedOnIsland = "";
   let summaries: OrchestraSummary[] = [];
   let booted = false;
   let menuOpen = false;
@@ -118,7 +135,7 @@ export function buildOrchestra(): OrchestraView {
   function pickOf(m: OrchestraMember | null): OrchestraPick {
     const fallback = m == null || m.id === COORDINATOR ? State.settings.orchestraCoordinator : State.settings.orchestraThread;
     const own = m?.pick?.provider ? m.pick : fallback;
-    return resolvePick(own, State.settings, readyProviders);
+    return resolvePick(own, State.settings, readyProviders, m == null || m.id === COORDINATOR ? "coordinator" : "thread");
   }
 
   /** The cards still waiting for the user that `id` put, wherever they show. */
@@ -710,9 +727,14 @@ export function buildOrchestra(): OrchestraView {
         if (m.state !== "working") acts.delete(m.chat);
       }
     }
+    // Its work ended while the island was closed: the closed island says it is finished until it is opened.
+    const busy = (x: OrchestraSnapshot | null) => Boolean(x && membersOf(x).some((m) => m.state === "working"));
+    if (!other && busy(snap) && !busy(s) && !(State.mode === "expanded" && State.view === "prompt")) finishedUnseen = true;
+    if (busy(s)) finishedUnseen = false;
     snap = s;
     if (!memberOf(s, selected)) selected = COORDINATOR;
     draw(other);
+    changed();
     // The model button and the field follow the member on screen.
     if (other) State.notify();
   }
@@ -751,6 +773,21 @@ export function buildOrchestra(): OrchestraView {
       host = body;
       placeClasses();
       if (!on()) return;
+      if (askedOnIsland && State.mode === "expanded" && State.view === "prompt") {
+        const id = askedOnIsland;
+        askedOnIsland = "";
+        if (snap && memberOf(snap, id) && waitingCards(id) > 0 && id !== selected) {
+          selected = id;
+          seen.add(id);
+          draw(false);
+          queueMicrotask(() => State.notify());
+        }
+      }
+      // Seen: the closed island no longer says it finished.
+      if (finishedUnseen && State.mode === "expanded" && State.view === "prompt") {
+        finishedUnseen = false;
+        changed();
+      }
       if (!booted) {
         booted = true;
         void boot();
@@ -797,7 +834,7 @@ export function buildOrchestra(): OrchestraView {
       }
       const c = pickOf(snap?.coordinator ?? null);
       const first = snap?.threads[0];
-      const x = first ? pickOf(first) : resolvePick(State.settings.orchestraThread, State.settings, readyProviders);
+      const x = first ? pickOf(first) : resolvePick(State.settings.orchestraThread, State.settings, readyProviders, "thread");
       const a = providerDef(c.provider).accent;
       const b = providerDef(x.provider).accent;
       return {
@@ -826,6 +863,34 @@ export function buildOrchestra(): OrchestraView {
     },
     get selected() {
       return selected;
+    },
+    islandLine() {
+      if (!State.settings.orchestraMode || !snap) return null;
+      const who = `«${snap.title || t(S.untitled)}»`;
+      const members = membersOf(snap);
+      // A card waiting for the user comes first: a click opens the island on it.
+      const asking = members.find((m) => waitingCards(m.id) > 0);
+      if (asking) {
+        // Said on the closed island: opening it shows that member's question.
+        if (State.mode !== "expanded") askedOnIsland = asking.id;
+        return { who, color: WAITING_COLOR, label: t(S.asks, { name: nameOf(asking) }) };
+      }
+      const working = members.filter((m) => m.state === "working").length;
+      if (working > 0) {
+        const plan = snap.plan.length ? ` · ${t(S.planPill, { done: snap.plan.filter((p) => p.status === "completed").length, total: snap.plan.length })}` : "";
+        return { who, color: ORCHESTRA_ACCENT, label: `${tn("{count} at work", S.atWork, working)}${plan}` };
+      }
+      if (!finishedUnseen) return null;
+      const last = snap.coordinator.messages.filter((m) => m.kind === "assistant").at(-1);
+      const first = last?.text.split("\n").map((l) => l.replace(/^[#>*\-\s]+/, "").replace(/\*\*/g, "").trim()).find(Boolean) ?? "";
+      return { who, color: DONE_COLOR, label: first ? `${t(S.finished)} · ${first}` : t(S.finished) };
+    },
+    usageOf() {
+      if (!on()) return null;
+      const m = current() ?? null;
+      const pick = pickOf(m);
+      // No orchestra yet: the coordinator's to be, on a chat of its own none has written to.
+      return { chat: m?.chat ?? "", ...pick };
     },
   };
 }

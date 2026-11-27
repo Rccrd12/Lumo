@@ -4,7 +4,7 @@
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { Bridge, onEvent, type LocalLoad, type ModelInfo, type UnslothStudio, UNSLOTH_STUDIO_EVENT } from "../core/bridge";
-import { activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, isApiProvider, localCapsOf, pickModel, providerDef, setLocalCaps, anyProviderReady, visibleProviders, withModel, type ProviderDef } from "../core/providers";
+import { activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, isApiProvider, isCliProvider, localCapsOf, pickModel, providerDef, setLocalCaps, anyProviderReady, visibleProviders, withModel, type ProviderDef } from "../core/providers";
 import { groupByEffort, groupOf, levelOf, splitEffort, variantFor } from "../core/effort-groups";
 import { cliModelName } from "../core/model-names";
 import { isOrchestratorRow, offersOrchestrator, orchestratorListed, orchestratorModel, orchestratorRoles, parseOrchestrator, defaultOrchestrator, roleName, stepRole, withRoleLevel, type Orchestration } from "../core/orchestrator";
@@ -647,7 +647,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       ...s,
       orchestraMode: true,
       orchestraCoordinator: resolvePick(s.orchestraCoordinator, s, readyProviders),
-      orchestraThread: resolvePick(s.orchestraThread, s, readyProviders),
+      orchestraThread: resolvePick(s.orchestraThread, s, readyProviders, "thread"),
     };
     saveSettings();
     onOrchestraPicks();
@@ -658,7 +658,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     onChange();
   }
 
-  const rolePick = (role: OrchestraRole) => resolvePick(State.settings[roleField(role)], State.settings, readyProviders);
+  const rolePick = (role: OrchestraRole) => resolvePick(State.settings[roleField(role)], State.settings, readyProviders, role);
 
   function setPick(role: OrchestraRole, pick: OrchestraPick) {
     State.settings = { ...State.settings, [roleField(role)]: pick };
@@ -678,6 +678,12 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       if (isOpen && State.settings.orchestraMode && !orchestraRole) drawOrchestra();
     };
     if (!pick.model) return [];
+    // A CLI's own levels (Claude Code, Codex, Copilot CLI), without its default ("").
+    if (isCliProvider(p.id)) {
+      const levels = effortsFor(p.id).filter(Boolean);
+      roleEfforts.set(key, levels);
+      return levels;
+    }
     if (p.urlField) {
       void Bridge.localCaps(p.id, pick.model).then((caps) => learnt(caps?.reasoning)).catch(() => {});
       return [];
@@ -758,7 +764,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       drawOrchestra();
     });
     chips.append(back);
-    for (const p of orchestraProviders(State.settings, readyProviders)) {
+    for (const p of orchestraProviders(State.settings, readyProviders, role)) {
       const on = p.id === roleProvider;
       const chip = h(
         "button",

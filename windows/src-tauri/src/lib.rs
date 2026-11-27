@@ -8,6 +8,10 @@ mod browser_tool_defs;
 #[path = "../../hook/src/mail_tools.rs"]
 #[allow(dead_code)]
 mod mail_tool_defs;
+/// The orchestra's tools as lumo-hook lists them: the same file, for its API and local members (orchestra.rs).
+#[path = "../../hook/src/orchestra_tools.rs"]
+#[allow(dead_code)]
+mod orchestra_tool_defs;
 /// Lumo's timer and listening tools as lumo-hook lists them: the same file, for the chat's API providers (island_tools.rs).
 #[path = "../../hook/src/island_tools.rs"]
 #[allow(dead_code)]

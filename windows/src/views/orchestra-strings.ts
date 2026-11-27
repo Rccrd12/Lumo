@@ -30,6 +30,8 @@ export const ORCHESTRA_STRINGS = {
   fresh: N_("Just opened"),
   thinking: N_("Thinking…"),
   planPill: N_("Plan {done}/{total}"),
+  /** The closed island: how many of the orchestra are at work (a plural, as the agents card's). */
+  atWork: N_("{count} at work"),
   /** A thread's own list of steps. */
   listPill: N_("List {done}/{total}"),
   planTitle: N_("The plan"),

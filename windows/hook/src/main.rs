@@ -36,6 +36,7 @@ mod island_tools;
 mod mail_tools;
 mod mcp;
 mod normalize;
+mod orchestra_tools;
 mod reply;
 mod title;
 mod write_stat;

@@ -263,11 +263,17 @@ test("the picker: Orchestra first, then a row for the coordinator and one for th
   rows[0].querySelector(".effort-slider").fire("keydown", { key: "End" });
   assert.equal(State.settings.orchestraCoordinator.effort, "high");
 
-  // The threads' model: only the providers that may take a role, no CLI.
+  // The coordinator's: no CLI but Claude Code, whose own tools Lumo takes away.
+  view.el.find(".orch-pick")[0].fire("click");
+  await flush();
+  assert.deepEqual(chips(), ["Anthropic", "Claude Code", "LM Studio"]);
+  view.el.find(".orch-back")[0].fire("click");
+  await flush();
+  // The threads': every provider, the CLIs too.
   view.el.find(".orch-pick")[1].fire("click");
   await flush();
-  assert.deepEqual(chips(), ["Anthropic", "LM Studio"]);
-  view.el.find(".picker-chip")[1].fire("click");
+  assert.deepEqual(chips(), ["Anthropic", "Claude Code", "Codex", "LM Studio"]);
+  view.el.find(".picker-chip").find((c) => c.textContent === "LM Studio").fire("click");
   await flush();
   view.el.find(".picker-model").find((m) => m.textContent.includes("gemma")).fire("click");
   assert.deepEqual(State.settings.orchestraThread, { provider: "lmstudio", model: "gemma-4-26b-a4b", effort: "" });
@@ -281,9 +287,9 @@ test("the picker: Orchestra first, then a row for the coordinator and one for th
   assert.equal(State.settings.orchestraMode, false);
 });
 
-test("the picker offers no Orchestra when only CLIs are set up", async () => {
-  State.settings = { ...State.settings, orchestraMode: false, chatProvider: "claude-code", lmstudioUrl: "" };
-  answers.chat_providers = ["claude-code", "codex"];
+test("the picker offers no Orchestra when no one can coordinate (only CLIs other than Claude Code)", async () => {
+  State.settings = { ...State.settings, orchestraMode: false, chatProvider: "codex", lmstudioUrl: "" };
+  answers.chat_providers = ["antigravity-cli", "codex"];
   answers.chat_models = [{ id: "default", label: "Default" }];
   view = buildPrompt(() => {});
   view.sync();
@@ -291,6 +297,52 @@ test("the picker offers no Orchestra when only CLIs are set up", async () => {
   $(".model-btn").fire("click");
   await flush();
   assert.ok(!view.el.find(".picker-chip").some((c) => c.textContent === "Orchestra"));
-  assert.ok(!orchestraAllowed("claude-code") && !orchestraAllowed("copilot-cli") && orchestraAllowed("ollama"));
-  assert.equal(resolvePick({ provider: "codex", model: "x", effort: "" }, { ...State.settings, chatProvider: "anthropic" }).provider, "anthropic", "a CLI saved for a role is never used");
+  // The coordinator: an API, a local model or Claude Code (whose own tools Lumo takes away); a thread: anyone.
+  assert.ok(orchestraAllowed("claude-code") && !orchestraAllowed("copilot-cli") && !orchestraAllowed("codex") && orchestraAllowed("ollama"));
+  assert.ok(orchestraAllowed("codex", "thread") && orchestraAllowed("antigravity-cli", "thread") && orchestraAllowed("cursor-cli", "thread"));
+  const chat = { ...State.settings, chatProvider: "anthropic" };
+  assert.equal(resolvePick({ provider: "codex", model: "x", effort: "" }, chat).provider, "anthropic", "a CLI that can't coordinate is never the coordinator");
+  assert.deepEqual(resolvePick({ provider: "codex", model: "x", effort: "high" }, chat, null, "thread"), { provider: "codex", model: "x", effort: "high" });
+});
+
+test("the usage ring shows the context of the member on screen, by its own chat", async () => {
+  State.settings = { ...State.settings, chatShowUsage: true };
+  view.sync();
+  await flush();
+  emit("chat-usage", { provider: "lmstudio", context: { chat: "orc-o1-t1", used: 16_384, total: 32_768 } });
+  await flush();
+  view.sync();
+  // The coordinator (Anthropic) has told nothing yet.
+  assert.equal($(".chat-usage").style.display, "none");
+  item("t1").fire("click");
+  view.sync();
+  assert.notEqual($(".chat-usage").style.display, "none");
+  assert.match($(".chat-usage").title, /16(\.|,)4K/);
+});
+
+test("the closed island says how many work and the plan, who waits for you, and that it finished", async () => {
+  await flush();
+  view.sync();
+  // A card waits (Oak St's): that first.
+  assert.equal(State.chatActivity?.label, "Oak St asks you");
+  assert.equal(State.chatActivity?.who, "«Leases»");
+  // Answered: how many work, and how far the plan is.
+  const busy = structuredClone(SNAP);
+  for (const m of [busy.coordinator, ...busy.threads]) for (const x of m.messages) if (x.card) x.card.chose = 0;
+  emit("orchestra-update", busy);
+  await flush();
+  assert.equal(State.chatActivity?.label, "2 at work · Plan 1/2");
+  // All done while the island was closed: it says so, with the coordinator's first line.
+  State.mode = "compact";
+  const done = structuredClone(busy);
+  for (const m of [done.coordinator, ...done.threads]) m.state = "idle";
+  done.coordinator.messages.push({ id: "z", at: 10, kind: "assistant", from: "coordinator", text: "**Main St** is the better deal.\n\nDetails below." });
+  emit("orchestra-update", done);
+  await flush();
+  assert.equal(State.chatActivity?.label, "finished · Main St is the better deal.");
+  // Opened: said, no longer.
+  State.mode = "expanded";
+  view.sync();
+  await flush();
+  assert.equal(State.chatActivity, null);
 });

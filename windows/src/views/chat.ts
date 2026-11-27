@@ -86,7 +86,7 @@ import { MAX_COMMANDS, ranCommandOf } from "../core/terminal";
 import { Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type ChatContext, type ChatFileEvent, type ExplorerFolder, type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot } from "../core/bridge";
 import { activeModel, chatEffortOf, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
 import { Sound } from "../core/sound";
-import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
+import { State, planAskInChat, type ActiveChatRun, type ChatMessage, type Settings } from "../core/state";
 import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import { cliOf, moveSentPaths, onChatsLeft, setChatCli } from "../core/chats";
 import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore, noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, sealAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns, type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry } from "../core/chat-agents";
@@ -747,7 +747,7 @@ export function buildPrompt(
 
   const body = h("div", { class: "chat-body" });
   // The orchestra (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
-  const orchestra = buildOrchestra();
+  const orchestra = buildOrchestra(() => drawIslandActivity());
   const picker = buildPicker(() => {
     if (picker.isOpen) coverLog();
     body.classList.toggle("picking", picker.isOpen);
@@ -1002,12 +1002,25 @@ export function buildPrompt(
 
   let usageLineShown: UsageLine | null = null;
 
+  /**
+   * Whose usage the ring shows: the chat's, or on the orchestra the member on
+   * screen's (views/orchestra.ts), its own chat and the model playing it.
+   */
+  function usageScope(): { settings: Settings; chatId: string; orchestra: boolean } {
+    const member = orchestra.usageOf();
+    if (!member) return { settings: State.settings, chatId: State.chatId, orchestra: false };
+    const settings: Settings = { ...State.settings, chatProvider: member.provider as Settings["chatProvider"], chatEffort: member.effort, chatModels: { ...State.settings.chatModels, [member.provider]: member.model } };
+    if (member.provider === "anthropic") settings.model = member.model;
+    return { settings, chatId: member.chat, orchestra: true };
+  }
+
   function drawUsage(now = Date.now()) {
-    const local = Boolean(providerDef(State.settings.chatProvider).urlField);
-    const seen = local ? seenContext.get(State.chatId) : seenUsage.get(State.settings.chatProvider);
+    const { settings, chatId } = usageScope();
+    const local = Boolean(providerDef(settings.chatProvider).urlField);
+    const seen = local ? seenContext.get(chatId) : seenUsage.get(settings.chatProvider);
     // A provider called by its API: this chat's context too, next to its limits.
-    const context = isApiProvider(State.settings.chatProvider) ? seenContext.get(State.chatId) : undefined;
-    const line = usageLine(State.settings, State.planUsage, seen, now, State.antigravityPlanUsage, State.chatId, context);
+    const context = isApiProvider(settings.chatProvider) ? seenContext.get(chatId) : undefined;
+    const line = usageLine(settings, State.planUsage, seen, now, State.antigravityPlanUsage, chatId, context);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -1027,24 +1040,26 @@ export function buildPrompt(
   /** The menu: each limit with how much is used, its bar and when it resets. */
   function drawUsageMenu() {
     const line = usageLineShown;
+    const scope = usageScope();
+    const { settings, chatId } = scope;
     // A local model's ring is its context: the menu says only that. So does
     // an API provider's that tells no limits (Google's).
-    const local = providerDef(State.settings.chatProvider).urlField !== null || Boolean(line?.context);
+    const local = providerDef(settings.chatProvider).urlField !== null || Boolean(line?.context);
     usageTitle.textContent = USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
     // The context as one split bar, then the limits as bars (views/usage-panel.ts).
     usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
-    const report = lastContextReport(State.chatHistory);
+    const report = scope.orchestra ? null : lastContextReport(State.chatHistory);
     // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
-    const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
+    const filled = local ? null : seenContext.get(chatId)?.context ?? null;
     // Antigravity CLI says only the tokens: its model's window comes from its name, and the figure is about.
-    const agy = State.settings.chatProvider === "antigravity-cli";
-    const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(State.settings)) ?? 0 : 0) : 0;
+    const agy = settings.chatProvider === "antigravity-cli";
+    const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(settings)) ?? 0 : 0) : 0;
     const fill = filled && total > 0 ? { used: filled.used, total, estimate: agy } : null;
     drawNewUsage(usageList, {
       line, local, report, fill,
-      askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {
+      askContext: !scope.orchestra && settings.chatProvider === "claude-code" && !report?.fresh ? () => {
         closeUsage();
         void submit("/context");
       } : null,
@@ -1052,7 +1067,8 @@ export function buildPrompt(
     // Taller while it holds the context (the menu may be open as /context lands).
     if (body.classList.contains("metering")) panelChanged();
     // A local model's context, or an API provider's: /compact from here, under its bar.
-    if ((local || isApiProvider(State.settings.chatProvider)) && State.chatHistory.length > 0) {
+    // Not on the orchestra: its members' chats are compacted by their own turns.
+    if (!scope.orchestra && (local || isApiProvider(settings.chatProvider)) && State.chatHistory.length > 0) {
       const compact = h("button", { class: "usage-compact", title: t(SLASH_STRINGS.compact), onclick: () => void compactChat() },
         svg(COMPACT_ICON, 12, { stroke: 1.8 }), h("span", { text: t(COMPACT_STRINGS.action) }));
       usageList.append(h("div", { class: "usage-compact-row" }, compact));
@@ -1060,10 +1076,11 @@ export function buildPrompt(
   }
 
   function openUsage() {
+    const { settings } = usageScope();
     // Asked of Anthropic when turned on (at most every 3 minutes).
-    if (State.settings.chatProvider === "claude-code") refreshClaudePlanOnline();
+    if (settings.chatProvider === "claude-code") refreshClaudePlanOnline();
     // agy is asked again when its numbers are more than a minute old.
-    if (antigravityUsage()) refreshAntigravityPlanUsage();
+    if (settings.chatProvider === "antigravity-cli" && settings.chatShowUsage) refreshAntigravityPlanUsage();
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -3121,6 +3138,11 @@ export function buildPrompt(
     finishedChats.set(run.chatId, { provider: run.provider, model: run.served || run.model, title, timer });
   }
 
+  function orchestraLine(): { who: string; color: string; label: string; chatId: string } | null {
+    const line = orchestra.islandLine();
+    return line ? { ...line, chatId: State.chatId } : null;
+  }
+
   function drawIslandActivity() {
     const liveRuns = [...runs.values()].filter((r) => !r.forgotten);
     const current = answering();
@@ -3142,7 +3164,9 @@ export function buildPrompt(
     const next = run
       ? { ...runSpeaker(run), label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null, chatId: run.chatId }
       : compactingLabel != null ? { ...chatSpeaker(), label: compactingLabel, chatId: State.chatId }
-      : agentsLine ? { who: agentsLine.island.who, color: agentsLine.chat.color, label: agentsLine.island.label, chatId: agentsLine.chat.chatId } : null;
+      : agentsLine ? { who: agentsLine.island.who, color: agentsLine.chat.color, label: agentsLine.island.label, chatId: agentsLine.chat.chatId }
+      // The orchestra: how many work, who waits for the user, or that it finished (views/orchestra.ts).
+      : orchestraLine() ?? null;
     const nextChats: ActiveChatRun[] = liveRuns.map((r) => {
       const { who, color } = runSpeaker(r);
       return {

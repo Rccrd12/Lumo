@@ -24443,17 +24443,17 @@
    "id": "Baru",
    "it": "nuovo"
   },
-  "Orchestra members can only be API or local models: pick one for this role.": {
-   "zh-Hans": "编排成员只能是 API 或本地模型：请为这个角色选一个。",
-   "hi": "ऑर्केस्ट्रा के सदस्य केवल API या लोकल मॉडल हो सकते हैं: इस भूमिका के लिए एक चुनें।",
-   "es": "Los miembros de la orquesta solo pueden ser modelos por API o locales: elige uno para este papel.",
-   "ar": "لا يمكن أن يكون أعضاء الأوركسترا إلا نماذج API أو نماذج محلية: اختر واحدًا لهذا الدور.",
-   "fr": "Les membres de l'orchestre ne peuvent être que des modèles par API ou locaux : choisissez-en un pour ce rôle.",
-   "bn": "অর্কেস্ট্রার সদস্য শুধু API বা লোকাল মডেল হতে পারে: এই ভূমিকার জন্য একটি বেছে নিন।",
-   "pt-BR": "Os membros da orquestra só podem ser modelos por API ou locais: escolha um para este papel.",
-   "ru": "Участниками оркестра могут быть только модели по API или локальные: выберите одну для этой роли.",
-   "id": "Anggota orkestra hanya bisa model API atau lokal: pilih satu untuk peran ini.",
-   "it": "I membri dell'orchestratore possono essere solo modelli via API o locali: scegline uno per questo ruolo."
+  "The coordinator can be an API model, a local model or Claude Code: pick one of them for it.": {
+   "zh-Hans": "协调者可以是 API 模型、本地模型或 Claude Code：请为它选择其中之一。",
+   "hi": "समन्वयक एक API मॉडल, एक लोकल मॉडल या Claude Code हो सकता है: उसके लिए इनमें से एक चुनें।",
+   "es": "El coordinador puede ser un modelo de API, un modelo local o Claude Code: elige uno de ellos.",
+   "ar": "يمكن أن يكون المنسق نموذج API أو نموذجًا محليًا أو Claude Code: اختر واحدًا منها له.",
+   "fr": "Le coordinateur peut être un modèle d'API, un modèle local ou Claude Code : choisissez-en un.",
+   "bn": "সমন্বয়কারী একটি API মডেল, একটি লোকাল মডেল বা Claude Code হতে পারে: এর জন্য এগুলোর একটি বেছে নিন।",
+   "pt-BR": "O coordenador pode ser um modelo de API, um modelo local ou o Claude Code: escolha um deles.",
+   "ru": "Координатором может быть модель по API, локальная модель или Claude Code: выберите одну из них.",
+   "id": "Koordinator bisa berupa model API, model lokal, atau Claude Code: pilih salah satunya.",
+   "it": "Il coordinatore può essere un modello via API, un modello locale o Claude Code: scegline uno."
   },
   "This orchestra no longer exists.": {
    "zh-Hans": "这个编排已不存在。",

@@ -3001,6 +3001,8 @@ pub async fn send(
     let mail = crate::mail::ai_tools(app);
     // Lumo's browser for agents (browser.rs), as Settings → Security says.
     args = with_mcp(args, computer, browser, tools, true, mail);
+    // A member of an orchestra (orchestra.rs): its tools allowed; the coordinator without Claude Code's own.
+    args = crate::orchestra::claude_code_args(chat.id(), args);
     let mail_turn = (!mail.is_empty()).then(crate::mail::agent_turn);
     if computer {
         crate::computer::begin_turn(crate::computer::Who::of(PROVIDER), chat.id());

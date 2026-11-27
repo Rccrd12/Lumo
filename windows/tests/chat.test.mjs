@@ -220,7 +220,8 @@ test("only the providers set up show: no Anthropic without its key", async (t) =
   view.sync();
   $(".model-btn").fire("click");
   await flush();
-  assert.deepEqual(chips(), ["Claude Code", "Antigravity CLI"]);
+  // Claude Code can coordinate an orchestra, so the orchestra is offered too.
+  assert.deepEqual(chips(), ["Orchestra", "Claude Code", "Antigravity CLI"]);
   // Nothing set up: a pointer to Settings instead of chips and models.
   $(".model-btn").fire("click");
   answers.chat_providers = [];

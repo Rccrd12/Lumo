@@ -34,21 +34,11 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::chat::{self, Chat};
 use crate::island::WINDOW_LABEL;
 
-pub const COORDINATOR: &str = "coordinator";
-/// Every member's chat id starts so: `orch-<orchestra>-m-<member>`.
-const PREFIX: &str = "orch-";
-const MEMBER: &str = "-m-";
-
-pub const START_THREAD: &str = "start_thread";
-pub const MESSAGE_THREAD: &str = "message_thread";
-pub const READ_THREAD: &str = "read_thread";
-pub const LIST_THREADS: &str = "list_threads";
-pub const STOP_THREAD: &str = "stop_thread";
-pub const ASK_USER: &str = "ask_user";
-pub const MESSAGE_COORDINATOR: &str = "message_coordinator";
-pub const SHARE_FILE: &str = "share_file";
-/// Every tool of this module (the plan tool is the chat's own name, `update_plan`).
-pub const NAMES: [&str; 8] = [START_THREAD, MESSAGE_THREAD, READ_THREAD, LIST_THREADS, STOP_THREAD, ASK_USER, MESSAGE_COORDINATOR, SHARE_FILE];
+pub use crate::orchestra_tool_defs::{
+    parse_chat, ASK_USER, COORDINATOR, LIST_THREADS, MESSAGE_COORDINATOR, MESSAGE_THREAD, NAMES, READ_MESSAGES, READ_THREAD, SHARE_FILE, START_THREAD,
+    STOP_THREAD,
+};
+use crate::orchestra_tool_defs::{MEMBER, PREFIX};
 
 /// The most threads an orchestra holds.
 const MAX_THREADS: usize = 8;
@@ -190,6 +180,8 @@ pub struct Orchestra {
     pub plan: Vec<Step>,
     /// The pick a new thread starts with.
     pub thread_pick: Pick,
+    /// The files members handed over (share_file): the reader may open them.
+    pub shared: Vec<String>,
     /// The last id given to a line.
     pub next: u64,
     #[serde(skip)]
@@ -221,13 +213,6 @@ fn clip(text: &str, max: usize) -> String {
 /// The chat id of member `member` of orchestra `id`.
 pub fn member_chat(id: &str, member: &str) -> String {
     format!("{PREFIX}{id}{MEMBER}{member}")
-}
-
-/// The orchestra and the member of a chat id, when it is a member's.
-pub fn parse_chat(chat: &str) -> Option<(&str, &str)> {
-    let rest = chat.strip_prefix(PREFIX)?;
-    let (id, member) = rest.split_once(MEMBER)?;
-    (!id.is_empty() && !member.is_empty()).then_some((id, member))
 }
 
 /// The chat whose folder of copies a chat works in (workspace.rs dir): the
@@ -427,6 +412,12 @@ impl Orchestra {
     /// `member` may change `path` of the shared folder: no other member
     /// whose turn is running is changing it. Taken for `member` until its turn ends.
     pub fn claim(&mut self, member: &str, path: &str) -> Result<(), String> {
+        self.claim_as(member, path, false)
+    }
+
+    /// `claim`, for a change already made (a CLI's, seen after it wrote,
+    /// `touched`): the member is told by a message, as it can't be stopped.
+    pub fn claim_as(&mut self, member: &str, path: &str, made: bool) -> Result<(), String> {
         let key = lock_key(path);
         if key.is_empty() {
             return Ok(());
@@ -449,6 +440,17 @@ impl Orchestra {
                         held.member, held.member
                     );
                     self.coordinator.mail.push(Mail { from: "lumo".into(), text, line });
+                }
+                if made {
+                    let text = format!(
+                        "You changed {path}, which thread \"{who}\" ({}) is changing right now. Don't change it again: write to {} with message_thread to agree on it, and check that neither change undid the other.",
+                        held.member, held.member
+                    );
+                    if let Some(m) = self.member_mut(member) {
+                        let line = m.messages.last().map(|l| l.id.clone()).unwrap_or_default();
+                        m.mail.push(Mail { from: "lumo".into(), text: text.clone(), line });
+                    }
+                    return Err(text);
                 }
                 return Err(format!(
                     "{path} is being changed right now by thread \"{who}\" ({}): nothing was written. Don't change it: write to {} with message_thread to agree on it, or work on something else and try again later.",
@@ -555,6 +557,10 @@ fn with<T>(app: Option<&AppHandle>, id: &str, f: impl FnOnce(&mut Orchestra) -> 
     Some(out)
 }
 
+fn conversation_id(id: &str, member: &str) -> String {
+    member_chat(id, member)
+}
+
 fn chat_of(member: &Member) -> Arc<Chat> {
     let mut guard = CHATS.lock().unwrap_or_else(|e| e.into_inner());
     let map = guard.get_or_insert_with(HashMap::new);
@@ -613,15 +619,26 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                 m.state = "working".into();
                 m.activity = Some(Activity { kind: "thinking".into(), detail: String::new() });
                 let m = o.member(&member)?.clone();
-                Some((query, m.pick.clone(), chat_of(&m)))
+                // A CLI is told its role with its first message: Lumo can't add to its instructions.
+                let role = if m.history.is_empty() { note_for(o, &member, true) } else { String::new() };
+                Some((query, role, m.pick.clone(), chat_of(&m)))
             })
             .flatten();
-            let Some((query, pick, conversation)) = next else { return };
+            let Some((query, role, pick, conversation)) = next else { return };
             let settings = settings_for(&app, &pick);
-            let reply = if is_cli(&settings.chat_provider) {
-                Err(crate::i18n::t("Orchestra members can only be API or local models: pick one for this role."))
+            let cli = is_cli(&settings.chat_provider);
+            let reply = if cli && member == COORDINATOR && settings.chat_provider != crate::claude_code::PROVIDER {
+                // Only Claude Code's own tools can be taken away: another CLI would do the work itself.
+                Err(crate::i18n::t("The coordinator can be an API model, a local model or Claude Code: pick one of them for it."))
             } else {
-                Box::pin(chat::send(&app, &conversation, &settings, query.clone(), None, None)).await
+                let query = if cli && !role.is_empty() { format!("{}\n\n---\n\n{query}", role.trim()) } else { query.clone() };
+                if cli {
+                    // The orchestra's shared folder: the CLI may read and write it.
+                    let folder = crate::workspace::dir(&shared_folder(&conversation_id(&id, &member)));
+                    let _ = std::fs::create_dir_all(&folder);
+                    conversation.cli_dirs(Some(folder.to_string_lossy().to_string()));
+                }
+                Box::pin(chat::send(&app, &conversation, &settings, query, None, None)).await
             };
             with(Some(&app), &id, |o| {
                 match reply {
@@ -671,104 +688,22 @@ fn is_cli(provider: &str) -> bool {
 
 // ── What the providers ask of it ──────────────────────────────────────────────
 
-/// One tool: its name, what it does, and the JSON schema of its input.
-fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> (String, String, Value) {
-    let schema = json!({ "type": "object", "properties": properties, "required": required, "additionalProperties": false });
-    (name.to_string(), description.to_string(), schema)
-}
-
-fn ask_tool() -> (String, String, Value) {
-    tool(
-        ASK_USER,
-        "Puts a decision in front of the user as a card with 2 to 4 options, one recommended. Use it when a choice would change the user's goal or cannot be undone. The user's choice comes later as a new message: end your turn after calling it unless other work does not depend on the answer.",
-        json!({
-            "question": { "type": "string", "description": "The question, short." },
-            "options": {
-                "type": "array", "minItems": 2, "maxItems": 4,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "label": { "type": "string", "description": "A few words." },
-                        "consequence": { "type": "string", "description": "One sentence: what happens if chosen." },
-                    },
-                    "required": ["label", "consequence"],
-                    "additionalProperties": false,
-                },
-            },
-            "recommended": { "type": "integer", "description": "The index of the option you recommend, from 0." },
-        }),
-        &["question", "options", "recommended"],
-    )
-}
-
-fn message_thread_tool() -> (String, String, Value) {
-    tool(
-        MESSAGE_THREAD,
-        "Sends a message to a thread of the orchestra. A thread that is working reads it at its next step; one that is not starts working on it.",
-        json!({
-            "thread": { "type": "string", "description": "The thread's id (t1, t2…) or its title." },
-            "message": { "type": "string" },
-        }),
-        &["thread", "message"],
-    )
+/// The orchestra's tools (hook/src/orchestra_tools.rs) as the chat's providers take them.
+fn as_api(tools: Vec<Value>) -> Vec<(String, String, Value)> {
+    tools
+        .into_iter()
+        .map(|v| (v["name"].as_str().unwrap_or("").to_string(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone()))
+        .collect()
 }
 
 pub fn coordinator_tools() -> Vec<(String, String, Value)> {
-    vec![
-        tool(
-            START_THREAD,
-            "Starts a thread: a worker with its own chat and model that does one part of the job. It does not see this conversation: give it everything it needs in the task. It reports to you with a message when it is done or blocked.",
-            json!({
-                "title": { "type": "string", "description": "A short name for the thread, 2 to 4 words." },
-                "task": { "type": "string", "description": "The whole task: goal, context, files, constraints, and what to report." },
-            }),
-            &["title", "task"],
-        ),
-        message_thread_tool(),
-        tool(
-            READ_THREAD,
-            "Reads a thread: its state, what it is doing, and its last messages.",
-            json!({
-                "thread": { "type": "string", "description": "The thread's id (t1, t2…) or its title." },
-                "last": { "type": "integer", "description": "How many of its last messages, 6 if left out." },
-            }),
-            &["thread"],
-        ),
-        tool(LIST_THREADS, "Lists the threads: their id, title, task, state, what each is doing and the files each is changing.", json!({}), &[]),
-        tool(
-            STOP_THREAD,
-            "Stops a thread's work at once. It keeps its chat and can be given more with message_thread.",
-            json!({ "thread": { "type": "string", "description": "The thread's id or title." } }),
-            &["thread"],
-        ),
-        ask_tool(),
-        crate::island_tools::plan_tool(),
-    ]
+    let mut tools = as_api(crate::orchestra_tool_defs::coordinator_tools());
+    tools.push(crate::island_tools::plan_tool());
+    tools
 }
 
 fn thread_tools() -> Vec<(String, String, Value)> {
-    vec![
-        tool(
-            MESSAGE_COORDINATOR,
-            "Sends a message to the coordinator: what you did, a question, a problem. With done true, your task is finished: say what you did and where the results are.",
-            json!({
-                "message": { "type": "string" },
-                "done": { "type": "boolean", "description": "True when your task is finished." },
-            }),
-            &["message"],
-        ),
-        message_thread_tool(),
-        ask_tool(),
-        tool(
-            SHARE_FILE,
-            "Hands the user and the coordinator a file you made in the shared folder (a report, a plan, a result): it shows as a card they can open. Markdown files open beside the chat.",
-            json!({
-                "path": { "type": "string", "description": "The file's path in the shared folder." },
-                "note": { "type": "string", "description": "Optional: one line on what it is." },
-            }),
-            &["path"],
-        ),
-    ]
+    as_api(crate::orchestra_tool_defs::thread_tools())
 }
 
 /// The tools of a member's chat: the coordinator's own only; a thread's the
@@ -794,11 +729,12 @@ pub fn shape_tools(chat_id: &str, tools: &mut Vec<(String, String, Value)>) {
 pub fn note(chat_id: &str) -> String {
     let Some((id, member)) = parse_chat(chat_id) else { return String::new() };
     let (id, member) = (id.to_string(), member.to_string());
-    let Some(text) = with(None, &id, |o| note_for(o, &member)) else { return String::new() };
+    let Some(text) = with(None, &id, |o| note_for(o, &member, false)) else { return String::new() };
     text
 }
 
-fn note_for(o: &Orchestra, member: &str) -> String {
+/// `cli`: the member is a CLI, which works with its own tools on the user's files.
+fn note_for(o: &Orchestra, member: &str, cli: bool) -> String {
     let threads = if o.threads.is_empty() {
         "There are no threads yet.".to_string()
     } else {
@@ -809,7 +745,7 @@ fn note_for(o: &Orchestra, member: &str) -> String {
             "\n\nYou are the coordinator of an orchestra in Lumo. You never do the work yourself: you have no file, terminal or browser tools, only your own. \
 You understand what the user wants, make a plan (update_plan), split the work into threads (start_thread), each with a clear, self-contained task, and follow them: \
 you can write to them (message_thread), read them (read_thread, list_threads) and stop them (stop_thread). \
-Threads share one folder of copies of the user's files: they copy files in, read and change them there, and hand finished files over with share_file. \
+Threads share one folder for what they make (some of them, the CLIs, also work on the user's files directly), and hand finished files over with share_file. \
 Two threads never change the same file at once: Lumo tells you when one tries. \
 Messages from threads, from Lumo and the user's answers to your cards come to you as new messages that start with [From …]. While you are working they may also come inside a tool's result, between <lumo-messages> tags: read them and change your plan if needed. \
 The user sees every thread and can talk to each directly. Keep your answers to the user short: what is going on, what you decided, what you need. Use ask_user for a decision that changes the user's goal. \
@@ -819,9 +755,18 @@ Don't start threads for a simple question you can answer yourself, and don't sta
     let me = o.member(member);
     let title = me.map(|m| m.title.as_str()).unwrap_or(member);
     let task = me.map(|m| m.task.as_str()).unwrap_or("");
+    let work = if cli {
+        let folder = crate::workspace::dir(&format!("{PREFIX}{}", o.id));
+        format!(
+            "Do your task with your own tools. Put what you make for the others in the orchestra's shared folder, {}, and hand a finished file to the user with share_file (a full path works too). Call read_messages between the steps of a long task.",
+            folder.display()
+        )
+    } else {
+        "Do your task with your tools. The files you work on are copies in a folder shared by every thread: copy files in with workspace_copy, change them there, and hand a finished file to the user with share_file.".to_string()
+    };
     format!(
         "\n\nYou are thread {member} \"{title}\" of an orchestra in Lumo: a coordinator plans the job and gives each thread a part of it. Your task, from the coordinator:\n{task}\n\n\
-Do your task with your tools. The files you work on are copies in a folder shared by every thread: copy files in with workspace_copy, change them there, and hand a finished file to the user with share_file. \
+{work} \
 When you are done, or blocked, or need a decision, write to the coordinator with message_coordinator (done true when your task is finished). You may write to another thread with message_thread. \
 The user can write to you directly: do what they ask, and tell the coordinator when it changes your task. Use ask_user only for a decision the user must make. \
 Messages from the coordinator, other threads, Lumo and the user come as new messages that start with [From …]. While you are working they may also come inside a tool's result, between <lumo-messages> tags: read them at once and change what you do if needed. \
@@ -839,6 +784,8 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
     let (id, member) = (id.to_string(), member.to_string());
     let s = |key: &str| input.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     let coordinator = member == COORDINATOR;
+    // A CLI member works on the user's files itself: it may hand over one of them by its full path.
+    let cli = with(None, &id, |o| o.member(&member).map(|m| m.pick.clone())).flatten().is_some_and(|pick| is_cli(&settings_for(app, &pick).chat_provider));
     let mut woken: Vec<String> = Vec::new();
     let answer = with(Some(app), &id, |o| -> Result<String, String> {
         match name {
@@ -928,17 +875,23 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
             }
             SHARE_FILE if !coordinator => {
                 let folder = crate::workspace::dir(&shared_folder(chat_id));
-                let path = inside(&folder, &s("path")).ok_or_else(|| format!("{} is not a file of the shared folder.", s("path")))?;
+                let path = inside(&folder, &s("path"))
+                    .or_else(|| cli.then(|| full_file(&s("path"))).flatten())
+                    .ok_or_else(|| format!("{} is not a file of the shared folder.", s("path")))?;
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                 let markdown = matches!(path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref(), Some("md" | "markdown"));
                 let file = FileRef { path: path.to_string_lossy().to_string(), name, markdown };
                 // The island may open it and show it in its folder (chat_files.rs).
                 crate::chat_files::remember(&file.path);
+                if !o.shared.contains(&file.path) {
+                    o.shared.push(file.path.clone());
+                }
                 let note = s("note");
                 o.push(&member, Message { kind: "file".into(), from: member.clone(), text: note.clone(), file: Some(file.clone()), ..Default::default() });
                 o.push(COORDINATOR, Message { kind: "file".into(), from: member.clone(), text: note, file: Some(file.clone()), ..Default::default() });
                 Ok(format!("Shared {} with the user and the coordinator.", file.name))
             }
+            READ_MESSAGES => Ok(o.take_mail(&member, "mid-turn").map(|m| format!("New messages:\n\n{m}")).unwrap_or_else(|| "No new messages.".into())),
             _ => Err(crate::tools::not_offered(name)),
         }
     })?;
@@ -951,11 +904,61 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
     })
 }
 
+/// Claude Code's own tools, which a coordinator on Claude Code goes without:
+/// it plans and hands the work out, never does it.
+const CLAUDE_CODE_OWN: &str = "Bash Edit Write MultiEdit NotebookEdit Read Glob Grep LS WebFetch WebSearch Task Agent KillShell BashOutput";
+
+/// Claude Code's command line for a member's turn: the orchestra's tools
+/// (lumo-hook's, `mcp__lumo__…`) allowed without asking, and for the
+/// coordinator none of Claude Code's own. Any other chat's, as it is.
+pub fn claude_code_args(chat_id: &str, mut args: Vec<String>) -> Vec<String> {
+    let Some((_, member)) = parse_chat(chat_id) else { return args };
+    let mine: Vec<String> = crate::orchestra_tool_defs::tools_for(chat_id)
+        .iter()
+        .filter_map(|t| t["name"].as_str().map(|n| format!("mcp__lumo__{n}")))
+        .chain(std::iter::once("mcp__lumo__update_plan".to_string()))
+        .collect();
+    // `--allowedTools` takes all that follows it: the list goes on its own one, last.
+    match args.iter().position(|a| a == "--allowedTools") {
+        Some(i) if i + 1 < args.len() => args[i + 1] = format!("{} {}", args[i + 1], mine.join(" ")),
+        _ => {
+            args.push("--allowedTools".into());
+            args.push(mine.join(" "));
+        }
+    }
+    if member == COORDINATOR {
+        let at = args.iter().position(|a| a == "--allowedTools").unwrap_or(args.len());
+        args.insert(at, CLAUDE_CODE_OWN.into());
+        args.insert(at, "--disallowedTools".into());
+    }
+    args
+}
+
+/// A call from a CLI member, through lumo-hook's MCP server
+/// (`{"lumo_orchestra": {"tool": …, "input": …, "chat": …}}`, pipe.rs): the
+/// answer, with the messages that came for it meanwhile.
+pub fn serve(app: &AppHandle, request: &Value) -> Value {
+    let chat = request["chat"].as_str().unwrap_or("");
+    let tool = request["tool"].as_str().unwrap_or("");
+    match call(app, chat, tool, &request["input"]) {
+        Some((text, false)) => json!({ "text": with_mail(app, chat, text) }),
+        Some((error, true)) => json!({ "error": with_mail(app, chat, error) }),
+        None => json!({ "error": "This chat is not a member of an orchestra." }),
+    }
+}
+
 fn activity_words(m: &Member) -> String {
     match &m.activity {
         Some(a) if !a.detail.is_empty() => format!(", {} {}", a.kind, a.detail),
         _ => String::new(),
     }
+}
+
+/// `path`, when it is the full path of a file.
+fn full_file(path: &str) -> Option<PathBuf> {
+    let given = Path::new(path.trim());
+    let full = std::fs::canonicalize(given).ok()?;
+    (given.is_absolute() && full.is_file()).then_some(full)
 }
 
 /// `path` of `folder`, when it is a file inside it.
@@ -1000,6 +1003,38 @@ pub fn before(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Resu
         wake(app, &id, COORDINATOR);
     }
     result.unwrap_or(Ok(()))
+}
+
+/// A file a CLI member read, changed or made (claude_code.rs FileTouch,
+/// chat.rs ChatEvents::file): a change is the member's until its turn ends,
+/// and one to a file another thread is changing is said to both and to the
+/// coordinator (the CLI changed it already: it can't be refused).
+pub fn touched(app: &AppHandle, chat_id: &str, kind: &str, path: &str) {
+    let Some((id, member)) = parse_chat(chat_id) else { return };
+    let (id, member) = (id.to_string(), member.to_string());
+    let changed = kind != "read";
+    let detail = path.rsplit(['/', '\\']).find(|s| !s.is_empty()).unwrap_or(path).to_string();
+    let clash = with(Some(app), &id, |o| {
+        if let Some(m) = o.member_mut(&member) {
+            m.activity = Some(Activity { kind: if changed { "edit".into() } else { "read".into() }, detail });
+        }
+        changed && o.claim_as(&member, path, true).is_err()
+    });
+    if clash == Some(true) {
+        wake(app, &id, COORDINATOR);
+    }
+}
+
+/// A card of a member's turn (a permission, tools.rs or a CLI's) came up or
+/// went (chat_agents.rs signal_waiting): it waits for the user meanwhile.
+pub fn waiting(app: &AppHandle, chat_id: &str, waits: bool) {
+    let Some((id, member)) = parse_chat(chat_id) else { return };
+    let (id, member) = (id.to_string(), member.to_string());
+    with(Some(app), &id, |o| {
+        if let Some(m) = o.member_mut(&member).filter(|m| m.running) {
+            m.state = if waits { "waiting".into() } else { "working".into() };
+        }
+    });
 }
 
 /// After a tool of a member's chat ran: the messages that came for it
@@ -1187,7 +1222,11 @@ pub struct FileText {
 #[tauri::command]
 pub fn orchestra_read_file(id: String, path: String) -> Result<FileText, String> {
     let folder = crate::workspace::dir(&format!("{PREFIX}{id}"));
-    let full = inside(&folder, &path).ok_or_else(|| crate::i18n::t("This file is not in the orchestra's folder."))?;
+    // One of its folder, or one a member handed over by its full path (share_file).
+    let handed = with(None, &id, |o| o.shared.iter().any(|p| p == &path)).unwrap_or(false);
+    let full = inside(&folder, &path)
+        .or_else(|| handed.then(|| full_file(&path)).flatten())
+        .ok_or_else(|| crate::i18n::t("This file is not in the orchestra's folder."))?;
     let bytes = std::fs::read(&full).map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&bytes[..bytes.len().min(1_000_000)]).to_string();
     let name = full.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -1285,6 +1324,21 @@ mod tests {
     }
 
     #[test]
+    fn a_cli_that_changed_a_file_another_thread_is_changing_is_told_after() {
+        let mut o = orchestra();
+        o.start_thread("A", "a").unwrap();
+        o.start_thread("B", "b").unwrap();
+        o.take_mail("t2", "woke");
+        o.member_mut("t1").unwrap().running = true;
+        o.member_mut("t2").unwrap().running = true;
+        assert!(o.claim_as("t1", "C:\\proj\\main.rs", true).is_ok());
+        let told = o.claim_as("t2", "c:/proj/main.rs", true).unwrap_err();
+        assert!(told.starts_with("You changed"), "{told}");
+        assert_eq!(o.member("t2").unwrap().mail.len(), 1, "a CLI hears it as a message");
+        assert_eq!(o.coordinator.mail.len(), 1);
+    }
+
+    #[test]
     fn a_card_answered_goes_back_to_who_asked_once() {
         let mut o = orchestra();
         let card = Card { question: "Quale formato?".into(), options: vec![Opt { label: "PDF".into(), consequence: "".into() }, Opt { label: "MD".into(), consequence: "".into() }], recommended: 1, chose: None };
@@ -1312,6 +1366,20 @@ mod tests {
         let mut plain = vec![(crate::api_agents::RUN.to_string(), String::new(), json!({}))];
         shape_tools("chat-1", &mut plain);
         assert_eq!(plain.len(), 1, "a normal chat is left as it is");
+    }
+
+    #[test]
+    fn claude_code_as_coordinator_goes_without_its_own_tools() {
+        let args = claude_code_args(&member_chat("abc", COORDINATOR), vec!["-p".into(), "--allowedTools".into(), "mcp__lumo__set_timer".into()]);
+        let at = args.iter().position(|a| a == "--allowedTools").unwrap();
+        assert_eq!(at, args.len() - 2, "its list stays last");
+        assert!(args[at + 1].contains("mcp__lumo__set_timer") && args[at + 1].contains("mcp__lumo__start_thread"));
+        assert_eq!(args[at - 2], "--disallowedTools");
+        assert!(args[at - 1].contains("Bash") && args[at - 1].contains("Edit"));
+        let thread = claude_code_args(&member_chat("abc", "t1"), vec!["-p".into()]);
+        assert_eq!(thread, ["-p", "--allowedTools", &thread[2]]);
+        assert!(thread[2].contains("mcp__lumo__message_coordinator") && !thread.iter().any(|a| a == "--disallowedTools"));
+        assert_eq!(claude_code_args("chat-1", vec!["-p".into()]), ["-p"]);
     }
 
     #[test]

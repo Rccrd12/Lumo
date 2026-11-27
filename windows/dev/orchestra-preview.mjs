@@ -47,7 +47,7 @@ const SNAP = {
   ],
   locks: [{ path: "Contratti/riepilogo.csv", member: "t1" }],
   coordinator: {
-    id: "coordinator", chat: "orc-o1-coordinator", title: "Coordinatore", task: "", pick: OPUS,
+    id: "coordinator", chat: "orch-o1-m-coordinator", title: "Coordinatore", task: "", pick: OPUS,
     state: "working", activity: { kind: "talk", detail: "Via Roma 12" }, plan: [], queued: 1,
     messages: [
       msg("c1", "user", "user", "Confronta i 3 contratti di affitto nella cartella Contratti: durata, canone, penali e clausole strane. Poi dimmi quale conviene.", { ago: 12 }),
@@ -66,7 +66,7 @@ const SNAP = {
   },
   threads: [
     {
-      id: "t1", chat: "orc-o1-t1", title: "Via Roma 12", task: "Estrai i dati di via Roma 12 e tieni il riepilogo.", pick: LM,
+      id: "t1", chat: "orch-o1-m-t1", title: "Via Roma 12", task: "Estrai i dati di via Roma 12 e tieni il riepilogo.", pick: LM,
       state: "working", activity: { kind: "read", detail: "via-roma-12.pdf" }, queued: 0,
       plan: [
         { step: "Leggere il PDF", status: "completed" },
@@ -82,7 +82,7 @@ const SNAP = {
       ],
     },
     {
-      id: "t2", chat: "orc-o1-t2", title: "Corso Italia 3", task: "Estrai i dati di corso Italia 3.", pick: LM,
+      id: "t2", chat: "orch-o1-m-t2", title: "Corso Italia 3", task: "Estrai i dati di corso Italia 3.", pick: LM,
       state: "done", activity: null, queued: 0,
       messages: [
         msg("i1", "relay", "coordinator", "Leggi `Contratti/corso-italia-3.pdf` ed estrai i dati, poi mandameli.", { ago: 11 }),
@@ -91,7 +91,7 @@ const SNAP = {
       ],
     },
     {
-      id: "t3", chat: "orc-o1-t3", title: "Via Verdi 7", task: "Estrai i dati di via Verdi 7.", pick: LM,
+      id: "t3", chat: "orch-o1-m-t3", title: "Via Verdi 7", task: "Estrai i dati di via Verdi 7.", pick: LM,
       state: "waiting", activity: null, queued: 0,
       messages: [
         msg("v1", "relay", "coordinator", "Leggi `Contratti/via-verdi-7.pdf` ed estrai durata, canone, deposito, penali e clausole insolite, con le pagine. Se una clausola è dubbia chiedi all'utente.", { ago: 11 }),
@@ -133,6 +133,7 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: W + 80, height: H + 60 }, deviceScaleFactor: 2 });
 await ctx.addInitScript(([snap, report]) => {
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+  window.__orchestraSnap = snap;
   const models = {
     anthropic: [
       { id: "claude-opus-5-5", label: "Claude Opus 5.5", reasoning: ["low", "medium", "high", "max"] },
@@ -172,6 +173,7 @@ await page.evaluate(([w, h, picks]) => {
     chatProvider: "anthropic",
     lmstudioUrl: "http://127.0.0.1:1234",
     orchestraMode: true,
+    chatShowUsage: true,
     orchestraCoordinator: picks.OPUS,
     orchestraThread: picks.LM,
     islandSizes: { chat: { width: w, height: h } },
@@ -191,6 +193,10 @@ const shot = async (name) => {
 };
 const member = (id) => page.click(`.orc-item[data-member="${id}"]`);
 
+// How full each member's context is (chat_usage.rs, the chat-usage event, by the member's chat).
+await emit("chat-usage", { provider: "anthropic", context: { chat: "orch-o1-m-coordinator", used: 38_400, total: 200_000 }, tokens: { remaining: 410_000, limit: 450_000 } });
+await emit("chat-usage", { provider: "lmstudio", context: { chat: "orch-o1-m-t1", used: 21_800, total: 32_768 } });
+
 // 1. The coordinator: its plan, who holds which files, a thread's report and files, a lock, a card, a queued message.
 await page.evaluate(() => {
   document.querySelector(".orc-log").scrollTop = 0;
@@ -208,9 +214,13 @@ await shot("2-thread-aspetta-te");
 
 // 3. A thread at work: the answer streaming in, what it is doing.
 await member("t1");
-await emit("chat-delta", { chat: "orc-o1-t1", text: "Ho trovato le penali a pagina 6: **6 mesi di preavviso**, nessuna penale dopo il primo anno. Ora aggiungo al riepilogo la riga di via Verdi 7" });
-await emit("chat-activity", { chat: "orc-o1-t1", activity: { kind: "edit", detail: "riepilogo.csv" } });
+await emit("chat-delta", { chat: "orch-o1-m-t1", text: "Ho trovato le penali a pagina 6: **6 mesi di preavviso**, nessuna penale dopo il primo anno. Ora aggiungo al riepilogo la riga di via Verdi 7" });
+await emit("chat-activity", { chat: "orch-o1-m-t1", activity: { kind: "edit", detail: "riepilogo.csv" } });
 await shot("3-thread-al-lavoro");
+// Its context, from the ring by the model button.
+await page.click(".chat-usage");
+await shot("3b-contesto-del-thread");
+await page.click(".chat-usage");
 
 // 4. A Markdown file handed over, open beside the chat.
 await member("coordinator");
@@ -248,6 +258,26 @@ await page.evaluate(() => {
 await page.waitForTimeout(700);
 await member("t3");
 await shot("7-isola-stretta");
+
+// 7b. The closed island: a thread waits for the user; then only work; then finished.
+const closed = async (name, change) => {
+  await page.evaluate(([c]) => {
+    const { State } = window;
+    const s = structuredClone(window.__orchestraSnap);
+    eval(c)(s);
+    window.__lumoListeners.get("orchestra-update")?.({ event: "orchestra-update", id: 0, payload: s });
+    window.island.collapse();
+    State.notify();
+  }, [change]);
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${OUT}/${name}.png`, clip: { x: 0, y: 0, width: W + 80, height: 140 } });
+  console.log(`${OUT}/${name}.png`);
+};
+await closed("7b-isola-chiusa-aspetta", "(s) => s");
+await closed("7c-isola-chiusa-lavoro", "(s) => { for (const m of [s.coordinator, ...s.threads]) for (const x of m.messages) if (x.card) x.card.chose = 0; }");
+await closed("7d-isola-chiusa-finito", `(s) => { for (const m of [s.coordinator, ...s.threads]) { m.state = "idle"; for (const x of m.messages) if (x.card) x.card.chose = 0; } s.coordinator.messages.push({ id: "z9", at: Date.now(), kind: "assistant", from: "coordinator", text: "Conviene **via Roma 12**: canone più basso e nessuna penale dopo il primo anno." }); }`);
+await page.evaluate(() => { window.island.holdOpen(); window.State.mode = "expanded"; window.State.notify(); });
+await page.waitForTimeout(600);
 
 // 8. A new orchestra: empty until the first message starts it.
 // Clicked from the page, the pointer staying where it is: a new orchestra

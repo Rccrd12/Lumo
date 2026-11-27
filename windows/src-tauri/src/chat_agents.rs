@@ -692,6 +692,8 @@ pub fn signal_waiting(app: &AppHandle, chat: &str, waiting: Option<&str>) {
         cards_open(open.get_or_insert_with(HashMap::new), chat, waiting.is_some())
     };
     let waiting = if still { waiting.or(Some("permission")) } else { None };
+    // A member of an orchestra waits for the user meanwhile (orchestra.rs).
+    crate::orchestra::waiting(app, chat, waiting.is_some());
     let _ = app.emit_to(WINDOW_LABEL, "chat-signal", json!({ "chat": chat, "at": now_ms(), "waiting": waiting }));
 }
 

@@ -756,6 +756,8 @@ impl ChatEvents {
     /// the chat lists it, and may open it from now on (chat_files.rs).
     pub fn file(&self, app: &AppHandle, file: &claude_code::FileTouch) {
         crate::chat_files::remember(&file.path);
+        // A CLI member of an orchestra: who changes which file (orchestra.rs).
+        crate::orchestra::touched(app, &self.chat, file.kind, &file.path);
         let _ = app.emit_to(WINDOW_LABEL, "chat-file", json!({ "chat": self.chat, "kind": file.kind, "path": file.path }));
     }
 }
