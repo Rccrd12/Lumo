@@ -195,6 +195,8 @@ export function chatFiles(id: string, all = loadAll()): ChatFile[] {
  */
 /** A project member's chat (orchestra.rs member_chat): its project keeps it, not the past chats. */
 const PROJECT_CHAT = "orch-";
+/** Whether `id` is the chat of a project's member (orchestra.rs `member_chat`). */
+export const isProjectChat = (id: string) => id.startsWith(PROJECT_CHAT);
 
 /** The chats whose files are kept: the past chats, the projects' members', and `id`. */
 function keptChats(id: string): Set<string> {

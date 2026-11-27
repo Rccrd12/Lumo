@@ -49,6 +49,8 @@ import { AUTO_COMPACT_PCT, COMPACT_STRINGS, STRINGS as CHAT_S, effortLabel } fro
 import { readyProviders } from "./chat-models";
 import { ORCHESTRA_STRINGS as S } from "./orchestra-strings";
 import { dropChatFiles } from "../core/chat-files";
+import { takeTimers } from "../core/compact";
+import { takeListens } from "../core/listen";
 
 /** Where the project last on screen is kept, to come back to it (a per-viewer convenience). */
 const LAST_KEY = "lumo.orchestra.last";
@@ -63,6 +65,8 @@ export interface OrchestraView {
   doc: HTMLElement;
   /** Over the conversation: the member on screen. */
   head: HTMLElement;
+  /** Under the header, over the conversation: the plan or the list, opened by its button. */
+  planBox: HTMLElement;
   /** The member's conversation (a chat-log, so it reads as the chat does). */
   log: HTMLElement;
   /** Above the field: the messages waiting for the member's next step. */
@@ -205,6 +209,8 @@ export interface OrchestraHooks {
   inkInto?: (chat: string, into: HTMLElement, text: string, scope: string) => void;
   /** Edit: the message's text in the field, to be changed and sent again. */
   startEdit?: (text: string) => void;
+  /** A member's answer came: the lines it wrote for Lumo (a timer, what to listen for) are done as a chat's are. */
+  lumoLines?: (chat: string, text: string) => void;
   /** A queued message taken back to be edited: its text in the field, before what is typed there. */
   unqueued?: (text: string) => void;
 }
@@ -213,7 +219,9 @@ export interface OrchestraHooks {
 function asChatMessage(msg: OrchestraMessage, role: "user" | "assistant"): ChatMessage {
   let id = 0;
   for (const c of msg.id) id = (Math.imul(id, 31) + c.charCodeAt(0)) | 0;
-  return { id, role, content: msg.text, ...(msg.at ? { at: msg.at } : {}), ...(msg.sent?.length ? { sent: msg.sent } : {}), ...(msg.answer ?? {}) };
+  // An answer's lines for Lumo (a timer, what to listen for) are not shown, as in a chat.
+  const content = role === "assistant" ? takeListens(takeTimers(msg.text).text).text : msg.text;
+  return { id, role, content, ...(msg.at ? { at: msg.at } : {}), ...(msg.sent?.length ? { sent: msg.sent } : {}), ...(msg.answer ?? {}) };
 }
 
 export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraHooks = {}): OrchestraView {
@@ -318,7 +326,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   /** The form on screen (New project, a project's settings). */
   let form: ProjectForm | null = null;
   let menuOpen = false;
-  let planOpen = true;
+  let planOpen = false;
   /** The file in the reader, and whether its text came. */
   let reading: (OrchestraFile & { loading?: boolean }) | null = null;
   /** What went wrong sending the last message, said under the conversation. */
@@ -338,6 +346,8 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   const rail = h("div", { class: "orc-rail orc-part" });
   const doc = h("div", { class: "orc-doc orc-part" });
   const head = h("div", { class: "orc-head orc-part" });
+  const planBox = h("div", { class: "orc-plan-box orc-part" });
+  planBox.hidden = true;
   const log = h("div", { class: "chat-log orc-log orc-part" });
   gentleWheel(log);
   const queue = h("div", { class: "orc-queue orc-part" });
@@ -365,8 +375,10 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   }
 
   /** A time of day, as the user's language says it: when a member stopped by a usage limit goes on. */
-  function clock(seconds: number): string {
-    return new Date(seconds * 1000).toLocaleTimeString(language(), { hour: "2-digit", minute: "2-digit" });
+  /** A time of day, from seconds or milliseconds since the epoch (Rust keeps a member's times in ms). */
+  function clock(at: number): string {
+    const ms = at > 1e11 ? at : at * 1000;
+    return new Date(ms).toLocaleTimeString(language(), { hour: "2-digit", minute: "2-digit" });
   }
 
   /** The cards still waiting for the user that `id` put, wherever they show. */
@@ -422,6 +434,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       const time = took(m);
       return { text: time ? t(S.finishedIn, { time }) : t(S.done), cls: "done", dot: true };
     }
+    if (m.wakeAt && m.queued === 0) return { text: t(S.wakesAt, { time: clock(m.wakeAt) }), cls: "", dot: true };
     return { text: m.queued > 0 ? t(S.queued) : t(S.idle), cls: "", dot: true };
   }
 
@@ -440,6 +453,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   function draw(toEnd = false) {
     drawRail();
     drawHead();
+    drawPlan();
     drawLog(toEnd);
     drawQueue();
     drawDoc();
@@ -580,7 +594,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       planBtn.addEventListener("click", () => {
         planOpen = !planOpen;
         drawHead();
-        drawLog();
+        drawPlan();
       });
       head.append(planBtn);
     }
@@ -621,8 +635,6 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       return;
     }
     const coord = m.id === COORDINATOR;
-    const plan = coord ? snap.plan : m.plan ?? [];
-    if (planOpen && plan.length > 0) log.append(planCard(plan));
     if (coord && snap.locks.length > 0) log.append(locksCard(snap));
     let files: HTMLElement | null = null;
     const under = sharedUnder(m);
@@ -716,6 +728,19 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     const box = h("div", { class: "orc-files orc-files-under" }, ...shared.map(fileCard));
     if (wrap && reply) wrap.insertBefore(box, reply.nextSibling);
     else drawn.push(box);
+  }
+
+  /**
+   * The plan (the coordinator's) or the list (a thread's), opened by its
+   * button in the header: over the conversation, where it is seen whatever
+   * the place in it; its steps scroll in it when they are many.
+   */
+  function drawPlan() {
+    clear(planBox);
+    const m = current();
+    const plan = !snap || !m || page !== "project" ? [] : m.id === COORDINATOR ? snap.plan : m.plan ?? [];
+    planBox.hidden = !planOpen || plan.length === 0;
+    if (!planBox.hidden) planBox.append(planCard(plan));
   }
 
   function planCard(plan: readonly OrchestraStep[]): HTMLElement {
@@ -1031,7 +1056,11 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       pageEl.append(form.el);
     } else if (page === "settings" && snap) {
       const id = snap.id;
-      form = buildProjectForm({ mode: "edit", fields: fieldsOf(snap), save: (f) => saveProject(id, f), cancel: () => closeSettings(), remove: () => void removeProject(id) });
+      form = buildProjectForm({
+        mode: "edit", fields: fieldsOf(snap), save: (f) => saveProject(id, f), cancel: () => closeSettings(), remove: () => void removeProject(id),
+        memory: snap.memory ?? [],
+        forget: async (subject) => (await Orchestra.forget(id, subject).catch(() => null))?.memory ?? null,
+      });
       pageEl.append(form.el);
     } else form = null;
   }
@@ -1322,6 +1351,11 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
         const answers = (x: OrchestraMember | undefined) => x?.messages.filter((y) => y.kind === "assistant").length ?? 0;
         // Its turn ended, or its answer came whole: the streamed text gives way.
         if (m.state !== "working" || answers(m) > answers(before)) live.delete(m.chat);
+        // Its answer came: what it asked Lumo for (a timer, a watch) is done once, as a chat's.
+        if (answers(m) > answers(before)) {
+          const came = m.messages.filter((x) => x.kind === "assistant").at(-1);
+          if (came) hooks.lumoLines?.(m.chat, came.text);
+        }
         // Its answer came: what the turn did goes with it, as with a chat's answer, kept by Rust.
         const extras = turnExtras.get(m.chat);
         if (extras && answers(m) > answers(before)) {
@@ -1404,6 +1438,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     rail,
     doc,
     head,
+    planBox,
     log,
     queue,
     page: pageEl,

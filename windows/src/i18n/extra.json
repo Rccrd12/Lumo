@@ -25122,6 +25122,66 @@
    "ru": "Общее время",
    "id": "Total waktu",
    "it": "Tempo totale"
+  },
+  "Wakes up at {time}": {
+   "zh-Hans": "{time} 醒来",
+   "hi": "{time} पर जागेगा",
+   "es": "Despierta a las {time}",
+   "ar": "يستيقظ في {time}",
+   "fr": "Se réveille à {time}",
+   "bn": "{time}-এ জাগবে",
+   "pt-BR": "Acorda às {time}",
+   "ru": "Проснётся в {time}",
+   "id": "Bangun pukul {time}",
+   "it": "Si sveglia alle {time}"
+  },
+  "Project memory": {
+   "zh-Hans": "项目记忆",
+   "hi": "प्रोजेक्ट की याद",
+   "es": "Memoria del proyecto",
+   "ar": "ذاكرة المشروع",
+   "fr": "Mémoire du projet",
+   "bn": "প্রজেক্টের স্মৃতি",
+   "pt-BR": "Memória do projeto",
+   "ru": "Память проекта",
+   "id": "Memori proyek",
+   "it": "Memoria del progetto"
+  },
+  "What the coordinator and the threads keep for later: each reads it at the start of its turns.": {
+   "zh-Hans": "协调者和各个线程留待以后使用的内容：每一轮开始时都会读取。",
+   "hi": "समन्वयक और थ्रेड बाद के लिए जो रखते हैं: हर एक इसे अपनी हर बारी की शुरुआत में पढ़ता है।",
+   "es": "Lo que el coordinador y los hilos guardan para más tarde: cada uno lo lee al empezar sus turnos.",
+   "ar": "ما يحتفظ به المنسّق والسلاسل لوقت لاحق: يقرؤه كلٌّ منهم في بداية أدواره.",
+   "fr": "Ce que le coordinateur et les fils gardent pour plus tard : chacun le lit au début de ses tours.",
+   "bn": "সমন্বয়কারী আর থ্রেডগুলো পরে কাজে লাগাতে যা রাখে: প্রত্যেকে তার প্রতিটি পালার শুরুতে এটি পড়ে।",
+   "pt-BR": "O que o coordenador e os tópicos guardam para depois: cada um lê no início de seus turnos.",
+   "ru": "То, что координатор и ветки сохраняют на потом: каждый читает это в начале своих ходов.",
+   "id": "Yang disimpan koordinator dan utas untuk nanti: masing-masing membacanya di awal gilirannya.",
+   "it": "Ciò che il coordinatore e i thread tengono per dopo: ognuno lo legge all'inizio dei suoi turni."
+  },
+  "Nothing kept yet.": {
+   "zh-Hans": "还没有保存任何内容。",
+   "hi": "अभी कुछ नहीं रखा गया।",
+   "es": "Todavía no se ha guardado nada.",
+   "ar": "لم يُحفظ شيء بعد.",
+   "fr": "Rien de gardé pour l'instant.",
+   "bn": "এখনো কিছু রাখা হয়নি।",
+   "pt-BR": "Nada guardado ainda.",
+   "ru": "Пока ничего не сохранено.",
+   "id": "Belum ada yang disimpan.",
+   "it": "Ancora niente."
+  },
+  "Forget": {
+   "zh-Hans": "忘记",
+   "hi": "भूल जाएँ",
+   "es": "Olvidar",
+   "ar": "انسَ",
+   "fr": "Oublier",
+   "bn": "ভুলে যান",
+   "pt-BR": "Esquecer",
+   "ru": "Забыть",
+   "id": "Lupakan",
+   "it": "Dimentica"
   }
  }
 }

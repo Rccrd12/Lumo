@@ -22,8 +22,13 @@ pub const ASK_USER: &str = "ask_user";
 pub const MESSAGE_COORDINATOR: &str = "message_coordinator";
 pub const SHARE_FILE: &str = "share_file";
 pub const READ_MESSAGES: &str = "read_messages";
+pub const WAKE_ME: &str = "wake_me_later";
+pub const REMEMBER: &str = "save_memory";
 /// Every tool of the orchestra (the plan tool is the chat's own, `update_plan`).
-pub const NAMES: [&str; 9] = [START_THREAD, MESSAGE_THREAD, READ_THREAD, LIST_THREADS, STOP_THREAD, ASK_USER, MESSAGE_COORDINATOR, SHARE_FILE, READ_MESSAGES];
+pub const NAMES: [&str; 11] =
+    [START_THREAD, MESSAGE_THREAD, READ_THREAD, LIST_THREADS, STOP_THREAD, ASK_USER, MESSAGE_COORDINATOR, SHARE_FILE, READ_MESSAGES, WAKE_ME, REMEMBER];
+/// The longest a member may sleep before Lumo wakes it (`wake_me_later`), in seconds.
+pub const MAX_WAKE_SECONDS: u64 = 24 * 3600;
 
 /// The orchestra and the member of a chat id, when it is a member's.
 pub fn parse_chat(chat: &str) -> Option<(&str, &str)> {
@@ -86,6 +91,30 @@ fn read_messages_tool() -> Value {
     )
 }
 
+fn wake_tool() -> Value {
+    tool(
+        WAKE_ME,
+        "Has Lumo wake you later with a message, so you can end your turn instead of waiting: to look again at something slow (a build, a deploy, a long job), or to go on at a time. Waiting on a pull request, a file or a page: Lumo's listen tool wakes you when it happens instead. A message for you meanwhile wakes you sooner; a new call replaces the one before.",
+        json!({
+            "seconds": { "type": "integer", "minimum": 60, "maximum": MAX_WAKE_SECONDS, "description": "How long from now: 600 for 10 minutes." },
+            "why": { "type": "string", "description": "What to do then, for yourself: it comes back to you in the message." },
+        }),
+        &["seconds", "why"],
+    )
+}
+
+fn memory_tool() -> Value {
+    tool(
+        REMEMBER,
+        "Keeps a note in the project's memory, which the coordinator and every thread, now and later, read at the start of each turn: what a new thread would otherwise have to ask the user again (their preferences, decisions taken, how the repository or the folder works). One note per subject: saving a subject replaces its note, an empty text forgets it. Never secrets, never what is only true for this turn.",
+        json!({
+            "subject": { "type": "string", "description": "A few words: the note's subject, e.g. \"User's preferences\"." },
+            "text": { "type": "string", "description": "The whole note for the subject, short; empty to forget it." },
+        }),
+        &["subject", "text"],
+    )
+}
+
 /// The coordinator's tools: it plans and hands out the work, nothing else.
 pub fn coordinator_tools() -> Vec<Value> {
     vec![
@@ -117,6 +146,8 @@ pub fn coordinator_tools() -> Vec<Value> {
         ),
         ask_tool(),
         read_messages_tool(),
+        wake_tool(),
+        memory_tool(),
     ]
 }
 
@@ -144,6 +175,8 @@ pub fn thread_tools() -> Vec<Value> {
             &["path"],
         ),
         read_messages_tool(),
+        wake_tool(),
+        memory_tool(),
     ]
 }
 

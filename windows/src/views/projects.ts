@@ -10,7 +10,7 @@
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { Bridge, type ModelInfo } from "../core/bridge";
-import { GOAL_MAX, Orchestra, type OrchestraSummary, type ProjectFields } from "../core/orchestra-bridge";
+import { GOAL_MAX, Orchestra, type OrchestraMemoryNote, type OrchestraSummary, type ProjectFields } from "../core/orchestra-bridge";
 import { ORCHESTRA_ACCENT, orchestraProviders, shortModel, type OrchestraRole } from "../core/orchestra-picks";
 import { apiCaps, effortsFor, isCliProvider, providerDef } from "../core/providers";
 import { cliModelName } from "../core/model-names";
@@ -211,6 +211,9 @@ export function buildProjectForm(opts: {
   save(fields: ProjectFields): Promise<string | null>;
   cancel(): void;
   remove?(): void;
+  /** A project open: what its members keep for later, and how the user forgets a note (its memory after). */
+  memory?: readonly OrchestraMemoryNote[];
+  forget?(subject: string): Promise<readonly OrchestraMemoryNote[] | null>;
 }): ProjectForm {
   const f: ProjectFields = structuredClone(opts.fields);
   f.repos = f.repos ?? [];
@@ -418,8 +421,40 @@ export function buildProjectForm(opts: {
     row(t(S.thread), threadBtn),
     h("div", { class: "pj-sep" }),
     row(t(S.resumeLabel), resume, "pj-resume"),
+    ...(editing && opts.forget ? [h("div", { class: "pj-sep" }), memoryBox()] : []),
     error,
     h("div", { class: "pj-actions" }, deleteBtn, cancelBtn, saveBtn));
+
+  // ── The project's memory (save_memory), in its settings
+
+  /** Its notes, each with who kept it and Forget; the user reads what every member reads. */
+  function memoryBox(): HTMLElement {
+    const list = h("div", { class: "pj-memory" });
+    const drawNotes = (notes: readonly OrchestraMemoryNote[]) => {
+      clear(list);
+      if (notes.length === 0) list.append(h("div", { class: "pj-memory-none", text: t(S.memoryEmpty) }));
+      for (const n of notes) {
+        const forget = h("button", { class: "pj-memory-x", title: t(S.forget), "aria-label": t(S.forget) }, svg(ICONS.xmark, 8));
+        forget.addEventListener("click", () => {
+          forget.disabled = true;
+          void opts.forget?.(n.subject).then((after) => {
+            if (after) {
+              Sound.play("pop");
+              drawNotes(after);
+            } else forget.disabled = false;
+          });
+        });
+        list.append(h("div", { class: "pj-memory-note" },
+          h("div", { class: "pj-memory-head" }, h("span", { class: "pj-memory-subject", text: n.subject }), forget),
+          h("div", { class: "pj-memory-text", text: n.text })));
+      }
+    };
+    drawNotes(opts.memory ?? []);
+    return h("div", { class: "pj-memory-box" },
+      h("h3", { class: "pj-h" }, h("span", { text: t(S.memory) })),
+      h("div", { class: "pj-memory-about", text: t(S.memoryNote) }),
+      list);
+  }
 
   // ── The menus over the form
 

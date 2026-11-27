@@ -147,6 +147,17 @@ export interface OrchestraMember {
   messages: OrchestraMessage[];
   /** Paused by a usage limit: when it goes on, seconds since the epoch. */
   resumeAt?: number | null;
+  /** When Lumo wakes it, as it asked (wake_me_later), ms since the epoch. */
+  wakeAt?: number | null;
+}
+
+/** A note of the project's memory (save_memory): one per subject. */
+export interface OrchestraMemoryNote {
+  subject: string;
+  text: string;
+  /** The member who wrote it last ("user" for the user). */
+  by: string;
+  at: number;
 }
 
 /** The whole state of one orchestra, as orchestra-update sends it after every change. */
@@ -169,6 +180,8 @@ export interface OrchestraSnapshot {
   plan: OrchestraStep[];
   /** Files being edited now, and by which member. */
   locks: { path: string; member: string }[];
+  /** What its members keep for later, which each reads at the start of its turns. */
+  memory?: OrchestraMemoryNote[];
 }
 
 /** A Markdown file of the shared folder, for the reader beside the chat. */
@@ -220,6 +233,10 @@ export const Orchestra = {
   compact: (id: string, member: string) => ask<void>("orchestra_compact", { id, member }),
   /** Retry (no text) or Edit of a member's last message: it and what came after go, and it goes again. */
   retry: (id: string, member: string, message: string, text?: string) => ask<void>("orchestra_retry", { id, member, message, text: text ?? null }),
+  /** What Lumo heard for a member's chat (a watch it asked for): to that member, which it wakes. False: no member's chat. */
+  heard: (chat: string, text: string) => ask<boolean>("orchestra_heard", { chat, text }),
+  /** The user forgets a note of the project's memory. */
+  forget: (id: string, subject: string) => ask<OrchestraSnapshot>("orchestra_forget", { id, subject }),
   /** Cancel or Edit of the user's message still waiting for its member: its text and what went with it, null once read. */
   unqueue: (id: string, member: string, message: string) =>
     ask<{ text: string; sent: SentItem[] } | null>("orchestra_unqueue", { id, member, message }),

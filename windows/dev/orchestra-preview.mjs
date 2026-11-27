@@ -255,6 +255,13 @@ await page.waitForTimeout(500);
 await shot("3d-thread-file-sotto-la-risposta");
 await member("t1");
 await page.waitForTimeout(300);
+// The list opens over the conversation, scrolled to its end.
+await page.evaluate(() => { const l = document.querySelector(".orc-log"); l.scrollTop = l.scrollHeight; });
+await page.click(".orc-plan-btn");
+await page.waitForTimeout(300);
+await shot("3e-lista-aperta");
+await page.click(".orc-plan-btn");
+await page.waitForTimeout(200);
 // A message from the coordinator, unfolded by a click on who it is from.
 await page.evaluate(() => document.querySelector(".orc-from").click());
 await page.waitForTimeout(250);

@@ -1019,3 +1019,79 @@
   font: 500 10px var(--font);
   color: #aab0ba;
 }
+
+/* ── A project's memory (save_memory), in its settings */
+
+.pj-memory-box {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.pj-memory-box > .pj-h {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.pj-memory-about {
+  margin-bottom: 8px;
+  font: 400 11.5px/1.45 var(--font);
+  color: #8b929e;
+}
+
+.pj-memory {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pj-memory-none {
+  font-size: 12px;
+  color: #6f757d;
+}
+
+.pj-memory-note {
+  padding: 8px 10px 9px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pj-memory-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.pj-memory-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 12px var(--font);
+  color: #e8eaed;
+}
+
+.orc-page .pj-memory-x {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #8a9098;
+}
+
+.orc-page .pj-memory-x:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8eaed;
+}
+
+.pj-memory-text {
+  margin-top: 3px;
+  font: 400 12px/1.5 var(--font);
+  color: #b9bec6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

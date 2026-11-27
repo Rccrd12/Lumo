@@ -64,6 +64,13 @@ export const ORCHESTRA_STRINGS = {
   paused: N_("Paused"),
   /** In the rail: when a member stopped by a usage limit goes on. */
   resumesAt: N_("Goes on at {time}"),
+  /** In the rail: when Lumo wakes a member, as it asked. */
+  wakesAt: N_("Wakes up at {time}"),
+  /** A project's settings: what its members keep for later (save_memory). */
+  memory: N_("Project memory"),
+  memoryNote: N_("What the coordinator and the threads keep for later: each reads it at the start of its turns."),
+  memoryEmpty: N_("Nothing kept yet."),
+  forget: N_("Forget"),
   /** A usage limit stopped a member: the project goes on by itself at {time}. */
   limitResumes: N_("Usage limit reached: it goes on by itself at {time}."),
   limitStops: N_("Usage limit reached: write to it once the limits reset."),

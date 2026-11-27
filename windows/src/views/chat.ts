@@ -101,7 +101,7 @@ import type { ChatPermissions } from "../core/chats";
 import { messageScope, nextMessage } from "../core/checklists";
 import { withReplyFile } from "../core/file-names";
 import { setFileLinkHost } from "./file-links";
-import { addChatFile, chatCopies, chatFiles, dropChatFiles, inboxCopies, keptCopies, moveChatPaths, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
+import { addChatFile, chatCopies, chatFiles, dropChatFiles, inboxCopies, isProjectChat, keptCopies, moveChatPaths, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import { PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, itemPreview, keepShots, afterSent, autoShare, folderPicks, foldersByThemselves, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short, screenWaits, shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type PickEntry, type PendingScreen, type PreviewBlock, type ScreenItem } from "../core/screen";
@@ -128,7 +128,7 @@ import { cliModelName } from "../core/model-names";
 import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, speedLine, speedText, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
 import { buildOrchestra } from "./orchestra";
-import type { OrchestraAttached } from "../core/orchestra-bridge";
+import { Orchestra, type OrchestraAttached } from "../core/orchestra-bridge";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
 // ── Usage ring ────────────────────────────────────────────────────────────────
@@ -626,7 +626,7 @@ export function buildPrompt(
   const listenAskDecide = (yes: boolean) => () => {
     // A click meant for something else, as the box came up, answers nothing.
     if (performance.now() - listenAskAt < PLAN_ASK_GUARD_MS) return;
-    const chatId = State.chatId;
+    const chatId = filesChat();
     const asks = listenAsks.get(chatId) ?? [];
     listenAsks.delete(chatId);
     drawListenAsk();
@@ -642,15 +642,17 @@ export function buildPrompt(
   listenAsk.hidden = true;
   /** The box for the chat on screen: each watch its answer asked for, by name, event and what then. */
   function drawListenAsk() {
-    const asks = State.chatSlot !== "forge" ? listenAsks.get(State.chatId) ?? [] : [];
-    const key = asks.length ? `${State.chatId}:${JSON.stringify(asks)}` : "";
+    // In a project, the member on screen's: what its answers asked to listen for.
+    const askChat = filesChat();
+    const asks = State.chatSlot !== "forge" ? listenAsks.get(askChat) ?? [] : [];
+    const key = asks.length ? `${askChat}:${JSON.stringify(asks)}` : "";
     if (key === listenAskShownFor) return;
     listenAskShownFor = key;
     listenAskAt = performance.now();
     listenAsk.hidden = asks.length === 0;
     clear(listenAskList);
     for (const ask of asks) {
-      const w = { ...ask, id: 0, chatId: State.chatId, startedAt: 0 } as ListenWatch;
+      const w = { ...ask, id: 0, chatId: askChat, startedAt: 0 } as ListenWatch;
       const label = watchLabel(w);
       // A path or a page shortened in its label is read whole before Listen.
       const whole = ask.source !== "github.pr" && ask.target && !label.includes(ask.target) ? ask.target : "";
@@ -764,6 +766,7 @@ export function buildPrompt(
       setInput(text);
       input.focus();
     },
+    lumoLines: (chat, text) => void lumoLines(chat, text),
     unqueued: (text) => {
       const typed = input.value.trim();
       setInput(typed ? `${text}\n${typed}` : text);
@@ -887,6 +890,7 @@ export function buildPrompt(
   body.insertBefore(orchestra.doc, body.firstChild);
   body.insertBefore(orchestra.rail, orchestra.doc);
   body.insertBefore(orchestra.head, log);
+  body.insertBefore(orchestra.planBox, log);
   body.insertBefore(orchestra.log, picker.el);
   // The projects' pages (their list, a form) where the conversation is.
   body.insertBefore(orchestra.page, orchestra.log);
@@ -4885,6 +4889,15 @@ export function buildPrompt(
   function hear(fired: ListenFired) {
     const asks = answersInChat(fired);
     let chatId = fired.watch.chatId;
+    // A project member's watch: what it heard goes to that member, which goes
+    // on with what it planned for then, as a chat is sent the message.
+    if (asks && chatId && isProjectChat(chatId)) {
+      const member = chatId;
+      void Orchestra.heard(member, listenMessage(fired)).then((went) => {
+        if (!went) compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
+      });
+      return;
+    }
     let name = chatId ? chatNamed(chatId) : null;
     if (name == null) {
       // No chat asked, or it was deleted: with nothing to do, the closed

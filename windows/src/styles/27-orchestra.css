@@ -6,7 +6,8 @@
    form are in 28-projects.css. */
 
 .chat-body:not(.orc) > .orc-part,
-.orc-queue[hidden] {
+.orc-queue[hidden],
+.orc-plan-box[hidden] {
   display: none !important;
 }
 
@@ -466,6 +467,21 @@
 }
 
 /* The plan, and who holds which files: a quiet box at the top. */
+/* The plan or the list, opened by its button: over the conversation, its steps scrolling when many. */
+.orc-plan-box {
+  flex: 0 0 auto;
+  display: flex;
+  max-height: 42%;
+  min-height: 0;
+  margin-top: 8px;
+}
+
+.orc-plan-box > .orc-plan {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .orc-plan {
   flex: 0 0 auto;
   padding: 9px 12px;

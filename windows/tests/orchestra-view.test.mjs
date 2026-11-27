@@ -109,6 +109,13 @@ test("the projects take the chat's place: the last one opens on its coordinator"
   // The header: its model, at work, its plan, Stop all.
   assert.equal($(".orc-head-title").textContent, "Coordinator");
   assert.equal($(".orc-plan-btn").textContent, "Plan 1/2");
+  // The plan opens over the conversation, wherever it is scrolled to, and closes again.
+  assert.ok($(".orc-plan-box").hidden);
+  $(".orc-plan-btn").fire("click");
+  assert.ok(!$(".orc-plan-box").hidden);
+  assert.equal($(".orc-plan-box").find(".orc-step").length, 2);
+  $(".orc-plan-btn").fire("click");
+  assert.ok($(".orc-plan-box").hidden);
   assert.equal($(".orc-stop").textContent, "Stop all");
   assert.ok($(".pj-gear"), "the project's settings, beside Stop all");
   assert.equal($(".orc-top-name").textContent, "Leases");

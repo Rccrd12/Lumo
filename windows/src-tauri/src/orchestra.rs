@@ -39,8 +39,8 @@ use crate::screen::{ScreenContext, ShotRef};
 use crate::island::WINDOW_LABEL;
 
 pub use crate::orchestra_tool_defs::{
-    parse_chat, ASK_USER, COORDINATOR, LIST_THREADS, MESSAGE_COORDINATOR, MESSAGE_THREAD, NAMES, READ_MESSAGES, READ_THREAD, SHARE_FILE, START_THREAD,
-    STOP_THREAD,
+    parse_chat, ASK_USER, COORDINATOR, LIST_THREADS, MAX_WAKE_SECONDS, MESSAGE_COORDINATOR, MESSAGE_THREAD, NAMES, READ_MESSAGES, READ_THREAD, REMEMBER,
+    SHARE_FILE, START_THREAD, STOP_THREAD, WAKE_ME,
 };
 use crate::orchestra_tool_defs::{MEMBER, PREFIX};
 
@@ -220,6 +220,9 @@ pub struct Member {
     pub done: bool,
     /// Stopped by a usage limit: when it goes on by itself (ms since the epoch).
     pub resume_at: Option<u64>,
+    /// When Lumo wakes it (ms since the epoch) and what for, as it asked (wake_me_later).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wake_at: Option<(u64, String)>,
     /// A turn of its is running.
     #[serde(skip)]
     pub running: bool,
@@ -264,11 +267,28 @@ pub struct Orchestra {
     pub thread_pick: Pick,
     /// The files members handed over (share_file): the reader may open them.
     pub shared: Vec<String>,
+    /// The project's memory (save_memory): what every member, now and later,
+    /// reads at the start of its turns. One note per subject.
+    pub memory: Vec<MemoryNote>,
     /// The last id given to a line.
     pub next: u64,
     #[serde(skip)]
     pub locks: Vec<Lock>,
 }
+
+/// A note of a project's memory: its subject, its text, who wrote it last and when.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct MemoryNote {
+    pub subject: String,
+    pub text: String,
+    pub by: String,
+    pub at: u64,
+}
+
+/// The most notes a project's memory keeps, and the most characters of each.
+const MAX_NOTES: usize = 30;
+const MAX_NOTE: usize = 2_000;
 
 /// What New project and a project's settings set.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -793,7 +813,7 @@ impl Orchestra {
             json!({
                 "id": m.id, "chat": m.chat, "title": m.title, "task": m.task, "pick": m.pick,
                 "state": m.state, "activity": m.activity, "plan": m.plan, "queued": m.mail.len(),
-                "messages": m.messages, "resumeAt": m.resume_at,
+                "messages": m.messages, "resumeAt": m.resume_at, "wakeAt": m.wake_at.as_ref().map(|w| w.0),
             })
         };
         json!({
@@ -804,7 +824,50 @@ impl Orchestra {
             "threads": self.threads.iter().map(member).collect::<Vec<_>>(),
             "plan": self.plan,
             "locks": self.locks,
+            "memory": self.memory,
         })
+    }
+
+    /// `save_memory`: the note of `subject` (its words compared without case)
+    /// is `text` now, written by `by`; an empty text forgets it.
+    pub fn remember(&mut self, by: &str, subject: &str, text: &str) -> Result<String, String> {
+        let subject = clip(subject.trim(), 80);
+        if subject.is_empty() {
+            return Err("A note needs a subject.".into());
+        }
+        let text = text.trim();
+        let at = self.memory.iter().position(|n| n.subject.to_lowercase() == subject.to_lowercase());
+        if text.is_empty() {
+            return Ok(match at {
+                Some(i) => {
+                    self.memory.remove(i);
+                    format!("Forgot \"{subject}\".")
+                }
+                None => format!("There was no note \"{subject}\"."),
+            });
+        }
+        if at.is_none() && self.memory.len() >= MAX_NOTES {
+            return Err(format!("The memory holds {MAX_NOTES} notes: put this one in a note that is there, or forget one first."));
+        }
+        // The same subject keeps the words it was first kept with.
+        let subject = at.map(|i| self.memory[i].subject.clone()).unwrap_or(subject);
+        let note = MemoryNote { subject: subject.clone(), text: clip(text, MAX_NOTE), by: by.into(), at: now() };
+        match at {
+            Some(i) => self.memory[i] = note,
+            None => self.memory.push(note),
+        }
+        Ok(format!("Kept \"{subject}\" in the project's memory."))
+    }
+
+    /// The project's memory, as members read it.
+    fn memory_words(&self) -> String {
+        if self.memory.is_empty() {
+            return String::new();
+        }
+        let notes = self.memory.iter().map(|n| format!("## {}\n{}", n.subject, n.text)).collect::<Vec<_>>().join("\n\n");
+        format!(
+            "\n\nThe project's memory, kept by its members and the user for later (save_memory keeps a note, one per subject):\n<project-memory>\n{notes}\n</project-memory>"
+        )
     }
 }
 
@@ -1298,6 +1361,45 @@ fn resume_later(app: &AppHandle, id: &str, member: &str, until: u64) {
     });
 }
 
+/// The member wakes at `at` (ms), as it asked (wake_me_later): Lumo's message
+/// with what it wrote for then, unless it was stopped or asked again since.
+fn wake_later(app: &AppHandle, id: &str, member: &str, at: u64) {
+    let key = format!("wake/{id}/{member}/{at}");
+    {
+        let mut armed = ARMED.lock().unwrap_or_else(|e| e.into_inner());
+        if armed.contains(&key) {
+            return;
+        }
+        armed.push(key.clone());
+    }
+    let (app, id, member) = (app.clone(), id.to_string(), member.to_string());
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(at.saturating_sub(now()))).await;
+        ARMED.lock().unwrap_or_else(|e| e.into_inner()).retain(|k| k != &key);
+        let wakes = with(Some(&app), &id, |o| {
+            let m = o.member_mut(&member)?;
+            if m.wake_at.as_ref().map(|w| w.0) != Some(at) {
+                return None;
+            }
+            let (_, why) = m.wake_at.take()?;
+            o.deliver("lumo", &member, &format!("It is time: you asked Lumo to wake you now. Your note for now: {why}")).ok()
+        })
+        .flatten();
+        if wakes == Some(true) {
+            wake(&app, &id, &member);
+        }
+    });
+}
+
+/// The wake-ups of `o`'s members, set again (Lumo was closed since they were asked).
+fn arm_wakes(app: &AppHandle, o: &Orchestra) {
+    for m in std::iter::once(&o.coordinator).chain(o.threads.iter()) {
+        if let Some((at, _)) = &m.wake_at {
+            wake_later(app, &o.id, &m.id, *at);
+        }
+    }
+}
+
 /// The waits already set (orchestra/member/until), so one is never set twice.
 static ARMED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -1512,6 +1614,7 @@ fn project_words(o: &Orchestra, member: &str, cli: bool) -> String {
         };
         out.push_str(&format!("\nThe project's GitHub repositories, its environment: {list}: {how}."));
     }
+    out.push_str(&o.memory_words());
     out
 }
 
@@ -1528,8 +1631,24 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
     // A CLI member works on the user's files itself: it may hand over one of them by its full path.
     let cli = with(None, &id, |o| o.member(&member).map(|m| m.pick.clone())).flatten().is_some_and(|pick| is_cli(&settings_for(app, &pick).chat_provider));
     let mut woken: Vec<String> = Vec::new();
+    let mut wake_at: Option<u64> = None;
     let answer = with(Some(app), &id, |o| -> Result<String, String> {
         match name {
+            WAKE_ME => {
+                let seconds = input.get("seconds").and_then(Value::as_u64).unwrap_or(0);
+                if !(60..=MAX_WAKE_SECONDS).contains(&seconds) {
+                    return Err(format!("seconds: from 60 to {MAX_WAKE_SECONDS}."));
+                }
+                let why = clip(s("why").trim(), 300);
+                let at = now() + seconds * 1000;
+                o.member_mut(&member).ok_or("No such member.")?.wake_at = Some((at, why));
+                wake_at = Some(at);
+                Ok(format!(
+                    "Lumo wakes you in {} minutes with your note. End your turn now unless other work does not depend on it.",
+                    seconds.div_ceil(60)
+                ))
+            }
+            REMEMBER => o.remember(&member, &s("subject"), &s("text")),
             n if n == crate::island_tools::UPDATE_PLAN => {
                 let (text, failed) = crate::island_tools::plan_answer(input);
                 if failed {
@@ -1643,6 +1762,9 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
     })?;
     for m in woken {
         wake(app, &id, &m);
+    }
+    if let Some(at) = wake_at {
+        wake_later(app, &id, &member, at);
     }
     Some(match answer {
         Ok(text) => (text, false),
@@ -1889,6 +2011,7 @@ fn stop_member(o: &mut Orchestra, member: &str) {
     let Some(m) = o.member_mut(member) else { return };
     m.mail.clear();
     m.attached.clear();
+    m.wake_at = None;
     if m.state == "paused" {
         m.state = "stopped".into();
         m.resume_at = None;
@@ -1916,7 +2039,7 @@ fn not_found() -> String {
 }
 
 #[tauri::command]
-pub fn orchestra_list() -> Vec<Summary> {
+pub fn orchestra_list(app: AppHandle) -> Vec<Summary> {
     let mut out: Vec<Summary> = Vec::new();
     let held: HashMap<String, Summary> = all().as_ref().map(|m| m.values().map(|o| (o.id.clone(), o.summary())).collect()).unwrap_or_default();
     let mut held = held;
@@ -1932,6 +2055,8 @@ pub fn orchestra_list() -> Vec<Summary> {
                 continue;
             }
             if let Some(o) = load(&id) {
+                // The wake-ups its members asked for before Lumo closed.
+                arm_wakes(&app, &o);
                 out.push(o.summary());
             }
         }
@@ -1971,6 +2096,8 @@ pub fn orchestra_open(app: AppHandle, id: String) -> Result<Value, String> {
             .filter(|m| m.state == "paused")
             .filter_map(|m| Some((m.id.clone(), m.resume_at?)))
             .collect();
+        // The wake-ups its members asked for before Lumo closed.
+        arm_wakes(&app, o);
         (o.snapshot(), paused)
     })
     .ok_or_else(not_found)?;
@@ -2012,6 +2139,26 @@ pub fn orchestra_send(
         wake(&app, &id, &to);
     }
     Ok(())
+}
+
+/// The user forgets a note of the project's memory (its settings).
+#[tauri::command]
+pub fn orchestra_forget(app: AppHandle, id: String, subject: String) -> Result<Value, String> {
+    with(Some(&app), &id, |o| o.remember("user", &subject, "").map(|_| o.snapshot())).ok_or_else(not_found)?
+}
+
+/// What Lumo heard for a member's chat (a watch it asked for, listen.rs, with
+/// what to do then): a message from Lumo to that member, which wakes it, as a
+/// chat is sent the message. False: not a member's chat, or its project is gone.
+#[tauri::command]
+pub fn orchestra_heard(app: AppHandle, chat: String, text: String) -> bool {
+    let Some((id, member)) = parse_chat(&chat) else { return false };
+    let (id, member) = (id.to_string(), member.to_string());
+    let Some(wakes) = with(Some(&app), &id, |o| o.deliver("lumo", &member, &text).ok()).flatten() else { return false };
+    if wakes {
+        wake(&app, &id, &member);
+    }
+    true
 }
 
 /// Cancel or Edit of the user's message waiting for its member
@@ -2396,6 +2543,38 @@ mod tests {
         assert!(o.take_mail(COORDINATOR, "woke").unwrap().contains("MD"));
         assert_eq!(o.coordinator.settled(), "idle");
         assert!(o.answer(COORDINATOR, &line, 0).is_err());
+    }
+
+    #[test]
+    fn the_projects_memory_keeps_one_note_per_subject_and_every_member_reads_it() {
+        let mut o = orchestra();
+        o.start_thread("Analisi", "x").unwrap();
+        assert!(!note_for(&o, "t1", false).contains("<project-memory>"));
+        o.remember("t1", "Preferenze dell'utente", "Risposte brevi, in italiano.").unwrap();
+        o.remember(COORDINATOR, "preferenze dell'UTENTE", "Risposte brevi, in italiano. Niente emoji.").unwrap();
+        assert_eq!(o.memory.len(), 1, "the same subject, whatever its case");
+        assert_eq!((o.memory[0].by.as_str(), o.memory[0].text.as_str()), (COORDINATOR, "Risposte brevi, in italiano. Niente emoji."));
+        for member in [COORDINATOR, "t1"] {
+            let note = note_for(&o, member, false);
+            assert!(note.contains("<project-memory>\n## Preferenze dell'utente\nRisposte brevi, in italiano. Niente emoji.\n</project-memory>"), "{member}");
+        }
+        assert!(o.snapshot()["memory"][0]["subject"] == "Preferenze dell'utente");
+        // An empty text forgets it; a subject is needed.
+        assert!(o.remember("t1", "Preferenze dell'utente", " ").unwrap().starts_with("Forgot"));
+        assert!(o.memory.is_empty());
+        assert!(o.remember("t1", "  ", "x").is_err());
+    }
+
+    #[test]
+    fn a_wake_up_asked_is_kept_until_it_comes_and_a_stop_drops_it() {
+        let mut o = orchestra();
+        let t = o.start_thread("Deploy", "x").unwrap();
+        o.member_mut(&t).unwrap().wake_at = Some((now() + 600_000, "Guarda se il deploy è finito".into()));
+        let saved: Orchestra = serde_json::from_str(&serde_json::to_string(&o).unwrap()).unwrap();
+        assert_eq!(saved.member(&t).unwrap().wake_at.as_ref().map(|w| w.1.as_str()), Some("Guarda se il deploy è finito"), "kept across a restart");
+        assert!(o.snapshot()["threads"][0]["wakeAt"].is_u64());
+        stop_member(&mut o, &t);
+        assert!(o.member(&t).unwrap().wake_at.is_none());
     }
 
     #[test]
