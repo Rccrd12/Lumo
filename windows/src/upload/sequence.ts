@@ -85,10 +85,6 @@ export function uploadProgressCurve(u: number): number {
   return 0.92 + 0.08 * eIn((u - 0.85) / 0.15);
 }
 
-export function progressAt(t: number, progStart: number, progEnd: number): number {
-  return t < progStart ? 0 : uploadProgressCurve(seg(t, progStart, progEnd));
-}
-
 // ── Spring ──────────────────────────────────────────────────────────────────
 
 /** The reference `spring(s, target, response, damping, dt)`, integrated by hand. */
@@ -147,7 +143,8 @@ export interface UploadFrame {
   flash: number;
   check: number;
   greenWash: number;
-  progEnd: number;
+  /** How fast the bar moves now, in bar lengths a second. */
+  speed: number;
   /** Where the bar runs (USC.BAR_Y, or BAR_Y_MANY for several files). */
   barY: number;
 }
@@ -181,7 +178,7 @@ function restFrame(): UploadFrame {
     flash: 0,
     check: 0,
     greenWash: 0,
-    progEnd: USC.T_PROG_START + 2.4,
+    speed: 0,
     barY: USC.BAR_Y,
   };
 }
@@ -189,11 +186,15 @@ function restFrame(): UploadFrame {
 // ── Engine ──────────────────────────────────────────────────────────────────
 
 class UploadSequence {
-  uploadDuration = 2.4;
-
-  get progEnd() {
-    return USC.T_PROG_START + this.uploadDuration;
-  }
+  /**
+   * Where the bar is: the real copy's (upload/meter.ts, set by the island
+   * each frame), and when it filled, in reference time. Its ✓, the flash and
+   * Lumo's hop at the end all wait for that.
+   */
+  private progress = 0;
+  private doneAt: number | null = null;
+  private speed = 0;
+  private progressSetAt: number | null = null;
 
   isActive = false;
 
@@ -277,14 +278,30 @@ class UploadSequence {
   /** Where the bar runs for the drop on show. */
   barY: number = USC.BAR_Y;
 
-  performDrop(uploadDuration: number, barY: number = USC.BAR_Y) {
-    this.uploadDuration = uploadDuration;
+  performDrop(barY: number = USC.BAR_Y) {
     this.barY = barY;
+    this.progress = 0;
+    this.doneAt = null;
+    this.speed = 0;
+    this.progressSetAt = null;
     this.over = true;
     this.dropWall = this.now();
     // Restart the canonical post-drop timeline however long the user hovered.
     // Spring state (position and velocity) is deliberately preserved.
     this.t = USC.T_DROP;
+  }
+
+  /** The bar is at `p` now (0 to 1): the copy's progress, as the island shows it. */
+  setProgress(p: number) {
+    const t = this.tRef();
+    if (this.progressSetAt != null && t > this.progressSetAt) {
+      const now = Math.max(0, (p - this.progress) / (t - this.progressSetAt));
+      this.speed = lerp(this.speed, now, 0.35);
+    }
+    this.progressSetAt = t;
+    this.progress = p;
+    if (p >= 1 && this.doneAt == null) this.doneAt = t;
+    if (p >= 1) this.speed = 0;
   }
 
   deactivate() {
@@ -364,13 +381,16 @@ class UploadSequence {
     f.t = t;
     f.cursorX = this.cursorX;
     f.cursorY = this.cursorY;
-    const progEnd = this.progEnd;
-    f.progEnd = progEnd;
 
     const isDragging = this.dropWall == null;
     // Clamp the phase clock to just before the drop while still dragging, so a
     // long hover never trips the post-drop visuals.
     const pt = isDragging ? Math.min(t, USC.T_DROP - USC.DT) : t;
+
+    // Full once the copy landed; until then the end is not in sight.
+    const progEnd = this.doneAt ?? Infinity;
+    const progress = pt >= USC.T_PROG_START ? this.progress : 0;
+    f.speed = pt >= USC.T_PROG_START && pt < progEnd ? this.speed : 0;
 
     // Morph: 0→1 while the file is over him, then 1→0 shrinking to a ball that
     // rides the bar. He stays a ball at its end: the chat takes over from there.
@@ -390,8 +410,7 @@ class UploadSequence {
       d = lerp(USC.D_BOX, 14, k);
     }
     if (pt >= USC.T_PROG_START) {
-      const p = progressAt(pt, USC.T_PROG_START, progEnd);
-      x = lerp(USC.BAR_X0, USC.BAR_X1, p);
+      x = lerp(USC.BAR_X0, USC.BAR_X1, progress);
       y = this.barY;
       d = 14;
     }
@@ -432,10 +451,7 @@ class UploadSequence {
       sx = 1 - 0.06 * Math.sin(Math.PI * k);
     }
     if (pt >= USC.T_PROG_START && pt < progEnd) {
-      const v =
-        (progressAt(pt + 0.01, USC.T_PROG_START, progEnd) -
-          progressAt(pt, USC.T_PROG_START, progEnd)) / 0.01;
-      const st = Math.max(0, Math.min(1, v * 0.18));
+      const st = Math.max(0, Math.min(1, f.speed * 0.18));
       sx = 1 + 0.25 * st;
       sy = 1 - 0.15 * st;
     }
@@ -471,7 +487,7 @@ class UploadSequence {
     f.textAlpha = f.zoneAlpha;
     f.barReveal = eOut(seg(pt, USC.T_BAR_IN, USC.T_BAR_IN + 0.25));
     f.barAlpha = seg(pt, USC.T_BAR_IN + 0.05, USC.T_BAR_IN + 0.25);
-    f.progress = progressAt(pt, USC.T_PROG_START, progEnd);
+    f.progress = progress;
     f.flash = pt >= progEnd ? Math.sin(Math.PI * seg(pt, progEnd, progEnd + 0.3)) : 0;
     f.check = pt >= progEnd ? eBack(seg(pt, progEnd, progEnd + 0.25)) : 0;
 

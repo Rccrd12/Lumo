@@ -1,9 +1,11 @@
 // Dev harness: plays the whole drop sequence in a plain browser so the
 // choreography can be watched without an OLE drag. Not part of the app bundle.
-// `?t=2.5` stops the clock there, for a screenshot.
+// `?t=2.5` stops the clock there, for a screenshot; `?copy=6` plays a copy
+// into the inbox that takes 6 s (one at once by default).
 
 import { UploadCanvas } from "../src/upload/canvas";
-import { UploadSeq } from "../src/upload/sequence";
+import { UploadMeter } from "../src/upload/meter";
+import { USC, UploadSeq } from "../src/upload/sequence";
 import { State } from "../src/core/state";
 
 State.droppedFile = { name: "rapport-q3.pdf", path: "C:/tmp/rapport-q3.pdf" };
@@ -36,6 +38,10 @@ let dropped = false;
 UploadSeq.enterZone(520, 96);
 
 const frozen = params.has("t") ? Number(params.get("t")) : null;
+const copySeconds = Number(params.get("copy") ?? 0.05);
+const SIZE = 1_000_000;
+let meter: UploadMeter | null = null;
+let last = 0;
 
 function loop(now: number) {
   let t = (now - start) / 1000;
@@ -55,9 +61,20 @@ function loop(now: number) {
     UploadSeq.setOver(t < 1.2 || t >= 2.2);
     if (t >= 3) {
       dropped = true;
-      UploadSeq.performDrop(2.4);
+      UploadSeq.performDrop();
+      meter = new UploadMeter([{ name: "rapport-q3.pdf", source: "C:/tmp/rapport-q3.pdf" }]);
     }
   }
+  if (dropped && meter) {
+    // The copy, as files.rs reports it, and the bar the island draws from it.
+    const since = t - 3;
+    if (since >= copySeconds) meter.land("C:/tmp/rapport-q3.pdf");
+    else meter.progress("C:/tmp/rapport-q3.pdf", Math.round((since / copySeconds) * SIZE), SIZE);
+    const { total } = meter.step(since - (USC.T_PROG_START - USC.T_DROP), t - last);
+    State.uploadProgress = total;
+    UploadSeq.setProgress(total);
+  }
+  last = t;
   canvas.draw(UploadSeq.frame(), now / 1000);
   clock.textContent = `t = ${t.toFixed(2)} s${dropped ? "  (dropped)" : "  (dragging)"}`;
   requestAnimationFrame(loop);
