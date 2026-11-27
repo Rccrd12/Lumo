@@ -495,6 +495,13 @@ async fn start(app: &AppHandle, settings: &Settings, asked: bool, mut tick: impl
                 }
             });
             crate::log::line(format!("[maya] answering after {} s", began.elapsed().as_secs()));
+            // Started without a console, Maya's processes are background work to
+            // Windows, throttled onto the slow cores: full speed for all of them
+            // (the engine and the image encoder are up by now).
+            if let Some(pid) = owned(|o| o.as_ref().map(|own| own.child.id())) {
+                let n = crate::platform::full_speed_tree(pid);
+                crate::log::line(format!("[maya] {n} processes at full speed"));
+            }
             emit(app, status_of("on", true, 0));
             watch_idle(app.clone());
             return Ok(());

@@ -464,6 +464,52 @@ pub fn end_with_lumo(child: &std::process::Child) -> bool {
     unsafe { AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())).is_ok() }
 }
 
+/// Takes Windows' power throttling (EcoQoS) off `root` and every process under
+/// it. Windows throttles a program started without a console as background work:
+/// its threads go to the efficiency cores at a low clock, and Maya's engine, whose
+/// processor computes the experts the card lacks, then decodes at a third of its
+/// speed (12 tok/s instead of 40 on a Core Ultra 9 285H). The number of processes
+/// changed.
+pub fn full_speed_tree(root: u32) -> usize {
+    use ::windows::Win32::System::Threading::{
+        OpenProcess, ProcessPowerThrottling, SetProcessInformation, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE, PROCESS_SET_INFORMATION,
+    };
+    let table = process_table();
+    let mut tree = vec![root];
+    let mut i = 0;
+    while i < tree.len() {
+        let parent = tree[i];
+        let children: Vec<u32> = table.iter().filter(|(pid, p)| p.parent == parent && !tree.contains(*pid)).map(|(pid, _)| *pid).collect();
+        tree.extend(children);
+        i += 1;
+    }
+    // Throttling's control taken, its state off: Windows runs the process at full speed.
+    let state = PROCESS_POWER_THROTTLING_STATE {
+        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+        StateMask: 0,
+    };
+    let mut changed = 0;
+    for pid in tree {
+        unsafe {
+            let Ok(process) = OpenProcess(PROCESS_SET_INFORMATION, false, pid) else { continue };
+            if SetProcessInformation(
+                process,
+                ProcessPowerThrottling,
+                &state as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+            )
+            .is_ok()
+            {
+                changed += 1;
+            }
+            let _ = CloseHandle(process);
+        }
+    }
+    changed
+}
+
 /// Lumo quits and leaves what is in its job running ("Stop after: Never"):
 /// the job no longer ends it when Lumo's handle closes.
 pub fn let_job_outlive_lumo() {
