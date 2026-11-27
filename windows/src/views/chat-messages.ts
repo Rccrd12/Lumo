@@ -776,6 +776,7 @@ export const ACTIVITY_STRINGS = {
   // A local model (local_chat.rs): its server started (Unsloth Studio, unsloth_studio.rs),
   // loading it, then reading the prompt.
   starting: N_("Starting Unsloth Studio…"),
+  startingMaya: N_("Starting Maya…"),
   loading: N_("Loading the model…"),
   loadingAt: N_("Loading the model: {percent}%"),
   prompt: N_("Processing the prompt…"),
@@ -931,7 +932,8 @@ export function activityLabel(activity: ChatActivity | null): string {
     case "tool":
       return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
     case "starting":
-      return t(ACTIVITY_STRINGS.starting);
+      // The server the chat started: Unsloth Studio (unsloth_studio.rs) or Maya (maya.rs).
+      return t(State.settings.chatProvider === "maya" ? ACTIVITY_STRINGS.startingMaya : ACTIVITY_STRINGS.starting);
     case "loading":
       return /^\d{1,3}$/.test(detail) ? t(ACTIVITY_STRINGS.loadingAt, { percent: detail }) : t(ACTIVITY_STRINGS.loading);
     case "prompt":

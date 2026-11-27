@@ -7,7 +7,7 @@ import { N_ } from "../i18n/i18n";
 
 export type ProviderId =
   | "anthropic" | "claude-code" | "antigravity-cli" | "codex" | "copilot-cli" | "cursor-cli" | "openai" | "google" | "openrouter"
-  | "ollama" | "lmstudio" | "unsloth" | "custom";
+  | "ollama" | "lmstudio" | "unsloth" | "maya" | "custom";
 
 export interface ProviderDef {
   id: ProviderId;
@@ -17,7 +17,7 @@ export interface ProviderDef {
   /** Credential store entry of its key; null for the model servers. */
   key: string | null;
   /** Settings field holding a model server's address. */
-  urlField: "ollamaUrl" | "lmstudioUrl" | "unslothUrl" | "customUrl" | null;
+  urlField: "ollamaUrl" | "lmstudioUrl" | "unslothUrl" | "mayaUrl" | "customUrl" | null;
   defaultModel: string;
   /** When the saved model is not offered, the first one containing this is picked. */
   prefer: string | null;
@@ -45,6 +45,8 @@ export const PROVIDERS: readonly ProviderDef[] = [
   { id: "lmstudio", name: "LM Studio", accent: "#A3E635", key: null, urlField: "lmstudioUrl", defaultModel: "", prefer: null },
   // Unsloth Studio's server (llama-server underneath), with its sk-unsloth key (local_chat.rs).
   { id: "unsloth", name: "Unsloth Studio", accent: "#34D399", key: null, urlField: "unslothUrl", defaultModel: "", prefer: null },
+  // Maya (maya-inkling-mini), started by Lumo from its folder (maya.rs): Inkling 2 Mini alone.
+  { id: "maya", name: "Maya", accent: "#FB7185", key: null, urlField: "mayaUrl", defaultModel: "inkling-2-mini", prefer: null },
   { id: "custom", name: N_("Custom server"), accent: "#C0C4CC", key: null, urlField: "customUrl", defaultModel: "", prefer: null },
 ];
 

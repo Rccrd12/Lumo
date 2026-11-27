@@ -3,7 +3,7 @@
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
-import { Bridge, onEvent, type LocalLoad, type ModelInfo, type UnslothStudio, UNSLOTH_STUDIO_EVENT } from "../core/bridge";
+import { Bridge, onEvent, type LocalLoad, type ModelInfo, type UnslothStudio, UNSLOTH_STUDIO_EVENT, MAYA_EVENT } from "../core/bridge";
 import { activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, isApiProvider, localCapsOf, pickModel, providerDef, setLocalCaps, anyProviderReady, visibleProviders, withModel, type ProviderDef } from "../core/providers";
 import { groupByEffort, groupOf, levelOf, splitEffort, variantFor } from "../core/effort-groups";
 import { cliModelName } from "../core/model-names";
@@ -566,12 +566,12 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     }
     if (ticket !== request) return;
     status(t(STRINGS.loading));
-    // Unsloth Studio off: Lumo starts it before it lists the models, and says so.
-    const starting = p.id === "unsloth"
-      ? await onEvent<UnslothStudio>(UNSLOTH_STUDIO_EVENT, (s) => {
+    // Unsloth Studio or Maya off: Lumo starts it before it lists the models, and says so.
+    const starting = p.id === "unsloth" || p.id === "maya"
+      ? await onEvent<UnslothStudio>(p.id === "maya" ? MAYA_EVENT : UNSLOTH_STUDIO_EVENT, (s) => {
           if (ticket !== request || s.state !== "starting") return;
           const seconds = s.seconds >= 2 ? ` ${t(ACTIVITY_STRINGS.seconds, { seconds: s.seconds })}` : "";
-          status(`${t(ACTIVITY_STRINGS.starting)}${seconds}`);
+          status(`${t(p.id === "maya" ? ACTIVITY_STRINGS.startingMaya : ACTIVITY_STRINGS.starting)}${seconds}`);
         })
       : null;
     try {

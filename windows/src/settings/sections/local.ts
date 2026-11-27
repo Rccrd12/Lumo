@@ -1,11 +1,12 @@
-// Settings → Local models: Ollama, LM Studio, Unsloth Studio and a custom
-// server, with their addresses, keys and the models they serve.
+// Settings → Local models: Ollama, LM Studio, Unsloth Studio, Maya and a
+// custom server, with their addresses, keys and the models they serve.
 
 import { Bridge, type UnslothStudio } from "../../core/bridge";
 import { CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, pickModel, providerDef, urlExposure } from "../../core/providers";
 import { h, clear } from "../../views/dom";
 import { accentDot, sectionHead, setting, statusDot, wideSetting } from "../parts";
 import { localModelsBlock, type UnslothMemory } from "../local-models";
+import { mayaBlock } from "../maya";
 import { N_, t } from "../../i18n/i18n";
 import { CHAT_STRINGS } from "./chat";
 import { save, select, settings, toggle } from "../store";
@@ -158,7 +159,11 @@ export function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLEleme
   );
   const redraw = () => {
     clear(body);
-    for (const id of Object.keys(LOCAL) as LocalId[]) body.append(serverBlock(id));
+    for (const id of Object.keys(LOCAL) as LocalId[]) {
+      body.append(serverBlock(id));
+      // Maya, which Lumo starts from its folder (settings/maya.ts), after the other server it starts.
+      if (id === "unsloth") body.append(mayaBlock(redraw));
+    }
   };
 
   function serverBlock(id: LocalId): HTMLElement {

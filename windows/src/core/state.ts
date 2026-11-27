@@ -433,6 +433,22 @@ export interface Settings {
   unslothAutoStart: boolean;
   /** When the Unsloth Studio Lumo started stops: minutes with no question ("5", "15", "60"), "exit" or "never". */
   unslothStopAfter: string;
+  /** Maya's folder (maya-inkling-mini) once connected, "" before (maya.rs). */
+  mayaDir: string;
+  /** The address Lumo's Maya answers at once connected, "" before. */
+  mayaUrl: string;
+  /** Lumo starts Maya when the chat needs it, and stops it again. */
+  mayaAutoStart: boolean;
+  /** When the Maya Lumo started stops, as unslothStopAfter. */
+  mayaStopAfter: string;
+  /** The graphics card's memory in GB, which picks Maya's config: "24" (or more), "16", "12" or "8". */
+  mayaVram: string;
+  /** The context Maya starts with, in tokens; 0 for the card's usual one. */
+  mayaContext: number;
+  /** Maya reads pictures (its image encoder, when it is built). */
+  mayaVision: boolean;
+  /** Maya drafts with its drafter (mtp.safetensors, when it is there). */
+  mayaDrafter: boolean;
   /** Sessions another program starts on its own: "grouped" (one pill per program), "single" or "hidden" (core/background.ts). */
   backgroundSessions: string;
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
@@ -561,6 +577,14 @@ export const DEFAULT_SETTINGS: Settings = {
   unslothUrl: "",
   unslothAutoStart: true,
   unslothStopAfter: "15",
+  mayaDir: "",
+  mayaUrl: "",
+  mayaAutoStart: true,
+  mayaStopAfter: "15",
+  mayaVram: "24",
+  mayaContext: 0,
+  mayaVision: true,
+  mayaDrafter: true,
   backgroundSessions: "grouped",
   shortcuts: {},
   lumoMotion: "calm",

@@ -58,6 +58,7 @@ mod live;
 mod local_chat;
 mod local_models;
 mod local_profile;
+mod maya;
 mod log;
 mod mail;
 mod mail_agents;
@@ -826,6 +827,10 @@ async fn chat_models(app: AppHandle, shared: State<'_, Shared>, provider: String
     if provider == "unsloth" {
         unsloth_studio::ensure(&app, &settings, |_| {}).await?;
     }
+    // Maya picked while it is off: started first too.
+    if provider == "maya" {
+        maya::ensure(&app, &settings, |_| {}).await?;
+    }
     chat::models(&settings, &provider).await
 }
 
@@ -846,6 +851,10 @@ async fn chat_usage(shared: State<'_, Shared>) -> Result<Option<chat_usage::Chat
 /// Settings → Local models → Connect: does the server answer, and with which models?
 #[tauri::command]
 async fn local_connect(provider: String, url: String) -> Result<local_chat::Connected, String> {
+    // Maya is given its folder, not an address: Lumo starts it there (maya.rs).
+    if provider == "maya" {
+        return maya::connect(&url);
+    }
     local_chat::connect(&provider, &url).await
 }
 
@@ -916,6 +925,34 @@ async fn unsloth_studio_start(app: AppHandle, shared: State<'_, Shared>) -> Resu
 #[tauri::command]
 async fn unsloth_studio_stop(app: AppHandle) -> Result<bool, String> {
     Ok(unsloth_studio::stop_owned(&app).await)
+}
+
+/// Settings → Local models → Maya: what its folder holds (`dir`, the
+/// connected one when empty), for the line under it and the switches it offers.
+#[tauri::command]
+fn maya_install(shared: State<'_, Shared>, dir: String) -> maya::Install {
+    let dir = if dir.trim().is_empty() { shared.settings.lock().unwrap().maya_dir.clone() } else { dir };
+    maya::install(&dir)
+}
+
+/// Settings → Local models → Maya: off, starting or on, and who started it.
+#[tauri::command]
+async fn maya_status(shared: State<'_, Shared>) -> Result<maya::Status, String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    Ok(maya::status(&settings).await)
+}
+
+/// Settings → Local models → Maya → Start now (or Restart, with the settings of now).
+#[tauri::command]
+async fn maya_start(app: AppHandle, shared: State<'_, Shared>) -> Result<(), String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    maya::start_now(&app, &settings).await
+}
+
+/// Settings → Local models → Maya → Stop now: the Maya Lumo started stops.
+#[tauri::command]
+async fn maya_stop(app: AppHandle) -> Result<bool, String> {
+    Ok(maya::stop_owned(&app).await)
 }
 
 /// Stores the custom server's key for the address typed next to it; it is only
@@ -1613,6 +1650,10 @@ pub fn run() {
             unsloth_studio_status,
             unsloth_studio_start,
             unsloth_studio_stop,
+            maya_install,
+            maya_status,
+            maya_start,
+            maya_stop,
             chat_reset,
             chat_close,
             chat_permissions,
@@ -1791,6 +1832,7 @@ pub fn run() {
                 // The Unsloth Studio Lumo started goes with it (unless "Stop after" is Never).
                 let settings = app.state::<Shared>().settings.lock().map(|s| s.clone()).unwrap_or_default();
                 unsloth_studio::on_exit(&settings);
+                maya::on_exit(&settings);
             }
         });
 }

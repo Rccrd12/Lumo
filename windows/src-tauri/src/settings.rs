@@ -269,6 +269,24 @@ pub struct Settings {
     /// with no question ("5", "15", "60"), when Lumo quits ("exit"), or
     /// "never". One the user opened is never stopped.
     pub unsloth_stop_after: String,
+    /// Maya's folder (maya-inkling-mini, maya.rs) once connected, "" before.
+    pub maya_dir: String,
+    /// The address Lumo's Maya answers at once connected (maya.rs PORT), "" before.
+    pub maya_url: String,
+    /// Lumo starts Maya when the chat needs it, and stops it again (maya.rs).
+    pub maya_auto_start: bool,
+    /// When the Maya Lumo started stops, as `unsloth_stop_after`.
+    pub maya_stop_after: String,
+    /// The graphics card's memory in GB, which picks Maya's config: "24" (or
+    /// more: every expert on the card), "16", "12" or "8" (the experts in the
+    /// computer's memory, a cache of them on the card).
+    pub maya_vram: String,
+    /// The context Maya starts with, in tokens; 0 for the card's usual one.
+    pub maya_context: u64,
+    /// Maya reads pictures (its image encoder, when it is built).
+    pub maya_vision: bool,
+    /// Maya drafts with Thinking Machines' drafter (mtp.safetensors, when it is there).
+    pub maya_drafter: bool,
     /// Sessions another program starts on its own (hook/src/background.rs):
     /// "grouped" (one pill per program, src/core/background.ts), "single"
     /// (each its own, as any session) or "hidden".
@@ -429,6 +447,14 @@ impl Default for Settings {
             unsloth_url: String::new(),
             unsloth_auto_start: true,
             unsloth_stop_after: "15".into(),
+            maya_dir: String::new(),
+            maya_url: String::new(),
+            maya_auto_start: true,
+            maya_stop_after: "15".into(),
+            maya_vram: "24".into(),
+            maya_context: 0,
+            maya_vision: true,
+            maya_drafter: true,
             background_sessions: "grouped".into(),
             shortcuts: Default::default(),
             lumo_motion: "calm".into(),
@@ -1463,6 +1489,14 @@ mod tests {
                 "unslothUrl",
                 "unslothAutoStart",
                 "unslothStopAfter",
+                "mayaDir",
+                "mayaUrl",
+                "mayaAutoStart",
+                "mayaStopAfter",
+                "mayaVram",
+                "mayaContext",
+                "mayaVision",
+                "mayaDrafter",
                 "backgroundSessions",
                 "shortcuts",
                 "lumoMotion",

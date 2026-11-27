@@ -1466,6 +1466,7 @@ pub(crate) fn plan_speaker(provider: &str) -> (String, &'static str) {
         "ollama" => ("Ollama".into(), "#FACC15"),
         "lmstudio" => ("LM Studio".into(), "#A3E635"),
         "unsloth" => ("Unsloth Studio".into(), "#34D399"),
+        "maya" => ("Maya".into(), "#FB7185"),
         "custom" => (t("Custom server"), "#C0C4CC"),
         _ => ("Lumo".into(), "#F5F6F8"),
     }

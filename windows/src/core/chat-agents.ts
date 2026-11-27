@@ -343,7 +343,7 @@ export function stallAfter(l: Liveness): number {
   const kind = l.activity?.kind ?? "";
   if (isCliProvider(l.provider)) return CLI_LONG.has(kind) || CLI_QUIET_WRITERS.has(l.provider) ? CLI_TOOL_STALL_S : CLI_STALL_S;
   if (isApiProvider(l.provider)) return CLOUD_STALL_S;
-  // The model servers: Ollama, LM Studio, Unsloth Studio, a custom one.
+  // The model servers: Ollama, LM Studio, Unsloth Studio, Maya, a custom one.
   return LOCAL_STARTING.has(kind) ? LOCAL_START_STALL_S : LOCAL_STREAM_STALL_S;
 }
 

@@ -751,7 +751,20 @@ offers 5 minutes, 1 hour, when Lumo quits or never). Lumo only ever stops one it
 started: an Unsloth Studio you opened stays on, and one opened from its
 shortcut and still starting is waited for, not started twice. Its models are
 listed with their version (`Inkling-2-Mini-GGUF · UD-Q3_K_XL`), so a chat comes
-back on the one it used. Answers stream in as they are
+back on the one it used. **Maya · Inkling 2 Mini** takes the folder of
+[maya-inkling-mini](https://github.com/alesha-pro/maya-inkling-mini), an engine
+for Inkling 2 Mini alone, built there as its guide says (the engine, the
+`UD-Q4_K_XL` model and the tokenizer; Lumo installs, builds and downloads
+nothing). Lumo writes the server's config itself from **Graphics card** (24 GB
+or more keeps every expert on the card; 16, 12 or 8 GB keeps them in the PC's
+memory with a cache on the card), **Context**, **Images** (its image encoder,
+on the processor) and **Drafter** (Thinking Machines' `mtp.safetensors`), in
+`%LOCALAPPDATA%\com.rccrd12.lumo\maya`, with the server's log beside it, and
+starts and stops it as it does Unsloth Studio, on `127.0.0.1:18000` with
+`--fit-max-tokens`. A change of those settings applies at its next start: one
+Lumo started is started again at the next question, never under an answer.
+The chat reads its real context and offers Inkling's reasoning levels, Off to
+Max. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
