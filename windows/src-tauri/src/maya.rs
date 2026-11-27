@@ -545,6 +545,10 @@ fn spawn(dir: &Path, config: &str) -> std::io::Result<Child> {
         .env("PYTHONUTF8", "1")
         .env("PYTHONIOENCODING", "utf-8")
         .env("PYTHONUNBUFFERED", "1")
+        // A key in the user's environment would lock Lumo out of its own
+        // server (`--api-key` defaults to it): Lumo's Maya, on this computer
+        // only, takes none.
+        .env_remove("MAYA_API_KEY")
         .stdin(Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log);
