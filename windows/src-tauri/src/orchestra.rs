@@ -168,8 +168,16 @@ pub struct Member {
     pub activity: Option<Activity>,
     pub plan: Vec<Step>,
     pub messages: Vec<Message>,
-    /// Its conversation as plain turns, to give it back after Lumo restarts.
+    /// Its conversation as (message, answer) pairs, to give it back after Lumo restarts.
     pub history: Vec<(String, String)>,
+    /// Its CLI's sessions and what each saw (`Chat::cli_state`): after a
+    /// restart the CLI resumes its own session, not a fresh one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cli: Option<String>,
+    /// The message of the turn running: Lumo closing in the middle (an
+    /// update) gives it back to the member with its next message.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub turn: String,
     pub mail: Vec<Mail>,
     /// It said its task is done (message_coordinator with done).
     pub done: bool,
@@ -679,14 +687,29 @@ fn file_of(id: &str) -> PathBuf {
 fn load(id: &str) -> Option<Orchestra> {
     let text = std::fs::read_to_string(file_of(id)).ok()?;
     let mut o: Orchestra = serde_json::from_str(&text).ok()?;
-    // A turn that was running when Lumo closed is over.
     for m in std::iter::once(&mut o.coordinator).chain(o.threads.iter_mut()) {
-        if m.state == "working" {
-            m.state = "stopped".into();
-        }
-        m.activity = None;
+        interrupted(m);
     }
     Some(o)
+}
+
+/// A turn that was running when Lumo closed is over; the message it was
+/// answering waits again, in front of the next one, said to be half done.
+fn interrupted(m: &mut Member) {
+    if m.state == "working" {
+        m.state = "stopped".into();
+    }
+    m.activity = None;
+    let turn = std::mem::take(&mut m.turn);
+    if !turn.trim().is_empty() {
+        let text = format!("Lumo closed (an update or a restart) while you were answering this message. Look at what you had already done before going on:\n\n{turn}");
+        m.mail.insert(0, Mail { from: "lumo".into(), text, line: String::new() });
+    }
+}
+
+/// A member's (message, answer) pairs as the turns of its chat.
+fn turns_of(history: &[(String, String)]) -> Vec<(String, String)> {
+    history.iter().flat_map(|(q, a)| [("user".to_string(), q.clone()), ("assistant".to_string(), a.clone())]).collect()
 }
 
 fn save(o: &Orchestra) {
@@ -731,7 +754,7 @@ fn chat_of(member: &Member) -> Arc<Chat> {
         .or_insert_with(|| {
             let chat = Chat::new(&member.chat);
             if !member.history.is_empty() {
-                chat.restore(member.history.clone(), None, None, None);
+                chat.restore(turns_of(&member.history), None, member.cli.clone(), None);
             }
             Arc::new(chat)
         })
@@ -906,6 +929,7 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                 };
                 m.state = "working".into();
                 m.resume_at = None;
+                m.turn = query.clone();
                 m.activity = Some(Activity { kind: "thinking".into(), detail: String::new() });
                 let m = o.member(&member)?.clone();
                 // A CLI is told its role with its first message: Lumo can't add to its instructions.
@@ -919,11 +943,14 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
             let repo_folders: Vec<PathBuf> = with(None, &id, |o| repo_dirs(o).into_iter().map(|(_, d)| d).collect()).unwrap_or_default();
             let settings = settings_for(&app, &pick);
             let cli = is_cli(&settings.chat_provider);
+            // What the member is sent, its role first for a CLI's first message: kept as it is, so
+            // the conversation given back after a restart has it too.
+            let sent = if cli && !role.is_empty() { format!("{}\n\n---\n\n{query}", role.trim()) } else { query.clone() };
             let reply = if cli && member == COORDINATOR && settings.chat_provider != crate::claude_code::PROVIDER {
                 // Only Claude Code's own tools can be taken away: another CLI would do the work itself.
                 Err(crate::i18n::t("The coordinator can be an API model, a local model or Claude Code: pick one of them for it."))
             } else {
-                let query = if cli && !role.is_empty() { format!("{}\n\n---\n\n{query}", role.trim()) } else { query.clone() };
+                let query = sent.clone();
                 if cli {
                     // The orchestra's shared folder: the CLI may read and write it.
                     let folder = crate::workspace::dir(&shared_folder(&conversation_id(&id, &member)));
@@ -957,7 +984,8 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                             tell_coordinator = o.forward_reply(&member, &text, asked_by_user.then_some(query.as_str()));
                         }
                         if let Some(m) = o.member_mut(&member) {
-                            m.history.push((query, r.kept.unwrap_or(text)));
+                            m.history.push((sent, r.kept.unwrap_or(text)));
+                            m.cli = conversation.cli_state();
                             m.state = if r.stopped { "stopped".into() } else { "working".into() };
                         }
                         if r.stopped {
@@ -985,6 +1013,7 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                 }
                 o.release(&member);
                 if let Some(m) = o.member_mut(&member) {
+                    m.turn.clear();
                     // Stopped or failed: what came meanwhile waits for the next message.
                     if m.state != "working" {
                         m.running = false;
@@ -1884,6 +1913,31 @@ mod tests {
         assert!(told.starts_with("You changed"), "{told}");
         assert_eq!(o.member("t2").unwrap().mail.len(), 1, "a CLI hears it as a message");
         assert_eq!(o.coordinator.mail.len(), 1);
+    }
+
+    #[test]
+    fn after_a_restart_a_member_has_its_conversation_and_the_message_it_was_answering() {
+        let mut m = Member::new("t1", "o1", "Via Roma 12", "Leggi il contratto", Pick::default());
+        m.history.push(("Leggi il contratto".into(), "Fatto: 6 mesi di preavviso.".into()));
+        m.state = "working".into();
+        m.turn = "Controlla anche la cedolare secca".into();
+        let saved = serde_json::to_string(&m).unwrap();
+        let mut m: Member = serde_json::from_str(&saved).unwrap();
+        interrupted(&mut m);
+        assert_eq!(m.state, "stopped");
+        assert!(m.turn.is_empty());
+        assert_eq!(m.mail.len(), 1);
+        assert!(m.mail[0].text.contains("Lumo closed") && m.mail[0].text.ends_with("Controlla anche la cedolare secca"));
+        // Its chat's turns, as the chat takes them back: the user's message, then the answer.
+        let turns = turns_of(&m.history);
+        assert_eq!(turns, vec![("user".to_string(), "Leggi il contratto".to_string()), ("assistant".to_string(), "Fatto: 6 mesi di preavviso.".to_string())]);
+        // A member that was not answering anything has nothing given back.
+        let mut idle = Member::new("t2", "o1", "Corso Italia 3", "x", Pick::default());
+        interrupted(&mut idle);
+        assert!(idle.mail.is_empty() && idle.state == "idle");
+        // Nothing new is saved for a member without a CLI session or a turn running.
+        let plain = serde_json::to_value(&idle).unwrap();
+        assert!(plain.get("cli").is_none() && plain.get("turn").is_none());
     }
 
     #[test]

@@ -31,7 +31,7 @@ import {
   type OrchestraFile, type ProjectFields, type OrchestraMember, type OrchestraMessage, type OrchestraSnapshot, type OrchestraStep, type OrchestraSummary,
 } from "../core/orchestra-bridge";
 import { providerDef } from "../core/providers";
-import { ORCHESTRA_ACCENT, resolvePick, shortModel } from "../core/orchestra-picks";
+import { ORCHESTRA_ACCENT, resolvePick } from "../core/orchestra-picks";
 import { saveSettings } from "./chat-attach";
 import { buildModelMenu, buildProjectForm, buildProjectList, modelName, projectsCard, type ProjectForm } from "./projects";
 import { DEFAULT_ICON, GEAR_LINE, projectMark } from "./project-icons";
@@ -246,7 +246,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
   /** The line under a member's name in the rail: its model and step, or where it stands. */
   function statusOf(m: OrchestraMember): { text: string; cls: string; dot: boolean } {
     const pick = pickOf(m);
-    const model = shortModel(pick.provider, pick.model);
+    const model = modelName(pick.provider, pick.model);
     const withModel = (word: string) => (model ? `${model} · ${word}` : word);
     if (m.state === "waiting") return { text: t(S.waiting), cls: "ask", dot: false };
     if (m.state === "working") return { text: withModel(m.id === COORDINATOR && !acts.get(m.chat) && !m.activity ? t(S.planning) : stepText(m)), cls: "", dot: true };
@@ -352,7 +352,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     const id = m?.id ?? COORDINATOR;
     const pick = pickOf(m);
     const accent = providerDef(pick.provider).accent;
-    const status: { text: string; cls: string; dot: boolean } = m ? statusOf(m) : { text: shortModel(pick.provider, pick.model), cls: "", dot: true };
+    const status: { text: string; cls: string; dot: boolean } = m ? statusOf(m) : { text: modelName(pick.provider, pick.model), cls: "", dot: true };
     const cards = waitingCards(id);
     const fresh = m != null && id !== COORDINATOR && !seen.has(id);
     const el = h("button", { class: selected === id ? "orc-item on" : "orc-item", title: m?.task || undefined, "data-member": id },
@@ -398,7 +398,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     const coord = selected === COORDINATOR;
     const pick = pickOf(m);
     const p = providerDef(pick.provider);
-    const model = shortModel(pick.provider, pick.model);
+    const model = modelName(pick.provider, pick.model);
     const modelPill = h("span", { class: "orc-pill orc-model-pill", title: `${t(p.name)} · ${pick.model}` },
       h("i", { class: "orc-dot", style: `background:${p.accent}` }),
       h("span", { text: pick.effort ? `${model} · ${effortLabel(pick.effort)}` : model }));
