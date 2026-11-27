@@ -51,6 +51,17 @@ test("the idle notice after a turn does not put the session back at work", () =>
   assert.equal(r.live("p").find((s) => s.id === "b").midTurn, false);
 });
 
+test("a subagent stopping after the turn does not put the session back at work", () => {
+  const r = new PillSessions(clock().now);
+  r.touch("p", "a", "/a", "a", "UserPromptSubmit");
+  r.touch("p", "b", "/b", "b", "UserPromptSubmit");
+  r.touch("p", "b", "/b", "b", "Stop");
+  // Claude Code's own helper, a second later: no SubagentStart before it.
+  r.touch("p", "b", "/b", "b", "SubagentStop");
+  assert.equal(r.othersBusy("p", "a"), false);
+  assert.equal(r.live("p").find((s) => s.id === "b").midTurn, false);
+});
+
 test("ending a session leaves the others; no id ends them all", () => {
   const r = new PillSessions(clock().now);
   r.touch("p", "a", "/a", "a", "SessionStart");

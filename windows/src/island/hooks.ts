@@ -999,8 +999,17 @@ function handleHook(island: Island, payload: HookPayload) {
       island.plan?.endSession(agentId, sessionId);
       // Other sessions are still behind the pill: its card, diffs and state are
       // theirs; it only shows the one that owns it now.
-      if (liveSessions.live(agentId).length) {
-        if (State.tasks.some((x) => x.id === agentId)) ensurePill();
+      const others = liveSessions.live(agentId);
+      if (others.length) {
+        const rest = State.tasks.find((x) => x.id === agentId);
+        if (rest) ensurePill();
+        // None of them at work: the pill was at work only for the one that
+        // ended, and comes to rest (an agent's pill goes, as after its Stop).
+        if (rest && !others.some((s) => s.midTurn) && (rest.state === "working" || rest.state === "thinking")) {
+          cancelStopTimer(agentId);
+          if (isExternalAgent) State.removeTask(agentId);
+          else State.updateTask(agentId, "idle");
+        }
         break;
       }
       // Nothing left for the timer to do, and it must not outlive the session: a
@@ -1055,6 +1064,9 @@ function handleHook(island: Island, payload: HookPayload) {
         State.notify();
         break;
       }
+      // One of Claude Code's own helpers (after each answer in the Claude app,
+      // a /compact): no SubagentStart, no type. Nothing you started, nothing to say.
+      if (terminal && payload.agent_id && !payload.agent_type) break;
       State.appendStep(agentId, t("• subagent done"));
       break;
 

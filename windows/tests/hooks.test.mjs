@@ -1370,6 +1370,67 @@ test("a session stopping leaves the pill working while another one is at it", ()
   assert.equal(task().state, "finished");
 });
 
+// Claude Code's own helpers (the one after each answer in the Claude app, a
+// /compact) end with a SubagentStop that no SubagentStart came before, and no
+// agent_type. Counted as work, a Claude Desktop chat stayed "at work" for good,
+// the other chat's Stop no longer finished the pill, and the closed island said
+// "• subagent done" until Lumo was restarted.
+const desktop = (session_id, event, extra = {}) =>
+  hook({ hook_event_name: event, session_id, lumo_agent: "claude-desktop", cwd: "/p/lumo", ...extra });
+const helperDone = (session_id) => desktop(session_id, "SubagentStop", { agent_id: `helper-${session_id}`, last_assistant_message: "" });
+
+test("a helper's stop after the answer leaves no step and keeps no chat at work", () => {
+  const DESKTOP = "agent_claude-desktop";
+  desktop("a", "UserPromptSubmit", { prompt: "README?" });
+  desktop("a", "Stop", { last_assistant_message: "README ok" });
+  seconds(1.5);
+  helperDone("a");
+  assert.equal(task(DESKTOP).steps.at(-1), "README ok");
+  seconds(5.2);
+  assert.equal(task(DESKTOP), undefined);
+  // The other chat's turn now ends as any other.
+  desktop("b", "UserPromptSubmit", { prompt: "Changelog?" });
+  desktop("b", "Stop", { last_assistant_message: "Changelog ok" });
+  assert.equal(task(DESKTOP).state, "finished");
+  seconds(1.5);
+  helperDone("b");
+  seconds(3.7);
+  assert.equal(task(DESKTOP), undefined);
+  assert.equal(liveSessions.othersBusy(DESKTOP, "b"), false);
+});
+
+test("a /compact's helper leaves no step on the session's pill", () => {
+  work("a", "/p/alpha");
+  hook({ hook_event_name: "PreCompact", session_id: "a", cwd: "/p/alpha", trigger: "manual" });
+  hook({ hook_event_name: "SubagentStop", session_id: "a", cwd: "/p/alpha", agent_id: "c1", last_assistant_message: "<analysis>" });
+  assert.equal(task().steps.at(-1), "Compacting the conversation…");
+});
+
+test("a subagent of a type nobody saw start still says it is done", () => {
+  work("a", "/p/alpha");
+  hook({ hook_event_name: "SubagentStop", session_id: "a", cwd: "/p/alpha", agent_id: "x1", agent_type: "Explore" });
+  assert.equal(task().steps.at(-1), "• subagent done");
+});
+
+test("a session ending with the others at rest brings the pill to rest", () => {
+  work("a", "/p/alpha");
+  work("b", "/p/beta");
+  hook({ hook_event_name: "Stop", session_id: "b", cwd: "/p/beta" });
+  assert.equal(task().state, "working");
+  // Alpha's window closed mid-turn: beta, still open, is not at work.
+  hook({ hook_event_name: "SessionEnd", session_id: "a", cwd: "/p/alpha" });
+  assert.equal(task().state, "idle");
+  assert.equal(task().sessionId, "b");
+});
+
+test("a Claude Desktop chat closing with the other at rest takes its pill away", () => {
+  desktop("a", "UserPromptSubmit", { prompt: "one" });
+  desktop("b", "UserPromptSubmit", { prompt: "two" });
+  desktop("b", "Stop");
+  desktop("a", "SessionEnd");
+  assert.equal(task("agent_claude-desktop"), undefined);
+});
+
 test("the pill keeps the name of the session that started working first", () => {
   work("a", "/p/alpha");
   work("b", "/p/beta");
