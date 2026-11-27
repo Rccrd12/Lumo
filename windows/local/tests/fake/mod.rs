@@ -221,6 +221,8 @@ pub struct Island {
     pub failing: bool,
     /// What each request took, as the turn said it.
     pub used: Vec<u64>,
+    /// The tokens made so far and their seconds, each time the turn said them.
+    pub made: Vec<(u64, f64)>,
     /// The plans Lumo made of a list in the answer.
     pub plans: Vec<Value>,
     /// When the island was hushed and when it spoke again.
@@ -247,6 +249,10 @@ impl Hooks for Island {
 
     fn used(&mut self, tokens: u64) {
         self.used.push(tokens);
+    }
+
+    fn made(&mut self, tokens: u64, secs: f64) {
+        self.made.push((tokens, secs));
     }
 
     fn without_tools(&mut self) -> String {

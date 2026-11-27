@@ -24010,6 +24010,42 @@
    "ru": "Ранее",
    "id": "Sebelumnya",
    "it": "Prima"
+  },
+  "{rate} tok/s": {
+   "zh-Hans": "{rate} tok/s",
+   "hi": "{rate} tok/s",
+   "es": "{rate} tok/s",
+   "ar": "{rate} tok/s",
+   "fr": "{rate} tok/s",
+   "bn": "{rate} tok/s",
+   "pt-BR": "{rate} tok/s",
+   "ru": "{rate} tok/s",
+   "id": "{rate} tok/s",
+   "it": "{rate} tok/s"
+  },
+  "Show tokens per second": {
+   "zh-Hans": "显示每秒令牌数",
+   "hi": "प्रति सेकंड टोकन दिखाएँ",
+   "es": "Mostrar tokens por segundo",
+   "ar": "إظهار الرموز في الثانية",
+   "fr": "Afficher les jetons par seconde",
+   "bn": "প্রতি সেকেন্ডে টোকেন দেখান",
+   "pt-BR": "Mostrar tokens por segundo",
+   "ru": "Показывать токены в секунду",
+   "id": "Tampilkan token per detik",
+   "it": "Mostra i token al secondo"
+  },
+  "Under each answer: how many tokens the model made and how many a second, live while it writes. Its reasoning counts too.": {
+   "zh-Hans": "在每个回答下方：模型生成了多少令牌、每秒多少个，写作时实时更新。推理也计算在内。",
+   "hi": "हर उत्तर के नीचे: मॉडल ने कितने टोकन बनाए और प्रति सेकंड कितने, लिखते समय लाइव। उसका तर्क भी गिना जाता है।",
+   "es": "Debajo de cada respuesta: cuántos tokens generó el modelo y cuántos por segundo, en directo mientras escribe. Su razonamiento también cuenta.",
+   "ar": "تحت كل إجابة: كم رمزًا أنتج النموذج وكم في الثانية، مباشرةً أثناء الكتابة. ويُحسب تفكيره أيضًا.",
+   "fr": "Sous chaque réponse : combien de jetons le modèle a produits et combien par seconde, en direct pendant qu'il écrit. Son raisonnement compte aussi.",
+   "bn": "প্রতিটি উত্তরের নিচে: মডেল কত টোকেন তৈরি করেছে এবং প্রতি সেকেন্ডে কত, লেখার সময় সরাসরি। এর যুক্তিও গোনা হয়।",
+   "pt-BR": "Abaixo de cada resposta: quantos tokens o modelo gerou e quantos por segundo, ao vivo enquanto escreve. O raciocínio também conta.",
+   "ru": "Под каждым ответом: сколько токенов создала модель и сколько в секунду, в реальном времени, пока она пишет. Рассуждения тоже учитываются.",
+   "id": "Di bawah setiap jawaban: berapa token yang dibuat model dan berapa per detik, langsung saat menulis. Penalarannya juga dihitung.",
+   "it": "Sotto ogni risposta: quanti token ha generato il modello e quanti al secondo, in diretta mentre scrive. Conta anche il ragionamento."
   }
  }
 }

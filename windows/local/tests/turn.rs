@@ -91,6 +91,40 @@ fn the_island_says_what_the_model_is_doing() {
     assert_eq!(island.doing, [Doing::Prompt, Doing::Reasoning]);
 }
 
+#[test]
+fn the_tokens_made_are_counted_one_a_piece_then_as_the_server_says() {
+    // Two pieces of reasoning and three of text, an empty role delta that is
+    // no token: five counted; the usage chunk then says 10 (`usage` in fake).
+    let mut island = Island::default();
+    let opened = json!({ "choices": [{ "delta": { "role": "assistant", "content": "" } }] }).to_string();
+    let replies = vec![Reply::Events(vec![opened, reasoning("hmm"), reasoning("ok"), text("Fa "), text("4"), text("."), finish("stop"), usage(50), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("2+2?", &[]), &rules("made", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fa 4.");
+    let (tokens, secs) = *island.made.last().unwrap();
+    assert_eq!(tokens, 10);
+    assert!(secs >= 0.0);
+    // A server that gives no count: the pieces are the count.
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![text("Ciao"), text(" Anna"), text("."), finish("stop"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("Ciao", &[]), &rules("made-counted", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Ciao Anna.");
+    assert_eq!(island.made.last().unwrap().0, 3);
+}
+
+#[test]
+fn the_tokens_of_every_round_add_up() {
+    // A call (one piece, the server says 10), then the answer (10 more).
+    let mut island = Island::default();
+    let replies = vec![
+        Reply::Events(vec![call("c1", "set_timer", "{\"minutes\":5}"), finish("tool_calls"), usage(40), DONE.into()]),
+        answer("Fatto."),
+    ];
+    let (outcome, _) = turn(replies, &mut question("Timer di 5 minuti", &["set_timer"]), &rules("made-rounds", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fatto.");
+    assert_eq!(island.made.last().unwrap().0, 20);
+    assert!(island.made.windows(2).all(|w| w[0].0 <= w[1].0), "the count never goes back: {:?}", island.made);
+}
+
 /// One piece of a streamed tool call: its `index`, and what this piece adds.
 fn piece(index: u64, id: Option<&str>, name: Option<&str>, arguments: &str) -> String {
     let mut function = json!({ "arguments": arguments });

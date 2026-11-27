@@ -717,6 +717,14 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         let _ = self.app.emit("chat-usage", usage);
     }
 
+    /// The tokens the model made in this turn and how fast: the line under
+    /// the answer (views/chat.ts, Settings → Chat → Local models).
+    fn made(&mut self, tokens: u64, secs: f64) {
+        if !self.hushed {
+            let _ = self.app.emit("chat-tokens", json!({ "chat": self.chat.id(), "tokens": tokens, "secs": secs }));
+        }
+    }
+
     fn doing(&mut self, doing: Doing) {
         self.events.signal(self.app);
         self.events.activity(self.app, match doing {

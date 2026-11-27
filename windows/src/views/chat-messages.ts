@@ -9,7 +9,7 @@ import { checklistsIn, copyButton, renderMarkdown } from "./markdown";
 import { renderAnswer } from "./context-card";
 import { Bridge, type ChatActivity, type ChatContext, type ScreenContext } from "../core/bridge";
 import { activeModel, isCliProvider, providerDef } from "../core/providers";
-import { State, type ChatMessage } from "../core/state";
+import { State, type ChatMessage, type TokenSpeed } from "../core/state";
 import { chatChecklists, fromSavedTurn, setChatChecklists, toSavedTurn, type AnswerWarning } from "../core/chats";
 import type { AskQuote } from "../core/chats";
 import { THUMB_EDGE, groupKey, keptItems, readSent, sentGroups, type SentGroup, type SentItem } from "../core/sent";
@@ -239,11 +239,38 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
     const fix = message.fix ? fixCard(message.fix, "", { openAgents: opts.onOpenAgents }) : null;
     // The commands its local model ran in its terminal, above what it says of them.
     const commands = message.commands?.length ? commandsBox(message.commands) : null;
-    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, commands, reply, computer, files, fix, bar, detail));
+    // A local model's: the tokens it made and how many a second, under its text.
+    const speed = message.speed ? speedLine(message.speed) : null;
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, commands, reply, speed, computer, files, fix, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
   return row;
+}
+
+export const SPEED_TEXT = {
+  rate: N_("{rate} tok/s"),
+  tokens: N_("{tokens} tokens"),
+};
+
+/**
+ * "32 tok/s · 698 tokens": what a local model made for an answer and how
+ * fast (reasoning and tool calls included), from its first token to its
+ * last. The speed only once it means something (half a second in).
+ */
+export function speedText(speed: TokenSpeed): string {
+  const lang = language();
+  const tokens = t(SPEED_TEXT.tokens, { tokens: Math.round(speed.tokens).toLocaleString(lang) });
+  if (speed.secs < 0.5 || speed.tokens < 2) return tokens;
+  const perSec = speed.tokens / speed.secs;
+  const rate = perSec.toLocaleString(lang, { maximumFractionDigits: perSec < 10 ? 1 : 0 });
+  return `${t(SPEED_TEXT.rate, { rate })} · ${tokens}`;
+}
+
+/** The line under a local model's answer with `speedText`; `live` while it is still written (its dot glows). None when Settings → Chat turned it off. */
+export function speedLine(speed: TokenSpeed, live = false): HTMLElement | null {
+  if (State.settings.chatTokenSpeed === false) return null;
+  return h("div", { class: live ? "reply-speed live" : "reply-speed" }, h("span", { class: "reply-speed-text", text: speedText(speed) }));
 }
 
 /** The question whose list of what went with it is open (chat id and message id): a redrawn log keeps it open. */
@@ -842,6 +869,8 @@ export interface Run {
   commands?: import("../core/terminal").RanCommand[];
   /** The files the answer changed or made, on the computer or in the chat's folder of copies (ChatMessage.files). */
   touched?: ReplyFile[];
+  /** A local model's: the tokens it made so far and their seconds (`chat-tokens`), shown under its text (ChatMessage.speed). */
+  speed?: TokenSpeed;
   /** Settles once the answer is over (answered, stopped or failed). */
   done: Promise<void>;
 }

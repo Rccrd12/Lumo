@@ -1,13 +1,14 @@
 // One request to the server, its answer read as it streams in or, for a
 // server whose stream hangs (LM Studio, on some tool calls), whole.
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::sse::{filter_thinking_blocks, finish_reason_of, parse_sse_line, progressive_filter, usage_of, without_half_tag, CallParts, Event};
+use crate::sse::{completion_of, filter_thinking_blocks, finish_reason_of, parse_sse_line, progressive_filter, usage_of, without_half_tag, CallParts, Event};
 
 /// The text shown while streaming goes out at most this often.
 pub const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
@@ -17,6 +18,8 @@ pub const MAX_ANSWER: usize = 4 * 1024 * 1024;
 /// Ceiling on a whole (not streamed) answer, and on an error's body.
 pub const MAX_BODY: usize = 8 * 1024 * 1024;
 pub const MAX_ERROR_BODY: usize = 64 * 1024;
+/// How often the tokens the model made so far go out while it streams.
+pub const MADE_INTERVAL: Duration = Duration::from_millis(250);
 /// How long the stream waits for the usage chunk and `[DONE]` once the answer is over.
 pub const AFTER_FINISH: Duration = Duration::from_secs(1);
 
@@ -101,6 +104,11 @@ pub enum Seen {
     /// A piece of the stream came, whatever it holds (reasoning, a call's
     /// arguments, nothing new to show): the answer is still moving.
     Chunk,
+    /// The tokens the model made so far (reasoning and calls included), and
+    /// the seconds since its first one: four times a second at most while it
+    /// streams, and once more at the end, with the server's own count when it
+    /// gave one (`usage.completion_tokens`).
+    Made { tokens: u64, secs: f64 },
 }
 
 /// The body of `reply`, refused past `limit` bytes.
@@ -215,7 +223,13 @@ fn tell_calls(calls: &CallParts, over: bool, told: &mut usize, told_tool: &mut S
 /// Posts the request and reads the event stream. `on` gets the visible text at
 /// most 15 times a second and once more at the end, `Reasoning` once when the
 /// model reasons before any visible text, `Calling` as each tool call starts (`tell_calls`),
-/// and `Chunk` for every piece of the stream that comes.
+/// `Chunk` for every piece of the stream that comes, and `Made` with the
+/// tokens made so far.
+///
+/// The servers send no count while they stream, but Ollama, LM Studio,
+/// llama.cpp and vLLM send each token as its own piece: the pieces with text,
+/// reasoning or a call are counted, one token each. The count the server gives
+/// at the end (or on every piece, vLLM's continuous usage) replaces it.
 pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Result<Answer, Failure> {
     let mut reply = to
         .streaming
@@ -242,6 +256,14 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let mut told = 0;
     let mut told_tool = String::new();
     let mut used = None;
+    // The tokens made: counted (one per piece), and as the server says.
+    // Cells: read between the pieces, while `take` holds them.
+    let made = Cell::new(0u64);
+    let said_made = Cell::new(None::<u64>);
+    // When the first token and the last came.
+    let first_token = Cell::new(None::<Instant>);
+    let last_token = Cell::new(Instant::now());
+    let mut made_told = Instant::now();
     // The answer said it is over (`finish_reason`, `[DONE]`): what follows is
     // only waited for a moment, then the stream ends even if the connection
     // stays open (LM Studio keeps it open).
@@ -264,7 +286,18 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         if let Some(total) = usage_of(line) {
             used = Some(total);
         }
+        if let Some(n) = completion_of(line) {
+            said_made.set(Some(n));
+        }
         let event = parse_sse_line(line);
+        if matches!(event, Some(Event::Text(_) | Event::Reasoning | Event::Calls(..))) {
+            made.set(made.get() + 1);
+            let now = Instant::now();
+            last_token.set(now);
+            if first_token.get().is_none() {
+                first_token.set(Some(now));
+            }
+        }
         // Only a sign of the model at work: LM Studio opens its answer with
         // an empty `{"role":"assistant"}` delta while it still reads the prompt.
         if !started && text.is_empty() && matches!(event, Some(Event::Reasoning)) {
@@ -334,6 +367,10 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         if done.load(Ordering::Relaxed) {
             break;
         }
+        if let Some(first) = first_token.get().filter(|_| made_told.elapsed() >= MADE_INTERVAL) {
+            made_told = Instant::now();
+            on(Seen::Made { tokens: said_made.get().unwrap_or(0).max(made.get()), secs: first.elapsed().as_secs_f64() });
+        }
         if pending.len() > MAX_LINE || text.len() + call_bytes.load(Ordering::Relaxed) > MAX_ANSWER {
             return Err(Failure::TooLarge);
         }
@@ -359,5 +396,10 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     }
     // The last state always goes out, whatever the throttle skipped.
     on(Seen::Text(progressive_filter(&text)));
+    // The count as it ended: the server's own when it gave one, over the
+    // time from the first token to the last (not the wait for `[DONE]`).
+    if let Some(first) = first_token.get() {
+        on(Seen::Made { tokens: said_made.get().unwrap_or(made.get()), secs: last_token.get().duration_since(first).as_secs_f64() });
+    }
     Ok(Answer { text: filter_thinking_blocks(&text), calls: calls.done(), used, cut: cut.load(Ordering::Relaxed) })
 }

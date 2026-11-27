@@ -69,6 +69,10 @@ pub trait Hooks {
     /// What a request of the turn took, in tokens, as soon as the server says
     /// (each round of tools has its own): how full the context is now.
     fn used(&mut self, _tokens: u64) {}
+    /// The tokens the model made in this turn so far (every streamed round,
+    /// reasoning and calls included), and the seconds it took to make them:
+    /// a few times a second while it streams (transport.rs `Seen::Made`).
+    fn made(&mut self, _tokens: u64, _secs: f64) {}
     /// The system message for a request with no tools (a model that refused them).
     fn without_tools(&mut self) -> String;
     /// More tools for `name` called with `input`: `lumo_tools`, or a tool of
@@ -236,7 +240,11 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let mut blind = false;
     // A request with screenshots was answered: the model takes them.
     let mut seen = false;
+    // The tokens made by the rounds before this one, and their seconds.
+    let (mut made_tokens, mut made_secs) = (0u64, 0f64);
     loop {
+        // This round's, as the stream says them.
+        let mut round = (0u64, 0f64);
         // The plan's check after the answer is unseen: the answer stays on
         // the island as it was, with nothing said about it.
         let hushed = plan.checking.is_some();
@@ -280,6 +288,11 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             stream(to, body, |seen| match seen {
                 // Still moving, even while nothing shows.
                 Seen::Chunk => hooks.signal(),
+                // The plan's check is unseen: its tokens too.
+                Seen::Made { tokens, secs } if !hushed => {
+                    round = (tokens, secs);
+                    hooks.made(made_tokens + tokens, made_secs + secs);
+                }
                 // Nothing new yet in this round: the text so far isn't sent
                 // again, or the island would drop the dots that say what the
                 // answer is doing.
@@ -292,11 +305,17 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 }
                 Seen::Reasoning => hooks.doing(Doing::Reasoning),
                 Seen::Calling(name) => hooks.doing(Doing::Calling(name)),
+                Seen::Made { .. } => {}
             })
             .await
         };
         // The answer came (a whole one, at once), or the server said no: news too.
         hooks.signal();
+        // What a round that failed made is shown no more: the next one counts from here.
+        if answer.is_ok() {
+            made_tokens += round.0;
+            made_secs += round.1;
+        }
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
         }

@@ -89,6 +89,17 @@ pub fn usage_of(line: &str) -> Option<u64> {
     json.pointer("/usage/total_tokens").and_then(Value::as_u64)
 }
 
+/// The tokens an event line says the model made (`usage.completion_tokens`),
+/// whatever else it carries.
+pub fn completion_of(line: &str) -> Option<u64> {
+    let payload = line.strip_prefix("data:").map(str::trim_start)?;
+    if !payload.contains("completion_tokens") {
+        return None;
+    }
+    let json = serde_json::from_str::<Value>(payload).ok()?;
+    json.pointer("/usage/completion_tokens").and_then(Value::as_u64)
+}
+
 /// The tool calls of an answer, put together from their pieces: each one's
 /// id, name and arguments (a JSON text), in order.
 #[derive(Default)]

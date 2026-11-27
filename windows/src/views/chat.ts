@@ -125,7 +125,7 @@ import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachR
 import { splitFix } from "./chat-fix";
 import { orchestratorName, parseOrchestrator } from "../core/orchestrator";
 import { cliModelName } from "../core/model-names";
-import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
+import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, speedLine, speedText, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
@@ -3184,8 +3184,54 @@ export function buildPrompt(
     }
     noteChecklists(chat, run.history, text);
     writeAnswer(chat, live, text, fresh, messageScope(chat, nextMessage(run.history)));
+    // The tokens so far go under the text from now on, not next to the dots.
+    if (fresh) drawSpeed(run);
     follow();
   });
+
+  // A local model's tokens so far (local_chat.rs, lumo-local `Seen::Made`).
+  void onEvent<{ chat: string; tokens: number; secs: number }>("chat-tokens", ({ chat, tokens, secs }) => {
+    const run = runs.get(chat);
+    if (!run || !(tokens > 0) || !(secs >= 0)) return;
+    run.speed = { tokens, secs };
+    drawSpeed(run);
+  });
+
+  /**
+   * "32 tok/s · 698 tokens" for the answer being written, a local model's:
+   * on a line under its text, or next to the dots while it only reasons.
+   * Drawn only when tokens come (a few times a second at most), so nothing
+   * runs while the island is hidden and nothing is streamed.
+   */
+  function drawSpeed(run: Run) {
+    if (run.chatId !== State.chatId) return;
+    const speed = State.settings.chatTokenSpeed === false ? undefined : run.speed;
+    const row = log.querySelector<HTMLElement>(".reply-speed-row");
+    if (!speed || !live || !run.text) row?.remove();
+    else if (row) {
+      const text = row.querySelector(".reply-speed-text");
+      const said = speedText(speed);
+      if (text && text.textContent !== said) text.textContent = said;
+    } else {
+      const line = speedLine(speed, true);
+      if (line) {
+        line.style.setProperty("--speed-accent", providerDef(run.provider).accent);
+        live.parentElement?.after(h("div", { class: "chat-row reply-speed-row" }, line));
+      }
+    }
+    const label = log.querySelector(".typing-label");
+    let span = log.querySelector(".typing-tokens");
+    if (!speed || !label || run.text) {
+      span?.remove();
+      return;
+    }
+    if (!span) {
+      span = h("span", { class: "typing-tokens" });
+      label.after(span);
+    }
+    const said = speedText(speed);
+    if (span.textContent !== said) span.textContent = said;
+  }
 
   /**
    * The line next to the dots says what the answer is doing now. `again`:
@@ -4341,6 +4387,8 @@ export function buildPrompt(
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           commands: run.commands?.length ? run.commands : undefined,
           files: run.touched?.length ? run.touched : undefined,
+          // A local model's tokens and how fast, under it.
+          speed: run.speed,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
           computer: recap,
         });
@@ -5366,6 +5414,7 @@ export function buildPrompt(
         // The agents of the answer being written.
         if (run) log.append(...agentCardsFor(State.chatId, answers, true));
         if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
+        if (run) drawSpeed(run);
         drawStall();
         // The chat stays where it was read, or at its end when it is stuck
         // there; one just opened shows its end.
