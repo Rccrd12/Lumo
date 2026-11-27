@@ -125,6 +125,19 @@ fn the_tokens_of_every_round_add_up() {
     assert!(island.made.windows(2).all(|w| w[0].0 <= w[1].0), "the count never goes back: {:?}", island.made);
 }
 
+#[test]
+fn the_tokens_never_go_back_when_a_round_fails() {
+    // Two pieces, then the engine fails ("terminated"): asked again, the
+    // answer (the server says 10) comes on top of the 2 already shown.
+    let mut island = Island::default();
+    let failing = Reply::Paced(vec![text("Uno"), text(" due"), json!({ "error": "terminated" }).to_string()], Duration::from_millis(300));
+    let (outcome, _) = turn(vec![failing, answer("Fatto.")], &mut question("Conta", &[]), &rules("made-retry", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fatto.");
+    assert!(island.made.first().is_some_and(|m| m.0 == 2), "the failed round was shown: {:?}", island.made);
+    assert_eq!(island.made.last().unwrap().0, 12);
+    assert!(island.made.windows(2).all(|w| w[0].0 <= w[1].0), "the count never goes back: {:?}", island.made);
+}
+
 /// One piece of a streamed tool call: its `index`, and what this piece adds.
 fn piece(index: u64, id: Option<&str>, name: Option<&str>, arguments: &str) -> String {
     let mut function = json!({ "arguments": arguments });

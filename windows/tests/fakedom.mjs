@@ -130,6 +130,13 @@ class FakeElement {
   remove() {
     this.parentNode?.removeChild(this);
   }
+  /** Puts `nodes` just after this one, in its parent. */
+  after(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) return;
+    const next = parent.childNodes[parent.childNodes.indexOf(this) + 1] ?? null;
+    for (const n of nodes) parent.insertBefore(typeof n === "string" ? new FakeText(n) : n, next);
+  }
   /** `.a.b` class selectors only: the first descendant carrying every class. */
   querySelector(selector) {
     const wanted = selector.split(".").filter(Boolean);

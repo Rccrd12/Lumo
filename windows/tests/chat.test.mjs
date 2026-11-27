@@ -297,6 +297,47 @@ test("a local answer streams into one reply, then the finished text replaces it"
   assert.ok(!$(".model-btn").disabled);
 });
 
+test("a local model's tokens: by the dots, then under the text, on its chat only, then kept under the answer", async () => {
+  let finish;
+  answers.chat_send = () => new Promise((resolve) => (finish = resolve));
+  const asked = State.chatId;
+  $(".chat-input").value = "2+2?";
+  $(".send-btn").fire("click");
+  await flush();
+  view.sync();
+  const speeds = () => view.el.find(".reply-speed");
+  // Only reasoning so far: next to the dots.
+  emit("chat-tokens", { chat: asked, tokens: 40, secs: 1 });
+  assert.equal($(".typing-tokens").textContent, "40 tok/s · 40 tokens");
+  assert.equal(speeds().length, 0);
+  // The text comes: under it, the dots and their count gone.
+  emit("chat-delta", { chat: asked, text: "Fa 4." });
+  assert.equal($(".typing-tokens"), null);
+  assert.equal(speeds().length, 1);
+  assert.ok(speeds()[0].classList.contains("live"));
+  emit("chat-tokens", { chat: asked, tokens: 80, secs: 2 });
+  assert.equal(speeds()[0].textContent, "40 tok/s · 80 tokens");
+  // Another chat on screen: its count isn't drawn there, and is back with its chat.
+  const history = State.chatHistory;
+  State.chatId = "elsewhere";
+  State.chatHistory = [];
+  view.sync();
+  emit("chat-tokens", { chat: asked, tokens: 120, secs: 3 });
+  assert.equal(speeds().length, 0);
+  State.chatId = asked;
+  State.chatHistory = history;
+  view.sync();
+  assert.equal(speeds().length, 1);
+  assert.equal(speeds()[0].textContent, "40 tok/s · 120 tokens");
+  // Done: the line stays under the answer, no longer live, and is kept with it.
+  finish({ text: "Fa 4." });
+  await flush();
+  view.sync();
+  assert.equal(speeds().length, 1);
+  assert.ok(!speeds()[0].classList.contains("live"));
+  assert.deepEqual(State.chatHistory.at(-1).speed, { tokens: 120, secs: 3 });
+});
+
 test("away from its end, sending and the answer being written never scroll the chat", async () => {
   let finish;
   answers.chat_send = () => new Promise((resolve) => (finish = resolve));
