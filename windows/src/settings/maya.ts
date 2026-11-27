@@ -84,7 +84,7 @@ function pickedContext(): number {
 /** Maya's block under Unsloth Studio: its folder, or once connected its settings and state. */
 export function mayaBlock(redrawAll: () => void): HTMLElement {
   const p = providerDef("maya");
-  const block = h("div", { class: "setting-block" });
+  const block = h("div", { class: "setting-block engine" });
   const label = () => h("span", { class: "with-dot" }, accentDot(p.accent), "Maya · Inkling 2 Mini");
 
   if (!settings.mayaUrl) {
@@ -151,7 +151,7 @@ export function mayaBlock(redrawAll: () => void): HTMLElement {
 
   const options = h("div", {});
   const memory = h("div", {});
-  block.append(options, memory);
+  block.append(h("div", { class: "engine-options" }, options, memory));
   let install: MayaInstall | null = null;
 
   /** A change that the next start of Maya takes: saved, the rows drawn again, the state asked again. */

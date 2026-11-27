@@ -15479,6 +15479,18 @@
    "id": "Konteks: sekitar {used} dari {total}",
    "it": "Contesto: circa {used} su {total}"
   },
+  "For all local models": {
+   "zh-Hans": "所有本地模型",
+   "hi": "सभी लोकल मॉडल के लिए",
+   "es": "Para todos los modelos locales",
+   "ar": "لكل النماذج المحلية",
+   "fr": "Pour tous les modèles locaux",
+   "bn": "সব লোকাল মডেলের জন্য",
+   "pt-BR": "Para todos os modelos locais",
+   "ru": "Для всех локальных моделей",
+   "id": "Untuk semua model lokal",
+   "it": "Per tutti i modelli locali"
+  },
   "Compact by itself when the context is full": {
    "zh-Hans": "上下文快满时自动压缩",
    "hi": "संदर्भ भरने पर अपने आप संक्षिप्त करें",
