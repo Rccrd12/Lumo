@@ -382,6 +382,9 @@ test("a member's answer streams in under its chat id; the next update has it who
   item("t1").fire("click");
   emit("chat-delta", { chat: "orc-o1-t1", text: "The deposit is **three** months" });
   emit("chat-activity", { chat: "orc-o1-t1", activity: { kind: "edit", detail: "summary.csv" } });
+  // A local model's speed, under the text being written, as in a chat.
+  emit("chat-tokens", { chat: "orc-o1-t1", tokens: 120, secs: 3 });
+  assert.equal($(".orc-log").querySelector(".reply-speed-text")?.textContent, "120 tokens · 40 tok/sec");
   // A file it changed meanwhile: under its answer when it comes, as in a chat.
   emit("chat-file", { chat: "orc-o1-t1", kind: "edited", path: "C:\\Leases\\summary.csv" });
   assert.match($(".orc-log").querySelector(".reply").textContent, /The deposit is three months/);
@@ -395,7 +398,8 @@ test("a member's answer streams in under its chat id; the next update has it who
   const replies = $(".orc-log").find(".reply").map((r) => r.textContent);
   assert.deepEqual(replies, ["The deposit is three months."]);
   assert.equal($(".orc-now"), null);
-  assert.deepEqual(sent("orchestra_keep_answer"), [{ id: "o1", member: "t1", message: "a2", answer: { files: [{ path: "C:\\Leases\\summary.csv", kind: "edited" }] } }]);
+  assert.deepEqual(sent("orchestra_keep_answer"), [{ id: "o1", member: "t1", message: "a2", answer: { speed: { tokens: 120, secs: 3 }, files: [{ path: "C:\\Leases\\summary.csv", kind: "edited" }] } }]);
+  assert.equal($(".orc-log").querySelector(".reply-speed-row"), null, "the live line gives way to the answer's bar");
   // Its actions as a chat answer's: Copy, and when it came.
   assert.ok($(".orc-log").querySelector(".msg-copy"));
   // A turn that failed for something Lumo can put right: the chat's card for it.

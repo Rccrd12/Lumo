@@ -758,6 +758,14 @@ export function buildPrompt(
     },
     talksUnder: (chat, answer, after) => talkBoxesFor(chat, answer, after),
     agentsUnder: (chat, answer, after) => agentCardsFor(chat, answer, after),
+    // A member's answer written in ink as a chat's, going on into its bubble when it comes whole.
+    writeLive: (chat, into, text, fresh, scope) => writeAnswer(chat, into, text, fresh, scope),
+    inkInto: (chat, into, text, scope) => {
+      if (ink && inkChat === chat && ink.behind) {
+        ink.update(text, true);
+        ink.mount(into, (el, words) => drawReply(el, words, false, scope, words.length < text.length));
+      } else if (inkChat === chat) dropInk();
+    },
   });
   const picker = buildPicker(() => {
     if (picker.isOpen) coverLog();
@@ -5593,7 +5601,7 @@ export function buildPrompt(
           inked.update(last.content, true);
           const scope = messageScope(State.chatId, place - 1);
           inked.mount(lastReply, (el, words) => drawReply(el, words, workshop, scope, words.length < last.content.length));
-        } else if (!run) dropInk();
+        } else if (!run && orchestra.anchorOf(inkChat) == null) dropInk();
         for (const line of heardLines.after) log.append(heardRow(line));
         // The messages sent to agents by the answer being written, before its text.
         if (run) log.append(...talkBoxesFor(State.chatId, answers, true));

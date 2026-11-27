@@ -39,7 +39,7 @@ import { durationText } from "../core/chat-agents";
 import { Sound } from "../core/sound";
 import { State, type OrchestraPick } from "../core/state";
 import { language, t, tn } from "../i18n/i18n";
-import { activityLabel, bubble, compactMark, sentAgo, typingDots } from "./chat-messages";
+import { activityLabel, bubble, compactMark, sentAgo, speedLine, speedText, typingDots } from "./chat-messages";
 import type { ChatMessage, TokenSpeed } from "../core/state";
 import { withReplyFile, type ReplyFileKind } from "../core/file-names";
 import { MAX_COMMANDS, type RanCommand } from "../core/terminal";
@@ -193,6 +193,10 @@ export interface OrchestraHooks {
   agentsReset?: () => void;
   talksUnder?: (chat: string, answer: number, after?: boolean) => HTMLElement[];
   agentsUnder?: (chat: string, answer: number, after?: boolean) => HTMLElement[];
+  /** The answer being written, in ink as a chat's (views/ink.ts); `fresh`: its first words. */
+  writeLive?: (chat: string, into: HTMLElement, text: string, fresh: boolean, scope: string) => void;
+  /** Its answer come whole: the ink goes on in its bubble until all is uncovered. */
+  inkInto?: (chat: string, into: HTMLElement, text: string, scope: string) => void;
 }
 
 /** A member's message as a chat's: drawn by the same bubble, with its actions, its time and what went with it. */
@@ -213,6 +217,47 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   const seenCards = new Set<string>();
   /** What each member's turn did so far besides its words, by its chat: kept with its answer when it comes. */
   const turnExtras = new Map<string, OrchestraAnswer>();
+  /** The answer being written, as a chat writes it (in ink when the chat lends it). */
+  function writeLive(m: OrchestraMember, into: HTMLElement, text: string, fresh: boolean) {
+    if (hooks.writeLive) hooks.writeLive(m.chat, into, text, fresh, scope(m, "live"));
+    else renderMarkdown(into, text, { streaming: true, scope: scope(m, "live") });
+  }
+
+  /**
+   * "698 tokens · 44 tok/sec" for a local model member's answer being
+   * written, as a chat says it: under its text, or next to the dots while it
+   * only reasons. Drawn only when tokens come.
+   */
+  function drawLiveSpeed(m: OrchestraMember) {
+    if (m.id !== selected || !on() || page !== "project") return;
+    const speed = State.settings.chatTokenSpeed === false || m.state !== "working" ? undefined : turnExtras.get(m.chat)?.speed;
+    const row = log.querySelector<HTMLElement>(".reply-speed-row");
+    if (!speed || !liveEl) row?.remove();
+    else if (row) {
+      const text = row.querySelector(".reply-speed-text");
+      const said = speedText(speed);
+      if (text && text.textContent !== said) text.textContent = said;
+    } else {
+      const line = speedLine(speed);
+      if (line) {
+        line.style.setProperty("--speed-accent", providerDef(pickOf(m).provider).accent);
+        liveEl.parentElement?.after(h("div", { class: "chat-row reply-speed-row" }, line));
+      }
+    }
+    const label = nowEl?.querySelector(".typing-label");
+    let span = nowEl?.querySelector(".typing-tokens") ?? null;
+    if (!speed || !label || liveEl) {
+      span?.remove();
+      return;
+    }
+    if (!span) {
+      span = h("span", { class: "typing-tokens" });
+      label.after(span);
+    }
+    const said = speedText(speed);
+    if (span.textContent !== said) span.textContent = said;
+  }
+
   /** The members' chats a compaction was asked for, while their context stays that full. */
   const compactAsked = new Set<string>();
   const extrasOf = (chat: string): OrchestraAnswer => {
@@ -564,13 +609,20 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       const text = live.get(m.chat);
       if (text && !quietText(m, text)) {
         liveEl = h("div", { class: "reply" });
-        renderMarkdown(liveEl, text, { streaming: true, scope: scope(m, "live") });
         log.append(h("div", { class: "chat-row" }, liveEl));
+        writeLive(m, liveEl, text, false);
       }
       // The chat's dots and its light crossing the words, as in any chat.
       nowEl = typingDots(stepText(m));
       nowEl.classList.add("orc-now");
       log.append(nowEl);
+      drawLiveSpeed(m);
+    } else {
+      // Its answer just came whole: the ink goes on in its bubble, as in a chat.
+      const lastAnswer = m.messages.filter((x) => x.kind === "assistant").at(-1);
+      const replies = log.querySelectorAll<HTMLElement>(".reply");
+      const reply = replies[replies.length - 1];
+      if (lastAnswer && reply) hooks.inkInto?.(m.chat, reply, lastAnswer.text, scope(m, lastAnswer.id));
     }
     if (error) log.append(h("div", { class: "orc-error", text: error }));
     log.scrollTop = atEnd ? log.scrollHeight : kept;
@@ -1276,6 +1328,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       const m = snap ? memberByChat(snap, chat) : undefined;
       if (!m) return false;
       if (!text) return true;
+      const fresh = !live.has(chat);
       live.set(chat, text);
       if (m.id !== selected || !on() || quietText(m, text)) return true;
       const atEnd = stuck();
@@ -1285,7 +1338,8 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
         if (nowEl) log.insertBefore(row, nowEl);
         else log.append(row);
       }
-      renderMarkdown(liveEl, text, { streaming: true, scope: scope(m, "live") });
+      writeLive(m, liveEl, text, fresh);
+      drawLiveSpeed(m);
       if (atEnd) log.scrollTop = log.scrollHeight;
       return true;
     },
@@ -1334,8 +1388,10 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       return true;
     },
     turnSpeed(chat, speed) {
-      if (!snap || !memberByChat(snap, chat)) return false;
+      const m = snap ? memberByChat(snap, chat) : undefined;
+      if (!m) return false;
       extrasOf(chat).speed = speed;
+      drawLiveSpeed(m);
       return true;
     },
     activity(chat, activity) {
