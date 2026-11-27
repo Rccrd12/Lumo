@@ -1039,3 +1039,17 @@ fn the_same_words_said_again_after_a_tool_show_once_while_the_turn_goes_on() {
 fn calls_after(said: &str, id: &str) -> Reply {
     Reply::Events(vec![text(said), call(id, "workspace_read", "{}"), finish("tool_calls"), DONE.into()])
 }
+
+#[test]
+fn a_turn_can_run_on_another_thread() {
+    // The app spawns it (tauri::async_runtime::spawn): its future must be Send.
+    fn send<T: Send>(_: &T) {}
+    let fake = serve(vec![answer("Ciao.")]);
+    let to = fake.endpoint();
+    let mut body = question("Ciao", &[]);
+    let rules = rules("send", "");
+    let mut island = Island::default();
+    let turn = run(&to, &mut body, &rules, &mut island);
+    send(&turn);
+    drop(turn);
+}

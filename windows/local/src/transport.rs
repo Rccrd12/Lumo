@@ -1,8 +1,7 @@
 // One request to the server, its answer read as it streams in or, for a
 // server whose stream hangs (LM Studio, on some tool calls), whole.
 
-use std::cell::Cell;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use reqwest::Client;
@@ -220,6 +219,19 @@ fn tell_calls(calls: &CallParts, over: bool, told: &mut usize, told_tool: &mut S
     }
 }
 
+/// "None" in the token counters and times of `stream`.
+const NONE: u64 = u64::MAX;
+
+/// Nanoseconds since `began`.
+fn since(began: Instant) -> u64 {
+    u64::try_from(began.elapsed().as_nanos()).unwrap_or(NONE - 1)
+}
+
+/// The seconds from `from` to `to`, both in nanoseconds.
+fn secs_between(from: u64, to: u64) -> f64 {
+    to.saturating_sub(from) as f64 / 1e9
+}
+
 /// Posts the request and reads the event stream. `on` gets the visible text at
 /// most 15 times a second and once more at the end, `Reasoning` once when the
 /// model reasons before any visible text, `Calling` as each tool call starts (`tell_calls`),
@@ -256,13 +268,15 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let mut told = 0;
     let mut told_tool = String::new();
     let mut used = None;
-    // The tokens made: counted (one per piece), and as the server says.
-    // Cells: read between the pieces, while `take` holds them.
-    let made = Cell::new(0u64);
-    let said_made = Cell::new(None::<u64>);
-    // When the first token and the last came.
-    let first_token = Cell::new(None::<Instant>);
-    let last_token = Cell::new(Instant::now());
+    // The tokens made: counted (one per piece), and as the server says
+    // (NONE: it didn't). Atomics, as the flags above: read between the
+    // pieces while `take` holds them, and the future stays Send.
+    let made = AtomicU64::new(0);
+    let said_made = AtomicU64::new(NONE);
+    // When the first token and the last came, in nanoseconds after `began`.
+    let began = Instant::now();
+    let first_token = AtomicU64::new(NONE);
+    let last_token = AtomicU64::new(0);
     let mut made_told = Instant::now();
     // The answer said it is over (`finish_reason`, `[DONE]`): what follows is
     // only waited for a moment, then the stream ends even if the connection
@@ -287,15 +301,15 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             used = Some(total);
         }
         if let Some(n) = completion_of(line) {
-            said_made.set(Some(n));
+            said_made.store(n.min(NONE - 1), Ordering::Relaxed);
         }
         let event = parse_sse_line(line);
         if matches!(event, Some(Event::Text(_) | Event::Reasoning | Event::Calls(..))) {
-            made.set(made.get() + 1);
-            let now = Instant::now();
-            last_token.set(now);
-            if first_token.get().is_none() {
-                first_token.set(Some(now));
+            made.fetch_add(1, Ordering::Relaxed);
+            let now = since(began);
+            last_token.store(now, Ordering::Relaxed);
+            if first_token.load(Ordering::Relaxed) == NONE {
+                first_token.store(now, Ordering::Relaxed);
             }
         }
         // Only a sign of the model at work: LM Studio opens its answer with
@@ -367,9 +381,12 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         if done.load(Ordering::Relaxed) {
             break;
         }
-        if let Some(first) = first_token.get().filter(|_| made_told.elapsed() >= MADE_INTERVAL) {
+        let first = first_token.load(Ordering::Relaxed);
+        if first != NONE && made_told.elapsed() >= MADE_INTERVAL {
             made_told = Instant::now();
-            on(Seen::Made { tokens: said_made.get().unwrap_or(0).max(made.get()), secs: first.elapsed().as_secs_f64() });
+            let said = said_made.load(Ordering::Relaxed);
+            let tokens = made.load(Ordering::Relaxed).max(if said == NONE { 0 } else { said });
+            on(Seen::Made { tokens, secs: secs_between(first, since(began)) });
         }
         if pending.len() > MAX_LINE || text.len() + call_bytes.load(Ordering::Relaxed) > MAX_ANSWER {
             return Err(Failure::TooLarge);
@@ -398,8 +415,11 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     on(Seen::Text(progressive_filter(&text)));
     // The count as it ended: the server's own when it gave one, over the
     // time from the first token to the last (not the wait for `[DONE]`).
-    if let Some(first) = first_token.get() {
-        on(Seen::Made { tokens: said_made.get().unwrap_or(made.get()), secs: last_token.get().duration_since(first).as_secs_f64() });
+    let first = first_token.load(Ordering::Relaxed);
+    if first != NONE {
+        let said = said_made.load(Ordering::Relaxed);
+        let tokens = if said == NONE { made.load(Ordering::Relaxed) } else { said };
+        on(Seen::Made { tokens, secs: secs_between(first, last_token.load(Ordering::Relaxed)) });
     }
     Ok(Answer { text: filter_thinking_blocks(&text), calls: calls.done(), used, cut: cut.load(Ordering::Relaxed) })
 }
