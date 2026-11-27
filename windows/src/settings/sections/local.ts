@@ -2,7 +2,7 @@
 // server, with their addresses, keys and the models they serve.
 
 import { Bridge, type UnslothStudio } from "../../core/bridge";
-import { CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, providerDef, urlExposure } from "../../core/providers";
+import { CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, pickModel, providerDef, urlExposure } from "../../core/providers";
 import { h, clear } from "../../views/dom";
 import { accentDot, sectionHead, setting, statusDot, wideSetting } from "../parts";
 import { localModelsBlock, type UnslothMemory } from "../local-models";
@@ -253,8 +253,10 @@ export function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLEleme
           status.append(h("div", { class: "notice err", text: CHAT_STRINGS.noModels(t(def.name)) }));
         } else {
           settings[field] = server.url;
-          if (!server.models.includes(settings.chatModels[id] ?? "")) {
-            settings.chatModels = { ...settings.chatModels, [id]: server.models[0] };
+          // The model picked before stays, by the name the server gives it now.
+          const keep = pickModel(providerDef(id), server.models, settings.chatModels[id] ?? "") ?? server.models[0];
+          if (keep !== settings.chatModels[id]) {
+            settings.chatModels = { ...settings.chatModels, [id]: keep };
           }
           await save();
           redraw();

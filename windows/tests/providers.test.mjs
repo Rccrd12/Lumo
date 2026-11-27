@@ -76,6 +76,14 @@ test("the saved model is kept when offered, else a sensible one is picked", () =
   assert.equal(pickModel(providerDef("ollama"), ["llama3.2", "qwen"], ""), "llama3.2");
   assert.equal(pickModel(providerDef("openrouter"), ["a/b", "openrouter/auto"], "gone"), "openrouter/auto");
   assert.equal(pickModel(google, [], "x"), null);
+  // Unsloth Studio: a model saved without its version becomes the first of its versions listed.
+  const unsloth = providerDef("unsloth");
+  const versions = ["unsloth/Inkling-2-Mini-GGUF:UD-Q3_K_XL", "unsloth/Inkling-2-Mini-GGUF:UD-Q4_K_XL", "other/Model-GGUF:Q4_K_M"];
+  assert.equal(pickModel(unsloth, versions, "unsloth/Inkling-2-Mini-GGUF"), "unsloth/Inkling-2-Mini-GGUF:UD-Q3_K_XL");
+  assert.equal(pickModel(unsloth, versions, "unsloth/inkling-2-mini-gguf"), "unsloth/Inkling-2-Mini-GGUF:UD-Q3_K_XL");
+  assert.equal(pickModel(unsloth, versions, "unsloth/Inkling-2-Mini-GGUF:UD-Q4_K_XL"), "unsloth/Inkling-2-Mini-GGUF:UD-Q4_K_XL");
+  // Never another model whose name only begins the same.
+  assert.equal(pickModel(unsloth, ["a/b", "unsloth/Inkling-2-Mini-GGUF-v2:Q4_K_M"], "unsloth/Inkling-2-Mini-GGUF"), "a/b");
   // An alias saved by an older version becomes the current model it named.
   const cc = providerDef("claude-code");
   const offered = ["default", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];

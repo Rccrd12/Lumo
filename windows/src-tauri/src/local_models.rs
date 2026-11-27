@@ -481,12 +481,34 @@ pub async fn load(server: &Server, model: &str, mut on_progress: impl FnMut(u8))
     } else if server.id == "lmstudio" {
         load_lmstudio(server, &base, model, &mut on_progress).await
     } else if server.id == "unsloth" {
-        load_unsloth(server, &base, model, &mut on_progress).await
+        load_unsloth(server, &base, model, &mut on_progress).await.map_err(|e| llama_cause(&e))
     } else {
         Ok(())
     };
     forget(server, model);
     result
+}
+
+/// Unsloth Studio's words when llama-server didn't start, without the tail
+/// of its output it adds (some 25 lines of tensors): what it said, the line
+/// that says why (llama.cpp's first error, "E module: why"), and where the
+/// whole log is.
+fn llama_cause(error: &str) -> String {
+    let Some(at) = error.find("llama-server output:") else { return error.to_string() };
+    let head = error[..at].trim();
+    let output = &error[at..];
+    let cause = output.lines().find_map(|line| {
+        let mut words = line.split_whitespace();
+        let _time = words.next()?;
+        (words.next()? == "E").then(|| {
+            let rest: Vec<&str> = words.collect();
+            // The module's name ("llama_init_from_model:") goes; the reason stays.
+            let start = usize::from(rest.first().is_some_and(|w| w.ends_with(':')));
+            rest[start..].join(" ")
+        })
+    });
+    let log = output.lines().map(str::trim).find(|l| l.starts_with("Full log:"));
+    [Some(head.to_string()), cause, log.map(str::to_string)].into_iter().flatten().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n")
 }
 
 async fn load_lmstudio(server: &Server, base: &Url, model: &str, on_progress: &mut impl FnMut(u8)) -> Result<(), String> {
@@ -1352,6 +1374,13 @@ mod tests {
         let with_quant = json!({ "object": "list", "data": [{ "id": "unsloth/Qwen3-8B-GGUF", "quant": "UD-Q4_K_XL" }] });
         assert_eq!(unsloth_load_body("unsloth/Qwen3-8B-GGUF", Some(&with_quant)), json!({ "model_path": "unsloth/Qwen3-8B-GGUF", "gguf_variant": "UD-Q4_K_XL", "max_seq_length": 0 }));
         assert_eq!(unsloth_progress(&json!({ "phase": "mmap", "fraction": 0.42 })), Some(42));
+        // llama-server that didn't start: Studio's words, the cause, the log; not its 25 lines of tensors.
+        let failed = "Unsloth Studio: Failed to load model: llama-server failed to start. Check that the GGUF file is valid and you have enough memory.\n\nllama-server output:\nsize =   182.25 MiB\n0.04.404.273 I load_tensors:        CUDA0 model buffer size =  5093.61 MiB\n0.06.750.300 E llama_init_from_model: quantized V cache requires flash_attn to be enabled\n0.06.750.305 E cmn  common_init_: failed to create context with model 'x.gguf'\n\nFull log: C:\\logs\\llama-1-try0.log";
+        assert_eq!(
+            llama_cause(failed),
+            "Unsloth Studio: Failed to load model: llama-server failed to start. Check that the GGUF file is valid and you have enough memory.\nquantized V cache requires flash_attn to be enabled\nFull log: C:\\logs\\llama-1-try0.log"
+        );
+        assert_eq!(llama_cause("No model loaded"), "No model loaded");
         assert_eq!(unsloth_progress(&json!({ "phase": null, "bytes_loaded": 0 })), None);
     }
 

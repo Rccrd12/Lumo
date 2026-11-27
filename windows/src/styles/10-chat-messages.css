@@ -332,6 +332,49 @@
   color: var(--dim-3);
 }
 
+/* Where the chat was compacted: a line, its words as small as Stopped's, the summary under it on a click. */
+.compact-mark-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.compact-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.compact-mark-rule {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.compact-mark-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.compact-mark-label:hover {
+  color: var(--dim-2);
+}
+
+.compact-mark-chevron {
+  flex-shrink: 0;
+}
+
 /* An answer that failed: what went wrong, where the answer would be. */
 .msg-failed {
   font: 400 12.5px/1.45 var(--font);

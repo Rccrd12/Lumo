@@ -125,7 +125,7 @@ import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachR
 import { splitFix } from "./chat-fix";
 import { orchestratorName, parseOrchestrator } from "../core/orchestrator";
 import { cliModelName } from "../core/model-names";
-import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
+import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
@@ -998,7 +998,8 @@ export function buildPrompt(
     if (!line) closeUsage();
     usageSetup = Boolean(line?.setup);
     usageEl.classList.toggle("setup", usageSetup);
-    usageEl.title = line ? [line.text, line.title].filter(Boolean).join("\n") : "";
+    // A title the text already starts with ("Context: 11.7K of 64K", then "Context") is said once.
+    usageEl.title = line ? [line.text, line.title && !line.text.startsWith(line.title) ? line.title : ""].filter(Boolean).join("\n") : "";
     usageEl.setAttribute("aria-label", line?.text ?? "");
     usageRing.set(line?.pct ?? null, line?.color ?? null);
     if (body.classList.contains("metering")) drawUsageMenu();
@@ -1380,6 +1381,9 @@ export function buildPrompt(
     presenceAsked = "";
     drawChatFiles();
     if (State.chatId) chatRewound(State.chatId);
+    // A summary of turns the edit dropped goes too, as Rust forgets it (chat.rs rewind).
+    const summed = compactOf(State.chatId);
+    if (summed && keep < summed.upto) setCompact(State.chatId, null);
     await Bridge.chatRewind(State.chatId, keep);
   }
 
@@ -4841,12 +4845,20 @@ export function buildPrompt(
       if (done) {
         setCompact(chatId, { upto: done.upto, summary: done.summary });
         estimateContext(chatId, done.before, done.after);
+        // The line where it was compacted shows at once.
+        if (chatId === State.chatId) renderedCount = -1;
       }
       const said = done ? (auto == null ? COMPACT_STRINGS.done : COMPACT_STRINGS.autoDone) : COMPACT_STRINGS.nothing;
       compactNotice(t(said), providerDef(State.settings.chatProvider).accent);
+      // Nothing compacted: said in the chat too, where the line would have come.
+      if (!done) compactSaid(chatId, t(said));
       Sound.play("blip");
     } catch (err) {
-      State.noteMessage = String(err).replace(/^Error:\s*/, "");
+      const why = String(err).replace(/^Error:\s*/, "");
+      // Said where it is seen: the closed island's note, and the chat if it is on screen
+      // (the note view alone stays unseen while the chat is open).
+      compactNotice(why, WARNING_COLOR);
+      compactSaid(chatId, why);
       Sound.play("error");
     } finally {
       compacting = false;
@@ -4857,6 +4869,16 @@ export function buildPrompt(
       State.notify();
       onHeightChange();
     }
+  }
+
+  /**
+   * Why chat `chatId` wasn't compacted, at the end of its log while it is on
+   * screen, in Stopped's small grey words: gone at the next redraw.
+   */
+  function compactSaid(chatId: string, text: string) {
+    if (chatId !== State.chatId || !text) return;
+    log.append(h("div", { class: "chat-row compact-said" }, h("div", { class: "msg-stopped", text })));
+    follow();
   }
 
   /**
@@ -5194,6 +5216,10 @@ export function buildPrompt(
         const answers = history.filter((m) => m.role === "assistant" && !m.failed).length;
         let answer = 0;
         let lastBubble: HTMLElement | null = null;
+        // Where the chat was compacted: a line after the turns its summary replaced.
+        const compacted = workshop ? null : compactOf(State.chatId);
+        const keptTurns = history.filter((m) => !m.failed).length;
+        const markAt = compacted && compacted.upto > 0 && compacted.upto <= keptTurns ? compacted.upto : -1;
         history.forEach((m, i) => {
           for (const line of heardLines.before[i]) log.append(heardRow(line));
           // A message's scope is its place among those kept with the chat, as the checklists count them.
@@ -5214,6 +5240,7 @@ export function buildPrompt(
             log.append(...agentCardsFor(State.chatId, answer));
             answer++;
           }
+          if (compacted && !m.failed && place === markAt) log.append(compactMark(State.chatId, compacted.upto, compacted.summary));
         });
         // The agents of an answer that never came (stopped, failed) go after
         // its question, and its failed answer.

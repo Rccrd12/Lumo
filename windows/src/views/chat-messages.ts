@@ -27,7 +27,7 @@ import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, speakerName, takeTimers } f
 import { takeListens } from "../core/listen";
 import { draftIn, isWorkshopChat, stripDraft } from "../core/tools";
 import { FORGE_STRINGS, draftChip } from "./forge";
-import { STRINGS } from "./chat-strings";
+import { COMPACT_STRINGS, STRINGS } from "./chat-strings";
 import { fixCard } from "./chat-fix";
 import { changedCopy, type ReplyFile } from "../core/file-names";
 import { linkFiles, replyFilesBox } from "./file-links";
@@ -341,6 +341,32 @@ export function smallPicture(src: string): Promise<string | undefined> {
 /** The answers whose warning (ChatMessage.warning) is open: a redrawn log keeps it open. */
 const openWarnings = new WeakSet<ChatMessage>();
 
+/** The compactions whose summary is open, by chat and place, across redraws. */
+const openSummaries = new Set<string>();
+
+/**
+ * The line in a chat after the turns its summary replaced (chat.rs compact):
+ * what was said stays on screen, the model starts again from the summary,
+ * which opens under the line on a click.
+ */
+export function compactMark(chatId: string, upto: number, summary: string): HTMLElement {
+  const key = `${chatId}\u0000${upto}`;
+  const open = openSummaries.has(key);
+  const detail = h("div", { class: "msg-warning-detail compact-summary", text: summary });
+  detail.hidden = !open;
+  const chevron = h("span", { class: "compact-mark-chevron", text: open ? "▾" : "▸" });
+  const label = h("button", { class: "compact-mark-label", "aria-expanded": String(open) }, chevron, h("span", { text: t(COMPACT_STRINGS.mark) }));
+  label.addEventListener("click", (e) => {
+    e.stopPropagation();
+    detail.hidden = !detail.hidden;
+    if (detail.hidden) openSummaries.delete(key);
+    else openSummaries.add(key);
+    chevron.textContent = detail.hidden ? "▸" : "▾";
+    label.setAttribute("aria-expanded", String(!detail.hidden));
+  });
+  return h("div", { class: "chat-row compact-mark-row" }, h("div", { class: "compact-mark" }, h("span", { class: "compact-mark-rule" }), label, h("span", { class: "compact-mark-rule" })), detail);
+}
+
 /** The closed island's note for an answer with a warning: the island's amber (--amber). */
 export const WARNING_COLOR = "#f5a524";
 
@@ -352,6 +378,13 @@ const WARNING_TEXT = {
   message: N_("Antigravity CLI's message: {error}"),
 };
 
+/** The same, for a local model's answer its server cut off halfway (ChatWarning "interrupted"). */
+const INTERRUPTED_TEXT = {
+  line: N_("The answer stopped before it was over"),
+  why: N_("The model server stopped this answer before it was over, even after Lumo asked again. What the model wrote and did until then is kept: check that the work is done, and if it isn't, write “continue”."),
+  message: N_("What went wrong: {error}"),
+};
+
 /**
  * A warning's line and what to know, in the island's language now (a chat
  * opened later in another language reads in that one); one saved by the
@@ -359,6 +392,10 @@ const WARNING_TEXT = {
  */
 export function warningWords(w: AnswerWarning): { line: string; detail: string } {
   if ("line" in w) return w;
+  // A local model's answer its server cut off after its tools ran (local_chat.rs).
+  if (w.kind === "interrupted") {
+    return { line: t(INTERRUPTED_TEXT.line), detail: `${t(INTERRUPTED_TEXT.why)}\n\n${t(INTERRUPTED_TEXT.message, { error: failedParts(w.message)[0] })}` };
+  }
   const why = t(w.kind === "malformed" ? WARNING_TEXT.malformed : WARNING_TEXT.error);
   return { line: t(WARNING_TEXT.line), detail: `${why}\n\n${t(WARNING_TEXT.message, { error: w.message })}` };
 }

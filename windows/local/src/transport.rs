@@ -62,12 +62,15 @@ impl Failure {
     /// The server's engine dropped the request: LM Studio's words when its
     /// model process ends or fails one ("terminated", "Engine protocol
     /// predict request failed: fetch failed"), in an error event or with any
-    /// status (it sends them with a 400 too).
+    /// status (it sends them with a 400 too); Unsloth Studio's when its
+    /// connection to llama-server broke halfway ("Lost connection to the
+    /// model server. It may have crashed"), which happens with the model
+    /// still well and in memory.
     pub fn is_engine(&self) -> bool {
         match self {
             Failure::Server(e) | Failure::Status(_, e) => {
                 let e = e.trim().to_lowercase();
-                e == "terminated" || ["fetch failed", "predict request failed", "model has crashed", "model crashed"].iter().any(|w| e.contains(w))
+                e == "terminated" || ["fetch failed", "predict request failed", "model has crashed", "model crashed", "lost connection to the model server", "lost connection to llama-server"].iter().any(|w| e.contains(w))
             }
             _ => false,
         }

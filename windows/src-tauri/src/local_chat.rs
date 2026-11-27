@@ -306,9 +306,14 @@ fn parse_models(body: &Value) -> Option<Vec<(String, Value)>> {
 
 /// Unsloth Studio lists a repo with several quants once bare (its default
 /// quant) and once per quant (`repo:Q4_K_M`), so the same file can come
-/// twice. One row per repo and `quant`, the first listed (the bare id, which
-/// a model picked before still names), shown as "display_name · quant".
+/// twice. One row per repo and `quant`, in the place of the first listed,
+/// shown as "display_name · quant". Its id is the one that names the quant
+/// when the list has it: the bare id means whichever quant Unsloth Studio
+/// prefers when it loads (the one in memory, else its own pick), so a model
+/// picked by it could come back as another quant, with other settings. A
+/// bare id picked before becomes its quant's (providers.ts pickModel).
 fn unsloth_models(models: Vec<(String, Value)>) -> Vec<ModelInfo> {
+    let ids: std::collections::HashMap<String, String> = models.iter().map(|(id, _)| (id.to_lowercase(), id.clone())).collect();
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for (id, row) in models {
@@ -318,7 +323,14 @@ fn unsloth_models(models: Vec<(String, Value)>) -> Vec<ModelInfo> {
                 let (base, pinned) = id.rsplit_once(':')?;
                 pinned.eq_ignore_ascii_case(q).then_some(base)
             })
-            .unwrap_or(&id);
+            .unwrap_or(&id)
+            .to_string();
+        // The bare id, when the list names its quant too: that one instead.
+        let id = match quant {
+            Some(q) if repo == id => ids.get(&format!("{id}:{q}").to_lowercase()).cloned().unwrap_or(id),
+            _ => id,
+        };
+        let repo = repo.as_str();
         if !seen.insert((repo.to_lowercase(), quant.map(str::to_lowercase))) {
             continue;
         }
@@ -537,6 +549,26 @@ struct Launch<'a> {
     budget: crate::api_agents::Budget,
 }
 
+/// How hard the model reasons (`level`, local_models.rs reasoning_effort) in
+/// a request to server `server`. Unsloth Studio turns thinking on and off with
+/// its own switch, and its `reasoning_effort` field never reaches a template
+/// that reads the level itself (Inkling 2 Mini's maps "minimal" to 0.1, "max"
+/// to 0.99, and takes 0.9 when it gets none): the level goes to the template
+/// too, which one that doesn't read it leaves aside.
+fn set_reasoning(body: &mut Value, server: &str, level: &str) {
+    body["reasoning_effort"] = json!(level);
+    if server == "unsloth" {
+        body["enable_thinking"] = json!(level != "none");
+        body["chat_template_kwargs"] = json!({ "reasoning_effort": level });
+    }
+}
+
+/// The least reasoning `caps` offers, as a request says it: Off, else the
+/// lowest level; None for a model that doesn't say.
+fn least_reasoning(caps: &crate::local_models::Caps) -> Option<&'static str> {
+    ["off", "minimal", "low", "medium", "on"].into_iter().find_map(|l| crate::local_models::reasoning_effort(caps, l))
+}
+
 /// One agent's whole turn: its task alone, the chat's tools (no more
 /// agents), its rounds of tools, and its last word as the report.
 async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate::api_agents::Task, sink: crate::api_agents::Sink) -> Result<String, String> {
@@ -549,10 +581,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate:
         body["tools"] = tools;
     }
     if let Some(level) = l.effort {
-        body["reasoning_effort"] = json!(level);
-        if l.server.id == "unsloth" {
-            body["enable_thinking"] = json!(level != "none");
-        }
+        set_reasoning(&mut body, l.server.id, level);
     }
     if matches!(l.server.id, "ollama" | "lmstudio" | "unsloth") {
         body["stream_options"] = json!({ "include_usage": true });
@@ -793,6 +822,13 @@ fn ran_note(ran: &[String]) -> String {
     }
 }
 
+/// What the model is told of its answer that failed halfway (`error`, as the
+/// island says it), after what it wrote and did: kept, so it goes on from there.
+fn interrupted_note(error: &str) -> String {
+    let error: String = error.split(crate::chat::ERROR_DETAIL).next().unwrap_or(error).trim().chars().take(300).collect();
+    format!("\n\n(Lumo's note, not shown to the user: this answer was cut off before it was over ({error}). What was written above and what the tools did are kept: when asked to continue, check what is done and go on from there.)")
+}
+
 /// An answer without a note like `ran_note`'s, should a model copy it from the conversation.
 fn without_note(answer: &str) -> String {
     match answer.find("(Lumo's note, not shown to the user") {
@@ -1010,11 +1046,7 @@ pub async fn send(
             body["tools"] = crate::openai_compat::function_tools(&tools);
         }
         if let Some(level) = crate::local_models::reasoning_effort(&caps, effort) {
-            body["reasoning_effort"] = json!(level);
-            // Unsloth Studio turns thinking on and off with its own switch.
-            if server.id == "unsloth" {
-                body["enable_thinking"] = json!(level != "none");
-            }
+            set_reasoning(&mut body, server.id, level);
         }
         // How much of the context the chat fills comes with the last event (the ring).
         if matches!(server.id, "ollama" | "lmstudio" | "unsloth") {
@@ -1065,7 +1097,22 @@ pub async fn send(
         }
         return Ok(ChatReply::stopped(shown, None));
     };
-    let outcome = outcome?;
+    let outcome = match outcome {
+        Ok(outcome) => outcome,
+        // It failed after its tools ran or its words came (the server lost
+        // the model halfway, even when asked again): what was done stays in
+        // the conversation, the model told it was cut off, and the island
+        // says so under it, so "continue" goes on from there instead of
+        // starting over. Files the tools changed are changed either way.
+        Err(e) if !ran.is_empty() || !shown.trim().is_empty() => {
+            let kept = format!("{shown}{}{}", ran_note(&ran), interrupted_note(&e));
+            chat.commit(&turn, user, json!({ "role": "assistant", "content": kept }), &plain, &shown);
+            let mut reply = ChatReply::answer(shown, None);
+            reply.warning = Some(crate::chat::ChatWarning { kind: "interrupted".into(), message: e });
+            return Ok(reply);
+        }
+        Err(e) => return Err(e),
+    };
     // How full the context is, out of what the model is loaded with now.
     if let Some(used) = outcome.used {
         let now = crate::local_models::caps(server, model).await;
@@ -1147,14 +1194,23 @@ pub async fn unsloth_search(query: &str, range: &str) -> Result<String, String> 
 }
 
 /// One question with no conversation: the supervisor's review of a tool
-/// (tool_review.rs).
-pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) -> Result<String, String> {
+/// (tool_review.rs), a chat's name (chat_title.rs), its summary (chat.rs).
+/// `light`: with the least reasoning the model takes, for a job that needs
+/// none (a model like Inkling 2 Mini reasons as hard as it can when no level
+/// is said, and a name it takes a minute over comes too late).
+pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str, light: bool) -> Result<String, String> {
     let base = base_url(server)?;
     if model.is_empty() {
         return Err(t("Pick a model above the chat box first."));
     }
     let user = json!({ "role": "user", "content": prompt });
-    let body = request_body(model, system, &[], &user);
+    let mut body = request_body(model, system, &[], &user);
+    if light {
+        let caps = crate::local_models::caps(server, model).await;
+        if let Some(level) = least_reasoning(&caps) {
+            set_reasoning(&mut body, server.id, level);
+        }
+    }
     let to = endpoint(server, &base)?;
     let answer = lumo_local::transport::stream(&to, &body, |_| {}).await.map_err(|f| failure(server, model, &base, f))?.text;
     if answer.is_empty() {
@@ -1317,9 +1373,29 @@ mod tests {
     }
 
     #[test]
+    fn the_reasoning_level_reaches_unsloth_studio_s_template() {
+        let mut body = json!({});
+        set_reasoning(&mut body, "unsloth", "minimal");
+        assert_eq!(body, json!({ "reasoning_effort": "minimal", "enable_thinking": true, "chat_template_kwargs": { "reasoning_effort": "minimal" } }));
+        set_reasoning(&mut body, "unsloth", "none");
+        assert_eq!((&body["enable_thinking"], &body["chat_template_kwargs"]["reasoning_effort"]), (&json!(false), &json!("none")));
+        // A name or a summary: the least the model takes.
+        let caps = |levels: &[&str]| crate::local_models::Caps { reasoning: levels.iter().map(|l| l.to_string()).collect(), ..Default::default() };
+        assert_eq!(least_reasoning(&caps(&["off", "minimal", "low", "max"])), Some("none"));
+        assert_eq!(least_reasoning(&caps(&["low", "medium", "high"])), Some("low"));
+        assert_eq!(least_reasoning(&caps(&["on"])), Some("medium"));
+        assert_eq!(least_reasoning(&caps(&[])), None);
+        // The other servers: the field alone, as before.
+        let mut body = json!({});
+        set_reasoning(&mut body, "lmstudio", "low");
+        assert_eq!(body, json!({ "reasoning_effort": "low" }));
+    }
+
+    #[test]
     fn unsloth_studio_lists_each_file_once_by_its_name_and_quant() {
         // Two quants of Ornith on disk: the bare id is the default one (Q4_K_M),
         // then one row per quant; plus a video model and a model without a quant.
+        // The bare id's row is kept where it is, by the id that names its quant.
         let body = json!({ "data": [
             { "id": "AtomicChat/Ornith-1.5-35B-A3B-GGUF", "quant": "Q4_K_M", "display_name": "Ornith-1.5-35B-A3B-GGUF" },
             { "id": "QuantStack/Wan2.2-TI2V-5B-GGUF", "task": "text-to-video", "quant": "Q4_K_M" },
@@ -1332,7 +1408,8 @@ mod tests {
         let rows = unsloth_models(parse_models(&body).unwrap());
         let shown: Vec<(&str, &str)> = rows.iter().map(|m| (m.id.as_str(), m.label.as_str())).collect();
         assert_eq!(shown, [
-            ("AtomicChat/Ornith-1.5-35B-A3B-GGUF", "Ornith-1.5-35B-A3B-GGUF · Q4_K_M"),
+            ("AtomicChat/Ornith-1.5-35B-A3B-GGUF:Q4_K_M", "Ornith-1.5-35B-A3B-GGUF · Q4_K_M"),
+            // No row of its own for its quant: the bare id is the only one there is.
             ("unsloth/gemma-4-26b-GGUF", "gemma-4-26b-GGUF · UD-Q4_K_XL"),
             ("AtomicChat/Ornith-1.5-35B-A3B-GGUF:Q4_K", "Ornith-1.5-35B-A3B-GGUF · Q4_K"),
             ("my-finetune", "my-finetune"),
@@ -1340,13 +1417,17 @@ mod tests {
         // Same repo and quant in another case is still the same file.
         let cased = json!({ "data": [{ "id": "o/m:q4_k_m", "quant": "q4_k_m" }, { "id": "O/M", "quant": "Q4_K_M" }] });
         assert_eq!(unsloth_models(parse_models(&cased).unwrap()).len(), 1);
+        // The bare id listed first, as Unsloth Studio does: its quant's id, in the case the list wrote it.
+        let bare_first = json!({ "data": [{ "id": "O/M", "quant": "Q3_K_XL" }, { "id": "O/M:Q4_K_XL", "quant": "Q4_K_XL" }, { "id": "O/M:q3_k_xl", "quant": "Q3_K_XL" }] });
+        let ids: Vec<String> = unsloth_models(parse_models(&bare_first).unwrap()).into_iter().map(|m| m.id).collect();
+        assert_eq!(ids, ["O/M:q3_k_xl", "O/M:Q4_K_XL"]);
     }
 
     #[test]
     fn the_list_names_unsloth_models_and_leaves_the_others_as_they_are() {
         let body = br#"{"data":[{"id":"o/m","quant":"Q4_K_M","display_name":"M"},{"id":"o/m:Q4_K_M","quant":"Q4_K_M","display_name":"M"}]}"#;
         let u = serve_once("200 OK", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
-        assert_eq!(block_on(list("unsloth", &url(&u), None)).unwrap(), vec![ModelInfo { id: "o/m".into(), label: "M · Q4_K_M".into(), ..Default::default() }]);
+        assert_eq!(block_on(list("unsloth", &url(&u), None)).unwrap(), vec![ModelInfo { id: "o/m:Q4_K_M".into(), label: "M · Q4_K_M".into(), ..Default::default() }]);
         let u = serve_once("200 OK", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
         let ids: Vec<String> = block_on(list("custom", &url(&u), None)).unwrap().into_iter().map(|m| m.label).collect();
         assert_eq!(ids, ["o/m", "o/m:Q4_K_M"]);

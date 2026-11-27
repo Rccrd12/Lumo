@@ -20177,6 +20177,66 @@
    "id": "Pesan Antigravity CLI: {error}",
    "it": "Messaggio di Antigravity CLI: {error}"
   },
+  "The answer stopped before it was over": {
+   "zh-Hans": "回答在完成前中断了",
+   "hi": "जवाब पूरा होने से पहले रुक गया",
+   "es": "La respuesta se detuvo antes de terminar",
+   "ar": "توقفت الإجابة قبل أن تكتمل",
+   "fr": "La réponse s'est arrêtée avant la fin",
+   "bn": "উত্তরটি শেষ হওয়ার আগেই থেমে গেছে",
+   "pt-BR": "A resposta parou antes de terminar",
+   "ru": "Ответ оборвался, не закончившись",
+   "id": "Jawaban berhenti sebelum selesai",
+   "it": "La risposta si è interrotta prima della fine"
+  },
+  "The model server stopped this answer before it was over, even after Lumo asked again. What the model wrote and did until then is kept: check that the work is done, and if it isn't, write “continue”.": {
+   "zh-Hans": "即使 Lumo 重新请求后，模型服务器仍在这个回答完成前将其中断。模型此前写下的内容和完成的操作都已保留：请检查工作是否已完成，如果没有，请输入“继续”。",
+   "hi": "Lumo के दोबारा पूछने के बाद भी मॉडल सर्वर ने यह जवाब पूरा होने से पहले रोक दिया। मॉडल ने तब तक जो लिखा और किया, वह रखा गया है: देख लें कि काम पूरा हुआ है, और अगर नहीं, तो “जारी रखो” लिखें।",
+   "es": "El servidor del modelo detuvo esta respuesta antes de terminar, incluso después de que Lumo volviera a pedirla. Lo que el modelo escribió e hizo hasta entonces se conserva: comprueba que el trabajo esté terminado y, si no lo está, escribe «continúa».",
+   "ar": "أوقف خادم النموذج هذه الإجابة قبل أن تكتمل، حتى بعد أن طلبها Lumo مرة أخرى. ما كتبه النموذج وما فعله حتى ذلك الحين محفوظ: تحقق من اكتمال العمل، وإن لم يكتمل فاكتب «تابع».",
+   "fr": "Le serveur du modèle a arrêté cette réponse avant la fin, même après que Lumo l'a redemandée. Ce que le modèle a écrit et fait jusque-là est conservé : vérifiez que le travail est terminé et, sinon, écrivez « continue ».",
+   "bn": "Lumo আবার চাওয়ার পরেও মডেল সার্ভার এই উত্তরটি শেষ হওয়ার আগেই থামিয়ে দিয়েছে। মডেল ততক্ষণ যা লিখেছে ও করেছে তা রাখা আছে: কাজটি শেষ হয়েছে কিনা দেখে নিন, না হলে “চালিয়ে যাও” লিখুন।",
+   "pt-BR": "O servidor do modelo interrompeu esta resposta antes do fim, mesmo depois de o Lumo pedir de novo. O que o modelo escreveu e fez até ali foi mantido: confira se o trabalho terminou e, se não terminou, escreva “continue”.",
+   "ru": "Сервер модели оборвал этот ответ, не дав ему закончиться, даже после повторного запроса Lumo. Всё, что модель написала и сделала до этого, сохранено: проверьте, что работа закончена, а если нет, напишите «продолжай».",
+   "id": "Server model menghentikan jawaban ini sebelum selesai, bahkan setelah Lumo memintanya lagi. Apa yang ditulis dan dilakukan model sampai saat itu tetap disimpan: periksa apakah pekerjaannya sudah selesai, dan jika belum, tulis “lanjutkan”.",
+   "it": "Il server del modello ha interrotto questa risposta prima della fine, anche dopo che Lumo l'ha richiesta di nuovo. Quello che il modello ha scritto e fatto fino a quel momento è stato tenuto: controlla che il lavoro sia finito e, se non lo è, scrivi “continua”."
+  },
+  "The chat is already short: its summary would take more room than the messages it replaces.": {
+   "zh-Hans": "这段对话已经很短：它的摘要会比要替换的消息占用更多空间。",
+   "hi": "चैट पहले से छोटी है: उसका सारांश उन संदेशों से ज़्यादा जगह लेगा जिनकी जगह वह लेता।",
+   "es": "El chat ya es corto: su resumen ocuparía más espacio que los mensajes que reemplaza.",
+   "ar": "المحادثة قصيرة أصلًا: ملخصها سيشغل مساحة أكبر من الرسائل التي يحل محلها.",
+   "fr": "Le chat est déjà court : son résumé prendrait plus de place que les messages qu'il remplace.",
+   "bn": "চ্যাটটি এমনিতেই ছোট: এর সারসংক্ষেপ যে বার্তাগুলোর জায়গা নেবে, তার চেয়ে বেশি জায়গা নেবে।",
+   "pt-BR": "O chat já é curto: o resumo ocuparia mais espaço do que as mensagens que substitui.",
+   "ru": "Чат и так короткий: его сводка заняла бы больше места, чем сообщения, которые она заменяет.",
+   "id": "Chat ini sudah pendek: ringkasannya akan memakan lebih banyak ruang daripada pesan yang digantikannya.",
+   "it": "La chat è già breve: il riassunto occuperebbe più spazio dei messaggi che sostituisce."
+  },
+  "Chat compacted": {
+   "zh-Hans": "对话已压缩",
+   "hi": "चैट संक्षिप्त की गई",
+   "es": "Chat compactado",
+   "ar": "تم ضغط المحادثة",
+   "fr": "Chat compacté",
+   "bn": "চ্যাট সংক্ষিপ্ত করা হয়েছে",
+   "pt-BR": "Chat compactado",
+   "ru": "Чат сжат",
+   "id": "Chat dipadatkan",
+   "it": "Chat compattata"
+  },
+  "What went wrong: {error}": {
+   "zh-Hans": "出了什么问题：{error}",
+   "hi": "क्या गड़बड़ हुई: {error}",
+   "es": "Qué salió mal: {error}",
+   "ar": "ما الذي حدث: {error}",
+   "fr": "Ce qui s'est passé : {error}",
+   "bn": "কী সমস্যা হয়েছে: {error}",
+   "pt-BR": "O que deu errado: {error}",
+   "ru": "Что пошло не так: {error}",
+   "id": "Apa yang salah: {error}",
+   "it": "Cosa è andato storto: {error}"
+  },
   "While working, the model sent an empty tool call, a mistake of the model's own, and Antigravity CLI had it try again. The answer above is the last one it wrote: check that the work is done, and if it isn't, write “continue”.": {
    "zh-Hans": "工作过程中，模型发送了一个空的工具调用（这是模型自身的错误），Antigravity CLI 让它重试了。上面的回答是它最后写的：请检查工作是否已完成，如果没有，请输入“继续”。",
    "hi": "काम के दौरान मॉडल ने एक खाली टूल कॉल भेजी, जो मॉडल की अपनी गलती थी, और Antigravity CLI ने उसे फिर से कोशिश करवाई। ऊपर का जवाब उसका आखिरी लिखा हुआ है: देख लें कि काम पूरा हुआ है, और अगर नहीं, तो “जारी रखो” लिखें।",

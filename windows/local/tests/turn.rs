@@ -607,6 +607,23 @@ fn lm_studio_s_engine_failing_is_asked_again_and_never_costs_the_tools() {
 }
 
 #[test]
+fn unsloth_studio_losing_llama_server_after_the_tools_is_asked_again() {
+    // Its words when its stream from llama-server broke, the model still in
+    // memory: the last request again, the tools' round not made twice.
+    let lost = "Lost connection to the model server. It may have crashed -- try reloading the model.";
+    let mut island = Island::default();
+    let mut body = question("Scrivi il file", &["set_timer"]);
+    let replies = vec![calls("c1", "set_timer", "{\"seconds\":5}"), Reply::Events(vec![json!({ "error": { "message": lost } }).to_string()]), answer("Fatto.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("unsloth-lost", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Fatto.", ["asked again"].as_slice()));
+    assert_eq!(island.ran.len(), 1);
+    assert_eq!(requests[1]["messages"], requests[2]["messages"]);
+    assert!(Failure::Server(lost.into()).is_engine());
+    assert!(Failure::Server("Lost connection to llama-server".into()).is_engine());
+}
+
+#[test]
 fn lm_studio_s_engine_failing_keeps_the_pictures() {
     let terminated = || Reply::Json(400, json!({ "error": "terminated" }).to_string());
     // The browser's screenshots: asked again with them, and sent on after.

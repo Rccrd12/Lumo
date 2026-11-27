@@ -252,7 +252,12 @@ async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<
         None => {}
     }
     let python = python().ok_or_else(|| t("Unsloth Studio isn't installed on this computer."))?;
-    if owned(|o| o.is_none()) {
+    // One the user opened is still starting: waited for, not started twice.
+    let mut theirs = owned(|o| o.is_none()) && other_on_port(port);
+    if theirs {
+        crate::log::line(format!("[unsloth] already starting on port {port} (opened from its own shortcut): waiting for it"));
+    }
+    if owned(|o| o.is_none()) && !theirs {
         let child = spawn(&python, port).map_err(|e| {
             crate::log::line(format!("[unsloth] start: {e}"));
             tf("Lumo couldn't start Unsloth Studio: {error}", &[("error", &e.to_string())])
@@ -280,8 +285,18 @@ async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<
             },
         )
         .await;
-        if owned_ended() {
-            crate::log::line("[unsloth] ended while starting");
+        if !theirs && owned_ended() {
+            // Lumo's ended at once because one the user opened took the port meanwhile: that one is waited for.
+            if other_on_port(port) {
+                crate::log::line(format!("[unsloth] another Unsloth Studio holds port {port}: waiting for it"));
+                theirs = true;
+            } else {
+                crate::log::line("[unsloth] ended while starting");
+                emit(app, Status { installed: true, state: "off", owned: false, seconds: 0 });
+                return Err(t("Unsloth Studio stopped while starting. Open it once from its own shortcut to see why."));
+            }
+        } else if theirs && !up && !other_on_port(port) {
+            crate::log::line("[unsloth] the one opened from its shortcut ended while starting");
             emit(app, Status { installed: true, state: "off", owned: false, seconds: 0 });
             return Err(t("Unsloth Studio stopped while starting. Open it once from its own shortcut to see why."));
         }
@@ -293,8 +308,11 @@ async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<
                 }
             });
             crate::log::line(format!("[unsloth] answering after {} s", began.elapsed().as_secs()));
-            emit(app, Status { installed: true, state: "on", owned: true, seconds: 0 });
-            watch_idle(app.clone());
+            // The user's own is theirs to stop: Lumo doesn't watch it.
+            emit(app, Status { installed: true, state: "on", owned: !theirs, seconds: 0 });
+            if !theirs {
+                watch_idle(app.clone());
+            }
             return Ok(());
         }
         if began.elapsed() > START_LIMIT {
@@ -303,6 +321,23 @@ async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<
             return Err(t("Unsloth Studio didn't start within 3 minutes. Open it once from its own shortcut to see why."));
         }
     }
+}
+
+/// An Unsloth Studio Lumo didn't start (opened from its own shortcut) running
+/// for `port`, maybe not answering yet: it writes `studio-<port>-<pid>.pid`
+/// in its folder as it starts. A second one started then can only fail (the
+/// port is taken), so it is waited for instead.
+fn other_on_port(port: u16) -> bool {
+    let Ok(dir) = std::fs::read_dir(studio_home()) else { return false };
+    dir.flatten().filter_map(|e| studio_pid(&e.file_name().to_string_lossy(), port)).any(|pid| {
+        // Its pid still a running Python: a file left by one that ended, or a pid used again since, isn't it.
+        crate::screen::exe_name(pid).eq_ignore_ascii_case("python")
+    })
+}
+
+/// The pid in Unsloth Studio's `studio-<port>-<pid>.pid`, for `port`.
+fn studio_pid(file: &str, port: u16) -> Option<u32> {
+    file.strip_prefix(&format!("studio-{port}-"))?.strip_suffix(".pid")?.parse().ok()
 }
 
 /// Lumo's server was started and doesn't answer yet.
@@ -489,6 +524,16 @@ mod tests {
         assert_eq!(idle_limit("never"), None);
         assert_eq!(idle_limit("0"), None);
         assert_eq!(idle_limit(""), None);
+    }
+
+    #[test]
+    fn one_opened_from_its_shortcut_is_found_by_its_port_file() {
+        // Unsloth Studio writes studio-<port>-<pid>.pid as it starts.
+        assert_eq!(studio_pid("studio-8888-25880.pid", 8888), Some(25880));
+        assert_eq!(studio_pid("studio-8888-25880.pid", 8890), None);
+        assert_eq!(studio_pid("studio-starting-25880.marker", 8888), None);
+        assert_eq!(studio_pid("studio.pid", 8888), None);
+        assert_eq!(studio_pid("studio-8888-x.pid", 8888), None);
     }
 
     #[test]

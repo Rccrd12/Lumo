@@ -156,7 +156,7 @@ async fn ask(prompt: String) -> Result<(String, String), String> {
     } else if let Some(p) = openai_compat::provider(&provider) {
         openai_compat::complete(p, &model, SYSTEM, &prompt).await?
     } else if let Some(server) = local_chat::server(&settings, &provider) {
-        local_chat::complete(&server, &model, SYSTEM, &prompt).await?
+        local_chat::complete(&server, &model, SYSTEM, &prompt, false).await?
     } else {
         return Err(format!("Unknown chat provider: {provider}"));
     };

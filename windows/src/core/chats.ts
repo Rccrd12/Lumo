@@ -384,13 +384,13 @@ export function makeRoom(keep?: string): boolean {
  * ChatWarning), said in the island's language when shown; or, saved by the
  * 0.22.2 betas, the words already written.
  */
-export type AnswerWarning = { kind: "malformed" | "error"; message: string } | { line: string; detail: string };
+export type AnswerWarning = { kind: "malformed" | "error" | "interrupted"; message: string } | { line: string; detail: string };
 
 /** A saved answer's warning (SavedTurn.warning), when it is one. */
 export function savedWarning(w: unknown): AnswerWarning | undefined {
   const o = w as { kind?: unknown; message?: unknown; line?: unknown; detail?: unknown } | null | undefined;
   if (!o) return undefined;
-  if ((o.kind === "malformed" || o.kind === "error") && typeof o.message === "string") return { kind: o.kind, message: o.message };
+  if ((o.kind === "malformed" || o.kind === "error" || o.kind === "interrupted") && typeof o.message === "string") return { kind: o.kind, message: o.message };
   return typeof o.line === "string" && typeof o.detail === "string" ? { line: o.line, detail: o.detail } : undefined;
 }
 

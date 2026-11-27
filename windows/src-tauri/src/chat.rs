@@ -76,7 +76,9 @@ pub struct ChatReply {
 }
 
 /// A problem under an answer: what kind ("malformed": the model sent a tool
-/// call the CLI could not read; "error": any other), and the CLI's own words.
+/// call the CLI could not read; "interrupted": a local model's answer cut
+/// off by its server after its tools ran, local_chat.rs; "error": any
+/// other), and the CLI's or the server's own words.
 /// The island says it in its language (src/views/chat.ts warningWords).
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct ChatWarning {
@@ -1535,13 +1537,18 @@ pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<Compacte
     } else if let Some(p) = openai_compat::provider(provider) {
         openai_compat::summarize(p, &model, COMPACT_SYSTEM, &prompt).await?
     } else if let Some(server) = local_chat::server(settings, provider) {
-        local_chat::complete(&server, &model, COMPACT_SYSTEM, &prompt).await?
+        local_chat::complete(&server, &model, COMPACT_SYSTEM, &prompt, true).await?
     } else {
         return Err(format!("Unknown chat provider: {provider}"));
     };
     let summary = summary.trim().to_string();
     if summary.is_empty() {
         return Err(crate::i18n::t("The model gave no summary. Try again."));
+    }
+    // A short chat (its long part a picture or a file, sent with its own
+    // question only): a summary as long as the turns would only add to it.
+    if summary.len() >= text.len() {
+        return Err(crate::i18n::t("The chat is already short: its summary would take more room than the messages it replaces."));
     }
     let before = chat.history_chars();
     if !chat.set_compact_since(epoch, upto, summary.clone()) {
