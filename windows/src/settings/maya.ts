@@ -205,6 +205,7 @@ export function mayaBlock(redrawAll: () => void): HTMLElement {
   };
 
   function drawStarting(s: MayaServer) {
+    drawing++;
     clear(below);
     line.textContent = "";
     buttons([]);
@@ -218,19 +219,26 @@ export function mayaBlock(redrawAll: () => void): HTMLElement {
     );
   }
 
+  // Draws can overlap (the first refresh, a click's and the event's): only
+  // the latest one writes, and it clears after its wait, so the row is never
+  // drawn twice.
+  let drawing = 0;
   async function draw(s: MayaServer | null) {
+    const mine = ++drawing;
     if (!s) return;
     if (s.state === "starting") {
       drawStarting(s);
       return;
     }
-    clear(below);
     if (s.state === "off") {
+      clear(below);
       line.textContent = t(settings.mayaAutoStart !== false ? STRINGS.off : STRINGS.offPlain);
       buttons(install?.ready === false ? [] : [startNow]);
       return;
     }
     const caps = await Bridge.localCaps("maya", MODEL).catch(() => null);
+    if (mine !== drawing) return;
+    clear(below);
     line.textContent = caps?.loadedContext ? t(STRINGS.loaded, { model: MODEL, size: size(caps.loadedContext) }) : MODEL;
     if (!s.owned) {
       below.append(h("div", { class: "hint", text: t(STRINGS.theirs) }));
