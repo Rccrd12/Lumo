@@ -754,6 +754,27 @@ fn settings_for(app: &AppHandle, pick: &Pick) -> crate::settings::Settings {
 const MAX_REPOS: usize = 8;
 
 /// The repositories the user picked, as "owner/name", once each.
+/// An option's label without the letter or number the model put in front of it ("D: kernel più veloce",
+/// "2) Fermiamoci", "(B) Sì"): the card shows its own A, B, C, D, and two letters that differ confuse.
+fn bare_label(label: &str) -> &str {
+    let t = label.trim();
+    let inner = t.strip_prefix('(').unwrap_or(t);
+    let mark = inner.chars().take_while(|c| c.is_ascii_alphanumeric()).count();
+    let mark_ok = match &inner[..mark] {
+        m if m.len() == 1 && m.chars().all(|c| c.is_ascii_alphabetic()) => true,
+        m => (1..=2).contains(&m.len()) && m.chars().all(|c| c.is_ascii_digit()),
+    };
+    if !mark_ok {
+        return t;
+    }
+    let after = &inner[mark..];
+    let rest = [":", ")", ".", " -", " –", " —"].iter().find_map(|p| after.strip_prefix(p));
+    match rest {
+        Some(r) if r.starts_with(char::is_whitespace) && !r.trim().is_empty() => r.trim(),
+        _ => t,
+    }
+}
+
 fn repos_of(raw: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for r in raw {
@@ -1325,7 +1346,11 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
                 Ok(format!("{t} stopped."))
             }
             ASK_USER => {
-                let options: Vec<Opt> = serde_json::from_value(input.get("options").cloned().unwrap_or_default()).unwrap_or_default();
+                let mut options: Vec<Opt> = serde_json::from_value(input.get("options").cloned().unwrap_or_default()).unwrap_or_default();
+                // The card letters its options A, B, C… itself: a letter of the model's own would say another one.
+                for o in &mut options {
+                    o.label = bare_label(&o.label).to_string();
+                }
                 let question = s("question");
                 if question.trim().is_empty() || !(2..=4).contains(&options.len()) {
                     return Err("A card needs a question and 2 to 4 options.".into());
@@ -1859,6 +1884,21 @@ mod tests {
         assert!(told.starts_with("You changed"), "{told}");
         assert_eq!(o.member("t2").unwrap().mail.len(), 1, "a CLI hears it as a message");
         assert_eq!(o.coordinator.mail.len(), 1);
+    }
+
+    #[test]
+    fn a_cards_options_keep_only_the_cards_own_letters() {
+        assert_eq!(bare_label("D: kernel più veloce"), "kernel più veloce");
+        assert_eq!(bare_label("E) più potenza alla GPU"), "più potenza alla GPU");
+        assert_eq!(bare_label("(B) Sì"), "Sì");
+        assert_eq!(bare_label("2. Fermiamoci qui"), "Fermiamoci qui");
+        assert_eq!(bare_label("C - cache nel contesto"), "cache nel contesto");
+        assert_eq!(bare_label("PDF"), "PDF");
+        assert_eq!(bare_label("A"), "A");
+        assert_eq!(bare_label("No, è normale"), "No, è normale");
+        assert_eq!(bare_label("4K: video"), "4K: video");
+        assert_eq!(bare_label("2026: il piano"), "2026: il piano");
+        assert_eq!(bare_label("D:"), "D:");
     }
 
     #[test]

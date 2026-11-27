@@ -52,7 +52,7 @@ fn ask_tool() -> Value {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "label": { "type": "string", "description": "A few words." },
+                        "label": { "type": "string", "description": "A few words, with no letter or number in front: the card letters the options A, B, C, D itself." },
                         "consequence": { "type": "string", "description": "One sentence: what happens if chosen." },
                     },
                     "required": ["label", "consequence"],
