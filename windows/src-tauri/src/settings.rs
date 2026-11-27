@@ -137,6 +137,13 @@ pub struct Settings {
     /// Claude Code's effort level for the chat ("low" … "max"); empty: Claude
     /// Code's own default. Only the Claude Code provider uses it.
     pub chat_effort: String,
+    /// The chat view shows the orchestra (orchestra.rs) instead of a chat:
+    /// picked as "Orchestrator" in the model picker.
+    pub orchestra_mode: bool,
+    /// The provider, model and effort of an orchestra's coordinator, and of
+    /// its threads; empty ones are the chat's own.
+    pub orchestra_coordinator: crate::orchestra::Pick,
+    pub orchestra_thread: crate::orchestra::Pick,
     /// What the chat's CLIs (Claude Code, Antigravity CLI) may do without a
     /// card: "default" (ask for everything), "auto" (the CLI decides what is
     /// safe; "acceptEdits", from before, reads as it) or "plan" (plan only,
@@ -394,6 +401,9 @@ impl Default for Settings {
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
+            orchestra_mode: false,
+            orchestra_coordinator: Default::default(),
+            orchestra_thread: Default::default(),
             chat_permission_mode: "default".into(),
             chat_permission_mode_agy: String::new(),
             local_sandbox: "high".into(),

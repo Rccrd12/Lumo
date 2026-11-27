@@ -1510,13 +1510,42 @@ pub async fn call_for_chat(
     sandbox_high: bool,
 ) -> (String, bool, Option<String>) {
     crate::chat_agents::signal(app, chat_id);
+    // A member of an orchestra (orchestra.rs): its own tools run there; a file
+    // another thread is changing is refused; the messages that came for it
+    // meanwhile go with the answer, read at this step.
+    if agent.is_none() && crate::orchestra::parse_chat(chat_id).is_some() {
+        let answer = match crate::orchestra::call(app, chat_id, id, &input) {
+            Some((text, failed)) => (text, failed, None),
+            None => match crate::orchestra::before(app, chat_id, id, &input) {
+                Err(refused) => (refused, true, None),
+                Ok(()) => Box::pin(call_in_chat_alive(app, chat_id, provider, agent, id, input, asking, sandbox_high)).await,
+            },
+        };
+        crate::chat_agents::signal(app, chat_id);
+        return (crate::orchestra::with_mail(app, chat_id, answer.0), answer.1, answer.2);
+    }
+    let answer = Box::pin(call_in_chat_alive(app, chat_id, provider, agent, id, input, asking, sandbox_high)).await;
+    crate::chat_agents::signal(app, chat_id);
+    answer
+}
+
+/// `call_in_chat` in the chat's and its agent's scope, its sign of life on.
+#[allow(clippy::too_many_arguments)]
+async fn call_in_chat_alive(
+    app: &AppHandle,
+    chat_id: &str,
+    provider: &str,
+    agent: Option<&str>,
+    id: &str,
+    input: Value,
+    asking: Asking,
+    sandbox_high: bool,
+) -> (String, bool, Option<String>) {
     // Boxed: the call is a large future, and the chat's answer holds this one.
     let call = crate::pipe::CHAT.scope(chat_id.to_string(), call_in_chat(app, chat_id, provider, agent, id, input, asking, sandbox_high));
     // One of the chat's agents calling: the cards it raises name it.
     let call = Box::pin(crate::pipe::AGENT.scope(agent.unwrap_or_default().to_string(), call));
-    let answer = crate::chat_agents::alive_while(app, chat_id, call).await;
-    crate::chat_agents::signal(app, chat_id);
-    answer
+    crate::chat_agents::alive_while(app, chat_id, call).await
 }
 
 /// `call_for_chat`'s call itself: Lumo's browser here, the rest in `call_plain`.

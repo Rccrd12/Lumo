@@ -290,6 +290,13 @@ export function motionAmount(v: unknown): number {
   return m === "still" ? 0 : m === "lively" ? 1.8 : 1;
 }
 
+/** Who plays a role of the orchestra (orchestra.rs Pick): "" in a field = the chat's own provider, model or effort. */
+export interface OrchestraPick {
+  provider: string;
+  model: string;
+  effort: string;
+}
+
 export interface Settings {
   soundEnabled: boolean;
   soundVolume: number;
@@ -372,6 +379,12 @@ export interface Settings {
   chatModels: Record<string, string>;
   /** Claude Code's effort for the chat ("low" … "max"); "" = Claude Code's default. */
   chatEffort: string;
+  /** The chat shows the orchestra (views/orchestra.ts): a coordinator and its threads, picked as "Orchestrator" in the model picker. */
+  orchestraMode: boolean;
+  /** The orchestra's coordinator: its provider, model and effort ("" = the chat's own). A new orchestra copies it (orchestra.rs). */
+  orchestraCoordinator: OrchestraPick;
+  /** The orchestra's threads: one provider, model and effort for all of them ("" = the chat's own). */
+  orchestraThread: OrchestraPick;
   /** What the chat's CLIs may do without asking (core/providers.ts PERMISSION_MODES). */
   chatPermissionMode: string;
   /** Antigravity CLI's own mode, apart from the others' (its Auto lets every command run); "" until picked (core/providers.ts storedPermissionMode). */
@@ -533,6 +546,9 @@ export const DEFAULT_SETTINGS: Settings = {
   chatProvider: "anthropic",
   chatModels: {},
   chatEffort: "",
+  orchestraMode: false,
+  orchestraCoordinator: { provider: "", model: "", effort: "" },
+  orchestraThread: { provider: "", model: "", effort: "" },
   chatPermissionMode: "default",
   chatPermissionModeAgy: "",
   localSandbox: "high",

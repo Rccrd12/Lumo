@@ -1,0 +1,1106 @@
+/* ── The orchestra (views/orchestra.ts) ─────────────────────────────────────
+   In the chat, while Settings.orchestraMode is on: the rail of its members on
+   the left (or the reader of a Markdown file in its place), the member on
+   screen on the right, over the chat's own buttons and field. Nothing of it
+   shows otherwise. Concept: modalita-orchestratore v2. */
+
+.chat-body:not(.orc) > .orc-part,
+.orc-queue[hidden] {
+  display: none !important;
+}
+
+.chat-card .chat-body.orc {
+  --orc-rail: 190px;
+  padding-left: calc(var(--orc-rail) + 28px);
+}
+
+.chat-card .chat-body.orc.orc-narrow {
+  --orc-rail: 150px;
+}
+
+.chat-card .chat-body.orc.orc-reading {
+  --orc-doc: min(52%, 560px);
+  padding-left: calc(var(--orc-doc) + 28px);
+}
+
+/* The chat's own conversation, and what goes with it, step aside. */
+.chat-body.orc > .chat-log:not(.orc-log),
+.chat-body.orc > .chip-row,
+.chat-body.orc > .chat-queue,
+.chat-body.orc > .chat-ask,
+.chat-body.orc > .chat-hold,
+.chat-body.orc > .edit-strip,
+.chat-body.orc > .chat-to-end {
+  display: none !important;
+}
+
+/* A panel (the models, the files, the permissions…) takes the conversation's place, as in the chat. */
+.chat-body.orc:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) > :is(.orc-log, .orc-queue) {
+  display: none !important;
+}
+
+/* ── The rail ──────────────────────────────────────────────────────────────── */
+
+.orc-rail {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  bottom: 14px;
+  width: var(--orc-rail);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 6px 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  font: 400 12px var(--font);
+  color: #c8cdd4;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.chat-body.orc-reading > .orc-rail {
+  display: none;
+}
+
+.orc-rail button {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.orc-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 8px 6px;
+  border-radius: 8px;
+  color: #8b929e !important;
+  font-size: 11px !important;
+}
+
+.orc-top:hover,
+.orc-top.open {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #c8cdd4 !important;
+}
+
+.orc-top-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.orc-top svg {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.orc-items,
+.orc-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.orc-sec {
+  display: flex;
+  padding: 10px 8px 4px;
+  font: 600 10px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b717c;
+}
+
+.orc-sec-n {
+  margin-left: auto;
+  font-weight: 500;
+}
+
+.orc-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9px;
+}
+
+.orc-item:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.orc-item.on {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.orc-item-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.orc-item-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.orc-item-title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: #e8eaed;
+}
+
+.orc-item-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 1px;
+  min-width: 0;
+  font-size: 10.5px;
+  color: #8b929e;
+}
+
+.orc-item-step {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.orc-item-status.ask {
+  color: #fbbf24;
+}
+
+.orc-item-status.done {
+  color: #86efac;
+}
+
+.orc-item-status.bad {
+  color: var(--red-text);
+}
+
+.orc-dot {
+  flex: 0 0 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.orc-fresh {
+  flex: 0 0 auto;
+  margin-left: 5px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.14);
+  font-size: 9.5px;
+  color: #93c5fd;
+}
+
+.orc-badge {
+  flex: 0 0 auto;
+  align-self: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 8px;
+  box-sizing: border-box;
+  background: #fbbf24;
+  font: 700 10px/16px var(--font);
+  text-align: center;
+  color: #1a1300;
+}
+
+/* A member's mark: the coordinator's gold ring; a thread's arc at work, amber
+   waiting for you, its tick done, a dashed ring waiting, red failed. */
+.orc-mk {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+}
+
+.orc-mk.small {
+  flex-basis: 12px;
+  width: 12px;
+  height: 12px;
+  margin-top: 0;
+}
+
+.orc-mk.coord {
+  border: 2px solid #f2d38e;
+  box-shadow: 0 0 6px rgba(242, 211, 142, 0.35);
+}
+
+.orc-mk.work {
+  border: 2px solid rgba(96, 165, 250, 0.25);
+  border-top-color: #60a5fa;
+  transform: rotate(-30deg);
+}
+
+.orc-mk.ask {
+  background: rgba(251, 191, 36, 0.18);
+}
+
+.orc-mk.ask::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 6px #fbbf24;
+}
+
+.orc-mk.done {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.orc-mk.idle {
+  border: 1.5px dashed #5c6370;
+}
+
+.orc-mk.failed {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.orc-mk.stopped {
+  border: 1.5px solid #5c6370;
+}
+
+.orc-mk.stopped::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: #8b929e;
+}
+
+/* The past orchestras, in the rail's place while its title is open. */
+.orc-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9px;
+}
+
+.orc-menu-row:hover,
+.orc-menu-row.on {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.orc-menu-new {
+  color: #e8eaed !important;
+}
+
+.orc-menu-new svg {
+  flex: 0 0 12px;
+}
+
+.orc-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #e8eaed;
+}
+
+.orc-menu-when {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: #6b717c;
+}
+
+/* ── The member on screen ──────────────────────────────────────────────────── */
+
+.orc-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 2px 7px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font: 400 12px var(--font);
+  color: #8b929e;
+}
+
+.orc-head .orc-mk {
+  margin-top: 0;
+}
+
+.orc-head-title {
+  flex: 0 1 auto;
+  min-width: 40px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  font-size: 13px;
+  color: #e8eaed;
+}
+
+.orc-head-gap {
+  flex: 1;
+}
+
+.orc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font: 400 11px var(--font);
+  white-space: nowrap;
+  color: #aab0ba;
+  cursor: default;
+}
+
+.orc-pill.blue {
+  background: rgba(96, 165, 250, 0.12);
+  color: #93c5fd;
+}
+
+.orc-pill.amber {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+}
+
+.orc-pill.green {
+  background: rgba(74, 222, 128, 0.12);
+  color: #86efac;
+}
+
+.orc-pill.red {
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+}
+
+.orc-plan-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.orc-stop {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(248, 113, 113, 0.12);
+  font: 400 11px var(--font);
+  color: #fca5a5;
+  cursor: default;
+}
+
+.orc-stop:hover {
+  background: rgba(248, 113, 113, 0.2);
+}
+
+.orc-log {
+  gap: 8px;
+}
+
+.orc-empty {
+  margin: auto 0;
+  padding: 0 24px;
+  font: 400 12px/1.55 var(--font);
+  text-align: center;
+  color: #6b717c;
+}
+
+/* The plan, and who holds which files: a quiet box at the top. */
+.orc-plan {
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+  font: 400 12px/1.5 var(--font);
+  color: #c8cdd4;
+}
+
+.orc-box-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: #e8eaed;
+}
+
+.orc-box-aside {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 11px;
+  color: #8b929e;
+}
+
+.orc-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.orc-step-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.orc-step.completed .orc-step-text {
+  color: #8b929e;
+}
+
+.orc-step-mk {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid #5c6370;
+}
+
+.orc-step.in_progress .orc-step-mk {
+  border: 2px solid #60a5fa;
+}
+
+.orc-step.completed .orc-step-mk {
+  border: 0;
+  background: #22c55e;
+  color: #06290f;
+}
+
+.orc-path {
+  font: 400 11px var(--mono);
+  color: #e8eaed;
+}
+
+.orc-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  white-space: nowrap;
+  color: #8b929e;
+}
+
+/* A message between members: who it is from, grey, then its text. */
+.orc-relay {
+  flex: 0 0 auto;
+  padding: 2px 2px;
+  font: 400 13px/1.55 var(--font);
+  color: #e8eaed;
+}
+
+.orc-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 400 11.5px var(--font);
+  color: #8b929e;
+  cursor: default;
+}
+
+.orc-from:hover {
+  color: #c8cdd4;
+}
+
+.orc-from svg {
+  color: #6b717c;
+}
+
+.orc-relay-body .md-p,
+.orc-relay-body .md-bullet {
+  font-size: 13px;
+}
+
+.orc-when {
+  margin-top: 2px;
+  font: 400 10.5px var(--font);
+  color: #6b717c;
+}
+
+.orc-seen {
+  align-self: flex-end;
+  margin: -4px 4px 0 0;
+  font: 400 10.5px var(--font);
+  color: #6b717c;
+}
+
+/* What the member does now, under what it wrote. */
+.orc-now {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 2px;
+  font: 400 11.5px var(--font);
+  color: #93c5fd;
+}
+
+.orc-now i {
+  flex: 0 0 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #60a5fa;
+  box-shadow: 0 0 5px #60a5fa;
+}
+
+.orc-note {
+  flex: 0 0 auto;
+  align-self: center;
+  font: 400 11px var(--font);
+  color: #6b717c;
+}
+
+.orc-note.error,
+.orc-error {
+  color: var(--red-text);
+}
+
+.orc-error {
+  flex: 0 0 auto;
+  font: 400 11.5px var(--font);
+}
+
+/* Lumo kept a member off a file another one is editing. */
+.orc-lock {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
+  font: 400 12px/1.5 var(--font);
+  color: #c8cdd4;
+}
+
+.orc-lock > svg {
+  flex: 0 0 12px;
+  margin-top: 3px;
+  color: #9aa0aa;
+}
+
+.orc-lock-text {
+  min-width: 0;
+}
+
+.orc-lock-label {
+  display: block;
+  font-size: 10.5px;
+  color: #8b929e;
+}
+
+.orc-lock-body .md-p {
+  font-size: 12.5px;
+}
+
+/* A question to the user: its options, one recommended. */
+.orc-card {
+  flex: 0 0 auto;
+  padding: 11px 14px 9px;
+  border-radius: 14px;
+  border: 1px solid #333338;
+  background: #232326;
+  font: 400 12px/1.45 var(--font);
+}
+
+.orc-card-ctx {
+  margin-bottom: 2px;
+  font-size: 11px;
+  color: #8b929e;
+}
+
+.orc-card-q {
+  padding-bottom: 6px;
+}
+
+.orc-card-q .md-p {
+  font-size: 13.5px;
+  color: #e8eaed;
+}
+
+.orc-opts {
+  display: flex;
+  flex-direction: column;
+}
+
+.orc-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 0;
+  border: 0;
+  border-top: 1px solid #333338;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: default;
+}
+
+.orc-opt:hover:not(:disabled) .orc-opt-key {
+  background: #48484f;
+  color: #f1f2f4;
+}
+
+.orc-opt:disabled {
+  opacity: 0.45;
+}
+
+.orc-opt.chosen {
+  opacity: 1;
+}
+
+.orc-opt.chosen .orc-opt-key {
+  background: #f1f2f4;
+  color: #111;
+}
+
+.orc-opt-key {
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: #38383d;
+  font-size: 12px;
+  color: #c8cdd4;
+}
+
+.orc-opt-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.orc-opt-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #f1f2f4;
+}
+
+.orc-opt-cons {
+  font-size: 11.5px;
+  color: #9aa0aa;
+}
+
+.orc-rec {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.14);
+  font-size: 10.5px;
+  white-space: nowrap;
+  color: #7ab3ff;
+}
+
+.orc-card-foot {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 400 11px var(--font);
+  color: #8b929e;
+}
+
+.orc-card-foot.link {
+  text-decoration: underline;
+  text-decoration-color: #5c6370;
+  text-underline-offset: 2px;
+  cursor: default;
+}
+
+.orc-card-foot.link:hover {
+  color: #c8cdd4;
+}
+
+/* The files a thread handed over. */
+.orc-files {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+.orc-fcard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 132px;
+  padding: 8px 9px 9px;
+  border-radius: 12px;
+  border: 1px solid #333338;
+  background: #1b1b1e;
+  box-sizing: border-box;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: default;
+}
+
+.orc-fcard:hover {
+  border-color: #46464d;
+}
+
+.orc-fcard.sel {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.orc-ftype {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid #3a3a40;
+  font: 600 9.5px var(--font);
+  color: #aab0ba;
+}
+
+.orc-ftype.icon {
+  padding: 2px 5px;
+}
+
+.orc-fglimpse {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 52px;
+  margin: 7px 0 6px;
+  padding: 4px;
+  border-radius: 5px;
+  box-sizing: border-box;
+  background: #0d0d0f;
+  overflow: hidden;
+  color: #3a3a40;
+}
+
+.orc-fglimpse.doc {
+  display: block;
+  padding: 6px 7px;
+  background: #141416;
+}
+
+.orc-fglimpse.doc .orc-fg-title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  font: 400 9px/1.15 Georgia, "Times New Roman", serif;
+  color: #e8eaed;
+}
+
+.orc-fglimpse.doc .orc-fg-line {
+  display: block;
+  width: 100%;
+  height: 2px;
+  margin: 5px 0 0;
+  border-radius: 1px;
+  background: #2c2c31;
+}
+
+.orc-fglimpse.doc .orc-fg-line.short {
+  width: 60%;
+}
+
+.orc-fname {
+  max-width: 100%;
+  font: 400 11px/1.3 var(--font);
+  word-break: break-word;
+  color: #e8eaed;
+}
+
+/* The messages waiting for the member's next step, above the field. */
+.orc-queue {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── The reader of a Markdown file, in the rail's place ──────────────────── */
+
+.orc-doc {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  bottom: 14px;
+  width: var(--orc-doc, 52%);
+  display: none;
+  flex-direction: column;
+  border-radius: 14px;
+  border: 1px solid #2a2a2e;
+  background: #161618;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.chat-body.orc.orc-reading > .orc-doc {
+  display: flex;
+}
+
+.orc-doc-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  border-bottom: 1px solid #26262b;
+  font: 400 11.5px var(--font);
+  color: #c8cdd4;
+}
+
+.orc-doc-bar > svg {
+  flex: 0 0 auto;
+  color: #8b929e;
+}
+
+.orc-doc-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.orc-doc-btn,
+.orc-doc-x {
+  flex: 0 0 auto;
+  border: 0;
+  font: 400 11px var(--font);
+  color: #c8cdd4;
+  cursor: default;
+}
+
+.orc-doc-btn {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.orc-doc-x {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: transparent;
+  color: #8b929e;
+}
+
+.orc-doc-btn:hover,
+.orc-doc-x:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.orc-doc-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 16px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.orc-doc-body .md-p,
+.orc-doc-body .md-bullet {
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.orc-doc-body .md-h {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  color: #f1f2f4;
+}
+
+.orc-doc-body .md-h1 {
+  font-size: 21px;
+}
+
+/* ── The picker's two roles (views/chat-models.ts) ──────────────────────── */
+
+.picker-chip.orchestra .picker-dot {
+  box-sizing: border-box;
+  border: 1.6px solid var(--accent);
+  background: transparent;
+}
+
+.orch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0 4px;
+}
+
+.orch-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+}
+
+.orch-line-role {
+  flex: 0 0 82px;
+  font: 400 12px var(--font);
+  color: #8b929e;
+}
+
+.orch-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 1 260px;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font: 400 12px var(--font);
+  color: #8b929e;
+  cursor: default;
+}
+
+.orch-pick:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.orch-pick-dot {
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.orch-pick-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #e8eaed;
+}
+
+.orch-pick-provider {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.orch-pick svg {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.orch-line .effort-track {
+  flex: 1 1 150px;
+  min-width: 70px;
+}
+
+.orch-line .effort-value {
+  min-width: 52px;
+}
+
+.orch-note {
+  padding: 4px 8px 0;
+  font: 400 11px/1.5 var(--font);
+  color: #8a8f98;
+}
+
+.orch-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 2px 8px 2px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: 500 11.5px var(--font);
+  color: #e8eaed;
+  cursor: default;
+}
+
+.orch-back:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.orch-back svg {
+  color: #8b929e;
+}
+
+/* A step Lumo notes (a thread opened): grey, with its bullet; a click opens it. */
+.orc-act {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  font: 400 11.5px var(--font);
+  text-align: left;
+  color: #8b929e;
+  cursor: default;
+}
+
+.orc-act::before {
+  content: "";
+  flex: 0 0 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #5c6370;
+}
+
+.orc-act:hover {
+  color: #c8cdd4;
+}
+
+/* Beside the reader the conversation is narrow: its header keeps the name and where it stands. */
+.chat-body.orc-reading .orc-head :is(.orc-model-pill, .orc-plan-btn) {
+  display: none;
+}

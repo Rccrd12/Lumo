@@ -69,6 +69,7 @@ mod migrate;
 mod net;
 mod notifications;
 mod openai_compat;
+mod orchestra;
 mod outlook;
 mod outlook_mapi;
 mod pc_status;
@@ -1555,6 +1556,15 @@ pub fn run() {
         .manage(recap::load())
         .invoke_handler(own_pages_only(tauri::generate_handler![
             boot,
+            orchestra::orchestra_list,
+            orchestra::orchestra_create,
+            orchestra::orchestra_open,
+            orchestra::orchestra_send,
+            orchestra::orchestra_answer,
+            orchestra::orchestra_stop,
+            orchestra::orchestra_set_picks,
+            orchestra::orchestra_delete,
+            orchestra::orchestra_read_file,
             save_settings,
             set_system_languages,
             set_collapsed,

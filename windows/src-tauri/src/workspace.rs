@@ -158,9 +158,9 @@ fn not_found(path: &Path) -> String {
     format!("{} doesn't exist, or can't be read.", path.display())
 }
 
-/// The chat's folder.
+/// The chat's folder: an orchestra's members share one (orchestra.rs).
 pub fn dir(chat: &str) -> PathBuf {
-    root().join(safe_id(chat))
+    root().join(safe_id(&crate::orchestra::shared_folder(chat)))
 }
 
 fn root() -> PathBuf {

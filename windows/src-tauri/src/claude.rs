@@ -489,8 +489,10 @@ pub async fn send(
         budget: Default::default(),
     };
     tools.push(crate::api_agents::tool());
+    // A member of an orchestra: its role's tools and words (orchestra.rs).
+    crate::orchestra::shape_tools(chat.id(), &mut tools);
     let browsing = if browser && mode != "plan" { crate::browser::note() } else { String::new() };
-    let system = format!("{}{}{browsing}{plan}{}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail), crate::api_agents::NOTE);
+    let system = format!("{}{}{browsing}{plan}{}{}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail), crate::api_agents::NOTE, crate::orchestra::note(chat.id()));
     let mut body = with_user_tools(request_body(model, &system, &turn.history, &user, known.max_tokens), &tools);
     if NO_CACHE.load(Ordering::Relaxed) {
         without_cache(&mut body);

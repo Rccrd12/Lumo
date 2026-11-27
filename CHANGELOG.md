@@ -1,5 +1,14 @@
 # Changelog
 
+## Windows 0.24.0 — November 27, 2026
+
+- **Orchestrator mode**: pick **Orchestrator** in the chat's model picker, then a model and an effort for the **Coordinator** and for the **Threads** (any API provider or local model; sizes can mix, such as a cloud coordinator and local threads). The chat becomes an orchestra: the coordinator makes the plan and splits the work into threads, but never touches a file itself (it has only its own tools: start a thread, write to it, read it, stop it, ask you); each thread is a chat of its own with its model and the chat's tools, working on copies in a folder all threads share. Only the coordinator starts threads
+- **Talk to anyone**: the rail lists the coordinator and its threads with what each is doing (at work, waits for you, done, stopped); you write to the coordinator or straight to any thread. Threads write to the coordinator and to each other, shown as grey "From …" lines as in Claude Code
+- **Messages while it works**: a message to a member that is answering is read at its next step, inside its turn, so it can change course at once; it shows as queued until then, then as read while working. One to a member at rest starts it
+- **Who has which file**: a thread that tries to change a file another thread is changing is stopped and told who has it, and the coordinator is told too; the coordinator's view lists who holds which files
+- **Decisions and files**: the coordinator and the threads can ask you with a card of 2 to 4 options, one recommended; your click goes back to who asked. A thread hands over a finished file as a card, and a Markdown report opens beside the chat
+- Orchestras are kept on this PC (`%LOCALAPPDATA%\com.rccrd12.lumo\orchestra`), with their shared folder, and come back from the orchestra menu. The CLIs (Claude Code, Antigravity CLI, Codex, Copilot CLI, Cursor CLI) can't be members yet
+
 ## Windows 0.23.1 — November 27, 2026
 
 - **One file, one chat**: a file you drop, paste or pick, or a screenshot, waits in the inbox only while it is in the attachments, and its × deletes it at once. The question that takes it moves it into its chat's folder (`inbox\chats\<chat>`) under the name it had on your computer, so two chats' files no longer become "file (2)"; from then on the island, the AI and the CLI use it there, and the AI writes its own files beside it. Nothing sweeps a chat's folder any more: it goes with the chat (also one past the 40 kept in Past chats), a file of it with its × in **Chat files**, or with an edit that sends the question again without it, only once the edit is sent. What no field and no chat names leaves the inbox when Lumo starts, instead of after a day or a week. The files past chats still name in the inbox move into their folders the first time Lumo starts; one a CLI already knows by its path stays where the CLI knows it

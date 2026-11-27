@@ -1134,6 +1134,14 @@ your click as the chat's own do. The model that started them waits for all
 of them and answers from their reports: nothing runs after the answer, and
 the chat's Stop stops them all.
 
+### Orchestrator mode
+
+For a big job, pick **Orchestrator** in the chat's model picker and choose a model and an effort for the **Coordinator** and for the **Threads**: any API provider or local model, and the two may differ (a cloud coordinator with local threads, for instance). The CLIs can't be members yet.
+
+The coordinator plans and hands the work out, and does nothing else: it has no file, terminal or browser tools, only its own to start a thread, write to it, read it, stop it and ask you. Each thread is a chat of its own, with its model, the chat's tools and a folder of copies shared by every thread of the orchestra (`%LOCALAPPDATA%\com.rccrd12.lumo\workspaces\orch-<id>`). Only the coordinator starts threads.
+
+The rail lists the coordinator and its threads with what each is doing; you write to the coordinator or to any thread directly, and they write to each other (grey "From …" lines). A message to one that is answering is read at its next step, inside its turn; to one at rest, it starts it. A thread that tries to change a file another thread is changing is stopped and told who has it, and so is the coordinator. Cards of 2 to 4 options ask you what only you can decide; a thread hands over a finished file as a card, and a Markdown report opens beside the chat. Orchestras are kept in `%LOCALAPPDATA%\com.rccrd12.lumo\orchestra` and come back from the menu above the rail (orchestra.rs, views/orchestra.ts).
+
 ### The chat knows what's open
 
 With **Settings → Security → Open windows** (off when Lumo is first installed), every

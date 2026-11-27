@@ -13,6 +13,9 @@ import { State } from "../core/state";
 import { t, tl } from "../i18n/i18n";
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { AGY, saveSettings } from "./chat-attach";
+import { ORCHESTRA_ACCENT, orchestraProviders, resolvePick, roleField, type OrchestraRole } from "../core/orchestra-picks";
+import type { OrchestraPick } from "../core/state";
+import { ORCHESTRA_STRINGS } from "./orchestra-strings";
 import { ACTIVITY_STRINGS } from "./chat-messages";
 import { LOAD_MINUS, LOAD_PLUS, LOAD_STRINGS, STRINGS, effortLabel } from "./chat-strings";
 
@@ -46,7 +49,7 @@ export let readyProviders: ReadonlySet<string> | null = null;
  * Provider chips, then the chosen provider's models — ModelPickerView.
  * `onPicked` once a provider, a model or an effort is picked: the chat on screen keeps it.
  */
-export function buildPicker(onChange: () => void, openSettings: () => void, onPicked: () => void): Picker {
+export function buildPicker(onChange: () => void, openSettings: () => void, onPicked: () => void, onOrchestraPicks: () => void = () => {}): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
   // Claude Code only: how hard it thinks (claude --effort), on a short slider
@@ -89,6 +92,11 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
   function drawEfforts() {
     clear(efforts);
     efforts.classList.remove("orchestrator");
+    // The orchestra's roles have their sliders on their own rows (drawOrchestra).
+    if (State.settings.orchestraMode) {
+      efforts.hidden = true;
+      return;
+    }
     const p = providerDef(State.settings.chatProvider);
     if (p.id === AGY && drawOrchestrator(p)) return;
     const spec = effortSpec(p);
@@ -299,8 +307,27 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
 
   function drawChips() {
     clear(chips);
+    if (State.settings.orchestraMode && orchestraRole) {
+      drawRoleChips(orchestraRole);
+      return;
+    }
+    // The orchestra first, chosen like a provider, once a provider can play its roles.
+    if (State.settings.orchestraMode || orchestraProviders(State.settings, readyProviders).length > 0) {
+      const on = State.settings.orchestraMode;
+      const chip = h(
+        "button",
+        { class: on ? "picker-chip orchestra on" : "picker-chip orchestra", style: `--accent:${ORCHESTRA_ACCENT}` },
+        h("i", { class: "picker-dot" }),
+        h("span", { text: t(ORCHESTRA_STRINGS.orchestra) }),
+      );
+      chip.addEventListener("click", () => {
+        if (State.settings.orchestraMode) return;
+        enterOrchestra();
+      });
+      chips.append(chip);
+    }
     for (const p of visibleProviders(State.settings, readyProviders)) {
-      const on = p.id === State.settings.chatProvider;
+      const on = p.id === State.settings.chatProvider && !State.settings.orchestraMode;
       const chip = h(
         "button",
         { class: on ? "picker-chip on" : "picker-chip", style: `--accent:${p.accent}` },
@@ -308,8 +335,10 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
         h("span", { text: t(p.name) }),
       );
       chip.addEventListener("click", () => {
-        if (p.id === State.settings.chatProvider) return;
-        State.settings = { ...State.settings, chatProvider: p.id };
+        if (on) return;
+        const left = State.settings.orchestraMode;
+        State.settings = { ...State.settings, chatProvider: p.id, orchestraMode: false };
+        if (left) onOrchestraPicks();
         saveSettings();
         onPicked();
         Sound.play("pop");
@@ -552,6 +581,11 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
   });
 
   async function loadModels() {
+    if (State.settings.orchestraMode) {
+      if (orchestraRole) void loadRoleModels(orchestraRole);
+      else drawOrchestra();
+      return;
+    }
     const p = providerDef(State.settings.chatProvider);
     const ticket = ++request;
     const cached = p.urlField ? undefined : cache.get(p.id);
@@ -593,6 +627,203 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
     }
   }
 
+  // ── The orchestra (views/orchestra.ts) ──────────────────────────────────────
+  //
+  // Chosen like a provider: its chip first. Then a row for the coordinator and
+  // one for the threads, each with its provider and model (a click lists
+  // them, the CLIs left out) and its effort when the model has levels.
+
+  /** The role whose provider and model are listed, or null on the two roles' rows. */
+  let orchestraRole: OrchestraRole | null = null;
+  /** The provider listed while a role's model is chosen. */
+  let roleProvider = "";
+  /** The efforts each role's model takes, by "provider|model", asked once. */
+  const roleEfforts = new Map<string, string[]>();
+
+  function enterOrchestra() {
+    const s = State.settings;
+    // The picks are written out, so what the button says is what the orchestra gets.
+    State.settings = {
+      ...s,
+      orchestraMode: true,
+      orchestraCoordinator: resolvePick(s.orchestraCoordinator, s, readyProviders),
+      orchestraThread: resolvePick(s.orchestraThread, s, readyProviders),
+    };
+    saveSettings();
+    onOrchestraPicks();
+    Sound.play("pop");
+    drawChips();
+    drawEfforts();
+    void loadModels();
+    onChange();
+  }
+
+  const rolePick = (role: OrchestraRole) => resolvePick(State.settings[roleField(role)], State.settings, readyProviders);
+
+  function setPick(role: OrchestraRole, pick: OrchestraPick) {
+    State.settings = { ...State.settings, [roleField(role)]: pick };
+    onOrchestraPicks();
+  }
+
+  /** The levels `pick`'s model takes: its list's (an API) or its server's word (a local model); asked once. */
+  function roleLevels(pick: OrchestraPick): string[] {
+    const key = `${pick.provider}|${pick.model}`;
+    const known = roleEfforts.get(key);
+    if (known) return known;
+    roleEfforts.set(key, []);
+    const p = providerDef(pick.provider);
+    const learnt = (levels: string[] | undefined) => {
+      if (!levels?.length) return;
+      roleEfforts.set(key, levels);
+      if (isOpen && State.settings.orchestraMode && !orchestraRole) drawOrchestra();
+    };
+    if (!pick.model) return [];
+    if (p.urlField) {
+      void Bridge.localCaps(p.id, pick.model).then((caps) => learnt(caps?.reasoning)).catch(() => {});
+      return [];
+    }
+    const listed = cache.get(p.id);
+    if (listed) {
+      const levels = apiCaps(listed.find((m) => m.id === pick.model))?.reasoning ?? [];
+      roleEfforts.set(key, levels);
+      return levels;
+    }
+    void (async () => {
+      if (p.key && !(await Bridge.secretPresent(p.key))) return;
+      const models = await Bridge.chatModels(p.id);
+      if (!Array.isArray(models)) return;
+      cache.set(p.id, models);
+      learnt(apiCaps(models.find((m) => m.id === pick.model))?.reasoning);
+    })().catch(() => {});
+    return [];
+  }
+
+  /** The two roles' rows, and what each does. */
+  function drawOrchestra() {
+    clear(list);
+    efforts.hidden = true;
+    const card = h("div", { class: "orch-card" }, roleRow("coordinator"), roleRow("thread"));
+    card.append(h("div", { class: "orch-note", text: t(ORCHESTRA_STRINGS.pickerNote) }));
+    list.append(card);
+  }
+
+  function roleRow(role: OrchestraRole): HTMLElement {
+    const pick = rolePick(role);
+    const p = providerDef(pick.provider);
+    const label = cache.get(p.id)?.find((m) => m.id === pick.model)?.label;
+    const name = pick.model ? label || cliModelName(p.id, pick.model) : t(STRINGS.noModel);
+    const choose = h(
+      "button",
+      { class: "orch-pick", style: `--accent:${p.accent}`, title: pick.model },
+      h("i", { class: "orch-pick-dot" }),
+      h("span", { class: "orch-pick-name", text: name }),
+      h("span", { class: "orch-pick-provider", text: t(p.name) }),
+      svg(ICONS.chevronUpDown, 9, { stroke: 2 }),
+    );
+    choose.addEventListener("click", () => {
+      orchestraRole = role;
+      roleProvider = pick.provider;
+      drawChips();
+      void loadRoleModels(role);
+    });
+    const row = h("div", { class: "orch-line" },
+      h("span", { class: "orch-line-role", text: t(role === "coordinator" ? ORCHESTRA_STRINGS.coordinator : ORCHESTRA_STRINGS.thread) }),
+      choose);
+    const levels = roleLevels(pick);
+    if (levels.length > 0) {
+      const s = slider(p, {
+        levels,
+        current: () => {
+          const now = rolePick(role).effort;
+          return levels.includes(now) ? now : "";
+        },
+        set: (e) => setPick(role, { ...rolePick(role), effort: e }),
+        auto: false,
+      });
+      row.append(s.track, s.value);
+      s.show();
+    }
+    return row;
+  }
+
+  /** While a role is chosen: back to the two rows, then the providers that may take it. */
+  function drawRoleChips(role: OrchestraRole) {
+    const back = h("button", { class: "orch-back", title: t(STRINGS.cancel) },
+      svg(ICONS.chevronLeft, 10, { stroke: 2.2 }),
+      h("span", { text: t(role === "coordinator" ? ORCHESTRA_STRINGS.coordinator : ORCHESTRA_STRINGS.thread) }));
+    back.addEventListener("click", () => {
+      orchestraRole = null;
+      request++;
+      drawChips();
+      drawOrchestra();
+    });
+    chips.append(back);
+    for (const p of orchestraProviders(State.settings, readyProviders)) {
+      const on = p.id === roleProvider;
+      const chip = h(
+        "button",
+        { class: on ? "picker-chip on" : "picker-chip", style: `--accent:${p.accent}` },
+        h("i", { class: "picker-dot" }),
+        h("span", { text: t(p.name) }),
+      );
+      chip.addEventListener("click", () => {
+        if (on) return;
+        roleProvider = p.id;
+        Sound.play("pop");
+        drawChips();
+        void loadRoleModels(role);
+      });
+      chips.append(chip);
+    }
+  }
+
+  /** The models of the provider listed for `role`; a click gives the role that model. */
+  async function loadRoleModels(role: OrchestraRole) {
+    const p = providerDef(roleProvider || rolePick(role).provider);
+    const ticket = ++request;
+    let models = p.urlField ? undefined : cache.get(p.id);
+    if (!models) {
+      if (p.key && !(await Bridge.secretPresent(p.key))) {
+        if (ticket === request) status(t(STRINGS.noKey), true);
+        return;
+      }
+      if (ticket !== request) return;
+      status(t(STRINGS.loading));
+      try {
+        const listed = await Bridge.chatModels(p.id);
+        models = Array.isArray(listed) ? listed : [];
+      } catch (err) {
+        if (ticket === request) status(String(err).replace(/^Error:\s*/, ""), Boolean(p.key));
+        return;
+      }
+      if (ticket !== request) return;
+      if (!p.urlField) cache.set(p.id, models);
+    }
+    clear(list);
+    const pick = rolePick(role);
+    for (const m of models) {
+      const on = p.id === pick.provider && m.id === pick.model;
+      const row = h(
+        "button",
+        { class: on ? "picker-model on" : "picker-model", style: `--accent:${p.accent}`, title: m.id },
+        h("span", { class: "picker-model-name", text: m.label || cliModelName(p.id, m.id) }),
+        on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
+      );
+      row.addEventListener("click", () => {
+        const now = rolePick(role);
+        setPick(role, { provider: p.id, model: m.id, effort: now.provider === p.id && now.model === m.id ? now.effort : "" });
+        saveSettings();
+        Sound.play("blip");
+        orchestraRole = null;
+        drawChips();
+        drawOrchestra();
+        onChange();
+      });
+      list.append(row);
+    }
+    list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
+  }
+
   /** Nothing set up at all: a pointer to Settings in place of chips and models. */
   function drawNothingReady(): boolean {
     const none = readyProviders != null && !anyProviderReady(State.settings, readyProviders);
@@ -608,6 +839,7 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
   function open() {
     isOpen = true;
     olderOpen = null;
+    orchestraRole = null;
     el.classList.add("on");
     drawChips();
     drawEfforts();

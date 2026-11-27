@@ -127,6 +127,7 @@ import { orchestratorName, parseOrchestrator } from "../core/orchestrator";
 import { cliModelName } from "../core/model-names";
 import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
+import { buildOrchestra } from "./orchestra";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
 // ── Usage ring ────────────────────────────────────────────────────────────────
@@ -745,6 +746,8 @@ export function buildPrompt(
     h("div", { class: "model-side" }, planBtn, planStrip.chip, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
+  // The orchestra (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
+  const orchestra = buildOrchestra();
   const picker = buildPicker(() => {
     if (picker.isOpen) coverLog();
     body.classList.toggle("picking", picker.isOpen);
@@ -759,7 +762,7 @@ export function buildPrompt(
     panelChanged();
     drawModelButton();
     drawUsage();
-  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings), chatEffortOf(State.settings)));
+  }, openSettings, () => setChatModel(State.chatId, State.settings.chatProvider, activeModel(State.settings), chatEffortOf(State.settings)), () => orchestra.picksChanged());
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
@@ -851,6 +854,12 @@ export function buildPrompt(
     back: () => openTools(),
   });
   body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, holdEl, askEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
+  // Its rail (or its reader) over the left side, its member's header and conversation where the chat's are.
+  body.insertBefore(orchestra.doc, body.firstChild);
+  body.insertBefore(orchestra.rail, orchestra.doc);
+  body.insertBefore(orchestra.head, log);
+  body.insertBefore(orchestra.log, picker.el);
+  body.insertBefore(orchestra.queue, modelRow);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -1140,6 +1149,12 @@ export function buildPrompt(
     // Antigravity CLI's Orchestrator: who plans and who executes ("Orchestrator · Neon → Hydrogen").
     const orchestration = p.id === AGY ? parseOrchestrator(model) : null;
     modelName.textContent = orchestration ? orchestratorName(orchestration) : effort ? `${name} · ${effortLabel(effort)}` : name;
+    // The orchestra: who the field writes to, and its models.
+    if (orchestra.on()) {
+      const shown = orchestra.button();
+      modelName.textContent = shown.name;
+      modelDot.style.background = shown.dot;
+    }
     // A long name is cut; the whole of it shows on hover.
     modelName.title = modelName.textContent;
     modelBtn.classList.toggle("open", picker.isOpen);
@@ -2659,6 +2674,11 @@ export function buildPrompt(
       restoreAgents(agentStore, c.id, c.turns, c.provider);
     }
     State.chatId = c.id;
+    // A chat opened leaves the orchestra: it shows, on its own model.
+    if (State.settings.orchestraMode) {
+      State.settings = { ...State.settings, orchestraMode: false };
+      saveSettings();
+    }
     // Opened: its new answer, or what went wrong, is read now.
     unmark(c.id);
     // The picker shows the provider and model this chat is on (as it was left);
@@ -3018,7 +3038,8 @@ export function buildPrompt(
     }
   }
 
-  newBtn.addEventListener("click", newChat);
+  // On the orchestra, + starts a new orchestra and the clock lists the past ones.
+  newBtn.addEventListener("click", () => (orchestra.on() ? orchestra.startNew() : newChat()));
   attachBtn.addEventListener("click", () => void attach());
   screenBtn.addEventListener("click", () => {
     if (body.classList.contains("screening")) closeScreen();
@@ -3036,6 +3057,10 @@ export function buildPrompt(
   attachTab.addEventListener("click", () => showFilesTab("attached"));
   chatFilesTab.addEventListener("click", () => showFilesTab("chat"));
   historyBtn.addEventListener("click", () => {
+    if (orchestra.on() && !body.classList.contains("browsing")) {
+      orchestra.toggleMenu();
+      return;
+    }
     if (body.classList.contains("browsing")) {
       closeHistory();
       return;
@@ -3164,6 +3189,8 @@ export function buildPrompt(
   }
 
   void onEvent<{ chat: string; text: string }>("chat-delta", ({ chat, text }) => {
+    // A member of the orchestra writing: its own conversation shows it.
+    if (orchestra.delta(chat, text)) return;
     const run = runs.get(chat);
     if (!run || !text) return; // nothing visible yet: the dots stay
     // Text that comes is a sign of life too.
@@ -3282,6 +3309,7 @@ export function buildPrompt(
   });
 
   void onEvent<{ chat: string; activity: ChatActivity }>("chat-activity", ({ chat, activity }) => {
+    if (orchestra.activity(chat, activity)) return;
     const run = runs.get(chat);
     if (!run || !activity) return;
     clearTimeout(run.timer);
@@ -4054,6 +4082,17 @@ export function buildPrompt(
    * (submitAway): its conversation, already loaded in Rust.
    */
   async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }, queuedQuote?: AskQuote) {
+    // The orchestra on screen: what is typed goes to the member it shows.
+    if (orchestra.on() && auto == null && queuedText == null && away == null) {
+      const text = input.value.trim();
+      if (!text) return;
+      setInput("");
+      closeSlash();
+      if (picker.isOpen) picker.close();
+      Sound.play("send");
+      await orchestra.send(text);
+      return;
+    }
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
     // Nothing written: what is attached goes by itself (a photo, a file).
@@ -5093,6 +5132,7 @@ export function buildPrompt(
   return {
     el,
     sync() {
+      orchestra.sync(body);
       if (State.chatSlot !== shownSlot) slotChanged();
       takeForgeAsk();
       const workshop = State.chatSlot === "forge";
@@ -5406,6 +5446,7 @@ export function buildPrompt(
         : planAsking() ? t(STRINGS.planChange)
         : askFor.has(State.chatId) ? t(STRINGS.askPlaceholder, { name: askFor.get(State.chatId)!.title })
         : t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
+      if (orchestra.on()) input.placeholder = orchestra.placeholder();
     },
     focus() {
       input.focus();
