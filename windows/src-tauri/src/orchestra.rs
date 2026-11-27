@@ -72,6 +72,9 @@ pub struct Pick {
 pub struct Step {
     pub step: String,
     pub status: String,
+    /// Claude Code's task id (TaskCreate's), for its TaskUpdate.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub id: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -1183,6 +1186,65 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
     })
 }
 
+/// A member's plan written with its CLI's own tools (Claude Code's TodoWrite,
+/// TaskCreate and TaskUpdate; the update_plan of Codex, Gemini CLI, agy), as
+/// the chat sends it to the Plan island (`chat-plan`): the project's plan
+/// (the coordinator's) or the thread's. Any other chat's: nothing.
+pub fn cli_plan(app: &AppHandle, chat_id: &str, tool: &str, input: &Value) {
+    let Some((id, member)) = parse_chat(chat_id) else { return };
+    let (id, member) = (id.to_string(), member.to_string());
+    with(Some(app), &id, |o| {
+        let coordinator = member == COORDINATOR;
+        let Some(plan) = (if coordinator { Some(&mut o.plan) } else { o.member_mut(&member).map(|m| &mut m.plan) }) else { return };
+        apply_plan_call(plan, tool, input);
+    });
+}
+
+/// `plan` after a plan tool's call: a whole plan replaces it, a task created
+/// joins it, a task updated moves on (or goes, deleted).
+fn apply_plan_call(plan: &mut Vec<Step>, tool: &str, input: &Value) {
+    let status = |s: &str| match crate::chat_agents::step_status(s) {
+        "done" | "skipped" => "completed",
+        "active" => "in_progress",
+        _ => "pending",
+    };
+    let task_id = |v: &Value| match &v["taskId"] {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        _ => String::new(),
+    };
+    let text = |v: &Value, keys: &[&str]| keys.iter().filter_map(|k| v[*k].as_str()).find_map(crate::chat_agents::step_text);
+    match tool {
+        "TaskCreate" => {
+            let Some(step) = text(input, &["subject", "content", "description", "title"]) else { return };
+            let id = task_id(input);
+            if plan.len() >= 40 || (!id.is_empty() && plan.iter().any(|s| s.id == id)) {
+                return;
+            }
+            plan.push(Step { step, status: "pending".into(), id });
+        }
+        "TaskUpdate" => {
+            let id = task_id(input);
+            let Some(pos) = plan.iter().position(|s| !id.is_empty() && s.id == id) else { return };
+            match input["status"].as_str() {
+                Some("deleted") => {
+                    plan.remove(pos);
+                    return;
+                }
+                Some(s) => plan[pos].status = status(s).into(),
+                None => {}
+            }
+            if let Some(t) = text(input, &["subject"]) {
+                plan[pos].step = t;
+            }
+        }
+        _ => {
+            let Some(steps) = crate::chat_agents::plan_of(input) else { return };
+            *plan = steps.into_iter().map(|s| Step { step: s.text, status: status(s.status).into(), id: String::new() }).collect();
+        }
+    }
+}
+
 /// Claude Code's own tools, which a coordinator on Claude Code goes without:
 /// it plans and hands the work out, never does it.
 const CLAUDE_CODE_OWN: &str = "Bash Edit Write MultiEdit NotebookEdit Read Glob Grep LS WebFetch WebSearch Task Agent KillShell BashOutput";
@@ -1743,7 +1805,7 @@ mod tests {
         for t in o.threads.iter_mut() {
             t.state = "done".into();
         }
-        o.plan = vec![Step { step: "a".into(), status: "completed".into() }, Step { step: "b".into(), status: "pending".into() }];
+        o.plan = vec![Step { step: "a".into(), status: "completed".into(), ..Default::default() }, Step { step: "b".into(), status: "pending".into(), ..Default::default() }];
         let s = o.summary();
         assert_eq!((s.state.as_str(), s.plan_done, s.plan_total), ("done", 1, 2));
         assert_eq!(s.thread.provider, "codex");
@@ -1779,5 +1841,28 @@ mod tests {
         stop_member(&mut o, "t1");
         let m = o.member("t1").unwrap();
         assert_eq!((m.state.as_str(), m.resume_at), ("stopped", None));
+    }
+
+    #[test]
+    fn a_cli_members_own_plan_tools_make_its_plan() {
+        let mut plan = Vec::new();
+        let steps = |p: &[Step]| p.iter().map(|s| format!("{}:{}", s.step, s.status)).collect::<Vec<_>>();
+        // Claude Code's tasks: created one by one, then moved on by their ids.
+        apply_plan_call(&mut plan, "TaskCreate", &json!({ "subject": "Read the PDF", "taskId": "1" }));
+        apply_plan_call(&mut plan, "TaskCreate", &json!({ "subject": "Find the fees", "taskId": "2" }));
+        apply_plan_call(&mut plan, "TaskCreate", &json!({ "subject": "Find the fees", "taskId": "2" }));
+        apply_plan_call(&mut plan, "TaskUpdate", &json!({ "taskId": "1", "status": "completed" }));
+        apply_plan_call(&mut plan, "TaskUpdate", &json!({ "taskId": 2, "status": "in_progress" }));
+        assert_eq!(steps(&plan), ["Read the PDF:completed", "Find the fees:in_progress"]);
+        apply_plan_call(&mut plan, "TaskUpdate", &json!({ "taskId": "2", "status": "deleted" }));
+        assert_eq!(steps(&plan), ["Read the PDF:completed"]);
+        // TodoWrite, or another CLI's update_plan: the whole plan.
+        apply_plan_call(&mut plan, "TodoWrite", &json!({ "todos": [{ "content": "A", "status": "completed" }, { "content": "B", "status": "in_progress" }, { "content": "C", "status": "pending" }] }));
+        assert_eq!(steps(&plan), ["A:completed", "B:in_progress", "C:pending"]);
+        apply_plan_call(&mut plan, "update_plan", &json!({ "plan": [{ "step": "D", "status": "completed" }] }));
+        assert_eq!(steps(&plan), ["D:completed"]);
+        // A call with no step leaves it as it is.
+        apply_plan_call(&mut plan, "update_plan", &json!({ "plan": [] }));
+        assert_eq!(steps(&plan), ["D:completed"]);
     }
 }

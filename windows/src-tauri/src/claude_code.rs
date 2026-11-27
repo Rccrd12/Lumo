@@ -2885,6 +2885,7 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
         events.file(app, &file);
     }
     for (tool, input) in run.take_plans() {
+        crate::orchestra::cli_plan(app, chat_id, &tool, &input);
         let _ = app.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": chat_id, "tool": tool, "input": input }));
     }
     let text = match run.result.take() {
@@ -3039,6 +3040,8 @@ pub async fn send(
             |file| events.file(&app2, file),
             // The plan Claude writes in the chat, for the Plan island.
             |tool, input| {
+                // A project's member: its plan is the project's too (orchestra.rs).
+                crate::orchestra::cli_plan(&app3, &plan_chat, tool, input);
                 let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": plan_chat, "tool": tool, "input": input }));
             },
             own,

@@ -2742,6 +2742,7 @@ impl Run {
 /// agy's plan, to the Plan island (src/island/plan.ts) as island chat
 /// `chat`'s: the chat agy works for, never the one on screen when it comes.
 fn emit_plan(app: &AppHandle, chat: &str, tool: &str, input: Value) {
+    crate::orchestra::cli_plan(app, chat, tool, &input);
     let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-plan", plan_event(chat, tool, input));
 }
 
