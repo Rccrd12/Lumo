@@ -140,6 +140,16 @@ function modelsOf(provider: string): Promise<ModelInfo[]> {
   return got;
 }
 
+/** A long path by its end, where its name is: "…\\Documenti\\Contratti". */
+export function shortPath(path: string, max = 28): string {
+  if (path.length <= max) return path;
+  const sep = path.includes("\\") ? "\\" : "/";
+  const parts = path.split(sep).filter(Boolean);
+  let out = parts.pop() ?? path;
+  while (parts.length > 0 && out.length + parts[parts.length - 1].length + 1 <= max - 2) out = `${parts.pop()}${sep}${out}`;
+  return `…${sep}${out}`;
+}
+
 /** A model's name as the menus say it. */
 function modelName(provider: string, model: string, label?: string): string {
   if (!model) return t(STRINGS.noModel);
@@ -218,7 +228,7 @@ export function buildProjectForm(opts: {
     h("span", { class: "pj-sel-main" }, iconSvg("folder", 13), folderText),
     svg(ICONS.chevronDown, 10, { stroke: 2 }));
   const drawFolder = () => {
-    folderText.textContent = f.folder || t(S.pickFolder);
+    folderText.textContent = f.folder ? shortPath(f.folder) : t(S.pickFolder);
     folderText.classList.toggle("empty", !f.folder);
     folderBtn.title = f.folder;
     folderClear.hidden = !f.folder;

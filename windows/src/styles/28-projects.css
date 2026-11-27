@@ -398,12 +398,23 @@
 }
 
 .pj-folder-wrap {
+  flex: 0 0 var(--pjw);
   position: relative;
   display: flex;
 }
 
 .orc-page .pj-folder {
-  padding-right: 30px;
+  width: 100%;
+  padding-right: 10px;
+}
+
+/* With a folder, room for its × before the arrow. */
+.pj-folder-wrap:has(.pj-folder-x:not([hidden])) .pj-folder {
+  padding-right: 10px;
+}
+
+.pj-folder-wrap:has(.pj-folder-x:not([hidden])) .pj-folder > svg {
+  margin-left: 24px;
 }
 
 .orc-page .pj-folder-x {

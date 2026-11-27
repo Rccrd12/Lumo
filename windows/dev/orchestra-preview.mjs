@@ -1,8 +1,10 @@
-// Screenshots of the orchestra (views/orchestra.ts) in the island preview,
-// for review against the concept (modalita-orchestratore v2): an Italian
-// orchestra comparing three rental contracts, a coordinator and three
-// threads, with its plan, messages between members, a decision card, a
-// file kept from a second writer, a queued message and files handed over.
+// Screenshots of the projects (views/orchestra.ts, views/projects.ts) in the
+// island preview, for review against the concepts (modalita-orchestratore v2,
+// progetti v2): an Italian project comparing three rental contracts, a
+// coordinator and three threads, with its plan, messages between members, a
+// decision card, a file kept from a second writer, a queued message and files
+// handed over; then the empty chat's Projects card, the list, New project's
+// form and its menus, the gear and the project's settings, a paused thread.
 //
 // With `npm run dev` running: node dev/orchestra-preview.mjs [out folder]
 
@@ -39,6 +41,12 @@ const SNAP = {
   title: "Contratti di affitto",
   created: now - 12 * min,
   updated: now,
+  icon: "house",
+  color: "#f5b942",
+  goal: "Confrontare i contratti di affitto nella cartella Contratti (durata, canone, penali, clausole strane) e dire quale conviene. Ogni contratto ha il suo resoconto in Markdown.",
+  folder: "C:\\Users\\Riccardo\\Documenti\\Contratti",
+  resume: true,
+  threadPick: LM,
   plan: [
     { step: "Estrarre i dati di corso Italia 3", status: "completed" },
     { step: "Estrarre i dati di via Roma 12 e tenere il riepilogo", status: "in_progress" },
@@ -149,10 +157,12 @@ await ctx.addInitScript(([snap, report]) => {
     local_caps: () => ({ vision: false, tools: true, reasoning: ["low", "medium", "high"], maxContext: 262144, loadedContext: 65536 }),
     local_loaded_of: () => [],
     orchestra_list: () => [
-      { id: snap.id, title: snap.title, updated: snap.updated, working: true },
-      { id: "o0", title: "Traduzione del sito in tre lingue", updated: snap.updated - 26 * 3_600_000, working: false },
-      { id: "o-1", title: "Pulizia della cartella Download", updated: snap.updated - 4 * 86_400_000, working: false },
+      { id: snap.id, title: snap.title, icon: "house", color: "#f5b942", goal: "Confrontare i 3 contratti di affitto e scegliere quale conviene.", updated: snap.updated, state: "waiting", working: 2, asking: "t3", planDone: 1, planTotal: 4, coordinator: snap.coordinator.pick, thread: snap.threadPick },
+      { id: "o2", title: "Lumo", icon: "code", color: "#a78bfa", goal: "Modificare e aggiungere nuove feature alla repository, sempre con un concept e le foto prima.", updated: snap.updated - 5 * 60_000, state: "working", working: 2, asking: "", planDone: 3, planTotal: 5, coordinator: { provider: "claude-code", model: "opus", effort: "high" }, thread: { provider: "claude-code", model: "opus", effort: "medium" } },
+      { id: "o0", title: "Traduzione del sito", icon: "globe", color: "#60a5fa", goal: "Tradurre il sito in inglese, tedesco e spagnolo, tenendo i termini del glossario.", updated: snap.updated - 26 * 3_600_000, state: "done", working: 0, asking: "", planDone: 3, planTotal: 3, coordinator: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "" }, thread: { provider: "google", model: "gemini-3.8-flash", effort: "" } },
+      { id: "o-1", title: "Pulizia della cartella Download", icon: "broom", color: "#4ade80", goal: "Mettere in ordine Download: doppioni, installer vecchi, foto in Immagini.", updated: snap.updated - 4 * 86_400_000, state: "stopped", working: 0, asking: "", planDone: 1, planTotal: 4, coordinator: snap.threadPick, thread: snap.threadPick },
     ],
+    pick_folder: () => "C:\\Users\\Riccardo\\Progetti\\Lumo",
     orchestra_open: () => structuredClone(snap),
     orchestra_read_file: ({ path }) => ({ name: path.split("/").pop(), path, text: report }),
   };
@@ -229,24 +239,75 @@ await page.waitForTimeout(400);
 await shot("4-report-aperto");
 await page.click(".orc-doc-x");
 
-// 5. The past orchestras, from the rail's title.
+// 5. The other projects, from the rail's title.
 await page.click(".orc-top");
 await page.waitForTimeout(300);
-await shot("5-orchestre");
+await shot("5-progetti-dal-menu");
 await page.click(".orc-top");
 
-// 6. The model picker: Orchestra chosen, its two roles.
-await page.click(".model-btn");
-await page.waitForTimeout(900);
-await shot("6-scelta-modelli");
-// 6b. The coordinator's model, chosen among the providers that may take the role.
-await page.click(".orch-pick");
+// 6. The gear beside Stop all opens the project's settings in place of the conversation.
+await page.click(".pj-gear");
+await page.waitForTimeout(500);
+await shot("6-impostazioni-progetto");
+await page.click(".pj-gear");
+await page.waitForTimeout(300);
+
+// 8. A thread paused by a usage limit: when it goes on.
+await page.evaluate(() => {
+  const s = structuredClone(window.__orchestraSnap);
+  for (const m of [s.coordinator, ...s.threads]) for (const x of m.messages) if (x.card) x.card.chose = 0;
+  const until = Math.floor(Date.now() / 1000) + 95 * 60;
+  s.threads[2].state = "paused";
+  s.threads[2].resumeAt = until;
+  s.threads[2].messages.push({ id: "v9", at: Date.now(), kind: "note", from: "t3", text: "You've hit your usage limit. Try again later.", note: "limit", until });
+  window.__lumoListeners.get("orchestra-update")?.({ event: "orchestra-update", id: 0, payload: s });
+});
+await member("t3");
+await page.waitForTimeout(400);
+await page.evaluate(() => {
+  const log = document.querySelector(".orc-log");
+  log.scrollTop = log.scrollHeight;
+});
+await shot("8-thread-in-pausa");
+
+// 9. All the projects, from the menu.
+await page.evaluate(() => {
+  window.island.holdOpen();
+  document.querySelector(".orc-top").click();
+  [...document.querySelectorAll(".orc-menu-foot")].at(-1).click();
+});
 await page.waitForTimeout(600);
-await shot("6b-modello-coordinatore");
+await shot("9-tutti-i-progetti");
 
-// The picker closes as it opened.
-await page.click(".model-btn");
+// 10. New project, its icon, its two models.
+await page.evaluate(() => document.querySelector(".pj-new").click());
+await page.waitForTimeout(500);
+await shot("10-nuovo-progetto");
+await page.fill(".pj-name-input", "Lumo");
+await page.fill(".pj-area", "Modificare e aggiungere nuove feature o fare miglioramenti in generale alla repository. L'importante è fare sempre dei concept con le modifiche o aggiunte che si vogliono fare, se possibile con foto.");
+await page.click(".pj-mark-btn");
 await page.waitForTimeout(300);
+await page.click('.pj-icon[data-icon="code"]');
+await page.click('.pj-color[data-color="#a78bfa"]');
+await shot("10b-icona");
+await page.click(".pj-mark-btn");
+await page.click(".pj-folder");
+await page.waitForTimeout(300);
+await page.click(".pj-coord");
+await page.waitForTimeout(700);
+await shot("10c-modello-coordinatore");
+await page.click(".pj-thread");
+await page.waitForTimeout(700);
+await shot("10d-modello-thread");
+await page.click(".pj-h");
+
+// Back to the project: Cancel, then its card.
+await page.evaluate(() => {
+  [...document.querySelectorAll(".pj-b")].find((b) => !b.classList.contains("primary") && !b.classList.contains("danger")).click();
+});
+await page.waitForTimeout(300);
+await page.evaluate(() => document.querySelector(".pj-card").click());
+await page.waitForTimeout(600);
 
 // 7. The island at its usual width: the rail gives up some room.
 await page.evaluate(() => {
@@ -279,15 +340,9 @@ await closed("7d-isola-chiusa-finito", `(s) => { for (const m of [s.coordinator,
 await page.evaluate(() => { window.island.holdOpen(); window.State.mode = "expanded"; window.State.notify(); });
 await page.waitForTimeout(600);
 
-// 8. A new orchestra: empty until the first message starts it.
-// Clicked from the page, the pointer staying where it is: a new orchestra
-// changes the island's size and must not read as the pointer leaving.
-await page.evaluate(() => {
-  window.island.holdOpen();
-  document.querySelector(".orc-top").click();
-  document.querySelector(".orc-menu-new").click();
-});
-await page.waitForTimeout(500);
-await shot("8-nuova-orchestra");
+// 11. Back to a new chat: the Projects card under the three ways to start.
+await page.evaluate(() => document.querySelector(".chat-tools .tool-btn").click());
+await page.waitForTimeout(700);
+await shot("11-chat-nuova-progetti");
 
 await browser.close();
