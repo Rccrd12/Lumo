@@ -748,7 +748,10 @@ Studio needn't be open: when you pick it in the chat or write to it, Lumo starts
 it in the background, with no window, and stops it again after 15 minutes with
 no question (**Start and stop it by itself** and **Stop after**, which also
 offers 5 minutes, 1 hour, when Lumo quits or never). Lumo only ever stops one it
-started: an Unsloth Studio you opened stays on. Answers stream in as they are
+started: an Unsloth Studio you opened stays on, and one opened from its
+shortcut and still starting is waited for, not started twice. Its models are
+listed with their version (`Inkling-2-Mini-GGUF · UD-Q3_K_XL`), so a chat comes
+back on the one it used. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
@@ -765,6 +768,11 @@ every provider (Thinking… with its seconds, Using a tool), plus reading the
 prompt, trying again after its server dropped the request, or sent back once
 when it said something was done that wasn't. Over 80 % of its context, the chat compacts itself before the next
 question (**Compact by itself when the context is full**, on by default).
+A thin **Chat compacted** line marks where, with the summary under it on a
+click; a summary that wouldn't be shorter isn't kept, and the chat says why.
+An answer the server cuts off is asked again; if it still stops after its
+tools ran, what the model wrote and did stays in the chat with **The answer
+stopped before it was over** under it, and "continue" goes on from there.
 A picture goes to a model that sees it, a short PDF as pictures of its pages
 and a longer one as its text. Settings tells you whether the address is this
 PC — nothing leaves it then — and warns before a key would travel over plain
