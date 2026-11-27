@@ -17,10 +17,14 @@
  * Events that start or carry on a turn. Not Notification: Claude Code sends
  * one a minute after a turn ends too ("waiting for your input"), and counted
  * here it put a finished session back at work, the pill on "working" with it.
+ * Not SubagentStop either: Claude Code's own helpers (the one after each answer
+ * in the Claude app, a /compact) send one after the Stop, with no
+ * SubagentStart, and the session stayed "at work" for good, so the other
+ * sessions' Stop no longer finished the pill.
  */
 const MID_TURN = new Set([
   "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest",
-  "SubagentStart", "SubagentStop",
+  "SubagentStart",
 ]);
 /** Events that end a turn: the session stays, waiting for the next prompt. */
 const TURN_ENDS = new Set(["Stop", "StopFailure", "Interrupt"]);
