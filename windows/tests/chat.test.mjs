@@ -297,7 +297,7 @@ test("a local answer streams into one reply, then the finished text replaces it"
   assert.ok(!$(".model-btn").disabled);
 });
 
-test("a local model's tokens: by the dots, then under the text, on its chat only, then kept under the answer", async () => {
+test("a local model's tokens: by the dots, then under the text, on its chat only, then on the finished answer's bar", async () => {
   let finish;
   answers.chat_send = () => new Promise((resolve) => (finish = resolve));
   const asked = State.chatId;
@@ -308,7 +308,7 @@ test("a local model's tokens: by the dots, then under the text, on its chat only
   const speeds = () => view.el.find(".reply-speed");
   // Only reasoning so far: next to the dots.
   emit("chat-tokens", { chat: asked, tokens: 40, secs: 1 });
-  assert.equal($(".typing-tokens").textContent, "40 tok/s · 40 tokens");
+  assert.equal($(".typing-tokens").textContent, "40 tokens · 40 tok/sec");
   assert.equal(speeds().length, 0);
   // The text comes: under it, the dots and their count gone.
   emit("chat-delta", { chat: asked, text: "Fa 4." });
@@ -316,7 +316,7 @@ test("a local model's tokens: by the dots, then under the text, on its chat only
   assert.equal(speeds().length, 1);
   assert.ok(speeds()[0].classList.contains("live"));
   emit("chat-tokens", { chat: asked, tokens: 80, secs: 2 });
-  assert.equal(speeds()[0].textContent, "40 tok/s · 80 tokens");
+  assert.equal(speeds()[0].textContent, "80 tokens · 40 tok/sec");
   // Another chat on screen: its count isn't drawn there, and is back with its chat.
   const history = State.chatHistory;
   State.chatId = "elsewhere";
@@ -328,13 +328,15 @@ test("a local model's tokens: by the dots, then under the text, on its chat only
   State.chatHistory = history;
   view.sync();
   assert.equal(speeds().length, 1);
-  assert.equal(speeds()[0].textContent, "40 tok/s · 120 tokens");
-  // Done: the line stays under the answer, no longer live, and is kept with it.
+  assert.equal(speeds()[0].textContent, "120 tokens · 40 tok/sec");
+  // Done: the line under the text goes, the numbers move to the answer's bar, and are kept with it.
   finish({ text: "Fa 4." });
   await flush();
   view.sync();
-  assert.equal(speeds().length, 1);
-  assert.ok(!speeds()[0].classList.contains("live"));
+  assert.equal(speeds().length, 0);
+  const onBar = view.el.find(".msg-speed");
+  assert.equal(onBar.length, 1);
+  assert.ok(onBar[0].parentNode.classList.contains("msg-actions"));
   assert.deepEqual(State.chatHistory.at(-1).speed, { tokens: 120, secs: 3 });
 });
 

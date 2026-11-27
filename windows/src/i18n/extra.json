@@ -24011,17 +24011,17 @@
    "id": "Sebelumnya",
    "it": "Prima"
   },
-  "{rate} tok/s": {
-   "zh-Hans": "{rate} tok/s",
-   "hi": "{rate} tok/s",
-   "es": "{rate} tok/s",
-   "ar": "{rate} tok/s",
-   "fr": "{rate} tok/s",
-   "bn": "{rate} tok/s",
-   "pt-BR": "{rate} tok/s",
-   "ru": "{rate} tok/s",
-   "id": "{rate} tok/s",
-   "it": "{rate} tok/s"
+  "{rate} tok/sec": {
+   "zh-Hans": "{rate} tok/sec",
+   "hi": "{rate} tok/sec",
+   "es": "{rate} tok/sec",
+   "ar": "{rate} tok/sec",
+   "fr": "{rate} tok/sec",
+   "bn": "{rate} tok/sec",
+   "pt-BR": "{rate} tok/sec",
+   "ru": "{rate} tok/sec",
+   "id": "{rate} tok/sec",
+   "it": "{rate} tok/sec"
   },
   "Show tokens per second": {
    "zh-Hans": "显示每秒令牌数",
@@ -24046,6 +24046,66 @@
    "ru": "Под каждым ответом: сколько токенов создала модель и сколько в секунду, в реальном времени, пока она пишет. Рассуждения тоже учитываются.",
    "id": "Di bawah setiap jawaban: berapa token yang dibuat model dan berapa per detik, langsung saat menulis. Penalarannya juga dihitung.",
    "it": "Sotto ogni risposta: quanti token ha generato il modello e quanti al secondo, in diretta mentre scrive. Conta anche il ragionamento."
+  },
+  "Reasoning": {
+   "zh-Hans": "推理",
+   "hi": "तर्क",
+   "es": "Razonamiento",
+   "ar": "التفكير",
+   "fr": "Raisonnement",
+   "bn": "যুক্তি",
+   "pt-BR": "Raciocínio",
+   "ru": "Рассуждение",
+   "id": "Penalaran",
+   "it": "Ragionamento"
+  },
+  "Answer": {
+   "zh-Hans": "回答",
+   "hi": "उत्तर",
+   "es": "Respuesta",
+   "ar": "الإجابة",
+   "fr": "Réponse",
+   "bn": "উত্তর",
+   "pt-BR": "Resposta",
+   "ru": "Ответ",
+   "id": "Jawaban",
+   "it": "Risposta"
+  },
+  "Speed": {
+   "zh-Hans": "速度",
+   "hi": "गति",
+   "es": "Velocidad",
+   "ar": "السرعة",
+   "fr": "Vitesse",
+   "bn": "গতি",
+   "pt-BR": "Velocidade",
+   "ru": "Скорость",
+   "id": "Kecepatan",
+   "it": "Velocità"
+  },
+  "Reading the question": {
+   "zh-Hans": "读取问题",
+   "hi": "प्रश्न पढ़ना",
+   "es": "Lectura de la pregunta",
+   "ar": "قراءة السؤال",
+   "fr": "Lecture de la question",
+   "bn": "প্রশ্ন পড়া",
+   "pt-BR": "Leitura da pergunta",
+   "ru": "Чтение вопроса",
+   "id": "Membaca pertanyaan",
+   "it": "Lettura della domanda"
+  },
+  "Total time": {
+   "zh-Hans": "总时间",
+   "hi": "कुल समय",
+   "es": "Tiempo total",
+   "ar": "الوقت الإجمالي",
+   "fr": "Durée totale",
+   "bn": "মোট সময়",
+   "pt-BR": "Tempo total",
+   "ru": "Общее время",
+   "id": "Total waktu",
+   "it": "Tempo totale"
   }
  }
 }

@@ -9,7 +9,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use lumo_local::{Doing, Endpoint, Hooks, Loaded, MORE};
+use lumo_local::{Doing, Endpoint, Hooks, Loaded, Made, MORE};
 use serde_json::{json, Value};
 
 pub enum Reply {
@@ -223,6 +223,8 @@ pub struct Island {
     pub used: Vec<u64>,
     /// The tokens made so far and their seconds, each time the turn said them.
     pub made: Vec<(u64, f64)>,
+    /// All the turn said of them, the last time.
+    pub made_last: Option<Made>,
     /// The plans Lumo made of a list in the answer.
     pub plans: Vec<Value>,
     /// When the island was hushed and when it spoke again.
@@ -251,8 +253,9 @@ impl Hooks for Island {
         self.used.push(tokens);
     }
 
-    fn made(&mut self, tokens: u64, secs: f64) {
-        self.made.push((tokens, secs));
+    fn made(&mut self, made: Made) {
+        self.made.push((made.tokens, made.secs));
+        self.made_last = Some(made);
     }
 
     fn without_tools(&mut self) -> String {

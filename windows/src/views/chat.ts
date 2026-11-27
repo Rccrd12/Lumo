@@ -88,7 +88,7 @@ import { activeModel, chatEffortOf, effortFor, hasPermissions, isApiProvider, is
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
-import { cliOf, moveSentPaths, onChatsLeft, setChatCli } from "../core/chats";
+import { cleanSpeed, cliOf, moveSentPaths, onChatsLeft, setChatCli } from "../core/chats";
 import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore, noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, sealAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns, type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
 import { browserTabsChanged, openBrowserView, setBrowserViewHost } from "./browser-watch";
@@ -3190,15 +3190,16 @@ export function buildPrompt(
   });
 
   // A local model's tokens so far (local_chat.rs, lumo-local `Seen::Made`).
-  void onEvent<{ chat: string; tokens: number; secs: number }>("chat-tokens", ({ chat, tokens, secs }) => {
-    const run = runs.get(chat);
-    if (!run || !(tokens > 0) || !(secs >= 0)) return;
-    run.speed = { tokens, secs };
+  void onEvent<{ chat: string } & Record<string, unknown>>("chat-tokens", (made) => {
+    const run = runs.get(made.chat);
+    const speed = cleanSpeed(made);
+    if (!run || !speed) return;
+    run.speed = speed;
     drawSpeed(run);
   });
 
   /**
-   * "32 tok/s · 698 tokens" for the answer being written, a local model's:
+   * "698 tokens · 44 tok/sec" for the answer being written, a local model's:
    * on a line under its text, or next to the dots while it only reasons.
    * Drawn only when tokens come (a few times a second at most), so nothing
    * runs while the island is hidden and nothing is streamed.
@@ -3213,7 +3214,7 @@ export function buildPrompt(
       const said = speedText(speed);
       if (text && text.textContent !== said) text.textContent = said;
     } else {
-      const line = speedLine(speed, true);
+      const line = speedLine(speed);
       if (line) {
         line.style.setProperty("--speed-accent", providerDef(run.provider).accent);
         live.parentElement?.after(h("div", { class: "chat-row reply-speed-row" }, line));

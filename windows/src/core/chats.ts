@@ -140,16 +140,22 @@ export function toSavedTurn(m: {
     ...(m.warning ? { warning: m.warning } : {}),
     ...(m.ask ? { ask: m.ask } : {}),
     ...(m.role === "assistant" && m.files?.length ? { files: m.files } : {}),
-    ...(m.role === "assistant" && m.speed ? { speed: { tokens: m.speed.tokens, secs: m.speed.secs } } : {}),
+    ...(m.role === "assistant" && m.speed ? { speed: cleanSpeed(m.speed) } : {}),
   };
 }
 
 /** A saved answer's token count, checked: storage holds anything. */
 export function cleanSpeed(raw: unknown): TokenSpeed | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const { tokens, secs } = raw as Record<string, unknown>;
-  if (typeof tokens !== "number" || typeof secs !== "number" || !Number.isFinite(tokens) || !Number.isFinite(secs) || tokens < 1 || secs < 0) return undefined;
-  return { tokens: Math.round(tokens), secs };
+  const r = raw as Record<string, unknown>;
+  const count = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  if (!count(r.tokens) || !count(r.secs) || (r.tokens as number) < 1) return undefined;
+  const speed: TokenSpeed = { tokens: Math.round(r.tokens as number), secs: r.secs as number };
+  if (count(r.reasoning)) speed.reasoning = Math.min(Math.round(r.reasoning as number), speed.tokens);
+  if (count(r.promptTokens)) speed.promptTokens = Math.round(r.promptTokens as number);
+  if (count(r.promptSecs)) speed.promptSecs = r.promptSecs as number;
+  if (count(r.totalSecs)) speed.totalSecs = r.totalSecs as number;
+  return speed;
 }
 
 /** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */

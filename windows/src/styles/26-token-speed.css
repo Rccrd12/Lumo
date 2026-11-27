@@ -1,19 +1,21 @@
-/* A local model's tokens: "32 tok/s · 698 tokens" under its answer, and next
-   to the dots while it only reasons (views/chat.ts drawSpeed, chat-messages.ts speedLine). */
+/* A local model's tokens: "698 tokens · 44 tok/sec" under the answer being
+   written and next to the dots while it only reasons (views/chat.ts
+   drawSpeed); once it is done, on its bar beside Copy and Retry, its
+   details on hover (chat-messages.ts speedOnBar). */
 
 .reply-speed {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-top: 4px;
   font: 400 10.5px var(--font);
   color: var(--dim-3);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  margin-top: 4px;
   user-select: none;
 }
 
-/* While it is written: a row of its own just under the text, a dot in the provider's colour. */
+/* A row of its own just under the text, a dot in the provider's colour. */
 .reply-speed-row {
   margin-top: -4px;
 }
@@ -43,4 +45,74 @@
 .typing-tokens::before {
   content: "·";
   margin: 0 5px 0 2px;
+}
+
+/* On the bar of a finished answer, after its time. */
+.msg-speed {
+  position: relative;
+  padding: 0 5px;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  outline: none;
+}
+
+.msg-speed::before {
+  content: "·";
+  margin-right: 6px;
+}
+
+.msg-speed:hover .msg-speed-text,
+.msg-speed:focus-visible .msg-speed-text {
+  color: #c9ccd2;
+}
+
+.speed-details {
+  position: absolute;
+  z-index: 20;
+  left: -8px;
+  bottom: calc(100% + 6px);
+  min-width: 230px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  background: #1c1d20;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font: 400 11px var(--font);
+  color: #c9ccd2;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease-out, visibility 0.12s;
+}
+
+.msg-speed.below .speed-details {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+
+.msg-speed:hover .speed-details,
+.msg-speed:focus-visible .speed-details {
+  opacity: 1;
+  visibility: visible;
+}
+
+.speed-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 22px;
+  line-height: 20px;
+}
+
+.speed-row span:first-child {
+  color: var(--dim-3);
+}
+
+.speed-rule {
+  height: 1px;
+  margin: 4px 0;
+  background: rgba(255, 255, 255, 0.07);
 }

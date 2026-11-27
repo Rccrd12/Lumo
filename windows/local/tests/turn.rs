@@ -103,6 +103,17 @@ fn the_tokens_made_are_counted_one_a_piece_then_as_the_server_says() {
     let (tokens, secs) = *island.made.last().unwrap();
     assert_eq!(tokens, 10);
     assert!(secs >= 0.0);
+    // Of which the two pieces of reasoning; the prompt as the usage says.
+    let made = island.made_last.unwrap();
+    assert_eq!((made.reasoning, made.prompt_tokens), (2, Some(40)));
+    assert!(made.prompt_secs >= 0.0 && made.total_secs >= made.secs);
+    // Reasoning written in the text, until the answer shows, is reasoning too.
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![text("<think>conto"), text(" bene"), text("</think>\n\n"), text("Fa 4."), finish("stop"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("2+2?", &[]), &rules("made-think", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fa 4.");
+    let made = island.made_last.unwrap();
+    assert_eq!((made.tokens, made.reasoning, made.prompt_tokens), (4, 3, None));
     // A server that gives no count: the pieces are the count.
     let mut island = Island::default();
     let replies = vec![Reply::Events(vec![text("Ciao"), text(" Anna"), text("."), finish("stop"), DONE.into()])];

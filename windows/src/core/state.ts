@@ -181,6 +181,13 @@ export interface AskedQuestion {
 export interface TokenSpeed {
   tokens: number;
   secs: number;
+  /** Of `tokens`, the reasoning (the model's own, and its text before the answer showed). */
+  reasoning?: number;
+  /** The tokens of the question it read, when the server said; and how long reading took. */
+  promptTokens?: number;
+  promptSecs?: number;
+  /** The whole turn, its tools included. */
+  totalSecs?: number;
 }
 
 export interface ChatMessage {
