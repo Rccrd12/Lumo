@@ -39,7 +39,7 @@ import { durationText } from "../core/chat-agents";
 import { Sound } from "../core/sound";
 import { State, type OrchestraPick } from "../core/state";
 import { language, t, tn } from "../i18n/i18n";
-import { activityLabel, sentAgo } from "./chat-messages";
+import { activityLabel, sentAgo, typingDots } from "./chat-messages";
 import { effortLabel } from "./chat-strings";
 import { readyProviders } from "./chat-models";
 import { ORCHESTRA_STRINGS as S } from "./orchestra-strings";
@@ -278,13 +278,16 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
 
   function drawRail() {
     clear(rail);
+    // Back to the chat: a chevron before the project's name.
+    const back = h("button", { class: "orc-back", title: t(S.backToChats), "aria-label": t(S.backToChats) }, svg(ICONS.chevronLeft, 10, { stroke: 2.2 }));
+    back.addEventListener("click", () => toChats());
     const title = snap?.title || t(S.untitled);
     const top = h("button", { class: menuOpen ? "orc-top open" : "orc-top", title: t(S.projects), "aria-expanded": String(menuOpen) },
       projectMark(snap?.icon || DEFAULT_ICON, snap?.color ?? "", 18, 11),
       h("span", { class: "orc-top-name", text: title }),
       svg(ICONS.chevronDown, 9, { stroke: 2.2 }));
     top.addEventListener("click", () => toggleMenu());
-    rail.append(top);
+    rail.append(h("div", { class: "orc-top-row" }, back, top));
     if (menuOpen) {
       rail.append(drawMenu());
       return;
@@ -315,8 +318,10 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     settings.addEventListener("click", () => openSettings());
     const all = h("button", { class: "orc-menu-row orc-menu-foot" }, svg(ICONS.activities, 11, { stroke: 1.8 }), h("span", { class: "orc-menu-name", text: t(S.allProjects) }));
     all.addEventListener("click", () => showList());
+    const chats = h("button", { class: "orc-menu-row orc-menu-foot" }, svg(ICONS.chevronLeft, 11, { stroke: 2 }), h("span", { class: "orc-menu-name", text: t(S.backToChats) }));
+    chats.addEventListener("click", () => toChats());
     if (snap) menu.append(settings);
-    menu.append(all);
+    menu.append(all, chats);
     return menu;
   }
 
@@ -457,7 +462,9 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
         renderMarkdown(liveEl, text, { streaming: true, scope: scope(m, "live") });
         log.append(h("div", { class: "chat-row" }, liveEl));
       }
-      nowEl = h("div", { class: "orc-now" }, h("i"), h("span", { class: "orc-now-text", text: stepText(m) }));
+      // The chat's dots and its light crossing the words, as in any chat.
+      nowEl = typingDots(stepText(m));
+      nowEl.classList.add("orc-now");
       log.append(nowEl);
     }
     if (error) log.append(h("div", { class: "orc-error", text: error }));
@@ -688,7 +695,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     clear(pageEl);
     if (page === "list") {
       form = null;
-      pageEl.append(buildProjectList(listed ? summaries : null, { open: (id) => void openOrchestra(id), create: () => startNew() }));
+      pageEl.append(buildProjectList(listed ? summaries : null, { open: (id) => void openOrchestra(id), create: () => startNew(), back: () => toChats() }));
     } else if (page === "form") {
       form = buildProjectForm({ mode: "new", fields: newFields(), save: create, cancel: () => go(formBack === "project" && snap ? "project" : "list") });
       pageEl.append(form.el);
@@ -958,6 +965,14 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
     showList();
   }
 
+  /** Out of the projects, on the chat that was on screen. */
+  function toChats() {
+    leave();
+    Sound.play("pop");
+    draw();
+    State.notify();
+  }
+
   function leave() {
     menuOpen = false;
     form = null;
@@ -1042,7 +1057,7 @@ export function buildOrchestra(changed: () => void = () => {}): OrchestraView {
       if (activity) acts.set(chat, activity);
       if (!on()) return true;
       drawRail();
-      const label = nowEl?.querySelector(".orc-now-text");
+      const label = nowEl?.querySelector(".typing-label");
       if (label && m.id === selected) label.textContent = stepText(m);
       return true;
     },

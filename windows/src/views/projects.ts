@@ -81,11 +81,15 @@ export function modelsLine(coordinator: OrchestraPick, thread: OrchestraPick): s
   return c && x ? `${c} → ${x}` : c || x;
 }
 
-/** The projects, newest first, under "Projects" and New project. */
-export function buildProjectList(list: readonly OrchestraSummary[] | null, on: { open(id: string): void; create(): void }): HTMLElement {
+/** The projects, newest first, under "Projects", the way back to the chat and New project. */
+export function buildProjectList(list: readonly OrchestraSummary[] | null, on: { open(id: string): void; create(): void; back(): void }): HTMLElement {
   const fresh = h("button", { class: "pj-new" }, svg(ICONS.plus, 9), h("span", { text: t(S.newProject) }));
   fresh.addEventListener("click", () => on.create());
-  const page = h("div", { class: "pj-panel" }, h("div", { class: "pj-head" }, h("span", { class: "pj-title", text: t(S.projects) }), fresh));
+  // The way back to the chat, first in the row.
+  const back = h("button", { class: "pj-back", title: t(S.backToChats), "aria-label": t(S.backToChats) },
+    svg(ICONS.chevronLeft, 10, { stroke: 2.2 }), h("span", { text: t(S.chat) }));
+  back.addEventListener("click", () => on.back());
+  const page = h("div", { class: "pj-panel" }, h("div", { class: "pj-head" }, back, h("span", { class: "pj-title", text: t(S.projects) }), fresh));
   if (list == null) {
     page.append(h("div", { class: "pj-none", text: t(STRINGS.loading) }));
     return page;

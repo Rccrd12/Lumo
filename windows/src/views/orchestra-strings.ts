@@ -82,6 +82,9 @@ export const ORCHESTRA_STRINGS = {
   ready: N_("Ready"),
   projectSettings: N_("Project settings"),
   allProjects: N_("All projects"),
+  /** The way out of the projects, back to the chat. */
+  chat: N_("Chat"),
+  backToChats: N_("Back to the chats"),
   settings: N_("Settings"),
   nameAndIcon: N_("Name and icon"),
   namePlaceholder: N_("Project name"),

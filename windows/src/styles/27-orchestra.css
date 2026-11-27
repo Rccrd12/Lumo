@@ -251,10 +251,29 @@
   box-shadow: 0 0 6px rgba(242, 211, 142, 0.35);
 }
 
+/* At work: the blue arc turns, as a spinner does. */
 .orc-mk.work {
   border: 2px solid rgba(96, 165, 250, 0.25);
   border-top-color: #60a5fa;
-  transform: rotate(-30deg);
+  animation: orc-spin 1s linear infinite;
+}
+
+@keyframes orc-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* The coordinator at work: its ring breathes. */
+.orc-mk.coord.working {
+  animation: orc-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes orc-breathe {
+  50% { box-shadow: 0 0 10px rgba(242, 211, 142, 0.7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orc-mk.work { animation: none; transform: rotate(-30deg); }
+  .orc-mk.coord.working { animation: none; }
 }
 
 .orc-mk.ask {
@@ -573,25 +592,6 @@
 }
 
 /* What the member does now, under what it wrote. */
-.orc-now {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 2px;
-  font: 400 11.5px var(--font);
-  color: #93c5fd;
-}
-
-.orc-now i {
-  flex: 0 0 4px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #60a5fa;
-  box-shadow: 0 0 5px #60a5fa;
-}
-
 .orc-note {
   flex: 0 0 auto;
   align-self: center;

@@ -305,11 +305,11 @@ test("a Markdown file opens in the reader beside the chat", async () => {
   assert.ok(!$(".chat-body").classList.contains("orc-reading"));
 });
 
-test("the rail's title lists the projects, New project, the settings and all of them", async () => {
+test("the rail's title lists the projects, New project, the settings, all of them and the way back to the chats", async () => {
   await flush();
   $(".orc-top").fire("click");
   await flush();
-  assert.deepEqual(texts(".orc-menu-name"), ["Leases", "Settings", "All projects"]);
+  assert.deepEqual(texts(".orc-menu-name"), ["Leases", "Settings", "All projects", "Back to the chats"]);
   view.el.find(".orc-menu-foot").find((r) => r.textContent === "All projects").fire("click");
   await flush();
   view.sync();
@@ -411,6 +411,26 @@ test("the normal chat is untouched with the projects off; its empty chat leads t
   view.sync();
   assert.equal(State.settings.orchestraMode, false);
   assert.ok(!$(".chat-body").classList.contains("orc-full"));
+  // The list's "‹ Chat" and the rail's ‹ go back to the chats too.
+  $(".pj-start").fire("click");
+  await flush();
+  view.sync();
+  assert.equal($(".pj-back").textContent, "Chat");
+  $(".pj-back").fire("click");
+  view.sync();
+  assert.equal(State.settings.orchestraMode, false);
+  assert.ok(!$(".chat-body").classList.contains("orc-full"));
+  $(".pj-start").fire("click");
+  await flush();
+  view.sync();
+  $(".pj-card").fire("click");
+  await flush();
+  view.sync();
+  assert.ok($(".chat-body").classList.contains("orc"));
+  $(".orc-back").fire("click");
+  view.sync();
+  assert.equal(State.settings.orchestraMode, false);
+  assert.ok(!$(".chat-body").classList.contains("orc"));
   // A chat-delta of another chat is the chat's, as before.
   assert.doesNotThrow(() => emit("chat-delta", { chat: "nobody", text: "x" }));
 });

@@ -58,6 +58,53 @@
   box-sizing: border-box;
 }
 
+/* Back to the chats: the rail's ‹ beside the project's name, and the list's "‹ Chat". */
+.orc-top-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.orc-top-row .orc-top {
+  flex: 1;
+  min-width: 0;
+}
+
+.orc-rail .orc-back {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-bottom: 2px;
+  border-radius: 999px;
+  color: #8b929e;
+}
+
+.orc-rail .orc-back:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f1f2f4;
+}
+
+.orc-page .pj-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px 5px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 11.5px var(--font);
+  color: #c8cdd4;
+  cursor: default;
+}
+
+.orc-page .pj-back:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f2f4;
+}
+
 .orc-top .pj-ic {
   border-radius: 6px;
 }

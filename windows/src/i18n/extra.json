@@ -12331,6 +12331,18 @@
    "id": "Semua proyek",
    "it": "Tutti i progetti"
   },
+  "Back to the chats": {
+   "zh-Hans": "返回聊天",
+   "hi": "चैट पर वापस जाएँ",
+   "es": "Volver a los chats",
+   "ar": "العودة إلى المحادثات",
+   "fr": "Retour aux chats",
+   "bn": "চ্যাটে ফিরুন",
+   "pt-BR": "Voltar aos chats",
+   "ru": "Вернуться к чатам",
+   "id": "Kembali ke chat",
+   "it": "Torna alle chat"
+  },
   "Name and icon": {
    "zh-Hans": "名称和图标",
    "hi": "नाम और आइकन",

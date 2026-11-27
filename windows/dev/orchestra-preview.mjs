@@ -274,7 +274,7 @@ await shot("8-thread-in-pausa");
 await page.evaluate(() => {
   window.island.holdOpen();
   document.querySelector(".orc-top").click();
-  [...document.querySelectorAll(".orc-menu-foot")].at(-1).click();
+  [...document.querySelectorAll(".orc-menu-foot")].at(-2).click();
 });
 await page.waitForTimeout(600);
 await shot("9-tutti-i-progetti");
