@@ -24394,6 +24394,42 @@
    "ru": "Ранее",
    "id": "Sebelumnya",
    "it": "Prima"
+  },
+  "Background task finished": {
+   "it": "Attività in background finita",
+   "es": "Tarea en segundo plano terminada",
+   "fr": "Tâche en arrière-plan terminée",
+   "pt-BR": "Tarefa em segundo plano concluída",
+   "ru": "Фоновая задача завершена",
+   "zh-Hans": "后台任务已完成",
+   "hi": "बैकग्राउंड कार्य पूरा हुआ",
+   "ar": "انتهت المهمة في الخلفية",
+   "bn": "ব্যাকগ্রাউন্ডের কাজ শেষ হয়েছে",
+   "id": "Tugas latar belakang selesai"
+  },
+  "Background task failed": {
+   "it": "Attività in background non riuscita",
+   "es": "La tarea en segundo plano falló",
+   "fr": "La tâche en arrière-plan a échoué",
+   "pt-BR": "A tarefa em segundo plano falhou",
+   "ru": "Фоновая задача не выполнена",
+   "zh-Hans": "后台任务失败",
+   "hi": "बैकग्राउंड कार्य विफल रहा",
+   "ar": "فشلت المهمة في الخلفية",
+   "bn": "ব্যাকগ্রাউন্ডের কাজ ব্যর্থ হয়েছে",
+   "id": "Tugas latar belakang gagal"
+  },
+  "Background task stopped": {
+   "it": "Attività in background fermata",
+   "es": "Tarea en segundo plano detenida",
+   "fr": "Tâche en arrière-plan arrêtée",
+   "pt-BR": "Tarefa em segundo plano interrompida",
+   "ru": "Фоновая задача остановлена",
+   "zh-Hans": "后台任务已停止",
+   "hi": "बैकग्राउंड कार्य रोका गया",
+   "ar": "توقفت المهمة في الخلفية",
+   "bn": "ব্যাকগ্রাউন্ডের কাজ থামানো হয়েছে",
+   "id": "Tugas latar belakang dihentikan"
   }
  }
 }

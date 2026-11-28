@@ -365,7 +365,9 @@ const FILE_STEPS: [string, string][] = [
 ];
 
 function agentWords(a: AgentActivityInput): string | null {
-  const step = a.step?.trim() ? shortStep(a.step.trim()) : null;
+  // One line: the closed island draws its text as it is (white-space: pre).
+  const one = a.step?.replace(/\s+/g, " ").trim();
+  const step = one ? shortStep(one) : null;
   switch (a.state) {
     case "working":
     case "searching":

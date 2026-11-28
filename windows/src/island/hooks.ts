@@ -9,6 +9,7 @@ import { BROWSER_TEXT, describeBrowserAction, isLocalOpen } from "../core/agent-
 import { currentStep } from "../core/computer-use";
 import { userToolTarget } from "../core/tools";
 import { clipUnits } from "../core/clip";
+import { readPrompt, type TaskNote } from "../core/injected";
 import { COMPACT_TEXT, compactNotice } from "../core/compact";
 import { Bridge, onEvent } from "../core/bridge";
 import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
@@ -873,8 +874,17 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(agentId, "thinking");
       // The field is `prompt`; reading `message` meant this step was always blank.
       const asked = payload.prompt ?? payload.message;
-      if (asked) State.appendStep(agentId, clipUnits(asked, 60), fullTextDetail(asked, clipUnits(asked, 60)));
-      if (terminal) sessionPrompt(sessionId);
+      // What Claude Code writes in the user's place (a background task's note,
+      // reminders for the model) is no prompt: never its tags on the island.
+      const read = asked ? readPrompt(asked) : null;
+      if (read?.kind === "user") {
+        const line = clipUnits(read.text.replace(/\s+/g, " ").trim(), 60);
+        State.appendStep(agentId, line, fullTextDetail(read.text, line));
+      } else if (read?.kind === "task") {
+        const line = taskNoteStep(read.note);
+        State.appendStep(agentId, line, fullTextDetail(read.note.text, line));
+      }
+      if (terminal && (!read || read.kind === "user")) sessionPrompt(sessionId);
       surface("overview", false);
       break;
     }
@@ -1237,6 +1247,28 @@ const backgroundTimers = new Map<string, number>();
  */
 const backgroundWatchdogs = new Map<string, number>();
 
+/** A background task's note as a step: how it ended, then what it was ("Background task finished · npm test"). */
+const TASK_NOTE_TEXT = {
+  finished: N_("Background task finished"),
+  failed: N_("Background task failed"),
+  stopped: N_("Background task stopped"),
+};
+
+export function taskNoteStep(note: TaskNote): string {
+  const words = note.status === "failed" ? TASK_NOTE_TEXT.failed
+    : note.status === "killed" || note.status === "stopped" ? TASK_NOTE_TEXT.stopped
+    : TASK_NOTE_TEXT.finished;
+  const name = note.name.replace(/\s+/g, " ").trim();
+  return name ? `${t(words)} · ${clipUnits(name, 40)}` : t(words);
+}
+
+/** A prompt's words the user typed ("" for what Claude Code wrote in their place). */
+function userPrompt(prompt: unknown): string {
+  if (typeof prompt !== "string") return "";
+  const read = readPrompt(prompt);
+  return read.kind === "user" ? read.text : "";
+}
+
 /** Forgets every group and its timers, as at start (tests: a new clock reuses timer ids). */
 export function resetBackground(): void {
   backgroundRuns.clear();
@@ -1274,7 +1306,7 @@ export function handleBackground(island: Pick<Island, "reveal">, payload: HookPa
   const said = kind === "failed" ? payload.error ?? "" : payload.last_assistant_message ?? payload.message ?? "";
   const validAgent = validateAgent(payload.lumo_agent);
   const started = backgroundRuns.event(id, payload.session_id ?? "", kind, now, {
-    subject: name === "UserPromptSubmit" ? subjectOf(payload.prompt) : undefined,
+    subject: name === "UserPromptSubmit" ? subjectOf(userPrompt(payload.prompt)) : undefined,
     text: kind === "done" ? answerLine(said) : kind === "failed" ? toOneLine(said) : undefined,
     agent: validAgent ? agentName(validAgent) : "Claude Code",
     total: batchTotal(payload.lumo_batch_total),

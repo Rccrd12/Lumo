@@ -19,6 +19,11 @@ test("nothing going on, nothing said", () => {
   assert.equal(activityLine(null, null, { name: "Claude Code", state: "finished", step: "done", color: "#fff" }), null);
 });
 
+test("a step of several lines is one line on the closed island", () => {
+  const agent = { name: "Claude Desktop", state: "thinking", step: "first\n  second\n", color: "#D97757" };
+  assert.equal(activityLine(null, null, agent).text, "Claude Desktop · first second");
+});
+
 test("the chat comes first, then the call, then the agents", () => {
   const chat = { who: "Haiku", label: "Reading main.ts", color: "#E07950" };
   const live = { phase: "speaking", doing: null, color: "#4285F4" };
