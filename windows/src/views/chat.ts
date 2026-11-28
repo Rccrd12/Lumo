@@ -3193,7 +3193,8 @@ export function buildPrompt(
   void onEvent<{ chat: string } & Record<string, unknown>>("chat-tokens", (made) => {
     const run = runs.get(made.chat);
     const speed = cleanSpeed(made);
-    if (!run || !speed) return;
+    // No tokens (a round asked again from the start): the count goes.
+    if (!run) return;
     run.speed = speed;
     drawSpeed(run);
   });

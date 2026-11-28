@@ -137,16 +137,31 @@ fn the_tokens_of_every_round_add_up() {
 }
 
 #[test]
-fn the_tokens_never_go_back_when_a_round_fails() {
-    // Two pieces, then the engine fails ("terminated"): asked again, the
-    // answer (the server says 10) comes on top of the 2 already shown.
+fn a_round_asked_again_counts_from_the_start() {
+    // Two pieces, then the engine fails ("terminated"): the count goes back
+    // to 0, and the answer asked again (the server says 10) counts alone.
     let mut island = Island::default();
     let failing = Reply::Paced(vec![text("Uno"), text(" due"), json!({ "error": "terminated" }).to_string()], Duration::from_millis(300));
     let (outcome, _) = turn(vec![failing, answer("Fatto.")], &mut question("Conta", &[]), &rules("made-retry", ""), &mut island);
     assert_eq!(outcome.unwrap().text, "Fatto.");
     assert!(island.made.first().is_some_and(|m| m.0 == 2), "the failed round was shown: {:?}", island.made);
+    assert!(island.made.iter().any(|m| m.0 == 0), "the count went back: {:?}", island.made);
+    assert_eq!(island.made.last().unwrap().0, 10);
+}
+
+#[test]
+fn a_stream_asked_again_whole_says_so_and_counts_its_answer() {
+    // The stream closes after three pieces: the island says it asks again whole,
+    // the count goes back to 0, then is the whole answer's (12, its usage).
+    let mut island = Island::default();
+    let thinking = Reply::Paced(vec![reasoning("pensa"), reasoning("ancora"), reasoning("poi")], Duration::from_millis(300));
+    let replies = vec![thinking, whole("Fatto.", &[])];
+    let (outcome, _) = turn(replies, &mut question("Un gioco", &[]), &rules("made-whole", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert!(outcome.whole);
+    assert!(island.doing.contains(&Doing::Whole), "{:?}", island.doing);
+    assert!(island.made.iter().any(|m| m.0 == 0), "the count went back: {:?}", island.made);
     assert_eq!(island.made.last().unwrap().0, 12);
-    assert!(island.made.windows(2).all(|w| w[0].0 <= w[1].0), "the count never goes back: {:?}", island.made);
 }
 
 /// One piece of a streamed tool call: its `index`, and what this piece adds.

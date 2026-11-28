@@ -180,7 +180,7 @@ pub fn whole(text: &str, calls: &[(&str, &str, &str)]) -> Reply {
         message["tool_calls"] = json!(calls);
     }
     let reason = if calls.is_empty() { "stop" } else { "tool_calls" };
-    Reply::Json(200, json!({ "choices": [{ "message": message, "finish_reason": reason }], "usage": { "total_tokens": 77 } }).to_string())
+    Reply::Json(200, json!({ "choices": [{ "message": message, "finish_reason": reason }], "usage": { "total_tokens": 77, "completion_tokens": 12 } }).to_string())
 }
 
 // ── The request and the app ──────────────────────────────────────────────────
