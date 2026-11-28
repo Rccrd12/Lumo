@@ -627,16 +627,25 @@
   opacity: 0.45;
 }
 
+/* A pill as Cancel's, its red showing once the mouse is on it. */
 .orc-page .pj-b.danger {
   margin-right: auto;
-  padding-left: 2px;
   background: transparent;
   color: #f87171;
+  transition: background 0.12s, color 0.12s;
+}
+
+.orc-page .pj-b.danger:hover {
+  background: rgba(248, 113, 113, 0.1);
+  color: #fca5a5;
 }
 
 .orc-page .pj-b.danger.armed {
-  padding-left: 12px;
   background: rgba(248, 113, 113, 0.14);
+}
+
+.orc-page .pj-b.danger.armed:hover {
+  background: rgba(248, 113, 113, 0.22);
 }
 
 /* ── The menus over the form ───────────────────────────────────────────────── */
