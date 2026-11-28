@@ -231,6 +231,63 @@ fn a_stream_that_hangs_halfway_is_asked_again_whole_and_remembered() {
     assert_eq!(island.shown, ["Ciao."]);
 }
 
+/// Maya's `/status`, as it says what its model is doing.
+fn status(busy: bool, generated: u64) -> Reply {
+    Reply::Json(200, json!({ "busy": busy, "phase": "thinking", "generated": generated }).to_string())
+}
+
+/// A turn on a server that says what its model does (Maya).
+fn turn_with_status(replies: Vec<Reply>, body: &mut Value, rules: &Rules, island: &mut Island) -> (Result<Outcome, Failure>, Vec<Value>) {
+    let fake = serve(replies);
+    let to = lumo_local::Endpoint { status: Some(format!("{}/status", fake.url)), ..fake.endpoint() };
+    let outcome = block_on(run(&to, body, rules, island));
+    (outcome, fake.requests())
+}
+
+#[test]
+fn a_silence_while_maya_still_writes_is_waited_for() {
+    // Longer than the stall between pieces, while /status says the tokens go on.
+    let mut island = Island::default();
+    let replies = vec![
+        Reply::Paced(vec![reasoning("pensa"), text("Fatto."), finish("stop")], Duration::from_millis(1500)),
+        status(true, 100),
+        status(true, 200),
+        status(true, 300),
+    ];
+    let (outcome, requests) = turn_with_status(replies, &mut question("Un gioco", &[]), &rules("maya writes", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.text, "Fatto.");
+    assert!(!outcome.whole && outcome.fixes.is_empty(), "{:?}", outcome.fixes);
+    // One request for the answer, the rest the questions to /status (no body).
+    assert_eq!(requests.iter().filter(|r| !r.is_null()).count(), 1);
+}
+
+#[test]
+fn maya_stopped_for_real_is_said_and_never_asked_again_whole() {
+    // Silent, and /status says no token more: a hang, said as such at once.
+    let key = "maya stopped";
+    let mut island = Island::default();
+    let replies = vec![Reply::Hold(vec![reasoning("pensa")]), status(true, 50), status(true, 50)];
+    let (outcome, requests) = turn_with_status(replies, &mut question("Un gioco", &[]), &rules(key, ""), &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::CutShort);
+    let asked: Vec<&Value> = requests.iter().filter(|r| !r.is_null()).collect();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0]["stream"], true);
+    // The next turn streams as ever.
+    let mut island = Island::default();
+    let (outcome, requests) = turn_with_status(vec![answer("Ciao.")], &mut question("Ciao", &[]), &rules(key, ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Ciao.");
+    assert_eq!(requests[0]["stream"], true);
+}
+
+#[test]
+fn maya_idle_after_a_silence_is_a_hang() {
+    let mut island = Island::default();
+    let replies = vec![Reply::Hold(vec![reasoning("pensa")]), status(false, 0)];
+    let (outcome, _) = turn_with_status(replies, &mut question("Un gioco", &[]), &rules("maya idle", ""), &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::CutShort);
+}
+
 #[test]
 fn a_slow_prompt_is_not_a_hang() {
     // Nothing for longer than the stall before the first word: the model reads.

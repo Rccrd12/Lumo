@@ -499,6 +499,9 @@ pub(crate) fn endpoint(server: &Server, base: &Url) -> Result<Endpoint, String> 
         whole: net::client(base, Duration::from_secs(600))?,
         // Once the answer flows, a minute of silence is a stream that hung.
         stall: Duration::from_secs(60),
+        // Maya says what its model is doing: a silence is asked about, and
+        // never answered by the same request again, whole.
+        status: (server.id == "maya").then(|| net::join(base, "status")),
     })
 }
 

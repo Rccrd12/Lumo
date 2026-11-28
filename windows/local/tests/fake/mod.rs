@@ -47,6 +47,7 @@ impl Fake {
             streaming: client(reqwest::Client::builder().read_timeout(Duration::from_secs(10))),
             whole: client(reqwest::Client::builder().timeout(Duration::from_secs(10))),
             stall: Duration::from_secs(1),
+            status: None,
         }
     }
 }

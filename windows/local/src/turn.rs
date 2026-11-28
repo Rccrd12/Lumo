@@ -207,8 +207,9 @@ fn push(body: &mut Value, messages: impl IntoIterator<Item = Value>) {
 /// its pictures if the server refused them.
 pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, hooks: &mut H) -> Result<Outcome, Failure> {
     let mut names = offered(body);
-    // A model whose stream hung once in this session answers whole from then on.
-    let mut whole = hung(&rules.key, false);
+    // A model whose stream hung once in this session answers whole from then
+    // on; never one whose server says what it does (`Endpoint::status`).
+    let mut whole = to.status.is_none() && hung(&rules.key, false);
     let mut said: Vec<String> = Vec::new();
     let mut fixes = Vec::new();
     let mut used = None;
@@ -320,7 +321,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 tokio::time::sleep(rules.pause).await;
                 continue;
             }
-            Err(e) if e.is_engine() && !whole => {
+            Err(e) if e.is_engine() && !whole && to.status.is_none() => {
                 whole = true;
                 fixes.push("answered whole");
                 continue;
@@ -360,8 +361,10 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             }
             // The stream hung halfway (LM Studio, on some tool calls with long
             // text in their arguments) or closed with nothing: the same
-            // request, not streamed, from then on with this model.
-            Err(Failure::CutShort) if !whole => {
+            // request, not streamed, from then on with this model. Not on a
+            // server that says what it does: its model stopped for real, and
+            // the turn says so rather than start it over where nothing shows.
+            Err(Failure::CutShort) if !whole && to.status.is_none() => {
                 whole = hung(&rules.key, true);
                 fixes.push("answered whole");
                 continue;

@@ -32,6 +32,34 @@ pub struct Endpoint {
     /// Once the answer flows, this long with nothing more is a stream that
     /// hung (LM Studio stops halfway, and says nothing for minutes).
     pub stall: Duration,
+    /// Where the server says what its model is doing (Maya's `/status`:
+    /// `busy`, and the tokens `generated` in the answer under way). A
+    /// silence of `stall` is then asked about before it counts as a hang,
+    /// and a stream that did hang is never asked again whole: the server's
+    /// model was at work, and a whole answer would only start it over blind.
+    pub status: Option<String>,
+}
+
+/// How long the server has to say what its model is doing.
+pub const STATUS_WAIT: Duration = Duration::from_secs(5);
+
+/// Whether the server's model is still writing an answer: busy, with more
+/// tokens than the last time it was asked (`last`, none the first time).
+/// A server that doesn't answer, or says something else, is not at work.
+pub async fn still_writing(to: &Endpoint, last: &mut Option<u64>) -> bool {
+    let Some(url) = &to.status else { return false };
+    let Ok(reply) = to.streaming.get(url).header("Authorization", &to.authorization).timeout(STATUS_WAIT).send().await else {
+        return false;
+    };
+    let Ok(bytes) = read_capped(reply, MAX_ERROR_BODY).await else { return false };
+    let Ok(json) = serde_json::from_slice::<Value>(&bytes) else { return false };
+    if json.get("busy").and_then(Value::as_bool) != Some(true) {
+        return false;
+    }
+    let Some(generated) = json.get("generated").and_then(Value::as_u64) else { return false };
+    let moved = last.is_none_or(|before| generated > before);
+    *last = Some(generated);
+    moved
 }
 
 /// What went wrong, for the app to say in the user's language.
@@ -254,6 +282,9 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let cut = AtomicBool::new(false);
     // The bytes of the tool calls so far: they count against MAX_ANSWER as the text does.
     let call_bytes = AtomicUsize::new(0);
+    // The tokens the server said its model had written, the last time a
+    // silence was asked about (`still_writing`).
+    let mut written = None;
     let mut take = |line: &str, text: &mut String, on: &mut dyn FnMut(Seen)| -> Result<(), Failure> {
         if let Some(reason) = finish_reason_of(line) {
             finished.store(true, Ordering::Relaxed);
@@ -312,6 +343,12 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         } else if flowing.load(Ordering::Relaxed) {
             match tokio::time::timeout(to.stall, reply.chunk()).await {
                 Ok(next) => next,
+                // Silent, but its model still writes (Maya, with nothing
+                // to send while it holds a piece back): waited for.
+                Err(_) if still_writing(to, &mut written).await => {
+                    on(Seen::Chunk);
+                    continue;
+                }
                 Err(_) => return Err(Failure::CutShort),
             }
         } else {
