@@ -1047,6 +1047,10 @@ export function buildPrompt(
     if (!member) return { settings: State.settings, chatId: State.chatId, orchestra: false };
     const settings: Settings = { ...State.settings, chatProvider: member.provider as Settings["chatProvider"], chatEffort: member.effort, chatModels: { ...State.settings.chatModels, [member.provider]: member.model } };
     if (member.provider === "anthropic") settings.model = member.model;
+    // Lumo started again since its last answer: how full it was then, until its next one says.
+    if (member.chat && member.context && !seenContext.has(member.chat)) {
+      seenContext.set(member.chat, { provider: member.provider, context: { chat: member.chat, used: member.context.used, total: member.context.total }, at: 0 });
+    }
     return { settings, chatId: member.chat, orchestra: true };
   }
 

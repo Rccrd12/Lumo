@@ -145,7 +145,7 @@ export interface OrchestraView {
    */
   islandLine(): { who: string; color: string; label: string } | null;
   /** Whose usage the ring by the model button shows: the member on screen, its chat and who plays it. */
-  usageOf(): { chat: string; provider: string; model: string; effort: string } | null;
+  usageOf(): { chat: string; provider: string; model: string; effort: string; context: { used: number; total: number } | null } | null;
 }
 
 /** The closed island's colours: a thread waiting for the user, and an orchestra finished. */
@@ -1643,6 +1643,11 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     contextSeen(chat, used, total, estimate) {
       const m = snap ? memberByChat(snap, chat) : undefined;
       if (!snap || !m || estimate || !(total > 0)) return;
+      // Kept with the project: its usage menu has it after Lumo starts again.
+      if (m.context?.used !== used || m.context?.total !== total) {
+        m.context = { used, total };
+        void Orchestra.keepContext(snap.id, m.id, used, total).catch(() => undefined);
+      }
       const pct = Math.round((used / total) * 100);
       // Asked once while it stays this full; a local model only, as a chat's auto-compaction.
       if (pct < AUTO_COMPACT_PCT) compactAsked.delete(chat);
@@ -1757,7 +1762,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       const m = current() ?? null;
       const pick = pickOf(m);
       // No orchestra yet: the coordinator's to be, on a chat of its own none has written to.
-      return { chat: m?.chat ?? "", ...pick };
+      return { chat: m?.chat ?? "", ...pick, context: m?.context ?? null };
     },
   };
 }

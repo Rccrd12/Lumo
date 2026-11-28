@@ -1573,6 +1573,7 @@ pub fn run() {
             orchestra::orchestra_update,
             orchestra::orchestra_set_pick,
             orchestra::orchestra_keep_answer,
+            orchestra::orchestra_keep_context,
             orchestra::orchestra_compact,
             orchestra::orchestra_retry,
             orchestra::orchestra_unqueue,

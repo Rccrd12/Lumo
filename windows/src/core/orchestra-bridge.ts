@@ -149,6 +149,8 @@ export interface OrchestraMember {
   resumeAt?: number | null;
   /** When Lumo wakes it, as it asked (wake_me_later), ms since the epoch. */
   wakeAt?: number | null;
+  /** How full its context was at its last answer: the usage menu's after Lumo starts again. */
+  context?: { used: number; total: number } | null;
 }
 
 /** A note of the project's memory (save_memory): one per subject. */
@@ -241,6 +243,7 @@ export const Orchestra = {
   unqueue: (id: string, member: string, message: string) =>
     ask<{ text: string; sent: SentItem[] } | null>("orchestra_unqueue", { id, member, message }),
   keepAnswer: (id: string, member: string, message: string, answer: OrchestraAnswer) => ask<void>("orchestra_keep_answer", { id, member, message, answer }),
+  keepContext: (id: string, member: string, used: number, total: number) => ask<void>("orchestra_keep_context", { id, member, used, total }),
   send: (id: string, to: string, text: string, attached?: OrchestraAttached, asked?: string) =>
     ask<void>("orchestra_send", {
       id, to, text,

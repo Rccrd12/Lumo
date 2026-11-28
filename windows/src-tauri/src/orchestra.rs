@@ -223,6 +223,10 @@ pub struct Member {
     /// When Lumo wakes it (ms since the epoch) and what for, as it asked (wake_me_later).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wake_at: Option<(u64, String)>,
+    /// How full its context was at its last answer (tokens used, its window),
+    /// for the usage menu after Lumo starts again, before its next answer says.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<(u64, u64)>,
     /// A turn of its is running.
     #[serde(skip)]
     pub running: bool,
@@ -814,6 +818,7 @@ impl Orchestra {
                 "id": m.id, "chat": m.chat, "title": m.title, "task": m.task, "pick": m.pick,
                 "state": m.state, "activity": m.activity, "plan": m.plan, "queued": m.mail.len(),
                 "messages": m.messages, "resumeAt": m.resume_at, "wakeAt": m.wake_at.as_ref().map(|w| w.0),
+                "context": m.context.map(|(used, total)| json!({ "used": used, "total": total })),
             })
         };
         json!({
@@ -2228,6 +2233,23 @@ pub async fn orchestra_compact(app: AppHandle, id: String, member: String) -> Re
 
 /// The island kept what a member's turn did (the files it made or changed,
 /// the commands it ran, how fast its local model wrote): with its answer.
+/// How full a member's context is, as its last answer said (chat-usage): kept
+/// on disk with the project, not sent to the island again (it has it).
+#[tauri::command]
+pub fn orchestra_keep_context(id: String, member: String, used: u64, total: u64) -> Result<(), String> {
+    with(None, &id, |o| {
+        let m = o.member_mut(&member)?;
+        if m.context == Some((used, total)) {
+            return Some(());
+        }
+        m.context = Some((used, total));
+        save(o);
+        Some(())
+    })
+    .flatten()
+    .ok_or_else(not_found)
+}
+
 #[tauri::command]
 pub fn orchestra_keep_answer(app: AppHandle, id: String, member: String, message: String, answer: Value) -> Result<(), String> {
     let Value::Object(fields) = answer else { return Err("Not an answer's details.".into()) };
@@ -2582,6 +2604,9 @@ mod tests {
         let saved: Orchestra = serde_json::from_str(&serde_json::to_string(&o).unwrap()).unwrap();
         assert_eq!(saved.member(&t).unwrap().wake_at.as_ref().map(|w| w.1.as_str()), Some("Guarda se il deploy è finito"), "kept across a restart");
         assert!(o.snapshot()["threads"][0]["wakeAt"].is_u64());
+        // How full its context was, kept for the usage menu after a restart.
+        o.member_mut(&t).unwrap().context = Some((12_000, 200_000));
+        assert_eq!(o.snapshot()["threads"][0]["context"], json!({ "used": 12_000, "total": 200_000 }));
         stop_member(&mut o, &t);
         assert!(o.member(&t).unwrap().wake_at.is_none());
     }
