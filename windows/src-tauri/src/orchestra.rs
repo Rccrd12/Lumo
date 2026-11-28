@@ -233,6 +233,10 @@ pub struct Member {
     /// It wrote to the coordinator during this turn: its answer is not sent on too.
     #[serde(skip)]
     pub wrote_coordinator: bool,
+    /// Messages had come for it that it had not read yet when Lumo closed:
+    /// it reads them once Lumo has started again (`go_on`).
+    #[serde(skip)]
+    pub unread: bool,
 }
 
 /// A file of the shared folder a thread is changing.
@@ -913,6 +917,9 @@ fn load(id: &str) -> Option<Orchestra> {
 /// A turn that was running when Lumo closed is over; the message it was
 /// answering waits again, in front of the next one, said to be half done.
 fn interrupted(m: &mut Member) {
+    // Someone wrote to it and it had not read it yet: it goes on, as it would
+    // have had Lumo stayed open (not when a usage limit or an error holds it).
+    m.unread = !m.mail.is_empty() && m.state != "paused" && m.state != "failed";
     if m.state == "working" {
         m.state = "stopped".into();
     }
@@ -1403,6 +1410,12 @@ fn arm_wakes(app: &AppHandle, o: &Orchestra) {
             wake_later(app, &o.id, &m.id, *at);
         }
     }
+}
+
+/// The members of `o` that Lumo closed on before they read what came for
+/// them: they are woken now, once (`Member::unread`).
+fn unread_members(o: &mut Orchestra) -> Vec<String> {
+    std::iter::once(&mut o.coordinator).chain(o.threads.iter_mut()).filter_map(|m| std::mem::take(&mut m.unread).then(|| m.id.clone())).collect()
 }
 
 /// The waits already set (orchestra/member/until), so one is never set twice.
@@ -2068,10 +2081,18 @@ pub fn orchestra_list(app: AppHandle) -> Vec<Summary> {
                 out.push(summary);
                 continue;
             }
-            if let Some(o) = load(&id) {
+            if let Some(mut o) = load(&id) {
                 // The wake-ups its members asked for before Lumo closed.
                 arm_wakes(&app, &o);
                 out.push(o.summary());
+                // What was written to them before Lumo closed: they read it now.
+                let unread = unread_members(&mut o);
+                if !unread.is_empty() {
+                    all().get_or_insert_with(HashMap::new).entry(id.clone()).or_insert(o);
+                    for member in unread {
+                        wake(&app, &id, &member);
+                    }
+                }
             }
         }
     }
@@ -2104,7 +2125,7 @@ pub fn orchestra_set_pick(app: AppHandle, id: String, member: String, pick: Pick
 
 #[tauri::command]
 pub fn orchestra_open(app: AppHandle, id: String) -> Result<Value, String> {
-    let (snapshot, paused) = with(None, &id, |o| {
+    let (snapshot, paused, unread) = with(None, &id, |o| {
         let paused: Vec<(String, u64)> = std::iter::once(&o.coordinator)
             .chain(o.threads.iter())
             .filter(|m| m.state == "paused")
@@ -2112,12 +2133,16 @@ pub fn orchestra_open(app: AppHandle, id: String) -> Result<Value, String> {
             .collect();
         // The wake-ups its members asked for before Lumo closed.
         arm_wakes(&app, o);
-        (o.snapshot(), paused)
+        (o.snapshot(), paused, unread_members(o))
     })
     .ok_or_else(not_found)?;
     // Waiting for the usage limits when Lumo closed: they go on as planned.
     for (member, until) in paused {
         resume_later(&app, &id, &member, until);
+    }
+    // What was written to them before Lumo closed: they read it now.
+    for member in unread {
+        wake(&app, &id, &member);
     }
     Ok(snapshot)
 }
@@ -2543,6 +2568,28 @@ mod tests {
         let mut idle = Member::new("t2", "o1", "Corso Italia 3", "x", Pick::default());
         interrupted(&mut idle);
         assert!(idle.mail.is_empty() && idle.state == "idle");
+        // Only its own message given back: it stays stopped until someone writes to it.
+        assert!(!m.unread && !idle.unread);
+        // Written to while it worked, Lumo closing before it read it: it goes on when Lumo starts again, once.
+        let mut o = Orchestra::new("o1", Pick::default(), Pick::default());
+        o.start_thread("Via Roma 12", "Leggi il contratto").unwrap();
+        o.start_thread("Corso Italia 3", "x").unwrap();
+        o.deliver(COORDINATOR, "t1", "Guarda anche la clausola 4").unwrap();
+        o.deliver(COORDINATOR, "t2", "Aspetta il limite").unwrap();
+        for (t, state) in [("t1", "working"), ("t2", "paused")] {
+            let m = o.member_mut(t).unwrap();
+            m.state = state.into();
+            m.turn = "Leggi il contratto".into();
+        }
+        let saved = serde_json::to_string(&o).unwrap();
+        let mut o: Orchestra = serde_json::from_str(&saved).unwrap();
+        for m in std::iter::once(&mut o.coordinator).chain(o.threads.iter_mut()) {
+            interrupted(m);
+        }
+        assert!(o.member("t1").unwrap().mail[0].text.contains("Lumo closed"));
+        // A usage limit holds the other: it goes on when the limit resets, as planned.
+        assert_eq!(unread_members(&mut o), ["t1"]);
+        assert!(unread_members(&mut o).is_empty());
         // Nothing new is saved for a member without a CLI session or a turn running.
         let plain = serde_json::to_value(&idle).unwrap();
         assert!(plain.get("cli").is_none() && plain.get("turn").is_none());
