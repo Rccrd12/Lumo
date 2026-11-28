@@ -756,6 +756,8 @@ impl ChatEvents {
     /// the chat lists it, and may open it from now on (chat_files.rs).
     pub fn file(&self, app: &AppHandle, file: &claude_code::FileTouch) {
         crate::chat_files::remember(&file.path);
+        // A CLI member of an orchestra: who changes which file (orchestra.rs).
+        crate::orchestra::touched(app, &self.chat, file.kind, &file.path);
         let _ = app.emit_to(WINDOW_LABEL, "chat-file", json!({ "chat": self.chat, "kind": file.kind, "path": file.path }));
     }
 }
@@ -1182,7 +1184,7 @@ pub fn with_permissions(mut settings: Settings, permissions: Option<&ChatPermiss
 /// file: waiting in the inbox, or moved into the folder of the chat it goes
 /// to (files.rs adopt). The page names the path, so without this any file
 /// the user can read could be sent to a chat provider.
-fn checked_context(chat: &str, context: ChatContext) -> Result<ChatContext, String> {
+pub(crate) fn checked_context(chat: &str, context: ChatContext) -> Result<ChatContext, String> {
     match context {
         ChatContext::File { name, path } => {
             if !is_copy_for(chat, std::path::Path::new(&path)) {
@@ -1209,7 +1211,7 @@ pub(crate) fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
 
 /// Screenshots ride along only from the inbox, where screen.rs writes them,
 /// or the chat's folder they move to — the same rule as a dropped file.
-fn checked_screen(chat: &str, mut screen: ScreenContext) -> Result<ScreenContext, String> {
+pub(crate) fn checked_screen(chat: &str, mut screen: ScreenContext) -> Result<ScreenContext, String> {
     let paths = screen.shots.iter().chain(screen.files.iter());
     if paths.map(|s| std::path::Path::new(&s.path)).any(|p| !is_copy_for(chat, p)) {
         return Err(crate::i18n::t("Only a file dropped on the island can be sent with a question."));
@@ -1493,7 +1495,18 @@ async fn send_to(
         if acp_chat::Agent::of(provider).is_some() {
             return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, browser, query, context, folder)).await;
         }
-        return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, browser, query, context, folder)).await;
+        // A project's coordinator opens no file: what the user attached goes in its message.
+        let attached: Vec<String> = if crate::orchestra::is_coordinator_chat(chat.id()) {
+            let shared = screen.as_ref().map(|s| s.shots.iter().chain(s.files.iter()).map(|f| f.path.clone()).collect::<Vec<_>>()).unwrap_or_default();
+            let file = match &context {
+                Some(ChatContext::File { path, .. }) => Some(path.clone()),
+                _ => None,
+            };
+            file.into_iter().chain(shared).collect()
+        } else {
+            Vec::new()
+        };
+        return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, browser, query, context, folder, attached)).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
         let effort = settings.chat_effort.as_str();

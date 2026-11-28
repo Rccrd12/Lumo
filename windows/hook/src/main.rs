@@ -36,6 +36,7 @@ mod island_tools;
 mod mail_tools;
 mod mcp;
 mod normalize;
+mod orchestra_tools;
 mod reply;
 mod title;
 mod write_stat;
@@ -143,7 +144,7 @@ fn args() -> Args {
     while let Some(arg) = it.next() {
         if arg == "--chat-guard" {
             chat_guard = true;
-        } else if arg == "--computer-turn" || arg == "--browser-claim" {
+        } else if arg == "--computer-turn" || arg == "--browser-claim" || arg == "--step-mail" {
             // Read on its own (main): not the event's name.
         } else if arg == "--agent" {
             agent = it.next().unwrap_or_default();
@@ -211,6 +212,11 @@ fn main() {
         // own (browser.rs in the app).
         if std::env::args().skip(1).any(|a| a == "--browser-claim") {
             browser_claim(&raw, &env);
+        }
+        // `--step-mail`: a tool of a project's member ran (orchestra.rs in
+        // the app): the messages that came for it meanwhile, read now.
+        if std::env::args().skip(1).any(|a| a == "--step-mail") {
+            step_mail(&raw, &env);
         }
         if waits_on_github(&raw) {
             print(Some(reply::claude_wait_denied()));
@@ -364,6 +370,47 @@ fn browser_claim_line(raw: &[u8], env: &dyn Fn(&str) -> Option<String>) -> Optio
     let agent = v["agent_id"].as_str().filter(|a| !a.is_empty()).unwrap_or("main");
     let url = v["tool_input"]["url"].as_str().unwrap_or("");
     Some(format!("{}\n", serde_json::json!({ "lumo_browser_claim": { "chat": chat, "agent": agent, "url": url } })))
+}
+
+/// How long the messages after a tool may take: Lumo answers at once.
+const STEP_MAIL_BUDGET: Duration = Duration::from_secs(2);
+
+/// A tool of a project member's Claude Code ran (PostToolUse): the messages
+/// that came for it while it worked go with the tool's answer, so it reads
+/// them at this step, as Claude Code reads what is typed while it works.
+/// Not a subagent's tool: the messages are the conversation's. Lumo not
+/// there, or nothing new: nothing, Claude Code goes on.
+fn step_mail(raw: &[u8], env: &dyn Fn(&str) -> Option<String>) -> ! {
+    let Some(ask) = step_mail_line(raw, env) else { std::process::exit(0) };
+    let (tx, rx) = mpsc::channel::<Heard>();
+    std::thread::spawn(move || {
+        let _ = tx.send(talk(&ask, true));
+    });
+    if let Heard::Said(answer) = wait(&rx, STEP_MAIL_BUDGET, || false) {
+        print(step_mail_reply(&answer));
+    }
+    std::process::exit(0);
+}
+
+/// The ask, as one line: the member's chat (LUMO_CHAT_ID). None for a
+/// subagent's tool, or a chat that is no project's member.
+fn step_mail_line(raw: &[u8], env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let v = serde_json::from_slice::<Value>(without_bom(raw)).ok()?;
+    if v["agent_id"].as_str().is_some_and(|a| !a.is_empty()) {
+        return None;
+    }
+    let chat = env("LUMO_CHAT_ID").filter(|c| orchestra_tools::parse_chat(c).is_some())?;
+    Some(format!("{}\n", serde_json::json!({ "lumo_orchestra_mail": { "chat": chat } })))
+}
+
+/// The app's answer (a JSON string: the messages, or nothing) as the hook's
+/// output: Claude reads it with the tool's answer.
+fn step_mail_reply(answer: &str) -> Option<String> {
+    let text = serde_json::from_str::<String>(answer).unwrap_or_else(|_| answer.to_string());
+    let text = text.trim();
+    (!text.is_empty()).then(|| {
+        serde_json::json!({ "hookSpecificOutput": { "hookEventName": "PostToolUse", "additionalContext": text } }).to_string()
+    })
 }
 
 /// What came back from Lumo.
@@ -919,6 +966,27 @@ mod tests {
         // No chat: no turn to ask for.
         assert!(computer_ask(main.as_bytes(), &|_| None).is_none());
         assert!(computer_ask(main.as_bytes(), &|_| Some("${env:LUMO_CHAT_ID}".into())).is_none());
+    }
+
+    #[test]
+    fn a_project_members_messages_come_after_each_of_its_own_tools() {
+        let member = |k: &str| (k == "LUMO_CHAT_ID").then(|| "orch-p1-m-t2".to_string());
+        let main = r#"{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}"#;
+        assert_eq!(
+            serde_json::from_str::<Value>(step_mail_line(main.as_bytes(), &member).unwrap().trim_end()).unwrap(),
+            serde_json::json!({ "lumo_orchestra_mail": { "chat": "orch-p1-m-t2" } })
+        );
+        // A subagent's tool, or a chat that is no project's: nothing asked.
+        let sub = r#"{"hook_event_name":"PostToolUse","tool_name":"Bash","agent_id":"a1"}"#;
+        assert!(step_mail_line(sub.as_bytes(), &member).is_none());
+        assert!(step_mail_line(main.as_bytes(), &|k: &str| (k == "LUMO_CHAT_ID").then(|| "chat-7".to_string())).is_none());
+        assert!(step_mail_line(main.as_bytes(), &|_| None).is_none());
+        // The messages go with the tool's answer; nothing new, nothing printed.
+        let out = step_mail_reply(&serde_json::to_string("<lumo-messages>\nfermati\n</lumo-messages>").unwrap()).unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["hookSpecificOutput"]["hookEventName"], "PostToolUse");
+        assert!(v["hookSpecificOutput"]["additionalContext"].as_str().unwrap().contains("fermati"));
+        assert!(step_mail_reply("\"\"").is_none());
     }
 
     #[test]

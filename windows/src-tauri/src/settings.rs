@@ -137,6 +137,13 @@ pub struct Settings {
     /// Claude Code's effort level for the chat ("low" … "max"); empty: Claude
     /// Code's own default. Only the Claude Code provider uses it.
     pub chat_effort: String,
+    /// The chat view shows the projects (orchestra.rs) instead of a chat:
+    /// entered from the Projects card of the empty chat.
+    pub orchestra_mode: bool,
+    /// The provider, model and effort of the last project's coordinator, and
+    /// of its threads, for the next New project; empty ones are the chat's own.
+    pub orchestra_coordinator: crate::orchestra::Pick,
+    pub orchestra_thread: crate::orchestra::Pick,
     /// What the chat's CLIs (Claude Code, Antigravity CLI) may do without a
     /// card: "default" (ask for everything), "auto" (the CLI decides what is
     /// safe; "acceptEdits", from before, reads as it) or "plan" (plan only,
@@ -199,6 +206,9 @@ pub struct Settings {
     /// A local model's chat is compacted by itself before a question, once
     /// its context is over 80 % full (the ring's last numbers). On by default.
     pub chat_auto_compact: bool,
+    /// A local model's answer shows how many tokens it made and how many a
+    /// second, on a line under its text (views/chat.ts). On by default.
+    pub chat_token_speed: bool,
     /// Settings → Chat → Chat names: once its first answer is in, the chat's
     /// own provider names the chat in a few words (chat_title.rs). Off, a
     /// chat's name is the start of its first question. On by default.
@@ -412,6 +422,9 @@ impl Default for Settings {
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
+            orchestra_mode: false,
+            orchestra_coordinator: Default::default(),
+            orchestra_thread: Default::default(),
             chat_permission_mode: "default".into(),
             chat_permission_mode_agy: String::new(),
             local_sandbox: "high".into(),
@@ -427,6 +440,7 @@ impl Default for Settings {
             local_terminal_network: "ask".into(),
             local_terminal_timeout: 120,
             chat_auto_compact: true,
+            chat_token_speed: true,
             chat_ai_titles: true,
             chat_title_model: "light".into(),
             web_images: false,
@@ -835,6 +849,9 @@ mod tests {
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
+  "orchestraMode": true,
+  "orchestraCoordinator": { "provider": "anthropic", "model": "claude-opus-5-5", "effort": "high" },
+  "orchestraThread": { "provider": "lmstudio", "model": "gemma-4-26b-a4b", "effort": "medium" },
   "chatPermissionMode": "plan",
   "chatPermissionModeAgy": "auto",
   "localSandbox": "low",
@@ -850,6 +867,7 @@ mod tests {
   "localTerminalNetwork": "never",
   "localTerminalTimeout": 600,
   "chatAutoCompact": false,
+  "chatTokenSpeed": false,
   "chatAiTitles": false,
   "chatTitleModel": "chat",
   "webImages": true,
@@ -1462,6 +1480,9 @@ mod tests {
                 "chatProvider",
                 "chatModels",
                 "chatEffort",
+                "orchestraMode",
+                "orchestraCoordinator",
+                "orchestraThread",
                 "chatPermissionMode",
                 "chatPermissionModeAgy",
                 "localSandbox",
@@ -1477,6 +1498,7 @@ mod tests {
                 "localTerminalNetwork",
                 "localTerminalTimeout",
                 "chatAutoCompact",
+                "chatTokenSpeed",
                 "chatAiTitles",
                 "chatTitleModel",
                 "webImages",

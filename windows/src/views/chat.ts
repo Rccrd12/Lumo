@@ -86,9 +86,9 @@ import { MAX_COMMANDS, ranCommandOf } from "../core/terminal";
 import { Bridge, isDialogOpen, onEvent, type AgentWebTabs, type BrowserTab, type ChatActivity, type ChatAgentEvent, type ChatSignalEvent, type ChatContext, type ChatFileEvent, type ExplorerFolder, type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot } from "../core/bridge";
 import { activeModel, chatEffortOf, effortFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, providerDef, storedPermissionMode, withPermissionMode, modelFor, onChatModel, withModel, type ProviderId, type ProviderDef } from "../core/providers";
 import { Sound } from "../core/sound";
-import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
+import { State, planAskInChat, type ActiveChatRun, type ChatMessage, type Settings } from "../core/state";
 import { chatModelOf, chatName, chatNamedBy, chatPermissionsOf, chatTitle, cleanRecap, compactOf, deleteChat, joinOwnAnswer, loadChats, NAME_CHARS, nameChat, namingExchanges, newChatId, permissionsFor, saveChat, searchChats, setChatPermissions, setChatModel, setCompact, type ChatHit, type SavedChat } from "../core/chats";
-import { cliOf, moveSentPaths, onChatsLeft, setChatCli } from "../core/chats";
+import { cleanSpeed, cliOf, moveSentPaths, onChatsLeft, setChatCli } from "../core/chats";
 import { agentAsk, applyAgent, applyBrowserTabs, applyComputerTurns, applySignal, browserChats, browserOf, batchEntries, countAgents, durationText, forgetChat, isFinal, islandAgentsLine, looksOf, newAgentStore, noteSignal, openCount, permissionMatch, restoreAgents, rewindAgents, sealAgents, setIslandAgents, stallOf, talkWaits, waitingTalk, withAgents, type ComputerTurns, type AgentBatch, type ChatAgents, type PendingCard, type TalkEntry } from "../core/chat-agents";
 import { agentsCard, agentsCardKey, fillAgentsCard, fillTalkBox, mainBrowser, stopLater, talkBox, type AgentsCardHost } from "./agents-card";
 import { browserTabsChanged, openBrowserView, setBrowserViewHost } from "./browser-watch";
@@ -101,7 +101,7 @@ import type { ChatPermissions } from "../core/chats";
 import { messageScope, nextMessage } from "../core/checklists";
 import { withReplyFile } from "../core/file-names";
 import { setFileLinkHost } from "./file-links";
-import { addChatFile, chatCopies, chatFiles, dropChatFiles, inboxCopies, keptCopies, moveChatPaths, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
+import { addChatFile, chatCopies, chatFiles, dropChatFiles, inboxCopies, isProjectChat, keptCopies, moveChatPaths, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, samePath, withdrawAttached, type ChatFile } from "../core/chat-files";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import { PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, itemPreview, keepShots, afterSent, autoShare, folderPicks, foldersByThemselves, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short, screenWaits, shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type PickEntry, type PendingScreen, type PreviewBlock, type ScreenItem } from "../core/screen";
@@ -125,8 +125,10 @@ import { AGY, CHAT_FILE_KINDS, COMPUTER_ICON, PICTURE_FILE, attachGroup, attachR
 import { splitFix } from "./chat-fix";
 import { orchestratorName, parseOrchestrator } from "../core/orchestrator";
 import { cliModelName } from "../core/model-names";
-import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
+import { FIRST_ACTIVITY_MS, MODEL_CHECK_WAIT_MS, PEEK_EVERY_MS, PLAN_ASK_GUARD_MS, TABS_WAIT_MS, THINKING, TIMED, WARNING_COLOR, activityLabel, activitySince, bubble, chatSpeaker, compactMark, checklistsToTell, checklistsTold, conversationTurn, drawAnswer, drawReply, failedParts, firstActivity, islandActivityLabel, messageOf, newMessageId, noteChecklists, noteChip, noticeAway, refreshTimes, runSpeaker, savedTurns, sendFromCard, sentAgo, sentBadges, sentTimes, setSendFromCard, setSentTimes, settle, smallPicture, speedLine, speedText, timedLabel, typingDots, uploadedChip, type Run } from "./chat-messages";
 import { buildPicker, readyProviders } from "./chat-models";
+import { buildOrchestra } from "./orchestra";
+import { Orchestra, type OrchestraAttached } from "../core/orchestra-bridge";
 import { AUTO_COMPACT_PCT, COMPACT_ICON, COMPACT_STRINGS, FILLED_ICONS, HOLD_TEXT, MAX_LISTEN_ASKS, RESTART_ON_EDIT, SANDBOX_TEXT, STRINGS, effortLabel, modeText, tc } from "./chat-strings";
 
 // ── Usage ring ────────────────────────────────────────────────────────────────
@@ -426,12 +428,15 @@ export function buildPrompt(
   const covered = () => COVERING.some((c) => body.classList.contains(c));
   /** Before a panel hides the log: where it is read. */
   function coverLog() {
+    // A project's conversation on screen: its place, kept by the projects.
+    orchestra.coverLog();
     if (coveredAt || log.clientHeight <= 0) return;
     // Still being put back after the island opened: that place is the one read.
     coveredAt = readAt ? { ...readAt } : { chatId: State.chatId, slot: State.chatSlot, stuck, place: stuck ? null : readPlace(log) };
   }
   /** The panels all gone: the place back, frame by frame until the log holds its size. */
   function uncoverLog() {
+    if (!covered()) orchestra.uncoverLog();
     const at = coveredAt;
     if (!at || covered()) return;
     coveredAt = null;
@@ -624,7 +629,7 @@ export function buildPrompt(
   const listenAskDecide = (yes: boolean) => () => {
     // A click meant for something else, as the box came up, answers nothing.
     if (performance.now() - listenAskAt < PLAN_ASK_GUARD_MS) return;
-    const chatId = State.chatId;
+    const chatId = filesChat();
     const asks = listenAsks.get(chatId) ?? [];
     listenAsks.delete(chatId);
     drawListenAsk();
@@ -640,15 +645,17 @@ export function buildPrompt(
   listenAsk.hidden = true;
   /** The box for the chat on screen: each watch its answer asked for, by name, event and what then. */
   function drawListenAsk() {
-    const asks = State.chatSlot !== "forge" ? listenAsks.get(State.chatId) ?? [] : [];
-    const key = asks.length ? `${State.chatId}:${JSON.stringify(asks)}` : "";
+    // In a project, the member on screen's: what its answers asked to listen for.
+    const askChat = filesChat();
+    const asks = State.chatSlot !== "forge" ? listenAsks.get(askChat) ?? [] : [];
+    const key = asks.length ? `${askChat}:${JSON.stringify(asks)}` : "";
     if (key === listenAskShownFor) return;
     listenAskShownFor = key;
     listenAskAt = performance.now();
     listenAsk.hidden = asks.length === 0;
     clear(listenAskList);
     for (const ask of asks) {
-      const w = { ...ask, id: 0, chatId: State.chatId, startedAt: 0 } as ListenWatch;
+      const w = { ...ask, id: 0, chatId: askChat, startedAt: 0 } as ListenWatch;
       const label = watchLabel(w);
       // A path or a page shortened in its label is read whole before Listen.
       const whole = ask.source !== "github.pr" && ask.target && !label.includes(ask.target) ? ask.target : "";
@@ -745,6 +752,43 @@ export function buildPrompt(
     h("div", { class: "model-side" }, planBtn, planStrip.chip, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
+  // The projects (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
+  /** The projects are built: what draws the send button may ask them. */
+  let orchestraBuilt = false;
+  const orchestra = buildOrchestra(() => {
+    drawIslandActivity();
+    // The member on screen answering or done: the send button is its Stop or the arrow again.
+    if (orchestraBuilt) drawSend();
+  }, {
+    openSent: (msg, item) => void openSent(msg, item),
+    openAgents: () => openAgents(),
+    // The agents a member's answers started, and its messages to them, as under a chat's.
+    agentsReset: () => {
+      shownCards.clear();
+      shownTalks.clear();
+    },
+    talksUnder: (chat, answer, after) => talkBoxesFor(chat, answer, after),
+    agentsUnder: (chat, answer, after) => agentCardsFor(chat, answer, after),
+    // A member's answer written in ink as a chat's, going on into its bubble when it comes whole.
+    writeLive: (chat, into, text, fresh, scope) => writeAnswer(chat, into, text, fresh, scope),
+    startEdit: (text) => {
+      setInput(text);
+      input.focus();
+    },
+    lumoLines: (chat, text) => void lumoLines(chat, text),
+    unqueued: (text) => {
+      const typed = input.value.trim();
+      setInput(typed ? `${text}\n${typed}` : text);
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    },
+    inkInto: (chat, into, text, scope) => {
+      if (ink && inkChat === chat && ink.behind) {
+        ink.update(text, true);
+        ink.mount(into, (el, words) => drawReply(el, words, false, scope, words.length < text.length));
+      } else if (inkChat === chat) dropInk();
+    },
+  });
   const picker = buildPicker(() => {
     if (picker.isOpen) coverLog();
     body.classList.toggle("picking", picker.isOpen);
@@ -851,6 +895,15 @@ export function buildPrompt(
     back: () => openTools(),
   });
   body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, holdEl, askEl, planAsk, listenAsk, heardBar, modelRow, bar, toEnd);
+  // Its rail (or its reader) over the left side, its member's header and conversation where the chat's are.
+  body.insertBefore(orchestra.doc, body.firstChild);
+  body.insertBefore(orchestra.rail, orchestra.doc);
+  body.insertBefore(orchestra.head, log);
+  body.insertBefore(orchestra.planBox, log);
+  body.insertBefore(orchestra.log, picker.el);
+  // The projects' pages (their list, a form) where the conversation is.
+  body.insertBefore(orchestra.page, orchestra.log);
+  body.insertBefore(orchestra.queue, modelRow);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -889,6 +942,7 @@ export function buildPrompt(
     if (target instanceof Element && target.closest(".ctx-menu")) return;
     const inside = (...els: Element[]) => target != null && els.some((el) => el.contains(target));
     if (picker.isOpen && !inside(picker.el, modelBtn)) picker.close();
+    orchestra.closeModelMenu(target);
     if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
     if (body.classList.contains("filing") && !inside(filesEl, filesBtn)) closeFiles();
     if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
@@ -913,6 +967,9 @@ export function buildPrompt(
   const runs = new Map<string, Run>();
   /** The answer of the chat on screen, while it is written. */
   const answering = (): Run | undefined => runs.get(State.chatId);
+  /** What the field answers to: a project's member on screen while it works, else the chat's answer. */
+  const answeringHere = (): { stopping: boolean } | null | undefined => (orchestra.inProject() ? orchestra.answering() : answering());
+  orchestraBuilt = true;
   /** The agents each chat's CLI started, and each chat's sign of life (core/chat-agents.ts). */
   const agentStore = newAgentStore();
   /** The Agents cards in the log now, by card (views/agents-card.ts agentsCardKey): drawn again alone. */
@@ -993,12 +1050,29 @@ export function buildPrompt(
 
   let usageLineShown: UsageLine | null = null;
 
+  /**
+   * Whose usage the ring shows: the chat's, or on the orchestra the member on
+   * screen's (views/orchestra.ts), its own chat and the model playing it.
+   */
+  function usageScope(): { settings: Settings; chatId: string; orchestra: boolean } {
+    const member = orchestra.usageOf();
+    if (!member) return { settings: State.settings, chatId: State.chatId, orchestra: false };
+    const settings: Settings = { ...State.settings, chatProvider: member.provider as Settings["chatProvider"], chatEffort: member.effort, chatModels: { ...State.settings.chatModels, [member.provider]: member.model } };
+    if (member.provider === "anthropic") settings.model = member.model;
+    // Lumo started again since its last answer: how full it was then, until its next one says.
+    if (member.chat && member.context && !seenContext.has(member.chat)) {
+      seenContext.set(member.chat, { provider: member.provider, context: { chat: member.chat, used: member.context.used, total: member.context.total }, at: 0 });
+    }
+    return { settings, chatId: member.chat, orchestra: true };
+  }
+
   function drawUsage(now = Date.now()) {
-    const local = Boolean(providerDef(State.settings.chatProvider).urlField);
-    const seen = local ? seenContext.get(State.chatId) : seenUsage.get(State.settings.chatProvider);
+    const { settings, chatId } = usageScope();
+    const local = Boolean(providerDef(settings.chatProvider).urlField);
+    const seen = local ? seenContext.get(chatId) : seenUsage.get(settings.chatProvider);
     // A provider called by its API: this chat's context too, next to its limits.
-    const context = isApiProvider(State.settings.chatProvider) ? seenContext.get(State.chatId) : undefined;
-    const line = usageLine(State.settings, State.planUsage, seen, now, State.antigravityPlanUsage, State.chatId, context);
+    const context = isApiProvider(settings.chatProvider) ? seenContext.get(chatId) : undefined;
+    const line = usageLine(settings, State.planUsage, seen, now, State.antigravityPlanUsage, chatId, context);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -1018,24 +1092,26 @@ export function buildPrompt(
   /** The menu: each limit with how much is used, its bar and when it resets. */
   function drawUsageMenu() {
     const line = usageLineShown;
+    const scope = usageScope();
+    const { settings, chatId } = scope;
     // A local model's ring is its context: the menu says only that. So does
     // an API provider's that tells no limits (Google's).
-    const local = providerDef(State.settings.chatProvider).urlField !== null || Boolean(line?.context);
+    const local = providerDef(settings.chatProvider).urlField !== null || Boolean(line?.context);
     usageTitle.textContent = USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
     // The context as one split bar, then the limits as bars (views/usage-panel.ts).
     usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
-    const report = lastContextReport(State.chatHistory);
+    const report = scope.orchestra ? null : lastContextReport(State.chatHistory);
     // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
-    const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
+    const filled = local ? null : seenContext.get(chatId)?.context ?? null;
     // Antigravity CLI says only the tokens: its model's window comes from its name, and the figure is about.
-    const agy = State.settings.chatProvider === "antigravity-cli";
-    const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(State.settings)) ?? 0 : 0) : 0;
+    const agy = settings.chatProvider === "antigravity-cli";
+    const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(settings)) ?? 0 : 0) : 0;
     const fill = filled && total > 0 ? { used: filled.used, total, estimate: agy } : null;
     drawNewUsage(usageList, {
       line, local, report, fill,
-      askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {
+      askContext: !scope.orchestra && settings.chatProvider === "claude-code" && !report?.fresh ? () => {
         closeUsage();
         void submit("/context");
       } : null,
@@ -1043,7 +1119,8 @@ export function buildPrompt(
     // Taller while it holds the context (the menu may be open as /context lands).
     if (body.classList.contains("metering")) panelChanged();
     // A local model's context, or an API provider's: /compact from here, under its bar.
-    if ((local || isApiProvider(State.settings.chatProvider)) && State.chatHistory.length > 0) {
+    // Not on the orchestra: its members' chats are compacted by their own turns.
+    if (!scope.orchestra && (local || isApiProvider(settings.chatProvider)) && State.chatHistory.length > 0) {
       const compact = h("button", { class: "usage-compact", title: t(SLASH_STRINGS.compact), onclick: () => void compactChat() },
         svg(COMPACT_ICON, 12, { stroke: 1.8 }), h("span", { text: t(COMPACT_STRINGS.action) }));
       usageList.append(h("div", { class: "usage-compact-row" }, compact));
@@ -1051,10 +1128,11 @@ export function buildPrompt(
   }
 
   function openUsage() {
+    const { settings } = usageScope();
     // Asked of Anthropic when turned on (at most every 3 minutes).
-    if (State.settings.chatProvider === "claude-code") refreshClaudePlanOnline();
+    if (settings.chatProvider === "claude-code") refreshClaudePlanOnline();
     // agy is asked again when its numbers are more than a minute old.
-    if (antigravityUsage()) refreshAntigravityPlanUsage();
+    if (settings.chatProvider === "antigravity-cli" && settings.chatShowUsage) refreshAntigravityPlanUsage();
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -1092,7 +1170,11 @@ export function buildPrompt(
       if (total > 0) u = { ...u, context: { ...u.context, total } };
     }
     seenUsage.set(u.provider, { ...u, at: Date.now() });
-    if (u.context && typeof u.context.chat === "string") seenContext.set(u.context.chat, { ...u, at: Date.now() });
+    if (u.context && typeof u.context.chat === "string") {
+      seenContext.set(u.context.chat, { ...u, at: Date.now() });
+      // A project member's: compacted when nearly full, as this chat would be (views/orchestra.ts).
+      orchestra.contextSeen(u.context.chat, u.context.used, u.context.total, u.context.estimate);
+    }
     // The usage menu open on this chat shows how full it now is.
     if (body.classList.contains("metering")) drawUsageMenu();
     State.notify();
@@ -1140,6 +1222,12 @@ export function buildPrompt(
     // Antigravity CLI's Orchestrator: who plans and who executes ("Orchestrator · Neon → Hydrogen").
     const orchestration = p.id === AGY ? parseOrchestrator(model) : null;
     modelName.textContent = orchestration ? orchestratorName(orchestration) : effort ? `${name} · ${effortLabel(effort)}` : name;
+    // A project open: who the field writes to, and its models.
+    if (orchestra.inProject()) {
+      const shown = orchestra.button();
+      modelName.textContent = shown.name;
+      modelDot.style.background = shown.dot;
+    }
     // A long name is cut; the whole of it shows on hover.
     modelName.title = modelName.textContent;
     modelBtn.classList.toggle("open", picker.isOpen);
@@ -1152,9 +1240,9 @@ export function buildPrompt(
    * an edited question sends (it stops that answer and replaces it).
    */
   function drawSend() {
-    const run = answering();
+    const run = answeringHere();
     // Something typed meanwhile: the arrow, which queues it.
-    const stops = run != null && editing == null && !input.value.trim();
+    const stops = run != null && editing == null && !(input.value ?? "").trim();
     const shows = stops ? "stop" : "send";
     if (shows !== sendShows) {
       sendShows = shows;
@@ -1168,6 +1256,13 @@ export function buildPrompt(
 
   /** The Stop button (or Escape in the text field): what was written so far stays. */
   function stop() {
+    // A project's member on screen: its turn stops, as this chat's answer would.
+    if (orchestra.inProject()) {
+      if (orchestra.answering()?.stopping !== false) return;
+      orchestra.stopAnswer();
+      drawSend();
+      return;
+    }
     const run = answering();
     if (!run || run.stopping) return;
     run.stopping = true;
@@ -1669,12 +1764,17 @@ export function buildPrompt(
     return asked;
   }
 
+  /** Whose files the panel lists: the chat's, or in a project the member's on screen. */
+  function filesChat(): string {
+    return (orchestra.inProject() ? orchestra.memberChat() : null) ?? State.chatId;
+  }
+
   /** The chat's files, newest first; asked again each time, so a new one shows at once. */
   function drawChatFiles() {
     if (filesTab !== "chat" || !body.classList.contains("filing")) return;
-    const files = chatFiles(State.chatId);
+    const files = chatFiles(filesChat());
     // Which are still there: asked once each time the list or the chat changes.
-    const asking = `${State.chatId}\n${files.map((f) => f.path).join("\n")}`;
+    const asking = `${filesChat()}\n${files.map((f) => f.path).join("\n")}`;
     if (asking !== presenceAsked) {
       presenceAsked = asking;
       const paths = files.map((f) => f.path);
@@ -1723,8 +1823,8 @@ export function buildPrompt(
 
   /** Its ×: out of the chat's list and context; the AI is told with the next question. */
   function forgetChatFile(file: ChatFile) {
-    removeChatFile(State.chatId, file);
-    void Bridge.chatForgetFile(State.chatId, file.name, file.path);
+    removeChatFile(filesChat(), file);
+    void Bridge.chatForgetFile(filesChat(), file.name, file.path);
     presenceAsked = "";
     Sound.play("pop");
     drawChatFiles();
@@ -1752,7 +1852,8 @@ export function buildPrompt(
 
   // The files an answer names or made, as buttons and cards (views/file-links.ts).
   setFileLinkHost({
-    known: () => chatFiles(State.chatId).map((f) => f.path),
+    // A project member's: its chat's files, and those its answers name (shared too).
+    known: () => [...chatFiles(filesChat()).map((f) => f.path), ...(orchestra.inProject() ? orchestra.knownFiles() : [])],
     showChatFiles: () => {
       openFiles();
       showFilesTab("chat");
@@ -2659,6 +2760,11 @@ export function buildPrompt(
       restoreAgents(agentStore, c.id, c.turns, c.provider);
     }
     State.chatId = c.id;
+    // A chat opened leaves the orchestra: it shows, on its own model.
+    if (State.settings.orchestraMode) {
+      State.settings = { ...State.settings, orchestraMode: false };
+      saveSettings();
+    }
     // Opened: its new answer, or what went wrong, is read now.
     unmark(c.id);
     // The picker shows the provider and model this chat is on (as it was left);
@@ -2800,7 +2906,7 @@ export function buildPrompt(
     input.focus();
   }
 
-  /** The empty chat: a question, and three ways to start. */
+  /** The empty chat: a question, three ways to start, and the projects. */
   function welcome(): HTMLElement {
     const start = (label: string, run: () => void) =>
       h("button", { class: "welcome-chip", onclick: run }, h("span", { text: t(label) }));
@@ -2822,6 +2928,8 @@ export function buildPrompt(
           }, 60);
         }),
       ),
+      // The projects: several models on one goal (views/projects.ts).
+      orchestra.welcomeCard(),
     );
   }
 
@@ -3018,7 +3126,11 @@ export function buildPrompt(
     }
   }
 
-  newBtn.addEventListener("click", newChat);
+  // + leaves the projects for a new chat; in a project, the clock lists the others.
+  newBtn.addEventListener("click", () => {
+    if (orchestra.on()) orchestra.leave();
+    newChat();
+  });
   attachBtn.addEventListener("click", () => void attach());
   screenBtn.addEventListener("click", () => {
     if (body.classList.contains("screening")) closeScreen();
@@ -3036,6 +3148,10 @@ export function buildPrompt(
   attachTab.addEventListener("click", () => showFilesTab("attached"));
   chatFilesTab.addEventListener("click", () => showFilesTab("chat"));
   historyBtn.addEventListener("click", () => {
+    if (orchestra.inProject() && !body.classList.contains("browsing")) {
+      orchestra.toggleMenu();
+      return;
+    }
     if (body.classList.contains("browsing")) {
       closeHistory();
       return;
@@ -3060,6 +3176,11 @@ export function buildPrompt(
   }
 
   modelBtn.addEventListener("click", () => {
+    // In a project: the model of the member on screen (views/orchestra.ts).
+    if (orchestra.inProject()) {
+      orchestra.toggleModelMenu(modelBtn, body);
+      return;
+    }
     if (picker.isOpen) picker.close();
     else picker.open();
   });
@@ -3096,6 +3217,11 @@ export function buildPrompt(
     finishedChats.set(run.chatId, { provider: run.provider, model: run.served || run.model, title, timer });
   }
 
+  function orchestraLine(): { who: string; color: string; label: string; chatId: string } | null {
+    const line = orchestra.islandLine();
+    return line ? { ...line, chatId: State.chatId } : null;
+  }
+
   function drawIslandActivity() {
     const liveRuns = [...runs.values()].filter((r) => !r.forgotten);
     const current = answering();
@@ -3117,7 +3243,9 @@ export function buildPrompt(
     const next = run
       ? { ...runSpeaker(run), label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null, chatId: run.chatId }
       : compactingLabel != null ? { ...chatSpeaker(), label: compactingLabel, chatId: State.chatId }
-      : agentsLine ? { who: agentsLine.island.who, color: agentsLine.chat.color, label: agentsLine.island.label, chatId: agentsLine.chat.chatId } : null;
+      : agentsLine ? { who: agentsLine.island.who, color: agentsLine.chat.color, label: agentsLine.island.label, chatId: agentsLine.chat.chatId }
+      // The orchestra: how many work, who waits for the user, or that it finished (views/orchestra.ts).
+      : orchestraLine() ?? null;
     const nextChats: ActiveChatRun[] = liveRuns.map((r) => {
       const { who, color } = runSpeaker(r);
       return {
@@ -3164,6 +3292,8 @@ export function buildPrompt(
   }
 
   void onEvent<{ chat: string; text: string }>("chat-delta", ({ chat, text }) => {
+    // A member of the orchestra writing: its own conversation shows it.
+    if (orchestra.delta(chat, text)) return;
     const run = runs.get(chat);
     if (!run || !text) return; // nothing visible yet: the dots stay
     // Text that comes is a sign of life too.
@@ -3184,8 +3314,57 @@ export function buildPrompt(
     }
     noteChecklists(chat, run.history, text);
     writeAnswer(chat, live, text, fresh, messageScope(chat, nextMessage(run.history)));
+    // The tokens so far go under the text from now on, not next to the dots.
+    if (fresh) drawSpeed(run);
     follow();
   });
+
+  // A local model's tokens so far (local_chat.rs, lumo-local `Seen::Made`).
+  void onEvent<{ chat: string } & Record<string, unknown>>("chat-tokens", (made) => {
+    const run = runs.get(made.chat);
+    const speed = cleanSpeed(made);
+    // A project's member: its own count. No tokens (a round asked again from the start): the count goes.
+    if (orchestra.turnSpeed(made.chat, speed)) return;
+    if (!run) return;
+    run.speed = speed;
+    drawSpeed(run);
+  });
+
+  /**
+   * "698 tokens · 44 tok/sec" for the answer being written, a local model's:
+   * on a line under its text, or next to the dots while it only reasons.
+   * Drawn only when tokens come (a few times a second at most), so nothing
+   * runs while the island is hidden and nothing is streamed.
+   */
+  function drawSpeed(run: Run) {
+    if (run.chatId !== State.chatId) return;
+    const speed = State.settings.chatTokenSpeed === false ? undefined : run.speed;
+    const row = log.querySelector<HTMLElement>(".reply-speed-row");
+    if (!speed || !live || !run.text) row?.remove();
+    else if (row) {
+      const text = row.querySelector(".reply-speed-text");
+      const said = speedText(speed);
+      if (text && text.textContent !== said) text.textContent = said;
+    } else {
+      const line = speedLine(speed);
+      if (line) {
+        line.style.setProperty("--speed-accent", providerDef(run.provider).accent);
+        live.parentElement?.after(h("div", { class: "chat-row reply-speed-row" }, line));
+      }
+    }
+    const label = log.querySelector(".typing-label");
+    let span = log.querySelector(".typing-tokens");
+    if (!speed || !label || run.text) {
+      span?.remove();
+      return;
+    }
+    if (!span) {
+      span = h("span", { class: "typing-tokens" });
+      label.after(span);
+    }
+    const said = speedText(speed);
+    if (span.textContent !== said) span.textContent = said;
+  }
 
   /**
    * The line next to the dots says what the answer is doing now. `again`:
@@ -3252,12 +3431,17 @@ export function buildPrompt(
   // A file the answer read, edited or created: the chat's files list it.
   void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
     addChatFile(chat, kind, path, undefined, undefined, runs.get(chat)?.turn);
+    // A project member's: under its answer when it comes (views/orchestra.ts).
+    if (orchestra.turnFile(chat, kind, path)) {
+      if (chat === filesChat()) drawChatFiles();
+      return;
+    }
     // A file of the computer, or a copy changed or made in the chat's folder
     // (workspace.rs): a card under the answer (views/file-links.ts). A copy
     // made from nothing stays "created": there is no original to put it back over.
     const run = runs.get(chat);
     if (run && kind !== "read") run.touched = withReplyFile(run.touched ?? [], path, kind);
-    if (chat === State.chatId) drawChatFiles();
+    if (chat === filesChat()) drawChatFiles();
   });
 
   // The model at work on an answer (antigravity_cli.rs emit_model): the closed island names it.
@@ -3275,6 +3459,7 @@ export function buildPrompt(
     const chat = (raw as { chat?: unknown } | null)?.chat;
     const run = typeof chat === "string" ? runs.get(chat) : undefined;
     const ran = ranCommandOf(raw);
+    if (typeof chat === "string" && ran && orchestra.turnCommand(chat, ran)) return;
     if (!run || !ran) return;
     const commands = (run.commands ??= []);
     commands.push(ran);
@@ -3282,6 +3467,7 @@ export function buildPrompt(
   });
 
   void onEvent<{ chat: string; activity: ChatActivity }>("chat-activity", ({ chat, activity }) => {
+    if (orchestra.activity(chat, activity)) return;
     const run = runs.get(chat);
     if (!run || !activity) return;
     clearTimeout(run.timer);
@@ -3306,6 +3492,9 @@ export function buildPrompt(
 
   /** Which answer of `chatId` a new batch of agents goes under: the one being written, else the last. */
   function anchorFor(chatId: string): number {
+    // A project member's: its answers in the project (views/orchestra.ts).
+    const member = orchestra.anchorOf(chatId);
+    if (member != null) return member;
     const run = runs.get(chatId);
     const history = run?.history ?? (chatId === State.chatId ? State.chatHistory : null);
     const answers = history
@@ -3472,10 +3661,15 @@ export function buildPrompt(
 
   /** Draws the chat on screen's Agents cards again, where they are; a new card draws the log again. */
   function drawAgents(chatId: string, onlyOpen = false, redraw = true) {
-    if (chatId !== State.chatId) return;
+    if (chatId !== filesChat()) return;
     const c = agentStore.get(chatId);
     if (!c) return;
     const unseen = c.batches.some((b) => !shownCards.has(agentsCardKey(chatId, b))) || c.talks.some((x) => !shownTalks.has(x.call));
+    // A project member's: its conversation draws them again (views/orchestra.ts).
+    if (redraw && unseen && chatId !== State.chatId) {
+      orchestra.redraw();
+      return;
+    }
     if (redraw && unseen) {
       // The log is drawn again on its next sync; it syncs now only when it shows.
       renderedCount = -1;
@@ -3649,7 +3843,7 @@ export function buildPrompt(
     // The island hidden: nothing to draw, nothing runs (0 % CPU).
     if (State.mode === "hidden") return 0;
     const shown = State.mode === "expanded" && State.view === "prompt";
-    const c = agentStore.get(State.chatId);
+    const c = agentStore.get(filesChat());
     if (shown && (answering() || openCount(c) > 0 || waitingTalk(c))) return 1000;
     for (const c of agentStore.values()) if (openCount(c) > 0) return 5000;
     return 0;
@@ -4043,6 +4237,38 @@ export function buildPrompt(
     drawQueue();
   }
 
+  /**
+   * What waits in the attachments, for a project's member whose chat is
+   * `chat`: as a chat's question takes it (submit), into that chat's folder,
+   * the attachments then ready for the next message. Its icons go on the bubble.
+   */
+  async function projectAttachments(chat: string, text: string): Promise<OrchestraAttached> {
+    const waiting = screen;
+    const shared = await withAuto(waiting);
+    if ((shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], text);
+    const waitingFile = State.droppedFile && !State.droppedFile.sent ? [State.droppedFile] : [];
+    await toChatFolder(chat, [...waitingFile, ...State.moreFiles], shared.shots);
+    const file = State.droppedFile;
+    const more = State.moreFiles;
+    const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
+    const screenContext = screenPayload(shared, more);
+    const sent = [...(file && context ? [file] : []), ...more];
+    const shots = screenContext ? shared.shots.map((x) => x.path) : [];
+    for (const path of shots) keptShots.add(path);
+    noteSentCopies(chat, [...sent.map((f) => f.path), ...shots]);
+    const went = screenContext || sent.length ? sentItems(screenContext ? shared : emptyScreen(), sent, fileDetail) : [];
+    await addThumbs(went, screenContext ? shared.shots : []);
+    // The chat's files from now on, as a question's once it went.
+    for (const f of sent) addChatFile(chat, "attached", f.path, f.name, Date.now());
+    // What went leaves the field, ready for the next message.
+    if (file && context) file.sent = true;
+    if (more.length > 0) State.moreFiles = State.moreFiles.filter((f) => !more.includes(f));
+    if (screen === waiting) screen = nextScreen(screen);
+    else if (screenContext) screen = afterSent(screen, shared);
+    State.notify();
+    return { context, screen: screenContext, sent: went };
+  }
+
   /** Something waits to go with the next question: a file, a screenshot, a selection, a window, a folder. */
   function attachmentsWaiting(): boolean {
     const file = State.droppedFile;
@@ -4054,6 +4280,63 @@ export function buildPrompt(
    * (submitAway): its conversation, already loaded in Rust.
    */
   async function submit(auto?: string, queuedText?: string, away?: { chatId: string; history: ChatMessage[]; session: string | null }, queuedQuote?: AskQuote) {
+    // A project on screen: what is typed goes to the member it shows.
+    if (orchestra.inProject() && auto == null && queuedText == null && away == null) {
+      const typed = input.value.trim();
+      // "/timer 10m pasta" and Lumo's own commands ("/new", "/model"…) as in a chat; "/compact" goes to the member's CLI.
+      const timer = /^\/timer\s+(\S+)\s*(.*)$/i.exec(typed);
+      const timerMs = timer ? parseDuration(timer[1]) : null;
+      if (timer && timerMs != null) {
+        setInput("");
+        compactTimer(timerMs, timer[2]);
+        Sound.play("blip");
+        return;
+      }
+      const own = lumoCommand(typed, State.settings.chatProvider);
+      // "/compact": the member's conversation, Lumo's to compact unless a CLI does it itself.
+      if (own === "compact" && orchestra.compactMember()) {
+        closeSlash();
+        setInput("");
+        Sound.play("blip");
+        return;
+      }
+      if (own && own !== "compact") {
+        closeSlash();
+        setInput("");
+        runLumo(own);
+        return;
+      }
+      // A message being edited goes again in its new words, what came after it gone.
+      if (typed && orchestra.editSend(typed)) {
+        setInput("");
+        return;
+      }
+      // "/pdfcraft merge them": the member is asked to use that tool, as a chat's AI is.
+      const called = toolCommand(typed, State.settings.chatProvider, State.tools);
+      const text = typed;
+      const asked = called ? toolAsk(called.tool, called.rest) : undefined;
+      const to = orchestra.memberChat();
+      // Nothing written: what is attached goes by itself, as in a chat.
+      const attaching = to != null && attachmentsWaiting();
+      if ((!text && !attaching) || preparing) return;
+      setInput("");
+      closeSlash();
+      if (picker.isOpen) picker.close();
+      closeHistory();
+      closeScreen();
+      Sound.play("send");
+      let attached: OrchestraAttached | undefined;
+      if (attaching && to != null) {
+        preparing = true;
+        try {
+          attached = await projectAttachments(to, text);
+        } finally {
+          preparing = false;
+        }
+      }
+      await orchestra.send(text, attached, asked);
+      return;
+    }
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
     // Nothing written: what is attached goes by itself (a photo, a file).
@@ -4341,6 +4624,8 @@ export function buildPrompt(
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           commands: run.commands?.length ? run.commands : undefined,
           files: run.touched?.length ? run.touched : undefined,
+          // A local model's tokens and how fast, under it.
+          speed: run.speed,
           // It used the computer: its plan as it ended, stopped or not, shown and saved under it.
           computer: recap,
         });
@@ -4628,6 +4913,15 @@ export function buildPrompt(
   function hear(fired: ListenFired) {
     const asks = answersInChat(fired);
     let chatId = fired.watch.chatId;
+    // A project member's watch: what it heard goes to that member, which goes
+    // on with what it planned for then, as a chat is sent the message.
+    if (asks && chatId && isProjectChat(chatId)) {
+      const member = chatId;
+      void Orchestra.heard(member, listenMessage(fired)).then((went) => {
+        if (!went) compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
+      });
+      return;
+    }
     let name = chatId ? chatNamed(chatId) : null;
     if (name == null) {
       // No chat asked, or it was deleted: with nothing to do, the closed
@@ -4883,6 +5177,8 @@ export function buildPrompt(
   function runLumo(action: SlashAction) {
     switch (action) {
       case "new":
+        // As the + button: out of a project too.
+        if (orchestra.on()) orchestra.leave();
         newChat();
         break;
       case "history":
@@ -4890,7 +5186,9 @@ export function buildPrompt(
         break;
       case "model":
       case "effort":
-        if (!picker.isOpen) picker.open();
+        // In a project: the menu of the member on screen's model (views/orchestra.ts).
+        if (orchestra.inProject()) orchestra.toggleModelMenu(modelBtn, body);
+        else if (!picker.isOpen) picker.open();
         break;
       case "attach":
         void attach();
@@ -5057,7 +5355,7 @@ export function buildPrompt(
 
   input.addEventListener("input", () => drawSend());
   send.addEventListener("click", () => {
-    if (answering() && editing == null && !input.value.trim()) stop();
+    if (answeringHere() && editing == null && !(input.value ?? "").trim()) stop();
     else void submit();
   });
   // The field stays open while an answer is written: the next question can be
@@ -5074,6 +5372,11 @@ export function buildPrompt(
     if (key === "Enter" && !ke.shiftKey && !ke.isComposing) {
       e.preventDefault();
       void submit();
+    } else if (key === "Escape" && orchestra.cancelEdit()) {
+      e.preventDefault();
+      setInput("");
+    } else if (key === "Escape" && orchestra.closeModelMenu()) {
+      e.preventDefault();
     } else if (key === "Escape" && picker.isOpen) {
       e.preventDefault();
       picker.close();
@@ -5083,7 +5386,7 @@ export function buildPrompt(
     } else if (key === "Escape" && editing != null) {
       e.preventDefault();
       cancelEdit();
-    } else if (key === "Escape" && answering()) {
+    } else if (key === "Escape" && answeringHere()) {
       e.preventDefault();
       stop();
     }
@@ -5093,6 +5396,7 @@ export function buildPrompt(
   return {
     el,
     sync() {
+      orchestra.sync(body);
       if (State.chatSlot !== shownSlot) slotChanged();
       takeForgeAsk();
       const workshop = State.chatSlot === "forge";
@@ -5353,7 +5657,7 @@ export function buildPrompt(
           inked.update(last.content, true);
           const scope = messageScope(State.chatId, place - 1);
           inked.mount(lastReply, (el, words) => drawReply(el, words, workshop, scope, words.length < last.content.length));
-        } else if (!run) dropInk();
+        } else if (!run && orchestra.anchorOf(inkChat) == null) dropInk();
         for (const line of heardLines.after) log.append(heardRow(line));
         // The messages sent to agents by the answer being written, before its text.
         if (run) log.append(...talkBoxesFor(State.chatId, answers, true));
@@ -5366,6 +5670,7 @@ export function buildPrompt(
         // The agents of the answer being written.
         if (run) log.append(...agentCardsFor(State.chatId, answers, true));
         if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
+        if (run) drawSpeed(run);
         drawStall();
         // The chat stays where it was read, or at its end when it is stuck
         // there; one just opened shows its end.
@@ -5406,6 +5711,7 @@ export function buildPrompt(
         : planAsking() ? t(STRINGS.planChange)
         : askFor.has(State.chatId) ? t(STRINGS.askPlaceholder, { name: askFor.get(State.chatId)!.title })
         : t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
+      if (orchestra.inProject()) input.placeholder = orchestra.placeholder();
     },
     focus() {
       input.focus();

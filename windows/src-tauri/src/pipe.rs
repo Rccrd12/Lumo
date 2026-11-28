@@ -254,6 +254,16 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         Some(while_relay_waits(&mut pipe, in_chat(&app, request, Box::pin(crate::tools::serve_call(&app, request)))).await)
     } else if payload.get("lumo_tools").is_some() {
         Some(crate::tools::serve_list())
+    } else if let Some(request) = payload.get("lumo_orchestra_mail") {
+        // After a tool of a project member's Claude Code (lumo-hook
+        // --step-mail): the messages that came for it meanwhile, at once.
+        // What the messages brought goes with them: Claude Code reads the files where they are.
+        let chat = request.get("chat").and_then(Value::as_str).unwrap_or("");
+        let say = |context, screen| crate::claude_code::attached_text(chat, context, screen);
+        Some(Value::from(crate::orchestra::step_mail(&app, chat, Some(&say))))
+    } else if let Some(request) = payload.get("lumo_orchestra") {
+        // A CLI member of an orchestra (orchestra.rs): its role's tools.
+        Some(crate::orchestra::serve(&app, request))
     } else if let Some(request) = payload.get("lumo_island").filter(|r| r.is_object()) {
         // An object: a hook event of the island's own chat carries
         // `"lumo_island": true` instead, and goes on below as an event.
@@ -265,6 +275,15 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         // other (Antigravity CLI's, which never has the computer, or an older
         // relay) is Antigravity CLI's plan, and never lets anyone in.
         payload.get("lumo_plan").map(|request| {
+            let chat = request.get("chat").and_then(Value::as_str).unwrap_or("");
+            // A CLI member of an orchestra: its plan is the orchestra's (orchestra.rs), not the Plan island's.
+            if crate::orchestra::parse_chat(chat).is_some() && request.get("computer").and_then(Value::as_bool) != Some(true) {
+                let input = request.get("input").cloned().unwrap_or_default();
+                return match crate::orchestra::call(&app, chat, crate::island_tools::UPDATE_PLAN, &input) {
+                    Some((error, true)) => json!({ "error": error }),
+                    _ => json!({ "ok": true }),
+                };
+            }
             if request.get("computer").and_then(Value::as_bool) == Some(true) {
                 crate::computer::note_plan(&app, request)
             } else {

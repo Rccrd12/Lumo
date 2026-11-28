@@ -781,6 +781,15 @@ every provider (Thinking… with its seconds, Using a tool), plus reading the
 prompt, trying again after its server dropped the request, or sent back once
 when it said something was done that wasn't. Over 80 % of its context, the chat compacts itself before the next
 question (**Compact by itself when the context is full**, on by default).
+Under the answer, live while it is written, a quiet line says how many tokens
+the model made and how fast (**698 tokens · 44 tok/sec**, its reasoning and
+tool calls included; next to the dots while it only reasons). The servers send
+no count while they stream, but each token comes as its own piece, so the
+pieces are counted; the server's own count at the end replaces it. Once the
+answer is done the numbers sit on its bar beside Copy and Retry, and show and
+hide with them; on hover they open the details: reasoning and answer, the
+speed, the question read (its tokens and seconds) and the whole turn's time.
+They are saved with the chat (**Show tokens per second**, on by default).
 A thin **Chat compacted** line marks where, with the summary under it on a
 click; a summary that wouldn't be shorter isn't kept, and the chat says why.
 An answer the server cuts off is asked again; if it still stops after its
@@ -1146,6 +1155,20 @@ that says nothing gets one agent at a time. Their calls ask for
 your click as the chat's own do. The model that started them waits for all
 of them and answers from their reports: nothing runs after the answer, and
 the chat's Stop stops them all.
+
+### Projects
+
+For a big job, open **Projects** from the card under the empty chat and make a **New project**: a name and an icon (search, 48 line icons, a colour), what you want to work on (up to 8,000 characters, which every member is told and keeps to), a folder, and a model and an effort for the **Coordinator** and for the **Threads**: any API provider or local model, and the two may differ (a cloud coordinator with local threads, for instance). Claude Code can coordinate too, with its own file, terminal and web tools turned off, and any CLI (Claude Code, Antigravity CLI, Codex, Copilot CLI, Cursor CLI) can be a thread: it works with its own tools and gets the orchestra's through `lumo-hook --mcp`. The list of projects says where each stands; the gear beside **Stop all** opens a project's settings in place of its conversation, with **Delete project**. Its **Environment**, optional, holds your GitHub repositories (with GitHub connected in Settings → Pills & integrations): Lumo clones each with your git into the project's folder before the first turn that needs it (the token goes to git only in its environment, for that clone), and the members work in them, on a branch of their own. The model button says the model of the chat on screen and changes it there: a thread's for that thread only, the coordinator's for the project. Each thread's answers reach the coordinator by themselves, and it tells you in a sentence or two when a thread finished, needs you or failed, and otherwise stays quiet. **‹ Chat** on the list, and **‹** beside a project's name, go back to the chats. The model picker has only models: projects are apart from the chats.
+
+The project's folder: a CLI thread works on the files there directly (Claude Code gets it with `--add-dir`); an API or local model's thread copies the files it needs from it with `workspace_copy` into the folder all threads share and works on the copies, as the chat's AI does, so Lumo itself never writes your files. Without a folder, the project has only its shared one.
+
+With **Continue the threads when the usage limits reset** on, a member stopped by a usage limit is paused until the time the error says (Claude Code's "resets 6:30pm", "try again in 2h"; 15 minutes when it says none), then told to go on from where it stopped; the timer comes back after Lumo restarts. Off, it waits for you.
+
+The coordinator plans and hands the work out, and does nothing else: it has no file, terminal or browser tools, only its own to start a thread, write to it, read it, stop it and ask you. Each thread is a chat of its own, with its model, the chat's tools and a folder of copies shared by every thread of the project (`%LOCALAPPDATA%\com.rccrd12.lumo\workspaces\orch-<id>`). Only the coordinator starts threads.
+
+The rail lists the coordinator and its threads with what each is doing; you write to the coordinator or to any thread directly, and they write to each other (grey "From …" lines). A message to one that is answering is read at its next step, inside its turn; to one at rest, it starts it. A thread that tries to change a file another thread is changing is stopped and told who has it, and so is the coordinator. Cards of 2 to 4 options ask you what only you can decide; a thread hands over a finished file as a card, and a Markdown report opens beside the chat. Projects are kept in `%LOCALAPPDATA%\com.rccrd12.lumo\orchestra` and come back from the menu above the rail (orchestra.rs, views/orchestra.ts, views/projects.ts). The context ring follows the member on screen, and the closed island says who asks you, how many are at work and the plan's step, or that the project finished.
+
+A CLI thread reads the messages sent to it with each orchestra tool it calls and with `read_messages`, not between its own tools; and a file it changes that another thread holds is reported to it and to the coordinator after the change, since Lumo can't stop a CLI's own edit before.
 
 ### The chat knows what's open
 

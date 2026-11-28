@@ -120,6 +120,8 @@ class FakeElement {
   }
   /** Moves `node` before `ref` (at the end when null), out of where it was. */
   insertBefore(node, ref) {
+    // As a browser: a reference that is not a child is an error, not the end.
+    if (ref && ref.parentNode !== this) throw new Error("NotFoundError: the node before which the new node is to be inserted is not a child of this node");
     node.parentNode?.removeChild(node);
     const at = ref ? this.childNodes.indexOf(ref) : -1;
     this.childNodes.splice(at < 0 ? this.childNodes.length : at, 0, node);
@@ -129,6 +131,13 @@ class FakeElement {
   }
   remove() {
     this.parentNode?.removeChild(this);
+  }
+  /** Puts `nodes` just after this one, in its parent. */
+  after(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) return;
+    const next = parent.childNodes[parent.childNodes.indexOf(this) + 1] ?? null;
+    for (const n of nodes) parent.insertBefore(typeof n === "string" ? new FakeText(n) : n, next);
   }
   /** `.a.b` class selectors only: the first descendant carrying every class. */
   querySelector(selector) {

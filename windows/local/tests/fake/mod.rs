@@ -9,7 +9,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use lumo_local::{Doing, Endpoint, Hooks, Loaded, MORE};
+use lumo_local::{Doing, Endpoint, Hooks, Loaded, Made, MORE};
 use serde_json::{json, Value};
 
 pub enum Reply {
@@ -180,7 +180,7 @@ pub fn whole(text: &str, calls: &[(&str, &str, &str)]) -> Reply {
         message["tool_calls"] = json!(calls);
     }
     let reason = if calls.is_empty() { "stop" } else { "tool_calls" };
-    Reply::Json(200, json!({ "choices": [{ "message": message, "finish_reason": reason }], "usage": { "total_tokens": 77 } }).to_string())
+    Reply::Json(200, json!({ "choices": [{ "message": message, "finish_reason": reason }], "usage": { "total_tokens": 77, "completion_tokens": 12 } }).to_string())
 }
 
 // ── The request and the app ──────────────────────────────────────────────────
@@ -221,6 +221,10 @@ pub struct Island {
     pub failing: bool,
     /// What each request took, as the turn said it.
     pub used: Vec<u64>,
+    /// The tokens made so far and their seconds, each time the turn said them.
+    pub made: Vec<(u64, f64)>,
+    /// All the turn said of them, the last time.
+    pub made_last: Option<Made>,
     /// The plans Lumo made of a list in the answer.
     pub plans: Vec<Value>,
     /// When the island was hushed and when it spoke again.
@@ -247,6 +251,11 @@ impl Hooks for Island {
 
     fn used(&mut self, tokens: u64) {
         self.used.push(tokens);
+    }
+
+    fn made(&mut self, made: Made) {
+        self.made.push((made.tokens, made.secs));
+        self.made_last = Some(made);
     }
 
     fn without_tools(&mut self) -> String {

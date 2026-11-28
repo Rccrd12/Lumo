@@ -719,6 +719,25 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         let _ = self.app.emit("chat-usage", usage);
     }
 
+    /// The tokens the model made in this turn and how fast: the line under
+    /// the answer (views/chat.ts, Settings → Chat → Local models).
+    fn made(&mut self, made: lumo_local::Made) {
+        if !self.hushed {
+            let _ = self.app.emit(
+                "chat-tokens",
+                json!({
+                    "chat": self.chat.id(),
+                    "tokens": made.tokens,
+                    "secs": made.secs,
+                    "reasoning": made.reasoning,
+                    "promptTokens": made.prompt_tokens,
+                    "promptSecs": made.prompt_secs,
+                    "totalSecs": made.total_secs,
+                }),
+            );
+        }
+    }
+
     fn doing(&mut self, doing: Doing) {
         self.events.signal(self.app);
         self.events.activity(self.app, match doing {
@@ -727,6 +746,7 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
             Doing::Reasoning => Activity::new("reasoning", ""),
             Doing::Calling(name) => Activity::new("calling", crate::claude_code::pretty_tool(&name)),
             Doing::Retrying { attempt, of } => Activity::new("retry", format!("{attempt}/{of}")),
+            Doing::Whole => Activity::new("whole", ""),
             Doing::Correcting(why) => Activity::new("correcting", match why {
                 lumo_local::Correction::Written => "written",
                 lumo_local::Correction::SaidDone => "done",
@@ -918,6 +938,8 @@ pub async fn send(
         let mut all = tools_for_mode(all, mode);
         // Agents of its own, one at a time (api_agents.rs).
         all.push(crate::api_agents::tool());
+        // A member of an orchestra: its role's tools (orchestra.rs).
+        crate::orchestra::shape_tools(chat.id(), &mut all);
         all
     };
     let user_tools: Vec<_> = all.iter().filter(|(id, _, _)| profile::group_of(id) == Some(profile::Group::User)).cloned().collect();
@@ -942,6 +964,7 @@ pub async fn send(
     let mail_on = !crate::mail::ai_tools(app).is_empty();
     // What the model is told, for the tools it has loaded (and none, when the
     // server takes none: then, with email on, that it can't read it).
+    let orchestra_note = crate::orchestra::note(chat.id());
     let prompt_for = |loaded: &[String], tools: bool| {
         let groups: Vec<profile::Group> = profile::Group::ALL.into_iter().filter(|g| loaded.iter().any(|id| profile::group_of(id) == Some(*g))).collect();
         let catalog = profile::catalog(&all, loaded);
@@ -961,6 +984,8 @@ pub async fn send(
         if !tools && mail_on {
             prompt.push_str(NO_MAIL_TOOLS);
         }
+        // A member of an orchestra: its role (orchestra.rs).
+        prompt.push_str(&orchestra_note);
         prompt
     };
     let mut system = prompt_for(&loaded, !tools.is_empty());

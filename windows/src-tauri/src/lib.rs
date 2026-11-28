@@ -8,6 +8,10 @@ mod browser_tool_defs;
 #[path = "../../hook/src/mail_tools.rs"]
 #[allow(dead_code)]
 mod mail_tool_defs;
+/// The orchestra's tools as lumo-hook lists them: the same file, for its API and local members (orchestra.rs).
+#[path = "../../hook/src/orchestra_tools.rs"]
+#[allow(dead_code)]
+mod orchestra_tool_defs;
 /// Lumo's timer and listening tools as lumo-hook lists them: the same file, for the chat's API providers (island_tools.rs).
 #[path = "../../hook/src/island_tools.rs"]
 #[allow(dead_code)]
@@ -70,6 +74,7 @@ mod migrate;
 mod net;
 mod notifications;
 mod openai_compat;
+mod orchestra;
 mod outlook;
 mod outlook_mapi;
 mod pc_status;
@@ -1066,7 +1071,11 @@ fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
 /// there (files.rs `forget_files`); one read where it is stays.
 #[tauri::command]
 fn chat_forget_file(chats: State<Chats>, chat_id: String, name: String, path: String) {
-    chats.get(&chat_id).forget_file(&name, &path);
+    // A project member's chat is the project's (orchestra.rs), not one of the chats.
+    match orchestra::held_chat(&chat_id) {
+        Some(chat) => chat.forget_file(&name, &path),
+        None => chats.get(&chat_id).forget_file(&name, &path),
+    }
     files::forget_files(&chat_id, &[path]);
 }
 
@@ -1592,6 +1601,24 @@ pub fn run() {
         .manage(recap::load())
         .invoke_handler(own_pages_only(tauri::generate_handler![
             boot,
+            orchestra::orchestra_list,
+            orchestra::orchestra_create,
+            orchestra::orchestra_open,
+            orchestra::orchestra_send,
+            orchestra::orchestra_answer,
+            orchestra::orchestra_stop,
+            orchestra::orchestra_update,
+            orchestra::orchestra_set_pick,
+            orchestra::orchestra_keep_answer,
+            orchestra::orchestra_keep_context,
+            orchestra::orchestra_compact,
+            orchestra::orchestra_retry,
+            orchestra::orchestra_unqueue,
+            orchestra::orchestra_heard,
+            orchestra::orchestra_forget,
+            github_tools::github_repo_names,
+            orchestra::orchestra_delete,
+            orchestra::orchestra_read_file,
             save_settings,
             set_system_languages,
             set_collapsed,

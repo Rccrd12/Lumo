@@ -9,7 +9,7 @@ import { checklistsIn, copyButton, renderMarkdown } from "./markdown";
 import { renderAnswer } from "./context-card";
 import { Bridge, type ChatActivity, type ChatContext, type ScreenContext } from "../core/bridge";
 import { activeModel, isCliProvider, providerDef } from "../core/providers";
-import { State, type ChatMessage } from "../core/state";
+import { State, type ChatMessage, type TokenSpeed } from "../core/state";
 import { chatChecklists, fromSavedTurn, setChatChecklists, toSavedTurn, type AnswerWarning } from "../core/chats";
 import type { AskQuote } from "../core/chats";
 import { THUMB_EDGE, groupKey, keptItems, readSent, sentGroups, type SentGroup, type SentItem } from "../core/sent";
@@ -239,11 +239,106 @@ export function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElem
     const fix = message.fix ? fixCard(message.fix, "", { openAgents: opts.onOpenAgents }) : null;
     // The commands its local model ran in its terminal, above what it says of them.
     const commands = message.commands?.length ? commandsBox(message.commands) : null;
+    // A local model's: the tokens it made and how many a second, on the bar
+    // beside Copy and Retry (it shows and hides with them), its details on hover.
+    const speed = message.speed ? speedOnBar(message.speed) : null;
+    if (speed) bar.append(speed);
     row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, commands, reply, computer, files, fix, bar, detail));
   }
   // Hovered after a while: its time says how long ago it is now.
   if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
   return row;
+}
+
+export const SPEED_TEXT = {
+  rate: N_("{rate} tok/sec"),
+  tokens: N_("{tokens} tokens"),
+  seconds: N_("{seconds} s"),
+  reasoning: N_("Reasoning"),
+  answer: N_("Answer"),
+  speed: N_("Speed"),
+  reading: N_("Reading the question"),
+  total: N_("Total time"),
+};
+
+/** `n` as the island's language writes it, with at most `digits` decimals. */
+function localNumber(n: number, digits = 0): string {
+  return n.toLocaleString(language(), { maximumFractionDigits: digits });
+}
+
+/** "870 tokens". */
+function tokensText(n: number): string {
+  return t(SPEED_TEXT.tokens, { tokens: localNumber(Math.round(n)) });
+}
+
+/** "43 tok/sec", or null while it would mean nothing (under half a second, a single token). */
+function rateText(speed: TokenSpeed): string | null {
+  if (speed.secs < 0.5 || speed.tokens < 2) return null;
+  const perSec = speed.tokens / speed.secs;
+  return t(SPEED_TEXT.rate, { rate: localNumber(perSec, perSec < 10 ? 1 : 0) });
+}
+
+/** "1,2 s". */
+function secondsText(secs: number): string {
+  return t(SPEED_TEXT.seconds, { seconds: localNumber(secs, secs < 100 ? 1 : 0) });
+}
+
+/**
+ * "698 tokens · 44 tok/sec": what a local model made for an answer
+ * (reasoning and tool calls included) and how fast, from its first token to
+ * its last. The speed only once it means something (half a second in).
+ */
+export function speedText(speed: TokenSpeed): string {
+  const rate = rateText(speed);
+  return rate ? `${tokensText(speed.tokens)} · ${rate}` : tokensText(speed.tokens);
+}
+
+/** The line under the answer being written, with `speedText` and a glowing dot. None when Settings → Chat turned it off. */
+export function speedLine(speed: TokenSpeed): HTMLElement | null {
+  if (State.settings.chatTokenSpeed === false) return null;
+  return h("div", { class: "reply-speed live" }, h("span", { class: "reply-speed-text", text: speedText(speed) }));
+}
+
+/**
+ * What a finished answer made, in detail: its reasoning and its answer, the
+ * speed, the question read (its tokens when the server said, and how long)
+ * and the whole turn's time, its tools included. Only what is known.
+ */
+export function speedDetails(speed: TokenSpeed): HTMLElement {
+  const row = (label: string, value: string): HTMLElement => h("div", { class: "speed-row" }, h("span", { text: label }), h("span", { text: value }));
+  const reasoning = Math.min(speed.reasoning ?? 0, speed.tokens);
+  const rate = rateText(speed);
+  const read = speed.promptSecs != null && speed.promptSecs > 0
+    ? (speed.promptTokens != null ? `${tokensText(speed.promptTokens)} · ${secondsText(speed.promptSecs)}` : secondsText(speed.promptSecs))
+    : null;
+  const total = speed.totalSecs != null && speed.totalSecs > 0 ? secondsText(speed.totalSecs) : null;
+  const first = [
+    reasoning > 0 ? row(t(SPEED_TEXT.reasoning), tokensText(reasoning)) : null,
+    row(t(SPEED_TEXT.answer), tokensText(speed.tokens - reasoning)),
+    rate ? row(t(SPEED_TEXT.speed), rate) : null,
+  ];
+  const second = [read ? row(t(SPEED_TEXT.reading), read) : null, total ? row(t(SPEED_TEXT.total), total) : null];
+  const rule: HTMLElement | null = second.some((x) => x) ? h("div", { class: "speed-rule" }) : null;
+  return h("div", { class: "speed-details", role: "tooltip" }, ...[...first, rule, ...second].filter((x) => x != null));
+}
+
+/**
+ * `speedText` on the bar under a finished answer, after its time: it shows
+ * and hides with the bar (under the mouse, always under the last answer).
+ * Hovered or focused, its details open above it, or below when the chat has
+ * no room above. None when Settings → Chat turned it off.
+ */
+export function speedOnBar(speed: TokenSpeed): HTMLElement | null {
+  if (State.settings.chatTokenSpeed === false) return null;
+  const el = h("span", { class: "msg-speed", tabindex: "0" }, h("span", { class: "msg-speed-text", text: speedText(speed) }), speedDetails(speed));
+  el.addEventListener("mouseenter", () => {
+    const log = el.closest?.(".chat-log") as HTMLElement | null;
+    const pop = el.querySelector<HTMLElement>(".speed-details");
+    if (!log || !pop || !el.getBoundingClientRect) return;
+    const room = el.getBoundingClientRect().top - log.getBoundingClientRect().top;
+    el.classList.toggle("below", room < pop.offsetHeight + 12);
+  });
+  return el;
 }
 
 /** The question whose list of what went with it is open (chat id and message id): a redrawn log keeps it open. */
@@ -784,6 +879,8 @@ export const ACTIVITY_STRINGS = {
   // back once (lumo-local's Doing). Its reasoning and the calls it writes say
   // Thinking… and Using {tool}, as every provider's do.
   retry: N_("{name} stopped the answer: trying again ({attempt} of {of})…"),
+  // The stream stopped halfway: the same request again, not streamed (lumo-local's Doing::Whole).
+  whole: N_("The answer stopped: asking again all at once, it shows when it's done…"),
   correctWritten: N_("It wrote the tool instead of using it: asking again…"),
   correctDone: N_("It said it was done without doing it: asking again…"),
   correctStopped: N_("It stopped halfway: asking again…"),
@@ -798,7 +895,7 @@ const ISLAND_ACTIVITY_STRINGS = {
 };
 
 /** What is timed next to the dots: the seconds it has been at it. */
-export const TIMED = new Set(["starting", "prompt", "reasoning", "thinking", "retry"]);
+export const TIMED = new Set(["starting", "prompt", "reasoning", "thinking", "retry", "whole"]);
 
 export const THINKING: ChatActivity = { kind: "thinking", detail: "" };
 
@@ -843,6 +940,8 @@ export interface Run {
   commands?: import("../core/terminal").RanCommand[];
   /** The files the answer changed or made, on the computer or in the chat's folder of copies (ChatMessage.files). */
   touched?: ReplyFile[];
+  /** A local model's: the tokens it made so far and their seconds (`chat-tokens`), shown under its text (ChatMessage.speed). */
+  speed?: TokenSpeed;
   /** Settles once the answer is over (answered, stopped or failed). */
   done: Promise<void>;
 }
@@ -945,6 +1044,8 @@ export function activityLabel(activity: ChatActivity | null): string {
       const name = t(providerDef(State.settings.chatProvider).name);
       return attempt && of ? t(ACTIVITY_STRINGS.retry, { name, attempt, of }) : t(ACTIVITY_STRINGS.thinking);
     }
+    case "whole":
+      return t(ACTIVITY_STRINGS.whole);
     case "correcting":
       return t(detail === "written" ? ACTIVITY_STRINGS.correctWritten : detail === "done" ? ACTIVITY_STRINGS.correctDone : ACTIVITY_STRINGS.correctStopped);
     default:
@@ -989,6 +1090,7 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "calling":
       return activity.detail.trim() ? t(ISLAND_ACTIVITY_STRINGS.tool) : t(COMPACT_TEXT.thinking);
     case "retry":
+    case "whole":
       return t(ISLAND_ACTIVITY_STRINGS.retry);
     case "correcting":
       return t(ISLAND_ACTIVITY_STRINGS.correcting);

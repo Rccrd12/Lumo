@@ -1,13 +1,31 @@
 // One request to the server, its answer read as it streams in or, for a
 // server whose stream hangs (LM Studio, on some tool calls), whole.
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::sse::{filter_thinking_blocks, finish_reason_of, parse_sse_line, progressive_filter, usage_of, without_half_tag, CallParts, Event};
+use crate::sse::{filter_thinking_blocks, usage_counts, finish_reason_of, parse_sse_line, progressive_filter, usage_of, without_half_tag, CallParts, Event};
+
+/// The tokens a model made, and how long it took.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Made {
+    /// Every token it made: reasoning, text and tool calls.
+    pub tokens: u64,
+    /// Of which reasoning: `reasoning_content`, and text before any of the
+    /// answer shows (`<think>…</think>`).
+    pub reasoning: u64,
+    /// The seconds from its first token to its last (now, while it streams).
+    pub secs: f64,
+    /// The tokens of the prompt it read, when the server said.
+    pub prompt_tokens: Option<u64>,
+    /// The seconds from the request to the first token: reading the prompt.
+    pub prompt_secs: f64,
+    /// The seconds since the turn began, its tools included (turn.rs; 0 from `stream`).
+    pub total_secs: f64,
+}
 
 /// The text shown while streaming goes out at most this often.
 pub const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
@@ -17,6 +35,8 @@ pub const MAX_ANSWER: usize = 4 * 1024 * 1024;
 /// Ceiling on a whole (not streamed) answer, and on an error's body.
 pub const MAX_BODY: usize = 8 * 1024 * 1024;
 pub const MAX_ERROR_BODY: usize = 64 * 1024;
+/// How often the tokens the model made so far go out while it streams.
+pub const MADE_INTERVAL: Duration = Duration::from_millis(250);
 /// How long the stream waits for the usage chunk and `[DONE]` once the answer is over.
 pub const AFTER_FINISH: Duration = Duration::from_secs(1);
 
@@ -87,6 +107,9 @@ pub struct Answer {
     pub used: Option<u64>,
     /// It stopped at the length limit (`finish_reason: length`).
     pub cut: bool,
+    /// The tokens the model made, when a whole answer's `usage` says
+    /// (`completion_tokens`; a streamed answer says them with `Seen::Made`).
+    pub made: Option<u64>,
 }
 
 /// What the stream shows while it comes in.
@@ -101,6 +124,10 @@ pub enum Seen {
     /// A piece of the stream came, whatever it holds (reasoning, a call's
     /// arguments, nothing new to show): the answer is still moving.
     Chunk,
+    /// What the model made so far: four times a second at most while it
+    /// streams, and once more at the end, with the server's own counts when
+    /// it gave them (`usage`).
+    Made(Made),
 }
 
 /// The body of `reply`, refused past `limit` bytes.
@@ -190,7 +217,8 @@ pub fn whole_answer(bytes: &[u8]) -> Result<Answer, Failure> {
         })
         .unwrap_or_default();
     let cut = json.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some("length");
-    Ok(Answer { text, calls, used: json.pointer("/usage/total_tokens").and_then(Value::as_u64), cut })
+    let made = json.pointer("/usage/completion_tokens").and_then(Value::as_u64);
+    Ok(Answer { text, calls, used: json.pointer("/usage/total_tokens").and_then(Value::as_u64), cut, made })
 }
 
 /// Tells each call of `calls` not told yet (from `told`) once its tool's name
@@ -212,11 +240,32 @@ fn tell_calls(calls: &CallParts, over: bool, told: &mut usize, told_tool: &mut S
     }
 }
 
+/// "None" in the token counters and times of `stream`.
+const NONE: u64 = u64::MAX;
+
+/// Nanoseconds since `began`.
+fn since(began: Instant) -> u64 {
+    u64::try_from(began.elapsed().as_nanos()).unwrap_or(NONE - 1)
+}
+
+/// The seconds from `from` to `to`, both in nanoseconds.
+fn secs_between(from: u64, to: u64) -> f64 {
+    to.saturating_sub(from) as f64 / 1e9
+}
+
 /// Posts the request and reads the event stream. `on` gets the visible text at
 /// most 15 times a second and once more at the end, `Reasoning` once when the
 /// model reasons before any visible text, `Calling` as each tool call starts (`tell_calls`),
-/// and `Chunk` for every piece of the stream that comes.
+/// `Chunk` for every piece of the stream that comes, and `Made` with the
+/// tokens made so far.
+///
+/// The servers send no count while they stream, but Ollama, LM Studio,
+/// llama.cpp and vLLM send each token as its own piece: the pieces with text,
+/// reasoning or a call are counted, one token each. The count the server gives
+/// at the end (or on every piece, vLLM's continuous usage) replaces it.
 pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Result<Answer, Failure> {
+    // From the request on: the time to the first token is the prompt read.
+    let began = Instant::now();
     let mut reply = to
         .streaming
         .post(&to.url)
@@ -242,6 +291,21 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let mut told = 0;
     let mut told_tool = String::new();
     let mut used = None;
+    // The tokens made: counted (one per piece), and as the server says
+    // (NONE: it didn't). Atomics, as the flags above: read between the
+    // pieces while `take` holds them, and the future stays Send.
+    let made = AtomicU64::new(0);
+    let said_made = AtomicU64::new(NONE);
+    // Of which reasoning, counted until some of the answer shows, and as the
+    // server says; and the prompt's tokens, as it says.
+    let reasoning = AtomicU64::new(0);
+    let answer_shows = AtomicBool::new(false);
+    let said_reasoning = AtomicU64::new(NONE);
+    let said_prompt = AtomicU64::new(NONE);
+    // When the first token and the last came, in nanoseconds after `began`.
+    let first_token = AtomicU64::new(NONE);
+    let last_token = AtomicU64::new(0);
+    let mut made_told = Instant::now();
     // The answer said it is over (`finish_reason`, `[DONE]`): what follows is
     // only waited for a moment, then the stream ends even if the connection
     // stays open (LM Studio keeps it open).
@@ -264,7 +328,24 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         if let Some(total) = usage_of(line) {
             used = Some(total);
         }
+        if let Some(u) = usage_counts(line) {
+            said_made.store(u.completion.min(NONE - 1), Ordering::Relaxed);
+            if let Some(r) = u.reasoning {
+                said_reasoning.store(r.min(NONE - 1), Ordering::Relaxed);
+            }
+            if let Some(p) = u.prompt {
+                said_prompt.store(p.min(NONE - 1), Ordering::Relaxed);
+            }
+        }
         let event = parse_sse_line(line);
+        if matches!(event, Some(Event::Text(_) | Event::Reasoning | Event::Calls(..))) {
+            made.fetch_add(1, Ordering::Relaxed);
+            let now = since(began);
+            last_token.store(now, Ordering::Relaxed);
+            if first_token.load(Ordering::Relaxed) == NONE {
+                first_token.store(now, Ordering::Relaxed);
+            }
+        }
         // Only a sign of the model at work: LM Studio opens its answer with
         // an empty `{"role":"assistant"}` delta while it still reads the prompt.
         if !started && text.is_empty() && matches!(event, Some(Event::Reasoning)) {
@@ -278,6 +359,15 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             Some(Event::Done) => done.store(true, Ordering::Relaxed),
             Some(Event::Text(delta)) => {
                 text.push_str(&delta);
+                // Until some of the answer shows, its text is reasoning
+                // (`<think>…`, the blank lines after it).
+                if !answer_shows.load(Ordering::Relaxed) {
+                    if without_half_tag(&progressive_filter(text)).trim().is_empty() {
+                        reasoning.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        answer_shows.store(true, Ordering::Relaxed);
+                    }
+                }
                 // Reasoning written in the text (`<think>…`) is hidden: it is
                 // reasoning too. The start of a tag (`<`) is not known yet.
                 if !started && !visible {
@@ -290,7 +380,10 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
                     }
                 }
             }
-            Some(Event::Reasoning) | None => {}
+            Some(Event::Reasoning) => {
+                reasoning.fetch_add(1, Ordering::Relaxed);
+            }
+            None => {}
             Some(Event::Usage(total)) => used = Some(total),
             Some(Event::Calls(pieces, words)) => {
                 // The words that came with the calls go before them, as said.
@@ -334,6 +427,20 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         if done.load(Ordering::Relaxed) {
             break;
         }
+        let first = first_token.load(Ordering::Relaxed);
+        if first != NONE && made_told.elapsed() >= MADE_INTERVAL {
+            made_told = Instant::now();
+            let said = said_made.load(Ordering::Relaxed);
+            let tokens = made.load(Ordering::Relaxed).max(if said == NONE { 0 } else { said });
+            on(Seen::Made(Made {
+                tokens,
+                reasoning: reasoning.load(Ordering::Relaxed).min(tokens),
+                secs: secs_between(first, since(began)),
+                prompt_tokens: None,
+                prompt_secs: secs_between(0, first),
+                total_secs: 0.0,
+            }));
+        }
         if pending.len() > MAX_LINE || text.len() + call_bytes.load(Ordering::Relaxed) > MAX_ANSWER {
             return Err(Failure::TooLarge);
         }
@@ -359,5 +466,23 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     }
     // The last state always goes out, whatever the throttle skipped.
     on(Seen::Text(progressive_filter(&text)));
-    Ok(Answer { text: filter_thinking_blocks(&text), calls: calls.done(), used, cut: cut.load(Ordering::Relaxed) })
+    // The count as it ended: the server's own when it gave one, over the
+    // time from the first token to the last (not the wait for `[DONE]`).
+    let first = first_token.load(Ordering::Relaxed);
+    if first != NONE {
+        let said = said_made.load(Ordering::Relaxed);
+        let tokens = if said == NONE { made.load(Ordering::Relaxed) } else { said };
+        let said_reasoning = said_reasoning.load(Ordering::Relaxed);
+        let reasoning = if said_reasoning == NONE { reasoning.load(Ordering::Relaxed) } else { said_reasoning };
+        let prompt = said_prompt.load(Ordering::Relaxed);
+        on(Seen::Made(Made {
+            tokens,
+            reasoning: reasoning.min(tokens),
+            secs: secs_between(first, last_token.load(Ordering::Relaxed)),
+            prompt_tokens: (prompt != NONE).then_some(prompt),
+            prompt_secs: secs_between(0, first),
+            total_secs: 0.0,
+        }));
+    }
+    Ok(Answer { text: filter_thinking_blocks(&text), calls: calls.done(), used, cut: cut.load(Ordering::Relaxed), made: None })
 }

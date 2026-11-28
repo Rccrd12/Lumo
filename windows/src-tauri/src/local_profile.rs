@@ -51,7 +51,7 @@ pub fn group_of(id: &str) -> Option<Group> {
         Some(Group::Mail)
     } else if crate::github_tools::NAMES.contains(&id) {
         Some(Group::GitHub)
-    } else if id == crate::island_tools::SET_TIMER || id == crate::api_agents::RUN {
+    } else if id == crate::island_tools::SET_TIMER || id == crate::api_agents::RUN || crate::orchestra::NAMES.contains(&id) {
         None
     } else if id == crate::island_tools::UPDATE_PLAN {
         Some(Group::Plan)

@@ -1648,6 +1648,7 @@ pub async fn send(
             |activity| events.activity(&app2, activity),
             |file| events.file(&app2, file),
             |plan| {
+                crate::orchestra::cli_plan(&app2, &plan_chat, "update_plan", plan);
                 let _ = app2.emit_to(crate::island::WINDOW_LABEL, "chat-plan", json!({ "chat": plan_chat, "tool": "update_plan", "input": plan, "agent": "Codex", "color": COLOR }));
             },
             tell,

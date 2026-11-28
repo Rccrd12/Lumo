@@ -368,12 +368,15 @@ pub async fn send(
         if web { crate::web_search::NOTE } else { "" },
         crate::api_agents::NOTE
     );
+    // A member of an orchestra: its role's words, and below its tools (orchestra.rs).
+    let system = format!("{system}{}", crate::orchestra::note(chat.id()));
     let mut body = request_body(model, &system, &turn.history, &user);
     let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false, browser)).await.unwrap_or_default();
     let mut tools = crate::tools::tools_for_mode(all, mode);
     // Agents of its own, with the chat's tools but none that start more (api_agents.rs).
     let launch = Launch { p, model: model.to_string(), effort: effort.to_string(), key: key.clone(), tools: crate::api_agents::sub_tools(&tools), asking, sandbox_high, budget: Default::default() };
     tools.push(crate::api_agents::tool());
+    crate::orchestra::shape_tools(chat.id(), &mut tools);
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
     }

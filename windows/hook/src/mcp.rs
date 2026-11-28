@@ -124,6 +124,11 @@ with something to do then) once it happens, instead of you waiting for it; stop_
 list_listening says what Lumo listens to.";
 
 
+/// A member of an orchestra: what its tools are for (its role comes with its first message).
+const ORCHESTRA_INSTRUCTIONS: &str = "You are a member of an orchestra in Lumo: start_thread, message_thread, message_coordinator, \
+read_thread, list_threads, stop_thread, ask_user, share_file and read_messages are how you work with the others and the user. \
+Messages for you also come with the answers of these tools; call read_messages between the steps of a long task.";
+
 const PLAN_INSTRUCTIONS: &str = "Lumo's update_plan tool shows the user your plan on Lumo's Plan island: \
 call it with every step of a job before starting it, then again each time a step starts or is done.";
 
@@ -205,6 +210,13 @@ impl Kit {
         }
         if self.island {
             all.extend(island_tools());
+            // A member of an orchestra (the app's orchestra.rs): its role's
+            // tools, and a plan of its own when this server has none.
+            let orchestra = crate::orchestra_tools::tools_for(&chat_id());
+            if !orchestra.is_empty() && !self.plans() {
+                all.push(plan_tool());
+            }
+            all.extend(orchestra);
         }
         all
     }
@@ -235,6 +247,9 @@ impl Kit {
         }
         if self.island {
             parts.push(ISLAND_INSTRUCTIONS);
+            if crate::orchestra_tools::parse_chat(&chat_id()).is_some() {
+                parts.push(ORCHESTRA_INSTRUCTIONS);
+            }
         }
         parts.join(" ")
     }
@@ -741,6 +756,10 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
     }
     if ISLAND_NAMES.contains(&name) {
         return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat_id() } })));
+    }
+    // The orchestra's (the app's orchestra.rs): the messages that came for the member come with the answer.
+    if crate::orchestra_tools::NAMES.contains(&name) {
+        return answer(lumo(&json!({ "lumo_orchestra": { "tool": name, "input": input, "chat": chat_id() } })));
     }
     if BROWSER_NAMES.contains(&name) {
         // With the chat it came from: each chat's tabs are its own.

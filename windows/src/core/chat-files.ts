@@ -193,14 +193,26 @@ export function chatFiles(id: string, all = loadAll()): ChatFile[] {
  * Notes a file of chat `id`, and returns that chat's files. The files of
  * chats no longer in the past chats go at the same time.
  */
+/** A project member's chat (orchestra.rs member_chat): its project keeps it, not the past chats. */
+const PROJECT_CHAT = "orch-";
+/** Whether `id` is the chat of a project's member (orchestra.rs `member_chat`). */
+export const isProjectChat = (id: string) => id.startsWith(PROJECT_CHAT);
+
+/** The chats whose files are kept: the past chats, the projects' members', and `id`. */
+function keptChats(id: string): Set<string> {
+  const kept = new Set(loadChats().map((c) => c.id));
+  kept.add(id);
+  return kept;
+}
+const keeps = (kept: Set<string>, id: string) => kept.has(id) || id.startsWith(PROJECT_CHAT);
+
 export function addChatFile(
   id: string, kind: ChatFileKind, path: string, name = fileName(path), at = Date.now(), turn?: number,
 ): ChatFile[] {
   if (!path.trim() || !isKind(kind)) return chatFiles(id);
   const all = loadAll();
-  const kept = new Set(loadChats().map((c) => c.id));
-  kept.add(id);
-  for (const other of Object.keys(all)) if (!kept.has(other)) delete all[other];
+  const kept = keptChats(id);
+  for (const other of Object.keys(all)) if (!keeps(kept, other)) delete all[other];
   const file: ChatFile = { path, name, kinds: [kind], at };
   if (turn != null && turn >= 0) file.turns = { [kind]: turn };
   all[id] = withFile(all[id] ?? [], file);
@@ -324,9 +336,8 @@ export function noteSentCopies(id: string, paths: readonly string[]) {
   const fresh = paths.filter((p) => p.trim() !== "");
   if (!fresh.length) return;
   const all = loadCopies();
-  const kept = new Set(loadChats().map((c) => c.id));
-  kept.add(id);
-  for (const other of Object.keys(all)) if (!kept.has(other)) delete all[other];
+  const kept = keptChats(id);
+  for (const other of Object.keys(all)) if (!keeps(kept, other)) delete all[other];
   const list = all[id] ?? [];
   for (const p of fresh) if (!list.some((q) => samePath(p, q))) list.push(p);
   all[id] = list.slice(-MAX_FILES);
@@ -339,9 +350,10 @@ export function chatCopies(id: string): string[] {
   return paths.filter((p, i) => paths.findIndex((q) => samePath(p, q)) === i);
 }
 
-/** What every past chat names, so that nothing they can still open is deleted. */
+/** What every past chat and every project's member names, so that nothing they can still open is deleted. */
 export function keptCopies(): string[] {
-  return loadChats().flatMap((c) => chatCopies(c.id));
+  const members = new Set([...Object.keys(loadCopies()), ...Object.keys(loadAll())].filter((id) => id.startsWith(PROJECT_CHAT)));
+  return [...loadChats().map((c) => c.id), ...members].flatMap((id) => chatCopies(id));
 }
 
 /** Directly in the inbox, not in a chat's folder of it: a copy waiting, or one a Lumo before 0.23.1 kept there. */

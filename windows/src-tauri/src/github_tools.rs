@@ -183,6 +183,38 @@ pub async fn call(name: &str, input: &Value) -> (String, bool) {
     }
 }
 
+// ── A project's environment (Settings of a project, views/projects.ts) ─────────
+
+/// The user's repositories a project's environment may hold: the newest
+/// pushed first, theirs, those they work on and their organisations'. The
+/// user's own list, so it needs only the token, not "Let the AI read GitHub".
+#[tauri::command]
+pub async fn github_repo_names() -> Result<Vec<Value>, String> {
+    if PAUSED.load(Ordering::Relaxed) {
+        return Err("Lumo is paused.".into());
+    }
+    let token = secrets::get("github-token").ok_or_else(|| crate::i18n::t("GitHub is not connected."))?;
+    let mut out = Vec::new();
+    for page in 1..=3 {
+        let data = rest_get(
+            &token,
+            "user/repos",
+            &[("sort", "pushed".into()), ("affiliation", "owner,collaborator,organization_member".into()), ("per_page", "100".into()), ("page", page.to_string())],
+        )
+        .await?;
+        let list = data.as_array().cloned().unwrap_or_default();
+        let last = list.len() < 100;
+        out.extend(list.iter().filter_map(|r| {
+            let name = r["full_name"].as_str()?;
+            Some(json!({ "name": name, "private": r["private"].as_bool().unwrap_or(false), "description": one_line(r["description"].as_str().unwrap_or(""), 90) }))
+        }));
+        if last {
+            break;
+        }
+    }
+    Ok(out)
+}
+
 // ── Validation & HTTP helpers ─────────────────────────────────────────────────
 
 fn valid_segment(s: &str) -> bool {

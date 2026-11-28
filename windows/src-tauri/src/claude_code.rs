@@ -441,7 +441,11 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
 ///   * with `browser`, a PreToolUse hook on Lumo's browser_open that tells
 ///     Lumo which agent opens the tab (lumo-hook --browser-claim, browser.rs
 ///     `claim`): it decides nothing.
-fn chat_settings(permission: Value, guard: &str, browser: bool) -> Value {
+///   * with `step_mail` (a project's member, orchestra.rs), a PostToolUse hook
+///     after each of its tools: the messages that came for it meanwhile go
+///     with the tool's answer, so it reads them at this step, as Claude Code
+///     reads what is typed while it works (lumo-hook --step-mail).
+fn chat_settings(permission: Value, guard: &str, browser: bool, step_mail: Option<&str>) -> Value {
     let mut pre = vec![
         json!({
             "matcher": "Bash|PowerShell",
@@ -462,12 +466,14 @@ fn chat_settings(permission: Value, guard: &str, browser: bool) -> Value {
             "hooks": [{ "type": "command", "command": format!("{guard} --browser-claim"), "timeout": 10 }],
         }));
     }
-    json!({
-        "hooks": {
-            "PermissionRequest": [permission],
-            "PreToolUse": pre,
-        },
-    })
+    let mut hooks = json!({
+        "PermissionRequest": [permission],
+        "PreToolUse": pre,
+    });
+    if let Some(command) = step_mail {
+        hooks["PostToolUse"] = json!([{ "matcher": "*", "hooks": [{ "type": "command", "command": command, "timeout": 10 }] }]);
+    }
+    json!({ "hooks": hooks })
 }
 
 /// Claude Code's hook timeout for the computer's turn, in seconds: past the
@@ -490,12 +496,14 @@ pub fn is_computer_tool(name: &str) -> bool {
 }
 
 /// `args`, plus the chat's own hooks (`chat_settings`), when the file could be
-/// written where Claude Code can be pointed at it. With the browser, in a
-/// file of its own: one name, one configuration.
-fn with_cards(mut args: Vec<String>, browser: bool) -> Vec<String> {
+/// written where Claude Code can be pointed at it. With the browser, or for a
+/// project's member (`project`), in a file of its own: one name, one configuration.
+fn with_cards(mut args: Vec<String>, browser: bool, project: bool) -> Vec<String> {
     let guard = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PreToolUse");
-    let path = crate::platform::local_dir().join(if browser { "chat-hooks-browser.json" } else { "chat-hooks.json" });
-    let text = chat_settings(crate::hooks::chat_permission_entry(), &guard, browser).to_string();
+    let step_mail = project.then(|| crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PostToolUse --step-mail"));
+    let name = format!("chat-hooks{}{}.json", if browser { "-browser" } else { "" }, if project { "-project" } else { "" });
+    let path = crate::platform::local_dir().join(name);
+    let text = chat_settings(crate::hooks::chat_permission_entry(), &guard, browser, step_mail.as_deref()).to_string();
     let written = write_config(&path, &text);
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
@@ -669,6 +677,18 @@ pub(crate) fn prompt(context: Option<&ChatContext>, carried: &[Value], files: &[
         None => {}
     }
     out.push_str(query);
+    out
+}
+
+/// What a project member's messages brought (a file, screenshots, a
+/// selection…), read at a step of its turn (orchestra.rs step_mail): said as
+/// its question would say it, checked as a question's is (chat.rs), the files
+/// by their path for Claude Code to read.
+pub fn attached_text(chat_id: &str, context: Option<ChatContext>, screen: Option<crate::screen::ScreenContext>) -> String {
+    let context = context.and_then(|c| crate::chat::checked_context(chat_id, c).ok());
+    let screen = screen.and_then(|s| crate::chat::checked_screen(chat_id, s).ok());
+    let mut out = screen.map(|s| crate::screen::context_text(&s, true)).unwrap_or_default();
+    out.push_str(&prompt(context.as_ref(), &[], &[], ""));
     out
 }
 
@@ -886,7 +906,11 @@ fn activity_for(name: &str, input: &Value) -> Activity {
         // as for the API providers (claude.rs tool_activity). The rest is the computer.
         "mcp__lumo__update_plan" => Activity::new("plan", ""),
         _ if name.strip_prefix("mcp__lumo__").is_some_and(|tool| {
-            tool.starts_with("mail_") || crate::island_tools::NAMES.contains(&tool) || tool == crate::island_tools::LISTEN_PULL_REQUEST
+            tool.starts_with("mail_")
+                || crate::island_tools::NAMES.contains(&tool)
+                || tool == crate::island_tools::LISTEN_PULL_REQUEST
+                // A project's tools (start a thread, write to one, wait…): never the computer.
+                || crate::orchestra_tool_defs::NAMES.contains(&tool)
         }) =>
         {
             Activity::new("tool", pretty_tool(&name["mcp__lumo__".len()..]))
@@ -2660,8 +2684,27 @@ fn live_args(mut args: Vec<String>) -> Vec<String> {
 }
 
 /// One message as Claude Code takes it on stdin (`--input-format stream-json`).
+#[cfg(test)]
 fn user_line(text: &str) -> String {
-    format!("{}\n", json!({ "type": "user", "message": { "role": "user", "content": [{ "type": "text", "text": text }] } }))
+    user_line_with(text, &[])
+}
+
+/// The same, with `blocks` (pictures, PDFs, a file's text) ahead of its words, as the Messages API takes them.
+fn user_line_with(text: &str, blocks: &[Value]) -> String {
+    let mut content: Vec<Value> = blocks.to_vec();
+    content.push(json!({ "type": "text", "text": text }));
+    format!("{}\n", json!({ "type": "user", "message": { "role": "user", "content": content } }))
+}
+
+/// What the user attached, as content blocks of the message (claude.rs
+/// `file_block`): for a project's coordinator, whose Claude Code has no Read
+/// to open a path. A file of another kind is named by its path, as before.
+fn attached_blocks(paths: &[String]) -> Vec<Value> {
+    let mut blocks: Vec<Value> = paths.iter().filter_map(|p| crate::claude::file_block(p)).collect();
+    if !blocks.is_empty() {
+        blocks.push(json!({ "type": "text", "text": "What the user attached is in this message, above: look at it here, there is no need to open its path." }));
+    }
+    blocks
 }
 
 /// What a chat's Claude Code is told first, as the Agent SDK does
@@ -2791,6 +2834,7 @@ fn live_turn(
     exe: PathBuf,
     args: Vec<String>,
     input: String,
+    blocks: Vec<Value>,
     dir: PathBuf,
     chat_id: &str,
     session: Option<String>,
@@ -2819,11 +2863,12 @@ fn live_turn(
         drop(live);
         live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
     }
-    if write_stdin(&live.stdin, &user_line(&input)).is_err() {
+    let line = user_line_with(&input, &blocks);
+    if write_stdin(&live.stdin, &line).is_err() {
         // It ended between two messages: once more, with a new one.
         drop(live);
         live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
-        write_stdin(&live.stdin, &user_line(&input)).map_err(|e| e.to_string())?;
+        write_stdin(&live.stdin, &line).map_err(|e| e.to_string())?;
     }
     let Some(rx) = live.rx.take() else { return Err("no stdout".into()) };
     let mut asked = 0u64;
@@ -2885,6 +2930,7 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
         events.file(app, &file);
     }
     for (tool, input) in run.take_plans() {
+        crate::orchestra::cli_plan(app, chat_id, &tool, &input);
         let _ = app.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": chat_id, "tool": tool, "input": input }));
     }
     let text = match run.result.take() {
@@ -2893,6 +2939,10 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
         _ => run.shown.trim().to_string(),
     };
     if text.trim().is_empty() {
+        return;
+    }
+    // A project's member: its answer is the project's to show and send on.
+    if crate::orchestra::own_answer(app, chat_id, &text) {
         return;
     }
     // The chat's CLI sessions after it, for the island to keep with the chat.
@@ -2960,6 +3010,7 @@ pub async fn send(
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
+    attached: Vec<String>,
 ) -> Result<ChatReply, String> {
     let exe = platform::claude_candidates()
         .into_iter()
@@ -2993,7 +3044,8 @@ pub async fn send(
     let base = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
     // The tool workshop: what a tool is and how to hand one over, too.
     let append = if chat.is_workshop() { format!("{base}{}{WORKSHOP_TRY}", crate::chat::workshop_note!()) } else { base.to_string() };
-    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), browser);
+    let project = crate::orchestra::is_member_chat(chat.id());
+    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), browser, project);
     // The user's tools that are on, for Claude to use (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
     // Lumo's email tools, as Settings → Security lets the AI have them,
@@ -3001,6 +3053,8 @@ pub async fn send(
     let mail = crate::mail::ai_tools(app);
     // Lumo's browser for agents (browser.rs), as Settings → Security says.
     args = with_mcp(args, computer, browser, tools, true, mail);
+    // A member of an orchestra (orchestra.rs): its tools allowed; the coordinator without Claude Code's own.
+    args = crate::orchestra::claude_code_args(chat.id(), args);
     let mail_turn = (!mail.is_empty()).then(crate::mail::agent_turn);
     if computer {
         crate::computer::begin_turn(crate::computer::Who::of(PROVIDER), chat.id());
@@ -3023,11 +3077,14 @@ pub async fn send(
     };
     // The agents Claude Code starts, and the turn's sign of life.
     let tell = chat_agents::teller(app, chat.id(), PROVIDER);
+    // What the user attached, in the message itself (a project's coordinator, which opens no file).
+    let blocks = if command.is_some() { Vec::new() } else { attached_blocks(&attached) };
     let state = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             exe,
             args,
             input,
+            blocks,
             work_dir(),
             &chat_id,
             resumed,
@@ -3037,6 +3094,8 @@ pub async fn send(
             |file| events.file(&app2, file),
             // The plan Claude writes in the chat, for the Plan island.
             |tool, input| {
+                // A project's member: its plan is the project's too (orchestra.rs).
+                crate::orchestra::cli_plan(&app3, &plan_chat, tool, input);
                 let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "chat": plan_chat, "tool": tool, "input": input }));
             },
             own,
@@ -3181,7 +3240,7 @@ pub(crate) fn help(
     let inbox = if crate::settings::load().chat_other_files { crate::files::inbox_dir().to_string_lossy().to_string() } else { String::new() };
     let folders: Vec<String> = folder.into_iter().collect();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
-    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), false);
+    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), false, false);
     // The user's own tools too, while one is on.
     let args = with_mcp(args, computer, false, crate::tools::any_enabled(), false, "");
     let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_| {}, |_, _| {})?;
@@ -3509,6 +3568,24 @@ mod tests {
     }
 
     #[test]
+    fn what_the_coordinator_is_sent_goes_in_its_message_ahead_of_its_words() {
+        let dir = std::env::temp_dir().join(format!("lumo-cc-blocks-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("shot.png");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();
+        let blocks = attached_blocks(&[png.to_string_lossy().to_string(), dir.join("gone.png").to_string_lossy().to_string()]);
+        assert_eq!(blocks.len(), 2, "the picture, and the note that it is there");
+        assert_eq!(blocks[0]["type"], "image");
+        assert_eq!(blocks[0]["source"]["media_type"], "image/png");
+        let v: Value = serde_json::from_str(user_line_with("look", &blocks).trim_end()).unwrap();
+        let content = v["message"]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 3);
+        assert_eq!(content[2], json!({ "type": "text", "text": "look" }));
+        assert!(attached_blocks(&[]).is_empty(), "nothing attached: nothing added");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_turn_claude_code_takes_by_itself_between_two_messages_is_read_and_passed_on() {
         // As Claude Code 2.1 writes it once a command it left in the background ends.
         let ended = r#"{"type":"system","subtype":"task_notification","task_id":"b1","status":"completed"}"#;
@@ -3736,7 +3813,7 @@ mod tests {
     #[test]
     fn the_chat_asks_with_lumos_own_permission_hook_and_guards_shell_commands() {
         let permission = crate::hooks::permission_request_entry();
-        let v = chat_settings(permission.clone(), "'/x/lumo-hook' --chat-guard PreToolUse", false);
+        let v = chat_settings(permission.clone(), "'/x/lumo-hook' --chat-guard PreToolUse", false, None);
         // The very entry installing writes, so Claude Code runs it once when both are there.
         assert_eq!(v["hooks"]["PermissionRequest"][0], permission);
         let hook = &permission["hooks"][0];
@@ -3746,6 +3823,12 @@ mod tests {
         let guard = &v["hooks"]["PreToolUse"][0];
         assert_eq!(guard["matcher"], "Bash|PowerShell");
         assert!(guard["hooks"][0]["command"].as_str().unwrap().contains("--chat-guard"));
+        assert!(v["hooks"].get("PostToolUse").is_none(), "only a project's member reads its messages after each tool");
+        // A project's member: after each tool, the messages that came for it meanwhile.
+        let member = chat_settings(permission, "'/x/lumo-hook' --chat-guard PreToolUse", false, Some("'/x/lumo-hook' --chat-guard PostToolUse --step-mail"));
+        let post = &member["hooks"]["PostToolUse"][0];
+        assert_eq!(post["matcher"], "*");
+        assert_eq!(post["hooks"][0]["command"], "'/x/lumo-hook' --chat-guard PostToolUse --step-mail");
     }
 
     #[test]
@@ -3775,21 +3858,21 @@ mod tests {
 
         // The tab is claimed for its agent before browser_open runs, and nothing else is.
         let guard = "'/x/lumo-hook' --chat-guard PreToolUse";
-        let v = chat_settings(crate::hooks::permission_request_entry(), guard, true);
+        let v = chat_settings(crate::hooks::permission_request_entry(), guard, true, None);
         let pre = v["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre.len(), 3);
         assert_eq!(pre[2]["matcher"], "mcp__lumo__browser_open");
         assert_eq!(pre[2]["hooks"][0]["command"], format!("{guard} --browser-claim"));
         assert_eq!(pre[2]["hooks"][0]["timeout"], 10);
         assert!(!regex_lite_full(pre[1]["matcher"].as_str().unwrap())("mcp__lumo__browser_open"), "the computer's turn is not the browser's");
-        let off = chat_settings(crate::hooks::permission_request_entry(), guard, false);
+        let off = chat_settings(crate::hooks::permission_request_entry(), guard, false, None);
         assert_eq!(off["hooks"]["PreToolUse"].as_array().unwrap().len(), 2, "no browser, no claim");
         assert!(!is_computer_tool("mcp__lumo__browser_click"));
     }
 
     #[test]
     fn each_computer_tool_waits_for_its_turn_and_nothing_else_does() {
-        let v = chat_settings(crate::hooks::permission_request_entry(), "'/x/lumo-hook' --chat-guard PreToolUse", false);
+        let v = chat_settings(crate::hooks::permission_request_entry(), "'/x/lumo-hook' --chat-guard PreToolUse", false, None);
         let gate = &v["hooks"]["PreToolUse"][1];
         let matcher = regex_lite_full(gate["matcher"].as_str().unwrap());
         for tool in COMPUTER_TOOLS {
@@ -3916,6 +3999,9 @@ mod tests {
         assert_eq!(a("mcp__lumo__screenshot", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__zoom", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__left_click", json!({ "coordinate": [1, 2] })), Activity::new("computer", ""));
+        // A project's tools are what they are, not the computer.
+        assert_eq!(a("mcp__lumo__start_thread", json!({ "title": "x" })).kind, "tool");
+        assert_eq!(a("mcp__lumo__read_messages", json!({})).kind, "tool");
         // Its other tools are not the computer.
         assert_eq!(a("mcp__lumo__mail_read", json!({ "id": "1" })), Activity::new("tool", "mail read"));
         assert_eq!(a("mcp__lumo__set_timer", json!({ "seconds": 60 })), Activity::new("tool", "set timer"));
