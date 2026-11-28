@@ -878,6 +878,8 @@ export const ACTIVITY_STRINGS = {
   // back once (lumo-local's Doing). Its reasoning and the calls it writes say
   // Thinking… and Using {tool}, as every provider's do.
   retry: N_("{name} stopped the answer: trying again ({attempt} of {of})…"),
+  // The stream stopped halfway: the same request again, not streamed (lumo-local's Doing::Whole).
+  whole: N_("The answer stopped: asking again all at once, it shows when it's done…"),
   correctWritten: N_("It wrote the tool instead of using it: asking again…"),
   correctDone: N_("It said it was done without doing it: asking again…"),
   correctStopped: N_("It stopped halfway: asking again…"),
@@ -892,7 +894,7 @@ const ISLAND_ACTIVITY_STRINGS = {
 };
 
 /** What is timed next to the dots: the seconds it has been at it. */
-export const TIMED = new Set(["starting", "prompt", "reasoning", "thinking", "retry"]);
+export const TIMED = new Set(["starting", "prompt", "reasoning", "thinking", "retry", "whole"]);
 
 export const THINKING: ChatActivity = { kind: "thinking", detail: "" };
 
@@ -1040,6 +1042,8 @@ export function activityLabel(activity: ChatActivity | null): string {
       const name = t(providerDef(State.settings.chatProvider).name);
       return attempt && of ? t(ACTIVITY_STRINGS.retry, { name, attempt, of }) : t(ACTIVITY_STRINGS.thinking);
     }
+    case "whole":
+      return t(ACTIVITY_STRINGS.whole);
     case "correcting":
       return t(detail === "written" ? ACTIVITY_STRINGS.correctWritten : detail === "done" ? ACTIVITY_STRINGS.correctDone : ACTIVITY_STRINGS.correctStopped);
     default:
@@ -1084,6 +1088,7 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "calling":
       return activity.detail.trim() ? t(ISLAND_ACTIVITY_STRINGS.tool) : t(COMPACT_TEXT.thinking);
     case "retry":
+    case "whole":
       return t(ISLAND_ACTIVITY_STRINGS.retry);
     case "correcting":
       return t(ISLAND_ACTIVITY_STRINGS.correcting);

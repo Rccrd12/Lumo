@@ -3300,8 +3300,9 @@ export function buildPrompt(
   void onEvent<{ chat: string } & Record<string, unknown>>("chat-tokens", (made) => {
     const run = runs.get(made.chat);
     const speed = cleanSpeed(made);
-    if (speed && orchestra.turnSpeed(made.chat, speed)) return;
-    if (!run || !speed) return;
+    // A project's member: its own count. No tokens (a round asked again from the start): the count goes.
+    if (orchestra.turnSpeed(made.chat, speed)) return;
+    if (!run) return;
     run.speed = speed;
     drawSpeed(run);
   });

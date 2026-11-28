@@ -113,7 +113,7 @@ export interface OrchestraView {
   /** What a member's turn did besides its words (a file, a command, its speed): kept with its answer. True when `chat` is a member's. */
   turnFile(chat: string, kind: ReplyFileKind | "read", path: string): boolean;
   turnCommand(chat: string, ran: RanCommand): boolean;
-  turnSpeed(chat: string, speed: TokenSpeed): boolean;
+  turnSpeed(chat: string, speed: TokenSpeed | null | undefined): boolean;
   /** How full a member's context is: a local model's nearly full is compacted, as a chat is. */
   contextSeen(chat: string, used: number, total: number, estimate?: boolean): void;
   /** "/compact" for the member on screen: true when it was its to do (not a CLI's, which compacts itself). */
@@ -1665,7 +1665,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     turnSpeed(chat, speed) {
       const m = snap ? memberByChat(snap, chat) : undefined;
       if (!m) return false;
-      extrasOf(chat).speed = speed;
+      extrasOf(chat).speed = speed ?? undefined;
       drawLiveSpeed(m);
       return true;
     },

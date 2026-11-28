@@ -33,6 +33,9 @@ pub enum Doing {
     Calling(String),
     /// The server's engine dropped the request: asked again, `attempt` of `of`.
     Retrying { attempt: u8, of: u8 },
+    /// The stream stopped halfway: the same request asked again whole, and
+    /// nothing shows until the whole answer comes.
+    Whole,
     /// The model got something wrong and is sent back once.
     Correcting(Correction),
 }
@@ -264,6 +267,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         // the island as it was, with nothing said about it.
         let hushed = plan.checking.is_some();
         let doing = next.take().unwrap_or(if whole { Doing::Thinking } else { Doing::Prompt });
+        let asked_at = Instant::now();
         // Each request is news, hushed or not (a retry, a model sent back, the round after the tools).
         hooks.signal();
         if !hushed {
@@ -292,6 +296,13 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 }
             };
             if let Ok(a) = &answer {
+                // What it made, as its usage says: all of it at once.
+                if let Some(tokens) = a.made.filter(|t| *t > 0) {
+                    round = Made { tokens, secs: asked_at.elapsed().as_secs_f64(), ..Made::default() };
+                    if !hushed {
+                        hooks.made(added(&made_so_far, &round, turn_began));
+                    }
+                }
                 if !a.text.is_empty() && !hushed {
                     if let Some(shown) = after_before(&progressive_filter(&a.text)) {
                         hooks.shown(&shown);
@@ -326,9 +337,14 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         };
         // The answer came (a whole one, at once), or the server said no: news too.
         hooks.signal();
-        // Every round adds up, one that failed too (asked again, answered
-        // whole): the model made those tokens, and the count never goes back.
-        made_so_far = added(&made_so_far, &round, turn_began);
+        // Every round that answered adds up. One that failed is asked again
+        // from the start (answered whole, or again): its tokens go, and the
+        // count goes back to the rounds before, so it counts the new one.
+        if answer.is_ok() {
+            made_so_far = added(&made_so_far, &round, turn_began);
+        } else if round.tokens > 0 && !hushed {
+            hooks.made(Made { total_secs: turn_began.elapsed().as_secs_f64(), ..made_so_far });
+        }
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
         }
@@ -354,6 +370,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             }
             Err(e) if e.is_engine() && !whole => {
                 whole = true;
+                next = Some(Doing::Whole);
                 fixes.push("answered whole");
                 continue;
             }
@@ -395,6 +412,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             // request, not streamed, from then on with this model.
             Err(Failure::CutShort) if !whole => {
                 whole = hung(&rules.key, true);
+                next = Some(Doing::Whole);
                 fixes.push("answered whole");
                 continue;
             }

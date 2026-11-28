@@ -107,6 +107,9 @@ pub struct Answer {
     pub used: Option<u64>,
     /// It stopped at the length limit (`finish_reason: length`).
     pub cut: bool,
+    /// The tokens the model made, when a whole answer's `usage` says
+    /// (`completion_tokens`; a streamed answer says them with `Seen::Made`).
+    pub made: Option<u64>,
 }
 
 /// What the stream shows while it comes in.
@@ -214,7 +217,8 @@ pub fn whole_answer(bytes: &[u8]) -> Result<Answer, Failure> {
         })
         .unwrap_or_default();
     let cut = json.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some("length");
-    Ok(Answer { text, calls, used: json.pointer("/usage/total_tokens").and_then(Value::as_u64), cut })
+    let made = json.pointer("/usage/completion_tokens").and_then(Value::as_u64);
+    Ok(Answer { text, calls, used: json.pointer("/usage/total_tokens").and_then(Value::as_u64), cut, made })
 }
 
 /// Tells each call of `calls` not told yet (from `told`) once its tool's name
@@ -480,5 +484,5 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             total_secs: 0.0,
         }));
     }
-    Ok(Answer { text: filter_thinking_blocks(&text), calls: calls.done(), used, cut: cut.load(Ordering::Relaxed) })
+    Ok(Answer { text: filter_thinking_blocks(&text), calls: calls.done(), used, cut: cut.load(Ordering::Relaxed), made: None })
 }
