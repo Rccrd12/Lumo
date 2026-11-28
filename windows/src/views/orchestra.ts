@@ -443,7 +443,37 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   for (const type of ["wheel", "pointerdown", "keydown", "touchstart"]) {
     log.addEventListener(type, () => {
       if (readAt && logWasOnScreen) readAt = null;
+      userMoved = true;
     }, { passive: true, capture: true });
+  }
+
+  // ── Where it is read, while its conversation is drawn again ───────────────
+  // A member's news (a step, a message, its answer) draws the conversation
+  // again. Its cards are new and fit themselves once laid out (rich/resize.ts),
+  // so for a frame one can be taller than it was: the browser's scroll
+  // anchoring held on to that and left the conversation higher up than where
+  // it was read. As a chat's (views/chat.ts holdPlace): anchoring is off for
+  // two frames and the place read is put back at each, unless the user moves.
+  let drawnMember = "";
+  let holdFrame = 0;
+  let userMoved = false;
+  function holdPlace(place: ReadPlace) {
+    userMoved = false;
+    putPlace(log, place);
+    if (typeof requestAnimationFrame === "undefined") return;
+    log.style.overflowAnchor = "none";
+    cancelAnimationFrame(holdFrame);
+    const again = () => {
+      if (!userMoved) putPlace(log, place);
+    };
+    holdFrame = requestAnimationFrame(() => {
+      again();
+      holdFrame = requestAnimationFrame(() => {
+        again();
+        holdFrame = 0;
+        log.style.overflowAnchor = "";
+      });
+    });
   }
 
   // ── Who is who ──────────────────────────────────────────────────────────────
@@ -714,6 +744,9 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     if (toEnd) readAt = null;
     const atEnd = toEnd || (readAt ? readAt.stuck : stuck());
     const kept = log.scrollTop;
+    // The same member's conversation drawn again: where it is read, found again in the new one.
+    const place = !atEnd && !readAt && drawnMember === selected && log.clientHeight > 0 ? readPlace(log) : null;
+    drawnMember = selected;
     clear(log);
     liveEl = null;
     nowEl = null;
@@ -776,6 +809,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     if (error) log.append(h("div", { class: "orc-error", text: error }));
     log.scrollTop = atEnd ? log.scrollHeight : kept;
     if (readAt?.place && !readAt.stuck && readAt.member === m.id) putPlace(log, readAt.place);
+    else if (place) holdPlace(place);
   }
 
   /**
