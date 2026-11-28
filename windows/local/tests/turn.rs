@@ -91,6 +91,79 @@ fn the_island_says_what_the_model_is_doing() {
     assert_eq!(island.doing, [Doing::Prompt, Doing::Reasoning]);
 }
 
+#[test]
+fn the_tokens_made_are_counted_one_a_piece_then_as_the_server_says() {
+    // Two pieces of reasoning and three of text, an empty role delta that is
+    // no token: five counted; the usage chunk then says 10 (`usage` in fake).
+    let mut island = Island::default();
+    let opened = json!({ "choices": [{ "delta": { "role": "assistant", "content": "" } }] }).to_string();
+    let replies = vec![Reply::Events(vec![opened, reasoning("hmm"), reasoning("ok"), text("Fa "), text("4"), text("."), finish("stop"), usage(50), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("2+2?", &[]), &rules("made", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fa 4.");
+    let (tokens, secs) = *island.made.last().unwrap();
+    assert_eq!(tokens, 10);
+    assert!(secs >= 0.0);
+    // Of which the two pieces of reasoning; the prompt as the usage says.
+    let made = island.made_last.unwrap();
+    assert_eq!((made.reasoning, made.prompt_tokens), (2, Some(40)));
+    assert!(made.prompt_secs >= 0.0 && made.total_secs >= made.secs);
+    // Reasoning written in the text, until the answer shows, is reasoning too.
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![text("<think>conto"), text(" bene"), text("</think>\n\n"), text("Fa 4."), finish("stop"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("2+2?", &[]), &rules("made-think", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fa 4.");
+    let made = island.made_last.unwrap();
+    assert_eq!((made.tokens, made.reasoning, made.prompt_tokens), (4, 3, None));
+    // A server that gives no count: the pieces are the count.
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![text("Ciao"), text(" Anna"), text("."), finish("stop"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("Ciao", &[]), &rules("made-counted", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Ciao Anna.");
+    assert_eq!(island.made.last().unwrap().0, 3);
+}
+
+#[test]
+fn the_tokens_of_every_round_add_up() {
+    // A call (one piece, the server says 10), then the answer (10 more).
+    let mut island = Island::default();
+    let replies = vec![
+        Reply::Events(vec![call("c1", "set_timer", "{\"minutes\":5}"), finish("tool_calls"), usage(40), DONE.into()]),
+        answer("Fatto."),
+    ];
+    let (outcome, _) = turn(replies, &mut question("Timer di 5 minuti", &["set_timer"]), &rules("made-rounds", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fatto.");
+    assert_eq!(island.made.last().unwrap().0, 20);
+    assert!(island.made.windows(2).all(|w| w[0].0 <= w[1].0), "the count never goes back: {:?}", island.made);
+}
+
+#[test]
+fn a_round_asked_again_counts_from_the_start() {
+    // Two pieces, then the engine fails ("terminated"): the count goes back
+    // to 0, and the answer asked again (the server says 10) counts alone.
+    let mut island = Island::default();
+    let failing = Reply::Paced(vec![text("Uno"), text(" due"), json!({ "error": "terminated" }).to_string()], Duration::from_millis(300));
+    let (outcome, _) = turn(vec![failing, answer("Fatto.")], &mut question("Conta", &[]), &rules("made-retry", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fatto.");
+    assert!(island.made.first().is_some_and(|m| m.0 == 2), "the failed round was shown: {:?}", island.made);
+    assert!(island.made.iter().any(|m| m.0 == 0), "the count went back: {:?}", island.made);
+    assert_eq!(island.made.last().unwrap().0, 10);
+}
+
+#[test]
+fn a_stream_asked_again_whole_says_so_and_counts_its_answer() {
+    // The stream closes after three pieces: the island says it asks again whole,
+    // the count goes back to 0, then is the whole answer's (12, its usage).
+    let mut island = Island::default();
+    let thinking = Reply::Paced(vec![reasoning("pensa"), reasoning("ancora"), reasoning("poi")], Duration::from_millis(300));
+    let replies = vec![thinking, whole("Fatto.", &[])];
+    let (outcome, _) = turn(replies, &mut question("Un gioco", &[]), &rules("made-whole", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert!(outcome.whole);
+    assert!(island.doing.contains(&Doing::Whole), "{:?}", island.doing);
+    assert!(island.made.iter().any(|m| m.0 == 0), "the count went back: {:?}", island.made);
+    assert_eq!(island.made.last().unwrap().0, 12);
+}
+
 /// One piece of a streamed tool call: its `index`, and what this piece adds.
 fn piece(index: u64, id: Option<&str>, name: Option<&str>, arguments: &str) -> String {
     let mut function = json!({ "arguments": arguments });
@@ -1004,4 +1077,18 @@ fn the_same_words_said_again_after_a_tool_show_once_while_the_turn_goes_on() {
 
 fn calls_after(said: &str, id: &str) -> Reply {
     Reply::Events(vec![text(said), call(id, "workspace_read", "{}"), finish("tool_calls"), DONE.into()])
+}
+
+#[test]
+fn a_turn_can_run_on_another_thread() {
+    // The app spawns it (tauri::async_runtime::spawn): its future must be Send.
+    fn send<T: Send>(_: &T) {}
+    let fake = serve(vec![answer("Ciao.")]);
+    let to = fake.endpoint();
+    let mut body = question("Ciao", &[]);
+    let rules = rules("send", "");
+    let mut island = Island::default();
+    let turn = run(&to, &mut body, &rules, &mut island);
+    send(&turn);
+    drop(turn);
 }

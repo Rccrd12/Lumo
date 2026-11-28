@@ -15383,6 +15383,18 @@
    "id": "{name} menghentikan jawaban: mencoba lagi ({attempt} dari {of})…",
    "it": "{name} ha interrotto: riprovo ({attempt} di {of})…"
   },
+  "The answer stopped: asking again all at once, it shows when it's done…": {
+   "zh-Hans": "回答中断了：正在一次性重新请求，完成后显示…",
+   "hi": "उत्तर रुक गया: एक साथ फिर से पूछ रहे हैं, पूरा होने पर दिखेगा…",
+   "es": "La respuesta se detuvo: se pide de nuevo de una vez, se verá cuando esté lista…",
+   "ar": "توقفت الإجابة: إعادة الطلب دفعة واحدة، تظهر عند اكتمالها…",
+   "fr": "La réponse s'est arrêtée : nouvelle demande d'un seul bloc, elle s'affiche une fois prête…",
+   "bn": "উত্তর থেমে গেছে: একবারে আবার চাওয়া হচ্ছে, শেষ হলে দেখা যাবে…",
+   "pt-BR": "A resposta parou: pedindo de novo de uma vez, aparece quando estiver pronta…",
+   "ru": "Ответ остановился: запрашиваю заново целиком, он появится, когда будет готов…",
+   "id": "Jawaban berhenti: meminta lagi sekaligus, muncul saat selesai…",
+   "it": "La risposta si è interrotta: la richiedo tutta insieme, appare quando è pronta…"
+  },
   "It wrote the tool instead of using it: asking again…": {
    "zh-Hans": "它写出了工具而没有使用：再次请求…",
    "hi": "इसने टूल लिखा, इस्तेमाल नहीं किया: फिर से कह रहा है…",
@@ -24394,6 +24406,102 @@
    "ru": "Ранее",
    "id": "Sebelumnya",
    "it": "Prima"
+  },
+  "{rate} tok/sec": {
+   "zh-Hans": "{rate} tok/sec",
+   "hi": "{rate} tok/sec",
+   "es": "{rate} tok/sec",
+   "ar": "{rate} tok/sec",
+   "fr": "{rate} tok/sec",
+   "bn": "{rate} tok/sec",
+   "pt-BR": "{rate} tok/sec",
+   "ru": "{rate} tok/sec",
+   "id": "{rate} tok/sec",
+   "it": "{rate} tok/sec"
+  },
+  "Show tokens per second": {
+   "zh-Hans": "显示每秒令牌数",
+   "hi": "प्रति सेकंड टोकन दिखाएँ",
+   "es": "Mostrar tokens por segundo",
+   "ar": "إظهار الرموز في الثانية",
+   "fr": "Afficher les jetons par seconde",
+   "bn": "প্রতি সেকেন্ডে টোকেন দেখান",
+   "pt-BR": "Mostrar tokens por segundo",
+   "ru": "Показывать токены в секунду",
+   "id": "Tampilkan token per detik",
+   "it": "Mostra i token al secondo"
+  },
+  "Under each answer: how many tokens the model made and how many a second, live while it writes. Its reasoning counts too.": {
+   "zh-Hans": "在每个回答下方：模型生成了多少令牌、每秒多少个，写作时实时更新。推理也计算在内。",
+   "hi": "हर उत्तर के नीचे: मॉडल ने कितने टोकन बनाए और प्रति सेकंड कितने, लिखते समय लाइव। उसका तर्क भी गिना जाता है।",
+   "es": "Debajo de cada respuesta: cuántos tokens generó el modelo y cuántos por segundo, en directo mientras escribe. Su razonamiento también cuenta.",
+   "ar": "تحت كل إجابة: كم رمزًا أنتج النموذج وكم في الثانية، مباشرةً أثناء الكتابة. ويُحسب تفكيره أيضًا.",
+   "fr": "Sous chaque réponse : combien de jetons le modèle a produits et combien par seconde, en direct pendant qu'il écrit. Son raisonnement compte aussi.",
+   "bn": "প্রতিটি উত্তরের নিচে: মডেল কত টোকেন তৈরি করেছে এবং প্রতি সেকেন্ডে কত, লেখার সময় সরাসরি। এর যুক্তিও গোনা হয়।",
+   "pt-BR": "Abaixo de cada resposta: quantos tokens o modelo gerou e quantos por segundo, ao vivo enquanto escreve. O raciocínio também conta.",
+   "ru": "Под каждым ответом: сколько токенов создала модель и сколько в секунду, в реальном времени, пока она пишет. Рассуждения тоже учитываются.",
+   "id": "Di bawah setiap jawaban: berapa token yang dibuat model dan berapa per detik, langsung saat menulis. Penalarannya juga dihitung.",
+   "it": "Sotto ogni risposta: quanti token ha generato il modello e quanti al secondo, in diretta mentre scrive. Conta anche il ragionamento."
+  },
+  "Reasoning": {
+   "zh-Hans": "推理",
+   "hi": "तर्क",
+   "es": "Razonamiento",
+   "ar": "التفكير",
+   "fr": "Raisonnement",
+   "bn": "যুক্তি",
+   "pt-BR": "Raciocínio",
+   "ru": "Рассуждение",
+   "id": "Penalaran",
+   "it": "Ragionamento"
+  },
+  "Answer": {
+   "zh-Hans": "回答",
+   "hi": "उत्तर",
+   "es": "Respuesta",
+   "ar": "الإجابة",
+   "fr": "Réponse",
+   "bn": "উত্তর",
+   "pt-BR": "Resposta",
+   "ru": "Ответ",
+   "id": "Jawaban",
+   "it": "Risposta"
+  },
+  "Speed": {
+   "zh-Hans": "速度",
+   "hi": "गति",
+   "es": "Velocidad",
+   "ar": "السرعة",
+   "fr": "Vitesse",
+   "bn": "গতি",
+   "pt-BR": "Velocidade",
+   "ru": "Скорость",
+   "id": "Kecepatan",
+   "it": "Velocità"
+  },
+  "Reading the question": {
+   "zh-Hans": "读取问题",
+   "hi": "प्रश्न पढ़ना",
+   "es": "Lectura de la pregunta",
+   "ar": "قراءة السؤال",
+   "fr": "Lecture de la question",
+   "bn": "প্রশ্ন পড়া",
+   "pt-BR": "Leitura da pergunta",
+   "ru": "Чтение вопроса",
+   "id": "Membaca pertanyaan",
+   "it": "Lettura della domanda"
+  },
+  "Total time": {
+   "zh-Hans": "总时间",
+   "hi": "कुल समय",
+   "es": "Tiempo total",
+   "ar": "الوقت الإجمالي",
+   "fr": "Durée totale",
+   "bn": "মোট সময়",
+   "pt-BR": "Tempo total",
+   "ru": "Общее время",
+   "id": "Total waktu",
+   "it": "Tempo totale"
   }
  }
 }

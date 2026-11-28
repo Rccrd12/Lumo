@@ -29,3 +29,4 @@
 @import "./styles/23-session-agents.css"; /* A terminal session's agents: the Agents card in its session card (views/views.ts). */
 @import "./styles/24-reply-files.css"; /* The files of an answer: their names in its text as buttons, their cards under it (views/file-links.ts). */
 @import "./styles/25-terminal.css"; /* A local model's terminal: where a command runs, on its card, and the commands above an answer. */
+@import "./styles/26-token-speed.css"; /* A local model's tokens and how fast: the line under its answer, and by the dots while it reasons. */

@@ -199,6 +199,9 @@ pub struct Settings {
     /// A local model's chat is compacted by itself before a question, once
     /// its context is over 80 % full (the ring's last numbers). On by default.
     pub chat_auto_compact: bool,
+    /// A local model's answer shows how many tokens it made and how many a
+    /// second, on a line under its text (views/chat.ts). On by default.
+    pub chat_token_speed: bool,
     /// Settings → Chat → Chat names: once its first answer is in, the chat's
     /// own provider names the chat in a few words (chat_title.rs). Off, a
     /// chat's name is the start of its first question. On by default.
@@ -427,6 +430,7 @@ impl Default for Settings {
             local_terminal_network: "ask".into(),
             local_terminal_timeout: 120,
             chat_auto_compact: true,
+            chat_token_speed: true,
             chat_ai_titles: true,
             chat_title_model: "light".into(),
             web_images: false,
@@ -850,6 +854,7 @@ mod tests {
   "localTerminalNetwork": "never",
   "localTerminalTimeout": 600,
   "chatAutoCompact": false,
+  "chatTokenSpeed": false,
   "chatAiTitles": false,
   "chatTitleModel": "chat",
   "webImages": true,
@@ -1477,6 +1482,7 @@ mod tests {
                 "localTerminalNetwork",
                 "localTerminalTimeout",
                 "chatAutoCompact",
+                "chatTokenSpeed",
                 "chatAiTitles",
                 "chatTitleModel",
                 "webImages",

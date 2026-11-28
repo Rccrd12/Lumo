@@ -9,6 +9,7 @@ import type { ComputerRecap, ComputerRecapStep } from "./computer-use";
 import { movedSent, type SentItem } from "./sent";
 import { cleanCommands, type RanCommand } from "./terminal";
 import { readReplyFiles, type ReplyFile } from "./file-names";
+import type { TokenSpeed } from "./state";
 
 export interface SavedTurn {
   role: "user" | "assistant";
@@ -33,6 +34,8 @@ export interface SavedTurn {
   ask?: AskQuote;
   /** An answer's: the files of the computer it made or changed (ChatMessage.files). */
   files?: ReplyFile[];
+  /** A local model's answer: the tokens it made and their seconds (ChatMessage.speed). */
+  speed?: TokenSpeed;
 }
 
 /** A question asked of one agent: who, and what it was doing then (the quote over the question). */
@@ -125,7 +128,7 @@ export function cleanRecap(raw: unknown): ComputerRecap | undefined {
  */
 export function toSavedTurn(m: {
   role: "user" | "assistant"; content: string; at?: number; kept?: string; computer?: ComputerRecap;
-  warning?: AnswerWarning; ask?: AskQuote; commands?: RanCommand[]; files?: ReplyFile[];
+  warning?: AnswerWarning; ask?: AskQuote; commands?: RanCommand[]; files?: ReplyFile[]; speed?: TokenSpeed;
 }): SavedTurn {
   return {
     role: m.role,
@@ -137,18 +140,34 @@ export function toSavedTurn(m: {
     ...(m.warning ? { warning: m.warning } : {}),
     ...(m.ask ? { ask: m.ask } : {}),
     ...(m.role === "assistant" && m.files?.length ? { files: m.files } : {}),
+    ...(m.role === "assistant" && m.speed ? { speed: cleanSpeed(m.speed) } : {}),
   };
+}
+
+/** A saved answer's token count, checked: storage holds anything. */
+export function cleanSpeed(raw: unknown): TokenSpeed | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const count = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  if (!count(r.tokens) || !count(r.secs) || (r.tokens as number) < 1) return undefined;
+  const speed: TokenSpeed = { tokens: Math.round(r.tokens as number), secs: r.secs as number };
+  if (count(r.reasoning)) speed.reasoning = Math.min(Math.round(r.reasoning as number), speed.tokens);
+  if (count(r.promptTokens)) speed.promptTokens = Math.round(r.promptTokens as number);
+  if (count(r.promptSecs)) speed.promptSecs = r.promptSecs as number;
+  if (count(r.totalSecs)) speed.totalSecs = r.totalSecs as number;
+  return speed;
 }
 
 /** What a saved turn gives back to the chat's message (chat.ts openChat), checked: storage holds anything. */
 export function fromSavedTurn(turn: SavedTurn): {
-  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote; commands?: RanCommand[]; files?: ReplyFile[];
+  at?: number; kept?: string; computer?: ComputerRecap; warning?: AnswerWarning; ask?: AskQuote; commands?: RanCommand[]; files?: ReplyFile[]; speed?: TokenSpeed;
 } {
   const computer = turn.role === "assistant" ? cleanRecap(turn.computer) : undefined;
   const commands = turn.role === "assistant" ? cleanCommands(turn.commands) : undefined;
   const files = turn.role === "assistant" ? readReplyFiles(turn.files) : undefined;
   const warning = savedWarning(turn.warning);
   const ask = askQuoteOf(turn.ask);
+  const speed = turn.role === "assistant" ? cleanSpeed(turn.speed) : undefined;
   return {
     at: typeof turn.at === "number" ? turn.at : undefined,
     kept: typeof turn.kept === "string" ? turn.kept : undefined,
@@ -157,6 +176,7 @@ export function fromSavedTurn(turn: SavedTurn): {
     ...(warning ? { warning } : {}),
     ...(ask ? { ask } : {}),
     ...(files ? { files } : {}),
+    ...(speed ? { speed } : {}),
   };
 }
 
