@@ -13,7 +13,8 @@
 // window, from the folder's own .venv when it has one, else the Python on
 // PATH. `--fit-max-tokens`: an answer longer than the context leaves is cut
 // to fit rather than refused. Its output goes to a log in Lumo's data
-// folder, which an error points to.
+// folder, which an error points to, and the engine's own lines (stderr) to
+// engine.log beside it.
 //
 // Lumo only ever stops a server it started itself, as with Unsloth Studio:
 // one the user opened stays as it is, and the one Lumo started is in Lumo's
@@ -281,6 +282,9 @@ fn config(settings: &Settings, dir: &Path) -> Value {
         "cwd": path_str(dir),
         "tokenizer": path_str(&dir.join(TOKENIZER)),
         "model_name": MODEL,
+        // The engine's own lines (its errors, what it did with the card's memory) go
+        // to this file, the server's too: without it the server drops them.
+        "log": path_str(&engine_log_path()),
     });
     if vision {
         // The encoder on the processor, as the guide's default config has it: it takes nothing from the card.
@@ -306,6 +310,11 @@ fn data_dir() -> PathBuf {
 
 pub fn log_path() -> PathBuf {
     data_dir().join("server.log")
+}
+
+/// The engine's log (the config's "log"): started anew with each server.
+fn engine_log_path() -> PathBuf {
+    data_dir().join("engine.log")
 }
 
 // ── Its state ─────────────────────────────────────────────────────────────────
@@ -549,6 +558,8 @@ fn spawn(dir: &Path, config: &str) -> std::io::Result<Child> {
     let config_path = data_dir().join("lumo-ik2.json");
     std::fs::write(&config_path, config)?;
     let log = std::fs::File::create(log_path())?;
+    // (the server appends to it: emptied here, it holds this run only)
+    std::fs::File::create(engine_log_path())?;
     let mut cmd = Command::new(python);
     cmd.args(["-X", "utf8"])
         .arg(dir.join(SERVER))
@@ -697,6 +708,8 @@ mod tests {
         assert_eq!(cfg["env"]["IK2_DRAFT_CTX"], "65536");
         assert_eq!(cfg["vision"]["gpu"], false);
         assert_eq!(cfg["model_name"], MODEL);
+        // The engine's stderr kept, in Lumo's folder beside the server's log.
+        assert_eq!(cfg["log"], path_str(&engine_log_path()));
 
         // Both off, on an 8 GB card: the guide's 8 GB config, no drafter, no encoder.
         // An 8 GB card leaves the drafter out even when it's on.
