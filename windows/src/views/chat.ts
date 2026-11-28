@@ -428,12 +428,15 @@ export function buildPrompt(
   const covered = () => COVERING.some((c) => body.classList.contains(c));
   /** Before a panel hides the log: where it is read. */
   function coverLog() {
+    // A project's conversation on screen: its place, kept by the projects.
+    orchestra.coverLog();
     if (coveredAt || log.clientHeight <= 0) return;
     // Still being put back after the island opened: that place is the one read.
     coveredAt = readAt ? { ...readAt } : { chatId: State.chatId, slot: State.chatSlot, stuck, place: stuck ? null : readPlace(log) };
   }
   /** The panels all gone: the place back, frame by frame until the log holds its size. */
   function uncoverLog() {
+    if (!covered()) orchestra.uncoverLog();
     const at = coveredAt;
     if (!at || covered()) return;
     coveredAt = null;

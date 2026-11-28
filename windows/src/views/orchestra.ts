@@ -126,6 +126,9 @@ export interface OrchestraView {
   editSend(text: string): boolean;
   /** Escape while editing: the edit is dropped. True when there was one. */
   cancelEdit(): boolean;
+  /** A panel of the chat's is about to hide the conversation, or all of them went: its place kept and put back, as a chat's. */
+  coverLog(): void;
+  uncoverLog(): void;
   /**
    * The member on screen answers now: the send button is its Stop, as a
    * chat's while its answer is written. `stopping` once Stop was pressed.
@@ -438,6 +441,24 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     settleWatch.observe(log.parentElement);
     putReadAt();
     settleLater();
+  }
+  /** A panel of the chat's (the usage menu, the models…) hides the log: where it was read, kept until it goes. */
+  let coveredFor = false;
+  function coverLog() {
+    if (coveredFor || !logWasOnScreen || log.clientHeight <= 0) return;
+    coveredFor = true;
+    keepReadAt();
+    // The log keeps its width: only its height goes.
+    if (heldWidth) {
+      heldWidth = 0;
+      log.style.width = "";
+    }
+  }
+  /** The panels gone: the place back, frame by frame until the log holds its size, as when the island opens. */
+  function uncoverLog() {
+    if (!coveredFor) return;
+    coveredFor = false;
+    if (logWasOnScreen) putBackReadAt();
   }
   State.subscribe(() => {
     const onScreen = logOnScreen();
@@ -1673,6 +1694,8 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       retry(m, editing.message, text);
       return true;
     },
+    coverLog,
+    uncoverLog,
     answering() {
       // Stop pressed: until that member's turn is over (it stays so when another is on screen).
       const [pid, pm] = stoppingTurn.split("/");
