@@ -51,6 +51,7 @@ import { ORCHESTRA_STRINGS as S } from "./orchestra-strings";
 import { dropChatFiles } from "../core/chat-files";
 import { takeTimers } from "../core/compact";
 import { takeListens } from "../core/listen";
+import { putPlace, readPlace, type ReadPlace } from "./read-place";
 
 /** Where the project last on screen is kept, to come back to it (a per-viewer convenience). */
 const LAST_KEY = "lumo.orchestra.last";
@@ -58,6 +59,10 @@ const LAST_KEY = "lumo.orchestra.last";
 const NARROW_PX = 600;
 /** Within this of its end, the conversation follows what is written there. */
 const STUCK_PX = 4;
+/** The island opening: the log gets its width back once the island has held its size this long (as a chat's). */
+const PLACE_SETTLE_MS = 160;
+/** And no later than this, however long the island takes to open. */
+const PLACE_MAX_MS = 2000;
 
 export interface OrchestraView {
   /** The rail of members, and the reader that takes its place: both laid over the chat's left side. */
@@ -360,6 +365,87 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   const on = () => State.settings.orchestraMode && State.chatSlot !== "forge";
   const inProject = () => on() && page === "project" && snap != null;
 
+  // ── Where the conversation is read, while the island closes and opens ─────
+  // As a chat's (views/chat.ts): closing narrows the island, where every line
+  // wraps again, and opening widens it back, so the log keeps the width it had
+  // while it is away (the island clips it), and the place read, or being at
+  // its end, is put back at each step of the opening and once the island holds
+  // its size. Drawn again meanwhile (a member's news), it keeps that place too.
+
+  let readAt: { member: string; stuck: boolean; place: ReadPlace | null } | null = null;
+  let heldWidth = 0;
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  let openedAt = 0;
+  const logOnScreen = () => State.mode === "expanded" && State.view === "prompt" && inProject();
+  let logWasOnScreen = logOnScreen();
+  function putReadAt() {
+    if (!readAt) return;
+    if (readAt.stuck) log.scrollTop = log.scrollHeight;
+    else if (readAt.place) putPlace(log, readAt.place);
+  }
+  const settleWatch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+    if (!logWasOnScreen) return;
+    putReadAt();
+    settleLater();
+  });
+  function settleLater() {
+    if (settleTimer !== undefined) clearTimeout(settleTimer);
+    settleTimer = performance.now() - openedAt >= PLACE_MAX_MS ? undefined : setTimeout(settled, PLACE_SETTLE_MS);
+    if (settleTimer === undefined) settled();
+  }
+  function settled() {
+    if (settleTimer !== undefined) clearTimeout(settleTimer);
+    settleTimer = undefined;
+    settleWatch?.disconnect();
+    if (!logWasOnScreen) return;
+    if (heldWidth) {
+      heldWidth = 0;
+      log.style.width = "";
+    }
+    putReadAt();
+    readAt = null;
+  }
+  function keepReadAt() {
+    if (settleTimer !== undefined) clearTimeout(settleTimer);
+    settleTimer = undefined;
+    settleWatch?.disconnect();
+    // Closed again while it was still opening: the place kept stands.
+    if (!readAt && log.clientHeight > 0) {
+      const atEnd = stuck();
+      readAt = { member: selected, stuck: atEnd, place: atEnd ? null : readPlace(log) };
+    }
+    if (!heldWidth && log.clientWidth > 0) {
+      heldWidth = log.getBoundingClientRect().width;
+      log.style.width = `${heldWidth}px`;
+    }
+  }
+  function putBackReadAt() {
+    // Another member came on screen meanwhile: it opens where drawLog put it.
+    if (readAt && readAt.member !== selected) readAt = null;
+    openedAt = performance.now();
+    if (!settleWatch || !log.parentElement) {
+      settled();
+      return;
+    }
+    settleWatch.observe(log);
+    settleWatch.observe(log.parentElement);
+    putReadAt();
+    settleLater();
+  }
+  State.subscribe(() => {
+    const onScreen = logOnScreen();
+    if (onScreen === logWasOnScreen) return;
+    logWasOnScreen = onScreen;
+    if (onScreen) putBackReadAt();
+    else keepReadAt();
+  });
+  // The user scrolling, or about to, takes over from it.
+  for (const type of ["wheel", "pointerdown", "keydown", "touchstart"]) {
+    log.addEventListener(type, () => {
+      if (readAt && logWasOnScreen) readAt = null;
+    }, { passive: true, capture: true });
+  }
+
   // ── Who is who ──────────────────────────────────────────────────────────────
 
   const current = (): OrchestraMember | undefined => (snap ? memberOf(snap, selected) : undefined);
@@ -624,7 +710,9 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   const scope = (m: OrchestraMember, id: string) => `orc:${snap?.id ?? ""}:${m.id}:${id}`;
 
   function drawLog(toEnd = false) {
-    const atEnd = toEnd || stuck();
+    // Away or opening (readAt): where it was read, not where the narrowed log happens to be.
+    if (toEnd) readAt = null;
+    const atEnd = toEnd || (readAt ? readAt.stuck : stuck());
     const kept = log.scrollTop;
     clear(log);
     liveEl = null;
@@ -687,6 +775,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     }
     if (error) log.append(h("div", { class: "orc-error", text: error }));
     log.scrollTop = atEnd ? log.scrollHeight : kept;
+    if (readAt?.place && !readAt.stuck && readAt.member === m.id) putPlace(log, readAt.place);
   }
 
   /**
