@@ -495,6 +495,8 @@ async fn start(app: &AppHandle, settings: &Settings, asked: bool, mut tick: impl
                 }
             });
             crate::log::line(format!("[maya] answering after {} s", began.elapsed().as_secs()));
+            // Asked while it was starting, Maya said nothing of its model: asked again now.
+            crate::local_models::forget_provider("maya");
             // Started without a console, Maya's processes are background work to
             // Windows, throttled onto the slow cores: full speed for all of them
             // (the engine and the image encoder are up by now).

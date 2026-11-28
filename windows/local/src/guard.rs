@@ -89,13 +89,15 @@ pub fn announces(text: &str) -> bool {
 }
 
 /// The longest answer to ask for: most of what the context leaves past the
-/// prompt (`taken` tokens, a rough count), between 2 048 and 32 768 tokens;
-/// 8 192 when the context isn't known.
+/// prompt (`taken` tokens, a rough count), between 2 048 and 131 072 tokens;
+/// 8 192 when the context isn't known. A model that reasons at length (a
+/// whole program at a high effort) can think past 32 768 tokens before its
+/// first word: the ceiling only stops one that never ends.
 pub fn answer_room(context: u64, taken: u64) -> u64 {
     if context == 0 {
         return 8_192;
     }
-    (context.saturating_sub(taken) * 4 / 5).clamp(2_048, 32_768)
+    (context.saturating_sub(taken) * 4 / 5).clamp(2_048, 131_072)
 }
 
 /// The tool of `names` that `text` writes as a line of its own (`[[name …]]`
@@ -276,6 +278,9 @@ mod tests {
         assert_eq!(answer_room(0, 100), 8_192);
         assert_eq!(answer_room(32_768, 2_768), 24_000);
         assert_eq!(answer_room(8_192, 7_000), 2_048);
+        // 64K: about 51K, past the 32K a long reasoning used to be cut at.
+        assert_eq!(answer_room(65_536, 1_536), 51_200);
+        assert_eq!(answer_room(1_048_576, 0), 131_072);
     }
 
     #[test]

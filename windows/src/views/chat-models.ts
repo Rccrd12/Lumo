@@ -588,6 +588,10 @@ export function buildPicker(onChange: () => void, openSettings: () => void, onPi
       // The list says what its models take: the effort slider follows.
       if (isApiProvider(p.id)) refreshCaps();
       drawModels(p, models);
+      // A local server asked before it answered (Maya or Unsloth Studio still
+      // starting) said nothing of its model: asked again now that it lists them.
+      const caps = localCapsOf(p.id);
+      if (p.urlField && (!caps || caps.loadedContext === 0)) refreshCaps(true);
     } catch (err) {
       if (ticket === request) status(String(err).replace(/^Error:\s*/, ""), Boolean(p.key));
     }
