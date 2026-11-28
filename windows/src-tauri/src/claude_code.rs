@@ -906,7 +906,11 @@ fn activity_for(name: &str, input: &Value) -> Activity {
         // as for the API providers (claude.rs tool_activity). The rest is the computer.
         "mcp__lumo__update_plan" => Activity::new("plan", ""),
         _ if name.strip_prefix("mcp__lumo__").is_some_and(|tool| {
-            tool.starts_with("mail_") || crate::island_tools::NAMES.contains(&tool) || tool == crate::island_tools::LISTEN_PULL_REQUEST
+            tool.starts_with("mail_")
+                || crate::island_tools::NAMES.contains(&tool)
+                || tool == crate::island_tools::LISTEN_PULL_REQUEST
+                // A project's tools (start a thread, write to one, wait…): never the computer.
+                || crate::orchestra_tool_defs::NAMES.contains(&tool)
         }) =>
         {
             Activity::new("tool", pretty_tool(&name["mcp__lumo__".len()..]))
@@ -3991,6 +3995,9 @@ mod tests {
         assert_eq!(a("mcp__lumo__screenshot", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__zoom", json!({})), Activity::new("screen", ""));
         assert_eq!(a("mcp__lumo__left_click", json!({ "coordinate": [1, 2] })), Activity::new("computer", ""));
+        // A project's tools are what they are, not the computer.
+        assert_eq!(a("mcp__lumo__start_thread", json!({ "title": "x" })).kind, "tool");
+        assert_eq!(a("mcp__lumo__read_messages", json!({})).kind, "tool");
         // Its other tools are not the computer.
         assert_eq!(a("mcp__lumo__mail_read", json!({ "id": "1" })), Activity::new("tool", "mail read"));
         assert_eq!(a("mcp__lumo__set_timer", json!({ "seconds": 60 })), Activity::new("tool", "set timer"));
