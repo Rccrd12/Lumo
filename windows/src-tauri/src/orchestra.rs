@@ -1969,6 +1969,13 @@ pub fn is_member_chat(chat_id: &str) -> bool {
     parse_chat(chat_id).is_some()
 }
 
+/// Whether `chat_id` is a project's coordinator's chat: as Claude Code, it
+/// has none of its own file tools, so what the user attaches goes in its
+/// message itself (claude_code.rs `attached_blocks`), never as a path to read.
+pub fn is_coordinator_chat(chat_id: &str) -> bool {
+    parse_chat(chat_id).is_some_and(|(_, member)| member == COORDINATOR)
+}
+
 /// The messages that came for a member's chat while it worked, as it reads
 /// them after a tool, or nothing. With `attached` (Claude Code, which reads
 /// files by their path), what they brought goes too, as `attached` says it;
@@ -1976,6 +1983,8 @@ pub fn is_member_chat(chat_id: &str) -> bool {
 pub fn step_mail(app: &AppHandle, chat_id: &str, attached: Option<&dyn Fn(Option<ChatContext>, Option<ScreenContext>) -> String>) -> String {
     let Some((id, member)) = parse_chat(chat_id) else { return String::new() };
     let (id, member) = (id.to_string(), member.to_string());
+    // The coordinator can't open a path: what came with a message waits for its next turn, in it.
+    let attached = if member == COORDINATOR { None } else { attached };
     let mail = with(Some(app), &id, |o| {
         let mail = match attached {
             Some(say) => o.take_mail_attached(&member).map(|(text, with)| {

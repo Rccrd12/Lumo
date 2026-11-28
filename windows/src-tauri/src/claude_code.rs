@@ -2680,8 +2680,27 @@ fn live_args(mut args: Vec<String>) -> Vec<String> {
 }
 
 /// One message as Claude Code takes it on stdin (`--input-format stream-json`).
+#[cfg(test)]
 fn user_line(text: &str) -> String {
-    format!("{}\n", json!({ "type": "user", "message": { "role": "user", "content": [{ "type": "text", "text": text }] } }))
+    user_line_with(text, &[])
+}
+
+/// The same, with `blocks` (pictures, PDFs, a file's text) ahead of its words, as the Messages API takes them.
+fn user_line_with(text: &str, blocks: &[Value]) -> String {
+    let mut content: Vec<Value> = blocks.to_vec();
+    content.push(json!({ "type": "text", "text": text }));
+    format!("{}\n", json!({ "type": "user", "message": { "role": "user", "content": content } }))
+}
+
+/// What the user attached, as content blocks of the message (claude.rs
+/// `file_block`): for a project's coordinator, whose Claude Code has no Read
+/// to open a path. A file of another kind is named by its path, as before.
+fn attached_blocks(paths: &[String]) -> Vec<Value> {
+    let mut blocks: Vec<Value> = paths.iter().filter_map(|p| crate::claude::file_block(p)).collect();
+    if !blocks.is_empty() {
+        blocks.push(json!({ "type": "text", "text": "What the user attached is in this message, above: look at it here, there is no need to open its path." }));
+    }
+    blocks
 }
 
 /// What a chat's Claude Code is told first, as the Agent SDK does
@@ -2811,6 +2830,7 @@ fn live_turn(
     exe: PathBuf,
     args: Vec<String>,
     input: String,
+    blocks: Vec<Value>,
     dir: PathBuf,
     chat_id: &str,
     session: Option<String>,
@@ -2839,11 +2859,12 @@ fn live_turn(
         drop(live);
         live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
     }
-    if write_stdin(&live.stdin, &user_line(&input)).is_err() {
+    let line = user_line_with(&input, &blocks);
+    if write_stdin(&live.stdin, &line).is_err() {
         // It ended between two messages: once more, with a new one.
         drop(live);
         live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir, &tell)?;
-        write_stdin(&live.stdin, &user_line(&input)).map_err(|e| e.to_string())?;
+        write_stdin(&live.stdin, &line).map_err(|e| e.to_string())?;
     }
     let Some(rx) = live.rx.take() else { return Err("no stdout".into()) };
     let mut asked = 0u64;
@@ -2981,6 +3002,7 @@ pub async fn send(
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
+    attached: Vec<String>,
 ) -> Result<ChatReply, String> {
     let exe = platform::claude_candidates()
         .into_iter()
@@ -3047,11 +3069,14 @@ pub async fn send(
     };
     // The agents Claude Code starts, and the turn's sign of life.
     let tell = chat_agents::teller(app, chat.id(), PROVIDER);
+    // What the user attached, in the message itself (a project's coordinator, which opens no file).
+    let blocks = if command.is_some() { Vec::new() } else { attached_blocks(&attached) };
     let state = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             exe,
             args,
             input,
+            blocks,
             work_dir(),
             &chat_id,
             resumed,
@@ -3532,6 +3557,24 @@ mod tests {
         let v: Value = serde_json::from_str(interrupt_line(3).trim_end()).unwrap();
         assert_eq!(v["request"]["subtype"], "interrupt");
         assert_eq!(v["type"], "control_request");
+    }
+
+    #[test]
+    fn what_the_coordinator_is_sent_goes_in_its_message_ahead_of_its_words() {
+        let dir = std::env::temp_dir().join(format!("lumo-cc-blocks-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("shot.png");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();
+        let blocks = attached_blocks(&[png.to_string_lossy().to_string(), dir.join("gone.png").to_string_lossy().to_string()]);
+        assert_eq!(blocks.len(), 2, "the picture, and the note that it is there");
+        assert_eq!(blocks[0]["type"], "image");
+        assert_eq!(blocks[0]["source"]["media_type"], "image/png");
+        let v: Value = serde_json::from_str(user_line_with("look", &blocks).trim_end()).unwrap();
+        let content = v["message"]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 3);
+        assert_eq!(content[2], json!({ "type": "text", "text": "look" }));
+        assert!(attached_blocks(&[]).is_empty(), "nothing attached: nothing added");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

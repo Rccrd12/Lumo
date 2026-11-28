@@ -1476,7 +1476,18 @@ async fn send_to(
         if acp_chat::Agent::of(provider).is_some() {
             return Box::pin(acp_chat::send(app, chat, provider, &model, &settings.chat_effort, &settings.chat_permission_mode, browser, query, context, folder)).await;
         }
-        return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, browser, query, context, folder)).await;
+        // A project's coordinator opens no file: what the user attached goes in its message.
+        let attached: Vec<String> = if crate::orchestra::is_coordinator_chat(chat.id()) {
+            let shared = screen.as_ref().map(|s| s.shots.iter().chain(s.files.iter()).map(|f| f.path.clone()).collect::<Vec<_>>()).unwrap_or_default();
+            let file = match &context {
+                Some(ChatContext::File { path, .. }) => Some(path.clone()),
+                _ => None,
+            };
+            file.into_iter().chain(shared).collect()
+        } else {
+            Vec::new()
+        };
+        return Box::pin(claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, browser, query, context, folder, attached)).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
         let effort = settings.chat_effort.as_str();

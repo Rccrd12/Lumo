@@ -1055,7 +1055,7 @@ fn efforts(m: &Value) -> Vec<String> {
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 /// PDF → document block, image → image block, text/code → inline text.
-fn file_block(path: &str) -> Option<Value> {
+pub(crate) fn file_block(path: &str) -> Option<Value> {
     let ext = std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
