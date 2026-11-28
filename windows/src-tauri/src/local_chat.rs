@@ -567,6 +567,17 @@ fn set_reasoning(body: &mut Value, server: &str, level: &str) {
 
 /// The least reasoning `caps` offers, as a request says it: Off, else the
 /// lowest level; None for a model that doesn't say.
+/// The longest answer to ask `server` for. Maya fits it to what its context
+/// leaves on its own (`--fit-max-tokens`): it gets all of it, where another
+/// server, which may refuse an answer longer than its room, gets most of it
+/// (`answer_room`).
+fn room_for(server: &str, context: u64, taken: u64) -> u64 {
+    if server == "maya" && context > 0 {
+        return context.saturating_sub(taken).max(2_048);
+    }
+    answer_room(context, taken)
+}
+
 fn least_reasoning(caps: &crate::local_models::Caps) -> Option<&'static str> {
     ["off", "minimal", "low", "medium", "on"].into_iter().find_map(|l| crate::local_models::reasoning_effort(caps, l))
 }
@@ -578,7 +589,7 @@ async fn agent_turn(app: &AppHandle, chat_id: &str, l: &Launch<'_>, task: crate:
     let mut body = request_body(l.model, crate::api_agents::SYSTEM, &[], &user);
     let tools = if l.tools.is_empty() { Value::Null } else { crate::openai_compat::function_tools(&l.tools) };
     let prompt_chars = crate::api_agents::SYSTEM.len() + task.task.len() + if tools.is_null() { 0 } else { tools.to_string().len() };
-    body["max_tokens"] = json!(answer_room(l.context, (prompt_chars / 3) as u64));
+    body["max_tokens"] = json!(room_for(l.server.id, l.context, (prompt_chars / 3) as u64));
     if !tools.is_null() {
         body["tools"] = tools;
     }
@@ -1043,7 +1054,7 @@ pub async fn send(
         // As long an answer as the context leaves room for, not 4 096 tokens.
         // The question counts as sent: the file's text, and a picture as the page it is.
         let prompt_chars = taken_chars - query.len() + chars_of(&user);
-        body["max_tokens"] = json!(answer_room(context_size, (prompt_chars / 3) as u64));
+        body["max_tokens"] = json!(room_for(server.id, context_size, (prompt_chars / 3) as u64));
         if !tools.is_empty() {
             body["tools"] = crate::openai_compat::function_tools(&tools);
         }
@@ -1232,6 +1243,15 @@ mod tests {
         let ran = ["web_search \"a\"".to_string(), "web_fetch".into(), "web_search \"a\"".into()];
         assert_eq!(ran_note(&ran), "\n\n(Lumo's note, not shown to the user: tools called for this answer: web_search \"a\", web_fetch.)");
         assert_eq!(without_note(&format!("Found it.{}", ran_note(&ran))), "Found it.");
+    }
+
+    #[test]
+    fn maya_gets_all_the_room_its_context_leaves() {
+        // Inkling at a high effort, 64K: all of what is left, not 32K.
+        assert_eq!(room_for("maya", 65_536, 1_536), 64_000);
+        assert_eq!(room_for("maya", 4_096, 4_000), 2_048);
+        assert_eq!(room_for("maya", 0, 100), 8_192);
+        assert_eq!(room_for("ollama", 65_536, 1_536), 51_200);
     }
 
     #[test]
