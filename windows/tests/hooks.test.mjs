@@ -137,6 +137,24 @@ test("a submitted prompt shows as thinking, with the prompt as the step", () => 
   assert.equal(task().steps.at(-1), "older field");
 });
 
+test("what Claude Code writes in the user's place never shows its tags", () => {
+  hook({ hook_event_name: "PreToolUse", cwd: "/p", tool_name: "Bash", tool_input: { command: "npm test" } });
+  hook({ hook_event_name: "UserPromptSubmit", cwd: "/p", prompt: "<task-notification>\n<task-id>bf705pz2t</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>completed</status>\n<summary>Background command \"npm test\" completed (exit code 0)</summary>\n</task-notification>" });
+  assert.equal(task().state, "thinking");
+  assert.equal(task().steps.at(-1), "Background task finished · npm test");
+  hook({ hook_event_name: "UserPromptSubmit", cwd: "/p", prompt: "<task-notification>\n<task-id>a1</task-id>\n<status>killed</status>\n" });
+  assert.equal(task().steps.at(-1), "Background task stopped");
+  const before = task().steps.length;
+  hook({ hook_event_name: "UserPromptSubmit", cwd: "/p", prompt: "<system-reminder>for the model</system-reminder>" });
+  assert.equal(task().steps.length, before);
+  assert.ok(task().steps.every((s) => !s.includes("<")));
+});
+
+test("a prompt of several lines is one line as a step, whole in its detail", () => {
+  hook({ hook_event_name: "UserPromptSubmit", cwd: "/p", prompt: "first line\n\nsecond line" });
+  assert.equal(task().steps.at(-1), "first line second line");
+});
+
 test("a tool call shows as working, labelled with what it acts on", () => {
   const step = (tool_name, tool_input) => {
     hook({ hook_event_name: "PreToolUse", cwd: "/p", tool_name, tool_input });
