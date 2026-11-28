@@ -105,6 +105,8 @@ test("the projects take the chat's place: the last one opens on its coordinator"
   assert.match(item("t1").querySelector(".orc-item-step").textContent, /^gemma-4-26b-a4b · .*main-st\.pdf/);
   assert.equal(item("t2").querySelector(".orc-item-step").textContent, "Finished in 2 min");
   assert.equal(item("t3").querySelector(".orc-item-step").textContent, "Waiting for you");
+  // Its tooltip is its whole name, never the task the coordinator wrote for it.
+  assert.equal(item("t1").getAttribute("title"), "Main St");
   assert.equal(item("t3").querySelector(".orc-badge").textContent, "1");
   // The header: its model, at work, its plan, Stop all.
   assert.equal($(".orc-head-title").textContent, "Coordinator");

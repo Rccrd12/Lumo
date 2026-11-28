@@ -530,7 +530,7 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
     const status: { text: string; cls: string; dot: boolean } = m ? statusOf(m) : { text: modelName(pick.provider, pick.model), cls: "", dot: true };
     const cards = waitingCards(id);
     const fresh = m != null && id !== COORDINATOR && !seen.has(id);
-    const el = h("button", { class: selected === id ? "orc-item on" : "orc-item", title: m?.task || undefined, "data-member": id },
+    const el = h("button", { class: selected === id ? "orc-item on" : "orc-item", title: m ? nameOf(m) : t(S.coordinator), "data-member": id },
       mark(m),
       h("span", { class: "orc-item-text" },
         h("span", { class: "orc-item-name" },
