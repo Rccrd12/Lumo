@@ -12291,8 +12291,8 @@
     "other": "{count} menunggu Anda"
    },
    "it": {
-    "one": "{count} ti aspetta",
-    "other": "{count} ti aspettano"
+    "one": "{count} aspetta una tua risposta",
+    "other": "{count} aspettano una tua risposta"
    }
   },
   "No projects yet. In a project a coordinator and its threads, each with its own model, work together on what you ask.": {
