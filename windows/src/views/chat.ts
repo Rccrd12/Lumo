@@ -750,7 +750,13 @@ export function buildPrompt(
 
   const body = h("div", { class: "chat-body" });
   // The projects (views/orchestra.ts): a coordinator and its threads, in place of the conversation.
-  const orchestra = buildOrchestra(() => drawIslandActivity(), {
+  /** The projects are built: what draws the send button may ask them. */
+  let orchestraBuilt = false;
+  const orchestra = buildOrchestra(() => {
+    drawIslandActivity();
+    // The member on screen answering or done: the send button is its Stop or the arrow again.
+    if (orchestraBuilt) drawSend();
+  }, {
     openSent: (msg, item) => void openSent(msg, item),
     openAgents: () => openAgents(),
     // The agents a member's answers started, and its messages to them, as under a chat's.
@@ -958,6 +964,9 @@ export function buildPrompt(
   const runs = new Map<string, Run>();
   /** The answer of the chat on screen, while it is written. */
   const answering = (): Run | undefined => runs.get(State.chatId);
+  /** What the field answers to: a project's member on screen while it works, else the chat's answer. */
+  const answeringHere = (): { stopping: boolean } | null | undefined => (orchestra.inProject() ? orchestra.answering() : answering());
+  orchestraBuilt = true;
   /** The agents each chat's CLI started, and each chat's sign of life (core/chat-agents.ts). */
   const agentStore = newAgentStore();
   /** The Agents cards in the log now, by card (views/agents-card.ts agentsCardKey): drawn again alone. */
@@ -1228,9 +1237,9 @@ export function buildPrompt(
    * an edited question sends (it stops that answer and replaces it).
    */
   function drawSend() {
-    const run = answering();
+    const run = answeringHere();
     // Something typed meanwhile: the arrow, which queues it.
-    const stops = run != null && editing == null && !input.value.trim();
+    const stops = run != null && editing == null && !(input.value ?? "").trim();
     const shows = stops ? "stop" : "send";
     if (shows !== sendShows) {
       sendShows = shows;
@@ -1244,6 +1253,13 @@ export function buildPrompt(
 
   /** The Stop button (or Escape in the text field): what was written so far stays. */
   function stop() {
+    // A project's member on screen: its turn stops, as this chat's answer would.
+    if (orchestra.inProject()) {
+      if (orchestra.answering()?.stopping !== false) return;
+      orchestra.stopAnswer();
+      drawSend();
+      return;
+    }
     const run = answering();
     if (!run || run.stopping) return;
     run.stopping = true;
@@ -5336,7 +5352,7 @@ export function buildPrompt(
 
   input.addEventListener("input", () => drawSend());
   send.addEventListener("click", () => {
-    if (answering() && editing == null && !input.value.trim()) stop();
+    if (answeringHere() && editing == null && !(input.value ?? "").trim()) stop();
     else void submit();
   });
   // The field stays open while an answer is written: the next question can be
@@ -5367,7 +5383,7 @@ export function buildPrompt(
     } else if (key === "Escape" && editing != null) {
       e.preventDefault();
       cancelEdit();
-    } else if (key === "Escape" && answering()) {
+    } else if (key === "Escape" && answeringHere()) {
       e.preventDefault();
       stop();
     }

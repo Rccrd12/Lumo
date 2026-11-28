@@ -306,6 +306,41 @@ test("what is typed goes to the member on screen", async () => {
   assert.deepEqual(sent("orchestra_stop"), [{ id: "o1", member: "t3" }]);
 });
 
+test("while the member on screen works, the send button is its Stop, as a chat's", async () => {
+  await flush();
+  const send = $(".send-btn");
+  // The coordinator thinking: Stop, which stops its turn only.
+  assert.ok(send.classList.contains("stop"));
+  send.fire("click");
+  await flush();
+  assert.deepEqual(sent("orchestra_stop"), [{ id: "o1", member: "coordinator" }]);
+  assert.ok(send.disabled, "pressed once, until its turn is over");
+  // Something typed: the arrow, which sends it.
+  $(".chat-input").value = "One more thing";
+  $(".chat-input").fire("input");
+  assert.ok(!send.classList.contains("stop"));
+  $(".chat-input").value = "";
+  $(".chat-input").fire("input");
+  // Its turn over: the arrow again.
+  emit("orchestra-update", { ...SNAP, coordinator: { ...SNAP.coordinator, state: "stopped", activity: null } });
+  await flush();
+  assert.ok(!send.classList.contains("stop") && !send.disabled);
+  // A thread done: the arrow; Escape stops nothing.
+  item("t2").fire("click");
+  view.sync();
+  assert.ok(!send.classList.contains("stop"));
+  $(".chat-input").fire("keydown", { key: "Escape" });
+  await flush();
+  assert.equal(sent("orchestra_stop").length, 1);
+  // A thread at work: Escape in the field stops it.
+  item("t1").fire("click");
+  view.sync();
+  assert.ok(send.classList.contains("stop"));
+  $(".chat-input").fire("keydown", { key: "Escape" });
+  await flush();
+  assert.deepEqual(sent("orchestra_stop").at(-1), { id: "o1", member: "t1" });
+});
+
 test("what is attached goes with the message, into the member's chat's files, and leaves the field", async () => {
   await flush();
   // Elm St, its work done: the message shows in its chat at once.

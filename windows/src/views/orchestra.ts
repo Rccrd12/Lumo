@@ -126,6 +126,13 @@ export interface OrchestraView {
   editSend(text: string): boolean;
   /** Escape while editing: the edit is dropped. True when there was one. */
   cancelEdit(): boolean;
+  /**
+   * The member on screen answers now: the send button is its Stop, as a
+   * chat's while its answer is written. `stopping` once Stop was pressed.
+   */
+  answering(): { stopping: boolean } | null;
+  /** Stop (or Escape): the member on screen stops its turn, as a chat's answer stops. */
+  stopAnswer(): void;
   /** The field's placeholder: who it writes to. */
   placeholder(): string;
   /** The model button's words and dot. */
@@ -479,6 +486,10 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
   // ── Who is who ──────────────────────────────────────────────────────────────
 
   const current = (): OrchestraMember | undefined => (snap ? memberOf(snap, selected) : undefined);
+  /** The member whose Stop was pressed in the field ("project/member"), until its turn is over. */
+  let stoppingTurn = "";
+  /** A turn of `m`'s runs (or waits for a card of its): the field's Stop stops it. */
+  const turnRuns = (m: OrchestraMember): boolean => m.state === "working" || m.state === "waiting";
   const titleOf = (id: string): string => id === COORDINATOR ? t(S.coordinator) : (snap && memberOf(snap, id)?.title) || id;
   const nameOf = (m: OrchestraMember): string => (m.id === COORDINATOR ? t(S.coordinator) : m.title);
 
@@ -1661,6 +1672,23 @@ export function buildOrchestra(changed: () => void = () => {}, hooks: OrchestraH
       if (!editing || !m || editing.member !== m.id) return false;
       retry(m, editing.message, text);
       return true;
+    },
+    answering() {
+      // Stop pressed: until that member's turn is over (it stays so when another is on screen).
+      const [pid, pm] = stoppingTurn.split("/");
+      const pressed = snap && pid === snap.id ? memberOf(snap, pm) : undefined;
+      if (stoppingTurn && (!pressed || !turnRuns(pressed))) stoppingTurn = "";
+      const m = page === "project" && snap ? current() : undefined;
+      if (!m || !turnRuns(m)) return null;
+      return { stopping: stoppingTurn === `${snap?.id}/${m.id}` };
+    },
+    stopAnswer() {
+      const m = page === "project" && snap ? current() : undefined;
+      if (!snap || !m) return;
+      const key = `${snap.id}/${m.id}`;
+      if (stoppingTurn === key) return;
+      stoppingTurn = key;
+      void Orchestra.stop(snap.id, m.id);
     },
     cancelEdit() {
       if (!editing) return false;
