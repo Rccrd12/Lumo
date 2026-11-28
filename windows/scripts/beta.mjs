@@ -7,8 +7,12 @@
 //       main, then every open pull request of this repository merged into it
 //       one at a time, oldest first. Only those whose own Windows CI passed on
 //       their latest commit go in, and only that
-//       very commit (one pushed in between waits for its checks): one whose
-//       checks fail or are still running is left out this time, with why. One
+//       very commit (one pushed in between waits for its checks). One whose
+//       newest commit's checks are still running goes in at its last commit
+//       that passed them, so a push never takes it out of the beta (and its
+//       version back, when it carries the next one) until its checks end; it
+//       is left out only when no commit of it passed yet, or when its newest
+//       commit's checks fail, with why. One
 //       that does not merge is left out and the state says what it conflicts
 //       with (main, another pull request, or the other changes together).
 //       Only pull requests the repository's owner opened from a branch of this
@@ -100,6 +104,21 @@ export function sameHead(fetched, headRefOid) {
   return /^[0-9a-f]{40}$/.test(a) && a === b;
 }
 
+/**
+ * The newest commit of a pull request that passed Windows CI, from GitHub's
+ * runs of it (newest first, as GitHub lists them): the first successful
+ * run's commit that `inPull` says is one of the pull request's (its head or
+ * an ancestor of it, never one of main's). Null when there is none.
+ */
+export function lastPassed(runs, inPull) {
+  for (const run of Array.isArray(runs) ? runs : []) {
+    if (!run || run.conclusion !== "success") continue;
+    const sha = String(run.head_sha ?? "").trim().toLowerCase();
+    if (/^[0-9a-f]{40}$/.test(sha) && inPull(sha)) return sha;
+  }
+  return null;
+}
+
 /** A title on one line, cut to a readable length. */
 export function cleanTitle(title) {
   const one = String(title ?? "").replace(/\s+/g, " ").trim();
@@ -112,7 +131,8 @@ export function cleanTitle(title) {
  * comment it sits in.
  */
 export function renderNotes(state, version) {
-  const line = (pr) => `- #${pr.number} ${cleanTitle(pr.title)}`;
+  const line = (pr) =>
+    `- #${pr.number} ${cleanTitle(pr.title)}${pr.earlier ? " (its last tested commit: the newest one's checks are still running)" : ""}`;
   const why = (pr) => {
     if (pr.reason === "checks") return "its checks fail";
     if (pr.reason === "pending") return "its checks are still running";
@@ -197,7 +217,7 @@ function openPullRequests() {
   const out = execFileSync(
     "gh",
     ["pr", "list", "--repo", repo, "--base", "main", "--state", "open", "--limit", "100",
-      "--json", "number,title,updatedAt,headRefOid,isCrossRepository,isDraft,author,statusCheckRollup"],
+      "--json", "number,title,updatedAt,headRefName,headRefOid,isCrossRepository,isDraft,author,statusCheckRollup"],
     { encoding: "utf8" },
   );
   const prs = JSON.parse(out);
@@ -207,6 +227,34 @@ function openPullRequests() {
     console.log(`#${pr.number} skipped (${pr.isDraft === true ? "a draft" : `not opened by ${owner} from this repository`})`);
   }
   return kept;
+}
+
+/**
+ * The last commit of `pr` (fetched as `ref`) that passed Windows CI and
+ * changes the app, for a pull request whose newest commit is still being
+ * checked; null when there is none.
+ */
+function lastPassedCommit(pr, ref, main) {
+  const repo = process.env.GITHUB_REPOSITORY;
+  if (!repo || typeof pr.headRefName !== "string" || !pr.headRefName) return null;
+  let runs;
+  try {
+    const out = execFileSync(
+      "gh",
+      ["api", "-X", "GET", `repos/${repo}/actions/workflows/windows-ci.yml/runs`,
+        "-f", "event=pull_request", "-f", "status=success", "-f", `branch=${pr.headRefName}`, "-f", "per_page=30",
+        "--jq", ".workflow_runs"],
+      { encoding: "utf8" },
+    );
+    runs = JSON.parse(out);
+  } catch (e) {
+    console.log(`#${pr.number}: GitHub's runs of ${CI_WORKFLOW} could not be read (${e.message})`);
+    return null;
+  }
+  // Only a commit of the pull request itself, which changes the app.
+  const inPull = (sha) =>
+    tryGit(["merge-base", "--is-ancestor", sha, ref]) && !tryGit(["merge-base", "--is-ancestor", sha, main]) && changesApp([`${main}...${sha}`]);
+  return lastPassed(runs, inPull);
 }
 
 function merge(statePath) {
@@ -223,26 +271,36 @@ function merge(statePath) {
     }
     const entry = { number: pr.number, title: pr.title, updatedAt: pr.updatedAt, head };
     const ci = ciState(pr.statusCheckRollup);
-    if (ci !== "pass") {
-      excluded.push({ ...entry, reason: ci === "fail" ? "checks" : "pending" });
-      console.log(`#${pr.number} left out (Windows CI: ${ci})`);
+    if (ci === "fail") {
+      excluded.push({ ...entry, reason: "checks" });
+      console.log(`#${pr.number} left out (Windows CI: fail)`);
       continue;
     }
-    // Pushed again after its checks were read: the new commit waits for its own.
-    if (!sameHead(head, pr.headRefOid)) {
-      excluded.push({ ...entry, reason: "pending" });
-      console.log(`#${pr.number} left out (pushed again since its checks were read)`);
-      continue;
+    // Still being checked, or pushed again after its checks were read: the
+    // new commit waits for its own, and its last commit that passed goes in
+    // meanwhile, so the beta never loses what it held a build ago.
+    let commit = head;
+    if (ci !== "pass" || !sameHead(head, pr.headRefOid)) {
+      const earlier = lastPassedCommit(pr, ref, main);
+      if (!earlier) {
+        excluded.push({ ...entry, reason: "pending" });
+        console.log(`#${pr.number} left out (its checks are still running, and no earlier commit of it passed)`);
+        continue;
+      }
+      commit = earlier;
+      entry.head = earlier;
+      entry.earlier = true;
+      console.log(`#${pr.number}: its newest commit is still being checked, ${earlier.slice(0, 7)} goes in`);
     }
-    if (tryGit(["merge", "--no-ff", "--no-edit", "-m", `beta: #${pr.number}`, ref])) {
+    if (tryGit(["merge", "--no-ff", "--no-edit", "-m", `beta: #${pr.number}`, commit])) {
       included.push(entry);
       console.log(`#${pr.number} merged`);
       continue;
     }
     tryGit(["merge", "--abort"]);
     let withWhat = null;
-    if (!mergesCleanly(main, head)) withWhat = "main";
-    else withWhat = included.find((other) => !mergesCleanly(other.head, head))?.number ?? null;
+    if (!mergesCleanly(main, commit)) withWhat = "main";
+    else withWhat = included.find((other) => !mergesCleanly(other.head, commit))?.number ?? null;
     excluded.push({ ...entry, reason: "conflict", with: withWhat });
     console.log(`#${pr.number} left out (conflicts with ${withWhat ?? "the other changes"})`);
   }
