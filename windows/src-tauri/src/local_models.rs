@@ -467,7 +467,13 @@ pub fn forget(server: &Server, model: &str) {
 
 /// What was said of every model of `server` is asked again next time.
 fn forget_server(server: &Server) {
-    let prefix = format!("{}|", server.id);
+    forget_provider(server.id);
+}
+
+/// What was said of every model of `provider` is asked again next time: its
+/// server just came up, and what it said while it was off was nothing.
+pub fn forget_provider(provider: &str) {
+    let prefix = format!("{provider}|");
     if let Some(all) = CAPS.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
         all.retain(|key, _| !key.starts_with(&prefix));
     }
