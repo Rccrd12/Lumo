@@ -2941,6 +2941,10 @@ fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
     if text.trim().is_empty() {
         return;
     }
+    // A project's member: its answer is the project's to show and send on.
+    if crate::orchestra::own_answer(app, chat_id, &text) {
+        return;
+    }
     // The chat's CLI sessions after it, for the island to keep with the chat.
     let mut cli = None;
     if let Some(chat) = app.state::<Chats>().find(chat_id) {

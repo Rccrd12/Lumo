@@ -579,6 +579,39 @@ impl Orchestra {
         Ok(!running)
     }
 
+    /// A thread whose turn ended with nothing in its chat, having written to
+    /// the coordinator instead (message_coordinator): what it wrote last,
+    /// since `since` (ms), is its answer there, shown as a turn's answer is
+    /// rather than folded. Its words, or None.
+    pub fn answer_from_report(&mut self, member: &str, since: u64) -> Option<String> {
+        if member == COORDINATOR {
+            return None;
+        }
+        let m = self.member_mut(member)?;
+        let at = m.messages.iter().rposition(|x| x.kind == "relay" && x.from == member && x.to.as_deref() == Some(COORDINATOR) && x.at >= since)?;
+        let line = &mut m.messages[at];
+        line.kind = "assistant".into();
+        line.to = None;
+        Some(line.text.clone())
+    }
+
+    /// `member`'s CLI answered by itself between two of its turns (`own_answer`):
+    /// shown as its answer, kept with its last one, and sent on to the
+    /// coordinator as a thread's answer is. Whether the coordinator must be woken.
+    pub fn own_answer(&mut self, member: &str, text: &str) -> bool {
+        let text = text.trim();
+        if text.is_empty() || (member == COORDINATOR && text.starts_with(QUIET)) {
+            return false;
+        }
+        let Some(m) = self.member_mut(member) else { return false };
+        if let Some((_, answer)) = m.history.last_mut() {
+            answer.push_str("\n\n");
+            answer.push_str(text);
+        }
+        self.push(member, Message { kind: "assistant".into(), from: member.into(), text: text.into(), ..Default::default() });
+        member != COORDINATOR && self.forward_reply(member, text, None)
+    }
+
     /// A thread's answer in its own chat, sent on to the coordinator as this
     /// project's threads report: the user sees it in the thread, the
     /// coordinator reads it (with what the user had written, when the user
@@ -1226,6 +1259,8 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
             })
             .flatten();
             let Some((query, role, pick, conversation, project_folder, asked_by_user, (context, screen))) = next else { return };
+            // What it writes during this turn is from now on.
+            let started = now();
             // Its environment's repositories, cloned before the first turn that needs them.
             ensure_repos(&app, &id).await;
             let repo_folders: Vec<PathBuf> = with(None, &id, |o| repo_dirs(o).into_iter().map(|(_, d)| d).collect()).unwrap_or_default();
@@ -1283,13 +1318,15 @@ fn run(app: AppHandle, id: String, member: String) -> Pin<Box<dyn Future<Output 
                             let answer = (!extra.is_empty()).then_some(Value::Object(extra));
                             o.push(&member, Message { kind: "assistant".into(), from: member.clone(), text: text.clone(), answer, ..Default::default() });
                         }
+                        // Nothing in its chat, having written to the coordinator instead: that is its answer there.
+                        let text = if text.is_empty() && !r.stopped { o.answer_from_report(&member, started).unwrap_or(text) } else { text };
                         // A thread's answer reaches the coordinator by itself, unless it wrote to it meanwhile.
                         let wrote = o.member(&member).is_some_and(|m| m.wrote_coordinator);
                         if member != COORDINATOR && !r.stopped && !wrote {
                             tell_coordinator = o.forward_reply(&member, &text, asked_by_user.then_some(query.as_str()));
                         }
                         if let Some(m) = o.member_mut(&member) {
-                            m.history.push((sent, r.kept.unwrap_or(text)));
+                            m.history.push((sent, r.kept.filter(|k| !k.trim().is_empty()).unwrap_or(text)));
                             m.cli = conversation.cli_state();
                             m.state = if r.stopped { "stopped".into() } else { "working".into() };
                         }
@@ -1788,6 +1825,21 @@ pub fn call(app: &AppHandle, chat_id: &str, name: &str, input: &Value) -> Option
         Ok(text) => (text, false),
         Err(text) => (text, true),
     })
+}
+
+/// Claude Code answered by itself in a member's chat between two of its turns
+/// (a command it left running in the background ended, an agent it started
+/// reported; claude_code.rs `own_answer`): the answer shows in the member's
+/// chat and reaches the coordinator as a turn's answer does. False for any
+/// other chat, whose own answer is the chat's.
+pub fn own_answer(app: &AppHandle, chat_id: &str, text: &str) -> bool {
+    let Some((id, member)) = parse_chat(chat_id) else { return false };
+    let (id, member) = (id.to_string(), member.to_string());
+    let wakes = with(Some(app), &id, |o| o.own_answer(&member, text)).unwrap_or(false);
+    if wakes {
+        wake(app, &id, COORDINATOR);
+    }
+    true
 }
 
 /// A member's plan written with its CLI's own tools (Claude Code's TodoWrite,
@@ -2593,6 +2645,40 @@ mod tests {
         // Nothing new is saved for a member without a CLI session or a turn running.
         let plain = serde_json::to_value(&idle).unwrap();
         assert!(plain.get("cli").is_none() && plain.get("turn").is_none());
+    }
+
+    #[test]
+    fn what_a_cli_member_answers_by_itself_shows_in_its_chat_and_reaches_the_coordinator() {
+        let mut o = Orchestra::new("o1", Pick::default(), Pick::default());
+        o.start_thread("Maya", "Analizza i margini").unwrap();
+        o.member_mut("t1").unwrap().history.push(("Analizza i margini".into(), "Lancio il test in background.".into()));
+        // Its command in the background ended: Claude Code answered by itself.
+        assert!(o.own_answer("t1", "  Il test è finito: margine 44.  "));
+        let t1 = o.member("t1").unwrap();
+        assert_eq!(t1.messages.last().map(|m| (m.kind.as_str(), m.text.as_str())), Some(("assistant", "Il test è finito: margine 44.")));
+        assert_eq!(t1.history.last().unwrap().1, "Lancio il test in background.\n\nIl test è finito: margine 44.");
+        assert!(o.coordinator.mail.last().is_some_and(|m| m.from == "t1" && m.text.contains("margine 44")));
+        // Nothing written: nothing shown; the coordinator's own, kept to itself when quiet.
+        assert!(!o.own_answer("t1", "  "));
+        let before = o.coordinator.messages.len();
+        assert!(!o.own_answer(COORDINATOR, "[quiet] nothing new"));
+        assert_eq!(o.coordinator.messages.len(), before);
+    }
+
+    #[test]
+    fn a_thread_that_only_wrote_to_the_coordinator_has_that_as_its_answer() {
+        let mut o = Orchestra::new("o1", Pick::default(), Pick::default());
+        o.start_thread("Maya", "Analizza i margini").unwrap();
+        o.deliver(COORDINATOR, "t1", "Perché la C è passata da 44 a 10?").unwrap();
+        let since = now();
+        o.deliver("t1", COORDINATOR, "La C misura un'altra cosa: ecco perché.").unwrap();
+        assert_eq!(o.answer_from_report("t1", since).as_deref(), Some("La C misura un'altra cosa: ecco perché."));
+        let last = o.member("t1").unwrap().messages.last().unwrap().clone();
+        assert_eq!((last.kind.as_str(), last.to.as_deref()), ("assistant", None));
+        // The coordinator's chat still has it from the thread; nothing written this turn: nothing.
+        assert!(o.coordinator.messages.iter().any(|m| m.kind == "relay" && m.from == "t1"));
+        assert!(o.answer_from_report("t1", now() + 1).is_none());
+        assert!(o.answer_from_report(COORDINATOR, 0).is_none());
     }
 
     #[test]
