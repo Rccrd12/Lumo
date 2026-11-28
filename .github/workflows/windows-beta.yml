@@ -9,9 +9,10 @@ name: Windows beta
 # each release (the Windows workflow), and by hand. A pull request merged into main comes back with main's CI; one closed
 # without merging leaves the beta at the next build. It never runs on a
 # pull_request event: the token GitHub gives those may not publish a release. Only pull requests whose own Windows
-# CI passed on their latest commit go in: one that fails, or whose checks are
-# still running, is left out this time and says so, so a broken pull request
-# never holds the others back. One that does not merge is left out too, and
+# CI passed go in: one whose newest commit fails is left out this time and says
+# so, so a broken pull request never holds the others back; one whose newest
+# commit is still being checked goes in at its last commit that passed (left
+# out only when none did), so a push never takes it out of the beta meanwhile. One that does not merge is left out too, and
 # the release's notes say what it conflicts with (scripts/beta.mjs). When the
 # tests of the whole fail, nothing is published and the beta before stays.
 # Pull requests from forks never take part: their code is never checked out
@@ -46,6 +47,8 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      # A pull request's earlier runs of Windows CI (scripts/beta.mjs lastPassed).
+      actions: read
     outputs:
       changes: ${{ steps.merge.outputs.changes }}
       version: ${{ steps.version.outputs.version }}

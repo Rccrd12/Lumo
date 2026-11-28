@@ -211,7 +211,7 @@ test("a pull request left out of the beta says what it conflicts with", () => {
 
 // ── scripts/beta.mjs, the workflow's steps ────────────────────────────────────
 
-const { BETA_MARK, betaCandidates, betaVersion, ciState, cleanTitle, renderNotes, sameHead } = await import("../scripts/beta.mjs");
+const { BETA_MARK, betaCandidates, betaVersion, ciState, cleanTitle, lastPassed, renderNotes, sameHead } = await import("../scripts/beta.mjs");
 
 test("only a pull request whose Windows CI passed goes in", () => {
   const run = (status, conclusion, workflowName = "Windows CI") => ({ __typename: "CheckRun", name: "test", workflowName, status, conclusion });
@@ -270,6 +270,28 @@ test("the beta merges only the commit whose checks were read", () => {
   assert.equal(sameHead("62248ea19dbe2fe5071e2d00923bb23ebffd5051", sha), false, "pushed again since");
   assert.equal(sameHead(sha, undefined), false, "GitHub said nothing: left out");
   assert.equal(sameHead("", ""), false);
+});
+
+test("a pull request still being checked goes in at its last commit that passed", () => {
+  // Beta 0.23.2-818: #380, which carries 0.24.0, was pushed again and left
+  // out while its checks ran, so the beta went back from 0.24.0-817 and Lumo
+  // offered nothing. Its last tested commit goes in meanwhile.
+  const [a, b, c] = ["a".repeat(40), "b".repeat(40), "c".repeat(40)];
+  const mine = new Set([b, c]);
+  const runs = [
+    { head_sha: a, conclusion: "success" }, // another branch's, or main's
+    { head_sha: c, conclusion: "failure" },
+    { head_sha: b.toUpperCase(), conclusion: "success" },
+    { head_sha: c, conclusion: "success" },
+  ];
+  assert.equal(lastPassed(runs, (sha) => mine.has(sha)), b, "the newest that passed and is the pull request's");
+  assert.equal(lastPassed(runs, () => false), null, "none of its own: left out");
+  assert.equal(lastPassed([{ head_sha: "nope", conclusion: "success" }], () => true), null);
+  assert.equal(lastPassed(null, () => true), null);
+  const notes = renderNotes({ main: "m", included: [{ number: 380, title: "Projects", updatedAt: "t", earlier: true }], excluded: [] }, "0.24.0-819");
+  assert.match(notes, /- #380 Projects \(its last tested commit: the newest one's checks are still running\)/);
+  const list = JSON.parse(notes.slice(notes.indexOf(BETA_MARK) + BETA_MARK.length, notes.lastIndexOf("-->")));
+  assert.deepEqual(list.included, [{ number: 380, title: "Projects", updatedAt: "t" }], "Lumo's list says it is in");
 });
 
 test("only the owner's own pull requests from this repository go in the beta", () => {
